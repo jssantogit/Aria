@@ -1,0 +1,46 @@
+name: REA212 source-correct artist and frosted contextual card CI
+on:
+  push:
+    branches: [validation/rea212-artist-frosted-cards-e4804c8-20261114]
+permissions:
+  contents: read
+jobs:
+  android-and-shared-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+      - name: Verify exact PR sources
+        run: |
+          set -euo pipefail
+          git diff --exit-code e4804c8a533b1408f980b925c8b081f4dc4c13a5 HEAD -- app sharedUi shared
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Configure properties
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Focused source and frosted menu regression
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests "com.music.bitchord.ui.components.PlayerArtistEvidenceTest" --tests "com.music.bitchord.ui.screens.NativeRatingEditorActionTest" --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest" --tests "com.music.bitchord.ui.screens.CanonicalLibrarySelectionExpandedActionsTest" --tests "com.music.bitchord.ui.components.PlayerAnchoredActionsHighlightTest"
+      - name: Full Android unit tests
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Shared UI JVM tests
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+      - name: Shared Automix regression
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+      - name: Reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea212-frosted-actions-reports-${{ github.sha }}
+          path: |
+            app/build/reports/tests/
+            sharedUi/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 3
