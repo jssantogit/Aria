@@ -372,10 +372,12 @@ import com.music.bitchord.ui.screens.explicitCoverUri
 import com.music.bitchord.ui.screens.SmartPlaylistBuilderScreen
 import com.music.bitchord.ui.screens.ExploreScreen
 import com.music.bitchord.ui.screens.SearchScreen
-import com.music.bitchord.ui.screens.AppleNativeAlbumDetail
-import com.music.bitchord.ui.screens.AppleNativeArtistDetail
 import com.music.bitchord.ui.screens.AppleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailKind
+import com.music.bitchord.ui.screens.appleAlbumAsSharedDetail
+import com.music.bitchord.ui.screens.appleArtistAsSharedDetail
+import com.music.bitchord.ui.screens.AppleArtistCatalogExtras
+import com.music.bitchord.ui.screens.NativeCatalogDetailNotes
 import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.onboarding.OnboardingScreen
 import com.music.bitchord.ui.replay.ReplayScreen
@@ -3486,23 +3488,82 @@ private fun BitChordApp(
                             onEditSignatureApi = { editingSignatureApi = true },
                             contentPadding = listPadding,
                         )
-                    } else if (key == "apple_native_album") {
-                        appleAlbumDetail?.let { apple ->
-                            AppleNativeAlbumDetail(
-                                state = apple,
-                                contentPadding = listPadding,
-                                listState = pageDetailListState,
+                    } else if (key == "apple_native_album" ||
+                        key == "apple_native_artist"
+                    ) {
+                        // The Apple ID changes only the data adapter, never the
+                        // whole-screen compositor. This is exactly the same
+                        // DetailScreen used for MusicBrainz, local, Library,
+                        // artist, album and playlist. No second Apple screen.
+                        val albumState = appleAlbumDetail as? UiState.Success
+                        val artistState = appleArtistDetail as? UiState.Success
+                        val unified = if (key == "apple_native_album") {
+                            albumState?.data?.let(::appleAlbumAsSharedDetail)
+                        } else artistState?.data?.let(::appleArtistAsSharedDetail)
+                        if (unified == null) {
+                            com.music.bitchord.ui.components.MessageState(
+                                if ((if (key == "apple_native_album") appleAlbumDetail
+                                    else appleArtistDetail) is UiState.Error
+                                ) "Não foi possível carregar os detalhes."
+                                else "Carregando…",
                             )
-                        }
-                    } else if (key == "apple_native_artist") {
-                        appleArtistDetail?.let { artist ->
-                            AppleNativeArtistDetail(
-                                state = artist,
+                        } else {
+                            val unifiedPage = unified.page
+                            val unifiedListState = detailListStates.getOrPut(
+                                "apple:${unifiedPage.browseId}"
+                            ) { LazyListState() }
+                            DetailScreen(
+                                page = unifiedPage,
+                                currentSong = null,
+                                isPlaying = false,
+                                listState = unifiedListState,
+                                activeShelf = detailActiveShelf,
+                                onActiveShelfChange = { detailActiveShelf = it },
+                                // No Apple commercial track becomes a Song,
+                                // media asset or synthetic MusicBrainz MBID.
+                                onSongClick = { _, _ -> },
+                                onSongLongPress = {},
+                                onSongSwipe = {},
+                                onShuffle = {},
+                                onArtistClick = { _, _ -> },
+                                onAddSuggested = {},
+                                onSectionItemClick = { item ->
+                                    val matched = artistState?.data?.albums
+                                        ?.singleOrNull { it.browseId == item.browseId }
+                                    if (matched != null) {
+                                        detailActiveShelf = null
+                                        viewModel.openAppleEditorialEntry(matched)
+                                    }
+                                },
+                                searching = detailSearching,
+                                onSearchingChange = { detailSearching = it },
+                                metadataTracks = unified.metadataTracks,
+                                artistHeroOverride = unified.artistHeroUrl,
+                                footerContent = { palette ->
+                                    if (key == "apple_native_artist") {
+                                        artistState?.data?.let { artistPage ->
+                                            item(key = "apple:source:paging") {
+                                                AppleArtistCatalogExtras(
+                                                    state = artistPage,
+                                                    palette = palette,
+                                                    onLoadMore = viewModel::loadMoreAppleEditorialArtist,
+                                                    onSearchMore = viewModel::searchMoreAppleEditorialArtist,
+                                                )
+                                            }
+                                        }
+                                    } else if (unified.notice != null ||
+                                        unified.attribution != null
+                                    ) {
+                                        item(key = "apple:source:notes") {
+                                            NativeCatalogDetailNotes(
+                                                notice = unified.notice,
+                                                attribution = unified.attribution,
+                                                palette = palette,
+                                            )
+                                        }
+                                    }
+                                },
                                 contentPadding = listPadding,
-                                listState = pageDetailListState,
-                                onAlbumOpen = viewModel::openAppleEditorialEntry,
-                                onLoadMore = viewModel::loadMoreAppleEditorialArtist,
-                                onSearchMore = viewModel::searchMoreAppleEditorialArtist,
                             )
                         }
                     } else if (page != null) {
