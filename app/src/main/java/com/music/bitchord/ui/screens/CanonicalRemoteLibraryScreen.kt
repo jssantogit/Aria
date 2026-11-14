@@ -1707,6 +1707,7 @@ internal fun CanonicalRemoteLibraryScreen(
                 }) { { ratingDialogSelection = selectedItems.toList() } } else null,
                 onPlayNext = { queueMultiSelection(CanonicalCollectionIntent.ADD_NEXT) },
                 onAddToQueue = { queueMultiSelection(CanonicalCollectionIntent.ADD_TO_QUEUE) },
+                hazeState = hazeState,
             )
         }
         }
