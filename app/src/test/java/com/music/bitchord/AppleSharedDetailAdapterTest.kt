@@ -40,7 +40,7 @@ class AppleSharedDetailAdapterTest {
                 album(40, AppleEditorialReleaseCategory.UNCLASSIFIED),
             ), possiblyTruncated = false,
         )
-        val adapted = assertNotNull(appleArtistAsSharedDetail(page))
+        val adapted = requireNotNull(appleArtistAsSharedDetail(page))
         assertEquals(BrowseType.ARTIST, adapted.page.type)
         assertEquals("itunes:br:artist:1656329288", adapted.page.browseId)
         assertEquals(listOf("Álbuns", "EPs", "Singles", "Outros lançamentos"),
@@ -62,7 +62,7 @@ class AppleSharedDetailAdapterTest {
                 AppleEditorialTrackRow("itunes:br:track:102", "Bubble Gum", "NewJeans", 1, 2),
             ), partialTracklist = false,
         )
-        val adapted = assertNotNull(appleAlbumAsSharedDetail(page))
+        val adapted = requireNotNull(appleAlbumAsSharedDetail(page))
         assertEquals(BrowseType.ALBUM, adapted.page.type)
         assertEquals(selected.browseId, adapted.page.browseId)
         assertEquals(listOf("How Sweet", "Bubble Gum"), adapted.metadataTracks.map { it.title })
@@ -89,7 +89,7 @@ class AppleSharedDetailAdapterTest {
         assertNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
             artist = artist.copy(browseId = "itunes:br:album:1"),
             albums = emptyList(), possiblyTruncated = false)))
-        val result = assertNotNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
+        val result = requireNotNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
             artist = artist, albums = listOf(wrong), possiblyTruncated = false)))
         assertTrue(result.page.sections.isEmpty())
     }
