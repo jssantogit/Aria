@@ -2564,6 +2564,9 @@ private fun BitChordApp(
             }
         }
         var localRatingDialogOpen by remember(displayedSong.videoId) { mutableStateOf(false) }
+        var playerRatingAnchor by remember(displayedSong.videoId) {
+            mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+        }
         val openMenuFromPlayer: (Any?, Boolean) -> Unit = { loadedArtworkModel, appleQueue ->
             menuFromPlayer = true
             menuFromAppleQueue = appleQueue
@@ -2641,6 +2644,7 @@ private fun BitChordApp(
             autoplayEnabled = autoplayEnabled,
             signedIn = signedIn,
             onEditCanonicalRating = { localRatingDialogOpen = true },
+            onRatingAnchorChange = { playerRatingAnchor = it },
             appleQueueStyle = true,
             verifiedQueueAlbumTitle = verifiedQueueAlbum,
             lyricsShareRequestToken = playerShareLyricsRequestToken,
@@ -2823,6 +2827,7 @@ private fun BitChordApp(
             CanonicalSongRatingDialog(
                 song = displayedSong,
                 onDismiss = { localRatingDialogOpen = false },
+                anchorBounds = playerRatingAnchor,
             )
         }
         recoveryNotice?.let { notice ->
