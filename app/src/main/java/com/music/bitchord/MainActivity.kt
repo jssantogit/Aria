@@ -907,6 +907,13 @@ private fun BitChordApp(
         appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
         else AppleNativeDetailKind.NONE
     val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
+    val appleSharedVisual = when (appleNativeKind) {
+        AppleNativeDetailKind.ALBUM ->
+            (appleAlbumDetail as? UiState.Success)?.data?.let(::appleAlbumAsSharedDetail)
+        AppleNativeDetailKind.ARTIST ->
+            (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
+        AppleNativeDetailKind.NONE -> null
+    }
     // Local Music, Downloads and the other device folders draw as release
     // pages, but they have no artwork to wash the top inset in, so they keep
     // the plain bar; their top bar trades the overflow for a sort-and-view
@@ -3495,11 +3502,8 @@ private fun BitChordApp(
                         // whole-screen compositor. This is exactly the same
                         // DetailScreen used for MusicBrainz, local, Library,
                         // artist, album and playlist. No second Apple screen.
-                        val albumState = appleAlbumDetail as? UiState.Success
                         val artistState = appleArtistDetail as? UiState.Success
-                        val unified = if (key == "apple_native_album") {
-                            albumState?.data?.let(::appleAlbumAsSharedDetail)
-                        } else artistState?.data?.let(::appleArtistAsSharedDetail)
+                        val unified = appleSharedVisual
                         if (unified == null) {
                             com.music.bitchord.ui.components.MessageState(
                                 if ((if (key == "apple_native_album") appleAlbumDetail
@@ -4461,16 +4465,21 @@ private fun BitChordApp(
                 // The top-bar footprint is transparent on every page so the
                 // shared app-level gradient is continuous; its controls float
                 // as separate circles in both the glass and blur materials.
-                val isDetailVisible = detail != null &&
-                    (detail.type == BrowseType.ALBUM ||
-                        detail.type == BrowseType.PLAYLIST ||
-                        detail.type == BrowseType.ARTIST) &&
+                val visualDetail = detail ?: appleSharedVisual?.page
+                val isDetailVisible = visualDetail != null &&
+                    (visualDetail.type == BrowseType.ALBUM ||
+                        visualDetail.type == BrowseType.PLAYLIST ||
+                        visualDetail.type == BrowseType.ARTIST) &&
                     !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showWearOs && !showEqualizer && !showReplay
-                val chromePageColor = if (isDetailVisible) {
-                    detailPalette.background
-                } else {
-                    MaterialTheme.colorScheme.background
+                val appleDetailPalette = rememberArtworkPalette(
+                    imageUrl = appleSharedVisual?.artistHeroUrl
+                        ?: appleSharedVisual?.page?.thumbnailUrl,
+                )
+                val chromePageColor = when {
+                    !isDetailVisible -> MaterialTheme.colorScheme.background
+                    detail != null -> detailPalette.background
+                    else -> appleDetailPalette.background
                 }
                 // This is the bottom floor itself turned upside down, not a
                 // separately maintained approximation. Both edges therefore
@@ -4480,9 +4489,13 @@ private fun BitChordApp(
                 // bar, and a fade across them would only muddy them. It comes in as
                 // the page scrolls past that header, when content starts passing
                 // under the bar and needs the cover.
-                val artistListState = detail
+                val artistListState = visualDetail
                     ?.takeIf { isDetailVisible && it.type == BrowseType.ARTIST }
-                    ?.let { detailListStates.getOrPut(it.browseId) { LazyListState() } }
+                    ?.let {
+                        detailListStates.getOrPut(
+                            if (detail != null) it.browseId else "apple:${it.browseId}"
+                        ) { LazyListState() }
+                    }
                 val topFadeAlpha by remember(artistListState) {
                     derivedStateOf {
                         val list = artistListState ?: return@derivedStateOf 1f
@@ -4537,7 +4550,8 @@ private fun BitChordApp(
                             ?: stringResource(R.string.settings)
                         showReplay -> stringResource(R.string.replay)
                         openedPublicPlaylist != null -> openedPublicPlaylist?.title.orEmpty()
-                        detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()
+                        visualDetail != null && detailActiveShelf != null ->
+                            detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
                         appleNativeKind == AppleNativeDetailKind.ALBUM ->
                             (appleAlbumDetail as? UiState.Success)?.data?.album?.title.orEmpty()
@@ -4561,7 +4575,8 @@ private fun BitChordApp(
                     // the LazyColumn viewport.
                     showScrolledTitle = homeRootVisible && homeListState.firstVisibleItemIndex > 0,
                     backButtonHazeState = hazeState,
-                    trailingTitle = if (detail != null && detailActiveShelf != null) detail.title else null,
+                    trailingTitle = if (visualDetail != null && detailActiveShelf != null)
+                        visualDetail.title else null,
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
@@ -4571,7 +4586,7 @@ private fun BitChordApp(
                             (libraryShowAll != null && detail == null) ||
                             (showAllLocalRecentAdditions && detail == null) ||
                             (unifiedLibraryCategory != null) ||
-                            (detail != null && detailActiveShelf != null) -> true
+                            (visualDetail != null && detailActiveShelf != null) -> true
                         showPlaylistLibrary && !showSmartPlaylistBuilder && detail == null ->
                             // Always identify the Library's playlists collection.
                             // The in-list header can be scrolled off or restored
@@ -4589,6 +4604,11 @@ private fun BitChordApp(
                             (detailListStates["public_playlist:${openedPublicPlaylist!!.mbid}"]
                                 ?.firstVisibleItemIndex ?: 0) > 0
                         detail != null -> detailScrolled
+                        appleSharedVisual != null -> {
+                            val list = detailListStates["apple:${appleSharedVisual.page.browseId}"]
+                            (list?.firstVisibleItemIndex ?: 0) > 0 ||
+                                (list?.firstVisibleItemScrollOffset ?: 0) > detailTitleDrop
+                        }
                         else -> scrolled || selectedTab == TAB_SEARCH
                     },
                     refreshing = currentFeed != null && currentFeed in refreshing,
