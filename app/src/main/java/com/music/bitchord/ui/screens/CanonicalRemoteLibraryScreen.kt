@@ -914,7 +914,10 @@ internal fun CanonicalRemoteLibraryScreen(
             // Match the exact image painted by NativeLibraryEntityCard:
             // its proven Recording->Release artwork wins over the optional
             // ReleaseEntity metadata artwork. This is not a title match.
-            entityArtworkById[album.id]?.artworkUri ?: album.artworkUri,
+            heldLibraryAlbumArtworkSource(
+                releaseArtwork = album.artworkUri,
+                verifiedRecordingArtwork = entityArtworkById[album.id]?.artworkUri,
+            ),
         )
     }
     LaunchedEffect(albumMenuToken) {
@@ -2252,6 +2255,13 @@ internal fun canonicalNativeReleasePaletteUri(
  * Canonical category lists keep their inset hairlines only between entries.
  * Do not paint a separator below the final visible track, album or artist.
  */
+/** Match the held cover with the one actually painted by the Library card. */
+internal fun heldLibraryAlbumArtworkSource(
+    releaseArtwork: String?,
+    verifiedRecordingArtwork: String?,
+): String? = verifiedRecordingArtwork?.takeIf(String::isNotBlank)
+    ?: releaseArtwork?.takeIf(String::isNotBlank)
+
 /** Held menus take their tint from the item the user actually picked. */
 internal fun heldLibraryPaletteArtworkSource(
     itemArtwork: String?,
