@@ -1,6 +1,15 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.AppSettings
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -21,21 +30,36 @@ import androidx.compose.ui.unit.dp
 internal fun nativeContextPlateColor(dark: Boolean): Color =
     if (dark) Color(0xFF242427) else Color(0xFFF4F4F6)
 
+@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 internal fun NativeContextActionPlate(
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
     content: @Composable () -> Unit,
 ) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val reduceBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(18.dp)
+    val base = nativeContextPlateColor(dark)
     Surface(
         modifier = modifier.shadow(12.dp, shape, clip = false),
         shape = shape,
-        color = nativeContextPlateColor(dark),
+        color = Color.Transparent,
         contentColor = if (dark) Color.White else Color.Black,
         border = BorderStroke(
             0.5.dp,
             (if (dark) Color.White else Color.Black).copy(alpha = if (dark) 0.13f else 0.08f),
         ),
-    ) { content() }
+    ) {
+        Box(
+            Modifier.clip(shape).then(
+                if (hazeState != null && !reduceBlur) {
+                    Modifier.optimizedHazeEffect(
+                        state = hazeState,
+                        style = HazeMaterials.regular(base),
+                    )
+                } else Modifier.background(base)
+            ),
+        ) { content() }
+    }
 }
