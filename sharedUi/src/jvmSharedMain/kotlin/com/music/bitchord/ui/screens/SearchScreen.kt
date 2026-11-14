@@ -605,8 +605,7 @@ fun SearchScreen(
             if (searchingAddons && query.isNotBlank()) {
                 canonicalServerSearchRows(serverResults, onServerPlay)
             }
-            if (searchingCanonical && canonicalDetail == null && appleDetail == null &&
-                appleArtistDetail == null &&
+            if (searchingCanonical && canonicalDetail == null &&
                 (filter == SearchFilter.ALL || filter == SearchFilter.SONGS) &&
                 (addonResults as? UiState.Success)?.data?.isNotEmpty() == true
             ) {
