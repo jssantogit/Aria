@@ -137,7 +137,11 @@ private data class RatingTargetResolution(val pending: Boolean, val recordingId:
 
 /** A player Song is NOT a RecordingId: verify the actual rendition before editing. */
 @Composable
-internal fun CanonicalSongRatingDialog(song: Song, onDismiss: () -> Unit) {
+internal fun CanonicalSongRatingDialog(
+    song: Song,
+    onDismiss: () -> Unit,
+    anchorBounds: IntRect? = null,
+) {
     val context = LocalContext.current.applicationContext
     // The account-scoped Catalog asset snapshot is an offline, verified identity
     // proof. Unrated local files and cached canonical Navidrome songs can be
@@ -166,7 +170,9 @@ internal fun CanonicalSongRatingDialog(song: Song, onDismiss: () -> Unit) {
     }
     val id = resolution.recordingId
     if (id != null) {
-        CanonicalRecordingRatingDialog(recordingId = id, onDismiss = onDismiss)
+        CanonicalRecordingRatingDialog(
+            recordingId = id, onDismiss = onDismiss, anchorBounds = anchorBounds,
+        )
     } else {
         NativeAlertHost(onDismiss = onDismiss) {
             NativeStatusAlert(
@@ -183,7 +189,11 @@ internal fun CanonicalSongRatingDialog(song: Song, onDismiss: () -> Unit) {
 
 /** The only mutation host for rating edits. A canceled or unconfirmed selection never writes. */
 @Composable
-internal fun CanonicalRecordingRatingDialog(recordingId: String, onDismiss: () -> Unit) {
+internal fun CanonicalRecordingRatingDialog(
+    recordingId: String,
+    onDismiss: () -> Unit,
+    anchorBounds: IntRect? = null,
+) {
     val context = LocalContext.current.applicationContext
     val store: RecordingRatingStore = remember(context) {
         RoomRecordingRatingStore(ListeningEventDatabase.get(context).recordingRatingDao())
@@ -202,6 +212,7 @@ internal fun CanonicalRecordingRatingDialog(recordingId: String, onDismiss: () -
     val scope = rememberCoroutineScope()
     key(recordingId) { CanonicalRecordingFeedbackPanel(
         rating = current?.value,
+        anchorBounds = anchorBounds,
         saving = saving,
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },
