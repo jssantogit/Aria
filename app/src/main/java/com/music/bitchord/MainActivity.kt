@@ -932,7 +932,8 @@ private fun BitChordApp(
     // order never imposes itself on another, and every page keeps its own
     // across visits.
     val detailSongSorts by AppSettings.detailSongSorts.collectAsStateWithLifecycle()
-    val songSort = detail?.browseId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
+    val activeDetailSortId = detail?.browseId ?: appleSharedVisual?.page?.browseId
+    val songSort = activeDetailSortId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
     var songSortMenuOpen by remember { mutableStateOf(false) }
     var catalogAlbumOverflowOpen by remember(detail?.browseId) { mutableStateOf(false) }
     // A device folder's equivalents — its sort and whether it is a grid —
@@ -953,7 +954,7 @@ private fun BitChordApp(
     // Whether the open release page's filter box is up. Held out here with the
     // sort control because the button that opens it sits in the top bar beside
     // it, and reset with the page so a filter never follows you to the next one.
-    var detailSearching by rememberSaveable(detail?.browseId) { mutableStateOf(false) }
+    var detailSearching by rememberSaveable(activeDetailSortId) { mutableStateOf(false) }
     val likeStatuses by viewModel.likeStatuses.collectAsStateWithLifecycle()
     // Which tracks are being held on YouTube's own upload, so the player's menu
     // offers the way back out of a revert rather than the revert again.
@@ -971,7 +972,9 @@ private fun BitChordApp(
             viewModel.loadAccount()
         }
     }
-    LaunchedEffect(detail?.browseId) { detailActiveShelf = null }
+    LaunchedEffect(detail?.browseId, appleSharedVisual?.page?.browseId) {
+        detailActiveShelf = null
+    }
     LaunchedEffect(showSettings) {
         if (!showSettings) {
             settingsSection = null
@@ -3543,6 +3546,7 @@ private fun BitChordApp(
                                 onSearchingChange = { detailSearching = it },
                                 metadataTracks = unified.metadataTracks,
                                 artistHeroOverride = unified.artistHeroUrl,
+                                songSort = songSort,
                                 footerContent = { palette ->
                                     if (key == "apple_native_artist") {
                                         artistState?.data?.let { artistPage ->
@@ -4797,6 +4801,30 @@ private fun BitChordApp(
                                 }
                             }
                         }
+                        if (appleSharedVisual != null &&
+                            !showSettings && !showAccountScrobbling &&
+                            !showSources && !showReplay
+                        ) {
+                            if (appleNativeKind == AppleNativeDetailKind.ALBUM) {
+                                // Identical native search/sort controls used by
+                                // every album DetailScreen. Metadata-only
+                                // Apple tracks never expose a playback/menu ID.
+                                NativeCollectionSearchAction(
+                                    searching = detailSearching,
+                                    contentDescription = stringResource(
+                                        if (detailSearching) R.string.close_search
+                                        else R.string.search_this_list,
+                                    ),
+                                    onClick = { detailSearching = !detailSearching },
+                                )
+                                NativeCollectionSortAction(
+                                    contentDescription = stringResource(R.string.sort_songs),
+                                    onClick = { songSortMenuOpen = true },
+                                )
+                            } else if (appleNativeKind == AppleNativeDetailKind.ARTIST) {
+                                NativeArtistShareTopBarAction(appleSharedVisual.page.title)
+                            }
+                        }
                         if (!showSettings && !showAccountScrobbling && !showPlaylistLibrary) {
                             // Left of the account photo, and only on Library itself:
                             // a history is a record of what was played, which reads
@@ -5659,7 +5687,7 @@ private fun BitChordApp(
                 hazeState = hazeState,
                 selected = songSort,
                 onSelect = { option ->
-                    detail?.browseId?.let { AppSettings.setDetailSongSort(it, option) }
+                    activeDetailSortId?.let { AppSettings.setDetailSongSort(it, option) }
                     songSortMenuOpen = false
                 },
                 // Flipping the date direction deliberately leaves the menu up:
@@ -5667,7 +5695,7 @@ private fun BitChordApp(
                 // before it played, and the open menu lets the direction flip
                 // read against the list reordering behind the frost.
                 onFlipDateDirection = {
-                    detail?.browseId?.let { browseId ->
+                    activeDetailSortId?.let { browseId ->
                         val next = when (songSort) {
                             SongSort.DATE_ADDED_DESC -> SongSort.DATE_ADDED_ASC
                             SongSort.DATE_ADDED_ASC -> SongSort.DATE_ADDED_DESC
