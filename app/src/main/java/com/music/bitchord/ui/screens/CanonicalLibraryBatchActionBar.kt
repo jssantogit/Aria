@@ -24,6 +24,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.music.bitchord.ui.components.NativeContextActionPlate
 import com.music.bitchord.ui.components.ActionRow
+import com.music.bitchord.ui.components.ActionRowStyle
+import com.music.bitchord.ui.components.LocalActionRowStyle
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -101,6 +104,7 @@ internal fun CanonicalLibraryBatchActionBar(
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
+                CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
                 Column(Modifier.fillMaxWidth().testTag("native-selection-expanded-actions")) {
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
@@ -127,6 +131,7 @@ internal fun CanonicalLibraryBatchActionBar(
                             onClick = rate,
                         )
                     }
+                }
                 }
             }
         }
