@@ -7,6 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.model.Song
@@ -32,6 +35,7 @@ internal fun PlayerRatingStar(
     song: Song,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onBoundsChanged: ((IntRect) -> Unit)? = null,
 ) {
     val rating = LocalCanonicalRatingDisplay.current.forSong(song)
     val localScore = rating?.localValue?.takeIf {
@@ -41,6 +45,10 @@ internal fun PlayerRatingStar(
         modifier = modifier
             .size(40.dp)
             .testTag("now-playing-rating-star")
+            .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coordinates ->
+                val b = coordinates.boundsInWindow()
+                onBoundsChanged(IntRect(b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt()))
+            })
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
