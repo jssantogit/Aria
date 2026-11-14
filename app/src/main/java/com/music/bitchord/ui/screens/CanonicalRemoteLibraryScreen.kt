@@ -289,6 +289,8 @@ internal fun CanonicalRemoteLibraryScreen(
     onOpenCatalogAlbum: ((String, String, String) -> Unit)? = null,
     /** Proven ReleaseId with available source assets; bypass public MB lookup. */
     onOpenNativeAlbum: ((String, String, String) -> Unit)? = null,
+    /** Exact credited ArtistId and source provider, never a display-name lookup. */
+    onOpenSourceOwnedArtist: ((String, String, String) -> Unit)? = null,
     heldMenuBottomChromeClearance: Dp = 100.dp,
     selectionBarBottomPadding: Dp = 140.dp,
     hazeState: HazeState? = null,
@@ -822,6 +824,33 @@ internal fun CanonicalRemoteLibraryScreen(
         }
         else -> emptyList()
     }
+    val verifiedAlbumCreditArtist by produceState<
+        com.music.bitchord.ui.components.SourceOwnedArtistEvidence?
+    >(initialValue = null, key1 = selectedEntity?.id, key2 = selectedSource,
+        key3 = scopedDetailTracks) {
+        val id = selectedEntity?.id
+            ?.takeIf { selectedContext == CanonicalSmartFilterContext.ALBUMS }
+            ?: return@produceState
+        // When every visible source is selected, only a single proven asset
+        // provider can claim the credit. Never jump to a random server.
+        val source = selectedSource ?: scopedDetailTracks
+            .flatMap { track -> track.availableAssets.map { it.providerKey } }
+            .distinct().singleOrNull() ?: return@produceState
+        value = try {
+            withContext(Dispatchers.IO) {
+                com.music.bitchord.ui.components.verifiedSourceOwnedPlayerArtist(
+                    recordingId = id,
+                    providerKey = source,
+                    credits = catalogDao.releaseArtistCredits(id),
+                    availableArtists = catalogDao.providerScopedArtists(source),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
     // The release title/type/year are only enriched from verified canonical
     // ReleaseGroup or MusicBrainz Edition evidence. No "- EP" heuristics when
     // that evidence is absent; no provider name used as a surrogate ID.
@@ -1177,6 +1206,11 @@ internal fun CanonicalRemoteLibraryScreen(
                     albumQuality = canonicalAlbumSourceQuality(
                         scopedDetailTracks, selectedSource,
                     ),
+                    onCreditClick = verifiedAlbumCreditArtist?.let { credit ->
+                        onOpenSourceOwnedArtist?.let { open ->
+                            { open(credit.artistId, credit.artistName, credit.providerKey) }
+                        }
+                    },
                     onRateAlbum = {
                         ratingDialogSelection = listOf(selection)
                     },
