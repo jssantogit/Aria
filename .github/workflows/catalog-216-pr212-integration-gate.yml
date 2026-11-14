@@ -7,6 +7,10 @@ on:
     branches:
       - integration/pr212-ui-itunes-core-65863b52
 
+concurrency:
+  group: pr216-pr212-integration-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
