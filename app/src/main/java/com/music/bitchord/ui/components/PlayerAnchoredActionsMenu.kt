@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -7,7 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -31,6 +35,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.music.bitchord.ui.theme.rememberArtworkPalette
+import com.music.bitchord.ui.icons.PlaylistEditorIcons
+
+/**
+ * Draw the visible selected ⋯ over the exact launcher, even though the menu
+ * owns a separate dialog window. Bounds and origin are window pixels.
+ */
+internal fun playerAnchoredMenuHighlightPosition(
+    anchor: IntRect,
+    overlayOrigin: IntOffset,
+    overlaySize: IntSize,
+    highlightSizePx: Int = 44,
+): IntOffset {
+    val diameter = highlightSizePx.coerceAtLeast(1)
+    val x = ((anchor.left + anchor.right) / 2 - overlayOrigin.x - diameter / 2)
+        .coerceIn(0, (overlaySize.width - diameter).coerceAtLeast(0))
+    val y = ((anchor.top + anchor.bottom) / 2 - overlayOrigin.y - diameter / 2)
+        .coerceIn(0, (overlaySize.height - diameter).coerceAtLeast(0))
+    return IntOffset(x, y)
+}
 
 /**
  * Player actions are not a bottom sheet. The player occupies a separate M3
@@ -117,6 +140,43 @@ fun PlayerAnchoredActionsMenu(
                     )
                     Box(Modifier.background(Color.Black.copy(alpha = 0.25f))) {
                         content()
+                    }
+                }
+            }
+
+            // The activity's original puck is behind this dialog and blurred
+            // with the player. A selected copy in the SAME screen-space bounds
+            // makes the expanding menu visibly originate at its ⋯ launcher.
+            if (anchorBounds != null) {
+                val highlightSize = 44.dp
+                val highlightPx = with(density) { highlightSize.roundToPx() }
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset {
+                            playerAnchoredMenuHighlightPosition(
+                                anchor = anchorBounds,
+                                overlayOrigin = rootOrigin,
+                                overlaySize = rootSize,
+                                highlightSizePx = highlightPx,
+                            )
+                        }
+                        .size(highlightSize)
+                        .testTag("player-overflow-highlight")
+                        .clickable(onClick = onDismiss),
+                    color = palette.elevated,
+                    contentColor = palette.onBackground,
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary),
+                    shadowElevation = 8.dp,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = PlaylistEditorIcons.More,
+                            contentDescription = "Fechar opções do player",
+                            tint = palette.onBackground,
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 }
             }
