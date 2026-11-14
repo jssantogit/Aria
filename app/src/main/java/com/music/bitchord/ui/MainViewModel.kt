@@ -1734,11 +1734,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // A single transient MB 503/rate-limit must not discard
                     // NewJeans (or any other verified artist) on first entry.
                     // Keep the same exact Artist MBID and bounded browse page.
-                    val result = retryTransientArtistDiscography {
-                        musicBrainzGraph.browseReleaseGroupsForArtist(
-                            entry.musicBrainzId, limit = 75,
-                        )
-                    }
+                    val result = retryTransientArtistDiscography(
+                        fetch = {
+                            musicBrainzGraph.browseReleaseGroupsForArtist(
+                                entry.musicBrainzId, limit = 75,
+                            )
+                        },
+                    )
                 ) {
                     is MusicBrainzCatalogGraphResult.Success -> {
                         artistFirstPage = result.value
