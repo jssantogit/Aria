@@ -24,4 +24,21 @@ class CanonicalHeldMenuPaletteSourceTest {
         )
         assertNull(heldLibraryPaletteArtworkSource(null, null))
     }
+    @Test fun heldAlbumUsesProvenRecordingArtworkWhenCardUsesIt() {
+        assertEquals(
+            "content://media/track-cover",
+            heldLibraryAlbumArtworkSource(
+                releaseArtwork = "https://images.example/other-edition.jpg",
+                verifiedRecordingArtwork = "content://media/track-cover",
+            ),
+        )
+        assertEquals(
+            "https://images.example/release.jpg",
+            heldLibraryAlbumArtworkSource(
+                releaseArtwork = "https://images.example/release.jpg",
+                verifiedRecordingArtwork = null,
+            ),
+        )
+    }
+
 }
