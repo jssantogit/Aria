@@ -1,6 +1,5 @@
 package com.music.bitchord.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -12,9 +11,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,7 +82,15 @@ fun PlayerAnchoredActionsMenu(
     val density = LocalDensity.current
     val gap = with(density) { 12.dp.roundToPx() }
     val margin = with(density) { 14.dp.roundToPx() }
-    val entrance = rememberFrostedMenuEntranceModifier(reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current)
+    val reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current
+    val entrance = remember { Animatable(0f) }
+    val measured = rootSize.width > 0 && rootSize.height > 0 &&
+        plateSize.width > 0 && plateSize.height > 0
+    LaunchedEffect(measured, reduceMotion) {
+        if (!measured) return@LaunchedEffect
+        if (reduceMotion) entrance.snapTo(1f)
+        else entrance.animateTo(1f, tween(durationMillis = 170))
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -122,7 +133,15 @@ fun PlayerAnchoredActionsMenu(
                     .widthIn(min = 248.dp, max = 340.dp)
                     .heightIn(max = 570.dp)
                     .onSizeChanged { plateSize = it }
-                    .then(entrance)
+                    // No translation or spring tied to popup measurement: the
+                    // dialog gets its own coordinate system and the old motion
+                    // visibly jumped when the plate acquired its real size.
+                    .graphicsLayer {
+                        alpha = if (measured) entrance.value else 0f
+                        scaleX = 0.975f + 0.025f * entrance.value
+                        scaleY = scaleX
+                        transformOrigin = TransformOrigin(1f, 0f)
+                    }
                     .clip(RoundedCornerShape(18.dp))
                     .testTag("player-anchored-actions-menu")
                     .clickable(onClick = {}),
@@ -167,10 +186,15 @@ fun PlayerAnchoredActionsMenu(
                     color = palette.elevated,
                     contentColor = palette.onBackground,
                     shape = CircleShape,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary),
                     shadowElevation = 8.dp,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
+                        ArtworkBackdrop(
+                            palette = palette,
+                            imageUrl = artworkUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            washFraction = 1f,
+                        )
                         Icon(
                             imageVector = PlaylistEditorIcons.More,
                             contentDescription = "Fechar opções do player",
