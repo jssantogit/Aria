@@ -695,6 +695,8 @@ fun NowPlayingScreen(
     signedIn: Boolean,
     accountName: String?,
     onEditCanonicalRating: () -> Unit = {},
+    /** Captured bounds of the visible score star; the editor expands here. */
+    onRatingAnchorChange: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
     appleQueueStyle: Boolean = false,
     verifiedQueueAlbumTitle: String? = null,
     lyricsShareRequestToken: Int = 0,
@@ -2023,7 +2025,11 @@ fun NowPlayingScreen(
                         if (appleQueueStyle) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Spacer(Modifier.weight(1f))
-                                PlayerRatingStar(song = song, onClick = onEditCanonicalRating)
+                                PlayerRatingStar(
+                                    song = song,
+                                    onClick = onEditCanonicalRating,
+                                    onBoundsChanged = onRatingAnchorChange,
+                                )
                             }
                         }
                         LandscapeLyricsPane(
@@ -2101,7 +2107,11 @@ fun NowPlayingScreen(
                             if (appleQueueStyle) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Spacer(Modifier.weight(1f))
-                                    PlayerRatingStar(song = song, onClick = onEditCanonicalRating)
+                                    PlayerRatingStar(
+                                    song = song,
+                                    onClick = onEditCanonicalRating,
+                                    onBoundsChanged = onRatingAnchorChange,
+                                )
                                     AppleQueueHeaderAction(
                                         imageVector = AppleQueueVectors.More,
                                         description = stringResource(Res.string.more),
@@ -3331,7 +3341,11 @@ fun NowPlayingScreen(
                             // player, even before a first native score. Other
                             // shared-platform hosts retain their old rating strip.
                             if (appleQueueStyle) {
-                                PlayerRatingStar(song = song, onClick = onEditCanonicalRating)
+                                PlayerRatingStar(
+                                    song = song,
+                                    onClick = onEditCanonicalRating,
+                                    onBoundsChanged = onRatingAnchorChange,
+                                )
                             } else if (!queueOpen) {
                                 CanonicalSongRatingStars(
                                     song = song,
