@@ -406,6 +406,7 @@ internal fun CanonicalRemoteLibraryScreen(
     var ratingDialogSelection by remember {
         mutableStateOf<List<CanonicalLibrarySelection>?>(null)
     }
+    var artistRatingAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
     val libraryActionScope = rememberCoroutineScope()
     val filterRepo = remember(context.applicationContext) {
         SmartPlaylistV2FilterRepository(
@@ -1115,6 +1116,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     onTrackEditRating = editRating,
                     onTrackOptions = openTrackMenu,
                     onReleaseOptions = openAlbumMenu,
+                    onArtistRatingAnchorChanged = { artistRatingAnchor = it },
                     onRateArtist = {
                         // The same rating editor handles verified canonical
                         // ArtistIds and separately keyed display-artist groups.
@@ -1637,6 +1639,14 @@ internal fun CanonicalRemoteLibraryScreen(
                 targets = ratings,
                 selectedSource = if (unified) selectedSource else providerKey,
                 onDismiss = { ratingDialogSelection = null },
+                // Only a direct tap on the artist hero star uses its anchor.
+                // Batch/context menus keep the standard action editor.
+                anchorBounds = if (
+                    selectedEntity != null &&
+                    selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+                    ratings.size == 1 &&
+                    ratings.single().type == CanonicalLibraryEntityType.ARTIST
+                ) artistRatingAnchor else null,
             )
         }
         // Keep the draft while navigating, but never float batch actions over
