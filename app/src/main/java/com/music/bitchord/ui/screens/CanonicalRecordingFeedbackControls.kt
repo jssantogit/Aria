@@ -62,6 +62,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.music.bitchord.ui.components.NativeContextActionPlate
+import com.music.bitchord.ui.components.PlayerAnchoredActionsMenu
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -304,6 +305,8 @@ internal fun CanonicalRecordingFeedbackPanel(
     title: String? = null,
     /** Window-space bounds of a dedicated star control. Menu actions leave this null. */
     anchorBounds: IntRect? = null,
+    /** Actual artwork on the launcher surface; used by the shared frosted plate. */
+    artworkUrl: String? = null,
 ) {
     var selected by remember { mutableDoubleStateOf(rating?.takeIf { it in 1.0..5.0 } ?: 0.0) }
     var touched by remember { mutableStateOf(false) }
@@ -347,25 +350,24 @@ internal fun CanonicalRecordingFeedbackPanel(
                 .then(if (anchorBounds == null) Modifier.navigationBarsPadding() else Modifier)
                 .padding(
                     // Preserve five 56dp star targets on narrow phones.
-                    start = if (anchorBounds == null) 12.dp else 20.dp,
-                    end = if (anchorBounds == null) 12.dp else 20.dp,
-                    top = if (anchorBounds == null) 28.dp else 18.dp,
-                    bottom = if (anchorBounds == null) 20.dp else 18.dp,
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = if (anchorBounds == null) 24.dp else 14.dp,
+                    bottom = if (anchorBounds == null) 18.dp else 14.dp,
                 )
                 .testTag(if (anchorBounds == null) "native-rating-bottom-sheet"
                     else "native-rating-anchored-content")
                 .semantics { paneTitle = sheetTitle }
-                .graphicsLayer {
+                // The lifted container owns its entrance. Animating the
+                // star row independently made it drift away from the button.
+                .then(if (anchorBounds == null) Modifier.graphicsLayer {
                     val entrance = ratingDialogEntranceFrame(dialogEntrance.value, reduceMotion)
-                    alpha = if (anchorBounds == null) entrance.alpha
-                        else 0.75f + 0.25f * dialogEntrance.value
-                    scaleX = if (anchorBounds == null) entrance.scale
-                        else 0.86f + 0.14f * dialogEntrance.value
-                    scaleY = scaleX
-                    transformOrigin = if (anchorBounds == null) TransformOrigin.Center
-                        else TransformOrigin(1f, 0f)
-                },
-            verticalArrangement = Arrangement.spacedBy(28.dp),
+                    alpha = entrance.alpha
+                    scaleX = entrance.scale
+                    scaleY = entrance.scale
+                    transformOrigin = TransformOrigin.Center
+                } else Modifier),
+            verticalArrangement = Arrangement.spacedBy(if (anchorBounds == null) 24.dp else 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
                 Row(
@@ -411,7 +413,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                         val wholeDescription = stringResource(Res.string.recording_feedback_stars_value, (index + 1.0).toString().removeSuffix(".0"))
                         val starFill = appleRatingStarFill(selected, i)
                         Box(
-                            modifier = Modifier.weight(1f).height(56.dp),
+                            modifier = Modifier.weight(1f).height(if (anchorBounds == null) 56.dp else 44.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             // Retain the player's exact original star
@@ -420,7 +422,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                             // A 48dp glyph viewport keeps the visible star
                             // near 28dp while maintaining generous touch slots.
                             Box(
-                                modifier = Modifier.size(56.dp)
+                                modifier = Modifier.size(if (anchorBounds == null) 56.dp else 40.dp)
                                     .testTag("rating-editor-star-$i-${starFill.name.lowercase()}")
                                     .graphicsLayer {
                                         scaleX = starPulse.value
@@ -428,26 +430,32 @@ internal fun CanonicalRecordingFeedbackPanel(
                                     },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (numericStars && i == terminalStar) {
+                                val filled = starFill != com.music.bitchord.ui.components.AppleRatingStarFill.EMPTY
+                                val scoreForSlot = if (i == terminalStar) selected else i + 1.0
+                                val slotStops = if (filled && starStyle == CompactRatingStyle.COLOR)
+                                    compactRatingColorStops(scoreForSlot) else emptyList()
+                                val slotBrush = if (slotStops.map { it.second }.distinct().size > 1)
+                                    Brush.linearGradient(*slotStops.toTypedArray()) else null
+                                val glyphSize = if (anchorBounds == null) 56.dp else 40.dp
+                                if (numericStars && filled) {
+                                    // Each chosen step uses the actual V3 numeric
+                                    // star vectors, including half scores.
                                     CompactRatingIndicator(
-                                        value = selected,
+                                        value = scoreForSlot,
                                         geometry = CompactRatingGeometry.STANDALONE,
-                                        size = 56.dp,
+                                        size = glyphSize,
                                     )
                                 } else {
                                     AppleRatingStarGlyph(
                                         fill = starFill,
                                         standalone = true,
-                                        tint = ratingEditorStarTint(
-                                            starStyle, selected,
-                                            starFill != com.music.bitchord.ui.components.AppleRatingStarFill.EMPTY,
-                                            sheetForeground,
-                                        ),
-                                        colorBrush = if (numericStars ||
-                                            starFill == com.music.bitchord.ui.components.AppleRatingStarFill.EMPTY)
-                                            null else fractionalBrush,
+                                        tint = slotStops.firstOrNull()?.second
+                                            ?: ratingEditorStarTint(
+                                                starStyle, selected, filled, sheetForeground,
+                                            ),
+                                        colorBrush = slotBrush,
                                         outlineTint = sheetForeground,
-                                        modifier = Modifier.size(56.dp),
+                                        modifier = Modifier.size(glyphSize),
                                     )
                                 }
                             }
@@ -517,30 +525,21 @@ internal fun CanonicalRecordingFeedbackPanel(
         }
     }
     if (anchorBounds != null) {
-        val cardWidth = (LocalConfiguration.current.screenWidthDp - 24).coerceIn(1, 340).dp
-        val launcherBounds = anchorBounds
-        val positionProvider = remember(launcherBounds) {
-            object : PopupPositionProvider {
-                override fun calculatePosition(
-                    anchorBounds: IntRect,
-                    windowSize: IntSize,
-                    layoutDirection: LayoutDirection,
-                    popupContentSize: IntSize,
-                ): IntOffset = anchoredRatingCardPosition(
-                    anchor = launcherBounds, popup = popupContentSize,
-                    window = windowSize, layoutDirection = layoutDirection,
-                    gap = 10, margin = 12,
-                )
-            }
-        }
-        Popup(
-            popupPositionProvider = positionProvider,
-            onDismissRequest = requestDismiss,
-            properties = PopupProperties(focusable = true),
+        // Same full-screen dialog and artwork blur as the ⋯ player menu.
+        // A nested Popup used another window's coordinate space and could
+        // appear detached or leave an invisible focus-stealing surface.
+        val cardWidth = (LocalConfiguration.current.screenWidthDp - 32)
+            .coerceAtMost(300).coerceAtLeast(248).dp
+        PlayerAnchoredActionsMenu(
+            anchorBounds = anchorBounds,
+            artworkUrl = artworkUrl,
+            onDismiss = requestDismiss,
+            highlightLauncher = false,
+            maxWidth = cardWidth,
         ) {
-            NativeContextActionPlate(
-                modifier = Modifier.width(cardWidth).testTag("native-rating-anchored-card"),
-            ) { ratingEditorContent() }
+            Box(Modifier.width(cardWidth).testTag("native-rating-anchored-card")) {
+                ratingEditorContent()
+            }
         }
     } else {
         androidx.compose.ui.window.Dialog(
