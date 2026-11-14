@@ -1,0 +1,46 @@
+name: REA212 physical smoke regressions Android CI
+on:
+  push:
+    branches: [validation/rea212-smoke-regressions-1dfad7b-20261114]
+permissions:
+  contents: read
+jobs:
+  android-and-shared:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+      - name: Verify exact PR production and test sources
+        run: |
+          set -euo pipefail
+          git diff --exit-code 1dfad7b41f02b5faf3902f1f5d58aef654cbe2c0 HEAD -- app sharedUi shared
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Configure local properties
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Focused physical smoke regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests "com.music.bitchord.ui.screens.CanonicalLibrarySelectionExpandedActionsTest" --tests "com.music.bitchord.ui.screens.CanonicalHeldMenuPaletteSourceTest" --tests "com.music.bitchord.ui.components.PlayerAnchoredActionsHighlightTest" --tests "com.music.bitchord.CanonicalArtistDiscographyRetryTest" --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest" --tests "com.music.bitchord.ui.screens.NativeArtistRatingActionVisibilityTest"
+      - name: Full Android unit regression
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Shared UI JVM tests
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+      - name: Shared Automix regression
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea212-smoke-regressions-reports-${{ github.sha }}
+          path: |
+            app/build/reports/tests/
+            sharedUi/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 3
