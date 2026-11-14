@@ -33,7 +33,7 @@ internal object ApplePr212DetailProjection {
 
     private fun validAlbum(release: ItunesEditorialRelease): Boolean =
         storefrontPattern.matches(release.storefront) &&
-            release.appleCollectionId > 0L && release.artistId?.let { it > 0L } == true &&
+            release.appleCollectionId > 0L &&
             release.appleScopedId ==
                 "itunes:${release.storefront}:album:${release.appleCollectionId}" &&
             release.title.isNotBlank() && release.artistName.isNotBlank()
@@ -63,7 +63,7 @@ internal object ApplePr212DetailProjection {
             ItunesEditorialReleaseFormat.UNCLASSIFIED to "Outros lançamentos",
         )
         val sections = headings.mapNotNull { (format, heading) ->
-            exact.filter { it.format == format }.takeIf(List<*>::isNotEmpty)
+            exact.filter { it.format == format }.takeIf { it.isNotEmpty() }
                 ?.map { release ->
                     ShelfItem(
                         title = release.title,
