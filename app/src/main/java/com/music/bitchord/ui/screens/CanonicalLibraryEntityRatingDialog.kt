@@ -126,6 +126,7 @@ internal fun CanonicalLibraryEntityRatingDialog(
     selectedSource: String?,
     onDismiss: () -> Unit,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
+    artworkUrl: String? = null,
 ) {
     val app = LocalContext.current.applicationContext
     val unique = remember(targets) { targets.distinct() }
@@ -150,6 +151,7 @@ internal fun CanonicalLibraryEntityRatingDialog(
         rating = current?.ratingValue,
         title = title,
         anchorBounds = anchorBounds,
+        artworkUrl = artworkUrl,
         saving = saving,
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },
