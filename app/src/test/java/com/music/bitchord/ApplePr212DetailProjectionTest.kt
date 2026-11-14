@@ -85,7 +85,7 @@ class ApplePr212DetailProjectionTest {
     @Test fun AppleOnlyAlbumWithoutArtistCrosswalkStillOpensWithoutPlayback() {
         val album = release(12, ItunesEditorialReleaseFormat.UNCLASSIFIED)
             .copy(artistId = null)
-        val page = assertNotNull(ApplePr212DetailProjection.albumPage(album))
+        val page = requireNotNull(ApplePr212DetailProjection.albumPage(album))
         assertEquals("itunes:br:album:12", page.page.browseId)
         assertTrue((page.page.songs as UiState.Success).data.isEmpty())
     }
