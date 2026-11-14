@@ -910,7 +910,11 @@ internal fun CanonicalRemoteLibraryScreen(
         heldLibraryMenuOrigin = LongPressOrigin.consume()
         libraryMenu = CanonicalLibraryMenuTarget(
             CanonicalLibrarySelection(CanonicalLibraryEntityType.ALBUM, album.id),
-            album.title, album.artistDisplay.orEmpty(), album.artworkUri,
+            album.title, album.artistDisplay.orEmpty(),
+            // Match the exact image painted by NativeLibraryEntityCard:
+            // its proven Recording->Release artwork wins over the optional
+            // ReleaseEntity metadata artwork. This is not a title match.
+            entityArtworkById[album.id]?.artworkUri ?: album.artworkUri,
         )
     }
     LaunchedEffect(albumMenuToken) {
