@@ -66,6 +66,7 @@ internal fun CanonicalArtistDetailRoute(
     onTrackOptions: (CanonicalBrowseTrack) -> Unit,
     onReleaseOptions: (ReleaseEntity) -> Unit,
     onRateArtist: (() -> Unit)? = null,
+    onArtistRatingAnchorChanged: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
     onRateRelease: ((ReleaseEntity) -> Unit)? = null,
     selectedItems: List<CanonicalLibrarySelection>,
     onToggleSelection: (CanonicalLibrarySelection) -> Unit,
@@ -186,6 +187,7 @@ internal fun CanonicalArtistDetailRoute(
         onTrackOptions = onTrackOptions,
         onReleaseOptions = releaseOptionsWithArtwork,
         onRateArtist = onRateArtist,
+        onRateArtistAnchorChange = onArtistRatingAnchorChanged,
         onPlayAll = onPlayAll,
     )
 }
