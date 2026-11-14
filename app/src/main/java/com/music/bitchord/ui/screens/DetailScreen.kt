@@ -362,7 +362,7 @@ fun DetailScreen(
     /** Exact artist photo if the source has an independently proven identity. */
     artistHeroOverride: String? = null,
     /** Source-specific supplemental content inside this single native list. */
-    footerContent: LazyListScope.() -> Unit = {},
+    footerContent: LazyListScope.(ArtworkPalette) -> Unit = {},
     onCanonicalTrackPlay: ((String) -> Unit)? = null,
     /** Verified ListenBrainz order plus independent MusicBrainz recording credits. */
     canonicalPublicTopTracks: List<CanonicalCatalogSearchRow> = emptyList(),
@@ -1227,7 +1227,7 @@ fun DetailScreen(
                 }
             }
             if (isArtist) aboutItem()
-            footerContent()
+            footerContent(palette)
         }
 
                 if (isArtist) {
