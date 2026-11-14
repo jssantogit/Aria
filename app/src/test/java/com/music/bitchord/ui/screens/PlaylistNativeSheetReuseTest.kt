@@ -50,14 +50,14 @@ class PlaylistNativeSheetReuseTest {
             }
         }
         compose.onNodeWithTag("native-selection-held-card").assertExists()
-        compose.onNodeWithContentDescription("Adicionar seleção à playlist").performClick()
-        compose.onNodeWithContentDescription("Adicionar seleção à fila").performClick()
+        compose.onNodeWithText("Adicionar seleção à playlist").performClick()
+        compose.onNodeWithText("Adicionar seleção à fila").performClick()
         compose.runOnIdle {
             assertEquals(1, added)
             assertEquals(1, queued)
         }
         compose.onNodeWithContentDescription("Recolher ações").performClick()
-        compose.onNodeWithContentDescription("Adicionar seleção à playlist").assertDoesNotExist()
+        compose.onNodeWithText("Adicionar seleção à playlist").assertDoesNotExist()
     }
 
     @Test fun nativePlaylistSheetKeepsWizardHeaderAndSettingsRowBehavior() {
