@@ -1018,9 +1018,17 @@ internal fun CanonicalRemoteLibraryScreen(
         forward = selectedEntity != null,
     )
     val heldLibraryHaze = remember { HazeState() }
-    // Native album/artist pages are tinted by their artwork, not AMOLED black.
-    // Use the same artwork seed as the native detail rather than a neutral plate.
-    val heldDetailPalette = rememberArtworkPalette(imageUrl = selectedEntity?.artworkUri)
+    // Keep the lifted preview's palette and menu alive through its return
+    // animation. Root Library does not have selectedEntity, so using only that
+    // page's artwork previously turned every menu black.
+    var exitLibraryMenu by remember { mutableStateOf<CanonicalLibraryMenuTarget?>(null) }
+    var exitLibraryWasHeld by remember { mutableStateOf(false) }
+    val heldDetailPalette = rememberArtworkPalette(
+        imageUrl = heldLibraryPaletteArtworkSource(
+            itemArtwork = (libraryMenu ?: exitLibraryMenu)?.imageUrl,
+            detailArtwork = selectedEntity?.artworkUri,
+        ),
+    )
     val reduceHeldBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val heldLibraryBlur by animateDpAsState(
         targetValue = if (shouldBlurHeldContextBackdrop(
@@ -1359,8 +1367,6 @@ internal fun CanonicalRemoteLibraryScreen(
         } // The lifted overlay is the source's sibling, not its child.
         // The lifted menu must remain mounted through its 230ms return
         // animation; removing the parent let on dismiss clipped that motion.
-        var exitLibraryMenu by remember { mutableStateOf<CanonicalLibraryMenuTarget?>(null) }
-        var exitLibraryWasHeld by remember { mutableStateOf(false) }
         LaunchedEffect(libraryMenu, heldLibraryMenuOrigin) {
             if (libraryMenu != null) {
                 exitLibraryMenu = libraryMenu
@@ -1574,7 +1580,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     hazeState = heldLibraryHaze,
                     bottomChromeClearance = heldMenuBottomChromeClearance,
                     hostProvidesBlur = true,
-                    plateTint = selectedEntity?.let { heldDetailPalette.elevated },
+                    plateTint = heldDetailPalette.elevated,
                     onDismiss = {
                         libraryMenu = null
                         heldLibraryMenuOrigin = null
@@ -2232,6 +2238,13 @@ internal fun canonicalNativeReleasePaletteUri(
  * Canonical category lists keep their inset hairlines only between entries.
  * Do not paint a separator below the final visible track, album or artist.
  */
+/** Held menus take their tint from the item the user actually picked. */
+internal fun heldLibraryPaletteArtworkSource(
+    itemArtwork: String?,
+    detailArtwork: String?,
+): String? = itemArtwork?.takeIf(String::isNotBlank)
+    ?: detailArtwork?.takeIf(String::isNotBlank)
+
 internal fun shouldDrawCanonicalLibraryRowDivider(index: Int, total: Int): Boolean =
     index >= 0 && index < total - 1
 
