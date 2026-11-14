@@ -1,5 +1,10 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
@@ -14,9 +19,11 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.music.bitchord.ui.components.NativeContextActionPlate
+import com.music.bitchord.ui.components.ActionRow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -86,31 +93,37 @@ internal fun CanonicalLibraryBatchActionBar(
                     onClick = { expanded = !expanded },
                 )
             }
-            if (expanded) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PlaylistWizardCompactAction(
-                        label = "Adicionar seleção à playlist",
+            // The chosen items stay visible; only their action menu grows out
+            // of this summary. Use the very same full-width native action rows
+            // as the held context menu, rather than the legacy strip of glyphs.
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                Column(Modifier.fillMaxWidth().testTag("native-selection-expanded-actions")) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                    )
+                    ActionRow(
                         icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                        label = "Adicionar seleção à playlist",
                         onClick = onAddToPlaylist,
                     )
-                    PlaylistWizardCompactAction(
-                        label = "Tocar a seleção a seguir",
+                    ActionRow(
                         icon = Icons.Rounded.SkipNext,
+                        label = "Tocar a seleção a seguir",
                         onClick = onPlayNext,
                     )
-                    PlaylistWizardCompactAction(
-                        label = "Adicionar seleção à fila",
+                    ActionRow(
                         icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                        label = "Adicionar seleção à fila",
                         onClick = onAddToQueue,
                     )
                     onRateSelection?.let { rate ->
-                        PlaylistWizardCompactAction(
-                            label = "Avaliar seleção",
+                        ActionRow(
                             icon = Icons.Rounded.Star,
+                            label = "Avaliar seleção",
                             onClick = rate,
                         )
                     }
