@@ -60,6 +60,7 @@ internal fun NativeCanonicalAlbumContent(
     onTrackOptions: (CanonicalBrowseTrack) -> Unit,
     onPlayAll: (List<CanonicalBrowseTrack>, Boolean) -> Unit,
     artwork: @Composable BoxScope.() -> Unit,
+    onCreditClick: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().background(palette.background)) {
         val sleeve = (maxWidth * 0.76f).coerceAtMost(maxHeight * 0.6f)
@@ -81,6 +82,7 @@ internal fun NativeCanonicalAlbumContent(
                     palette = palette,
                     sleeveSize = sleeve,
                     artwork = artwork,
+                    onCreditClick = onCreditClick,
                     actions = {
                         // Loading or metadata-only releases retain an authentic
                         // pin action, without manufacturing playable RecordingIds.
