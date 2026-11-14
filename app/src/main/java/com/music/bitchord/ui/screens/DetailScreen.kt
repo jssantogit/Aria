@@ -403,6 +403,7 @@ fun DetailScreen(
             title = if (isArtist) "Avaliar artista" else "Avaliar álbum",
             onDismiss = { editingCatalogRating = false },
             anchorBounds = if (isArtist) artistRatingAnchor else null,
+            artworkUrl = page.thumbnailUrl,
         )
     }
     val localArtistContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
