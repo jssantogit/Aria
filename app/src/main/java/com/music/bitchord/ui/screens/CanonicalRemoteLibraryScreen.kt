@@ -1688,6 +1688,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     ratings.size == 1 &&
                     ratings.single().type == CanonicalLibraryEntityType.ARTIST
                 ) artistRatingAnchor else null,
+                artworkUrl = selectedEntity?.artworkUri,
             )
         }
         // Keep the draft while navigating, but never float batch actions over
