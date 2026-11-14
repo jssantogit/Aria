@@ -162,6 +162,9 @@ internal fun CanonicalArtistDetailRoute(
             onTrackPlay = onTrackPlay,
             onTrackEditRating = onTrackEditRating,
             onTrackOptions = onTrackOptions,
+            onCreditClick = if (selectedAlbum.artistDisplay == artistName) {
+                { nestedNavigation.close() }
+            } else null,
         )
         return
     }
