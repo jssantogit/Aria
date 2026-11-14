@@ -36,6 +36,7 @@ internal fun NativeCanonicalLibraryAlbumDetail(
     onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
     onTrackOptions: (CanonicalBrowseTrack) -> Unit,
     onPlayAll: (List<CanonicalBrowseTrack>, Boolean) -> Unit,
+    onCreditClick: (() -> Unit)? = null,
 ) {
     val palette = rememberArtworkPalette(
         imageUrl = canonicalNativeReleasePaletteUri(
@@ -69,6 +70,7 @@ internal fun NativeCanonicalLibraryAlbumDetail(
         onTrackEditRating = onTrackEditRating,
         onTrackOptions = onTrackOptions,
         onPlayAll = onPlayAll,
+        onCreditClick = onCreditClick,
         artwork = {
             NativeCanonicalAlbumArtwork(
                 releaseArtworkUri = heroArtworkUri,
