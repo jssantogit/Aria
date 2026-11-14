@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.music.bitchord.ui.theme.rememberArtworkPalette
@@ -73,6 +74,8 @@ fun PlayerAnchoredActionsMenu(
     anchorBounds: IntRect?,
     artworkUrl: String?,
     onDismiss: () -> Unit,
+    highlightLauncher: Boolean = true,
+    maxWidth: Dp = 340.dp,
     content: @Composable () -> Unit,
 ) {
     val palette = rememberArtworkPalette(imageUrl = artworkUrl)
@@ -130,7 +133,7 @@ fun PlayerAnchoredActionsMenu(
                 }
             Surface(
                 modifier = place
-                    .widthIn(min = 248.dp, max = 340.dp)
+                    .widthIn(min = 248.dp, max = maxWidth)
                     .heightIn(max = 570.dp)
                     .onSizeChanged { plateSize = it }
                     // No translation or spring tied to popup measurement: the
@@ -166,7 +169,7 @@ fun PlayerAnchoredActionsMenu(
             // The activity's original puck is behind this dialog and blurred
             // with the player. A selected copy in the SAME screen-space bounds
             // makes the expanding menu visibly originate at its ⋯ launcher.
-            if (anchorBounds != null) {
+            if (highlightLauncher && anchorBounds != null) {
                 val highlightSize = 44.dp
                 val highlightPx = with(density) { highlightSize.roundToPx() }
                 Surface(
