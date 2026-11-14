@@ -277,7 +277,7 @@ private fun String.looksLikeCredit() = CREDIT_SEPARATOR.containsMatchIn(this)
  * must not invent a Song, RecordingId or a MusicBrainz identity to render the
  * very same numbered rows used by the existing complete DetailScreen.
  */
-internal data class NativeMetadataTrack(
+data class NativeMetadataTrack(
     val key: String,
     val title: String,
     val credit: String?,
