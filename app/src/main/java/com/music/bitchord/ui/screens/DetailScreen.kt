@@ -272,6 +272,25 @@ private fun String.looksLikeCredit() = CREDIT_SEPARATOR.containsMatchIn(this)
  * the tint — since that picture runs edge to edge up under the bar. Nothing in
  * either is re-blurred while the page scrolls.
  */
+/**
+ * Source-neutral, non-playable track metadata. Apple/iTunes and other catalogs
+ * must not invent a Song, RecordingId or a MusicBrainz identity to render the
+ * very same numbered rows used by the existing complete DetailScreen.
+ */
+internal data class NativeMetadataTrack(
+    val key: String,
+    val title: String,
+    val credit: String?,
+    val trackNumber: Int?,
+    val discNumber: Int?,
+)
+
+internal data class NativeDetailAttribution(
+    val text: String,
+    val url: String?,
+    val disclaimer: String?,
+)
+
 @Composable
 fun DetailScreen(
     page: DetailPage,
@@ -338,6 +357,12 @@ fun DetailScreen(
     folder: LocalFolder? = null,
     /** Public tracklist metadata; never manufactured as a playable Song. */
     canonicalTracks: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** Generic non-playable tracks rendered through the original numbered list. */
+    metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    /** Exact artist photo if the source has an independently proven identity. */
+    artistHeroOverride: String? = null,
+    /** Source-specific supplemental content inside this single native list. */
+    footerContent: LazyListScope.() -> Unit = {},
     onCanonicalTrackPlay: ((String) -> Unit)? = null,
     /** Verified ListenBrainz order plus independent MusicBrainz recording credits. */
     canonicalPublicTopTracks: List<CanonicalCatalogSearchRow> = emptyList(),
@@ -468,8 +493,12 @@ fun DetailScreen(
     LaunchedEffect(topReleaseId) { topReleaseId?.let { onLoadReleaseLibrary?.invoke(it) } }
     // Apple Music's hero photo and title logo for this artist, found by name.
     // Null until (and unless) it arrives; the YouTube header stands in meanwhile.
+    val exactAppleArtist = isArtist && page.browseId.startsWith("itunes:")
     var appleArt by remember(page.browseId) {
-        mutableStateOf(if (isArtist) AppleArtistArtRepository.cached(page.title) else null)
+        mutableStateOf(
+            if (isArtist && !exactAppleArtist) AppleArtistArtRepository.cached(page.title)
+            else null
+        )
     }
     // Secondary provider: handwritten signature from the user's own
     // artist-signature API. Drawn only when Apple has no title logo.
@@ -483,7 +512,8 @@ fun DetailScreen(
     // other name starts the moment the page opens.
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
     LaunchedEffect(page.browseId, page.title, nameSettled) {
-        if (isArtist && nameSettled) appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
+        if (isArtist && !exactAppleArtist && nameSettled)
+            appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
     }
     LaunchedEffect(page.browseId, page.title, nameSettled, signatureEnabled, signatureBaseUrl, signatureUpdates) {
         if (!isArtist || !nameSettled) return@LaunchedEffect
@@ -506,7 +536,7 @@ fun DetailScreen(
         }
     }
     val palette = rememberArtworkPalette(
-        imageUrl = appleArt?.heroUrl ?: page.thumbnailUrl,
+        imageUrl = artistHeroOverride ?: appleArt?.heroUrl ?: page.thumbnailUrl,
         keyColors = appleArt?.keyColors(),
     )
 
@@ -530,6 +560,11 @@ fun DetailScreen(
     editingMetadataRecording?.let { recording ->
         CanonicalMetadataRecordingRatingDialog(
             recordingId = recording, onDismiss = { editingMetadataRecording = null },
+        )
+    }
+    val metadataVisibleTrackIndices = remember(metadataTracks, query, songSort) {
+        canonicalMetadataAlbumVisibleIndices(
+            metadataTracks.map { it.title to it.credit }, query, songSort,
         )
     }
     val canonicalVisibleTrackIndices = remember(canonicalTracks, query, songSort) {
@@ -693,6 +728,7 @@ fun DetailScreen(
                         offlinePoster = offlineAlbumPoster,
                         songs = songs,
                         canonicalTracks = canonicalTracks,
+                        metadataTracks = metadataTracks,
                         onPlay = {
                             if (songs.isNotEmpty()) onSongClick(songs, 0)
                             else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
@@ -858,6 +894,54 @@ fun DetailScreen(
                         onSongLongPress = onSongLongPress,
                         onSongSwipe = onSongSwipe,
                     )
+                } else if (metadataTracks.isNotEmpty()) {
+                    // This is the ORIGINAL numbered release row, not a
+                    // second iTunes-specific track compositor. No action
+                    // is offered without a verified recording/media asset.
+                    itemsIndexed(
+                        items = metadataVisibleTrackIndices,
+                        key = { _, original -> "metadata:${metadataTracks[original].key}" },
+                    ) { index, originalIndex ->
+                        val row = metadataTracks[originalIndex]
+                        NativeDetailTrackRowLayout(
+                            onClick = null,
+                            textGap = PAGE_GUTTER,
+                            leading = {
+                                NativeDetailTrackNumber(
+                                    number = row.trackNumber ?: originalIndex + 1,
+                                    color = palette.onBackgroundVariant,
+                                )
+                            },
+                            title = {
+                                Text(
+                                    text = row.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = palette.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            subtitle = {
+                                row.credit?.takeIf { it.isNotBlank() }?.let { credit ->
+                                    Text(
+                                        text = credit,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = palette.onBackgroundVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            rating = {},
+                            showRatingSlot = false,
+                        )
+                        if (index < metadataVisibleTrackIndices.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = NUMBERED_ROW_DIVIDER_INSET),
+                                thickness = 0.5.dp, color = palette.divider,
+                            )
+                        }
+                    }
                 } else if (canonicalTracks.isNotEmpty()) {
                     // Keep the original release-page typography and numbered
                     // tracklist. A metadata-only row is simply non-playable;
@@ -1038,7 +1122,11 @@ fun DetailScreen(
                     }) canonicalTracks.sumOf { it.durationMs ?: 0L }
                     else null
                     val minutes = total?.let { ((it + 30_000L) / 60_000L).coerceAtLeast(1L) }
-                    val count = if (songs.isNotEmpty()) songs.size else canonicalTracks.size
+                    val count = when {
+                        songs.isNotEmpty() -> songs.size
+                        metadataTracks.isNotEmpty() -> metadataTracks.size
+                        else -> canonicalTracks.size
+                    }
                     val summary = count.takeIf { it > 0 }?.let {
                         "$it ${if (it == 1) "música" else "músicas"}" +
                             (minutes?.let { min ->
@@ -1139,6 +1227,7 @@ fun DetailScreen(
                 }
             }
             if (isArtist) aboutItem()
+            footerContent()
         }
 
                 if (isArtist) {
@@ -1152,7 +1241,7 @@ fun DetailScreen(
                         canvas = canvas,
                         // Preserve the legacy cover fallback at this adapter
                         // boundary; the shared native frame only sees artwork.
-                        heroUrl = appleArt?.heroUrl
+                        heroUrl = artistHeroOverride ?: appleArt?.heroUrl
                             ?: page.thumbnailUrl?.artworkAt(HEADER_ART_PX),
                         content = detailListItems,
                     )
@@ -1219,6 +1308,7 @@ private fun ReleaseHeader(
     offlinePoster: String?,
     songs: List<Song>,
     canonicalTracks: List<CanonicalCatalogSearchRow>,
+    metadataTracks: List<NativeMetadataTrack> = emptyList(),
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onArtistClick: ((String, String) -> Unit)?,
@@ -1244,7 +1334,11 @@ private fun ReleaseHeader(
         )
     }
     val (credit, originalMeta) = page.headerLines(
-        if (songs.isNotEmpty()) songs.size else canonicalTracks.size,
+        when {
+            songs.isNotEmpty() -> songs.size
+            metadataTracks.isNotEmpty() -> metadataTracks.size
+            else -> canonicalTracks.size
+        },
         if (songs.isNotEmpty()) songs.playtime() else canonicalTime,
     )
     val meta = if (page.type == BrowseType.ALBUM) "" else metaOverride ?: originalMeta
