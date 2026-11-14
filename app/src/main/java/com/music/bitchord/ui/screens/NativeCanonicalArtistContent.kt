@@ -41,6 +41,12 @@ internal fun nativeArtistReleaseHoldAction(
     onReleaseOptions: (ReleaseEntity) -> Unit,
 ): (() -> Unit)? = if (selectionActive) null else ({ onReleaseOptions(release) })
 
+/** A verified artist can be rated without pretending its songs are playable. */
+internal fun shouldShowNativeCanonicalArtistActions(
+    hasTracks: Boolean,
+    canRate: Boolean,
+): Boolean = hasTracks || canRate
+
 /**
  * Native artist content built exclusively from typed Library assets,
  * evidenced releases and caller-supplied capabilities. No repository
@@ -68,6 +74,7 @@ internal fun NativeCanonicalArtistContent(
     onTrackOptions: (CanonicalBrowseTrack) -> Unit,
     onReleaseOptions: (ReleaseEntity) -> Unit,
     onRateArtist: (() -> Unit)?,
+    onRateArtistAnchorChange: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
     onPlayAll: (List<CanonicalBrowseTrack>, Boolean) -> Unit,
 ) {
     val shownTracks = tracks.filter {
@@ -115,13 +122,20 @@ internal fun NativeCanonicalArtistContent(
                     artHeight = photoHeight, appleArt = appleArt, signature = null,
                 )
             }
-            if (shownTracks.isNotEmpty()) {
+            if (shouldShowNativeCanonicalArtistActions(
+                    hasTracks = shownTracks.isNotEmpty(),
+                    canRate = artistRatingState.target != null && onRateArtist != null,
+                )
+            ) {
                 item(key = "artist-actions") {
                     // The native artist page uses three circular buttons,
                     // not the wide album/folder action pills.
                     ActionRow(
                         onPlay = { onPlayAll(shownTracks, false) },
                         onShuffle = { onPlayAll(shownTracks, true) },
+                        canPlay = shownTracks.isNotEmpty(),
+                        canShuffle = shownTracks.isNotEmpty(),
+                        onRateArtistAnchorChange = onRateArtistAnchorChange,
                         onRateArtist = if (artistRatingState.target != null)
                             onRateArtist else null,
                         artistRated = artistRatingState.rated,
