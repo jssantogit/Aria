@@ -36,6 +36,7 @@ internal fun NativeCanonicalNestedAlbumDetail(
     onTrackPlay: (CanonicalBrowseTrack) -> Unit,
     onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
     onTrackOptions: (CanonicalBrowseTrack) -> Unit,
+    onCreditClick: (() -> Unit)? = null,
 ) {
     // Release membership is a verified RecordingId -> ReleaseId edge.
     // Available assets are always scoped to this user's Library sources.
@@ -87,6 +88,7 @@ internal fun NativeCanonicalNestedAlbumDetail(
         onTrackEditRating = onTrackEditRating,
         onTrackOptions = onTrackOptions,
         onPlayAll = onPlayAll,
+        onCreditClick = onCreditClick,
         artwork = {
             NativeCanonicalAlbumArtwork(
                 releaseArtworkUri = release.artworkUri,
