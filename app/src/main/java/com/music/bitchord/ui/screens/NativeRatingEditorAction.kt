@@ -40,14 +40,16 @@ internal fun NativeRatingEditorAction(
 ) {
     val neutral = if (darkTheme) Color.White else Color.Black
     val background = when {
-        emphasized && enabled && !loading -> appleMusicKeyColor(darkTheme)
+        // The frosted contextual card uses neutral primary controls, not a
+        // bright blue pill that belongs to a different visual language.
+        emphasized && enabled && !loading -> if (darkTheme) Color.White else Color.Black
         emphasized && darkTheme -> Color(0xFF343437)
         emphasized -> Color(0xFFDEDEE1)
         darkTheme -> Color(0xFF2B2B2D)
         else -> Color(0xFFF0F0F2)
     }
     val ink = when {
-        emphasized && enabled && !loading -> Color.White
+        emphasized && enabled && !loading -> if (darkTheme) Color.Black else Color.White
         emphasized -> neutral.copy(alpha = 0.45f)
         enabled -> neutral
         else -> neutral.copy(alpha = 0.40f)
