@@ -57,6 +57,7 @@ internal fun CanonicalLibraryBatchActionBar(
     onAddToQueue: () -> Unit,
     onRateSelection: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    hazeState: dev.chrisbanes.haze.HazeState? = null,
 ) {
     if (selectedEntityCount < 1) return
     var expanded by remember { mutableStateOf(true) }
@@ -65,6 +66,7 @@ internal fun CanonicalLibraryBatchActionBar(
     // inside the same lifted plate as held-item menus, not a second Settings sheet.
     NativeContextActionPlate(
         modifier = modifier.widthIn(max = 340.dp).testTag("native-selection-held-card"),
+        hazeState = hazeState,
     ) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
