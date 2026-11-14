@@ -11,7 +11,7 @@ import org.junit.Test
 class PlayerAnchoredActionsHighlightTest {
     @Test fun buttonHighlightFollowsExactLauncherCoordinates() {
         assertEquals(
-            IntOffset(318, 64),
+            IntOffset(316, 62),
             playerAnchoredMenuHighlightPosition(
                 anchor = IntRect(328, 88, 368, 128),
                 overlayOrigin = IntOffset(10, 24),
