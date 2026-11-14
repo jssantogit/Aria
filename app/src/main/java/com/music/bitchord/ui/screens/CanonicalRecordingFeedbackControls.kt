@@ -142,6 +142,7 @@ internal fun CanonicalSongRatingDialog(
     song: Song,
     onDismiss: () -> Unit,
     anchorBounds: IntRect? = null,
+    artworkUrl: String? = song.thumbnailUrl,
 ) {
     val context = LocalContext.current.applicationContext
     // The account-scoped Catalog asset snapshot is an offline, verified identity
@@ -173,6 +174,7 @@ internal fun CanonicalSongRatingDialog(
     if (id != null) {
         CanonicalRecordingRatingDialog(
             recordingId = id, onDismiss = onDismiss, anchorBounds = anchorBounds,
+            artworkUrl = artworkUrl,
         )
     } else {
         NativeAlertHost(onDismiss = onDismiss) {
@@ -194,6 +196,7 @@ internal fun CanonicalRecordingRatingDialog(
     recordingId: String,
     onDismiss: () -> Unit,
     anchorBounds: IntRect? = null,
+    artworkUrl: String? = null,
 ) {
     val context = LocalContext.current.applicationContext
     val store: RecordingRatingStore = remember(context) {
@@ -214,6 +217,7 @@ internal fun CanonicalRecordingRatingDialog(
     key(recordingId) { CanonicalRecordingFeedbackPanel(
         rating = current?.value,
         anchorBounds = anchorBounds,
+        artworkUrl = artworkUrl,
         saving = saving,
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },
