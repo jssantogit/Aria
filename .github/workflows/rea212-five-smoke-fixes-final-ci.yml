@@ -1,0 +1,46 @@
+name: REA212 five smoke fixes final Android validation
+on:
+  push:
+    branches: [validation/rea212-five-smoke-fixes-6477e4e-20261114]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+      - name: Verify exact source and tests
+        run: |
+          set -euo pipefail
+          git diff --exit-code 6477e4e0319872c4905cc2cbbc22c53e56611244 HEAD -- app sharedUi shared
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Configure local properties
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Focused smoke regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests "com.music.bitchord.ui.screens.CanonicalLibrarySelectionExpandedActionsTest" --tests "com.music.bitchord.ui.screens.CanonicalHeldMenuPaletteSourceTest" --tests "com.music.bitchord.ui.components.PlayerAnchoredActionsHighlightTest" --tests "com.music.bitchord.CanonicalArtistDiscographyRetryTest" --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest" --tests "com.music.bitchord.ui.screens.NativeArtistRatingActionVisibilityTest"
+      - name: Complete Android unit suite
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Shared UI JVM
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+      - name: Shared automix regression
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+      - name: Test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea212-final-smoke-fix-test-reports-${{ github.sha }}
+          path: |
+            app/build/reports/tests/
+            sharedUi/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 3
