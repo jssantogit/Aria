@@ -275,14 +275,8 @@ fun SearchScreen(
     appleResults: UiState<List<AppleEditorialSearchRow>>? = null,
     appleArtistResults: UiState<List<AppleEditorialSearchRow>>? = null,
     appleTrackResults: UiState<List<AppleEditorialTrackSearchRow>>? = null,
-    appleDetail: UiState<AppleEditorialAlbumDetailPage>? = null,
-    appleArtistDetail: UiState<AppleEditorialArtistDetailPage>? = null,
     onAppleOpen: (AppleEditorialSearchRow) -> Unit = {},
     onAppleTrackOpen: (AppleEditorialTrackSearchRow) -> Unit = {},
-    onAppleBack: () -> Unit = {},
-    onAppleArtistBack: () -> Unit = {},
-    onAppleArtistLoadMore: () -> Unit = {},
-    onAppleArtistSearchMore: (String) -> Unit = {},
     applePaging: Map<AppleSearchSection, AppleSearchPageStatus> = emptyMap(),
     onAppleLoadMore: (AppleSearchSection) -> Unit = {},
 ) {
@@ -363,8 +357,7 @@ fun SearchScreen(
             // underlying source is metadata, not a separate user-facing tab.
             // YouTube-only video/playlist filters are never offered there.
             if (!suggesting && !searchingLibrary && !searchingAddons &&
-                (!searchingCanonical || (canonicalDetail == null && appleDetail == null &&
-                    appleArtistDetail == null)) &&
+                (!searchingCanonical || canonicalDetail == null) &&
                 (results != null || (searchingCanonical &&
                     (canonicalResults != null || appleResults != null ||
                         appleArtistResults != null || appleTrackResults != null)))
@@ -388,15 +381,6 @@ fun SearchScreen(
         ) {
             when {
                 searchingCanonical -> when {
-                    // Apple album details are never rendered as MB ReleaseGroup
-                    // pages: that would transfer a storefront ID into MB routes.
-                    appleDetail != null -> appleEditorialAlbumDetail(
-                        appleDetail, onAppleBack,
-                    )
-                    appleArtistDetail != null -> appleEditorialArtistDetail(
-                        appleArtistDetail, onAppleArtistBack, onAppleOpen,
-                        onAppleArtistLoadMore, onAppleArtistSearchMore,
-                    )
                     query.isBlank() && canonicalResults == null &&
                         canonicalDetail == null && appleResults == null &&
                         appleArtistResults == null && appleTrackResults == null -> {
@@ -834,148 +818,6 @@ private fun LazyListScope.appleEditorialArtistRows(
     )
 }
 
-private fun LazyListScope.appleEditorialArtistDetail(
-    detail: UiState<AppleEditorialArtistDetailPage>,
-    onBack: () -> Unit,
-    onAlbumOpen: (AppleEditorialSearchRow) -> Unit,
-    onLoadMore: () -> Unit,
-    onSearchMore: (String) -> Unit,
-) {
-    item(key = "apple:artist:detail:back") {
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
-        ) { Text(stringResource(Res.string.canonical_back)) }
-    }
-    when (detail) {
-        UiState.Loading -> songListSkeleton(keyPrefix = "apple:artist:detail")
-        is UiState.Error -> item(key = "apple:artist:detail:error") {
-            MessageState(stringResource(Res.string.apple_catalog_unavailable))
-        }
-        is UiState.Success -> {
-            item(key = "apple:artist:detail:header") {
-                Column(
-                    Modifier.padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
-                ) {
-                    Text(
-                        detail.data.artist.title,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    if (detail.data.possiblyTruncated) {
-                        Text(
-                            stringResource(Res.string.apple_partial_discography),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-            if (detail.data.albums.isEmpty()) {
-                item(key = "apple:artist:detail:empty") {
-                    MessageState(stringResource(Res.string.apple_no_albums))
-                }
-            } else {
-                val categories = listOf(
-                    AppleEditorialReleaseCategory.ALBUM,
-                    AppleEditorialReleaseCategory.EP,
-                    AppleEditorialReleaseCategory.SINGLE,
-                    AppleEditorialReleaseCategory.UNCLASSIFIED,
-                )
-                categories.forEach { category ->
-                    val matching = detail.data.albums.filter { it.category == category }
-                    if (matching.isNotEmpty()) {
-                        item(key = "apple:artist:category:${category.name}") {
-                            val heading = when (category) {
-                                AppleEditorialReleaseCategory.ALBUM -> Res.string.albums
-                                AppleEditorialReleaseCategory.EP -> Res.string.apple_eps
-                                AppleEditorialReleaseCategory.SINGLE -> Res.string.apple_singles
-                                AppleEditorialReleaseCategory.UNCLASSIFIED ->
-                                    Res.string.apple_other_releases
-                            }
-                            Text(
-                                stringResource(heading),
-                                modifier = Modifier.padding(
-                                    start = PAGE_GUTTER, end = PAGE_GUTTER,
-                                    top = 16.dp, bottom = 6.dp,
-                                ),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                        }
-                        appleEditorialAlbumRows(
-                            UiState.Success(matching),
-                            onAlbumOpen,
-                            showHeading = false,
-                        )
-                    }
-                }
-            }
-            if (detail.data.hasMore) {
-                item(key = "apple:artist:load:more") {
-                    OutlinedButton(
-                        onClick = onLoadMore,
-                        enabled = !detail.data.loadingMore,
-                        modifier = Modifier.fillMaxWidth().padding(
-                            horizontal = PAGE_GUTTER, vertical = 12.dp),
-                    ) {
-                        Text(stringResource(Res.string.apple_load_more))
-                    }
-                }
-            }
-            if (detail.data.possiblyTruncated || detail.data.hasMore) {
-                item(key = "apple:artist:coverage:note") {
-                    Text(
-                        stringResource(Res.string.apple_catalog_coverage_note),
-                        modifier = Modifier.padding(horizontal = PAGE_GUTTER),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-            item(key = "apple:artist:search:more") {
-                val artistSearch = remember(detail.data.artist.browseId) { mutableStateOf("") }
-                val artistSearchFocus = remember { FocusRequester() }
-                Column(Modifier.fillMaxWidth().padding(
-                    horizontal = PAGE_GUTTER, vertical = 12.dp,
-                )) {
-                    SearchField(
-                        query = artistSearch.value,
-                        onQueryChange = { artistSearch.value = it },
-                        onSubmit = {
-                            if (artistSearch.value.trim().length >= 2 &&
-                                !detail.data.loadingMore
-                            ) onSearchMore(artistSearch.value)
-                        },
-                        focusRequester = artistSearchFocus,
-                        placeholder = stringResource(Res.string.apple_find_release),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = { onSearchMore(artistSearch.value) },
-                        enabled = artistSearch.value.trim().length >= 2 &&
-                            !detail.data.loadingMore,
-                    ) { Text(stringResource(Res.string.apple_search_more)) }
-                    if (detail.data.loadingMore) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    }
-                    if (detail.data.pageError) {
-                        Text(
-                            stringResource(Res.string.apple_discovery_failed),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    } else if (detail.data.noAdditionalResults) {
-                        Text(
-                            stringResource(Res.string.apple_no_additional_releases),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 /** Apple artists and albums have independently typed browse routes. */
 private fun LazyListScope.appleEditorialAlbumRows(
     results: UiState<List<AppleEditorialSearchRow>>?,
@@ -1035,132 +877,6 @@ private fun LazyListScope.appleEditorialAlbumRows(
     appleSearchPagingFooter(
         AppleSearchSection.ALBUMS, paging, onLoadMore,
     )
-}
-
-/** Pure editorial album detail: no player affordances for unlinked tracks. */
-private fun LazyListScope.appleEditorialAlbumDetail(
-    detail: UiState<AppleEditorialAlbumDetailPage>,
-    onBack: () -> Unit,
-) {
-    item(key = "apple:detail:back") {
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
-        ) { Text(stringResource(Res.string.canonical_back)) }
-    }
-    when (detail) {
-        UiState.Loading -> songListSkeleton(keyPrefix = "apple:detail")
-        is UiState.Error -> item(key = "apple:detail:error") {
-            MessageState(stringResource(Res.string.apple_catalog_unavailable))
-        }
-        is UiState.Success -> {
-            val album = detail.data.album
-            item(key = "apple:detail:header") {
-                Column(
-                    Modifier.fillMaxWidth().padding(
-                        horizontal = PAGE_GUTTER, vertical = 12.dp,
-                    ),
-                ) {
-                    album.artworkUri?.let { art ->
-                        ResilientAppleCover(
-                            model = art,
-                            contentDescription = stringResource(Res.string.canonical_cover_art),
-                            modifier = Modifier.size(156.dp).clip(RoundedCornerShape(10.dp)),
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Text(album.title, style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        album.artistName,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    val categoryLabel = when (album.category) {
-                        AppleEditorialReleaseCategory.ALBUM -> Res.string.albums
-                        AppleEditorialReleaseCategory.EP -> Res.string.apple_eps
-                        AppleEditorialReleaseCategory.SINGLE -> Res.string.apple_singles
-                        AppleEditorialReleaseCategory.UNCLASSIFIED ->
-                            Res.string.apple_other_releases
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(categoryLabel),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    val discogsLink = detail.data.discogsAttributionUrl
-                    val discogsLabel = detail.data.discogsAttributionText
-                    if (discogsLink != null && !discogsLabel.isNullOrBlank()) {
-                        val uriHandler = LocalUriHandler.current
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = discogsLabel,
-                            modifier = Modifier.clickable {
-                                uriHandler.openUri(discogsLink)
-                            },
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        detail.data.discogsNonAffiliationNotice?.let { notice ->
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = notice,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                    if (detail.data.partialTracklist) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            stringResource(Res.string.apple_partial_tracklist),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-            itemsIndexed(
-                detail.data.tracks,
-                key = { _, track -> "apple:detail:track:${track.key}" },
-            ) { index, track ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(
-                        horizontal = PAGE_GUTTER, vertical = 12.dp,
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        (track.trackNumber ?: index + 1).toString(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(32.dp),
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            track.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        track.artistName?.let { credit ->
-                            Text(
-                                credit,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-                if (index < detail.data.tracks.lastIndex) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
-            }
-        }
-    }
 }
 
 private fun LazyListScope.canonicalPublicPlaylistSearchResults(
