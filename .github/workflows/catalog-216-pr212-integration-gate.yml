@@ -25,13 +25,13 @@ jobs:
           set -euo pipefail
           ui_base="65863b528b233a277421f45002b5f6baa50ebae1"
           git cat-file -e "${ui_base}^{commit}"
-          git diff --exit-code "$ui_base" HEAD -- \\
-            app/src/main/java/com/music/bitchord/MainActivity.kt \\
-            app/src/main/java/com/music/bitchord/ui/components/ \\
-            app/src/main/java/com/music/bitchord/ui/screens/ \\
-            app/src/main/java/com/music/bitchord/ui/theme/ \\
-            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ \\
-            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \\
+          git diff --exit-code "$ui_base" HEAD -- \
+            app/src/main/java/com/music/bitchord/MainActivity.kt \
+            app/src/main/java/com/music/bitchord/ui/components/ \
+            app/src/main/java/com/music/bitchord/ui/screens/ \
+            app/src/main/java/com/music/bitchord/ui/theme/ \
+            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ \
+            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
             sharedUi/src/commonMain/composeResources/
           echo "PR212 visual implementations unchanged from $ui_base"
       - name: Set up JDK 17
