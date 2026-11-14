@@ -1,0 +1,59 @@
+name: REA212 five fixes physical smoke universal APK
+on:
+  push:
+    branches:
+      - validation/rea212-physical-smoke-apk-a01b39b-20261114
+    paths:
+      - .github/workflows/rea212-five-fixes-physical-smoke-apk.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea212-physical-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dev-debug-universal-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+      - name: Guard tested REA212 source snapshot
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor a01b39bb195a83b3aae5b6aa028f0095c4859817 HEAD
+          git diff --exit-code a01b39bb195a83b3aae5b6aa028f0095c4859817 HEAD -- app shared sharedUi
+          git log -1 --format='%H %s'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Configure local build properties
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Assemble physical smoke Android APK
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+      - name: Package universal APK and SHA256
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-apk
+          find app/build/outputs/apk/dev/debug -maxdepth 1 -name '*.apk' -type f -print
+          universal="$(find app/build/outputs/apk/dev/debug -maxdepth 1 -name '*universal*.apk' -type f -print -quit)"
+          test -n "$universal" || { echo "::error::No universal APK produced"; exit 1; }
+          cp "$universal" smoke-apk/BitChord-REA212-a01b39b-devDebug-universal.apk
+          sha256sum smoke-apk/*.apk | tee smoke-apk/SHA256SUMS.txt
+          echo "REA212 tested source: a01b39bb195a83b3aae5b6aa028f0095c4859817" > smoke-apk/BUILD_SOURCE.txt
+          echo "Acceptance CI: https://github.com/jssantogit/BitChord/actions/runs/43644827391" >> smoke-apk/BUILD_SOURCE.txt
+      - name: Upload physical smoke APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitchord-rea212-a01b39b-physical-smoke-universal
+          path: smoke-apk/
+          if-no-files-found: error
+          retention-days: 7
