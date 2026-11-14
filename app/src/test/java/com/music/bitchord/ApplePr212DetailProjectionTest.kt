@@ -82,6 +82,14 @@ class ApplePr212DetailProjectionTest {
         assertNull(result.page.library)
     }
 
+    @Test fun AppleOnlyAlbumWithoutArtistCrosswalkStillOpensWithoutPlayback() {
+        val album = release(12, ItunesEditorialReleaseFormat.UNCLASSIFIED)
+            .copy(artistId = null)
+        val page = assertNotNull(ApplePr212DetailProjection.albumPage(album))
+        assertEquals("itunes:br:album:12", page.page.browseId)
+        assertTrue((page.page.songs as UiState.Success).data.isEmpty())
+    }
+
     @Test fun malformedOrCrossStorefrontIdentitiesAreRejected() {
         assertNull(ApplePr212DetailProjection.artistPage(
             item(ItunesCatalogItemType.ALBUM, 99), emptyList()))
