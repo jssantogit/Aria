@@ -3298,6 +3298,28 @@ private fun BitChordApp(
                                     type = BrowseType.ALBUM,
                                 )
                             },
+                            onOpenSourceOwnedArtist = { artistId, artistName, sourceKey ->
+                                // The credit was verified against this exact provider's
+                                // MediaAssets: Local does not jump to Navidrome or Apple.
+                                viewModel.clearDetail()
+                                openedPublicPlaylist = null
+                                selectedTab = TAB_LIBRARY
+                                unifiedControls.sourceKey = sourceKey
+                                unifiedControls.stars = null
+                                pinnedLibraryRequest =
+                                    com.music.bitchord.ui.screens.CanonicalLibraryPin(
+                                        com.music.bitchord.ui.screens.CanonicalLibrarySelection(
+                                            com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
+                                            artistId,
+                                        ),
+                                        artistName,
+                                        "",
+                                    )
+                                unifiedLibrarySearching = false
+                                unifiedLibraryBackToken = 0
+                                unifiedLibraryCategory =
+                                    com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
+                            },
                             onOpenNativeAlbum = { releaseId, albumTitle, albumArtist ->
                                 // Source-backed albums already have verified
                                 // Release → Recording → MediaAsset membership.
