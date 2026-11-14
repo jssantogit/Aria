@@ -24,6 +24,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogPage
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistDiscographyPager
+import com.music.bitchord.data.catalog.metadata.retryTransientArtistDiscography
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraphResult
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogReleaseDetail
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
@@ -1730,9 +1731,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var artistFirstPage: MusicBrainzCatalogPage<MusicBrainzReleaseGroupHit>? = null
             val output: UiState<CanonicalCatalogDetailPage> = when (entry.kind) {
                 CanonicalSearchKind.ARTIST -> when (
-                    val result = // Group-first discovery needs enough range for albums AND singles/EPs;
-                    // 25 arbitrary upstream groups often omitted actual releases.
-                    musicBrainzGraph.browseReleaseGroupsForArtist(entry.musicBrainzId, limit = 75)
+                    // A single transient MB 503/rate-limit must not discard
+                    // NewJeans (or any other verified artist) on first entry.
+                    // Keep the same exact Artist MBID and bounded browse page.
+                    val result = retryTransientArtistDiscography {
+                        musicBrainzGraph.browseReleaseGroupsForArtist(
+                            entry.musicBrainzId, limit = 75,
+                        )
+                    }
                 ) {
                     is MusicBrainzCatalogGraphResult.Success -> {
                         artistFirstPage = result.value
@@ -1780,7 +1786,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) { emptyList() }
-                        if (cached.isEmpty()) UiState.Error("Unable to load artist discography")
+                        if (cached.isEmpty()) UiState.Error("Não foi possível carregar a discografia do artista. Tente novamente.")
                         else UiState.Success(CanonicalCatalogDetailPage(
                             title = entry.title,
                             summary = "Saved release groups · offline catalog",
