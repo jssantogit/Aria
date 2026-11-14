@@ -131,6 +131,10 @@ fun SongActionsSheet(
     onOpenCanonicalAlbum: ((String) -> Unit)? = null,
     /** Resolved MediaStore/Navidrome edition, before any public catalog lookup. */
     onOpenSourceOwnedAlbum: (() -> Unit)? = null,
+    /** Validated Recording→Artist and provider ownership; never title search. */
+    onOpenSourceOwnedArtist: (() -> Unit)? = null,
+    /** Typed iTunes artist route only (used when Apple editorial is installed). */
+    onOpenAppleArtist: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
@@ -245,6 +249,17 @@ fun SongActionsSheet(
                     )
                 }
             }
+            // Navigation is source-owned, even when playback actions are Apple styled.
+            val artistNavigation = onOpenSourceOwnedArtist ?: onOpenAppleArtist
+                ?: song.artistId?.let { id -> { onOpenArtist(id) } }
+            artistNavigation?.let { open ->
+                ActionRow(
+                    icon = Icons.Rounded.Person,
+                    label = stringResource(R.string.open_artist),
+                    accent = palette.accent,
+                    onClick = open,
+                )
+            }
             // The Apple queue's six playback actions do not include discovery.
             // A verified release route is still an essential track action.
             if (onOpenSourceOwnedAlbum != null || song.albumId != null || verifiedCanonicalAlbumRoute != null) {
@@ -329,15 +344,18 @@ fun SongActionsSheet(
                 Icons.Rounded.Album, stringResource(R.string.open_album), palette,
             )
         }
-        when (val id = song.artistId) {
-            null -> if (resolvingLinks) {
-                LoadingActionRow(Icons.Rounded.Person, stringResource(R.string.open_artist), palette)
-            }
-            else -> ActionRow(
+        val verifiedArtistAction = onOpenSourceOwnedArtist ?: onOpenAppleArtist
+            ?: song.artistId?.let { id -> { onOpenArtist(id) } }
+        when {
+            verifiedArtistAction != null -> ActionRow(
                 Icons.Rounded.Person,
                 stringResource(R.string.open_artist),
                 accent = palette.accent,
-            ) { onOpenArtist(id) }
+                onClick = verifiedArtistAction,
+            )
+            resolvingLinks -> LoadingActionRow(
+                Icons.Rounded.Person, stringResource(R.string.open_artist), palette,
+            )
         }
         onShare?.let {
             ActionRow(Icons.Rounded.Share, stringResource(R.string.share), accent = palette.accent, onClick = it)
