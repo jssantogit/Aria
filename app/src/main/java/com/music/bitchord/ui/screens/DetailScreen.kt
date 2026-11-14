@@ -394,11 +394,15 @@ fun DetailScreen(
     }
     val catalogRating by rememberCanonicalCatalogEntityRating(catalogRatingTarget)
     var editingCatalogRating by remember(page.browseId) { mutableStateOf(false) }
+    var artistRatingAnchor by remember(page.browseId) {
+        mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+    }
     if (editingCatalogRating && catalogRatingTarget != null) {
         CanonicalCatalogEntityRatingDialog(
             target = catalogRatingTarget,
             title = if (isArtist) "Avaliar artista" else "Avaliar álbum",
             onDismiss = { editingCatalogRating = false },
+            anchorBounds = if (isArtist) artistRatingAnchor else null,
         )
     }
     val localArtistContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
@@ -743,6 +747,7 @@ fun DetailScreen(
                         onToggleSubscription = onToggleSubscription,
                         onRateArtist = if (catalogRatingTarget?.entityType == "ARTIST")
                             ({ editingCatalogRating = true }) else null,
+                        onRateArtistAnchorChange = { artistRatingAnchor = it },
                         artistRated = catalogRating != null,
                         artistRating = catalogRating,
                         bottomSpace = 22.dp,
