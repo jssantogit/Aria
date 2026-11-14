@@ -15,6 +15,31 @@ import com.music.bitchord.ui.AppleCatalogBrowseRoute
  * releases alike. Apple IDs are retained as Apple IDs; no Song, MBID or playable
  * asset is manufactured just to pass through the existing native compositor.
  */
+/** Pure navigation state; the compositor is always the same DetailScreen. */
+internal enum class AppleNativeDetailKind { NONE, ARTIST, ALBUM }
+
+internal fun appleNativeDetailKind(
+    album: UiState<AppleEditorialAlbumDetailPage>?,
+    artist: UiState<AppleEditorialArtistDetailPage>?,
+): AppleNativeDetailKind = when {
+    album != null -> AppleNativeDetailKind.ALBUM
+    artist != null -> AppleNativeDetailKind.ARTIST
+    else -> AppleNativeDetailKind.NONE
+}
+
+internal fun appleNativeArtistSections(
+    albums: List<AppleEditorialSearchRow>,
+): List<Pair<AppleEditorialReleaseCategory, List<AppleEditorialSearchRow>>> =
+    listOf(
+        AppleEditorialReleaseCategory.ALBUM,
+        AppleEditorialReleaseCategory.EP,
+        AppleEditorialReleaseCategory.SINGLE,
+        AppleEditorialReleaseCategory.UNCLASSIFIED,
+    ).mapNotNull { kind ->
+        albums.filter { it.category == kind }.takeIf { it.isNotEmpty() }
+            ?.let { kind to it }
+    }
+
 internal data class AppleSharedDetail(
     val page: DetailPage,
     val metadataTracks: List<NativeMetadataTrack> = emptyList(),
@@ -43,7 +68,7 @@ internal fun appleArtistAsSharedDetail(
         AppleEditorialReleaseCategory.SINGLE to "Singles",
         AppleEditorialReleaseCategory.UNCLASSIFIED to "Outros lançamentos",
     ).mapNotNull { (category, title) ->
-        releases.filter { it.category == category }.takeIf(List<*>::isNotEmpty)
+        releases.filter { it.category == category }.takeIf { it.isNotEmpty() }
             ?.map { album ->
                 ShelfItem(
                     title = album.title,
