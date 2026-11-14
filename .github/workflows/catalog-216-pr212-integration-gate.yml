@@ -1,0 +1,52 @@
+# Temporary test-only gate for combining PR #216 metadata with the exact PR #212 UI.
+# No APK publishing or merge; this branch is a disposable integration candidate.
+name: PR216 + PR212 — immutable UI / Android core gate
+
+on:
+  push:
+    branches:
+      - integration/pr212-ui-itunes-core-65863b52
+
+permissions:
+  contents: read
+
+jobs:
+  android-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out full integration history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove all PR212 visual sources are byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          ui_base="65863b528b233a277421f45002b5f6baa50ebae1"
+          git cat-file -e "${ui_base}^{commit}"
+          git diff --exit-code "$ui_base" HEAD -- \\
+            app/src/main/java/com/music/bitchord/MainActivity.kt \\
+            app/src/main/java/com/music/bitchord/ui/components/ \\
+            app/src/main/java/com/music/bitchord/ui/screens/ \\
+            app/src/main/java/com/music/bitchord/ui/theme/ \\
+            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ \\
+            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \\
+            sharedUi/src/commonMain/composeResources/
+          echo "PR212 visual implementations unchanged from $ui_base"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Prepare Android build
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Android unit tests and Kotlin compile
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Shared UI JVM regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
