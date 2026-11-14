@@ -5422,6 +5422,20 @@ private fun BitChordApp(
                         null
                     }
                 }
+                val sourceOwnedArtist by produceState<
+                    com.music.bitchord.ui.components.SourceOwnedArtistEvidence?
+                >(initialValue = null, key1 = song) {
+                    value = try {
+                        com.music.bitchord.ui.components.verifiedPlayerSourceOwnedArtist(context, song)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                val appleArtistRoute = remember(song.artistId) {
+                    com.music.bitchord.ui.components.verifiedAppleArtistBrowseRoute(song.artistId)
+                }
                 val share: () -> Unit = {
                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
@@ -5487,6 +5501,49 @@ private fun BitChordApp(
                             unifiedLibraryBackToken = 0
                             unifiedLibraryCategory =
                                 com.music.bitchord.data.listening.CanonicalSmartFilterContext.ALBUMS
+                        }
+                    },
+                    onOpenSourceOwnedArtist = sourceOwnedArtist?.let { artist ->
+                        {
+                            songActions = null
+                            dismissPlayer()
+                            viewModel.clearDetail()
+                            openedPublicPlaylist = null
+                            showAllLocalRecentAdditions = false
+                            libraryShowAll = null
+                            showReplay = false
+                            settingsSubScreen = null
+                            showSettings = false
+                            selectedTab = TAB_LIBRARY
+                            unifiedControls.sourceKey = artist.providerKey
+                            unifiedControls.stars = null
+                            pinnedLibraryRequest =
+                                com.music.bitchord.ui.screens.CanonicalLibraryPin(
+                                    com.music.bitchord.ui.screens.CanonicalLibrarySelection(
+                                        com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
+                                        artist.artistId,
+                                    ),
+                                    artist.artistName,
+                                    "",
+                                )
+                            unifiedLibrarySearching = false
+                            unifiedLibraryBackToken = 0
+                            unifiedLibraryCategory =
+                                com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
+                        }
+                    },
+                    onOpenAppleArtist = appleArtistRoute?.let { route ->
+                        {
+                            songActions = null
+                            dismissPlayer()
+                            // A typed storefront artist ID is not a MusicBrainz
+                            // identifier. Keep it intact for the Apple detail
+                            // adapter supplied by the separate catalog integration.
+                            viewModel.openDetail(
+                                browseId = route, title = song.artist,
+                                subtitle = context.getString(R.string.artist),
+                                type = BrowseType.ARTIST,
+                            )
                         }
                     },
                     onOpenCanonicalAlbum = { route ->
