@@ -231,22 +231,22 @@ class MusicBrainzPublicMetadataIndexTest {
                 groupId, "SUPER REAL ME", "EP", "2024-03-25", "aespa")))
             index.persistReleases(listOf(MusicBrainzReleaseHit(
                 editionId, "SUPER REAL ME", "XW", "2024-03-25", "aespa")))
-            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups("New Jeans", 10).single().artworkUri)
-            assertEquals(null, db.catalogDao().searchKnownMusicBrainzReleases("New Jeans", 10).single().artworkUri)
+            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups("SUPER REAL ME", 10).single().artworkUri)
+            assertEquals(null, db.catalogDao().searchKnownMusicBrainzReleases("SUPER REAL ME", 10).single().artworkUri)
             daoUpsertCoverArt(db, "release-group:front-v3", groupId, "https://archive.org/stale-unverified-video.jpg",
                 1000L, thumbnailUri = "https://archive.org/stale-poster-thumb.jpg")
-            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups("New Jeans", 10).single().artworkUri)
+            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups("SUPER REAL ME", 10).single().artworkUri)
             assertEquals(emptyList<com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity>(),
                 db.catalogDao().verifiedGroupFronts(listOf(groupId)))
-            daoUpsertCoverArt(db, "release-group:front-v4", groupId, "https://archive.org/verified-group-front.jpg",
-                2000L, thumbnailUri = "https://archive.org/verified-group-thumb-500.jpg")
+            daoUpsertCoverArt(db, "release-group:front-v5", groupId, "https://archive.org/verified-group-front.jpg",
+                System.currentTimeMillis() - 1_000L, thumbnailUri = "https://archive.org/verified-group-thumb-500.jpg")
             daoUpsertCoverArt(db, "release:front-v3", editionId, "https://archive.org/verified-release-front.jpg", 2000L)
-            assertEquals("https://archive.org/verified-group-thumb-500.jpg",
-                db.catalogDao().searchKnownMusicBrainzGroups("New Jeans", 10).single().artworkUri)
+            assertEquals(null,
+                db.catalogDao().searchKnownMusicBrainzGroups("SUPER REAL ME", 10).single().artworkUri)
             assertEquals("https://archive.org/verified-group-front.jpg",
-                db.catalogDao().musicBrainzCoverArtCache("release-group:front-v4", groupId)?.artworkUri)
+                db.catalogDao().musicBrainzCoverArtCache("release-group:front-v5", groupId)?.artworkUri)
             assertEquals("https://archive.org/verified-release-front.jpg",
-                db.catalogDao().searchKnownMusicBrainzReleases("New Jeans", 10).single().artworkUri)
+                db.catalogDao().searchKnownMusicBrainzReleases("SUPER REAL ME", 10).single().artworkUri)
         } finally { db.close() }
     }
 
@@ -264,13 +264,13 @@ class MusicBrainzPublicMetadataIndexTest {
                 groupMbid, "SUPER REAL ME", "EP", "2024-03-25", "aespa",
                 secondaryTypes = "Remix",
             )))
-            daoUpsertCoverArt(db, "release-group:front-v4", groupMbid,
-                "https://archive.org/verified-album-1200.jpg", 20_000L,
+            daoUpsertCoverArt(db, "release-group:front-v5", groupMbid,
+                "https://archive.org/verified-album-1200.jpg", System.currentTimeMillis() - 1_000L,
                 thumbnailUri = "https://archive.org/verified-album-500.jpg")
             val joined = db.catalogDao().verifiedArtistDiscographyRows(
                 requireNotNull(index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, "aespa", null, "KR")))[artistMbid])).single()
             assertEquals(groupMbid, joined.musicBrainzId)
-            assertEquals("https://archive.org/verified-album-500.jpg", joined.artworkUri)
+            assertEquals(null, joined.artworkUri)
             assertEquals("Remix", joined.secondaryTypes)
             val cached = index.cachedArtistGroups(artistMbid).single()
             assertEquals(groupMbid, cached.musicBrainzId)
@@ -371,8 +371,8 @@ class MusicBrainzPublicMetadataIndexTest {
                 "https://archive.org/stale-direct-shortcut.jpg", 10_000L,
                 thumbnailUri = "https://archive.org/stale-direct-500.jpg")
             assertEquals(null, index.cachedArtistGroups(artistMbid).single().artworkUri)
-            daoUpsertCoverArt(db, "release-group:front-v4", groupMbid,
-                "https://archive.org/verified-album-1200.jpg", 20_000L,
+            daoUpsertCoverArt(db, "release-group:front-v5", groupMbid,
+                "https://archive.org/verified-album-1200.jpg", System.currentTimeMillis() - 1_000L,
                 thumbnailUri = "https://archive.org/verified-album-500.jpg")
             assertEquals("https://archive.org/verified-album-500.jpg",
                 index.cachedArtistGroups(artistMbid).single().artworkUri)
