@@ -272,7 +272,7 @@ class CanonicalRecordingFeedbackControlsTest {
         }
     }
 
-    @Test fun numericRatingStylePlacesOneNumberOnlyOnTerminalStar() {
+    @Test fun numericRatingStyleUsesTheNumberVectorOnEverySelectedStar() {
         compose.setContent {
             MaterialTheme {
                 CompositionLocalProvider(LocalCompactRatingStyle provides CompactRatingStyle.NUMERIC) {
@@ -285,7 +285,7 @@ class CanonicalRecordingFeedbackControlsTest {
             }
         }
         compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
-            .assertCountEquals(1)
+            .assertCountEquals(2)
         compose.onNodeWithTag("rating-editor-star-1-full").assertExists()
         compose.onNodeWithTag("rating-editor-star-2-empty").assertExists()
     }
