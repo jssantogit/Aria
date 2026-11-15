@@ -118,22 +118,39 @@ class ProviderCapabilitySession(
         require(next.distinctBy { it.key }.size == next.size) {
             "Duplicate provider instance for $capability"
         }
-        if (choices[capability] == next && quarantinedSlots.none { it.first == capability }) {
-            return@withLock true // stable policy, no network revocation or disk I/O
+        if (!storageFailure &&
+            choices[capability] == next &&
+            quarantinedSlots.none { it.first == capability }
+        ) {
+            return@withLock true // same durable preference, no revocation or I/O
         }
 
-        val targetSlots = next.map { capability to it.key }
-        quarantinedSlots.addAll(targetSlots)
+        // Revoke ONLY currently admitted instances that the next selection
+        // disables or removes. This includes next == emptyList(): we MUST
+        // close the last source BEFORE a potentially failing disk commit.
+        // Never quarantine siblings that remain eligible, or newly enabled
+        // sources that are still waiting for durable authorization.
+        val nextEnabled = next.asSequence()
+            .filter(ProviderChoice::enabled)
+            .map(ProviderChoice::key)
+            .toSet()
+        val newlyRevoked = gate.ordered(capability)
+            .map { capability to it.key }
+            .filter { (_, key) -> key !in nextEnabled }
+        quarantinedSlots.addAll(newlyRevoked)
         gate.replace(effectivePolicy())
         publishSnapshot()
+
         if (!store.replaceCapability(capability, next)) {
+            // Keep revoked slots closed, but do not disturb unrelated siblings.
             storageFailure = true
             publishSnapshot()
             return@withLock false
         }
 
         choices = choices + (capability to next.toList())
-        quarantinedSlots.removeAll(targetSlots)
+        // All slots of this capability now have a verified durable choice.
+        quarantinedSlots.removeAll { (subject, _) -> subject == capability }
         gate.replace(effectivePolicy())
         if (quarantinedSlots.isEmpty()) storageFailure = false
         publishSnapshot()
