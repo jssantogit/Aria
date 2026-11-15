@@ -102,7 +102,7 @@ class ProviderPreferenceStoreTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun duplicateSelectionIsRejectedBeforeWriting() = runBlocking {
+    fun duplicateSelectionIsRejectedBeforeWriting(): Unit = runBlocking {
         store.replaceCapability(ProviderCapability.AUDIO_PLAYBACK, listOf(
             ProviderChoice(nasA, true, 0), ProviderChoice(nasA, false, 1),
         ))
