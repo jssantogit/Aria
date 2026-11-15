@@ -107,3 +107,12 @@
 - Gates obrigatórios permanecem intocados: testes Android focalizados e integrais, shared Automix, `:sharedUi:jvmTest` e `:app:assembleDevDebug`; checksum SHA-256 da build universal.
 - Se qualquer gate falhar, não apresentar APK como pronto. Corrigir apenas a falha diagnosticada e repetir a solicitação no HEAD corrigido.
 - Se passar, disponibilizar URL e checksum para smoke físico; manter PR #212 draft, sem merge. Não alegar equivalência visual sem inspeção no Android real.
+
+
+## Regressão visual do smoke físico — gesto elevado (15/11/2026)
+
+- Evidência: vídeo físico `1000685058.mp4` e capturas da Home, página de artista, biblioteca de artistas e prateleiras `Incluído em`/`Artistas semelhantes`, fornecidos pelo usuário.
+- Problemas reproduzidos visualmente: o snapshot da prévia recebe um preenchimento grafite inexistente no item original; borda branca de 88%/1,5dp é excessiva; placa de ações era preenchida com cor sólida em vez de compartilhar o vidro do filtro; durante a transição, a placa de ações fica translúcida enquanto o conteúdo se movimenta.
+- Correção: `HeldContextMenu.kt` mantém o bitmap original sem segundo fundo cinza (`heldPreviewBackingColor` transparente), reduz o contorno para 36% e 0,75dp, diminui o padding da moldura e retoma `optimizedHazeEffect` com `HazeMaterials.regular` como `NativeContextActionPlate`, mantendo fallback sólido quando `reduceDynamicBlur` estiver ativo.
+- Testes de contrato: `HeldContextMenuPlateTest` verifica borda, backing transparente e política de blur. Conferir ainda movimentos, clipping, snapshot de item e restauração no aparelho. As ações do catálogo online continuam metadata-only.
+- Solicitação: executar novamente o workflow test-gated para o HEAD desta atualização, sem remover testes Android, sharedUi, Automix ou compilações, e gerar APK somente se todos aprovarem.
