@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.DebugLog as Log
+
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -241,6 +243,19 @@ internal class MusicBrainzArtistAppearancesClient(
     private val cache = linkedMapOf<String, Cached>()
 
     /**
+     * After five sequential pages, large catalogs still contain thousands of
+     * own editions. Sample three bounded, distant *official browse offsets*
+     * to find true guest tracks without doing an unbounded 1000-release scan.
+     * Offset selection is deterministic and contains no guessed entity data.
+     */
+    internal fun additionalOffsets(total: Int, scanned: Int): List<Int> =
+        if (total <= scanned || scanned < 125) emptyList() else
+            listOf(total / 3, total * 2 / 3, total - 25)
+                .map { (it.coerceAtLeast(0) / 25) * 25 }
+                .filter { it >= scanned && it < total }
+                .distinct().take(3)
+
+    /**
      * One bounded official browse page, shared rate limit and per-artist
      * in-process cache. LazyColumn may dispose/recreate the shelf on scrolling:
      * neither a positive match nor a transient offline failure should trigger
@@ -268,6 +283,7 @@ internal class MusicBrainzArtistAppearancesClient(
             val foundByRecording = linkedMapOf<String, MusicBrainzArtistAppearance>()
             var offset = 0
             var healthy = true
+            var knownTotal: Int? = null
             for (page in 0 until 5) {
                 val response = try {
                     when {
@@ -315,6 +331,7 @@ internal class MusicBrainzArtistAppearancesClient(
                     }
                 val count = list.size
                 val total = (root?.get("release-count") as? JsonPrimitive)?.intOrNull
+                if (total != null && total >= 0) knownTotal = total
                 offset += count
                 // Captures use the old simple fetch callback and represent one
                 // page only. More pages require a real offset-aware transport.
@@ -329,7 +346,51 @@ internal class MusicBrainzArtistAppearancesClient(
                     healthy = false
                 }
             }
+            // A popular artist can fill 125 sequential results with their
+            // own editions. Search a few distant official browse windows,
+            // still requiring actual release/track/Recording and barcode,
+            // label or ISRC evidence. Never synthesize a feature by name.
+            val extras = if (foundByRecording.isEmpty() &&
+                (fetch == null || pagedFetch != null)
+            ) additionalOffsets(knownTotal ?: 0, offset) else emptyList()
+            for (sampleOffset in extras) {
+                val response = try {
+                    if (pagedFetch != null) pagedFetch.invoke(id, sampleOffset)
+                    else client.get("release", mapOf(
+                        "track_artist" to id,
+                        "inc" to "release-groups+artist-credits+recordings+labels+isrcs",
+                        "limit" to "25",
+                        "offset" to sampleOffset.toString(),
+                        "fmt" to "json",
+                    ))
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    healthy = false
+                    continue
+                }
+                if (response.length > 500_000) {
+                    healthy = false
+                    continue
+                }
+                parseMusicBrainzTrackArtistAppearances(response, id)
+                    .filter {
+                        it.commerciallyVerified && !it.conflictingTrackCredit &&
+                            !it.recordingMbid.isNullOrBlank() &&
+                            !it.trackTitle.isNullOrBlank()
+                    }.forEach { appearance ->
+                        foundByRecording.putIfAbsent(
+                            requireNotNull(appearance.recordingMbid), appearance,
+                        )
+                    }
+                if (foundByRecording.isNotEmpty()) break
+            }
             val found = foundByRecording.values.take(12).toList()
+            if (found.isNotEmpty()) healthy = true
+            else if ((knownTotal ?: offset) > offset) healthy = false
+            Log.d("ArtistGuestEvidence",
+                "sequentialRows=$offset totalKnown=${knownTotal ?: -1} " +
+                    "sampleWindows=${extras.size} confirmed=${found.size} healthy=$healthy")
             if (cache.size >= 64) cache.remove(cache.keys.first())
             cache[id] = Cached(nowMillis(), found, healthy = healthy)
             return found

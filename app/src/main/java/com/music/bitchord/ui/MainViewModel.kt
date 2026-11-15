@@ -3749,12 +3749,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val markets = listOf("br", "us", "kr", "jp")
             val chartDate = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
                 .toString()
+            val artistPortraits = ConcurrentHashMap<String, String>()
             fun publishHome() {
                 if (!appleChartsEpoch.isCurrent(generation)) return
                 val projected = applePr212HomeProjection(
                     _appleHomeCharts.value, emptyList(),
                     _appleHomeGenreTracks.value, _appleHomeGenreAlbums.value,
-                    chartDate,
+                    chartDate, artistPortraits.toMap(),
                 )
                 // Pass only source-tagged, exact Apple IDs through the
                 // original PR212 MainActivity collection. No Composable edits.
@@ -3763,6 +3764,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val chartPermits = Semaphore(3)
             val coverPermits = Semaphore(3)
+            val portraitPermits = Semaphore(2)
+            val publishedPortraits = mutableSetOf<String>()
             val publishLock = Mutex()
             val songs = mutableListOf<ApplePublicChartEntry>()
             val albums = mutableListOf<ApplePublicChartEntry>()
@@ -3822,18 +3825,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 )
                                 publishHome()
                             }
+                            // The Home hero can show any of the first 12 songs
+                            // in each of four storefronts. Give ALL those
+                            // selected products a chance to upgrade instead
+                            // of dropping the later markets at an arbitrary 50.
                             val covers = newSongs.orEmpty().take(12) +
                                 newAlbums.orEmpty().take(8)
                             for (entry in covers) {
                                 val original = entry.artwork ?: continue
                                 if (!scheduledCovers.add(entry.scopedId) ||
-                                    scheduledCovers.size > 50) continue
+                                    scheduledCovers.size > 80) continue
                                 publishingScope.launch {
                                     coverPermits.withPermit {
                                         val improved = appleArtwork.upgrade(
                                             original,
-                                            if (entry.kind == ApplePublicChartKind.SONGS &&
-                                                entry.rank <= 3) 1024 else 600,
+                                            if (entry.kind == ApplePublicChartKind.SONGS)
+                                                1024 else 600,
                                         )
                                         if (improved != null && improved != original &&
                                             appleChartsEpoch.isCurrent(generation)
@@ -3846,6 +3853,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                                 }
                                                 publishHome()
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                            // Apple Music RSS deliberately contains album
+                            // sleeves, not artist photos. Resolve the actual
+                            // portrait asynchronously by the verified artist
+                            // ID and storefront instead of borrowing covers.
+                            for (entry in newSongs.orEmpty().take(8)) {
+                                val artistId = entry.artistId?.takeIf { it > 0L }
+                                    ?: continue
+                                val key = "itunes:${entry.storefront}:artist:$artistId"
+                                if (publishedPortraits.size >= 24 ||
+                                    !publishedPortraits.add(key)) continue
+                                publishingScope.launch {
+                                    portraitPermits.withPermit {
+                                        val portrait = try {
+                                            withTimeoutOrNull(10_000L) {
+                                                AppleArtistArtRepository.artForVerifiedArtist(
+                                                    entry.storefront, artistId,
+                                                )?.heroUrl
+                                            }
+                                        } catch (cancelled: CancellationException) {
+                                            throw cancelled
+                                        } catch (_: Exception) { null }
+                                        val verified = com.music.bitchord.data.catalog.metadata
+                                            .safeAppleArtwork(portrait)
+                                        if (verified != null &&
+                                            appleChartsEpoch.isCurrent(generation)
+                                        ) {
+                                            artistPortraits[key] = verified
+                                            publishHome()
                                         }
                                     }
                                 }

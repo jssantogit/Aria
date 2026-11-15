@@ -22,6 +22,15 @@ class NativeHomeShelfPresentationTest {
         assertEquals(HomeShelfPresentation.SQUARE_SHELF, homeShelfPresentation("Escolha a dedo", 1, true))
     }
 
+    @Test fun onlyNewAppleHomeArtistShelfUsesCircularArtistCards() {
+        assertEquals(true, homeAppleArtistShelf("Artistas em alta"))
+        assertEquals(false, homeAppleArtistShelf("Mais relevantes pra você"))
+        assertEquals(false, homeAppleArtistShelf("Jazz"))
+        assertEquals(false, homeAppleArtistShelf("Álbuns"))
+        assertEquals(HomeShelfPresentation.SQUARE_SHELF,
+            homeShelfPresentation("Artistas em alta", 4, true))
+    }
+
     @Test fun editorialHeroIsTallAndLeavesTheNextCardVisible() {
         assertEquals(0.75f, HERO_CARD_RATIO, 0.00001f)
         assertEquals(223.2f, heroCardWidth(360.dp).value, 0.01f)

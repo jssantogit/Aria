@@ -404,6 +404,37 @@ class MusicBrainzArtistAppearancesTest {
         assertEquals(4, offsets.size)
     }
 
+    @Test fun hugeArtistsSearchDistantVerifiedPagesWithoutUnboundedDiscographyScan() = runBlocking {
+        val offsets = mutableListOf<Int>()
+        val first = (1..25).joinToString(",") { index ->
+            """{"id":"${index.toString(16).padStart(8, '0')}-3333-4333-8333-333333333333",
+                "status":"Official","artist-credit":[{"artist":{"id":"$target","name":"Self"}}]}"""
+        }
+        val valid = """{"id":"55555555-5555-4555-8555-555555555555",
+            "status":"Official","barcode":"0196588123456",
+            "artist-credit":[{"artist":{"id":"$other","name":"Host"}}],
+            "release-group":{"id":"$releaseGroup","title":"Verified distant collaboration",
+                "primary-type":"Album"},
+            "media":[{"tracks":[{"recording":{
+                "id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "title":"Verified guest track",
+                "artist-credit":[{"artist":{"id":"$target"}}]}}]}]}"""
+        val client = MusicBrainzArtistAppearancesClient(
+            pagedFetch = { _, offset ->
+                offsets += offset
+                if (offset == 325) """{"release-count":500,"releases":[$valid]}"""
+                else """{"release-count":500,"releases":[$first]}"""
+            },
+        )
+        assertEquals(listOf(150, 325, 475), client.additionalOffsets(500, 125))
+        assertTrue(client.additionalOffsets(76, 75).isEmpty())
+        val rows = client.browse(target)
+        assertEquals(listOf("Verified guest track"), rows.map { it.trackTitle })
+        assertEquals(listOf(0, 25, 50, 75, 100, 150, 325), offsets)
+        assertEquals(rows, client.browse(target))
+        assertEquals(7, offsets.size)
+    }
+
     @Test fun popularArtistsScanNextOfficialPageWhenFirstIsOnlyUnrelatedEditions() = runBlocking {
         val requestedOffsets = mutableListOf<Int>()
         val rejected = (1..25).joinToString(",") { n ->

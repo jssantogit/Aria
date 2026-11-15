@@ -106,6 +106,33 @@ class ApplePr212HomeDiscoveryTest {
         assertTrue(artists.items.all { it.thumbnailUrl == null && it.videoId == null })
     }
 
+    @Test fun AppleArtistPortraitComesOnlyFromMatchingStorefrontAndExactArtistIdentity() {
+        val valid = "https://is1-ssl.mzstatic.com/image/thumb/Music123/photo/1200x1200bb.jpg"
+        val map = mapOf("itunes:br:artist:900" to valid)
+        assertEquals(valid, applePr212VerifiedPortrait("br", 900L, map))
+        assertNull(applePr212VerifiedPortrait("us", 900L, map))
+        assertNull(applePr212VerifiedPortrait("br", 901L, map))
+        assertNull(applePr212VerifiedPortrait("br", 0L, map))
+        assertNull(applePr212VerifiedPortrait("BR", 900L, map))
+        assertNull(applePr212VerifiedPortrait("br", 900L,
+            mapOf("itunes:br:artist:900" to "https://example.com/album.jpg")))
+        val projected = applePr212HomeProjection(
+            ApplePublicChartsSnapshot(songs = listOf(
+                chart(1L, "Top", "br", artist = "Actual Artist", artistId = 900L),
+            )), emptyList(), emptyMap(), emptyMap(), "2026-11-15", map,
+        )
+        val artist = projected.rows.single {
+            it.kind == com.music.bitchord.ui.screens.CanonicalSearchKind.ARTIST
+        }
+        assertEquals("itunes:br:artist:900", artist.musicBrainzId)
+        assertEquals(valid, artist.artworkUri)
+        assertEquals(valid, projected.shelves.single {
+            it.title == "Artistas em alta"
+        }.items.single().thumbnailUrl)
+        // The corresponding song retains its own cover, not a portrait.
+        assertNotEquals(valid, projected.shelves.first().items.single().thumbnailUrl)
+    }
+
     @Test fun verifiedArtworkPatchNeedsSameAppleIdAndOriginalUrl() {
         val item = chart(12, "Test", "br")
         val next = "https://is1-ssl.mzstatic.com/album/600x600bb.jpg"

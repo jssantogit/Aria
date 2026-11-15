@@ -83,14 +83,30 @@ private fun chartRow(entry: ApplePublicChartEntry): CanonicalCatalogSearchRow? {
     )
 }
 
-private fun chartArtistRow(entry: ApplePublicChartEntry): CanonicalCatalogSearchRow? {
+internal fun applePr212VerifiedPortrait(
+    storefront: String, artistId: Long, portraits: Map<String, String>,
+): String? {
+    if (!Regex("[a-z]{2}").matches(storefront) || artistId <= 0L) return null
+    val route = "itunes:$storefront:artist:$artistId"
+    // An album's artwork cannot become an artist image. The map is populated
+    // exclusively by a verified Apple artist-page lookup for this exact ID.
+    return safeAppleArtwork(portraits[route])
+}
+
+private fun chartArtistRow(
+    entry: ApplePublicChartEntry,
+    portraits: Map<String, String>,
+): CanonicalCatalogSearchRow? {
     val artistId = entry.artistId?.takeIf { it > 0L } ?: return null
     return CanonicalCatalogSearchRow(
         musicBrainzId = "itunes:${entry.storefront}:artist:$artistId",
         kind = CanonicalSearchKind.ARTIST,
         title = entry.artistName, subtitle = "Artista",
-        // Chart song/album covers are NOT verified artist portraits.
-        artworkUri = null, hasCatalogedAsset = false,
+        // The chart's album cover is never used as a portrait. Only a
+        // separately fetched exact Apple artist-page hero is eligible.
+        artworkUri = applePr212VerifiedPortrait(
+            entry.storefront, artistId, portraits,
+        ), hasCatalogedAsset = false,
     )
 }
 
@@ -116,6 +132,7 @@ internal fun applePr212HomeProjection(
     genreTracks: Map<String, List<ItunesCatalogItem>>,
     genreAlbums: Map<String, List<ItunesEditorialRelease>>,
     date: String,
+    artistPortraits: Map<String, String> = emptyMap(),
 ): ApplePr212HomeProjection {
     val songs = applePr212MarketMix(charts.songs)
     val albums = applePr212MarketMix(charts.albums)
@@ -168,7 +185,7 @@ internal fun applePr212HomeProjection(
         // Ranking of artists is BitChord's count of chart appearances, not an
         // official Apple artist ranking. Require the exact artist ID in the feed.
         val featuredArtists = songs.asSequence()
-            .mapNotNull(::chartArtistRow)
+            .mapNotNull { chartArtistRow(it, artistPortraits) }
             .distinctBy { normalizedChartLabel(it.title) }
             .take(16).toList()
         val artistCards = cards(featuredArtists, 12)

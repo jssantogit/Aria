@@ -148,7 +148,17 @@ jobs:
               ['git', 'diff', '--name-only', baseline, 'HEAD', '--',
                'sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/'],
               text=True).splitlines()
-          assert changed == [shared], 'Other shared Search/Detail visuals changed: ' + str(changed)
+          # Explicit 15 Nov user exception: Apple-first artist Home cards are
+          # circles, not squares. Only this reviewed HomeScreen blob may differ
+          # from the PR212 layout. Search's prior eligibility exception remains.
+          artist_home = 'sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/HomeScreen.kt'
+          assert changed == [artist_home, shared], (
+              'Unexpected shared native screen visual change: ' + str(changed))
+          home_blob = subprocess.check_output(
+              ['git', 'hash-object', artist_home], text=True).strip()
+          assert home_blob == '44c1f8884fcec56717010e786f33b11bff0e2c51', (
+              'HomeScreen diverged from explicitly reviewed artist-circle-only implementation')
+          print('PR212 Home: reviewed artist-circle exception only, all other shelves unchanged')
           baseline_shared = subprocess.check_output(
               ['git', 'show', f'{baseline}:{shared}'], text=True)
           old_rule = '''/** Only positive, independently supplied release classification may create an album tile. */

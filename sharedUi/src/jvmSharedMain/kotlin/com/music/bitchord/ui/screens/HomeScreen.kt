@@ -65,6 +65,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Person
 import com.music.bitchord.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
 import com.music.bitchord.ui.icons.BitChordIcons
@@ -114,6 +115,10 @@ private const val RECENT_TRACKS_PER_COLUMN = 4
 internal enum class HomeShelfPresentation {
     RECENT_COVERS, EDITORIAL_HERO, SQUARE_SHELF,
 }
+
+/** Only this Apple artist shelf is rendered with the existing circular artist surface. */
+internal fun homeAppleArtistShelf(title: String): Boolean =
+    title == "Artistas em alta"
 
 internal fun homeShelfPresentation(
     shelfTitle: String,
@@ -361,6 +366,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     onItemLongPress = onItemLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
+                    artistArtwork = homeAppleArtistShelf(shelf.title),
                 )
             }
         }
@@ -1033,6 +1039,7 @@ internal fun Shelf(
     leadingCard: (@Composable () -> Unit)? = null,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    artistArtwork: Boolean = false,
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title, shelf.subtitle)
@@ -1049,6 +1056,8 @@ internal fun Shelf(
                     onLongPress = onItemLongPress?.let { { it(item) } },
                     isCurrent = isCurrentItem(item),
                     isPlaying = isCurrentItem(item) && isPlaying,
+                    artistArtwork = artistArtwork &&
+                        item.browseId?.matches(Regex("""itunes:[a-z]{2}:artist:[1-9][0-9]*""")) == true,
                 )
             }
         }
@@ -1158,6 +1167,7 @@ internal fun ShelfCard(
     isPinned: Boolean = false,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    artistArtwork: Boolean = false,
 ) {
     // The legacy source adapter retains custom folder artwork; Home and
     // Explore share the original source-independent title/card composition.
@@ -1245,10 +1255,18 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(NativeMediaCardMetrics.squareCoverShape)
-                        .thumbnailBorder(NativeMediaCardMetrics.squareCoverShape)
+                        .clip(if (artistArtwork) CircleShape else NativeMediaCardMetrics.squareCoverShape)
+                        .thumbnailBorder(if (artistArtwork) CircleShape else NativeMediaCardMetrics.squareCoverShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
+                    if (artistArtwork && item.thumbnailUrl.isNullOrBlank()) {
+                        Icon(
+                            imageVector = Icons.Rounded.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp).align(Alignment.Center),
+                        )
+                    }
                     val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
                     if (hasCatalogIdentity) CatalogArtworkFallback(
                         hero = false, modifier = Modifier.fillMaxSize(),
