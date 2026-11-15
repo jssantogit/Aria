@@ -334,8 +334,46 @@ class CanonicalPublicDiscoveryTest {
             publicPlaylists = playlists.copy(title = "Playlists para descobrir"),
         )
         assertTrue(home.any { it.title == "Playlists para descobrir" })
-        assertTrue(home.none { it.title == "Singles e EPs" })
+        assertTrue(home.any { it.title == "Singles e EPs" })
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
+    }
+
+    @Test fun AppleHomeKeepsNativeAlbumAndSinglesSectionsAlongsidePublicPlaylists() {
+        val apple = (1..16).map { i ->
+            val kind = when (i % 3) {
+                0 -> "Album"
+                1 -> "Single"
+                else -> "EP"
+            }
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "itunes:br:album:${2000 + i}",
+                kind = CanonicalSearchKind.RELEASE,
+                title = "Apple release $i",
+                subtitle = "Artist $i",
+                releaseDate = "2026-11-01",
+                releaseKind = kind,
+                artworkUri = "https://is1-ssl.mzstatic.com/image/$i/600x600bb.jpg",
+            )
+        }
+        val playlist = HomeShelf("Playlists para descobrir", listOf(
+            ShelfItem("Curated", "DJ", null, null, "listenbrainz:playlist:42"),
+        ))
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), apple, "Lançamentos", "Escolha a dedo", "Em alta",
+            null, "2026-11-06",
+            albumsHeading = "Álbuns",
+            singlesHeading = "Singles e EPs",
+            moreHeading = "Mais para explorar",
+            publicPlaylists = playlist,
+        )
+        assertEquals(
+            listOf("Lançamentos", "Escolha a dedo", "Playlists para descobrir",
+                "Álbuns", "Singles e EPs", "Mais para explorar"),
+            home.map { it.title },
+        )
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(ids.filter { it.startsWith("itunes:") }.all { it.startsWith("itunes:br:album:") })
     }
 
     @Test fun worldwideHomeKeepsGenreFormatsOnlyInGenreDetails() {
