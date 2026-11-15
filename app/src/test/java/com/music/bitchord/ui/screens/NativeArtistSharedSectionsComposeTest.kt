@@ -189,6 +189,19 @@ class NativeArtistSharedSectionsComposeTest {
         compose.runOnIdle { assertEquals(1, toggled) }
     }
 
+    /**
+     * Scrolling an artist's hero upward must not paint its large circular
+     * transport actions over the status icons or frosted top-bar controls.
+     * Only the LIST is masked; the artist photograph still reaches edge-to-edge.
+     */
+    @Test fun artistScrollMaskKeepsContentBelowItsTopBarAndClampsToViewport() {
+        assertEquals(0f, nativeArtistListMaskTopPx(0f, 900f))
+        assertEquals(108f, nativeArtistListMaskTopPx(108f, 900f))
+        assertEquals(900f, nativeArtistListMaskTopPx(1200f, 900f))
+        assertEquals(0f, nativeArtistListMaskTopPx(-4f, 900f))
+        assertEquals(0f, nativeArtistListMaskTopPx(56f, 0f))
+    }
+
     @Test fun sharedNativeArtistFrameShowsContentAndKeepsClicksAlive() {
         var ratingOpens = 0
         compose.setContent {
