@@ -103,6 +103,57 @@ class ProviderPreferenceStoreTest {
         assertFalse(saved.choices.containsKey(ProviderCapability.RELEASE_ARTWORK))
     }
 
+    @Test fun importsAllMissingLegacyCategoriesInOnePersistedSnapshot() = runBlocking {
+        val lyrics = ProviderChoice(ProviderKey("lrclib"), enabled = false, order = 0)
+        val addon = ProviderChoice(nasA, enabled = true, order = 0)
+        assertTrue(store.migrateMissing(mapOf(
+            ProviderCapability.LYRICS_LOOKUP to listOf(lyrics),
+            ProviderCapability.EXTENSION_PLAYBACK to listOf(addon),
+        )))
+        val saved = (ProviderPreferenceStore(preferences).read() as
+            ProviderPreferenceStore.Read.Loaded).choices
+        assertEquals(listOf(lyrics), saved[ProviderCapability.LYRICS_LOOKUP])
+        assertEquals(listOf(addon), saved[ProviderCapability.EXTENSION_PLAYBACK])
+    }
+
+    @Test fun migratingAnOldSnapshotNeverResurrectsUserDisabledProviders() = runBlocking {
+        assertTrue(store.replaceCapability(ProviderCapability.LYRICS_LOOKUP, emptyList()))
+        assertTrue(store.migrateMissing(mapOf(
+            ProviderCapability.LYRICS_LOOKUP to listOf(
+                ProviderChoice(ProviderKey("lrclib"), enabled = true, order = 0)),
+            ProviderCapability.EXTENSION_PLAYBACK to listOf(
+                ProviderChoice(nasB, enabled = false, order = 0)),
+        )))
+        val saved = (store.read() as ProviderPreferenceStore.Read.Loaded).choices
+        assertEquals(emptyList<ProviderChoice>(), saved[ProviderCapability.LYRICS_LOOKUP])
+        assertEquals(listOf(ProviderChoice(nasB, false, 0)),
+            saved[ProviderCapability.EXTENSION_PLAYBACK])
+    }
+
+    @Test fun migrationCannotReplaceUnreadableOrNewerVersionPreferences() = runBlocking {
+        val unsupported = """{"version":99,"rows":[]}"""
+        preferences.edit().putString(ProviderPreferenceStore.STORAGE_KEY, unsupported).commit()
+        assertFalse(store.migrateMissing(mapOf(
+            ProviderCapability.LYRICS_LOOKUP to emptyList(),
+        )))
+        assertEquals(unsupported,
+            preferences.getString(ProviderPreferenceStore.STORAGE_KEY, null))
+    }
+
+    @Test fun migrationPreservesUnknownFutureCapabilitiesAndIsIdempotent() = runBlocking {
+        preferences.edit().putString(ProviderPreferenceStore.STORAGE_KEY,
+            """{"version":1,"rows":[{"capability":"FUTURE_CAPABILITY","providerId":"future","instanceId":"default","enabled":false,"priority":3}]}"""
+        ).commit()
+        val toImport = mapOf(ProviderCapability.LYRICS_LOOKUP to listOf(
+            ProviderChoice(ProviderKey("lrclib"), enabled = false, order = 0),
+        ))
+        assertTrue(store.migrateMissing(toImport))
+        val first = preferences.getString(ProviderPreferenceStore.STORAGE_KEY, null)
+        assertTrue(store.migrateMissing(toImport))
+        assertEquals(first, preferences.getString(ProviderPreferenceStore.STORAGE_KEY, null))
+        assertTrue(first!!.contains("FUTURE_CAPABILITY"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun duplicateSelectionIsRejectedBeforeWriting(): Unit = runBlocking {
         store.replaceCapability(ProviderCapability.AUDIO_PLAYBACK, listOf(
