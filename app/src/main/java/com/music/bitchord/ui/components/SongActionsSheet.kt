@@ -251,7 +251,8 @@ fun SongActionsSheet(
             }
             // Navigation is source-owned, even when playback actions are Apple styled.
             val artistNavigation = onOpenSourceOwnedArtist ?: onOpenAppleArtist
-                ?: song.artistId?.let { id -> { onOpenArtist(id) } }
+                ?: song.artistId?.takeUnless { it.startsWith("itunes:") }
+                    ?.let { id -> { onOpenArtist(id) } }
             artistNavigation?.let { open ->
                 ActionRow(
                     icon = Icons.Rounded.Person,
@@ -345,7 +346,8 @@ fun SongActionsSheet(
             )
         }
         val verifiedArtistAction = onOpenSourceOwnedArtist ?: onOpenAppleArtist
-            ?: song.artistId?.let { id -> { onOpenArtist(id) } }
+            ?: song.artistId?.takeUnless { it.startsWith("itunes:") }
+                    ?.let { id -> { onOpenArtist(id) } }
         when {
             verifiedArtistAction != null -> ActionRow(
                 Icons.Rounded.Person,
