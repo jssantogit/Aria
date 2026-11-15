@@ -1,0 +1,125 @@
+# Explicit 2026-11-15 user authorization: "Dispare apk".
+# One-shot ARM64-only physical smoke of unchanged PR212 UI + PR216 Apple integration.
+# Source must have passed Android CI at the exact commit before any build starts.
+name: PR212 + Apple RSS fixes - ARM64 physical smoke APK
+
+on:
+  push:
+    branches:
+      - delivery/pr212-apple-rss-arm64-faebc531-20261115
+    paths:
+      - .github/workflows/pr212-apple-rss-arm64-faebc531.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pr212-itunes-arm64-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm64-devdebug-smoke:
+    name: PR212 frozen UI + Apple RSS fixes - arm64-v8a APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact integration source and smoke trigger
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify no application or UI changes from integration SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          approved="faebc531464d5ce703424b3af58f673f28be0774"
+          trigger=".github/workflows/pr212-apple-rss-arm64-faebc531.yml"
+          git cat-file -e "${approved}^{commit}"
+          git merge-base --is-ancestor "$approved" HEAD
+          changed="$(git diff --name-only "$approved" HEAD)"
+          if [[ "$changed" != "$trigger" ]]; then
+            echo "::error::Smoke source differs from integration commit"
+            printf 'Unexpected changes:\n%s\n' "$changed"
+            exit 1
+          fi
+          echo "Source locked at $approved, only workflow trigger added"
+
+      - name: Require Android CI success at exact source SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/43686743206" --jq '[.head_sha,.status,(.conclusion // "")] | @tsv')"
+            IFS=$'\t' read -r run_sha status conclusion <<< "$response"
+            if [[ "$run_sha" != "faebc531464d5ce703424b3af58f673f28be0774" ]]; then
+              echo "::error::CI checks a different SHA: $run_sha"
+              exit 1
+            fi
+            if [[ "$status" == completed ]]; then
+              if [[ "$conclusion" != success ]]; then
+                echo "::error::Android CI did not approve source: $conclusion"
+                exit 1
+              fi
+              echo "Android CI 43686743206: success at exact source"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Android CI timed out before completing"
+          exit 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Android build properties
+        shell: bash
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+
+      - name: Build Android devDebug
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+
+      - name: Select exactly one ARM64 APK and record SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="app/build/outputs/apk/dev/debug"
+          mapfile -d '' candidates < <(find "$output_dir" -maxdepth 1 -type f -name '*arm64-v8a*.apk' -print0)
+          if [[ "${#candidates[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one arm64-v8a APK; found ${#candidates[@]}"
+            find "$output_dir" -maxdepth 1 -type f -name '*.apk' -printf '%f\n' || true
+            exit 1
+          fi
+          mkdir -p arm64-smoke
+          apk="arm64-smoke/BitChord-AppleRSS-pr212-arm64-v8a-devDebug.apk"
+          cp "${candidates[0]}" "$apk"
+          {
+            printf 'source_prs=212+216\n'
+            printf 'abi=arm64-v8a\n'
+            printf 'ci_run=43686743206\n'
+            printf 'ci_approved_source=faebc531464d5ce703424b3af58f673f28be0774\n'
+            printf 'build_commit=%s\n' "$(git rev-parse HEAD)"
+            sha256sum "$apk"
+          } > arm64-smoke/manifest-sha256.txt
+          test "$(find arm64-smoke -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
+
+      - name: Publish only ARM64 APK and provenance manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitchord-pr212-apple-rss-arm64-v8a-${{ github.sha }}
+          path: |
+            arm64-smoke/BitChord-AppleRSS-pr212-arm64-v8a-devDebug.apk
+            arm64-smoke/manifest-sha256.txt
+          if-no-files-found: error
+          retention-days: 14
