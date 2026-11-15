@@ -1,8 +1,10 @@
 package com.music.bitchord.data.providers
 
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 
 /** A request was denied before dispatch, or invalidated before publication. */
 sealed interface ProviderCallResult<out T> {
@@ -17,8 +19,9 @@ sealed interface ProviderCallResult<out T> {
  *
  * The adapter lambda is not called unless the current gate permits it.
  * When the specific (capability, provider instance) is revoked mid-flight,
- * the active child operation is cancelled immediately and Stale is returned.
- * External caller cancellation is preserved and propagated.
+ * the active child job is cancelled immediately and Stale is returned without
+ * cancelling the caller's outer coroutine scope. Adapter runtime exceptions
+ * are captured as Failed(cause) without poisoning parent scopes.
  */
 class ProviderQueryExecutor(private val gate: ProviderPolicyGate) {
     suspend fun <T> execute(
@@ -27,26 +30,37 @@ class ProviderQueryExecutor(private val gate: ProviderPolicyGate) {
         operation: suspend () -> T,
     ): ProviderCallResult<T> {
         val ticket = gate.open(capability, key) ?: return ProviderCallResult.Denied
-        return coroutineScope {
-            var revoked = false
-            val job = async { operation() }
-            val unregister = gate.onRevoke(ticket) {
-                revoked = true
-                job.cancel(CancellationException("Provider capability revoked"))
+        val callerJob = coroutineContext[Job]
+        val operationJob = Job(callerJob)
+        val revoked = AtomicBoolean(false)
+        val unregister = gate.onRevoke(ticket) {
+            revoked.set(true)
+            operationJob.cancel(CancellationException("Provider capability revoked"))
+        }
+        return try {
+            val value = withContext(operationJob) {
+                operation()
             }
-            try {
-                val value = job.await()
-                if (!revoked && gate.accept(ticket)) ProviderCallResult.Success(value)
-                else ProviderCallResult.Stale
-            } catch (cancelled: CancellationException) {
-                if (revoked || !gate.accept(ticket)) ProviderCallResult.Stale
-                else throw cancelled
-            } catch (failure: Exception) {
-                if (!revoked && gate.accept(ticket)) ProviderCallResult.Failed(failure)
-                else ProviderCallResult.Stale
-            } finally {
-                unregister()
+            if (!revoked.get() && gate.accept(ticket)) {
+                ProviderCallResult.Success(value)
+            } else {
+                ProviderCallResult.Stale
             }
+        } catch (cancelled: CancellationException) {
+            if (revoked.get() || !gate.accept(ticket)) {
+                ProviderCallResult.Stale
+            } else {
+                throw cancelled
+            }
+        } catch (failure: Exception) {
+            if (!revoked.get() && gate.accept(ticket)) {
+                ProviderCallResult.Failed(failure)
+            } else {
+                ProviderCallResult.Stale
+            }
+        } finally {
+            unregister()
+            operationJob.cancel()
         }
     }
 }

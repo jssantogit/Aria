@@ -15,9 +15,10 @@ import kotlinx.coroutines.flow.StateFlow
 internal object ProviderRuntime {
     @Volatile private var session: ProviderCapabilitySession? = null
     @Volatile private var installedInProcess: Boolean = false
+    @Volatile private var testGateOverride: ProviderPolicyGate? = null
 
-    private val plainJvmTestGate: ProviderPolicyGate by lazy {
-        val mb = ProviderKey("musicbrainz")
+    private val plainUnitTestGate: ProviderPolicyGate by lazy {
+        val mb = BuiltInProviderKeys.MUSICBRAINZ
         val caps = setOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
@@ -31,9 +32,16 @@ internal object ProviderRuntime {
         )
     }
 
-    fun isAndroidEnvironment(): Boolean = installedInProcess || runCatching {
-        Build.VERSION.SDK_INT != 0
-    }.getOrDefault(false)
+    private fun isUnitTestHarness(): Boolean {
+        if (installedInProcess) return false
+        val isRobolectric = runCatching {
+            Build.FINGERPRINT.equals("robolectric", ignoreCase = true) ||
+                Class.forName("org.robolectric.Robolectric") != null
+        }.getOrDefault(false)
+        if (isRobolectric) return true
+        val isAndroidDevice = runCatching { Build.VERSION.SDK_INT != 0 }.getOrDefault(false)
+        return !isAndroidDevice
+    }
 
     fun install(context: Context) {
         installedInProcess = true
@@ -43,31 +51,44 @@ internal object ProviderRuntime {
             val prefs = context.applicationContext.getSharedPreferences(
                 "bit_chord_provider_capabilities", Context.MODE_PRIVATE,
             )
-            val mb = ProviderKey("musicbrainz")
             session = ProviderCapabilitySession(
                 store = ProviderPreferenceStore(prefs),
-                descriptors = listOf(ProviderDescriptor(
-                    key = mb,
-                    capabilities = setOf(
-                        ProviderCapability.CATALOG_SEARCH,
-                        ProviderCapability.EDITORIAL_DISCOGRAPHY,
-                        ProviderCapability.IDENTITY,
+                descriptors = listOf(
+                    BuiltInProviderDescriptors.musicBrainz(ProviderReadiness.READY),
+                    BuiltInProviderDescriptors.coverArtArchive(ProviderReadiness.READY),
+                    BuiltInProviderDescriptors.itunes(ProviderReadiness.NOT_IMPLEMENTED),
+                    BuiltInProviderDescriptors.appleArtistArt(ProviderReadiness.NOT_IMPLEMENTED),
+                    BuiltInProviderDescriptors.discogs(
+                        tokenConfigured = false,
+                        implemented = false,
                     ),
-                    readiness = ProviderReadiness.READY,
-                )),
+                ) + BuiltInProviderDescriptors.offeredLyrics(ProviderReadiness.READY),
             )
         }
     }
 
     /** Null outside an installed Android runtime (e.g. plain JVM tests). */
-    fun gateOrNull(): ProviderPolicyGate? = session?.gate
+    fun gateOrNull(): ProviderPolicyGate? = session?.gate ?: testGateOverride
 
     /**
-     * Cache reads fail closed in any Android runtime if the session gate is
-     * missing; only pure non-Android JVM tests fall back to a plain test gate.
+     * In production Android, absence of an installed session gate fails closed
+     * (returns null so ProviderCachedReadAccess denies reads). Only non-installed
+     * JVM/Robolectric unit test harnesses use an explicit test gate.
      */
     fun gateForCacheReadOrNull(): ProviderPolicyGate? =
-        if (isAndroidEnvironment()) session?.gate else plainJvmTestGate
+        session?.gate
+            ?: testGateOverride
+            ?: if (isUnitTestHarness()) plainUnitTestGate else null
+
+    fun setTestGate(gate: ProviderPolicyGate?) {
+        testGateOverride = gate
+    }
+
+    fun resetForTesting() {
+        session = null
+        installedInProcess = false
+        testGateOverride = null
+    }
 
     fun sessionOrNull(): ProviderCapabilitySession? = session
 
@@ -84,7 +105,7 @@ internal object ProviderRuntime {
      */
     suspend fun migrateMusicBrainzLegacyAccess(): Boolean {
         val current = session ?: return false
-        val key = ProviderKey("musicbrainz")
+        val key = BuiltInProviderKeys.MUSICBRAINZ
         val legacy = listOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,

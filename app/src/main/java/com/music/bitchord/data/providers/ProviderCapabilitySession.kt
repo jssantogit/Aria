@@ -19,7 +19,8 @@ class ProviderCapabilitySession(
 ) {
     private val lock = Mutex()
     private var choices: Map<ProviderCapability, List<ProviderChoice>> = emptyMap()
-    private val quarantined = mutableSetOf<ProviderCapability>()
+    private val quarantinedProviders = mutableSetOf<Pair<ProviderCapability, ProviderKey>>()
+    private val quarantinedCapabilities = mutableSetOf<ProviderCapability>()
     private val health = mutableMapOf<ProviderKey, ProviderOperationalHealth>()
     private var initialized: Boolean = false
     private var storageFailure: Boolean = false
@@ -30,11 +31,15 @@ class ProviderCapabilitySession(
     /** Immutable, non-secret status for future presentation or diagnostics. */
     val state: StateFlow<ProviderSessionSnapshot> = _state.asStateFlow()
 
+    private fun allQuarantinedCapabilities(): Set<ProviderCapability> =
+        quarantinedCapabilities + quarantinedProviders.map { it.first }
+
     private fun publishSnapshot() {
+        val allQuarantined = allQuarantinedCapabilities()
         val status = when {
             storageFailure -> ProviderSessionStatus.STORAGE_ERROR
             !initialized -> ProviderSessionStatus.BOOTING
-            quarantined.isNotEmpty() -> ProviderSessionStatus.PERSISTING
+            allQuarantined.isNotEmpty() -> ProviderSessionStatus.PERSISTING
             else -> ProviderSessionStatus.READY
         }
         val eligible = ProviderCapability.entries.mapNotNull { capability ->
@@ -46,17 +51,32 @@ class ProviderCapabilitySession(
             status = status,
             configured = choices.mapValues { (_, selections) -> selections.toList() },
             eligible = eligible,
-            quarantined = quarantined.toSet(),
+            quarantined = allQuarantined,
+            quarantinedProviders = quarantinedProviders.toSet(),
             health = health.toMap(),
         )
     }
 
-    private fun effectivePolicy(): ProviderCapabilityPolicy =
-        ProviderCapabilityPolicy(
+    private fun effectivePolicy(): ProviderCapabilityPolicy {
+        val effectiveChoices = ProviderCapability.entries.associateWith { capability ->
+            if (capability in quarantinedCapabilities) {
+                emptyList()
+            } else {
+                choices[capability].orEmpty().map { choice ->
+                    if ((capability to choice.key) in quarantinedProviders) {
+                        choice.copy(enabled = false)
+                    } else {
+                        choice
+                    }
+                }
+            }
+        }
+        return ProviderCapabilityPolicy(
             descriptors = descriptors,
-            choices = choices + quarantined.associateWith { emptyList<ProviderChoice>() },
+            choices = effectiveChoices,
             health = health,
         )
+    }
 
     /**
      * Import only missing legacy categories. An existing explicit opt-out
@@ -83,7 +103,8 @@ class ProviderCapabilitySession(
             return@withLock false
         }
         choices = loaded
-        quarantined.clear()
+        quarantinedProviders.clear()
+        quarantinedCapabilities.clear()
         initialized = true
         storageFailure = false
         gate.replace(effectivePolicy())
@@ -92,11 +113,11 @@ class ProviderCapabilitySession(
     }
 
     /**
-     * Immediate capability-local revocation before durable I/O.
+     * Immediate per-(capability, provider instance) revocation before durable I/O.
      *
-     * A failed commit keeps the affected capability quarantined even when
-     * another category is edited later. A subsequent successful commit for
-     * that capability recovers it cleanly without re-enabling opt-outs.
+     * Only the specific provider instances whose authorization changed are
+     * quarantined before disk commit; unaffected sibling providers in the same
+     * capability keep their active tickets and in-flight requests intact.
      */
     suspend fun update(
         capability: ProviderCapability,
@@ -106,13 +127,24 @@ class ProviderCapabilitySession(
         require(next.distinctBy { it.key }.size == next.size) {
             "Duplicate provider instance for $capability"
         }
-        if (capability !in quarantined && choices[capability] == next) {
+        val capabilityQuarantined = capability in allQuarantinedCapabilities()
+        if (!capabilityQuarantined && choices[capability] == next) {
             return@withLock true // stable policy, no network revocation or disk I/O
         }
 
-        quarantined.add(capability)
+        val previousByKey = choices[capability].orEmpty().associateBy(ProviderChoice::key)
+        val nextByKey = next.associateBy(ProviderChoice::key)
+        val changedKeys = (previousByKey.keys + nextByKey.keys).filter { key ->
+            previousByKey[key]?.enabled != nextByKey[key]?.enabled
+        }
+        if (changedKeys.isEmpty()) {
+            quarantinedCapabilities.add(capability)
+        } else {
+            changedKeys.forEach { key -> quarantinedProviders.add(capability to key) }
+        }
         gate.replace(effectivePolicy())
         publishSnapshot()
+
         if (!store.replaceCapability(capability, next)) {
             storageFailure = true
             publishSnapshot()
@@ -120,9 +152,10 @@ class ProviderCapabilitySession(
         }
 
         choices = choices + (capability to next.toList())
-        quarantined.remove(capability)
+        quarantinedCapabilities.remove(capability)
+        quarantinedProviders.removeAll { it.first == capability }
         gate.replace(effectivePolicy())
-        if (quarantined.isEmpty()) storageFailure = false
+        if (allQuarantinedCapabilities().isEmpty()) storageFailure = false
         publishSnapshot()
         true
     }
@@ -147,14 +180,17 @@ class ProviderCapabilitySession(
         capability: ProviderCapability,
         key: ProviderKey,
     ): ProviderCapabilityStatus = lock.withLock {
-        effectivePolicy().status(capability, key, capability in quarantined)
+        val isQuarantined = capability in quarantinedCapabilities ||
+            (capability to key) in quarantinedProviders
+        effectivePolicy().status(capability, key, isQuarantined)
     }
 
     private fun failClosed(storageError: Boolean) {
         initialized = false
         storageFailure = storageError
         choices = emptyMap()
-        quarantined.clear()
+        quarantinedProviders.clear()
+        quarantinedCapabilities.clear()
         gate.replace(ProviderCapabilityPolicy(descriptors, health = health))
         publishSnapshot()
     }

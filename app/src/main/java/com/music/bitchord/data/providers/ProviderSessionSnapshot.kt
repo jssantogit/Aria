@@ -19,5 +19,6 @@ data class ProviderSessionSnapshot(
     val configured: Map<ProviderCapability, List<ProviderChoice>> = emptyMap(),
     val eligible: Map<ProviderCapability, List<ProviderKey>> = emptyMap(),
     val quarantined: Set<ProviderCapability> = emptySet(),
+    val quarantinedProviders: Set<Pair<ProviderCapability, ProviderKey>> = emptySet(),
     val health: Map<ProviderKey, ProviderOperationalHealth> = emptyMap(),
 )

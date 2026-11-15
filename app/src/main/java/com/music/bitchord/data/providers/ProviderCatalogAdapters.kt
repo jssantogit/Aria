@@ -2,11 +2,11 @@ package com.music.bitchord.data.providers
 
 import com.music.bitchord.data.lyrics.LyricsSource
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 
 /** Canonical provider identifiers shared across Android adapters. */
 internal object BuiltInProviderKeys {
@@ -104,7 +104,8 @@ internal object BuiltInProviderDescriptors {
  *
  * Admission is checked BEFORE entering the rate-limiter queue, CANCELLED
  * immediately if revoked while queued, re-checked AFTER exiting the queue
- * before opening the network socket, and re-checked BEFORE returning bytes.
+ * before opening the network socket, and re-checked again at the outer return
+ * boundary after await().
  */
 internal class RateLimitedProviderTransport(
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
@@ -126,9 +127,15 @@ internal class RateLimitedProviderTransport(
             }
         }
 
-        return coroutineScope {
-            var revoked = false
-            val job = async {
+        val callerJob = coroutineContext[Job]
+        val transportJob = Job(callerJob)
+        val revoked = AtomicBoolean(false)
+        val unregister = gate.onRevoke(ticket) {
+            revoked.set(true)
+            transportJob.cancel(CancellationException("Provider capability revoked"))
+        }
+        return try {
+            val result = withContext(transportJob) {
                 ensureAdmitted()
                 val response = scheduleLimited {
                     ensureAdmitted()
@@ -137,20 +144,19 @@ internal class RateLimitedProviderTransport(
                 ensureAdmitted()
                 response
             }
-            val unregister = gate.onRevoke(ticket) {
-                revoked = true
-                job.cancel(CancellationException("Provider capability revoked"))
+            // Final boundary verification after withContext/await completes.
+            if (revoked.get() || !gate.accept(ticket)) {
+                throw ProviderRequestDeniedException(capability, provider)
             }
-            try {
-                job.await()
-            } catch (cancelled: CancellationException) {
-                if (revoked || !gate.accept(ticket)) {
-                    throw ProviderRequestDeniedException(capability, provider)
-                }
-                throw cancelled
-            } finally {
-                unregister()
+            result
+        } catch (cancelled: CancellationException) {
+            if (revoked.get() || !gate.accept(ticket)) {
+                throw ProviderRequestDeniedException(capability, provider)
             }
+            throw cancelled
+        } finally {
+            unregister()
+            transportJob.cancel()
         }
     }
 }
@@ -159,6 +165,11 @@ internal class RateLimitedProviderTransport(
  * Guards secondary image/CDN HTTP probes (such as HttpURLConnection range
  * requests for 600/720/1024px artwork variants or artist portraits) that
  * bypass the primary catalog Ktor client.
+ *
+ * - If [capability] is NOT permitted for [provider] (or is revoked mid-probe),
+ *   returns [deniedFallback] (default `null` — never a URL from the disabled provider).
+ * - If [capability] IS permitted and remains accepted after a probe error,
+ *   returns [onProbeError].
  */
 internal class ArtworkProbePolicyGuard(
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
@@ -166,33 +177,38 @@ internal class ArtworkProbePolicyGuard(
     suspend fun <T> probe(
         capability: ProviderCapability,
         provider: ProviderKey,
-        fallback: T,
-        executeProbe: suspend () -> T,
-    ): T {
+        deniedFallback: T? = null,
+        onProbeError: () -> T? = { null },
+        executeProbe: suspend () -> T?,
+    ): T? {
         require(
             capability == ProviderCapability.RELEASE_ARTWORK ||
                 capability == ProviderCapability.ARTIST_ARTWORK,
         ) { "ArtworkProbePolicyGuard only governs artwork capabilities" }
-        val gate = gateProvider() ?: return fallback
-        val ticket = gate.open(capability, provider) ?: return fallback
-        return coroutineScope {
-            var revoked = false
-            val job = async { executeProbe() }
-            val unregister = gate.onRevoke(ticket) {
-                revoked = true
-                job.cancel(CancellationException("Artwork capability revoked"))
+        val gate = gateProvider() ?: return deniedFallback
+        val ticket = gate.open(capability, provider) ?: return deniedFallback
+        val callerJob = coroutineContext[Job]
+        val probeJob = Job(callerJob)
+        val revoked = AtomicBoolean(false)
+        val unregister = gate.onRevoke(ticket) {
+            revoked.set(true)
+            probeJob.cancel(CancellationException("Artwork capability revoked"))
+        }
+        return try {
+            val result = withContext(probeJob) { executeProbe() }
+            if (revoked.get() || !gate.accept(ticket)) {
+                deniedFallback
+            } else {
+                result ?: onProbeError()
             }
-            try {
-                val result = job.await()
-                if (!revoked && gate.accept(ticket)) result else fallback
-            } catch (cancelled: CancellationException) {
-                if (revoked || !gate.accept(ticket)) fallback
-                else throw cancelled
-            } catch (_: Exception) {
-                fallback
-            } finally {
-                unregister()
-            }
+        } catch (cancelled: CancellationException) {
+            if (revoked.get() || !gate.accept(ticket)) deniedFallback
+            else throw cancelled
+        } catch (_: Exception) {
+            if (!revoked.get() && gate.accept(ticket)) onProbeError() else deniedFallback
+        } finally {
+            unregister()
+            probeJob.cancel()
         }
     }
 }
