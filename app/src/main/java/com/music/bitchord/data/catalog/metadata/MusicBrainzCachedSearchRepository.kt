@@ -5,6 +5,10 @@ import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderReactiveCache
+import com.music.bitchord.data.providers.ProviderSessionSnapshot
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /** Bounded per-kind reads, usable by offline Home, typeahead and recovery. */
 internal data class MusicBrainzCachedSearchLimits(
@@ -52,6 +56,22 @@ internal class MusicBrainzCachedSearchRepository(
     private val database: CanonicalCatalogDatabase,
     private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
 ) {
+    /**
+     * A future REA observer can subscribe without recreating this repository
+     * or forcing a Room refresh on unrelated provider setting changes.
+     * Switching a provider off immediately emits an empty source snapshot.
+     */
+    fun observe(
+        query: String,
+        limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
+        providerState: StateFlow<ProviderSessionSnapshot>,
+    ): Flow<MusicBrainzCachedSearchSnapshot> =
+        ProviderReactiveCache(providerState).observe(
+            ProviderCapability.CATALOG_SEARCH,
+            ProviderKey("musicbrainz"),
+            MusicBrainzCachedSearchSnapshot(),
+        ) { search(query, limits) }
+
     suspend fun search(
         query: String,
         limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
