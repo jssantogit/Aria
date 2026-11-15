@@ -73,14 +73,14 @@ internal class ApplePr212NativeCatalogService(
         onProgress(page)
         // Publish append-only local display pages without ever rebuilding
         // another screen. The page's native scroll identity stays unchanged.
-        repeat(12) {
-            if (!pager.snapshot().hasMore) return@repeat
+        for (pageIndex in 0 until 12) {
+            if (!pager.snapshot().hasMore) break
             val next = pager.loadMore() as?
                 com.music.bitchord.data.catalog.metadata.AppleArtistPageLoad.Success
-                ?: return@repeat
+                ?: break
             val updated = ApplePr212DetailProjection.artistPage(
                 artist, next.snapshot.visible,
-            ) ?: return@repeat
+            ) ?: continue
             if (updated.sections != page.sections) {
                 page = updated
                 onProgress(page)
