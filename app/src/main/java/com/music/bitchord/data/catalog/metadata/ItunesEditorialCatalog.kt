@@ -85,18 +85,29 @@ internal object ItunesEditorialCatalog {
     }
 
     /**
-     * The Search API returns collectionType=Album for EPs and singles as well.
-     * Only a suffix explicitly present in Apple's own editorial display name
-     * can qualify EP/Single at this stage. Unknown is NOT silently an Album,
-     * nor is a MusicBrainz primary type allowed to control this label.
+     * Apple's public collectionType=Album does not distinguish releases.
+     * Its own explicit "- EP", "- Single" and numbered "2nd EP" labels win.
+     * For unlabeled releases, Apple's own trackCount >= 7 is album evidence
+     * under Apple's published Music Style Guide (without any MB title guess).
+     * Four-to-six tracks are not enough to assert EP without total duration.
      */
-    fun formatFromAppleTitle(title: String): ItunesEditorialReleaseFormat {
-        val normalized = title.trim().lowercase(Locale.ROOT)
+    private val numberedAppleEp = Regex(
+        """\b[1-9][0-9]*(?:st|nd|rd|th)\s+EP\b""", RegexOption.IGNORE_CASE,
+    )
+    fun formatFromAppleTitle(
+        title: String,
+        trackCount: Int? = null,
+    ): ItunesEditorialReleaseFormat {
+        val normalized = java.text.Normalizer.normalize(
+            title.trim(), java.text.Normalizer.Form.NFKC,
+        ).lowercase(Locale.ROOT)
         return when {
             normalized.endsWith(" - ep") || normalized.endsWith(" – ep") ||
-                normalized.endsWith(" — ep") -> ItunesEditorialReleaseFormat.EP
+                normalized.endsWith(" — ep") ||
+                numberedAppleEp.containsMatchIn(normalized) -> ItunesEditorialReleaseFormat.EP
             normalized.endsWith(" - single") || normalized.endsWith(" – single") ||
                 normalized.endsWith(" — single") -> ItunesEditorialReleaseFormat.SINGLE
+            trackCount != null && trackCount >= 7 -> ItunesEditorialReleaseFormat.ALBUM
             else -> ItunesEditorialReleaseFormat.UNCLASSIFIED
         }
     }
@@ -169,7 +180,7 @@ internal object ItunesEditorialCatalog {
                     artistId = album.artistId,
                     releaseDate = album.releaseDate,
                     genre = album.genre,
-                    format = formatFromAppleTitle(album.title),
+                    format = formatFromAppleTitle(album.title, album.trackCount),
                     artworkUrl = album.artworkUrl,
                     trackCount = album.trackCount,
                     tracks = albumTracks,

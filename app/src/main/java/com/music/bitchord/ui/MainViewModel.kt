@@ -3627,20 +3627,61 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
+            // Start verifying covers as soon as the FIRST Apple products arrive.
+            // The public Search API is globally rate-limited; waiting for all
+            // 12-24 probes before upgrading 100px art caused blurry Home heroes.
+            val coverPermits = Semaphore(2)
+            val scheduledCoverIds = mutableSetOf<String>()
+            val verifiedCovers =
+                ConcurrentHashMap<String, Pair<String, String>>()
+            fun withVerifiedCovers(
+                rows: List<CanonicalCatalogSearchRow>,
+            ): List<CanonicalCatalogSearchRow> = rows.map { row ->
+                val cover = verifiedCovers[row.musicBrainzId]
+                if (cover != null && row.artworkUri == cover.first)
+                    row.copy(artworkUri = cover.second)
+                else row
+            }
             val outcome = try {
                 com.music.bitchord.data.catalog.metadata.ApplePr212HomeCoverage()
                     .discover(seeds, "br", onProgress = { releases ->
                         if (worldwideReleaseEpoch.isCurrent(generation)) {
-                            _canonicalWorldwideReleases.value =
-                                releases.mapNotNull(ApplePr212CatalogRows::album)
+                            val rows = releases.mapNotNull(ApplePr212CatalogRows::album)
+                            _canonicalWorldwideReleases.value = withVerifiedCovers(rows)
+                            for (row in rows) {
+                                if (scheduledCoverIds.size >= 24) break
+                                val original = row.artworkUri ?: continue
+                                if (!isVerifiedAppleEditorialRelease(row) ||
+                                    !scheduledCoverIds.add(row.musicBrainzId)) continue
+                                val index = scheduledCoverIds.size - 1
+                                launch {
+                                    coverPermits.withPermit {
+                                        val improved = appleArtwork.upgrade(
+                                            original, if (index < 4) 1024 else 600,
+                                        )
+                                        if (improved != null && improved != original &&
+                                            worldwideReleaseEpoch.isCurrent(generation)
+                                        ) {
+                                            verifiedCovers[row.musicBrainzId] =
+                                                original to improved
+                                            _canonicalWorldwideReleases.update { live ->
+                                                applePr212RowsWithVerifiedCover(
+                                                    live, row.musicBrainzId,
+                                                    original, improved,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     })
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { null }
             if (!worldwideReleaseEpoch.isCurrent(generation)) return@launch
-            val rows = (outcome as?
+            val rows = withVerifiedCovers((outcome as?
                 com.music.bitchord.data.catalog.metadata.AppleEditorialLoad.Success)
-                ?.releases.orEmpty().mapNotNull(ApplePr212CatalogRows::album)
+                ?.releases.orEmpty().mapNotNull(ApplePr212CatalogRows::album))
             if (rows.isNotEmpty()) {
                 _canonicalWorldwideReleases.value = rows
                 worldwideReleaseFetchedAtMs = System.currentTimeMillis()
@@ -3652,16 +3693,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 worldwideReleaseRetryAtMs = System.currentTimeMillis() + 15L * 60_000L
             }
             _canonicalWorldwideLoading.value = false
-            if (rows.isNotEmpty()) {
-                enrichApplePr212Covers(
-                    rows,
-                    stillCurrent = { worldwideReleaseEpoch.isCurrent(generation) },
-                ) { id, original, improved ->
-                    _canonicalWorldwideReleases.update { live ->
-                        applePr212RowsWithVerifiedCover(live, id, original, improved)
-                    }
-                }
-            }
+            // Incremental image jobs finish independently of the text shelves.
+            // Each confirmed Apple URL patches only its exact product card.
         }
     }
 

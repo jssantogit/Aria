@@ -69,6 +69,37 @@ class ItunesEditorialCatalogTest {
         assertTrue(result.all { it.musicBrainzReleaseGroupId == null })
     }
 
+    @Test fun numberedNewJeansEpsUseAppleEditorialWordsAndNjumxIsAlbumByAppleTrackCount() {
+        val releases = ItunesEditorialCatalog.assemble("br", listOf(
+            album(201, "NewJeans 2nd EP 'Get Up'").copy(trackCount = 6),
+            album(202, "NewJeans 1st EP 'New Jeans'").copy(trackCount = 4),
+            album(203, "NJWMX").copy(trackCount = 12),
+            album(204, "How Sweet - EP").copy(trackCount = 2),
+            album(205, "Unknown short release").copy(trackCount = 5),
+        ))
+        assertEquals(ItunesEditorialReleaseFormat.EP,
+            releases.single { it.appleCollectionId == 201L }.format)
+        assertEquals(ItunesEditorialReleaseFormat.EP,
+            releases.single { it.appleCollectionId == 202L }.format)
+        assertEquals(ItunesEditorialReleaseFormat.ALBUM,
+            releases.single { it.appleCollectionId == 203L }.format)
+        assertEquals(ItunesEditorialReleaseFormat.EP,
+            releases.single { it.appleCollectionId == 204L }.format)
+        assertEquals(ItunesEditorialReleaseFormat.UNCLASSIFIED,
+            releases.single { it.appleCollectionId == 205L }.format)
+    }
+
+    @Test fun AppleExplicitEpOverrulesLargeTrackCountAndUnrelatedEpTextIsNotProof() {
+        assertEquals(ItunesEditorialReleaseFormat.EP,
+            ItunesEditorialCatalog.formatFromAppleTitle("Expanded - EP", 12))
+        assertEquals(ItunesEditorialReleaseFormat.UNCLASSIFIED,
+            ItunesEditorialCatalog.formatFromAppleTitle("Sheep", 3))
+        assertEquals(ItunesEditorialReleaseFormat.UNCLASSIFIED,
+            ItunesEditorialCatalog.formatFromAppleTitle("The EPIC edition", 3))
+        assertEquals(ItunesEditorialReleaseFormat.ALBUM,
+            ItunesEditorialCatalog.formatFromAppleTitle("Complete Collection", 7))
+    }
+
     @Test fun appleRowsDoNotMergeSameTitleEditionsOrInheritMusicBrainzType() {
         val apple = listOf(
             album(10, "EASY", date = "2024-04-01"),
