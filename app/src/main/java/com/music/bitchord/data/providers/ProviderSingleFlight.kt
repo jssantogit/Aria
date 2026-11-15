@@ -1,6 +1,6 @@
 package com.music.bitchord.data.providers
 
-import kotlin.coroutines.CancellationException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
