@@ -3774,93 +3774,74 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // Unlike the previous 24 sequential MB title-hint probes,
                     // the two fixed public chart endpoints per market can
                     // independently fill Home with ranked songs and albums.
-                    markets.forEach { market ->
-                        launch {
-                            val songRequest = async {
-                                chartPermits.withPermit {
-                                    appleChartsClient.load(market, ApplePublicChartKind.SONGS)
-                                }
+                    // Album and song feeds must publish independently.
+                    // Previously a slow album request (and optional sales
+                    // fallback) delayed a completed song chart before the
+                    // existing Home hero could even appear.
+                    val publishingScope = this
+                    val completedTypes = mutableMapOf<String, Int>()
+                    suspend fun acceptMarketBatch(
+                        market: String,
+                        newSongs: List<ApplePublicChartEntry>? = null,
+                        newAlbums: List<ApplePublicChartEntry>? = null,
+                    ) {
+                        publishLock.withLock {
+                            if (newSongs != null) {
+                                songs.addAll(newSongs)
+                                someFeedSucceeded = true
                             }
-                            val albumRequest = async {
-                                chartPermits.withPermit {
-                                    appleChartsClient.load(market, ApplePublicChartKind.ALBUMS)
-                                }
+                            if (newAlbums != null) {
+                                albums.addAll(newAlbums)
+                                someFeedSucceeded = true
                             }
-                            // The newer Marketing RSS is streaming
-                            // popularity. On a missing/sparse chart, supplement
-                            // with the independent iTunes Store top-SOLD songs,
-                            // keeping source and rank distinct (101+). Never
-                            // call Search API results an official top chart.
-                            val marketingSongs = songRequest.await()
-                            val storeSales = if (marketingSongs == null ||
-                                marketingSongs.size < 12
-                            ) chartPermits.withPermit {
-                                appleStoreSalesCharts.load(market)
-                            } else null
-                            val incomingSongs = if (marketingSongs != null ||
-                                storeSales != null
-                            ) (marketingSongs.orEmpty() + storeSales.orEmpty())
-                                .distinctBy { it.scopedId } else null
-                            val incomingAlbums = albumRequest.await()
-                            publishLock.withLock {
-                                if (incomingSongs != null) {
-                                    songs.addAll(incomingSongs)
-                                    someFeedSucceeded = true
-                                }
-                                if (incomingAlbums != null) {
-                                    albums.addAll(incomingAlbums)
-                                    someFeedSucceeded = true
-                                }
-                                finishedMarkets.add(market)
-                                if (songs.isNotEmpty() || albums.isNotEmpty()) {
-                                    val previous = _appleHomeCharts.value
-                                    // Preserve successfully promoted artwork
-                                    // when an additional country chart arrives.
-                                    fun patched(entries: List<ApplePublicChartEntry>) =
-                                        entries.map { fresh ->
-                                            val old = (previous.songs + previous.albums)
-                                                .firstOrNull { it.scopedId == fresh.scopedId }
-                                            val oldCover = old?.artwork
-                                            val sameExactCdnAsset =
-                                                oldCover != null && fresh.artwork != null &&
-                                                    listOf(600, 720, 1024).any { px ->
-                                                        com.music.bitchord.data.catalog.metadata
-                                                            .appleHighResolutionArtworkCandidate(
-                                                                fresh.artwork, px,
-                                                            ) == oldCover
-                                                    }
-                                            if (sameExactCdnAsset) fresh.copy(
-                                                artwork = oldCover,
-                                            ) else fresh
-                                        }
-                                    _appleHomeCharts.value = ApplePublicChartsSnapshot(
-                                        songs = patched(songs),
-                                        albums = patched(albums),
-                                        finishedMarkets = finishedMarkets.toSet(),
-                                    )
-                                    publishHome()
-                                }
-                                // Start exact CDN validation early, in bounded
-                                // parallel jobs; never request untrusted hosts.
-                                val covers = (incomingSongs.orEmpty().take(12) +
-                                    incomingAlbums.orEmpty().take(8))
-                                for (entry in covers) {
-                                    val original = entry.artwork ?: continue
-                                    if (!scheduledCovers.add(entry.scopedId) ||
-                                        scheduledCovers.size > 50) continue
-                                    launch {
-                                        coverPermits.withPermit {
-                                            val upgraded = appleArtwork.upgrade(
-                                                original,
-                                                if (entry.kind == ApplePublicChartKind.SONGS &&
-                                                    entry.rank <= 3) 1024 else 600,
-                                            )
-                                            if (upgraded != null && upgraded != original &&
-                                                appleChartsEpoch.isCurrent(generation)
-                                            ) {
+                            completedTypes[market] = (completedTypes[market] ?: 0) + 1
+                            if (completedTypes[market] == 2) finishedMarkets.add(market)
+                            if (songs.isNotEmpty() || albums.isNotEmpty()) {
+                                val previous = _appleHomeCharts.value
+                                fun patched(entries: List<ApplePublicChartEntry>) =
+                                    entries.map { fresh ->
+                                        val old = (previous.songs + previous.albums)
+                                            .firstOrNull { it.scopedId == fresh.scopedId }
+                                        val oldCover = old?.artwork
+                                        val verifiedSameImage =
+                                            oldCover != null && fresh.artwork != null &&
+                                                listOf(600, 720, 1024).any { px ->
+                                                    com.music.bitchord.data.catalog.metadata
+                                                        .appleHighResolutionArtworkCandidate(
+                                                            fresh.artwork, px,
+                                                        ) == oldCover
+                                                }
+                                        if (verifiedSameImage) fresh.copy(
+                                            artwork = oldCover,
+                                        ) else fresh
+                                    }
+                                _appleHomeCharts.value = ApplePublicChartsSnapshot(
+                                    songs = patched(songs),
+                                    albums = patched(albums),
+                                    finishedMarkets = finishedMarkets.toSet(),
+                                )
+                                publishHome()
+                            }
+                            val covers = newSongs.orEmpty().take(12) +
+                                newAlbums.orEmpty().take(8)
+                            for (entry in covers) {
+                                val original = entry.artwork ?: continue
+                                if (!scheduledCovers.add(entry.scopedId) ||
+                                    scheduledCovers.size > 50) continue
+                                publishingScope.launch {
+                                    coverPermits.withPermit {
+                                        val improved = appleArtwork.upgrade(
+                                            original,
+                                            if (entry.kind == ApplePublicChartKind.SONGS &&
+                                                entry.rank <= 3) 1024 else 600,
+                                        )
+                                        if (improved != null && improved != original &&
+                                            appleChartsEpoch.isCurrent(generation)
+                                        ) {
+                                            publishLock.withLock {
                                                 _appleHomeCharts.update { current ->
                                                     applePr212ChartArtworkPatch(
-                                                        current, entry.scopedId, original, upgraded,
+                                                        current, entry.scopedId, original, improved,
                                                     )
                                                 }
                                                 publishHome()
@@ -3869,6 +3850,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     }
                                 }
                             }
+                        }
+                    }
+                    markets.forEach { market ->
+                        launch {
+                            val marketing = chartPermits.withPermit {
+                                appleChartsClient.load(market, ApplePublicChartKind.SONGS)
+                            }
+                            // A sales-chart fallback is explicitly tagged
+                            // as iTunes Store popularity, never streaming.
+                            val sales = if (marketing == null || marketing.size < 12)
+                                chartPermits.withPermit {
+                                    appleStoreSalesCharts.load(market)
+                                } else null
+                            val accepted = if (marketing != null || sales != null)
+                                (marketing.orEmpty() + sales.orEmpty())
+                                    .distinctBy { it.scopedId }
+                            else null
+                            acceptMarketBatch(market, newSongs = accepted)
+                        }
+                        launch {
+                            val releases = chartPermits.withPermit {
+                                appleChartsClient.load(market, ApplePublicChartKind.ALBUMS)
+                            }
+                            acceptMarketBatch(market, newAlbums = releases)
                         }
                     }
                     // Two distinct daily-rotated genre queries use Apple-only

@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.DebugLog as Log
+
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -184,7 +186,14 @@ internal class AppleStoreSalesChartsClient(
         if (!Regex("[a-z]{2}").matches(market)) return null
         val payload = try { transport.get(market) }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { return null }
-        return AppleStoreSalesChartParser.parse(payload, market)
+        catch (_: Exception) {
+            Log.d("AppleStoreChart", "storefront=$market fetch=failed")
+            return null
+        }
+        val parsed = AppleStoreSalesChartParser.parse(payload, market)
+        Log.d("AppleStoreChart",
+            "storefront=$market parse=${if (parsed == null) "invalid" else "ok"} " +
+                "rows=${parsed?.size ?: 0}")
+        return parsed
     }
 }

@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.DebugLog as Log
+
 import android.content.Context
 import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
@@ -207,6 +209,7 @@ internal class AppleHighResolutionArtwork(
     private val telemetry: AppleArtworkProbeTelemetry = AppleArtworkProbeTelemetry.process,
 ) {
     private val cache = ConcurrentHashMap<String, AppleArtworkProbeRecord>()
+    private val diagnosticSamples = java.util.concurrent.atomic.AtomicInteger(0)
     // Striped single-flight locks: at most one network check per URL while
     // unrelated covers can load in parallel. A bounded stripe array avoids
     // an unbounded per-album Mutex map and survives cache eviction.
@@ -246,11 +249,16 @@ internal class AppleHighResolutionArtwork(
                 val accepted = measured?.let { (width, height) ->
                     width >= size && height >= size && width == height
                 } == true
-                telemetry.recordNetwork(
-                    size, accepted,
+                val probeDurationMs =
                     ((System.nanoTime() - requestStarted) / 1_000_000L)
-                        .coerceAtLeast(0),
-                )
+                        .coerceAtLeast(0)
+                telemetry.recordNetwork(size, accepted, probeDurationMs)
+                val sample = diagnosticSamples.incrementAndGet()
+                if (sample <= 12 || sample % 24 == 0) {
+                    // No artwork URL, product identity or user data in logs.
+                    Log.d("AppleArtworkProof",
+                        "size=$size verified=$accepted elapsedMs=$probeDurationMs")
+                }
                 if (cache.size > 192) cache.clear()
                 val record = AppleArtworkProbeRecord(
                     accepted,

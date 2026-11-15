@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.DebugLog as Log
+
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -247,7 +249,16 @@ internal class ApplePublicChartsClient(
         val payload = try {
             transport.get(market, kind)
         } catch (cancelled: CancellationException) { throw cancelled }
-          catch (_: Exception) { return null }
-        return ApplePublicChartParser.parse(payload, market, kind)
+          catch (_: Exception) {
+              Log.d("AppleChart", "storefront=$market kind=${kind.segment} fetch=failed")
+              return null
+          }
+        val parsed = ApplePublicChartParser.parse(payload, market, kind)
+        // Only market, kind, yield and payload byte count; no user data,
+        // title, artist, URL or identifying catalog product is logged.
+        Log.d("AppleChart",
+            "storefront=$market kind=${kind.segment} bytes=${payload.length} " +
+                "parse=${if (parsed == null) "invalid" else "ok"} rows=${parsed?.size ?: 0}")
+        return parsed
     }
 }
