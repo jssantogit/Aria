@@ -50,7 +50,7 @@ class MusicBrainzTransportAdmissionTest {
         val gate = ProviderPolicyGate(policy(true, true, true))
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         var networkCalls = 0
         val transport = object : MusicBrainzTransport {
             override suspend fun get(
@@ -89,7 +89,7 @@ class MusicBrainzTransportAdmissionTest {
         val gate = ProviderPolicyGate(policy(true, true, true))
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         var contacts = 0
         val transport = object : MusicBrainzTransport {
             override suspend fun get(path: String,
