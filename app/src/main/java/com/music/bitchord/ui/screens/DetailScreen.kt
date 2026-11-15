@@ -1288,6 +1288,7 @@ private fun ReleaseHeader(
     // Source-owned local album groups have an equally source-owned artist
     // page even without a YouTube artistId. Do not turn arbitrary album
     // credits into public YouTube browse IDs or do a fuzzy name lookup.
+    val albumArtistContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val albumArtistRoute by androidx.compose.runtime.produceState<String?>(
         initialValue = null, key1 = page.browseId,
     ) {
@@ -1296,8 +1297,8 @@ private fun ReleaseHeader(
         value = try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val credits = com.music.bitchord.data.catalog.CanonicalCatalogDatabase
-                    .get(androidx.compose.ui.platform.LocalContext.current.applicationContext)
-                    .catalogDao().musicBrainzReleaseArtistCredits(releaseId)
+                    .get(albumArtistContext).catalogDao()
+                    .musicBrainzReleaseArtistCredits(releaseId)
                 verifiedCatalogReleaseLeadArtistRoute(page.browseId, credits)
             }
         } catch (c: kotlinx.coroutines.CancellationException) {
