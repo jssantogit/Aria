@@ -29,6 +29,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraphResult
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogReleaseDetail
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
 import com.music.bitchord.data.catalog.metadata.ApplePublicChartsClient
+import com.music.bitchord.data.catalog.metadata.AppleStoreSalesChartsClient
 import com.music.bitchord.data.catalog.metadata.ApplePublicChartsSnapshot
 import com.music.bitchord.data.catalog.metadata.ApplePublicChartKind
 import com.music.bitchord.data.catalog.metadata.ApplePublicChartEntry
@@ -400,6 +401,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val appleHomeRecentPlays: StateFlow<List<ShelfItem>> =
         _appleHomeRecentPlays.asStateFlow()
     private val appleChartsClient by lazy { ApplePublicChartsClient() }
+    private val appleStoreSalesCharts by lazy { AppleStoreSalesChartsClient() }
     private var appleChartsJob: Job? = null
     private val appleChartsEpoch = DiscoveryRequestEpoch()
     private var appleChartsFetchedAtMs = 0L
@@ -3784,7 +3786,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     appleChartsClient.load(market, ApplePublicChartKind.ALBUMS)
                                 }
                             }
-                            val incomingSongs = songRequest.await()
+                            // The newer Marketing RSS is streaming
+                            // popularity. On a missing/sparse chart, supplement
+                            // with the independent iTunes Store top-SOLD songs,
+                            // keeping source and rank distinct (101+). Never
+                            // call Search API results an official top chart.
+                            val marketingSongs = songRequest.await()
+                            val storeSales = if (marketingSongs == null ||
+                                marketingSongs.size < 12
+                            ) chartPermits.withPermit {
+                                appleStoreSalesCharts.load(market)
+                            } else null
+                            val incomingSongs = if (marketingSongs != null ||
+                                storeSales != null
+                            ) (marketingSongs.orEmpty() + storeSales.orEmpty())
+                                .distinctBy { it.scopedId } else null
                             val incomingAlbums = albumRequest.await()
                             publishLock.withLock {
                                 if (incomingSongs != null) {

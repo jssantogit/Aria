@@ -222,9 +222,10 @@ internal fun applePr212NativeHomeFromRows(
             ApplePr212CatalogRoute.parse(row.musicBrainzId) != null &&
             !row.hasCatalogedAsset
     }
-    if (apple.none { it.secondaryTypes == "${APPLE_PR212_HOME_SLOT}0" &&
-            it.kind == CanonicalSearchKind.RECORDING
-        }) return null
+    // Do not regress to old MusicBrainz/Home labels merely because the
+    // streaming chart is temporarily absent. Exact Apple genre/EP evidence
+    // can already populate the *new* native shelves while chart RSS retries.
+    if (apple.isEmpty()) return null
     val genres = applePr212HomeGenres(date)
     val titles = listOf(
         "Mais relevantes pra você", "Reproduções recentes", "Singles e EPs em alta",
@@ -256,5 +257,5 @@ internal fun applePr212NativeHomeFromRows(
                 }.toList()
             if (cards.isNotEmpty()) add(HomeShelf(titles[slot], cards))
         }
-    }.takeIf { it.firstOrNull()?.title == "Mais relevantes pra você" }
+    }.takeIf { it.isNotEmpty() }
 }

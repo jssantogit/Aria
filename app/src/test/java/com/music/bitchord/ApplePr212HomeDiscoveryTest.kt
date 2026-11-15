@@ -194,6 +194,28 @@ class ApplePr212HomeDiscoveryTest {
         ))
     }
 
+    @Test fun chartOutageKeepsVerifiedNewAppleSectionInsteadOfOldHomeCategories() {
+        val date = "2026-11-15"
+        val projection = applePr212HomeProjection(
+            ApplePublicChartsSnapshot(
+                songs = emptyList(),
+                albums = listOf(chart(56L, "Fresh - Single", "br",
+                    kind = ApplePublicChartKind.ALBUMS)),
+            ),
+            recent = emptyList(), genreTracks = emptyMap(),
+            genreAlbums = emptyMap(), date = date,
+        )
+        val rows = applePr212TaggedHomeRows(projection, date)
+        val displayed = applePr212NativeHomeFromRows(
+            rows, emptyList(), "Em alta", date,
+        )!!
+        assertEquals("Singles e EPs em alta", displayed.first().title)
+        assertTrue(displayed.none {
+            it.title in setOf("Lançamentos", "Escolha a dedo", "Mais")
+        })
+        assertFalse(displayed.any { it.title == "Mais relevantes pra você" })
+    }
+
     @Test fun roundRobinPromotesSeveralMarketsWithoutInventingWorldwideRank() {
         val entries = listOf(
             chart(11, "BR 1", "br", rank = 1),

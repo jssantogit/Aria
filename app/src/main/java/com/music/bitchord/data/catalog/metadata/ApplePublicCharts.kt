@@ -22,6 +22,11 @@ internal enum class ApplePublicChartKind(val segment: String) {
     SONGS("songs"), ALBUMS("albums"),
 }
 
+/** Distinguish streaming charts from the legacy iTunes Store sales fallback. */
+internal enum class ApplePublicChartSource {
+    APPLE_MUSIC_MOST_PLAYED, ITUNES_STORE_TOP_SALES,
+}
+
 internal data class ApplePublicChartEntry(
     val storefront: String,
     val kind: ApplePublicChartKind,
@@ -34,6 +39,7 @@ internal data class ApplePublicChartEntry(
     val primaryGenre: String?,
     val releaseDate: String?,
     val artwork: String?,
+    val source: ApplePublicChartSource = ApplePublicChartSource.APPLE_MUSIC_MOST_PLAYED,
 ) {
     val scopedId: String
         get() = "itunes:$storefront:${if (kind == ApplePublicChartKind.SONGS) "track" else "album"}:$id"
