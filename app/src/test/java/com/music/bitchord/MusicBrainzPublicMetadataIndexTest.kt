@@ -224,27 +224,27 @@ class MusicBrainzPublicMetadataIndexTest {
             val artistMbid = "b51c672b-85e0-48fe-8648-470a2422229f"
             val groupId = "529f87a1-1081-48a4-8ee1-3c08de229858"
             val editionId = "271b31f8-8ab6-483c-97d9-8f0fabb2d4f4"
-            index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, "aespa", null, \"KR\")))
+            index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, "aespa", null, "KR")))
             index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
-                groupId, \"SUPER REAL ME\", \"EP\", \"2024-03-25\", \"aespa\")))
+                groupId, "SUPER REAL ME", "EP", "2024-03-25", "aespa")))
             index.persistReleases(listOf(MusicBrainzReleaseHit(
-                editionId, \"SUPER REAL ME\", \"XW\", \"2024-03-25\", \"aespa\")))
-            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups(\"New Jeans\", 10).single().artworkUri)
-            assertEquals(null, db.catalogDao().searchKnownMusicBrainzReleases(\"New Jeans\", 10).single().artworkUri)
-            daoUpsertCoverArt(db, \"release-group:front-v3\", groupId, \"https://archive.org/stale-unverified-video.jpg\",
-                1000L, thumbnailUri = \"https://archive.org/stale-poster-thumb.jpg\")
-            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups(\"New Jeans\", 10).single().artworkUri)
+                editionId, "SUPER REAL ME", "XW", "2024-03-25", "aespa")))
+            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups("New Jeans", 10).single().artworkUri)
+            assertEquals(null, db.catalogDao().searchKnownMusicBrainzReleases("New Jeans", 10).single().artworkUri)
+            daoUpsertCoverArt(db, "release-group:front-v3", groupId, "https://archive.org/stale-unverified-video.jpg",
+                1000L, thumbnailUri = "https://archive.org/stale-poster-thumb.jpg")
+            assertEquals(null, db.catalogDao().searchKnownMusicBrainzGroups("New Jeans", 10).single().artworkUri)
             assertEquals(emptyList<com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity>(),
                 db.catalogDao().verifiedGroupFronts(listOf(groupId)))
-            daoUpsertCoverArt(db, \"release-group:front-v4\", groupId, \"https://archive.org/verified-group-front.jpg\",
-                2000L, thumbnailUri = \"https://archive.org/verified-group-thumb-500.jpg\")
-            daoUpsertCoverArt(db, \"release:front-v3\", editionId, \"https://archive.org/verified-release-front.jpg\", 2000L)
-            assertEquals(\"https://archive.org/verified-group-thumb-500.jpg\",
-                db.catalogDao().searchKnownMusicBrainzGroups(\"New Jeans\", 10).single().artworkUri)
-            assertEquals(\"https://archive.org/verified-group-front.jpg\",
-                db.catalogDao().musicBrainzCoverArtCache(\"release-group:front-v4\", groupId)?.artworkUri)
-            assertEquals(\"https://archive.org/verified-release-front.jpg\",
-                db.catalogDao().searchKnownMusicBrainzReleases(\"New Jeans\", 10).single().artworkUri)
+            daoUpsertCoverArt(db, "release-group:front-v4", groupId, "https://archive.org/verified-group-front.jpg",
+                2000L, thumbnailUri = "https://archive.org/verified-group-thumb-500.jpg")
+            daoUpsertCoverArt(db, "release:front-v3", editionId, "https://archive.org/verified-release-front.jpg", 2000L)
+            assertEquals("https://archive.org/verified-group-thumb-500.jpg",
+                db.catalogDao().searchKnownMusicBrainzGroups("New Jeans", 10).single().artworkUri)
+            assertEquals("https://archive.org/verified-group-front.jpg",
+                db.catalogDao().musicBrainzCoverArtCache("release-group:front-v4", groupId)?.artworkUri)
+            assertEquals("https://archive.org/verified-release-front.jpg",
+                db.catalogDao().searchKnownMusicBrainzReleases("New Jeans", 10).single().artworkUri)
         } finally { db.close() }
     }
 
@@ -253,26 +253,26 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var number = 0
-            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { \"artist-card-${++number}\" })
-            val artistMbid = \"b51c672b-85e0-48fe-8648-470a2422229f\"
-            val groupMbid = \"529f87a1-1081-48a4-8ee1-3c08de229858\"
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "artist-card-${++number}" })
+            val artistMbid = "b51c672b-85e0-48fe-8648-470a2422229f"
+            val groupMbid = "529f87a1-1081-48a4-8ee1-3c08de229858"
             index.persistArtists(listOf(MusicBrainzArtistHit(
-                artistMbid, \"aespa\", \"South Korean group\", \"KR\")))
+                artistMbid, "aespa", "South Korean group", "KR")))
             index.persistArtistGroups(artistMbid, listOf(MusicBrainzReleaseGroupHit(
-                groupMbid, \"SUPER REAL ME\", \"EP\", \"2024-03-25\", \"aespa\",
-                secondaryTypes = \"Remix\",
+                groupMbid, "SUPER REAL ME", "EP", "2024-03-25", "aespa",
+                secondaryTypes = "Remix",
             )))
-            daoUpsertCoverArt(db, \"release-group:front-v4\", groupMbid,
-                \"https://archive.org/verified-album-1200.jpg\", 20_000L,
-                thumbnailUri = \"https://archive.org/verified-album-500.jpg\")
+            daoUpsertCoverArt(db, "release-group:front-v4", groupMbid,
+                "https://archive.org/verified-album-1200.jpg", 20_000L,
+                thumbnailUri = "https://archive.org/verified-album-500.jpg")
             val joined = db.catalogDao().verifiedArtistDiscographyRows(
-                requireNotNull(index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, \"aespa\", null, \"KR\")))[artistMbid])).single()
+                requireNotNull(index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, "aespa", null, "KR")))[artistMbid])).single()
             assertEquals(groupMbid, joined.musicBrainzId)
-            assertEquals(\"https://archive.org/verified-album-500.jpg\", joined.artworkUri)
-            assertEquals(\"Remix\", joined.secondaryTypes)
+            assertEquals("https://archive.org/verified-album-500.jpg", joined.artworkUri)
+            assertEquals("Remix", joined.secondaryTypes)
             val cached = index.cachedArtistGroups(artistMbid).single()
             assertEquals(groupMbid, cached.musicBrainzId)
-            assertEquals(\"Remix\", cached.secondaryTypes)
+            assertEquals("Remix", cached.secondaryTypes)
         } finally { db.close() }
     }
 
@@ -281,16 +281,16 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var seq = 0
-            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { \"legacy-${++seq}\" })
-            val artistMbid = \"b51c672b-85e0-48fe-8648-470a2422229f\"
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "legacy-${++seq}" })
+            val artistMbid = "b51c672b-85e0-48fe-8648-470a2422229f"
             val oldGroup = MusicBrainzReleaseGroupHit(
-                \"22222222-2222-4222-8222-222222222222\",
-                \"Unverified old bootleg\", \"Album\", \"2020\", \"NewJeans\")
+                "22222222-2222-4222-8222-222222222222",
+                "Unverified old bootleg", "Album", "2020", "NewJeans")
             val newGroup = MusicBrainzReleaseGroupHit(
-                \"33333333-3333-4333-8333-333333333333\",
-                \"Get Up\", \"EP\", \"2023-07-21\", \"NewJeans\")
+                "33333333-3333-4333-8333-333333333333",
+                "Get Up", "EP", "2023-07-21", "NewJeans")
             val artistLocal = requireNotNull(index.persistArtists(listOf(
-                MusicBrainzArtistHit(artistMbid, \"NewJeans\", null, \"KR\")
+                MusicBrainzArtistHit(artistMbid, "NewJeans", null, "KR")
             ))[artistMbid])
             val groupLocal = requireNotNull(index.persistReleaseGroups(listOf(oldGroup))[
                 oldGroup.musicBrainzId])
@@ -301,10 +301,10 @@ class MusicBrainzPublicMetadataIndexTest {
             assertEquals(1, db.catalogDao().musicBrainzArtistGroupMembershipCount(artistLocal))
 
             index.persistArtistGroups(artistMbid, listOf(newGroup))
-            assertEquals(listOf(\"Get Up\"), index.cachedArtistGroups(artistMbid).map { it.title })
+            assertEquals(listOf("Get Up"), index.cachedArtistGroups(artistMbid).map { it.title })
             assertEquals(2, db.catalogDao().musicBrainzArtistGroupMembershipCount(artistLocal))
             index.persistArtistGroups(artistMbid, listOf(oldGroup))
-            assertEquals(setOf(\"Get Up\", \"Unverified old bootleg\"),
+            assertEquals(setOf("Get Up", "Unverified old bootleg"),
                 index.cachedArtistGroups(artistMbid).map { it.title }.toSet())
         } finally { db.close() }
     }
@@ -314,25 +314,25 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var next = 0
-            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { \"audio-${++next}\" })
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "audio-${++next}" })
             val valid = MusicBrainzRecordingHit(
-                \"11111111-1111-4111-8111-111111111111\", \"Hurt\", \"NewJeans\", 180000,
+                "11111111-1111-4111-8111-111111111111", "Hurt", "NewJeans", 180000,
                 hasOfficialAudioRelease = true, isVideo = false,
             )
             val video = valid.copy(
-                musicBrainzId = \"22222222-2222-4222-8222-222222222222\",
+                musicBrainzId = "22222222-2222-4222-8222-222222222222",
                 isVideo = true,
             )
             val other = valid.copy(
-                musicBrainzId = \"33333333-3333-4333-8333-333333333333\",
+                musicBrainzId = "33333333-3333-4333-8333-333333333333",
                 hasOfficialAudioRelease = false,
             )
             val legacy = valid.copy(
-                musicBrainzId = \"44444444-4444-4444-8444-444444444444\",
+                musicBrainzId = "44444444-4444-4444-8444-444444444444",
                 hasOfficialAudioRelease = null, isVideo = null,
             )
             index.persistRecordings(listOf(valid, video, other, legacy))
-            val raw = db.catalogDao().searchKnownMusicBrainzRecordings(\"Hurt\", 20)
+            val raw = db.catalogDao().searchKnownMusicBrainzRecordings("Hurt", 20)
                 .associateBy { it.musicBrainzId }
             assertEquals(4, raw.size)
             assertEquals(listOf(valid.musicBrainzId), raw.values
@@ -340,14 +340,14 @@ class MusicBrainzPublicMetadataIndexTest {
                 .map { it.musicBrainzId })
             index.persistRecordings(listOf(valid.copy(
                 hasOfficialAudioRelease = null, isVideo = null)))
-            val again = db.catalogDao().searchKnownMusicBrainzRecordings(\"Hurt\", 20)
+            val again = db.catalogDao().searchKnownMusicBrainzRecordings("Hurt", 20)
                 .associateBy { it.musicBrainzId }
             assertEquals(true, again[valid.musicBrainzId]?.hasOfficialAudioRelease)
             assertEquals(false, again[valid.musicBrainzId]?.isVideo)
             index.persistRecordings(listOf(legacy.copy(
                 hasOfficialAudioRelease = true, isVideo = false)))
             assertEquals(setOf(valid.musicBrainzId, legacy.musicBrainzId),
-                db.catalogDao().searchKnownMusicBrainzRecordings(\"Hurt\", 20)
+                db.catalogDao().searchKnownMusicBrainzRecordings("Hurt", 20)
                     .filter(com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording)
                     .map { it.musicBrainzId }.toSet())
         } finally { db.close() }
@@ -358,21 +358,21 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var seq = 0
-            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { \"inv-${++seq}\" })
-            val artistMbid = \"b51c672b-85e0-48fe-8648-470a2422229f\"
-            val groupMbid = \"529f87a1-1081-48a4-8ee1-3c08de229858\"
-            index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, \"aespa\", null, \"KR\")))
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "inv-${++seq}" })
+            val artistMbid = "b51c672b-85e0-48fe-8648-470a2422229f"
+            val groupMbid = "529f87a1-1081-48a4-8ee1-3c08de229858"
+            index.persistArtists(listOf(MusicBrainzArtistHit(artistMbid, "aespa", null, "KR")))
             index.persistArtistGroups(artistMbid, listOf(MusicBrainzReleaseGroupHit(
-                groupMbid, \"SUPER REAL ME\", \"EP\", \"2024-03-25\", \"aespa\")))
+                groupMbid, "SUPER REAL ME", "EP", "2024-03-25", "aespa")))
             assertEquals(null, index.cachedArtistGroups(artistMbid).single().artworkUri)
-            daoUpsertCoverArt(db, \"release-group:front-v3\", groupMbid,
-                \"https://archive.org/stale-direct-shortcut.jpg\", 10_000L,
-                thumbnailUri = \"https://archive.org/stale-direct-500.jpg\")
+            daoUpsertCoverArt(db, "release-group:front-v3", groupMbid,
+                "https://archive.org/stale-direct-shortcut.jpg", 10_000L,
+                thumbnailUri = "https://archive.org/stale-direct-500.jpg")
             assertEquals(null, index.cachedArtistGroups(artistMbid).single().artworkUri)
-            daoUpsertCoverArt(db, \"release-group:front-v4\", groupMbid,
-                \"https://archive.org/verified-album-1200.jpg\", 20_000L,
-                thumbnailUri = \"https://archive.org/verified-album-500.jpg\")
-            assertEquals(\"https://archive.org/verified-album-500.jpg\",
+            daoUpsertCoverArt(db, "release-group:front-v4", groupMbid,
+                "https://archive.org/verified-album-1200.jpg", 20_000L,
+                thumbnailUri = "https://archive.org/verified-album-500.jpg")
+            assertEquals("https://archive.org/verified-album-500.jpg",
                 index.cachedArtistGroups(artistMbid).single().artworkUri)
         } finally { db.close() }
     }
@@ -382,28 +382,28 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var id = 0
-            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { \"offline-title-\" + (++id) })
-            val artist = \"49204a7a-ed85-407a-828f-6fd46f1d8126\"
-            val group = \"9750354e-78df-4058-8758-b5a7a2eccf66\"
-            index.persistArtists(listOf(MusicBrainzArtistHit(artist, \"NewJeans\", null, \"KR\")))
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "offline-title-" + (++id) })
+            val artist = "49204a7a-ed85-407a-828f-6fd46f1d8126"
+            val group = "9750354e-78df-4058-8758-b5a7a2eccf66"
+            index.persistArtists(listOf(MusicBrainzArtistHit(artist, "NewJeans", null, "KR")))
             index.persistArtistGroups(artist, listOf(
-                MusicBrainzReleaseGroupHit(group, \"How Sweet & Bubble Gum\",
-                    \"Single\", \"2024-05-24\", \"NewJeans\"),
+                MusicBrainzReleaseGroupHit(group, "How Sweet & Bubble Gum",
+                    "Single", "2024-05-24", "NewJeans"),
             ))
-            assertEquals(\"How Sweet & Bubble Gum\", index.cachedArtistGroups(artist).single().title)
+            assertEquals("How Sweet & Bubble Gum", index.cachedArtistGroups(artist).single().title)
             index.persistGroupEditions(group, listOf(
-                com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(\"11111111-1111-4111-8111-111111111111\",
-                    \"How Sweet\", \"XW\", \"2024-05-24\", \"NewJeans\", status = \"Official\"),
+                com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit("11111111-1111-4111-8111-111111111111",
+                    "How Sweet", "XW", "2024-05-24", "NewJeans", status = "Official"),
             ))
-            assertEquals(\"How Sweet\", index.cachedArtistGroups(artist).single().title)
-            assertEquals(\"How Sweet\", db.catalogDao().searchKnownMusicBrainzGroups(
-                \"How Sweet\", 30,
+            assertEquals("How Sweet", index.cachedArtistGroups(artist).single().title)
+            assertEquals("How Sweet", db.catalogDao().searchKnownMusicBrainzGroups(
+                "How Sweet", 30,
             ).single { it.musicBrainzId == group }.title)
             index.persistArtistGroups(artist, listOf(
-                MusicBrainzReleaseGroupHit(group, \"How Sweet & Bubble Gum\",
-                    \"Single\", \"2024-05-24\", \"NewJeans\"),
+                MusicBrainzReleaseGroupHit(group, "How Sweet & Bubble Gum",
+                    "Single", "2024-05-24", "NewJeans"),
             ))
-            assertEquals(\"How Sweet\", index.cachedArtistGroups(artist).single().title)
+            assertEquals("How Sweet", index.cachedArtistGroups(artist).single().title)
         } finally { db.close() }
     }
 
@@ -412,17 +412,17 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var next = 0
-            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { \"edition-batch-\" + (++next) })
-            val group = \"11111111-1111-4111-8111-111111111111\"
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "edition-batch-" + (++next) })
+            val group = "11111111-1111-4111-8111-111111111111"
             index.persistReleaseGroups(listOf(
-                MusicBrainzReleaseGroupHit(group, \"Get Up\", \"EP\", \"2023-07-21\", \"NewJeans\"),
+                MusicBrainzReleaseGroupHit(group, "Get Up", "EP", "2023-07-21", "NewJeans"),
             ))
             val originals = (1..30).map { n ->
                 com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(
-                    \"22222222-2222-4222-8222-\" + n.toString().padStart(12, '0'),
-                    \"Get Up\", if (n == 1) \"XW\" else \"KR\",
-                    \"2023-07-21\", \"NewJeans\",
-                    status = if (n % 7 == 0) \"Promotion\" else \"Official\",
+                    "22222222-2222-4222-8222-" + n.toString().padStart(12, '0'),
+                    "Get Up", if (n == 1) "XW" else "KR",
+                    "2023-07-21", "NewJeans",
+                    status = if (n % 7 == 0) "Promotion" else "Official",
                 )
             }
             index.persistGroupEditions(group, originals)
@@ -430,10 +430,10 @@ class MusicBrainzPublicMetadataIndexTest {
             assertEquals(30, cached.size)
             assertEquals(originals.map { it.musicBrainzId }.toSet(),
                 cached.map { it.musicBrainzId }.toSet())
-            assertEquals(\"XW\", cached.single {
+            assertEquals("XW", cached.single {
                 it.musicBrainzId == originals[0].musicBrainzId
             }.country)
-            assertEquals(\"Promotion\", cached.single {
+            assertEquals("Promotion", cached.single {
                 it.musicBrainzId == originals[6].musicBrainzId
             }.status)
         } finally { db.close() }
