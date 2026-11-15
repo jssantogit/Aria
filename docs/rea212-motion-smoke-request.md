@@ -52,3 +52,9 @@
 
 - [Run #43728868988](https://github.com/jssantogit/BitChord/actions/runs/43728868988) confirmou compilação de produção até `app:compileDevDebugKotlin`, mas `app:compileDevDebugUnitTestKotlin` falhou apenas por imports inexistentes de `assertDoesNotExist` e `assertExists` em `ExploreCategoryContentTransitionTest.kt`. São métodos de `SemanticsNodeInteraction`, já usados sem import em testes da branch; remover somente as linhas de import, preservando as assertivas e cenários.
 - Reexecutar o mesmo gate integral, sem desabilitar testes ou compilar APK após falha. Usuário autorizou explicitamente o smoke nesta rodada.
+
+## Gate #43729473306 — estabilizar o teste temporal do Explorar
+
+- [Run #43729473306](https://github.com/jssantogit/BitChord/actions/runs/43729473306) passou nos testes de rating focalizados e compilou app/testes. Na suíte Android integral: `3604 tests completed, 1 failed, 1 skipped`. A falha foi exclusivamente no novo `ExploreCategoryContentTransitionTest.rootToGenreAndBackCrossfadeWithoutReplacingTheOutgoingPage`, linha 44: assertiva tentava verificar conteúdo de entrada após um único frame de 16ms no Robolectric; o destino ainda não tinha sido composto naquele instante.
+- Preservar a verificação real da sobreposição temporária entre origem e destino: avançar 64ms (quatro frames), ainda dentro do fade de 150ms, antes de exigir presença de ambas as árvores. Não afrouxar a verificação de remoção do destino antigo após concluir o fade, nem desativar o teste.
+- Solicitar novamente o smoke com gate completo sem publicar APK se qualquer etapa falhar. Não declarar smoke físico realizado.

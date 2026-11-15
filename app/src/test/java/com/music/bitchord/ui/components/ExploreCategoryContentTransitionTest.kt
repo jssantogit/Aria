@@ -39,14 +39,18 @@ class ExploreCategoryContentTransitionTest {
         compose.mainClock.autoAdvance = false
 
         compose.runOnIdle { selected.value = "K-pop" }
-        compose.mainClock.advanceTimeByFrame()
+        // Give both destinations time to enter composition, but remain inside
+        // the 150ms fade window. A single frame can contain only the state write.
+        compose.mainClock.advanceTimeBy(64L)
         compose.onNodeWithTag("explore-grid", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("explore-genre-K-pop", useUnmergedTree = true).assertExists()
         compose.mainClock.advanceTimeBy(200L)
         compose.onNodeWithTag("explore-grid", useUnmergedTree = true).assertDoesNotExist()
 
         compose.runOnIdle { selected.value = null }
-        compose.mainClock.advanceTimeByFrame()
+        // Give both destinations time to enter composition, but remain inside
+        // the 150ms fade window. A single frame can contain only the state write.
+        compose.mainClock.advanceTimeBy(64L)
         compose.onNodeWithTag("explore-genre-K-pop", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("explore-grid", useUnmergedTree = true).assertExists()
         compose.mainClock.advanceTimeBy(200L)
