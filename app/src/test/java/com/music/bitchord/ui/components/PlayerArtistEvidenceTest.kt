@@ -33,6 +33,29 @@ class PlayerArtistEvidenceTest {
         assertNull(verifiedSourceOwnedPlayerArtist("recording-1", "", credited, artists))
     }
 
+    @Test fun missingCreditsMayResolveOnlyUniqueArtistWithinVerifiedSource() {
+        assertEquals(
+            SourceOwnedArtistEvidence("artist-1", "BTS", "local-mediastore"),
+            verifiedSourceOwnedPlayerArtist(
+                "recording-1", "local-mediastore", emptyList(), artists,
+                artistName = "BTS",
+            ),
+        )
+        assertNull(verifiedSourceOwnedPlayerArtist(
+            "recording-1", "local-mediastore", emptyList(),
+            artists + ArtistEntity("artist-2", "BTS"), artistName = "BTS",
+        ))
+        assertNull(verifiedSourceOwnedPlayerArtist(
+            "recording-1", "local-mediastore", emptyList(), artists,
+            artistName = "Different",
+        ))
+        assertNull(verifiedSourceOwnedPlayerArtist(
+            "recording-1", "local-mediastore", credited +
+                CanonicalArtistCreditRow("artist-2", "BTS", 0),
+            artists, artistName = "BTS",
+        ))
+    }
+
     @Test fun appleRouteIsNotInventedFromMetadataName() {
         assertEquals(
             "itunes:br:artist:123",
