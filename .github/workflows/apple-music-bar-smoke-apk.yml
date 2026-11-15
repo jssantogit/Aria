@@ -31,10 +31,18 @@ jobs:
         run: |
           echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
           echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
-      - name: Assemble Android devDebug
+      # The physical smoke APK must be generated only from a tested HEAD.
+      # Do not weaken these gates to get an artifact if a motion regression fails.
+      - name: Run Android unit tests
         run: |
           chmod +x gradlew
-          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Run shared Automix planner tests
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+      - name: Run shared native UI presentation tests
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+      - name: Assemble Android devDebug after green tests
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
       - name: Select universal APK and record checksum
         run: |
           set -euo pipefail
