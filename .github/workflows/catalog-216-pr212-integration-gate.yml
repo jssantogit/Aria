@@ -1,0 +1,103 @@
+# Temporary test-only gate for combining PR #216 metadata with the exact PR #212 UI.
+# No APK publishing or merge; this branch is a disposable integration candidate.
+name: PR216 + PR212 — immutable UI / Android core gate
+
+on:
+  push:
+    branches:
+      - integration/pr212-ui-itunes-core-2a9126f8
+
+concurrency:
+  group: pr216-pr212-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out full integration history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove all PR212 visual sources are byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          ui_base="2a9126f83043d9b93f0beae9cebad3ff4e4ee624"
+          git cat-file -e "${ui_base}^{commit}"
+          git diff --exit-code "$ui_base" HEAD -- \
+            app/src/main/java/com/music/bitchord/ui/components/ \
+            app/src/main/java/com/music/bitchord/ui/screens/ \
+            app/src/main/java/com/music/bitchord/ui/theme/ \
+            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ \
+            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
+            sharedUi/src/commonMain/composeResources/
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+          baseline = '2a9126f83043d9b93f0beae9cebad3ff4e4ee624'
+          path = 'app/src/main/java/com/music/bitchord/MainActivity.kt'
+          original = subprocess.check_output(['git', 'show', f'{baseline}:{path}'], text=True)
+          assert original.endswith('\n')
+          lines = original.splitlines()
+          positions = [i for i, line in enumerate(lines) if line.strip() == 'canonicalTracks = if (']
+          assert len(positions) == 1, 'Unexpected PR212 track binding'
+          i = positions[0]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          assert lines[i+3].strip() == ') {'
+          lines[i:i+4] = [
+              indent + 'canonicalTracks = if (page.browseId.startsWith("itunes:")) {',
+              indent + '    viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()',
+              indent + '        .value[page.browseId].orEmpty()',
+              indent + '} else if (',
+              lines[i+1], lines[i+2], lines[i+3],
+          ]
+          homes = [i for i, line in enumerate(lines) if line.strip() == 'metadata = (cachedCanonicalRows + canonicalWorldwideReleases)']
+          assert len(homes) == 1, 'Unexpected PR212 Home metadata binding'
+          i = homes[0]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          lines[i:i+1] = [
+              indent + 'metadata = (cachedCanonicalRows.filter {',
+              indent + '    it.kind == CanonicalSearchKind.RECORDING',
+              indent + '} + canonicalWorldwideReleases)',
+          ]
+          callbacks = [i for i, line in enumerate(lines) if line.strip() ==
+                       'onCanonicalRecordingInfo = { communityMetadataRecording = it },']
+          assert len(callbacks) == 1, 'Unexpected PR212 recording information callback'
+          i = callbacks[0]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          lines[i:i+1] = [
+              indent + 'onCanonicalRecordingInfo = { recording ->',
+              indent + '    if (recording.musicBrainzId.startsWith("itunes:")) {',
+              indent + '        viewModel.openApplePr212TrackAlbum(recording.musicBrainzId)',
+              indent + '    } else {',
+              indent + '        communityMetadataRecording = recording',
+              indent + '    }',
+              indent + '},',
+          ]
+          expected = '\n'.join(lines) + '\n'
+          actual = pathlib.Path(path).read_text()
+          assert actual == expected, 'MainActivity differs from PR212 beyond three exact metadata bindings'
+          print('PR212 MainActivity: only two source bindings changed; all other bytes match')
+          PY
+          echo "PR212 visual implementations unchanged from $ui_base"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Prepare Android build
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Android unit tests and Kotlin compile
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Shared UI JVM regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
