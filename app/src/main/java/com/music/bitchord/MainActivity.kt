@@ -4171,7 +4171,13 @@ private fun BitChordApp(
                                 heldCatalogSearchOrigin = LongPressOrigin.consume()
                                 heldCatalogSearchRow = row
                             },
-                            onCanonicalRecordingInfo = { communityMetadataRecording = it },
+                            onCanonicalRecordingInfo = { recording ->
+                                if (recording.musicBrainzId.startsWith("itunes:")) {
+                                    viewModel.openApplePr212TrackAlbum(recording.musicBrainzId)
+                                } else {
+                                    communityMetadataRecording = recording
+                                }
+                            },
                             onCanonicalBack = viewModel::backCanonicalCatalogEntry,
                             onCanonicalLoadMore = viewModel::loadMoreCanonicalDetail,
                             canonicalLoadingMore = viewModel.canonicalLoadingMore.collectAsStateWithLifecycle().value,
