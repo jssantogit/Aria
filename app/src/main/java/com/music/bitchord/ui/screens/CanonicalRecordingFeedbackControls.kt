@@ -262,6 +262,15 @@ internal fun ratingSelectionFromDrag(positionX: Float, width: Float): Double {
 internal fun lastRatedStarIndex(selected: Double): Int =
     if (selected.isFinite() && selected in 1.0..5.0) ceil(selected).toInt() - 1 else -1
 
+/** In numeric style only the terminal filled star carries the V3 digit.
+ * The preceding filled stars are plain white silhouettes. */
+internal fun ratingEditorUsesNumericGlyph(
+    style: CompactRatingStyle,
+    selected: Double,
+    slot: Int,
+): Boolean = style == CompactRatingStyle.NUMERIC && slot == lastRatedStarIndex(selected)
+    && slot >= 0
+
 /** Numeric rating never uses the color scale: every star is theme ink.
  * Fractional color ratings carry both neighboring hues within each filled
  * star; solid integer ratings keep their single explicit color.
@@ -326,12 +335,9 @@ internal fun CanonicalRecordingFeedbackPanel(
     val selectedDescription = stringResource(Res.string.recording_feedback_stars_selected, selected.toString())
     val reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current
     val pulseIndex = ratingSelectionPulseIndex(selected, touched, reduceMotion)
-    val terminalStar = lastRatedStarIndex(selected)
     val starStyle = LocalCompactRatingStyle.current
     val numericStars = starStyle == CompactRatingStyle.NUMERIC
     val colorStops = ratingEditorGradientStops(selected, starStyle)
-    val fractionalBrush = if (colorStops.map { it.second }.distinct().size > 1)
-        Brush.linearGradient(*colorStops.toTypedArray()) else null
     // This editor never persists a draft until Save. Cancel and Back
     // discard the pending selection immediately, including an edited rating.
     val original = rating?.takeIf { it.isFinite() && it in 1.0..5.0 } ?: 0.0
@@ -443,17 +449,16 @@ internal fun CanonicalRecordingFeedbackPanel(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 val filled = starFill != com.music.bitchord.ui.components.AppleRatingStarFill.EMPTY
-                                val scoreForSlot = if (i == terminalStar) selected else i + 1.0
-                                val slotStops = if (filled && starStyle == CompactRatingStyle.COLOR)
-                                    compactRatingColorStops(scoreForSlot) else emptyList()
+                                // A rating is one score. Never color the first
+                                // four stars as scores 1, 2, 3, 4 independently.
+                                val slotStops = if (filled && !numericStars) colorStops else emptyList()
                                 val slotBrush = if (slotStops.map { it.second }.distinct().size > 1)
                                     Brush.linearGradient(*slotStops.toTypedArray()) else null
                                 val glyphSize = if (anchorBounds == null) 56.dp else anchoredGlyphSize
-                                if (numericStars && filled) {
-                                    // Each chosen step uses the actual V3 numeric
-                                    // star vectors, including half scores.
+                                if (ratingEditorUsesNumericGlyph(starStyle, selected, i)) {
+                                    // Only the last selected star is numbered.
                                     CompactRatingIndicator(
-                                        value = scoreForSlot,
+                                        value = selected,
                                         geometry = CompactRatingGeometry.STANDALONE,
                                         size = glyphSize,
                                     )
@@ -461,10 +466,9 @@ internal fun CanonicalRecordingFeedbackPanel(
                                     AppleRatingStarGlyph(
                                         fill = starFill,
                                         standalone = true,
-                                        tint = slotStops.firstOrNull()?.second
-                                            ?: ratingEditorStarTint(
-                                                starStyle, selected, filled, sheetForeground,
-                                            ),
+                                        tint = ratingEditorStarTint(
+                                            starStyle, selected, filled, sheetForeground,
+                                        ),
                                         colorBrush = slotBrush,
                                         outlineTint = sheetForeground,
                                         modifier = Modifier.size(glyphSize),
