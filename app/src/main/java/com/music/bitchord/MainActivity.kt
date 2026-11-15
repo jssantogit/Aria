@@ -35,6 +35,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.blur
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7443,9 +7444,20 @@ private fun CanonicalLibraryAlbumRatingToolbarAction(
 internal fun nativeCollectionOverflowGlyph(): ImageVector =
     com.music.bitchord.ui.icons.PlaylistEditorIcons.More
 
+/** The launcher, not the popup plate, owns the universal selected white outline. */
+internal fun nativeCollectionOverflowOutline(expanded: Boolean): Color? =
+    if (expanded) Color.White.copy(alpha = 0.88f) else null
+
 @Composable
-private fun NativeCollectionOverflowAction(contentDescription: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+private fun NativeCollectionOverflowAction(
+    contentDescription: String,
+    onClick: () -> Unit,
+    expanded: Boolean = false,
+) {
+    val outline = nativeCollectionOverflowOutline(expanded)
+    val selectedOutline = if (outline == null) Modifier else
+        Modifier.border(1.5.dp, outline, CircleShape)
+    IconButton(onClick = onClick, modifier = Modifier.size(40.dp).then(selectedOutline)) {
         Icon(nativeCollectionOverflowGlyph(), contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurface)
     }
@@ -8464,6 +8476,7 @@ private fun NativeDetailAlbumTopBarActions(
             NativeCollectionOverflowAction(
                 contentDescription = stringResource(R.string.more),
                 onClick = onOpenCatalogOverflow,
+                expanded = catalogOverflowExpanded,
             )
             com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
                 browseId = browseId,
