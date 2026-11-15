@@ -50,7 +50,7 @@ enum class ProviderReadiness {
 data class ProviderDescriptor(
     val key: ProviderKey,
     val capabilities: Set<ProviderCapability>,
-    val readiness: ProviderReadiness = ProviderReadiness.READY,
+    val readiness: ProviderReadiness = ProviderReadiness.NOT_IMPLEMENTED,
 ) {
     init {
         require(capabilities.isNotEmpty()) { "A provider must declare at least one capability" }
