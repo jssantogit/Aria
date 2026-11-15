@@ -1,6 +1,7 @@
 package com.music.bitchord
 
 import androidx.room.Room
+import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogIndex
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
@@ -46,7 +47,7 @@ class MusicBrainzReleaseGraphIndexTest {
             assertEquals("Magnetic", detail.tracks.single().title)
             assertEquals(160_000L, detail.tracks.single().durationMs)
 
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail)
             val recordingId = db.catalogDao().entityIdForExternalIdentity(
                 "musicbrainz", "recording", recording,
@@ -73,7 +74,7 @@ class MusicBrainzReleaseGraphIndexTest {
         try {
             val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
             val release = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val id = index.persistRecordings(listOf(
                 com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit(
                     recording, "Preserved local title", "Local credits", 99_000L,
@@ -108,7 +109,7 @@ class MusicBrainzReleaseGraphIndexTest {
         ).allowMainThreadQueries().build()
         try {
             var serial = 0
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "local-${++serial}" })
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "local-${++serial}" })
             val group = "529f87a1-1081-48a4-8ee1-3c08de229858"
             val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
             val worldwide = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
