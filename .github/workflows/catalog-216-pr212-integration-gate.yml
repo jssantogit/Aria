@@ -35,7 +35,8 @@ jobs:
             app/src/main/java/com/music/bitchord/ui/theme/ \
             sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
             sharedUi/src/commonMain/composeResources/ \
-            ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt'
+            ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt' \
+            ':!app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt'
           python3 - <<'PY'
           import pathlib
           import subprocess
@@ -98,9 +99,28 @@ jobs:
               indent + '},',
           ]
           expected = '\n'.join(lines) + '\n'
+          assert expected.count("                        val publicArtistMbid = page.browseId.takeIf {\n                            it.startsWith(\"catalog:ARTIST:\")\n                        }?.removePrefix(\"catalog:ARTIST:\")") == 1, "Unexpected PR212 canonical data binding"
+          expected = expected.replace("                        val publicArtistMbid = page.browseId.takeIf {\n                            it.startsWith(\"catalog:ARTIST:\")\n                        }?.removePrefix(\"catalog:ARTIST:\")", "                        val verifiedAppleArtists by viewModel.appleVerifiedArtistMbids\n                            .collectAsStateWithLifecycle()\n                        val publicArtistMbid = com.music.bitchord.ui.applePr212ArtistEvidenceId(\n                            page, verifiedAppleArtists,\n                        )")
+          assert expected.count("                            onCanonicalArtistPlaylistOpen = { mbid, title, creator, description ->\n                                val playlist = com.music.bitchord.data.catalog.metadata\n                                    .ListenBrainzPublicPlaylist(mbid, title, creator, description)\n                                openedPublicPlaylist = playlist\n                                viewModel.loadCanonicalPublicPlaylistDetail(playlist)\n                            },\n                            contentPadding = listPadding,") == 1, "Unexpected PR212 canonical data binding"
+          expected = expected.replace("                            onCanonicalArtistPlaylistOpen = { mbid, title, creator, description ->\n                                val playlist = com.music.bitchord.data.catalog.metadata\n                                    .ListenBrainzPublicPlaylist(mbid, title, creator, description)\n                                openedPublicPlaylist = playlist\n                                viewModel.loadCanonicalPublicPlaylistDetail(playlist)\n                            },\n                            contentPadding = listPadding,", "                            onCanonicalArtistPlaylistOpen = { mbid, title, creator, description ->\n                                val playlist = com.music.bitchord.data.catalog.metadata\n                                    .ListenBrainzPublicPlaylist(mbid, title, creator, description)\n                                openedPublicPlaylist = playlist\n                                viewModel.loadCanonicalPublicPlaylistDetail(playlist)\n                            },\n                            verifiedPublicArtistMbid = if (page.browseId.startsWith(\"itunes:\"))\n                                publicArtistMbid else null,\n                            contentPadding = listPadding,")
+          assert expected.count("            globalDiscoveryHeading = canonicalHomeGlobalDiscoveryHeading,") == 1, "Unexpected PR212 canonical data binding"
+          expected = expected.replace("            globalDiscoveryHeading = canonicalHomeGlobalDiscoveryHeading,", "            // Use the existing PR212 format-specific shelves as the editorial\n            // data destination; do not merge them into a generic new section.\n            globalDiscoveryHeading = null,")
+          # Preserve the PR212 native detail compositor and only change the
+          # separately verified source identity passed to its existing shelves.
+          detail = 'app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt'
+          original_detail = subprocess.check_output(
+              ['git', 'show', f'{baseline}:{detail}'], text=True)
+          expected_detail = original_detail
+          assert expected_detail.count("    onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,\n) {") == 1, "Unexpected PR212 canonical data binding"
+          expected_detail = expected_detail.replace("    onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,\n) {", "    onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,\n    /** Only cross-catalog identity with independently verified Apple release proof. */\n    verifiedPublicArtistMbid: String? = null,\n) {")
+          assert expected_detail.count("    val publicArtistMbid = page.browseId.takeIf {\n        isArtist && it.startsWith(\"catalog:ARTIST:\")\n    }?.removePrefix(\"catalog:ARTIST:\")") == 1, "Unexpected PR212 canonical data binding"
+          expected_detail = expected_detail.replace("    val publicArtistMbid = page.browseId.takeIf {\n        isArtist && it.startsWith(\"catalog:ARTIST:\")\n    }?.removePrefix(\"catalog:ARTIST:\")", "    val publicArtistMbid = when {\n        !isArtist -> null\n        page.browseId.startsWith(\"catalog:ARTIST:\") ->\n            page.browseId.removePrefix(\"catalog:ARTIST:\")\n        page.browseId.startsWith(\"itunes:\") -> verifiedPublicArtistMbid\n        else -> null\n    }")
+          assert pathlib.Path(detail).read_text() == expected_detail, (
+              "PR212 DetailScreen changed beyond two source-context bindings")
+          print("PR212 artist detail: no changes to compositors, layouts, colors or animation")
           actual = pathlib.Path(path).read_text()
-          assert actual == expected, 'MainActivity differs from PR212 beyond three exact metadata bindings'
-          print('PR212 MainActivity: exactly three source bindings; all other bytes match')
+          assert actual == expected, 'MainActivity differs from PR212 beyond six exact metadata bindings'
+          print('PR212 MainActivity: exactly six source bindings; all other bytes match')
           shared = 'sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/SearchScreen.kt'
           changed = subprocess.check_output(
               ['git', 'diff', '--name-only', baseline, 'HEAD', '--',
