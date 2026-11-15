@@ -2,6 +2,8 @@ package com.music.bitchord
 
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.CanonicalMultiSourceBrowseRepository
+import com.music.bitchord.data.catalog.RoomCanonicalMultiSourceBrowseStore
 import com.music.bitchord.data.catalog.MediaAssetEntity
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchLimits
@@ -16,6 +18,7 @@ import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -107,9 +110,12 @@ class MusicBrainzCachedSearchRepositoryTest {
                 db.catalogDao().entityIdForExternalIdentity(
                     "musicbrainz", "recording", recordingMbid,
                 ))
-            assertEquals("asset-local",
-                db.catalogDao().recordingById(ids.getValue(recordingMbid))
-                    ?.let { "asset-local" }) // canonical identity retained
+            val localBrowse = CanonicalMultiSourceBrowseRepository(
+                RoomCanonicalMultiSourceBrowseStore(db.catalogDao()),
+            )
+            val localTracks = localBrowse.observe(setOf("local-mediastore")).first().tracks
+            assertEquals(listOf("asset-local"),
+                localTracks.flatMap { it.availableAssets }.map { it.mediaAssetId })
 
             gate.replace(policy(search = true))
             assertEquals(listOf(recordingMbid),
