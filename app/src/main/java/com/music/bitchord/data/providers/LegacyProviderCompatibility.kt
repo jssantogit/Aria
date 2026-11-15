@@ -70,18 +70,13 @@ internal object LegacyProviderCompatibility {
             .mapNotNull { offeredLyricsById[it.key.providerId] }
             .distinct()
         val fullOrder = orderedFromStore + LyricsSource.offered.filterNot { it in orderedFromStore }
-        val enabled = if (
-            snapshot.status == ProviderSessionStatus.STORAGE_ERROR ||
-            ProviderCapability.LYRICS_LOOKUP in snapshot.quarantined
-        ) {
-            emptySet()
-        } else {
-            val eligibleIds = snapshot.eligible[ProviderCapability.LYRICS_LOOKUP]
-                .orEmpty()
-                .mapTo(HashSet()) { it.providerId }
-            fullOrder.filterTo(LinkedHashSet()) {
-                it.name.lowercase(Locale.ROOT) in eligibleIds
-            }
+        // Effective eligibility is instance-scoped. A failed write for one
+        // source may not hide a sibling still admitted by the policy gate.
+        val eligibleIds = snapshot.eligible[ProviderCapability.LYRICS_LOOKUP]
+            .orEmpty()
+            .mapTo(HashSet()) { it.providerId }
+        val enabled = fullOrder.filterTo(LinkedHashSet()) {
+            it.name.lowercase(Locale.ROOT) in eligibleIds
         }
         return LegacyLyricsProjection(fullOrder, enabled)
     }
@@ -109,14 +104,10 @@ internal object LegacyProviderCompatibility {
             } else {
                 extensions
             }
-        val eligibleKeys = if (
-            snapshot.status == ProviderSessionStatus.STORAGE_ERROR ||
-            ProviderCapability.EXTENSION_PLAYBACK in snapshot.quarantined
-        ) {
-            emptySet()
-        } else {
-            snapshot.eligible[ProviderCapability.EXTENSION_PLAYBACK].orEmpty().toSet()
-        }
+        // Do not globally blank an entire capability on an instance-local
+        // failure: unaffected addons stay authorized.
+        val eligibleKeys = snapshot.eligible[ProviderCapability.EXTENSION_PLAYBACK]
+            .orEmpty().toSet()
         return extensions.map { config ->
             val key = ProviderKey(
                 providerId = if (config.kind == SourceKind.ADDON) "addon" else "custom_module",
