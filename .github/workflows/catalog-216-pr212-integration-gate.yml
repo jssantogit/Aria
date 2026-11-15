@@ -65,9 +65,23 @@ jobs:
               indent + '    it.kind == CanonicalSearchKind.RECORDING',
               indent + '} + canonicalWorldwideReleases)',
           ]
+          callbacks = [i for i, line in enumerate(lines) if line.strip() ==
+                       'onCanonicalRecordingInfo = { communityMetadataRecording = it },']
+          assert len(callbacks) == 1, 'Unexpected PR212 recording information callback'
+          i = callbacks[0]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          lines[i:i+1] = [
+              indent + 'onCanonicalRecordingInfo = { recording ->',
+              indent + '    if (recording.musicBrainzId.startsWith("itunes:")) {',
+              indent + '        viewModel.openApplePr212TrackAlbum(recording.musicBrainzId)',
+              indent + '    } else {',
+              indent + '        communityMetadataRecording = recording',
+              indent + '    }',
+              indent + '},',
+          ]
           expected = '\n'.join(lines) + '\n'
           actual = pathlib.Path(path).read_text()
-          assert actual == expected, 'MainActivity differs from PR212 beyond two exact metadata bindings'
+          assert actual == expected, 'MainActivity differs from PR212 beyond three exact metadata bindings'
           print('PR212 MainActivity: only two source bindings changed; all other bytes match')
           PY
           echo "PR212 visual implementations unchanged from $ui_base"
