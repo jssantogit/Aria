@@ -91,17 +91,28 @@ internal class ApplePr212NativeCatalogService(
         // Promote only verified, exact CDN assets. No title-joined artwork
         // and no 100px bitmap stretched over the large PR212 cards.
         val visible = pager.snapshot().visible
-        val upgraded = visible.take(24).mapIndexed { index, release ->
-            val original = release.artworkUrl
-            val verified = artwork.upgrade(original, if (index == 0) 1024 else 600)
-            if (verified == original) release else release.copy(artworkUrl = verified)
-        }
-        val enriched = ApplePr212DetailProjection.artistPage(
-            artist, upgraded + visible.drop(upgraded.size),
-        )
-        if (enriched != null && enriched.sections != page.sections) {
-            page = enriched
-            onProgress(page)
+        // Warm the visible screen only, in two bounded batches. Avoid waiting
+        // for dozens of network probes before rendering a complete page.
+        val promoted = visible.toMutableList()
+        for (batch in visible.take(8).withIndex().toList().chunked(4)) {
+            val results = kotlinx.coroutines.coroutineScope {
+                batch.map { entry ->
+                    kotlinx.coroutines.async {
+                        val original = entry.value.artworkUrl
+                        val verified = artwork.upgrade(
+                            original, if (entry.index == 0) 1024 else 600,
+                        )
+                        entry.index to if (verified == original) entry.value
+                            else entry.value.copy(artworkUrl = verified)
+                    }
+                }.awaitAll()
+            }
+            results.forEach { (index, item) -> promoted[index] = item }
+            val enriched = ApplePr212DetailProjection.artistPage(artist, promoted)
+            if (enriched != null && enriched.sections != page.sections) {
+                page = enriched
+                onProgress(page)
+            }
         }
         return page
     }
