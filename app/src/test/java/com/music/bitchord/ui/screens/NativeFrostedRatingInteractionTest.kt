@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.IntRect
+import com.music.bitchord.NativeCollectionRatingToolbarAction
 import com.music.bitchord.ui.components.CompactRatingStyle
 import com.music.bitchord.ui.components.LocalCompactRatingStyle
 import org.junit.Assert.assertEquals
@@ -98,7 +99,8 @@ class NativeFrostedRatingInteractionTest {
                 }
             }
         }
-        compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
-            .assertCountEquals(4)
+        val numericStars = compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
+            .fetchSemanticsNodes()
+        assertEquals(4, numericStars.size)
     }
 }
