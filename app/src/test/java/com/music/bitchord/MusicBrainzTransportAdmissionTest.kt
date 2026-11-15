@@ -19,7 +19,9 @@ import com.music.bitchord.data.providers.ProviderSingleFlight
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -165,20 +167,25 @@ class MusicBrainzTransportAdmissionTest {
         assertEquals(2, contacts)
     }
 
-    @Test fun responseAfterProviderSwitchOffIsNeverReturnedToTheCaller(): Unit = runBlocking {
+    @Test fun responseAfterProviderSwitchOffIsNeverReturnedAndTransportIsActivelyCancelled(): Unit = runBlocking {
         val gate = ProviderPolicyGate(policy(true, true, true))
         val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
+        val transportCancelled = CompletableDeferred<Unit>()
+        val flight = ProviderSingleFlight<String>()
         val client = MusicBrainzClient(
             transport = object : MusicBrainzTransport {
                 override suspend fun get(path: String,
                     parameters: Map<String, String>, userAgent: String): String {
                     entered.complete(Unit)
-                    release.await()
-                    return "late response"
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        transportCancelled.complete(Unit)
+                    }
                 }
             },
             admission = { gate },
+            singleFlight = flight,
         )
         val pending = async {
             try {
@@ -188,10 +195,11 @@ class MusicBrainzTransportAdmissionTest {
                 true
             }
         }
-        entered.await()
+        withTimeout(2_000) { entered.await() }
         gate.replace(policy(false, true, true))
-        release.complete(Unit)
-        assertTrue(pending.await())
+        withTimeout(2_000) { transportCancelled.await() }
+        assertTrue(withTimeout(2_000) { pending.await() })
+        assertEquals(0, flight.activeCount())
     }
 
     @Test fun switchOffDuringSharedLimiterQueuePreventsTheQueuedRequest(): Unit = runBlocking {

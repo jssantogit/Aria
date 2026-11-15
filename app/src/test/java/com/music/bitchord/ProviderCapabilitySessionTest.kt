@@ -33,6 +33,7 @@ import org.robolectric.annotation.ConscryptMode
 @RunWith(RobolectricTestRunner::class)
 class ProviderCapabilitySessionTest {
     private val musicBrainz = ProviderKey("musicbrainz")
+    private val apple = ProviderKey("itunes")
     private val covers = ProviderKey("fanarttv")
     private val prefs by lazy {
         RuntimeEnvironment.getApplication().getSharedPreferences(
@@ -45,6 +46,9 @@ class ProviderCapabilitySessionTest {
         listOf(
             ProviderDescriptor(musicBrainz,
                 setOf(ProviderCapability.CATALOG_SEARCH),
+                readiness = ProviderReadiness.READY),
+            ProviderDescriptor(apple,
+                setOf(ProviderCapability.RELEASE_ARTWORK),
                 readiness = ProviderReadiness.READY),
             ProviderDescriptor(covers,
                 setOf(ProviderCapability.RELEASE_ARTWORK),
@@ -77,6 +81,39 @@ class ProviderCapabilitySessionTest {
         assertEquals(emptyList<ProviderChoice>(),
             disabled.configured.getValue(ProviderCapability.CATALOG_SEARCH))
         assertTrue(disabled.eligible[ProviderCapability.CATALOG_SEARCH].isNullOrEmpty())
+    }
+
+    @Test fun sessionUpdateDisablingOneProviderPreservesSiblingProviderInSameCapability(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.RELEASE_ARTWORK to listOf(
+                ProviderChoice(apple, enabled = true, order = 0),
+                ProviderChoice(covers, enabled = true, order = 1),
+            ),
+        )))
+        val appleTicket = requireNotNull(session.gate.open(ProviderCapability.RELEASE_ARTWORK, apple))
+        val fanartTicket = requireNotNull(session.gate.open(ProviderCapability.RELEASE_ARTWORK, covers))
+        var appleRevoked = false
+        var fanartRevoked = false
+        session.gate.onRevoke(appleTicket) { appleRevoked = true }
+        session.gate.onRevoke(fanartTicket) { fanartRevoked = true }
+
+        // Turn off iTunes while keeping Fanart.tv enabled in the same capability.
+        assertTrue(session.update(
+            ProviderCapability.RELEASE_ARTWORK,
+            listOf(
+                ProviderChoice(apple, enabled = false, order = 0),
+                ProviderChoice(covers, enabled = true, order = 1),
+            ),
+        ))
+        assertTrue(appleRevoked)
+        assertFalse(session.gate.accept(appleTicket))
+        assertFalse(fanartRevoked)
+        assertTrue(session.gate.accept(fanartTicket))
+        assertEquals(
+            listOf(covers),
+            session.gate.ordered(ProviderCapability.RELEASE_ARTWORK).map { it.key },
+        )
     }
 
     @Test fun failedSettingsWriteIsRepresentedAsUnavailableNotAReactivatedSwitch(): Unit = runBlocking {

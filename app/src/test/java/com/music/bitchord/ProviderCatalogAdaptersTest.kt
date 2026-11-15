@@ -74,7 +74,7 @@ class ProviderCatalogAdaptersTest {
         assertFalse(networkContacted)
     }
 
-    @Test fun artworkProbeGuardIsolatesReleaseArtworkFromArtistArtwork(): Unit = runBlocking {
+    @Test fun artworkProbeGuardNeverLeaksDisabledProviderUrlAndIsolatesCapabilities(): Unit = runBlocking {
         fun policy(releaseArt: Boolean, artistArt: Boolean) = ProviderCapabilityPolicy(
             descriptors = listOf(
                 BuiltInProviderDescriptors.itunes(readiness = ProviderReadiness.READY),
@@ -93,22 +93,37 @@ class ProviderCatalogAdaptersTest {
         val guard = ArtworkProbePolicyGuard { gate }
 
         var releaseCdnProbed = false
-        val releaseUrl = guard.probe(
+        val deniedReleaseUrl = guard.probe(
             capability = ProviderCapability.RELEASE_ARTWORK,
             provider = BuiltInProviderKeys.ITUNES,
-            fallback = "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg",
+            onProbeError = { "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg" },
         ) {
             releaseCdnProbed = true
             "https://is1-ssl.mzstatic.com/image/thumb/1024x1024bb.jpg"
         }
         assertFalse(releaseCdnProbed)
-        assertEquals("https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg", releaseUrl)
+        // Must return null (not an Apple CDN URL) when RELEASE_ARTWORK for iTunes is OFF.
+        assertNull(deniedReleaseUrl)
+
+        // When RELEASE_ARTWORK IS authorized, a failed high-res probe may fall back to
+        // the already-verified lower-resolution URL of that authorized provider.
+        gate.replace(policy(releaseArt = true, artistArt = true))
+        val authorizedFallbackUrl = guard.probe(
+            capability = ProviderCapability.RELEASE_ARTWORK,
+            provider = BuiltInProviderKeys.ITUNES,
+            onProbeError = { "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg" },
+        ) {
+            null
+        }
+        assertEquals(
+            "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg",
+            authorizedFallbackUrl,
+        )
 
         var artistProbed = false
         val artistHero = guard.probe(
             capability = ProviderCapability.ARTIST_ARTWORK,
             provider = BuiltInProviderKeys.APPLE_ARTIST_ART,
-            fallback = null,
         ) {
             artistProbed = true
             "https://is1-ssl.mzstatic.com/artist-hero.jpg"
