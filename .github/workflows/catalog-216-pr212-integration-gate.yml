@@ -104,8 +104,8 @@ jobs:
           private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
               row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single") ||
                   (row.kind == CanonicalSearchKind.RELEASE &&
-            appleExactAlbumProductKey.matchEntire(row.musicBrainzId)?.groupValues?.get(1)
-                ?.toLongOrNull()?.let { it > 0L } == true)'''
+                      appleExactAlbumProductKey.matchEntire(row.musicBrainzId)?.groupValues?.get(1)
+                          ?.toLongOrNull()?.let { it > 0L } == true)'''
           assert baseline_shared.count(old_rule) == 1
           assert pathlib.Path(shared).read_text() == baseline_shared.replace(old_rule, new_rule), (
               'PR212 SearchScreen changed outside the single data eligibility predicate'
