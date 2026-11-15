@@ -2612,7 +2612,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // Apple editorial data is stored separately from MusicBrainz RecordingIds.
     // Existing PR212 composers only receive the same native UI row type.
-    private val applePr212Catalog by lazy { ApplePr212NativeCatalogService() }
+    private val appleArtwork by lazy {
+        com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(
+            persistence = com.music.bitchord.data.catalog.metadata
+                .AndroidAppleArtworkProbePersistence(getApplication<Application>()),
+        )
+    }
+    private val applePr212Catalog by lazy {
+        ApplePr212NativeCatalogService(artwork = appleArtwork)
+    }
+
+    /**
+     * Images are metadata only. Promote the first visible Apple editions in
+     * bounded parallel probes AFTER first paint, without repainting another
+     * product or holding back the native PR212 card skeleton.
+     */
+    private suspend fun enrichApplePr212Covers(
+        rows: List<CanonicalCatalogSearchRow>,
+        stillCurrent: () -> Boolean,
+        onVerified: (String, String?, String?) -> Unit,
+    ) {
+        val permits = Semaphore(2)
+        coroutineScope {
+            rows.filter(::isVerifiedAppleEditorialRelease)
+                .filter { !it.artworkUri.isNullOrBlank() }
+                .take(12).forEachIndexed { index, row ->
+                    launch {
+                        permits.withPermit {
+                            val improved = try {
+                                appleArtwork.upgrade(
+                                    row.artworkUri, if (index < 4) 1024 else 600,
+                                )
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                              catch (_: Exception) { null }
+                            if (improved != null && improved != row.artworkUri &&
+                                stillCurrent()
+                            ) onVerified(row.musicBrainzId, row.artworkUri, improved)
+                        }
+                    }
+                }
+        }
+    }
     private val applePr212DetailJobs = mutableMapOf<String, Job>()
     private val _appleNativeAlbumTracks =
         MutableStateFlow<Map<String, List<CanonicalCatalogSearchRow>>>(emptyMap())
@@ -3554,6 +3594,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 worldwideReleaseRetryAtMs = System.currentTimeMillis() + 15L * 60_000L
             }
             _canonicalWorldwideLoading.value = false
+            if (rows.isNotEmpty()) {
+                enrichApplePr212Covers(
+                    rows,
+                    stillCurrent = { worldwideReleaseEpoch.isCurrent(generation) },
+                ) { id, original, improved ->
+                    _canonicalWorldwideReleases.update { live ->
+                        applePr212RowsWithVerifiedCover(live, id, original, improved)
+                    }
+                }
+            }
         }
     }
 
@@ -3840,8 +3890,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
               catch (_: Exception) { null }
             if (!canonicalGenreEpoch.isCurrent(generation)) return@launch
             when (outcome) {
-                is com.music.bitchord.data.catalog.metadata.AppleEditorialLoad.Success ->
+                is com.music.bitchord.data.catalog.metadata.AppleEditorialLoad.Success -> {
                     publish(outcome.releases)
+                    val originals = outcome.releases.mapNotNull(ApplePr212CatalogRows::album)
+                    enrichApplePr212Covers(
+                        originals,
+                        stillCurrent = { canonicalGenreEpoch.isCurrent(generation) },
+                    ) { id, original, improved ->
+                        _canonicalGenreResults.update { live ->
+                            if (live is UiState.Success) UiState.Success(
+                                applePr212RowsWithVerifiedCover(live.data, id, original, improved),
+                            ) else live
+                        }
+                        _canonicalExploreGenreCovers.update { covers ->
+                            if (covers[tag] == original) covers + (tag to improved) else covers
+                        }
+                    }
+                }
                 else -> _canonicalGenreResults.value = UiState.Error(
                     "Não foi possível consultar este gênero no catálogo Apple.",
                 )
