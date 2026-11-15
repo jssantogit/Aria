@@ -176,11 +176,12 @@ class ProviderCapabilityPolicy(
 }
 
 /**
- * A tiny admission/result guard for future suspending adapters.
+ * A tiny admission/result guard for suspending adapters.
  *
  * Call open BEFORE dispatching network work, and accept BEFORE publishing a
- * result. Replacing the policy invalidates only capabilities whose eligible
- * provider set/order/readiness actually changed. It is not a network scheduler.
+ * result. Replacing the policy invalidates and notifies only the specific
+ * (capability, provider instance) pairs that ceased to be permitted, leaving
+ * sibling provider instances untouched.
  */
 data class ProviderRequestTicket internal constructor(
     val capability: ProviderCapability,
@@ -190,29 +191,69 @@ data class ProviderRequestTicket internal constructor(
 
 class ProviderPolicyGate(initial: ProviderCapabilityPolicy) {
     private var policy: ProviderCapabilityPolicy = initial
-    private val revisions = LongArray(ProviderCapability.entries.size)
+    private val revisions = HashMap<Pair<ProviderCapability, ProviderKey>, Long>()
+    private val listeners = HashMap<Pair<ProviderCapability, ProviderKey>, MutableList<() -> Unit>>()
 
     @Synchronized
     fun ordered(capability: ProviderCapability): List<ProviderDescriptor> = policy.eligible(capability)
 
     @Synchronized
-    fun open(capability: ProviderCapability, key: ProviderKey): ProviderRequestTicket? =
-        if (policy.permits(capability, key)) {
-            ProviderRequestTicket(capability, key, revisions[capability.ordinal])
-        } else null
+    fun open(capability: ProviderCapability, key: ProviderKey): ProviderRequestTicket? {
+        if (!policy.permits(capability, key)) return null
+        val slot = capability to key
+        val revision = revisions.getOrPut(slot) { 1L }
+        return ProviderRequestTicket(capability, key, revision)
+    }
 
     @Synchronized
-    fun accept(ticket: ProviderRequestTicket): Boolean =
-        revisions[ticket.capability.ordinal] == ticket.revision &&
+    fun accept(ticket: ProviderRequestTicket): Boolean {
+        val slot = ticket.capability to ticket.key
+        return revisions[slot] == ticket.revision &&
             policy.permits(ticket.capability, ticket.key)
+    }
 
-    @Synchronized
-    fun replace(next: ProviderCapabilityPolicy) {
-        for (capability in ProviderCapability.entries) {
-            if (policy.eligible(capability) != next.eligible(capability)) {
-                revisions[capability.ordinal]++
+    /**
+     * Registers a cancellation callback invoked immediately if [ticket] is
+     * already invalid or when [replace] revokes its (capability, instance).
+     */
+    fun onRevoke(ticket: ProviderRequestTicket, callback: () -> Unit): () -> Unit {
+        var invokeImmediately = false
+        synchronized(this) {
+            if (!accept(ticket)) {
+                invokeImmediately = true
+            } else {
+                val slot = ticket.capability to ticket.key
+                listeners.getOrPut(slot) { mutableListOf() }.add(callback)
             }
         }
-        policy = next
+        if (invokeImmediately) {
+            callback()
+            return {}
+        }
+        return {
+            synchronized(this) {
+                val slot = ticket.capability to ticket.key
+                listeners[slot]?.let { list ->
+                    list.remove(callback)
+                    if (list.isEmpty()) listeners.remove(slot)
+                }
+            }
+        }
+    }
+
+    fun replace(next: ProviderCapabilityPolicy) {
+        val toCancel = mutableListOf<() -> Unit>()
+        synchronized(this) {
+            val trackedSlots = (revisions.keys + listeners.keys).toSet()
+            for (slot in trackedSlots) {
+                val (capability, key) = slot
+                if (!next.permits(capability, key)) {
+                    revisions[slot] = (revisions[slot] ?: 0L) + 1L
+                    listeners.remove(slot)?.let { toCancel.addAll(it) }
+                }
+            }
+            policy = next
+        }
+        toCancel.forEach { callback -> runCatching { callback() } }
     }
 }

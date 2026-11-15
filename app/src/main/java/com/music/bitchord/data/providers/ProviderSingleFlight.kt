@@ -1,13 +1,15 @@
 package com.music.bitchord.data.providers
 
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -73,6 +75,49 @@ internal class ProviderSingleFlight<T>(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Policy-bound single-flight: denies immediately if [gate] does not permit
+     * (capability, provider) and cancels this observer's wait (and underlying
+     * work when no authorized observer remains) as soon as the policy revokes
+     * that specific (capability, provider) pair.
+     */
+    suspend fun runGuarded(
+        gate: ProviderPolicyGate?,
+        capability: ProviderCapability,
+        provider: ProviderKey,
+        key: Any,
+        operation: suspend () -> T,
+    ): T {
+        val ticket = gate?.open(capability, provider)
+        if (gate != null && ticket == null) {
+            throw ProviderRequestDeniedException(capability, provider)
+        }
+        var revoked = false
+        val waiterJob = coroutineContext[Job]
+        val unregister = if (gate != null && ticket != null) {
+            gate.onRevoke(ticket) {
+                revoked = true
+                waiterJob?.cancel(CancellationException("Provider capability revoked"))
+            }
+        } else {
+            {}
+        }
+        return try {
+            val value = run(key, operation)
+            if (revoked || (gate != null && ticket != null && !gate.accept(ticket))) {
+                throw ProviderRequestDeniedException(capability, provider)
+            }
+            value
+        } catch (cancelled: CancellationException) {
+            if (revoked || (gate != null && ticket != null && !gate.accept(ticket))) {
+                throw ProviderRequestDeniedException(capability, provider)
+            }
+            throw cancelled
+        } finally {
+            unregister()
         }
     }
 
