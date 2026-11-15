@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -43,7 +44,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.music.bitchord.ui.theme.rememberArtworkPalette
-import com.music.bitchord.ui.icons.PlaylistEditorIcons
+import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
+
+/** Same drawable as the original Now Playing launcher; never substitute a generic More icon. */
+internal fun playerAnchoredMenuHighlightGlyph() = originalNowPlayingOverflowGlyph()
 
 /**
  * Draw the visible selected ⋯ over the exact launcher, even though the menu
@@ -213,6 +217,7 @@ fun PlayerAnchoredActionsMenu(
                             )
                         }
                         .size(highlightSize)
+                        .border(1.5.dp, Color.White.copy(alpha = 0.92f), CircleShape)
                         .testTag("player-overflow-highlight")
                         .clickable(onClick = onDismiss),
                     color = plate,
@@ -222,7 +227,7 @@ fun PlayerAnchoredActionsMenu(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = PlaylistEditorIcons.More,
+                            imageVector = playerAnchoredMenuHighlightGlyph(),
                             contentDescription = "Fechar opções do player",
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(24.dp),
