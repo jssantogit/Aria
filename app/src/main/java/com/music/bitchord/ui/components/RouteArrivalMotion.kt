@@ -140,8 +140,8 @@ internal fun rememberRouteArrivalModifier(
             progress.animateTo(
                 1f,
                 animationSpec = tween(
-                    durationMillis = if (rootTabPrefix != null) 160 else 185,
-                    easing = FastOutSlowInEasing,
+                    durationMillis = if (rootTabPrefix != null) rootTabFadeMillis(reduceMotion) else 185,
+                    easing = if (rootTabPrefix != null) LinearEasing else FastOutSlowInEasing,
                 ),
             )
         } else {

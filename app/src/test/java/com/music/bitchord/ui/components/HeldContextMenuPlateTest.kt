@@ -19,8 +19,8 @@ class HeldContextMenuPlateTest {
         assertEquals(true, heldPreviewCanPaint(hasImage = true, lifted = true))
     }
 
-    @Test fun contextualActionsSampleBackgroundUnlessBlurIsDisabled() {
-        assertEquals(true, heldActionsUseHaze(reduceDynamicBlur = false))
+    @Test fun longPressActionsStaySolidInEitherBlurSetting() {
+        assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = false))
         assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = true))
     }
 

@@ -41,6 +41,13 @@ class RouteArrivalMotionTest {
         assertEquals(settled, frostedMenuEntranceFrame(Float.NaN, reducedMotion = false))
     }
 
+    @Test fun internalLibraryWizardAndSettingsUseTheSameStationaryTabPolicy() {
+        for (prefix in listOf("settings:", "wizard:", "library:", "playlist-manager:")) {
+            assertTrue(shouldAnimateRouteArrival(prefix + "first", prefix + "second", false, prefix))
+            assertFalse(shouldAnimateRouteArrival(prefix + "first", "other:second", false, prefix))
+        }
+    }
+
     @Test fun rootTabsKeepTheirContentStationaryInEitherDirection() {
         val initial = rootTabArrivalFrame(0f)
         assertEquals(0f, initial.translationDp, 0.0001f)

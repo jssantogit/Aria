@@ -1218,6 +1218,11 @@ internal fun SmartPlaylistV2BuilderScreen(
             // This full-screen editor owns Back; Android's system Back must
             // return from reusable filters just like the first-party back icon.
             BackHandler(enabled = pendingDeletion == null) { showWizard = true }
+            val managerArrival = com.music.bitchord.ui.components.rememberRouteArrivalModifier(
+                routeKey = "playlist-manager:${manageTab.name}",
+                reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
+                rootTabPrefix = "playlist-manager:",
+            )
             Surface(
                 modifier = Modifier.fillMaxSize().hazeSource(savedFilterHaze),
                 color = MaterialTheme.colorScheme.background,
@@ -1238,7 +1243,8 @@ internal fun SmartPlaylistV2BuilderScreen(
                     }
                     LazyColumn(
                         state = manageListState,
-                        modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_GUTTER),
+                        modifier = Modifier.fillMaxSize().then(managerArrival)
+                            .padding(horizontal = PAGE_GUTTER),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
             if (manageTab == SmartPlaylistManageTab.FILTERS) {

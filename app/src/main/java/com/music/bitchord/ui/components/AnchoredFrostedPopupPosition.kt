@@ -19,6 +19,7 @@ internal fun anchoredFrostedMenuPosition(
     overlayOrigin: IntOffset,
     gap: Int,
     margin: Int,
+    preferBelow: Boolean = false,
 ): IntOffset {
     val safeGap = gap.coerceAtLeast(0)
     val safeMargin = margin.coerceAtLeast(0)
@@ -28,7 +29,7 @@ internal fun anchoredFrostedMenuPosition(
     )
     val below = anchor.bottom - overlayOrigin.y + safeGap
     val above = anchor.top - overlayOrigin.y - popup.height - safeGap
-    val top = (if (below + popup.height <= overlay.height - safeMargin) below else above)
+    val top = (if (preferBelow || below + popup.height <= overlay.height - safeMargin) below else above)
         .coerceIn(
             safeMargin,
             (overlay.height - popup.height - safeMargin).coerceAtLeast(safeMargin),

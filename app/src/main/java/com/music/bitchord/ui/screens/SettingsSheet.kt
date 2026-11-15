@@ -418,6 +418,7 @@ internal fun SettingsScreen(
         routeKey = "settings:${selectedSection?.name ?: "home"}",
         reduceMotion = reduceAnimation,
         forward = selectedSection != null,
+        rootTabPrefix = "settings:",
     )
     Column(
         modifier = modifier

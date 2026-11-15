@@ -661,6 +661,7 @@ internal fun SmartPlaylistV2WizardUi(
         routeKey = "wizard:${page.name}",
         reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
         forward = page != WizardStep.EDIT && page != WizardStep.IDENTITY,
+        rootTabPrefix = "wizard:",
     )
 
     // Do not mix the editor with the app's own scrollable library screen.

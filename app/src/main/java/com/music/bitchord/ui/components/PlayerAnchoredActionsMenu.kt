@@ -96,6 +96,14 @@ fun PlayerAnchoredActionsMenu(
         (rootSize.width - 2 * margin).coerceAtLeast(1).toDp()
     } else maxWidth
     val menuMaxWidth = minOf(maxWidth, availableWidth)
+    // The Now Playing actions expand downward from the original launcher.
+    // Bound their scrolling plate to space under it instead of flipping above.
+    val maxPlateHeight = if (highlightLauncher && anchorBounds != null && rootSize.height > 0) {
+        with(density) {
+            (rootSize.height - (anchorBounds.bottom - rootOrigin.y + gap) - margin)
+                .coerceAtLeast(1).toDp().coerceAtMost(570.dp)
+        }
+    } else 570.dp
     val measured = rootSize.width > 0 && rootSize.height > 0 &&
         plateSize.width > 0 && plateSize.height > 0
     LaunchedEffect(measured, reduceMotion) {
@@ -138,12 +146,13 @@ fun PlayerAnchoredActionsMenu(
                         overlayOrigin = rootOrigin,
                         gap = gap,
                         margin = margin,
+                        preferBelow = highlightLauncher,
                     )
                 }
             Surface(
                 modifier = place
                     .widthIn(min = minOf(248.dp, menuMaxWidth), max = menuMaxWidth)
-                    .heightIn(max = 570.dp)
+                    .heightIn(max = maxPlateHeight)
                     .onSizeChanged { plateSize = it }
                     // No translation or spring tied to popup measurement: the
                     // dialog gets its own coordinate system and the old motion

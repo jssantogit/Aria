@@ -31,6 +31,16 @@ class AnchoredFrostedPopupPositionTest {
         assertEquals(IntOffset(60, 328), pos)
     }
 
+    @Test fun playerMenuPrefersBelowWhileOtherMenusCanFlip() {
+        val anchor = IntRect(260, 600, 300, 640)
+        val popup = IntSize(240, 90)
+        val screen = IntSize(360, 760)
+        assertEquals(IntOffset(60, 652), anchoredFrostedMenuPosition(
+            anchor, popup, screen, IntOffset.Zero, gap = 12, margin = 12,
+            preferBelow = true,
+        ))
+    }
+
     @Test fun overlayWindowOriginAndNarrowPhoneBoundsAreRespected() {
         val pos = anchoredFrostedMenuPosition(
             anchor = IntRect(260, 52, 300, 92),

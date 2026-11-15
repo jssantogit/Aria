@@ -2973,19 +2973,9 @@ private fun BitChordApp(
             (recentHeldRecording != null && recentHeldOrigin != null) ||
             (heldCatalogSearchRow != null && heldCatalogSearchOrigin != null) ||
             (heldPublicPlaylistSearchRow != null && heldPublicPlaylistSearchOrigin != null)
-        val heldBackdropBlur by animateDpAsState(
-            targetValue = if (shouldBlurHeldContextBackdrop(
-                    heldVisible = heldOverlayVisible,
-                    reduceDynamicBlur = reduceDynamicBlur,
-                )) 20.dp else 0.dp,
-            animationSpec = tween(durationMillis = if (reducePlayerMotion) 0 else 180),
-            label = "held-context-backdrop-blur",
-        )
-        Row(
-            Modifier.fillMaxSize().then(
-                if (heldBackdropBlur > 0.dp) Modifier.blur(heldBackdropBlur) else Modifier,
-            ),
-        ) {
+        // Keep the page stable while the held bitmap lifts and returns.
+        // Re-blurring the whole Activity each frame flashed its content.
+        Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 val playlistRoute = canonicalPlaylistRoute(
                     showBuilder = showSmartPlaylistBuilder,
@@ -3051,7 +3041,13 @@ private fun BitChordApp(
                         when {
                             libraryShowAllSwap ->
                                 com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = true)
-                            tabSwap ->
+                            tabSwap || initialState in setOf(
+                                "settings", "unified_library", "smart_playlist_builder",
+                                "canonical_playlist_library",
+                            ) || targetState in setOf(
+                                "settings", "unified_library", "smart_playlist_builder",
+                                "canonical_playlist_library",
+                            ) ->
                                 com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = reducePlayerMotion)
                             reducePlayerMotion -> EnterTransition.None togetherWith ExitTransition.None
                             else -> fadeIn(tween(180)) togetherWith fadeOut(tween(180))

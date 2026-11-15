@@ -56,6 +56,25 @@ class PlayerArtistEvidenceTest {
         ))
     }
 
+    @Test fun uncreditedLocalArtistOpensOnlyItsOwnVerifiedDisplayGroup() {
+        val local = "local-mediastore"
+        val expected = SourceOwnedArtistEvidence(
+            "browse-display-artist:SAY MY NAME", "SAY MY NAME", local,
+        )
+        assertEquals(expected, verifiedLocalDisplayArtist(
+            "recording-1", local, "SAY MY NAME", listOf("recording-1"),
+        ))
+        assertNull(verifiedLocalDisplayArtist(
+            "other-recording", local, "SAY MY NAME", listOf("recording-1"),
+        ))
+        assertNull(verifiedLocalDisplayArtist(
+            "recording-1", "opensubsonic:other", "SAY MY NAME", listOf("recording-1"),
+        ))
+        assertNull(verifiedLocalDisplayArtist(
+            "recording-1", local, "SAY MY NAME ", listOf("recording-1"),
+        ))
+    }
+
     @Test fun appleRouteIsNotInventedFromMetadataName() {
         assertEquals(
             "itunes:br:artist:123",

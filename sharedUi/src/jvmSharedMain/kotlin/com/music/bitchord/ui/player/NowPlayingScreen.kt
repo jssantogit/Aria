@@ -2119,7 +2119,7 @@ fun NowPlayingScreen(
                                     onBoundsChanged = onRatingAnchorChange,
                                 )
                                     AppleQueueHeaderAction(
-                                        imageVector = AppleQueueVectors.More,
+                                        imageVector = AppleQueueVectors.MorePlain,
                                         description = stringResource(Res.string.more),
                                         onClick = { (onOpenQueueMenu ?: onOpenMenu)(canonicalArtworkModel) },
                                         onBoundsChanged = onOverflowAnchorChange,
@@ -3377,7 +3377,7 @@ fun NowPlayingScreen(
                                 !lyrics.isNullOrEmpty() && (!lyricsControlsOpen || lyricPicker.picking)
                             if (queueOpen && appleQueueStyle) {
                                 AppleQueueHeaderAction(
-                                    imageVector = AppleQueueVectors.More,
+                                    imageVector = AppleQueueVectors.MorePlain,
                                     description = stringResource(Res.string.more),
                                     onClick = { (onOpenQueueMenu ?: onOpenMenu)(canonicalArtworkModel) },
                                     onBoundsChanged = onOverflowAnchorChange,
@@ -3386,7 +3386,7 @@ fun NowPlayingScreen(
                                 // Same glyph, dimensions, and contextual sheet
                                 // as the Apple-derived queue overflow.
                                 AppleQueueHeaderAction(
-                                    imageVector = AppleQueueVectors.More,
+                                    imageVector = AppleQueueVectors.MorePlain,
                                     description = stringResource(Res.string.more),
                                     onClick = { (onOpenQueueMenu ?: onOpenMenu)(canonicalArtworkModel) },
                                     onBoundsChanged = onOverflowAnchorChange,

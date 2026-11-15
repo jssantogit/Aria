@@ -1059,6 +1059,7 @@ internal fun CanonicalRemoteLibraryScreen(
         routeKey = "library:${selectedContext.name}:${selectedEntity?.id ?: "shelf"}",
         reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
         forward = selectedEntity != null,
+        rootTabPrefix = "library:",
     )
     val heldLibraryHaze = remember { HazeState() }
     // Keep the lifted preview's palette and menu alive through its return
@@ -1072,15 +1073,6 @@ internal fun CanonicalRemoteLibraryScreen(
             detailArtwork = selectedEntity?.artworkUri,
         ),
     )
-    val reduceHeldBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val heldLibraryBlur by animateDpAsState(
-        targetValue = if (shouldBlurHeldContextBackdrop(
-                heldVisible = libraryMenu != null && heldLibraryMenuOrigin != null,
-                reduceDynamicBlur = reduceHeldBlur,
-            )) 20.dp else 0.dp,
-        animationSpec = tween(180),
-        label = "held-library-page-blur",
-    )
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -1089,7 +1081,6 @@ internal fun CanonicalRemoteLibraryScreen(
         // Capture page content separately from the lifted overlays.
         Box(Modifier.fillMaxSize()
             .hazeSource(heldLibraryHaze)
-            .then(if (heldLibraryBlur > 0.dp) Modifier.blur(heldLibraryBlur) else Modifier)
         ) {
         if (unified) {
             // Selected albums/artists keep the exact native page chrome.

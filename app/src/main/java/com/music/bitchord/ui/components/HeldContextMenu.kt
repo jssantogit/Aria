@@ -62,8 +62,8 @@ import kotlin.math.roundToInt
 /** The source row keeps painting until its bitmap replacement is ready. */
 internal fun heldPreviewCanPaint(hasImage: Boolean, lifted: Boolean): Boolean = hasImage && lifted
 
-/** Real Haze source remains active; the solid plate is a reduced-blur fallback. */
-internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
+/** Long-press actions stay opaque; blur belongs to filter/rating cards. */
+internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = false
 
 /**
  * The menu a *held* item lifts into, in the shape Apple Music uses: the item
@@ -163,12 +163,8 @@ fun <T : Any> HeldContextMenu(
     // Do not put an opaque black plate above the already blurred content.
     // A gentle translucent lift keeps the real page legible behind the item
     // (and exposes the diffused artwork when one exists).
-    val scrimColor = when {
-        reduceDynamicBlur && dark -> Color.Black.copy(alpha = 0.78f)
-        reduceDynamicBlur -> Color.Black.copy(alpha = 0.58f)
-        dark -> Color.White.copy(alpha = 0.035f)
-        else -> Color.Black.copy(alpha = 0.09f)
-    }
+    val scrimColor = if (dark) Color.Black.copy(alpha = 0.30f)
+        else Color.Black.copy(alpha = 0.18f)
     val cardShape = RoundedCornerShape(20.dp)
     val menuShape = RoundedCornerShape(16.dp)
     val platePadding = 8.dp
@@ -191,18 +187,7 @@ fun <T : Any> HeldContextMenu(
                 Modifier
                     .fillMaxSize()
                     .testTag("held-context-backdrop")
-                    .then(
-                        if (!heldMenuNeedsOwnHazeSource(hostProvidesBlur, reduceDynamicBlur)) {
-                            Modifier
-                        } else {
-                            Modifier.optimizedHazeEffect(
-                                state = hazeState,
-                                style = HazeMaterials.thick(MaterialTheme.colorScheme.background),
-                            ) {
-                                alpha = backdropAlpha()
-                            }
-                        },
-                    )
+                    // No full-page Haze re-sampling during the lifted animation.
                     .graphicsLayer { alpha = backdropAlpha() }
                     .background(scrimColor)
                     .clickable(
@@ -245,12 +230,7 @@ fun <T : Any> HeldContextMenu(
                     // Taps between rows land on the menu, not the scrim under it.
                     .pointerInput(Unit) {}
                     .clip(menuShape)
-                    .then(if (heldActionsUseHaze(reduceDynamicBlur)) {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(plate.copy(alpha = 0.56f)),
-                        )
-                    } else Modifier.background(plate))
+                    .background(plate)
                     .border(0.5.dp, hairline, menuShape)
                     .verticalScroll(rememberScrollState())
                     .testTag("held-context-actions"),

@@ -4,6 +4,8 @@ import android.content.Context
 import com.music.bitchord.data.catalog.ArtistEntity
 import com.music.bitchord.data.catalog.CanonicalArtistCreditRow
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.LOCAL_MEDIASTORE_PROVIDER
+import com.music.bitchord.ui.screens.playlistDisplayArtistGroupId
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.playback.androidCanonicalQueueResolver
 import kotlinx.coroutines.CancellationException
@@ -41,6 +43,21 @@ internal fun verifiedSourceOwnedPlayerArtist(
     return SourceOwnedArtistEvidence(actual.id, actual.name, providerKey)
 }
 
+/** Local browse-only artist groups have typed IDs, not invented ArtistIds.
+ * Confirm the current recording is a member of that exact MediaStore group. */
+internal fun verifiedLocalDisplayArtist(
+    recordingId: String,
+    providerKey: String,
+    displayName: String,
+    memberRecordingIds: List<String>,
+): SourceOwnedArtistEvidence? {
+    val name = displayName.trim()
+    if (providerKey != LOCAL_MEDIASTORE_PROVIDER || recordingId.isBlank() ||
+        name.isBlank() || name != displayName || recordingId !in memberRecordingIds
+    ) return null
+    return SourceOwnedArtistEvidence(playlistDisplayArtistGroupId(name), name, providerKey)
+}
+
 /** Exact Apple route format used by the iTunes catalog; no display-name search. */
 internal fun verifiedAppleArtistBrowseRoute(raw: String?): String? =
     raw?.takeIf { Regex("^itunes:[a-z]{2}:artist:[1-9][0-9]*$").matches(it) }
@@ -76,7 +93,14 @@ internal suspend fun verifiedPlayerSourceOwnedArtist(
             credits = dao.recordingArtistCredits(identity.recordingId),
             availableArtists = dao.providerScopedArtists(source),
             artistName = song.artist,
-        )
+        ) ?: if (source == LOCAL_MEDIASTORE_PROVIDER) {
+            verifiedLocalDisplayArtist(
+                recordingId = identity.recordingId,
+                providerKey = source,
+                displayName = song.artist,
+                memberRecordingIds = dao.playlistDisplayArtistRecordingIds(source, song.artist),
+            )
+        } else null
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: Exception) {
