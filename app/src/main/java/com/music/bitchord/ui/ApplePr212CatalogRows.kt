@@ -32,6 +32,11 @@ internal data class ApplePr212CatalogRoute(
     }
 }
 
+/** A real Apple edition can be shown without falsely classifying it as an Album. */
+internal fun isVerifiedAppleEditorialRelease(row: CanonicalCatalogSearchRow): Boolean =
+    row.kind == CanonicalSearchKind.RELEASE &&
+        ApplePr212CatalogRoute.parse(row.musicBrainzId)?.kind == ItunesCatalogItemType.ALBUM
+
 /**
  * Projection into the PR212 Search/Detail *data model*, not its UI code.
  * musicBrainzId is the legacy field name for the row's opaque key. The content
