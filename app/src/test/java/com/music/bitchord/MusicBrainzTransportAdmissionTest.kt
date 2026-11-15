@@ -50,7 +50,8 @@ class MusicBrainzTransportAdmissionTest {
                     path: String, parameters: Map<String, String>, userAgent: String,
                 ): String {
                     contacts++
-                    return """{"count":0,"offset":0,"artists":[]}"""
+                    return if (path.startsWith("artist/")) "identity"
+                    else """{"count":0,"offset":0,"artists":[]}"""
                 }
             },
             admission = { gate },
