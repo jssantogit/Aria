@@ -1213,6 +1213,16 @@ fun DetailScreen(
  * layer drawn behind the list. Search, sort and the overflow menu are the top
  * bar's, not this header's.
  */
+/** Source-bound credit navigation is not inferred from display names of public releases. */
+internal fun detailAlbumArtistBrowseId(
+    albumBrowseId: String,
+    artistId: String?,
+    artistName: String,
+): String? = artistId?.takeIf(String::isNotBlank)
+    ?: com.music.bitchord.data.LocalGroups.folderOf(albumBrowseId)
+        ?.takeIf { artistName.isNotBlank() }
+        ?.let { folder -> com.music.bitchord.data.LocalGroups.artistPageId(folder, artistName) }
+
 @Composable
 private fun ReleaseHeader(
     page: DetailPage,
@@ -1260,12 +1270,7 @@ private fun ReleaseHeader(
     // page even without a YouTube artistId. Do not turn arbitrary album
     // credits into public YouTube browse IDs or do a fuzzy name lookup.
     val creditArtistId = artist?.let { song ->
-        song.artistId?.takeIf(String::isNotBlank)
-            ?: com.music.bitchord.data.LocalGroups.folderOf(page.browseId)
-                ?.takeIf { song.artist.isNotBlank() }
-                ?.let { folder ->
-                    com.music.bitchord.data.LocalGroups.artistPageId(folder, song.artist)
-                }
+        detailAlbumArtistBrowseId(page.browseId, song.artistId, song.artist)
     }
     val onCreditClick: (() -> Unit)? =
         if (creditArtistId != null && artist != null && onArtistClick != null) {
