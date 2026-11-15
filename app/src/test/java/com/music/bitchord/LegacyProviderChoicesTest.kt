@@ -10,6 +10,8 @@ import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPreferenceStore
 import com.music.bitchord.data.providers.ProviderReadiness
+import com.music.bitchord.data.providers.ProviderSessionSnapshot
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import com.music.bitchord.data.providers.legacyProviderChoices
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
@@ -27,6 +29,44 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
 class LegacyProviderChoicesTest {
+    @Test fun storageFailureInOneInstanceDoesNotHideAuthorizedLyricsOrAddonSiblings() {
+        val lyric = ProviderKey(LyricsSource.LRCLIB.name.lowercase(Locale.ROOT))
+        val otherLyric = ProviderKey(LyricsSource.GENIUS.name.lowercase(Locale.ROOT))
+        val addonA = ProviderKey("addon", "a")
+        val addonB = ProviderKey("addon", "b")
+        val snapshot = ProviderSessionSnapshot(
+            status = ProviderSessionStatus.STORAGE_ERROR,
+            configured = mapOf(
+                ProviderCapability.LYRICS_LOOKUP to listOf(
+                    ProviderChoice(lyric, true, 0),
+                    ProviderChoice(otherLyric, true, 1),
+                ),
+                ProviderCapability.EXTENSION_PLAYBACK to listOf(
+                    ProviderChoice(addonA, true, 0),
+                    ProviderChoice(addonB, true, 1),
+                ),
+            ),
+            eligible = mapOf(
+                ProviderCapability.LYRICS_LOOKUP to listOf(otherLyric),
+                ProviderCapability.EXTENSION_PLAYBACK to listOf(addonB),
+            ),
+            quarantined = setOf(
+                ProviderCapability.LYRICS_LOOKUP,
+                ProviderCapability.EXTENSION_PLAYBACK,
+            ),
+        )
+        val projectedLyrics = LegacyProviderCompatibility.projectLyrics(
+            snapshot, listOf(LyricsSource.LRCLIB, LyricsSource.GENIUS),
+            setOf(LyricsSource.LRCLIB, LyricsSource.GENIUS),
+        )
+        assertEquals(setOf(LyricsSource.GENIUS), projectedLyrics.enabled)
+        val projected = LegacyProviderCompatibility.projectExtensions(snapshot, listOf(
+            SourceConfig(id = "a", kind = SourceKind.ADDON, enabled = true),
+            SourceConfig(id = "b", kind = SourceKind.ADDON, enabled = true),
+        ))
+        assertEquals(listOf(false, true), projected.map { it.enabled })
+    }
+
     @Test fun lyricsSelectionsKeepExistingPriorityAndEveryExplicitOptOut() {
         val choices = legacyProviderChoices(
             lyricsOrder = listOf(LyricsSource.LRCLIB, LyricsSource.LRC_RED, LyricsSource.GENIUS),
