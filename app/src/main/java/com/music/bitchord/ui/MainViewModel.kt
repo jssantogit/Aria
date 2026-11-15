@@ -3427,7 +3427,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * recordings. A brief absence is not a permanent empty-catalog state.
      * Keep the most recent verified snapshot when the network is unavailable.
      */
+    /** MB is a bounded search-hint provider here; every visible product comes from Apple. */
+    private fun loadApplePr212WorldwideReleases(force: Boolean) {
+        if (worldwideReleaseJob?.isActive == true) return
+        val now = System.currentTimeMillis()
+        if (!force && (now < worldwideReleaseRetryAtMs ||
+                (worldwideReleaseFetchedAtMs > 0L &&
+                    now - worldwideReleaseFetchedAtMs < 6L * 60L * 60L * 1000L)
+            )) return
+        val generation = worldwideReleaseEpoch.next()
+        _canonicalWorldwideLoading.value = true
+        worldwideReleaseJob = viewModelScope.launch(Dispatchers.IO) {
+            val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+            val from = today.minusDays(90).toString()
+            val hints = try {
+                when (val source = musicBrainzSearch.searchRecentReleaseGroups(
+                    from, today.toString(), limit = 100,
+                )) {
+                    is MusicBrainzCatalogSearchResult.Success -> source.page.items
+                    else -> emptyList()
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { emptyList() }
+            val seeds = hints.mapNotNull { hit ->
+                hit.artistDisplay?.takeIf(String::isNotBlank)?.let { artist ->
+                    com.music.bitchord.data.catalog.metadata.AppleHomeEditorialSeed(
+                        hit.title, artist,
+                    )
+                }
+            }
+            val outcome = try {
+                com.music.bitchord.data.catalog.metadata.AppleHomeEditorialDiscovery()
+                    .discover(seeds, "br", maxProbes = 8, onProgress = { releases ->
+                        if (worldwideReleaseEpoch.isCurrent(generation)) {
+                            _canonicalWorldwideReleases.value =
+                                releases.mapNotNull(ApplePr212CatalogRows::album)
+                        }
+                    })
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (!worldwideReleaseEpoch.isCurrent(generation)) return@launch
+            val rows = (outcome as?
+                com.music.bitchord.data.catalog.metadata.AppleEditorialLoad.Success)
+                ?.releases.orEmpty().mapNotNull(ApplePr212CatalogRows::album)
+            if (rows.isNotEmpty()) {
+                _canonicalWorldwideReleases.value = rows
+                worldwideReleaseFetchedAtMs = System.currentTimeMillis()
+                worldwideReleaseRetryAtMs = 0L
+            } else {
+                // A catalog failure cannot silently expose MusicBrainz releases.
+                _canonicalWorldwideReleases.value =
+                    _canonicalWorldwideReleases.value.filter(::isVerifiedAppleEditorialRelease)
+                worldwideReleaseRetryAtMs = System.currentTimeMillis() + 15L * 60_000L
+            }
+            _canonicalWorldwideLoading.value = false
+        }
+    }
+
     fun loadCanonicalWorldwideReleases(force: Boolean = false) {
+        if (applePublicCatalogEnabled) {
+            loadApplePr212WorldwideReleases(force)
+            return
+        }
         if (worldwideReleaseJob?.isActive == true) return
         val now = System.currentTimeMillis()
         if (!force && (now < worldwideReleaseRetryAtMs ||
@@ -3669,7 +3730,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Explore genre requests use actual MusicBrainz tags, not YouTube pages. */
+    private fun loadApplePr212Genre(tag: String) {
+        if (canonicalExploreGenres.none { it.tag == tag }) return
+        val generation = canonicalGenreEpoch.next()
+        canonicalGenreJob?.cancel()
+        _canonicalGenreResults.value = UiState.Loading
+        canonicalGenreJob = viewModelScope.launch(Dispatchers.IO) {
+            val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+            val hints = try {
+                when (val source = musicBrainzSearch.searchReleaseGroupsForTag(tag, 60)) {
+                    is MusicBrainzCatalogSearchResult.Success -> source.page.items
+                    else -> emptyList()
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { emptyList() }
+            if (!canonicalGenreEpoch.isCurrent(generation)) return@launch
+            val seeds = hints.mapNotNull { hit ->
+                hit.artistDisplay?.takeIf(String::isNotBlank)?.let { artist ->
+                    com.music.bitchord.data.catalog.metadata.AppleHomeEditorialSeed(
+                        hit.title, artist,
+                    )
+                }
+            }
+            fun publish(releases: List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>) {
+                if (!canonicalGenreEpoch.isCurrent(generation)) return
+                val rows = releases.mapNotNull(ApplePr212CatalogRows::album)
+                _canonicalGenreResults.value = UiState.Success(rows)
+                releases.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl?.let { art ->
+                    _canonicalExploreGenreCovers.update { it + (tag to art) }
+                }
+            }
+            val outcome = try {
+                com.music.bitchord.data.catalog.metadata.AppleExploreGenreDiscovery()
+                    .discover(tag, seeds, "br", onProgress = ::publish)
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (!canonicalGenreEpoch.isCurrent(generation)) return@launch
+            when (outcome) {
+                is com.music.bitchord.data.catalog.metadata.AppleEditorialLoad.Success ->
+                    publish(outcome.releases)
+                else -> _canonicalGenreResults.value = UiState.Error(
+                    "Não foi possível consultar este gênero no catálogo Apple.",
+                )
+            }
+        }
+    }
+
     fun loadCanonicalGenre(tag: String) {
+        if (applePublicCatalogEnabled) {
+            loadApplePr212Genre(tag)
+            return
+        }
         val selected = canonicalExploreGenres.firstOrNull { it.tag == tag } ?: return
         val generation = canonicalGenreEpoch.next()
         canonicalGenreJob?.cancel()
