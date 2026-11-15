@@ -3946,7 +3946,7 @@ private fun BitChordApp(
                             leadHero = true,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
-                            }
+                        )
                         }
                         TAB_SEARCH -> SearchScreen(
                             query = query,
