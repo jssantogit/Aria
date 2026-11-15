@@ -88,6 +88,12 @@ fun PlayerAnchoredActionsMenu(
     val margin = with(density) { 14.dp.roundToPx() }
     val reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current
     val entrance = remember { Animatable(0f) }
+    // Respect the dialog's actual width, which can be much smaller than the
+    // activity width in split-screen. A fixed 248dp minimum clipped menus.
+    val availableWidth = if (rootSize.width > 0) with(density) {
+        (rootSize.width - 2 * margin).coerceAtLeast(1).toDp()
+    } else maxWidth
+    val menuMaxWidth = minOf(maxWidth, availableWidth)
     val measured = rootSize.width > 0 && rootSize.height > 0 &&
         plateSize.width > 0 && plateSize.height > 0
     LaunchedEffect(measured, reduceMotion) {
@@ -134,7 +140,7 @@ fun PlayerAnchoredActionsMenu(
                 }
             Surface(
                 modifier = place
-                    .widthIn(min = 248.dp, max = maxWidth)
+                    .widthIn(min = minOf(248.dp, menuMaxWidth), max = menuMaxWidth)
                     .heightIn(max = 570.dp)
                     .onSizeChanged { plateSize = it }
                     // No translation or spring tied to popup measurement: the
