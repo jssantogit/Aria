@@ -1,0 +1,46 @@
+name: REA212 source-safe final Android acceptance
+on:
+  push:
+    branches: [validation/rea212-source-safe-final-fc1f707-20261114]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+      - name: Validate exact PR source snapshot
+        run: |
+          set -euo pipefail
+          git diff --exit-code fc1f7077cb58a64a499e4fdabadb60fbaaba16fe HEAD -- app sharedUi shared
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare Android project
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+      - name: Focused artist and rating regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests "com.music.bitchord.ui.components.PlayerArtistEvidenceTest" --tests "com.music.bitchord.ui.screens.NativeFrostedRatingInteractionTest" --tests "com.music.bitchord.ui.screens.NativeRatingEditorActionTest" --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest" --tests "com.music.bitchord.ui.screens.CanonicalLibrarySelectionExpandedActionsTest"
+      - name: Complete Android regression suite
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Shared UI JVM
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+      - name: Shared Automix
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+      - name: Upload failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea212-source-safe-final-report-${{ github.sha }}
+          path: |
+            app/build/reports/tests/
+            sharedUi/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 3
