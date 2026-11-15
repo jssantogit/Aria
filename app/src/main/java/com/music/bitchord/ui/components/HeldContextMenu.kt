@@ -72,10 +72,13 @@ internal fun heldPreviewAlpha(hasImage: Boolean, lifted: Boolean): Float =
     if (heldPreviewCanPaint(hasImage, lifted)) 1f else 0f
 
 /** The active lifted item keeps the same bright outline over every artwork palette. */
-internal fun heldContextSelectionOutline(): Color = Color.White.copy(alpha = 0.88f)
+internal fun heldContextSelectionOutline(): Color = Color.White.copy(alpha = 0.36f)
 
-/** Long-press actions stay opaque; blur belongs to filter/rating cards. */
-internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = false
+/** The original snapshot is the entire content. Never repaint it with a grey tile. */
+internal fun heldPreviewBackingColor(): Color = Color.Transparent
+
+/** Reuse the Library filter's frosted action surface; keep a solid fallback for reduced blur. */
+internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
 
 /**
  * The menu a *held* item lifts into, in the shape Apple Music uses: the item
@@ -179,7 +182,7 @@ fun <T : Any> HeldContextMenu(
         else Color.Black.copy(alpha = 0.18f)
     val cardShape = RoundedCornerShape(20.dp)
     val menuShape = RoundedCornerShape(16.dp)
-    val platePadding = 8.dp
+    val platePadding = 2.dp
 
     val insets = WindowInsets.safeDrawing
     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
@@ -216,8 +219,10 @@ fun <T : Any> HeldContextMenu(
                     .then(if (reduceMotion) Modifier else Modifier.shadow(20.dp, cardShape, clip = false))
                     .pointerInput(Unit) {}
                     .clip(cardShape)
-                    .background(plate)
-                    .border(1.5.dp, heldContextSelectionOutline(), cardShape)
+                    // Lift the exact original bitmap; a neutral background here
+                    // visibly repaints bright/dark album and artist tiles grey.
+                    .background(heldPreviewBackingColor())
+                    .border(0.75.dp, heldContextSelectionOutline(), cardShape)
                     .then(
                         if (onPreviewClick != null) {
                             Modifier.clickable(enabled = open) { onPreviewClick(menuItem) }
@@ -242,7 +247,16 @@ fun <T : Any> HeldContextMenu(
                     // Taps between rows land on the menu, not the scrim under it.
                     .pointerInput(Unit) {}
                     .clip(menuShape)
+                    // Same glass recipe as NativeContextActionPlate (Library filters).
+                    // The neutral paint is a fallback until the Haze source is ready;
+                    // blur stays opt-out for accessibility and low-power devices.
                     .background(plate)
+                    .then(
+                        if (heldActionsUseHaze(reduceDynamicBlur)) Modifier.optimizedHazeEffect(
+                            state = hazeState,
+                            style = HazeMaterials.regular(plate.copy(alpha = 0.58f)),
+                        ) else Modifier,
+                    )
                     .border(0.5.dp, hairline, menuShape)
                     .verticalScroll(rememberScrollState())
                     .testTag("held-context-actions"),
