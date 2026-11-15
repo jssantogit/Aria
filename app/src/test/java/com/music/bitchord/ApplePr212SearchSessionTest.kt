@@ -104,4 +104,39 @@ class ApplePr212SearchSessionTest {
         assertEquals(listOf("itunes:br:album:44"), result.rows.map { it.musicBrainzId })
         assertFalse(result.rows.any { it.musicBrainzId.startsWith("catalog:") })
     }
+    @Test fun failedSingleEntityCanRetryWithoutErasingAlreadyLoadedAppleProducts() = runBlocking {
+        val attempts = mutableMapOf<ItunesCatalogEntity, Int>()
+        val provider = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                val n = (attempts[entity] ?: 0) + 1
+                attempts[entity] = n
+                return when (entity) {
+                    ItunesCatalogEntity.ARTIST -> ItunesCatalogResult.Success(
+                        listOf(product(ItunesCatalogItemType.ARTIST, 99, "NewJeans")),
+                    )
+                    ItunesCatalogEntity.ALBUM -> if (n == 1)
+                        ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE)
+                    else ItunesCatalogResult.Success(
+                        listOf(product(ItunesCatalogItemType.ALBUM, 123, "Get Up - EP")),
+                    )
+                    ItunesCatalogEntity.SONG ->
+                        ItunesCatalogResult.Success(emptyList())
+                }
+            }
+        }
+        val session = ApplePr212SearchSession("NewJeans", source = provider)
+        val partial = requireNotNull(session.start())
+        assertEquals(listOf("itunes:br:artist:99"), partial.rows.map { it.musicBrainzId })
+        assertTrue(partial.hasMore)
+        val complete = requireNotNull(session.loadMore())
+        assertEquals(listOf("itunes:br:artist:99", "itunes:br:album:123"),
+            complete.rows.map { it.musicBrainzId })
+        assertFalse(complete.hasMore)
+        assertEquals(2, attempts[ItunesCatalogEntity.ALBUM])
+        assertEquals(1, attempts[ItunesCatalogEntity.ARTIST])
+    }
+
 }
