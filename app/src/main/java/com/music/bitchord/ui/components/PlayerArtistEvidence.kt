@@ -58,6 +58,42 @@ internal fun verifiedLocalDisplayArtist(
     return SourceOwnedArtistEvidence(playlistDisplayArtistGroupId(name), name, providerKey)
 }
 
+/** The Library already grouped these locally scanned records by artist label.
+ * A sourceKey must exactly equal this song's MediaStore URI; otherwise a
+ * similar name on another phone/server is not evidence of identity. */
+internal fun verifiedLocalMediaAssetArtist(
+    requestedUri: String?,
+    verifiedSourceKey: String?,
+    recordingId: String,
+    displayName: String,
+    memberRecordingIds: List<String>,
+): SourceOwnedArtistEvidence? {
+    if (requestedUri.isNullOrBlank() || requestedUri != verifiedSourceKey) return null
+    return verifiedLocalDisplayArtist(
+        recordingId = recordingId,
+        providerKey = CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER,
+        displayName = displayName,
+        memberRecordingIds = memberRecordingIds,
+    )
+}
+
+/** A local Release credit is a real Library display group only when EVERY
+ * currently scoped member is in the same artist name group. Compilation
+ * albums and multi-artist collaborations never silently jump to the wrong
+ * Artist detail. These members are prefiltered for the same provider. */
+internal fun verifiedLocalAlbumDisplayArtist(
+    providerKey: String,
+    albumCredit: String,
+    memberArtistNames: List<String>,
+): SourceOwnedArtistEvidence? {
+    val name = albumCredit.trim()
+    if (providerKey != CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER ||
+        name.isBlank() || name != albumCredit || memberArtistNames.isEmpty() ||
+        memberArtistNames.any { it != name }
+    ) return null
+    return SourceOwnedArtistEvidence(playlistDisplayArtistGroupId(name), name, providerKey)
+}
+
 /** Exact Apple route format used by the iTunes catalog; no display-name search. */
 internal fun verifiedAppleArtistBrowseRoute(raw: String?): String? =
     raw?.takeIf { Regex("^itunes:[a-z]{2}:artist:[1-9][0-9]*$").matches(it) }
@@ -77,16 +113,43 @@ internal suspend fun verifiedPlayerSourceOwnedArtist(
     context: Context,
     song: Song,
 ): SourceOwnedArtistEvidence? = withContext(Dispatchers.IO) {
-    val resolver = androidCanonicalQueueResolver(context.applicationContext)
-    val identity = resolver.identifyAll(listOf(song)).singleOrNull()
-        ?: return@withContext null
-    val source = identity.providerKey?.takeIf(String::isNotBlank)
-        ?: return@withContext null
-    if (resolver.resolveAll(listOf(identity)).singleOrNull()?.identity != identity) {
-        return@withContext null
-    }
     val dao = CanonicalCatalogDatabase.get(context.applicationContext).catalogDao()
     try {
+        // A local file already has an exact, persisted MediaStore sourceKey.
+        // Resolve it BEFORE inspecting the queue: an old queue item may have
+        // no canonical playback identity while its Library artist exists.
+        song.localUri?.takeIf(String::isNotBlank)?.let { uri ->
+            val provider = CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER
+            val asset = dao.mediaAsset(provider, uri)
+            if (asset != null) {
+                val proven = verifiedSourceOwnedPlayerArtist(
+                    recordingId = asset.recordingId,
+                    providerKey = provider,
+                    credits = dao.recordingArtistCredits(asset.recordingId),
+                    availableArtists = dao.providerScopedArtists(provider),
+                    artistName = song.artist,
+                ) ?: verifiedLocalMediaAssetArtist(
+                    requestedUri = uri,
+                    verifiedSourceKey = asset.sourceKey,
+                    recordingId = asset.recordingId,
+                    displayName = song.artist,
+                    memberRecordingIds = dao.playlistDisplayArtistRecordingIds(
+                        provider, song.artist,
+                    ),
+                )
+                if (proven != null) return@withContext proven
+            }
+        }
+        // Nonlocal/remote tracks still require their queue identity to prove
+        // ownership; never guess a remote ArtistId using metadata alone.
+        val resolver = androidCanonicalQueueResolver(context.applicationContext)
+        val identity = resolver.identifyAll(listOf(song)).singleOrNull()
+            ?: return@withContext null
+        val source = identity.providerKey?.takeIf(String::isNotBlank)
+            ?: return@withContext null
+        if (resolver.resolveAll(listOf(identity)).singleOrNull()?.identity != identity) {
+            return@withContext null
+        }
         verifiedSourceOwnedPlayerArtist(
             recordingId = identity.recordingId,
             providerKey = source,

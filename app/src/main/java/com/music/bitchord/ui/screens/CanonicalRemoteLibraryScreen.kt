@@ -838,6 +838,9 @@ internal fun CanonicalRemoteLibraryScreen(
             .distinct().singleOrNull() ?: return@produceState
         value = try {
             withContext(Dispatchers.IO) {
+                val albumArtist = (entityState as? CanonicalEntityBrowseState.Albums)
+                    ?.releases?.firstOrNull { it.id == id }?.artistDisplay
+                    ?: scopedDetailTracks.firstOrNull()?.artistDisplay.orEmpty()
                 com.music.bitchord.ui.components.verifiedSourceOwnedPlayerArtist(
                     recordingId = id,
                     providerKey = source,
@@ -846,9 +849,17 @@ internal fun CanonicalRemoteLibraryScreen(
                     // Older local/Navidrome releases can have an album credit
                     // but no releaseArtistCredits row yet. Only a unique artist
                     // in the *same selected provider* is a safe fallback.
-                    artistName = (entityState as? CanonicalEntityBrowseState.Albums)
-                        ?.releases?.firstOrNull { it.id == id }?.artistDisplay
-                        ?: scopedDetailTracks.firstOrNull()?.artistDisplay,
+                    artistName = albumArtist,
+                ) ?: com.music.bitchord.ui.components.verifiedLocalAlbumDisplayArtist(
+                    providerKey = source,
+                    albumCredit = albumArtist,
+                    // These are the release's scoped Recording+Asset members,
+                    // NOT text search results. Reject mixed artist credits and
+                    // any member not present in the selected provider.
+                    memberArtistNames = scopedDetailTracks.map { track ->
+                        if (track.availableAssets.any { it.providerKey == source })
+                            track.artistDisplay else ""
+                    },
                 )
             }
         } catch (cancelled: CancellationException) {

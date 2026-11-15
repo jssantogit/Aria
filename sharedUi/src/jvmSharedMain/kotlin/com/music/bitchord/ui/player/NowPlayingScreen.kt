@@ -638,6 +638,9 @@ private fun SlidingPlayerDeck(
     }
 }
 
+/** The portrait player draws the ORIGINAL AM-DECOMP More platter once. */
+internal fun nativePortraitAppleQueueOverflowGlyph() = AppleQueueVectors.More
+
 /**
  * Apple Music's Now Playing, closely: artwork that shrinks when paused, a
  * hairline scrubber with elapsed / remaining either side, oversized transport
@@ -654,10 +657,9 @@ private fun AppleQueueHeaderAction(
 ) {
     Box(
         Modifier.size(40.dp)
-            // The native three-dot vector stays unchanged. A restrained
-            // contrast puck makes it legible over bright/full-bleed artwork.
-            .background(Color.Black.copy(alpha = 0.22f), CircleShape)
-            .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+            // The original AM-DECOMP ⋯ vector already CONTAINS its own
+            // translucent circular platter. Drawing another backdrop/border
+            // here made a visibly different doubled-ring button.
             .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
                 val bounds = coords.boundsInWindow()
                 onBoundsChanged(androidx.compose.ui.unit.IntRect(
@@ -2119,7 +2121,7 @@ fun NowPlayingScreen(
                                     onBoundsChanged = onRatingAnchorChange,
                                 )
                                     AppleQueueHeaderAction(
-                                        imageVector = AppleQueueVectors.MorePlain,
+                                        imageVector = nativePortraitAppleQueueOverflowGlyph(),
                                         description = stringResource(Res.string.more),
                                         onClick = { (onOpenQueueMenu ?: onOpenMenu)(canonicalArtworkModel) },
                                         onBoundsChanged = onOverflowAnchorChange,
@@ -3377,7 +3379,7 @@ fun NowPlayingScreen(
                                 !lyrics.isNullOrEmpty() && (!lyricsControlsOpen || lyricPicker.picking)
                             if (queueOpen && appleQueueStyle) {
                                 AppleQueueHeaderAction(
-                                    imageVector = AppleQueueVectors.MorePlain,
+                                    imageVector = nativePortraitAppleQueueOverflowGlyph(),
                                     description = stringResource(Res.string.more),
                                     onClick = { (onOpenQueueMenu ?: onOpenMenu)(canonicalArtworkModel) },
                                     onBoundsChanged = onOverflowAnchorChange,
@@ -3386,7 +3388,7 @@ fun NowPlayingScreen(
                                 // Same glyph, dimensions, and contextual sheet
                                 // as the Apple-derived queue overflow.
                                 AppleQueueHeaderAction(
-                                    imageVector = AppleQueueVectors.MorePlain,
+                                    imageVector = nativePortraitAppleQueueOverflowGlyph(),
                                     description = stringResource(Res.string.more),
                                     onClick = { (onOpenQueueMenu ?: onOpenMenu)(canonicalArtworkModel) },
                                     onBoundsChanged = onOverflowAnchorChange,
