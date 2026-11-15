@@ -43,27 +43,50 @@ internal class ApplePr212NativeCatalogService(
         route: ApplePr212CatalogRoute,
         name: String,
         artwork: String?,
+        onProgress: suspend (DetailPage) -> Unit = {},
     ): DetailPage? {
         if (route.kind != ItunesCatalogItemType.ARTIST || name.isBlank()) return null
-        val source = repository.artistDiscography(route.id, route.storefront)
-        if (source !is AppleEditorialLoad.Success) return null
         val artist = ItunesCatalogItem(
             type = ItunesCatalogItemType.ARTIST,
-            id = route.id,
-            storefront = route.storefront,
-            title = name,
-            artistName = name,
-            artistId = route.id,
-            collectionId = null,
-            storeUrl = null,
-            releaseDate = null,
-            genre = null,
-            durationMs = null,
-            trackNumber = null,
-            discNumber = null,
-            artworkUrl = artwork,
+            id = route.id, storefront = route.storefront,
+            title = name, artistName = name, artistId = route.id,
+            collectionId = null, storeUrl = null, releaseDate = null,
+            genre = null, durationMs = null, trackNumber = null,
+            discNumber = null, artworkUrl = artwork,
         )
-        return ApplePr212DetailProjection.artistPage(artist, source.releases)
+        val pager = com.music.bitchord.data.catalog.metadata.AppleArtistDiscographyPager(
+            artistId = route.id,
+            artistName = name,
+            country = route.storefront,
+            pageSize = 24,
+            source = com.music.bitchord.data.catalog.metadata.ItunesArtistAlbumDiscoverySource(
+                repository,
+            ),
+            titleHintSource = com.music.bitchord.data.catalog.metadata
+                .ApplePr212MusicBrainzTitleHints(),
+        )
+        val first = pager.start() as?
+            com.music.bitchord.data.catalog.metadata.AppleArtistPageLoad.Success
+            ?: return null
+        var page = ApplePr212DetailProjection.artistPage(artist, first.snapshot.visible)
+            ?: return null
+        onProgress(page)
+        // Publish append-only local display pages without ever rebuilding
+        // another screen. The page's native scroll identity stays unchanged.
+        repeat(12) {
+            if (!pager.snapshot().hasMore) return@repeat
+            val next = pager.loadMore() as?
+                com.music.bitchord.data.catalog.metadata.AppleArtistPageLoad.Success
+                ?: return@repeat
+            val updated = ApplePr212DetailProjection.artistPage(
+                artist, next.snapshot.visible,
+            ) ?: return@repeat
+            if (updated.sections != page.sections) {
+                page = updated
+                onProgress(page)
+            }
+        }
+        return page
     }
 
     suspend fun album(route: ApplePr212CatalogRoute): ApplePr212AlbumDetailData? {
