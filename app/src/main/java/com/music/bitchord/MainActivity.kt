@@ -3033,38 +3033,32 @@ private fun BitChordApp(
                         playlistRoute != null -> playlistRoute
                         else -> "$TAB_KEY$selectedTab"
                     }
-                // Root tabs are peers: the entire screen must not slide left
-                // or right on selection. Only the near-opaque arrival changes.
-                val tabArrival = com.music.bitchord.ui.components.rememberRouteArrivalModifier(
-                    routeKey = pageRouteKey,
-                    reduceMotion = reducePlayerMotion,
-                    rootTabPrefix = TAB_KEY,
-                )
+                // Root peers use one 150ms content fade, not the previous
+                // 160ms host arrival layered over a second animation. Player,
+                // mini-player and bottom chrome stay outside this content host.
                 AnimatedContent(
                     targetState = pageRouteKey,
-                    // Peer tabs replace one another without moving the page
-                    // or blending two transparent full-screen feeds together.
-                    // Disable AnimatedContent's default size spring as well:
-                    // that implicit measurement animation caused a secondary
-                    // bounce when Home, Search and Library have different sizes.
-                    // The subtle 160ms near-opaque arrival is applied once to
-                    // the host by tabArrival. Pushed details keep their own
-                    // 180ms crossfade; Library's Show all remains an immediate
-                    // replacement of its underlying root.
+                    // Apple Music's linked @animator root-tab resources
+                    // declare 150ms linear content fades. No direction-based
+                    // translation, host arrival fade, or implicit size spring.
+                    // Pushed pages retain the separate BitChord 180ms fade;
+                    // Library Show all still switches immediately.
                     transitionSpec = {
                         val tabSwap = initialState.startsWith(TAB_KEY) && targetState.startsWith(TAB_KEY)
                         val libraryTabKey = "$TAB_KEY$TAB_LIBRARY"
                         val libraryShowAllSwap = (initialState == "library_show_all" && targetState == libraryTabKey) ||
                             (targetState == "library_show_all" && initialState == libraryTabKey)
-                        if (tabSwap || libraryShowAllSwap) {
-                            com.music.bitchord.ui.components.rootTabContentTransform()
-                        } else {
-                            fadeIn(tween(180)) togetherWith fadeOut(tween(180))
+                        when {
+                            libraryShowAllSwap ->
+                                com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = true)
+                            tabSwap ->
+                                com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = reducePlayerMotion)
+                            reducePlayerMotion -> EnterTransition.None togetherWith ExitTransition.None
+                            else -> fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                         }
                     },
                     modifier = Modifier
                         .hazeSource(hazeState)
-                        .then(tabArrival)
                         .then(
                             if (glassActive) {
                                 Modifier
