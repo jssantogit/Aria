@@ -16,3 +16,9 @@
 - [Execução #43678458056](https://github.com/jssantogit/BitChord/actions/runs/43678458056): 3.593 testes Android executados; cinco falhas no editor de avaliação, nenhuma nas transições de abas/seleção/fila. APK bloqueado.
 - Atualizada a expectativa numérica legada de 1 para 2 vetores V3, correspondente ao valor inicial 2.0. Etapa focalizada e relatórios XML acrescentados ao workflow para identificar as demais falhas sem repetir a suíte inteira a cada diagnóstico.
 - Manter a geração de APK condicionada aos testes focalizados, à suíte Android completa e à suíte JVM compartilhada.
+
+## Quarta tentativa — isolamento de paleta sem singleton do player
+
+- [Execução #43679052013](https://github.com/jssantogit/BitChord/actions/runs/43679052013): gate focalizado compilou e executou 6 testes, com 4 falhas do mesmo `IllegalStateException: PlayerPlatform.install() was never called` ao montar o menu ancorado de avaliação no Compose/Robolectric. A fase de APK foi corretamente bloqueada.
+- Causa localizada em `sharedUi/.../theme/ArtworkPalette.kt`: `rememberArtworkPalette` acessava `PlayerPlatform.host.settings.reduceAnimation` mesmo como apresentação de um editor isolado. A interface Android já disponibiliza `LocalReduceAnimations` na raiz da composição; o [fix `5b10c463`](https://github.com/jssantogit/BitChord/commit/5b10c463c595a617f491771b6e72b2ed6f06a14e) passou a usá-lo. Não introduzir instalação artificial do player nos testes nem alterar código de playback.
+- **Solicitar smoke test-gated para o novo HEAD:** executar primeiro o gate focado dos testes de avaliação, depois a suíte Android completa, os testes shared Automix e sharedUi, e compilar/publicar o APK universal somente com todos aprovados. Registrar link, SHA e checksum do artefato; jamais marcar o smoke físico como concluído sem teste em aparelho.
