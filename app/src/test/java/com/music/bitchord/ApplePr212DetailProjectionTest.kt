@@ -72,6 +72,19 @@ class ApplePr212DetailProjectionTest {
             it == "itunes:br:album:22" })
     }
 
+    @Test fun repeatedInternalWhitespaceDoesNotDuplicateIndistinguishableAppleEdition() {
+        val original = release(201, ItunesEditorialReleaseFormat.ALBUM, "NJW MX")
+            .copy(releaseDate = "2023-12-19")
+        val extraSpaces = release(202, ItunesEditorialReleaseFormat.ALBUM, "NJW    MX")
+            .copy(releaseDate = "2023-12-21")
+        val page = requireNotNull(ApplePr212DetailProjection.artistPage(
+            item(ItunesCatalogItemType.ARTIST, 99),
+            listOf(original, extraSpaces),
+        ))
+        assertEquals(1, page.sections.single().items.size)
+        assertEquals("itunes:br:album:201", page.sections.single().items.single().browseId)
+    }
+
     @Test fun singleAndEpUseOneNativeSectionAndNeverCollapseDifferentFormats() {
         val page = requireNotNull(ApplePr212DetailProjection.artistPage(
             item(ItunesCatalogItemType.ARTIST, 99),

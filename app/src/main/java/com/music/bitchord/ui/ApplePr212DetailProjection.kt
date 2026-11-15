@@ -52,7 +52,7 @@ internal object ApplePr212DetailProjection {
     private fun artistEditionDisplayKey(release: ItunesEditorialRelease): String {
         val normalized = java.text.Normalizer.normalize(
             release.title, java.text.Normalizer.Form.NFKC,
-        ).trim().lowercase(java.util.Locale.ROOT).replace(Regex("""\\s+"""), " ")
+        ).trim().lowercase(java.util.Locale.ROOT).replace(Regex("""\s+"""), " ")
         val year = release.releaseDate?.take(4)?.takeIf { it.length == 4 &&
             it.all(Char::isDigit) }.orEmpty()
         return "${release.artistId}|${release.format}|$year|$normalized"
