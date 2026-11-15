@@ -261,13 +261,14 @@ internal class MusicBrainzArtistAppearancesClient(
                 }
             ) return prior.appearances
             // One page can be filled entirely by alternate editions of a
-            // popular act. Browse up to three pages, only when a page is
-            // complete and no verified guest release has been found yet.
-            // Do not make title-based guesses or sweep the whole catalog.
+            // popular act. A strict 3x25-page cap missed legitimate verified
+            // guest credits beyond the first 75 releases. Allow up to five
+            // bounded pages, stopping immediately after the first confirmed
+            // commercial guest credit; no title guesses or full catalog scan.
             val foundByRecording = linkedMapOf<String, MusicBrainzArtistAppearance>()
             var offset = 0
             var healthy = true
-            for (page in 0 until 3) {
+            for (page in 0 until 5) {
                 val response = try {
                     when {
                         pagedFetch != null -> pagedFetch.invoke(id, offset)
@@ -322,6 +323,11 @@ internal class MusicBrainzArtistAppearancesClient(
                     (total == null && count < 25) ||
                     (fetch != null && pagedFetch == null)
                 ) break
+                if (page == 4) {
+                    // No proven guest and total beyond our bounded window:
+                    // this is unverified coverage, not a definitive negative.
+                    healthy = false
+                }
             }
             val found = foundByRecording.values.take(12).toList()
             if (cache.size >= 64) cache.remove(cache.keys.first())

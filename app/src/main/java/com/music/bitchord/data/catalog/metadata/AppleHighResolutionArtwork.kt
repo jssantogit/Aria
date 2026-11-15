@@ -52,6 +52,31 @@ internal fun appleHighResolutionArtworkCandidate(
     return candidate.takeIf { safeAppleArtwork(it) != null }
 }
 
+/**
+ * Some Apple CDN edges redirect image paths to another Apple edge. One hop
+ * is allowed ONLY when the destination still passes the exact image-host
+ * allowlist. Never permit cross-origin redirects to arbitrary URLs.
+ */
+internal fun appleArtworkTrustedRedirect(
+    original: String,
+    location: String?,
+): String? {
+    if (location.isNullOrBlank() || location.length > 2048) return null
+    val resolved = try { URI(original).resolve(location) } catch (_: Exception) {
+        return null
+    }
+    if (resolved.toString() == original || resolved.scheme != "https" ||
+        resolved.userInfo != null || resolved.port != -1 ||
+        resolved.rawQuery != null || resolved.rawFragment != null
+    ) return null
+    val allowed = resolved.host?.lowercase(Locale.ROOT)?.matches(
+        Regex("""(?:is|a)\d+(?:-ssl)?\.mzstatic\.com"""),
+    ) == true
+    return resolved.toString().takeIf {
+        allowed && safeAppleArtwork(it) != null
+    }
+}
+
 internal fun interface AppleArtworkDimensionSource {
     /** Return actual decoded pixel dimensions, not Content-Length/URL claims. */
     suspend fun read(candidate: String): Pair<Int, Int>?
@@ -70,14 +95,25 @@ private class AndroidAppleArtworkDimensionSource : AppleArtworkDimensionSource {
                 uri.userInfo != null || uri.port != -1 ||
                 uri.rawQuery != null || uri.rawFragment != null
             ) return@withContext null
-            val connection = try {
-                (URL(candidate).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 3_000
-                    readTimeout = 3_000
+            fun openImageConnection(url: String): HttpURLConnection =
+                (URL(url).openConnection() as HttpURLConnection).apply {
+                    // Mobile CDN edge routing can exceed 3s occasionally.
+                    connectTimeout = 5_000
+                    readTimeout = 5_000
                     instanceFollowRedirects = false
                     setRequestProperty("Range", "bytes=0-262143")
                     setRequestProperty("Accept", "image/jpeg,image/png,image/webp")
                 }
+            val connection = try {
+                val first = openImageConnection(candidate)
+                if (first.responseCode in setOf(301, 302, 307, 308)) {
+                    val safeNext = appleArtworkTrustedRedirect(
+                        candidate, first.getHeaderField("Location"),
+                    )
+                    first.disconnect()
+                    if (safeNext == null) return@withContext null
+                    openImageConnection(safeNext)
+                } else first
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) { return@withContext null }

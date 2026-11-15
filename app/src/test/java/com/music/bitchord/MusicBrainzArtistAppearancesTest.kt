@@ -373,6 +373,37 @@ class MusicBrainzArtistAppearancesTest {
         assertEquals(listOf(0, 25), offsets)
     }
 
+    @Test fun popularArtistCanFindVerifiedGuestAfterThreePagesOfNonGuestEdits() = runBlocking {
+        val offsets = mutableListOf<Int>()
+        val rejected = (1..25).joinToString(",") { index ->
+            """{"id":"${index.toString(16).padStart(8, '0')}-3333-4333-8333-333333333333",
+                "status":"Bootleg"}"""
+        }
+        val genuine = """{"id":"55555555-5555-4555-8555-555555555555",
+            "status":"Official","barcode":"0196588123456",
+            "artist-credit":[{"artist":{"id":"$other","name":"Jon Batiste"}}],
+            "release-group":{"id":"$releaseGroup","title":"True fourth-page guest",
+                "primary-type":"Album"},
+            "media":[{"tracks":[{"recording":{
+                "id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "title":"Verified guest collaboration",
+                "artist-credit":[{"artist":{"id":"$target"}}]}}]}]}"""
+        val client = MusicBrainzArtistAppearancesClient(
+            pagedFetch = { _, offset ->
+                offsets.add(offset)
+                if (offset < 75)
+                    """{"release-count":76,"releases":[$rejected]}"""
+                else """{"release-count":76,"releases":[$genuine]}"""
+            },
+        )
+        assertEquals(listOf("Verified guest collaboration"),
+            client.browse(target).map { it.trackTitle })
+        assertEquals(listOf(0, 25, 50, 75), offsets)
+        // A verified result is cached; no repeated browse for scrolling.
+        assertEquals(1, client.browse(target).size)
+        assertEquals(4, offsets.size)
+    }
+
     @Test fun popularArtistsScanNextOfficialPageWhenFirstIsOnlyUnrelatedEditions() = runBlocking {
         val requestedOffsets = mutableListOf<Int>()
         val rejected = (1..25).joinToString(",") { n ->

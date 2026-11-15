@@ -3,6 +3,7 @@ package com.music.bitchord
 import com.music.bitchord.data.catalog.metadata.AppleArtworkDimensionSource
 import com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork
 import com.music.bitchord.data.catalog.metadata.appleHighResolutionArtworkCandidate
+import com.music.bitchord.data.catalog.metadata.appleArtworkTrustedRedirect
 import com.music.bitchord.data.catalog.metadata.AppleArtworkProbePersistence
 import com.music.bitchord.data.catalog.metadata.AppleArtworkProbeRecord
 import kotlinx.coroutines.CancellationException
@@ -17,6 +18,28 @@ class AppleHighResolutionArtworkTest {
         "https://is1-ssl.mzstatic.com/image/thumb/Music123/v4/ab/cd/source.jpg/100x100bb.jpg"
     private val large =
         "https://is1-ssl.mzstatic.com/image/thumb/Music123/v4/ab/cd/source.jpg/720x720bb.jpg"
+
+    @Test fun followsOnlyOneTrustworthyAppleCdnRedirectToVerifyRealDimensions() {
+        val sameImageOtherEdge = thumb.replace(
+            "is1-ssl.mzstatic.com", "is4-ssl.mzstatic.com",
+        )
+        assertEquals(sameImageOtherEdge,
+            appleArtworkTrustedRedirect(thumb, sameImageOtherEdge))
+        val biggerOnSameEdge = thumb.replace("100x100bb.jpg", "600x600bb.jpg")
+        assertEquals(biggerOnSameEdge,
+            appleArtworkTrustedRedirect(thumb, biggerOnSameEdge
+                .removePrefix("https://is1-ssl.mzstatic.com")))
+        for (location in listOf(
+            "https://attacker.invalid/cover.jpg",
+            "https://is4-ssl.mzstatic.com.evil.invalid/image/thumb/test.jpg",
+            "http://is4-ssl.mzstatic.com/image/thumb/test.jpg",
+            "https://user@is4-ssl.mzstatic.com/image/thumb/test.jpg",
+            "https://is4-ssl.mzstatic.com/image/thumb/test.jpg?auth=1",
+            "https://is4-ssl.mzstatic.com/image/thumb/test.jpg#x",
+            thumb,
+            "",
+        )) assertNull(appleArtworkTrustedRedirect(thumb, location))
+    }
 
     @Test fun derivesOnlyExactAppleCdnImageVariantWithoutChangingSourceIdentity() {
         assertEquals(large, appleHighResolutionArtworkCandidate(thumb, 720))
