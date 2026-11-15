@@ -126,7 +126,12 @@ internal object ApplePublicChartParser {
             ApplePublicChartEntry(
                 storefront = market, kind = kind, id = id, rank = index + 1,
                 name = title, artistName = artist,
-                artistId = appleChartArtistId(obj.chartText("artistUrl"), market),
+                artistId = appleChartArtistId(obj.chartText("artistUrl"), market)
+                    ?.takeIf { linkedId ->
+                        obj.chartText("artistId")?.toLongOrNull()?.let {
+                            it == linkedId
+                        } ?: true
+                    },
                 primaryGenre = genre,
                 releaseDate = obj.chartText("releaseDate")
                     ?.takeIf { Regex("\\d{4}-\\d{2}-\\d{2}").matches(it) },
@@ -149,6 +154,23 @@ internal fun interface ApplePublicChartTransport {
 
 private const val MAX_CHART_RESPONSE_BYTES = 900_000
 
+/**
+ * The legacy rss.applemarketingtools.com hostname was replaced by the
+ * rss.marketingtools.apple.com host. Prefer the published current hostname,
+ * while retaining a bounded legacy attempt for older network paths.
+ * Every URL is generated from a validated market and fixed chart kind.
+ */
+internal fun applePublicChartFeedUrls(
+    market: String, kind: ApplePublicChartKind,
+): List<String> {
+    if (!Regex("[a-z]{2}").matches(market)) return emptyList()
+    val suffix = "/api/v2/$market/music/most-played/100/${kind.segment}.json"
+    return listOf(
+        "https://rss.marketingtools.apple.com$suffix",
+        "https://rss.applemarketingtools.com$suffix",
+    )
+}
+
 /** Only fixed two-letter market and enum endpoints; no caller-supplied URL. */
 private class AppleMarketingRssTransport : ApplePublicChartTransport {
     private val http = HttpClient(OkHttp) {
@@ -162,9 +184,24 @@ private class AppleMarketingRssTransport : ApplePublicChartTransport {
 
     override suspend fun get(market: String, kind: ApplePublicChartKind): String {
         require(Regex("[a-z]{2}").matches(market))
-        val response = http.get(
-            "https://rss.applemarketingtools.com/api/v2/$market/music/most-played/100/${kind.segment}.json",
-        )
+        var lastFailure: Exception? = null
+        for (url in applePublicChartFeedUrls(market, kind)) {
+            try {
+                return readAppleChartResponse(url, kind)
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (error: Exception) { lastFailure = error }
+        }
+        throw lastFailure ?: java.io.IOException("Public Apple chart unavailable")
+    }
+
+    private suspend fun readAppleChartResponse(
+        url: String, kind: ApplePublicChartKind,
+    ): String {
+        val response = measureMetadataHttp<io.ktor.client.statement.HttpResponse>(
+            provider = "apple_marketing_rss",
+            endpoint = kind.segment,
+            status = { it.status.value },
+        ) { http.get(url) }
         if (response.status.value != 200) {
             response.bodyAsChannel().cancel(java.io.IOException("Apple chart response rejected"))
             error("Public Apple chart unavailable")

@@ -24,6 +24,47 @@ class ApplePublicChartsTest {
     private fun feed(vararg rows: String, market: String = "br"): String =
         """{"feed":{"country":"$market","results":[${rows.joinToString(",")}]}}"""
 
+    @Test fun publishedAppleRssHostIsPrimaryAndOldAddressOnlyFallback() {
+        val urls = applePublicChartFeedUrls("br", ApplePublicChartKind.SONGS)
+        assertEquals(2, urls.size)
+        assertEquals(
+            "https://rss.marketingtools.apple.com/api/v2/br/music/most-played/100/songs.json",
+            urls.first(),
+        )
+        assertEquals(
+            "https://rss.applemarketingtools.com/api/v2/br/music/most-played/100/songs.json",
+            urls.last(),
+        )
+        assertTrue(applePublicChartFeedUrls("bR", ApplePublicChartKind.ALBUMS).isEmpty())
+        assertTrue(applePublicChartFeedUrls("../", ApplePublicChartKind.ALBUMS).isEmpty())
+    }
+
+    @Test fun canonicalMarketingRssPayloadParsesRealShapeWithArtistIdLinkProof() {
+        // Sample reflects published feed fields, including artistId, artistUrl,
+        // Music as the first genre and Apple's path-specific album identity.
+        val sample = """{"feed":{"title":"Top Albums","country":"us","results":[
+          {"artistName":"Adele","id":"1590035691","name":"30",
+           "kind":"albums","artistId":"262836961",
+           "artistUrl":"https://music.apple.com/us/artist/adele/262836961",
+           "artworkUrl100":"$appleCover",
+           "genres":[{"name":"Music"},{"name":"Pop"}],
+           "url":"https://music.apple.com/us/album/30/1590035691"}]}}"""
+        val releases = ApplePublicChartParser.parse(
+            sample, "us", ApplePublicChartKind.ALBUMS,
+        )!!
+        assertEquals(1, releases.size)
+        assertEquals(262836961L, releases.single().artistId)
+        assertEquals("Pop", releases.single().primaryGenre)
+        assertEquals(1590035691L, releases.single().id)
+        assertEquals("itunes:us:album:1590035691", releases.single().scopedId)
+        val contradictory = sample.replace(
+            "\"artistId\":\"262836961\"", "\"artistId\":\"111111111\"",
+        )
+        assertNull(ApplePublicChartParser.parse(
+            contradictory, "us", ApplePublicChartKind.ALBUMS,
+        )!!.single().artistId)
+    }
+
     @Test fun parserRetainsRankAndExactAppleSongArtistIdsWithoutPlayback() {
         val items = ApplePublicChartParser.parse(
             feed(song(100, "Ditto"), song(101, "OMG")),
