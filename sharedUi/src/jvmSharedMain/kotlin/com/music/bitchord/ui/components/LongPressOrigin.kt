@@ -112,9 +112,15 @@ fun Modifier.longPressMenuClickable(
     val scope = rememberCoroutineScope()
     val longClick = onLongClick?.let { held ->
         {
-            capture.coordinates?.takeIf { it.isAttached }?.let { coordinates ->
+            // A recycled LazyColumn row may have been detached between
+            // placement and the hold callback. Retain its last on-screen
+            // bounds so a genuine hold still opens the lifted menu instead
+            // of silently falling back to the generic action sheet.
+            val bounds = capture.coordinates?.takeIf { it.isAttached }
+                ?.boundsInWindow() ?: capture.lastBounds
+            bounds?.takeIf { it.width > 0f && it.height > 0f }?.let { visibleBounds ->
                 capture.active?.releaseLift()
-                val item = HeldItem(coordinates.boundsInWindow())
+                val item = HeldItem(visibleBounds)
                 LongPressOrigin.record(item)
                 capture.active = item
                 capture.pending = item
@@ -143,7 +149,10 @@ fun Modifier.longPressMenuClickable(
         else -> Modifier
     }
     return this
-        .onPlaced { capture.coordinates = it }
+        .onPlaced {
+            capture.coordinates = it
+            if (it.isAttached) capture.lastBounds = it.boundsInWindow()
+        }
         .then(gesture)
         .drawWithContent {
             // When the bitmap copy is ready, suppress the originating paint.
@@ -171,6 +180,7 @@ fun Modifier.longPressMenuClickable(
 
 private class HoldCapture {
     var coordinates: LayoutCoordinates? = null
+    var lastBounds: Rect? = null
     var active: HeldItem? = null
     var pending: HeldItem? = null
     /** Read while drawing, so bumping it is what asks for a frame to record. */
