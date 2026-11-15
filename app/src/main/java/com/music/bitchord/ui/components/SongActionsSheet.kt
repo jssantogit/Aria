@@ -135,6 +135,8 @@ fun SongActionsSheet(
     onOpenSourceOwnedArtist: (() -> Unit)? = null,
     /** Typed iTunes artist route only (used when Apple editorial is installed). */
     onOpenAppleArtist: (() -> Unit)? = null,
+    /** Safe fallback: search for this artist, never fabricate a provider ArtistId. */
+    onFindArtist: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
@@ -260,6 +262,13 @@ fun SongActionsSheet(
                     accent = palette.accent,
                     onClick = open,
                 )
+            } ?: onFindArtist?.let { search ->
+                ActionRow(
+                    icon = Icons.Rounded.Person,
+                    label = "Buscar artista",
+                    accent = palette.accent,
+                    onClick = search,
+                )
             }
             // The Apple queue's six playback actions do not include discovery.
             // A verified release route is still an essential track action.
@@ -357,6 +366,10 @@ fun SongActionsSheet(
             )
             resolvingLinks -> LoadingActionRow(
                 Icons.Rounded.Person, stringResource(R.string.open_artist), palette,
+            )
+            onFindArtist != null -> ActionRow(
+                Icons.Rounded.Person, "Buscar artista", accent = palette.accent,
+                onClick = onFindArtist,
             )
         }
         onShare?.let {
