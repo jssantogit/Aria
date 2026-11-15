@@ -12,6 +12,18 @@ class HeldContextMenuPlateTest {
             heldContextPlateColor(Color.White, null))
     }
 
+    @Test fun liftedItemNeverReplacesItsSourceWithAnUncapturedBlackPlate() {
+        assertEquals(false, heldPreviewCanPaint(hasImage = false, lifted = false))
+        assertEquals(false, heldPreviewCanPaint(hasImage = false, lifted = true))
+        assertEquals(false, heldPreviewCanPaint(hasImage = true, lifted = false))
+        assertEquals(true, heldPreviewCanPaint(hasImage = true, lifted = true))
+    }
+
+    @Test fun contextualActionsSampleBackgroundUnlessBlurIsDisabled() {
+        assertEquals(true, heldActionsUseHaze(reduceDynamicBlur = false))
+        assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = true))
+    }
+
     @Test fun artworkPagesTintBothLiftedPreviewAndActionPanel() {
         val tealAlbumSurface = Color(0xFF214D4C)
         assertEquals(tealAlbumSurface.copy(alpha = 0.97f),
