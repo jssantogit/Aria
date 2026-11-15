@@ -346,8 +346,11 @@ fun DetailScreen(
     /** Verified current MusicBrainz ReleaseGroup, never an inferred local Song. */
     canonicalFeaturedRelease: CanonicalCatalogSearchRow? = null,
     onCanonicalFeaturedReleaseOpen: ((CanonicalCatalogSearchRow) -> Unit)? = null,
+    /** Lift public artist cards using the same canonical actions as search results. */
+    onCanonicalArtistEntityHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
     /** MBID, title, creator and description only: no internal DTO in public API. */
     onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,
+    onCanonicalArtistPlaylistHold: ((String, String, String, String?) -> Unit)? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
@@ -769,6 +772,7 @@ fun DetailScreen(
                         release = canonicalFeaturedRelease,
                         palette = palette,
                         onOpen = onCanonicalFeaturedReleaseOpen,
+                        onLongPress = onCanonicalArtistEntityHold,
                     )
                 }
             }
@@ -1120,6 +1124,7 @@ fun DetailScreen(
                         artistMbid = publicArtistMbid,
                         palette = palette,
                         onOpen = onCanonicalFeaturedReleaseOpen,
+                        onLongPress = onCanonicalArtistEntityHold,
                     )
                 }
                 if (publicTopRows.isNotEmpty() && onCanonicalArtistPlaylistOpen != null) {
@@ -1131,6 +1136,7 @@ fun DetailScreen(
                                 .map { it.musicBrainzId }.toSet(),
                             palette = palette,
                             onOpen = onCanonicalArtistPlaylistOpen,
+                            onLongPress = onCanonicalArtistPlaylistHold,
                         )
                     }
                 }
@@ -1139,6 +1145,7 @@ fun DetailScreen(
                         artistMbid = publicArtistMbid,
                         palette = palette,
                         onOpen = onCanonicalFeaturedReleaseOpen,
+                        onLongPress = onCanonicalArtistEntityHold,
                     )
                 }
             }
