@@ -3633,8 +3633,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             val outcome = try {
-                com.music.bitchord.data.catalog.metadata.AppleHomeEditorialDiscovery()
-                    .discover(seeds, "br", maxProbes = 12, onProgress = { releases ->
+                com.music.bitchord.data.catalog.metadata.ApplePr212HomeCoverage()
+                    .discover(seeds, "br", onProgress = { releases ->
                         if (worldwideReleaseEpoch.isCurrent(generation)) {
                             _canonicalWorldwideReleases.value =
                                 releases.mapNotNull(ApplePr212CatalogRows::album)
