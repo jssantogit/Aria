@@ -18,9 +18,13 @@ import com.music.bitchord.NativeCollectionRatingToolbarAction
 import com.music.bitchord.ui.components.CompactRatingStyle
 import com.music.bitchord.ui.components.LocalCompactRatingStyle
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.music.bitchord.ui.player.AndroidPlayerHost
+import com.music.bitchord.ui.player.PlayerPlatform
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
@@ -31,6 +35,12 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class NativeFrostedRatingInteractionTest {
     @get:Rule val compose = createComposeRule()
+    @Before fun installAppPlayerHost() {
+        // Production BitChordApplication installs this before drawing the UI;
+        // these Robolectric tests deliberately use plain Application instead.
+        PlayerPlatform.install(AndroidPlayerHost(RuntimeEnvironment.getApplication()))
+    }
+
 
     @Test fun dismissingAnchoredRatingRestoresAlbumToolbarInteractions() {
         val editing = mutableStateOf(true)

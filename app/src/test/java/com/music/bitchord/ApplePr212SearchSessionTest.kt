@@ -139,4 +139,19 @@ class ApplePr212SearchSessionTest {
         assertEquals(1, attempts[ItunesCatalogEntity.ARTIST])
     }
 
+    @Test fun addingNewerAlbumCannotReorderAlreadyDisplayedAppleResults() = runBlocking {
+        val older = product(ItunesCatalogItemType.ALBUM, 1, "First - EP")
+            .copy(releaseDate = "2021-05-01")
+        val newer = product(ItunesCatalogItemType.ALBUM, 2, "Second - EP")
+            .copy(releaseDate = "2026-05-01")
+        val fake = Fake(albums = listOf(older, newer))
+        val session = ApplePr212SearchSession("album", source = fake, pageSize = 1)
+        val first = requireNotNull(session.start())
+        assertEquals(listOf("itunes:br:album:1"), first.rows.map { it.musicBrainzId })
+        val more = requireNotNull(session.loadMore())
+        assertEquals(listOf("itunes:br:album:1", "itunes:br:album:2"),
+            more.rows.map { it.musicBrainzId })
+        assertEquals(3, fake.calls)
+    }
+
 }

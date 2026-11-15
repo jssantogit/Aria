@@ -129,7 +129,7 @@ internal class ApplePr212NativeCatalogService(
         // Warm the visible screen only, in two bounded batches. Avoid waiting
         // for dozens of network probes before rendering a complete page.
         val promoted = visible.toMutableList()
-        for (batch in visible.take(8).withIndex().toList().chunked(4)) {
+        for (batch in visible.take(24).withIndex().toList().chunked(4)) {
             val results = kotlinx.coroutines.coroutineScope {
                 batch.map { entry ->
                     async {

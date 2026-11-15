@@ -45,9 +45,16 @@ internal class ApplePr212SearchSession(
     fun snapshot(): ApplePr212SearchPage {
         val artists = raw(ItunesCatalogEntity.ARTIST)
             .mapNotNull(ApplePr212CatalogRows::artist)
-        val albums = ItunesEditorialCatalog.assemble(
-            storefront, raw(ItunesCatalogEntity.ALBUM),
-        ).mapNotNull(ApplePr212CatalogRows::album)
+        // Apple's first-seen search order is stable across local pages.
+        // assemble() sorts by release date for discographies; restoring
+        // the public search product order avoids moving old rows on load-more.
+        val albumProducts = raw(ItunesCatalogEntity.ALBUM)
+        val approved = ItunesEditorialCatalog.assemble(
+            storefront, albumProducts,
+        ).associateBy { it.appleCollectionId }
+        val albums = albumProducts.mapNotNull { approved[it.id] }
+            .distinctBy { it.appleScopedId }
+            .mapNotNull(ApplePr212CatalogRows::album)
         val trackAlbums = linkedMapOf<String, ApplePr212CatalogRoute>()
         val tracks = raw(ItunesCatalogEntity.SONG).mapNotNull { product ->
             val row = ApplePr212CatalogRows.track(product)

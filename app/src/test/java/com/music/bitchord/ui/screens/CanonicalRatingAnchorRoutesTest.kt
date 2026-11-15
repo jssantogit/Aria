@@ -6,9 +6,13 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.unit.IntRect
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.music.bitchord.ui.player.AndroidPlayerHost
+import com.music.bitchord.ui.player.PlayerPlatform
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
@@ -20,6 +24,12 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class CanonicalRatingAnchorRoutesTest {
     @get:Rule val compose = createComposeRule()
+    @Before fun installAppPlayerHost() {
+        // Production BitChordApplication installs this before drawing the UI;
+        // these Robolectric tests deliberately use plain Application instead.
+        PlayerPlatform.install(AndroidPlayerHost(RuntimeEnvironment.getApplication()))
+    }
+
     @Test fun explicitRatingLauncherUsesCompactAnchoredPlate() {
         compose.setContent {
             MaterialTheme {

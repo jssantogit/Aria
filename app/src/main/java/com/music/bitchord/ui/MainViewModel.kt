@@ -2636,7 +2636,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         coroutineScope {
             rows.filter(::isVerifiedAppleEditorialRelease)
                 .filter { !it.artworkUri.isNullOrBlank() }
-                .take(12).forEachIndexed { index, row ->
+                .take(24).forEachIndexed { index, row ->
                     launch {
                         permits.withPermit {
                             val improved = try {
@@ -2748,9 +2748,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _searchSource.value == SearchSource.CANONICAL &&
                 _query.value.trim() == query && _canonicalDetail.value == null
             fun publish(page: ApplePr212SearchPage, complete: Boolean) {
-                if (!isCurrent()) return
+                if (!isCurrent() || (page.rows.isEmpty() && !complete)) return
                 applePr212Catalog.acceptSearchPage(page)
-                _canonicalResults.value = UiState.Success(page.rows)
+                val previous = (_canonicalResults.value as? UiState.Success)?.data
+                if (previous != page.rows) _canonicalResults.value = UiState.Success(page.rows)
                 if (complete) _canonicalSearchHasMore.value = page.hasMore
             }
             val result = try {
@@ -2790,13 +2791,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val result = session.loadMore { page ->
                     if (isCurrent()) {
                         applePr212Catalog.acceptSearchPage(page)
-                        _canonicalResults.value = UiState.Success(page.rows)
+                        val previous = (_canonicalResults.value as? UiState.Success)?.data
+                        if (previous != page.rows) _canonicalResults.value = UiState.Success(page.rows)
                         _canonicalSearchHasMore.value = page.hasMore
                     }
                 }
                 if (isCurrent() && result != null) {
                     applePr212Catalog.acceptSearchPage(result)
-                    _canonicalResults.value = UiState.Success(result.rows)
+                    val previous = (_canonicalResults.value as? UiState.Success)?.data
+                    if (previous != result.rows) _canonicalResults.value = UiState.Success(result.rows)
                     _canonicalSearchHasMore.value = result.hasMore
                 }
                 // A failed alternate-attribute probe is retryable. The
