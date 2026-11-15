@@ -1,6 +1,9 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.catalog.metadata.MusicBrainzClient
+import com.music.bitchord.data.catalog.metadata.MusicBrainzRateLimiter
+import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
+import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraphResult
 import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchResult
@@ -113,6 +116,57 @@ class MusicBrainzTransportAdmissionTest {
         gate.replace(policy(false, true, true))
         release.complete(Unit)
         assertTrue(pending.await())
+    }
+
+    @Test fun switchOffDuringSharedLimiterQueuePreventsTheQueuedRequest(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true, true, true))
+        var clock = 0L
+        var contacts = 0
+        val limiter = MusicBrainzRateLimiter(
+            nowMillis = { clock },
+            delayMillis = { millis ->
+                clock += millis
+                gate.replace(policy(false, true, true))
+            },
+        )
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String,
+                    parameters: Map<String, String>, userAgent: String): String {
+                    contacts++
+                    return "ok"
+                }
+            },
+            rateLimiter = limiter,
+            admission = { gate },
+        )
+        assertEquals("ok", client.get("artist", capability = ProviderCapability.CATALOG_SEARCH))
+        try {
+            client.get("artist", capability = ProviderCapability.CATALOG_SEARCH)
+            throw AssertionError("queued request crossed the opt-out boundary")
+        } catch (_: ProviderRequestDeniedException) { /* correct */ }
+        assertEquals(1, contacts)
+    }
+
+    @Test fun discographyTraversalIsActuallyTaggedAndDeniedAtTheSharedTransport(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true, false, true))
+        var contacted = false
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String,
+                    parameters: Map<String, String>, userAgent: String): String {
+                    contacted = true
+                    return "{}"
+                }
+            },
+            admission = { gate },
+        )
+        val graph = MusicBrainzCatalogGraph(client)
+        val result = graph.browseReleaseGroupsForArtist(
+            "11111111-2222-4333-8444-555555555555", limit = 10,
+        )
+        assertTrue(result is MusicBrainzCatalogGraphResult.Failure)
+        assertFalse(contacted)
     }
 
     @Test fun aClosedGateDoesNotContactMusicBrainzEvenWhenItIsTheLastProvider(): Unit = runBlocking {
