@@ -116,3 +116,11 @@
 - Correção: `HeldContextMenu.kt` mantém o bitmap original sem segundo fundo cinza (`heldPreviewBackingColor` transparente), reduz o contorno para 36% e 0,75dp, diminui o padding da moldura e retoma `optimizedHazeEffect` com `HazeMaterials.regular` como `NativeContextActionPlate`, mantendo fallback sólido quando `reduceDynamicBlur` estiver ativo.
 - Testes de contrato: `HeldContextMenuPlateTest` verifica borda, backing transparente e política de blur. Conferir ainda movimentos, clipping, snapshot de item e restauração no aparelho. As ações do catálogo online continuam metadata-only.
 - Solicitação: executar novamente o workflow test-gated para o HEAD desta atualização, sem remover testes Android, sharedUi, Automix ou compilações, e gerar APK somente se todos aprovarem.
+
+
+## Retry após red — atualização de contrato do contorno (15/11/2026)
+
+- Run anterior: #43766233495 no HEAD `c3c72159698803ab0c043359069ce0585fb0f8de`, compilação e testes focalizados aprovados; 3.619 testes Android, com **uma** falha: `PlayerAnchoredActionsHighlightTest.activeOverflowUsesSharedWhiteHighlightWhileInactiveHasNone`.
+- Causa comprovada nos logs: asserção antiga de opacidade branca `0.88f`, enquanto o token compartilhado `heldContextSelectionOutline()` passou para `0.36f` conforme feedback físico do usuário.
+- Correção isolada: teste compara o valor com o token canônico em vez de manter uma cópia desatualizada. Nenhuma regra de aprovação foi reduzida.
+- Solicitar novamente workflow completo para este HEAD (incluindo o commit de solicitação), mantendo testes focalizados, `:app:testDevDebugUnitTest`, Automix, `:sharedUi:jvmTest` e `:app:assembleDevDebug` condicionada a todos verdes. Não afirmar APK disponível antes do artefato ser publicado.
