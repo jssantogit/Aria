@@ -45,14 +45,14 @@ jobs:
           feedback = 'app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt'
           feedback_original = subprocess.check_output(
               ['git', 'show', f'{baseline}:{feedback}'], text=True)
-          old_semantics = '                .semantics { paneTitle = sheetTitle }\\n'
+          old_semantics = '                .semantics { paneTitle = sheetTitle }\n'
           new_semantics = (
-              '                // The anchored parent Dialog already owns the pane. A second\\n'
-              '                // PaneTitle on its descendant cannot be merged by Compose.\\n'
-              '                // Preserve this title only on the standalone rating sheet.\\n'
-              '                .then(if (anchorBounds == null) Modifier.semantics {\\n'
-              '                    paneTitle = sheetTitle\\n'
-              '                } else Modifier)\\n'
+              '                // The anchored parent Dialog already owns the pane. A second\n'
+              '                // PaneTitle on its descendant cannot be merged by Compose.\n'
+              '                // Preserve this title only on the standalone rating sheet.\n'
+              '                .then(if (anchorBounds == null) Modifier.semantics {\n'
+              '                    paneTitle = sheetTitle\n'
+              '                } else Modifier)\n'
           )
           assert feedback_original.count(old_semantics) == 1
           assert pathlib.Path(feedback).read_text() == feedback_original.replace(
