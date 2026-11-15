@@ -89,3 +89,59 @@ This branch is based on main and intended to be merged/cherry-picked as a
 conflict-minimal foundation **after approved integration sequencing**.
 PRs #212 and #216 remain independently owned, open/draft and unchanged.
 No merge, forced sync or physical APK is authorized by this foundation slice.
+
+
+## Follow-up: legacy snapshot and first guarded catalog adapter (2026-11-15)
+
+This continuation extends the foundation without affecting the live UI or legacy
+providers yet:
+
+- `LegacyProviderChoices` takes **snapshots** of loaded old lyrics/source
+  settings and projects them into `LYRICS_LOOKUP` and `EXTENSION_PLAYBACK`.
+  Existing on/off flags, order and configured addon instance IDs are retained.
+  Hidden lyrics, legacy JioSaavn, built-in YouTube and retired modules are **not**
+  reintroduced. No private module URLs or credentials are copied to the new
+  non-secret preference file.
+- `ProviderPreferenceStore.migrateMissing()` can atomically import these
+  projected choices after the old settings have initialized. Existing
+  categories—including explicitly empty categories—always win. Missing and
+  intentionally empty are different. Corrupt/future schemas remain untouched.
+  The operation is idempotent. **The import is intentionally not scheduled at
+  startup yet:** old settings can still be edited, and would otherwise diverge
+  from the new store without dual-write synchronization.
+- `MusicBrainzCapabilitySearch` is the first ready-to-connect real catalog
+  adapter. It delegates to existing `MusicBrainzCatalogSearch` and its HTTP
+  rate budget, with pre-call admission and post-call result revocation provided
+  by `ProviderQueryExecutor`. It does not modify existing search routes, and
+  it does not claim that provider source results are playable.
+- The first functional seam is **callable and tested**, not already attached to
+  the main app's search screens. Direct legacy requests remain outside this
+  guard until the follow-up router cutover.
+
+### Additional regressions
+
+- `LegacyProviderChoicesTest`: preserves legacy lyric priority and opt-outs,
+  keeps multiple addon instances separate, ignores retired providers, and does
+  not mistake extension playback for the entire audio subsystem.
+- `ProviderPreferenceStoreTest`: imports missing categories atomically,
+  refuses overwritten opt-outs, preserves unknown future data, and remains
+  idempotent.
+- `MusicBrainzCapabilitySearchTest`: denies a disabled lookup before the real
+  client would run, passes enabled source-scoped results unchanged, and drops
+  a response that arrives after switch-off.
+
+### Next integration gates
+
+1. Wire the legacy-to-new migration on an atomic cutover path with dual-write
+   or a single authoritative preferences layer. Do **not** migrate at startup
+   while old preference setters remain active without synchronization.
+2. Route one actual UI catalog search through `MusicBrainzCapabilitySearch`
+   and verify no legacy network path bypasses it; preserve provider-specific
+   catalog identities and no fake playback.
+3. Connect the integrated PR #216 iTunes/Discogs adapters only after their
+   exact HEAD is chosen, without duplicating its editorial screens.
+4. Exercise source disable, source-only reenable, in-flight cancellation,
+   cache/prefetch and offline states in Android CI before proposing smoke.
+
+The rules remain: Android only, no new paid APIs, no UI changes in #212, no
+forced merge and no APK until functional integration is ready.
