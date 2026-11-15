@@ -7451,7 +7451,7 @@ internal fun nativeCollectionOverflowGlyph(): ImageVector =
 
 /** The launcher, not the popup plate, owns the universal selected white outline. */
 internal fun nativeCollectionOverflowOutline(expanded: Boolean): Color? =
-    if (expanded) Color.White.copy(alpha = 0.88f) else null
+    if (expanded) com.music.bitchord.ui.components.heldContextSelectionOutline() else null
 
 @Composable
 private fun NativeCollectionOverflowAction(
