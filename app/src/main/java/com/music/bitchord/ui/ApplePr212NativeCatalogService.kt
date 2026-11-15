@@ -126,9 +126,10 @@ internal class ApplePr212NativeCatalogService(
                 batch.map { entry ->
                     async {
                         val original = entry.value.artworkUrl
-                        val verified = artwork.upgrade(
-                            original, if (entry.index == 0) 1024 else 600,
-                        )
+                        val verified =
+                            this@ApplePr212NativeCatalogService.artwork.upgrade(
+                                original, if (entry.index == 0) 1024 else 600,
+                            )
                         entry.index to if (verified == original) entry.value
                             else entry.value.copy(artworkUrl = verified)
                     }
