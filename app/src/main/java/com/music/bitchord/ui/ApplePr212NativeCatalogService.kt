@@ -26,6 +26,14 @@ internal class ApplePr212NativeCatalogService(
                 ItunesCatalogItemType.TRACK
         }
 
+    /** Search snapshots are source-scoped; never retain a previous query's track routes. */
+    fun acceptSearchPage(page: ApplePr212SearchPage) {
+        trackAlbumRoutes.clear()
+        trackAlbumRoutes.putAll(page.trackAlbums)
+    }
+
+    fun clearSearchTracks() = trackAlbumRoutes.clear()
+
     /** Incremental snapshots are data only; caller owns cancellation and UI state. */
     suspend fun search(
         query: String,
