@@ -39,8 +39,18 @@ internal fun canonicalNativePageType(kind: CanonicalSearchKind): BrowseType? = w
     CanonicalSearchKind.RECORDING -> null
 }
 
-internal fun canonicalNativeBrowseId(row: CanonicalCatalogSearchRow): String =
-    "catalog:${row.kind}:${row.musicBrainzId}"
+internal fun canonicalNativeBrowseId(row: CanonicalCatalogSearchRow): String {
+    val apple = ApplePr212CatalogRoute.parse(row.musicBrainzId)
+    if (apple != null && when (apple.kind) {
+        com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ARTIST ->
+            row.kind == CanonicalSearchKind.ARTIST
+        com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ALBUM ->
+            row.kind == CanonicalSearchKind.RELEASE
+        com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.TRACK ->
+            row.kind == CanonicalSearchKind.RECORDING
+    }) return apple.scopedId
+    return "catalog:${row.kind}:${row.musicBrainzId}"
+}
 
 /** A MusicBrainz Release Group with Other/unspecified type is NOT an album by default. */
 internal fun canonicalMayUseAlbumFallbackLabel(browseId: String): Boolean =
