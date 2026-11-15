@@ -2658,6 +2658,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         MutableStateFlow<Map<String, List<CanonicalCatalogSearchRow>>>(emptyMap())
     val appleNativeAlbumTracks: StateFlow<Map<String, List<CanonicalCatalogSearchRow>>> =
         _appleNativeAlbumTracks.asStateFlow()
+    private val _appleVerifiedArtistMbids = MutableStateFlow<Map<String, String>>(emptyMap())
+    val appleVerifiedArtistMbids: StateFlow<Map<String, String>> =
+        _appleVerifiedArtistMbids.asStateFlow()
+
+    private fun activePublicArtistMatches(artistMbid: String): Boolean =
+        _detailStack.value.lastOrNull()?.let { page ->
+            applePr212ArtistEvidenceId(page, _appleVerifiedArtistMbids.value)
+                ?.equals(artistMbid, ignoreCase = true)
+        } == true
 
     /** Never silently switch catalog metadata back to MusicBrainz on Apple failures. */
     private val applePublicCatalogEnabled: Boolean get() = true
@@ -2687,11 +2696,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Exact product lookup; no MBID, title guess or playback fallback.
             val result = try {
                 if (kind == BrowseType.ARTIST) {
-                    applePr212Catalog.artist(route, title, artwork) { page ->
-                        _detailStack.update { stack -> stack.map { opened ->
-                            if (opened.browseId == route.scopedId) page else opened
-                        } }
-                    } to null
+                    applePr212Catalog.artist(
+                        route, title, artwork,
+                        onProgress = { page ->
+                            _detailStack.update { stack -> stack.map { opened ->
+                                if (opened.browseId == route.scopedId) page else opened
+                            } }
+                        },
+                        onVerifiedArtistMbid = { artistMbid ->
+                            if (_detailStack.value.any { it.browseId == route.scopedId }) {
+                                _appleVerifiedArtistMbids.update { verified ->
+                                    verified + (route.scopedId to artistMbid)
+                                }
+                            }
+                        },
+                    ) to null
                 } else {
                     val album = applePr212Catalog.album(route) { update ->
                         _detailStack.update { stack -> stack.map { opened ->
@@ -3346,8 +3365,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // qualify. This is not Spotify stream data, nor a full artist chart.
             val original = success?.recordings?.take(8).orEmpty()
             val allTimeRanking = if (original.isEmpty() &&
-                _detailStack.value.lastOrNull()?.browseId
-                    ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                activePublicArtistMatches(id)
             ) try {
                 val global = withTimeoutOrNull(12_000L) {
                     listenBrainzPopularityClient.sitewideRecordings(
@@ -3518,8 +3536,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 },
             )
             if (artistPublicTopEpoch.isCurrent(generation) &&
-                _detailStack.value.lastOrNull()?.browseId
-                    ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                activePublicArtistMatches(id)
             ) {
                 val rows = canonicalArtistTopPlaybackDecoration(
                     canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
@@ -6081,6 +6098,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         closedApple?.let { id ->
             applePr212DetailJobs.remove(id)?.cancel()
             _appleNativeAlbumTracks.update { it - id }
+            _appleVerifiedArtistMbids.update { it - id }
         }
         if (wasCanonical) backCanonicalCatalogEntry()
         return true
