@@ -20,11 +20,25 @@ class ProviderCapabilityPolicyTest {
     private val nasA = ProviderKey("opensubsonic", "nas-a")
     private val nasB = ProviderKey("opensubsonic", "nas-b")
 
+    private fun ready(
+        key: ProviderKey,
+        capabilities: Set<ProviderCapability>,
+    ): ProviderDescriptor = ProviderDescriptor(key, capabilities,
+        readiness = ProviderReadiness.READY)
+
+    @Test fun unimplementedDescriptorsAreExcludedByDefault() {
+        val notImplemented = ProviderDescriptor(apple, setOf(ProviderCapability.CATALOG_SEARCH))
+        val policy = ProviderCapabilityPolicy(listOf(notImplemented), mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(apple, true, 0)),
+        ))
+        assertTrue(policy.eligible(ProviderCapability.CATALOG_SEARCH).isEmpty())
+    }
+
     @Test fun everyProviderIncludingTheLastCanBeDisabledWithoutFallback() {
         val policy = ProviderCapabilityPolicy(
             descriptors = listOf(
-                ProviderDescriptor(apple, setOf(ProviderCapability.CATALOG_SEARCH)),
-                ProviderDescriptor(musicBrainz, setOf(ProviderCapability.CATALOG_SEARCH)),
+                ready(apple, setOf(ProviderCapability.CATALOG_SEARCH)),
+                ready(musicBrainz, setOf(ProviderCapability.CATALOG_SEARCH)),
             ),
             choices = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(
                 ProviderChoice(apple, enabled = false, order = 0),
@@ -37,7 +51,7 @@ class ProviderCapabilityPolicyTest {
 
     @Test fun enablingArtworkDoesNotAutomaticallyEnableCatalogOfTheSameProvider() {
         val policy = ProviderCapabilityPolicy(
-            descriptors = listOf(ProviderDescriptor(apple, setOf(
+            descriptors = listOf(ready(apple, setOf(
                 ProviderCapability.CATALOG_SEARCH, ProviderCapability.RELEASE_ARTWORK,
             ))),
             choices = mapOf(
@@ -52,8 +66,8 @@ class ProviderCapabilityPolicyTest {
     @Test fun preservesPriorityAndIndependenceOfConfiguredServerInstances() {
         val policy = ProviderCapabilityPolicy(
             descriptors = listOf(
-                ProviderDescriptor(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
-                ProviderDescriptor(nasB, setOf(ProviderCapability.AUDIO_PLAYBACK)),
+                ready(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
+                ready(nasB, setOf(ProviderCapability.AUDIO_PLAYBACK)),
             ),
             choices = mapOf(ProviderCapability.AUDIO_PLAYBACK to listOf(
                 ProviderChoice(nasA, true, order = 20),
@@ -70,7 +84,7 @@ class ProviderCapabilityPolicyTest {
             descriptors = listOf(
                 ProviderDescriptor(apple, setOf(ProviderCapability.CATALOG_SEARCH),
                     readiness = ProviderReadiness.NEEDS_CONFIGURATION),
-                ProviderDescriptor(musicBrainz, setOf(ProviderCapability.IDENTITY)),
+                ready(musicBrainz, setOf(ProviderCapability.IDENTITY)),
             ),
             choices = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(
                 ProviderChoice(apple, true, 0),
@@ -82,7 +96,7 @@ class ProviderCapabilityPolicyTest {
     }
 
     @Test fun switchingOffProviderRejectsResultsFromInflightRequests() {
-        val descriptor = ProviderDescriptor(apple, setOf(ProviderCapability.RELEASE_ARTWORK))
+        val descriptor = ready(apple, setOf(ProviderCapability.RELEASE_ARTWORK))
         fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
             descriptors = listOf(descriptor),
             choices = mapOf(ProviderCapability.RELEASE_ARTWORK to listOf(
@@ -101,7 +115,7 @@ class ProviderCapabilityPolicyTest {
     }
 
     @Test fun changingArtworkPolicyDoesNotCancelUnrelatedAudioRequests() {
-        val descriptor = ProviderDescriptor(apple, setOf(
+        val descriptor = ready(apple, setOf(
             ProviderCapability.RELEASE_ARTWORK, ProviderCapability.AUDIO_PLAYBACK,
         ))
         fun policy(artwork: Boolean) = ProviderCapabilityPolicy(
@@ -126,8 +140,8 @@ class ProviderCapabilityPolicyTest {
     fun duplicateProviderInstanceRegistrationIsRejected() {
         ProviderCapabilityPolicy(
             descriptors = listOf(
-                ProviderDescriptor(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
-                ProviderDescriptor(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
+                ready(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
+                ready(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
             ),
         )
     }
