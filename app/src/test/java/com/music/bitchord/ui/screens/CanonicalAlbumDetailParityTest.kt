@@ -105,6 +105,25 @@ class CanonicalAlbumDetailParityTest {
         assertEquals("ALLDAY PROJECT - EP", canonicalAlbumDisplayTitle("ALLDAY PROJECT - EP", "Album"))
         assertEquals("A - EP Collection", canonicalAlbumDisplayTitle("A - EP Collection", "EP"))
     }
+    @Test fun localAlbumCreditOpensOnlyTheArtistInTheSameLocalFolder() {
+        assertEquals(
+            "local:group:artist:all:SAY MY NAME",
+            detailAlbumArtistBrowseId("local:group:album:all:&Our Vibe", null, "SAY MY NAME"),
+        )
+        assertEquals(
+            "UC12345678901234567890",
+            detailAlbumArtistBrowseId("catalog:RELEASE:abc", "UC12345678901234567890", "SAY MY NAME"),
+        )
+        assertEquals(
+            null,
+            detailAlbumArtistBrowseId("catalog:RELEASE:abc", null, "SAY MY NAME"),
+        )
+        assertEquals(
+            null,
+            detailAlbumArtistBrowseId("local:group:album:all:&Our Vibe", null, ""),
+        )
+    }
+
     @Test fun sharedNativeAlbumRowsKeepOriginalNumbersAfterSearchingOrSorting() {
         val original = mapOf("song-c" to 3, "song-a" to 1, "song-b" to 2)
         assertEquals(3, nativeCanonicalAlbumRowNumber("song-c", 0, original))
