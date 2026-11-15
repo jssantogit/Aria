@@ -41,8 +41,15 @@ class CanonicalRatingAnchorRoutesTest {
                 )
             }
         }
-        assertEquals(1, compose.onAllNodesWithTag("native-rating-anchored-card").fetchSemanticsNodes().size)
-        assertEquals(0, compose.onAllNodesWithTag("native-rating-bottom-sheet").fetchSemanticsNodes().size)
+        // Merged traversal must not throw PaneTitle merge errors. The dialog
+        // itself owns a semantics root, so inspect its child in the unmerged tree.
+        compose.onAllNodesWithTag("native-rating-anchored-card").fetchSemanticsNodes()
+        assertEquals(1, compose.onAllNodesWithTag(
+            "native-rating-anchored-card", useUnmergedTree = true,
+        ).fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodesWithTag(
+            "native-rating-bottom-sheet", useUnmergedTree = true,
+        ).fetchSemanticsNodes().size)
     }
     @Test fun anchoredRatingWidthShrinksForMultiWindowInsteadOfOverflowing() {
         assertEquals(300, anchoredRatingCardWidthDp(500))
