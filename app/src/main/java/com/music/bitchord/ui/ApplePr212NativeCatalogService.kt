@@ -11,6 +11,11 @@ import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicReference
 
 /** Source-owned metadata requests behind PR212's unchanged navigation surface. */
 internal class ApplePr212NativeCatalogService(
@@ -109,64 +114,75 @@ internal class ApplePr212NativeCatalogService(
         val first = pager.start() as?
             com.music.bitchord.data.catalog.metadata.AppleArtistPageLoad.Success
             ?: return null
-        var page = ApplePr212DetailProjection.artistPage(artist, first.snapshot.visible)
+        val initial = ApplePr212DetailProjection.artistPage(artist, first.snapshot.visible)
             ?: return null
-        onProgress(page)
-        // A cross-catalog ID is optional: prove it against two independent
-        // exact Apple products and MB release-groups; never infer from name.
-        var verifiedMbid = artistIdentityResolver.resolve(
-            name, route.id, route.storefront, first.snapshot.visible,
-        )
-        verifiedMbid?.let { onVerifiedArtistMbid(it) }
-        // Publish append-only local display pages without ever rebuilding
-        // another screen. The page's native scroll identity stays unchanged.
-        for (pageIndex in 0 until 12) {
-            if (!pager.snapshot().hasMore) break
-            val next = pager.loadMore() as?
-                com.music.bitchord.data.catalog.metadata.AppleArtistPageLoad.Success
-                ?: break
-            val updated = ApplePr212DetailProjection.artistPage(
-                artist, next.snapshot.visible,
-            ) ?: continue
-            if (updated.sections != page.sections) {
-                page = updated
-                onProgress(page)
+        return coroutineScope {
+            var page = initial
+            onProgress(page)
+            val snapshot = AtomicReference(first.snapshot.visible)
+            val coverProofs = ConcurrentHashMap<String, Pair<String, String>>()
+            val publishMutex = Mutex()
+
+            suspend fun publish(releases: List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>) {
+                val enriched = applePr212ArtistReleasesWithVerifiedCovers(releases, coverProofs)
+                val projected = ApplePr212DetailProjection.artistPage(artist, enriched)
+                    ?: return
+                publishMutex.withLock {
+                    if (projected.sections != page.sections) {
+                        page = projected
+                        onProgress(projected)
+                    }
+                }
             }
-        }
-        // Promote only verified, exact CDN assets. No title-joined artwork
-        // and no 100px bitmap stretched over the large PR212 cards.
-        val visible = pager.snapshot().visible
-        if (verifiedMbid == null && visible.size > first.snapshot.visible.size) {
-            verifiedMbid = artistIdentityResolver.resolve(
-                name, route.id, route.storefront, visible,
-            )
-            verifiedMbid?.let { onVerifiedArtistMbid(it) }
-        }
-        // Warm the visible screen only, in two bounded batches. Avoid waiting
-        // for dozens of network probes before rendering a complete page.
-        val promoted = visible.toMutableList()
-        for (batch in visible.take(24).withIndex().toList().chunked(4)) {
-            val results = kotlinx.coroutines.coroutineScope {
-                batch.map { entry ->
-                    async {
-                        val original = entry.value.artworkUrl
-                        val verified =
-                            this@ApplePr212NativeCatalogService.artwork.upgrade(
+
+            // Artwork starts in parallel with the slower optional MB crosswalk
+            // and further paged Apple queries. The first 24 native cards need
+            // not remain 100px thumbnails until the entire discography finishes.
+            val artworkJob = launch {
+                for (batch in first.snapshot.visible.take(24)
+                    .withIndex().toList().chunked(4)) {
+                    val results = batch.map { entry ->
+                        async {
+                            val release = entry.value
+                            val original = release.artworkUrl ?: return@async null
+                            val improved = this@ApplePr212NativeCatalogService.artwork.upgrade(
                                 original, if (entry.index == 0) 1024 else 600,
                             )
-                        entry.index to if (verified == original) entry.value
-                            else entry.value.copy(artworkUrl = verified)
+                            if (improved == null || improved == original) null
+                            else release.appleScopedId to (original to improved)
+                        }
+                    }.awaitAll().filterNotNull()
+                    if (results.isNotEmpty()) {
+                        results.forEach { (id, proof) -> coverProofs[id] = proof }
+                        publish(snapshot.get())
                     }
-                }.awaitAll()
+                }
             }
-            results.forEach { (index, item) -> promoted[index] = item }
-            val enriched = ApplePr212DetailProjection.artistPage(artist, promoted)
-            if (enriched != null && enriched.sections != page.sections) {
-                page = enriched
-                onProgress(page)
+
+            // Only a proven Apple/MusicBrainz identity enables optional
+            // "Included in"/"Top songs" shelves; names alone are insufficient.
+            var verifiedMbid = artistIdentityResolver.resolve(
+                name, route.id, route.storefront, first.snapshot.visible,
+            )
+            verifiedMbid?.let { onVerifiedArtistMbid(it) }
+            for (pageIndex in 0 until 12) {
+                if (!pager.snapshot().hasMore) break
+                val next = pager.loadMore() as?
+                    com.music.bitchord.data.catalog.metadata.AppleArtistPageLoad.Success
+                    ?: break
+                snapshot.set(next.snapshot.visible)
+                publish(next.snapshot.visible)
             }
+            val visible = pager.snapshot().visible
+            if (verifiedMbid == null && visible.size > first.snapshot.visible.size) {
+                verifiedMbid = artistIdentityResolver.resolve(
+                    name, route.id, route.storefront, visible,
+                )
+                verifiedMbid?.let { onVerifiedArtistMbid(it) }
+            }
+            artworkJob.join()
+            page
         }
-        return page
     }
 
     suspend fun album(

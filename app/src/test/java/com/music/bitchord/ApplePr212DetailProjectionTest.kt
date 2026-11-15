@@ -7,6 +7,7 @@ import com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.ApplePr212DetailProjection
+import com.music.bitchord.ui.applePr212ArtistReleasesWithVerifiedCovers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -83,6 +84,25 @@ class ApplePr212DetailProjectionTest {
         ))
         assertEquals(1, page.sections.single().items.size)
         assertEquals("itunes:br:album:201", page.sections.single().items.single().browseId)
+    }
+
+    @Test fun artistArtworkPatchFollowsExactAppleProductAndOriginalCdnVersion() {
+        val original = "https://is1-ssl.mzstatic.com/image/test/100x100bb.jpg"
+        val upgraded = "https://is1-ssl.mzstatic.com/image/test/600x600bb.jpg"
+        val first = release(51, ItunesEditorialReleaseFormat.EP, "Get Up")
+            .copy(artworkUrl = original)
+        val unrelated = release(52, ItunesEditorialReleaseFormat.EP, "New Jeans")
+            .copy(artworkUrl = original)
+        val changedAppleSnapshot = first.copy(
+            artworkUrl = "https://is1-ssl.mzstatic.com/image/other/100x100bb.jpg",
+        )
+        val proofs = mapOf(first.appleScopedId to (original to upgraded))
+        val rows = applePr212ArtistReleasesWithVerifiedCovers(
+            listOf(first, unrelated, changedAppleSnapshot), proofs,
+        )
+        assertEquals(upgraded, rows[0].artworkUrl)
+        assertEquals(original, rows[1].artworkUrl)
+        assertEquals(changedAppleSnapshot.artworkUrl, rows[2].artworkUrl)
     }
 
     @Test fun singleAndEpUseOneNativeSectionAndNeverCollapseDifferentFormats() {

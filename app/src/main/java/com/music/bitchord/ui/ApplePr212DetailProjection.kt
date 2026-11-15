@@ -28,6 +28,19 @@ internal data class ApplePr212AlbumDetailData(
     val tracks: List<ApplePr212TrackMetadata>,
 )
 
+/** Apply only CDN URLs already verified for this exact Apple product and
+ * original thumbnail. A later Apple storefront snapshot cannot inherit
+ * another edition's cover from an earlier asynchronous probe. */
+internal fun applePr212ArtistReleasesWithVerifiedCovers(
+    releases: List<ItunesEditorialRelease>,
+    verified: Map<String, Pair<String, String>>,
+): List<ItunesEditorialRelease> = releases.map { release ->
+    val proof = verified[release.appleScopedId]
+    if (proof != null && release.artworkUrl == proof.first &&
+        com.music.bitchord.data.catalog.metadata.safeAppleArtwork(proof.second) != null
+    ) release.copy(artworkUrl = proof.second) else release
+}
+
 internal object ApplePr212DetailProjection {
     private val storefrontPattern = Regex("[a-z]{2}")
 
