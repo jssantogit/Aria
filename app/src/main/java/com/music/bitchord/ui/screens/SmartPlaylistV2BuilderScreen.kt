@@ -1,5 +1,9 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -864,15 +868,23 @@ internal fun SmartPlaylistV2BuilderScreen(
             decorFitsSystemWindows = false,
         ),
     ) {
-        // This wizard is drawn in its own Android Dialog window; its own
-        // HazeState must sample the manager page, not the underlying Activity.
+        // Root-tab content fades cannot animate the editor's separate Android
+        // Dialog window. Fade its content in with the same 150ms linear policy.
+        val reduceCreatorMotion = com.music.bitchord.ui.LocalReduceAnimations.current
+        val dialogEntrance = remember { Animatable(if (reduceCreatorMotion) 1f else 0f) }
+        LaunchedEffect(reduceCreatorMotion) {
+            if (reduceCreatorMotion) dialogEntrance.snapTo(1f)
+            else dialogEntrance.animateTo(1f, tween(150, easing = LinearEasing))
+        }
+        // Haze only samples within this Dialog, never the Activity beneath.
         val savedFilterHaze = remember { HazeState() }
         Box(
             modifier = if (embeddedInLibrary) Modifier
                 .fillMaxWidth(0.95f).fillMaxHeight(0.90f)
                 .clip(GroupShape)
                 .background(MaterialTheme.colorScheme.background)
-            else Modifier.fillMaxSize(),
+                .graphicsLayer { alpha = dialogEntrance.value }
+            else Modifier.fillMaxSize().graphicsLayer { alpha = dialogEntrance.value },
         ) {
         if (showWizard) {
             androidx.compose.runtime.key(editorEpoch) {
