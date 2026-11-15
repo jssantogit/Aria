@@ -55,8 +55,17 @@ class RouteArrivalMotionTest {
         assertEquals(settled, rootTabArrivalFrame(Float.POSITIVE_INFINITY))
     }
 
-    @Test fun rootTabContentSwitchHasNoImplicitSpringSizeChange() {
-        val transform = rootTabContentTransform()
+    @Test fun rootTabContentFadesUseAppleTracedAnimatorTimingWithoutSizeSpring() {
+        assertEquals(150, rootTabFadeMillis(reducedMotion = false))
+        assertEquals(0, rootTabFadeMillis(reducedMotion = true))
+        val transform = rootTabContentTransform(reducedMotion = false)
+        org.junit.Assert.assertNull(transform.sizeTransform)
+        assertTrue(transform.targetContentEnter != androidx.compose.animation.EnterTransition.None)
+        assertTrue(transform.initialContentExit != androidx.compose.animation.ExitTransition.None)
+    }
+
+    @Test fun reducedMotionReplacesRootTabsWithoutAContentFade() {
+        val transform = rootTabContentTransform(reducedMotion = true)
         org.junit.Assert.assertNull(transform.sizeTransform)
         assertEquals(
             androidx.compose.animation.EnterTransition.None,
