@@ -116,6 +116,72 @@ class ProviderCapabilitySessionTest {
         )
     }
 
+    @Test fun disablingLastProviderRemainsDeniedWhenPreferencesCommitFails(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(
+                ProviderChoice(musicBrainz, enabled = true, order = 0),
+            ),
+        )))
+        val activeTicket = requireNotNull(
+            session.gate.open(ProviderCapability.CATALOG_SEARCH, musicBrainz),
+        )
+        // Corrupt the backing store to simulate a failed durable preference change.
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{invalid").commit()
+        assertFalse(session.update(ProviderCapability.CATALOG_SEARCH, emptyList()))
+        assertEquals(ProviderSessionStatus.STORAGE_ERROR, session.state.value.status)
+        assertFalse(session.gate.accept(activeTicket))
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+        assertTrue(ProviderCapability.CATALOG_SEARCH in session.state.value.quarantined)
+    }
+
+    @Test fun siblingProviderIsNeverRevokedEvenOnFailedUnrelatedSwitchWrite(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.RELEASE_ARTWORK to listOf(
+                ProviderChoice(apple, enabled = true, order = 0),
+                ProviderChoice(covers, enabled = true, order = 1),
+            ),
+        )))
+        val appleTicket = requireNotNull(
+            session.gate.open(ProviderCapability.RELEASE_ARTWORK, apple),
+        )
+        val fanartTicket = requireNotNull(
+            session.gate.open(ProviderCapability.RELEASE_ARTWORK, covers),
+        )
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{invalid").commit()
+        assertFalse(session.update(ProviderCapability.RELEASE_ARTWORK, listOf(
+            ProviderChoice(apple, enabled = false, order = 0),
+            ProviderChoice(covers, enabled = true, order = 1),
+        )))
+        assertFalse(session.gate.accept(appleTicket))
+        assertTrue(session.gate.accept(fanartTicket))
+        assertEquals(listOf(covers),
+            session.gate.ordered(ProviderCapability.RELEASE_ARTWORK).map { it.key })
+    }
+
+    @Test fun reorderingTwoEnabledProvidersKeepsBothInflightTicketsValid(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.RELEASE_ARTWORK to listOf(
+                ProviderChoice(apple, enabled = true, order = 0),
+                ProviderChoice(covers, enabled = true, order = 1),
+            ),
+        )))
+        val appleTicket = requireNotNull(
+            session.gate.open(ProviderCapability.RELEASE_ARTWORK, apple),
+        )
+        val fanartTicket = requireNotNull(
+            session.gate.open(ProviderCapability.RELEASE_ARTWORK, covers),
+        )
+        assertTrue(session.update(ProviderCapability.RELEASE_ARTWORK, listOf(
+            ProviderChoice(covers, enabled = true, order = 0),
+            ProviderChoice(apple, enabled = true, order = 1),
+        )))
+        assertTrue(session.gate.accept(appleTicket))
+        assertTrue(session.gate.accept(fanartTicket))
+    }
+
     @Test fun failedSettingsWriteIsRepresentedAsUnavailableNotAReactivatedSwitch(): Unit = runBlocking {
         val session = session()
         assertTrue(session.initialize(mapOf(
