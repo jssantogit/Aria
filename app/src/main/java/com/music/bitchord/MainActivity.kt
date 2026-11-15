@@ -3896,7 +3896,11 @@ private fun BitChordApp(
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                         )
-                        TAB_EXPLORE -> if (activeCanonicalGenre == null) {
+                        TAB_EXPLORE -> com.music.bitchord.ui.components.ExploreCategoryContentTransition(
+                            category = activeCanonicalGenre,
+                            reduceMotion = reducePlayerMotion,
+                        ) { visibleGenre ->
+                            if (visibleGenre == null) {
                             ExploreScreen(
                                 state = UiState.Success(
                                     emptyList<com.music.bitchord.data.model.MoodGenreSection>(),
@@ -3927,16 +3931,12 @@ private fun BitChordApp(
                                     item, heading, canonicalEditorialPlaybackSource(explore = true),
                                 )
                             },
-                            onRetry = { activeCanonicalGenre?.let {
-                                viewModel.loadCanonicalGenre(it.tag)
-                            } },
+                            onRetry = { viewModel.loadCanonicalGenre(visibleGenre.tag) },
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
-                            onRefresh = { activeCanonicalGenre?.let {
-                                viewModel.loadCanonicalGenre(it.tag)
-                            } },
+                            onRefresh = { viewModel.loadCanonicalGenre(visibleGenre.tag) },
                             pullState = explorePull,
                             contentPadding = listPadding,
-                            title = activeCanonicalGenre?.title ?: stringResource(R.string.explore),
+                            title = visibleGenre.title,
                             onItemLongPress = onShelfLongPress,
                             publicPlaylistNotice = canonicalGenrePlaylistNotice,
                             // The global FrostedTopBar owns this back button.
@@ -3946,7 +3946,8 @@ private fun BitChordApp(
                             leadHero = true,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
-                        )
+                            }
+                        }
                         TAB_SEARCH -> SearchScreen(
                             query = query,
                             onQueryChange = viewModel::onQueryChange,
