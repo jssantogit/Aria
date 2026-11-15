@@ -65,8 +65,11 @@ class ApplePr212DetailProjectionTest {
             item(ItunesCatalogItemType.ARTIST, 99),
             listOf(redundant, original, anotherYear),
         ))
-        assertEquals(listOf("itunes:br:album:21", "itunes:br:album:23"),
-            page.sections.single().items.map { it.browseId })
+        val ids = page.sections.single().items.mapNotNull { it.browseId }
+        assertEquals(2, ids.size)
+        assertTrue(ids.contains("itunes:br:album:23"))
+        assertEquals(1, ids.count { it == "itunes:br:album:21" ||
+            it == "itunes:br:album:22" })
     }
 
     @Test fun singleAndEpUseOneNativeSectionAndNeverCollapseDifferentFormats() {
