@@ -66,6 +66,46 @@ class ApplePr212ArtistIdentityResolverTest {
             )))))
     }
 
+    @Test fun AppleNumberedEpTitlesMatchTwoIndependentMusicBrainzReleaseGroupNames() {
+        val rows = listOf(
+            apple(201, "NewJeans 1st EP 'New Jeans'", "2022"),
+            apple(202, "NewJeans 2nd EP 'Get Up'", "2023"),
+        )
+        val groups = listOf(
+            group("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "New Jeans", "2022"),
+            group("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "Get Up", "2023"),
+        )
+        assertEquals(artistA, applePr212VerifiedArtistMbid(
+            "NewJeans", 77, "br", rows,
+            listOf(candidate(artistA, groups = groups)),
+        ))
+    }
+
+    @Test fun NumberedEpWrapperCannotImpersonateAnotherArtistOrWrongYear() {
+        val rows = listOf(
+            apple(201, "Other Artist 1st EP 'New Jeans'", "2022"),
+            apple(202, "Other Artist 2nd EP 'Get Up'", "2023"),
+        )
+        val groups = listOf(
+            group("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "New Jeans", "2022"),
+            group("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "Get Up", "2023"),
+        )
+        assertNull(applePr212VerifiedArtistMbid(
+            "NewJeans", 77, "br", rows,
+            listOf(candidate(artistA, groups = groups)),
+        ))
+        val wrongYear = listOf(
+            group("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "New Jeans", "2020"),
+            group("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "Get Up", "2023"),
+        )
+        assertNull(applePr212VerifiedArtistMbid(
+            "NewJeans", 77, "br", listOf(
+                apple(201, "NewJeans 1st EP 'New Jeans'", "2022"),
+                apple(202, "NewJeans 2nd EP 'Get Up'", "2023"),
+            ), listOf(candidate(artistA, groups = wrongYear)),
+        ))
+    }
+
     @Test fun twoValidCandidateArtistsAreAmbiguousAndDoNotEnableForeignShelves() {
         val releases = listOf(apple(101, "How Sweet - EP"), apple(102, "Supernatural - Single"))
         val groups = listOf(

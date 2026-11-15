@@ -17,10 +17,30 @@ private fun applePr212NormalizedText(text: String): String =
     Normalizer.normalize(text.trim(), Normalizer.Form.NFKC)
         .lowercase(Locale.ROOT).replace(Regex("""\s+"""), " ").trim()
 
-private fun applePr212NormalizedReleaseTitle(text: String): String =
-    applePr212NormalizedText(text).replace(
+private val applePr212NumberedEpTitle = Regex(
+    """^(.+?)\s+[1-9][0-9]*(?:st|nd|rd|th)\s+ep\s+['‘“](.+?)['’”]$""",
+)
+
+/**
+ * Apple may display e.g. "NewJeans 2nd EP 'Get Up'" where MusicBrainz
+ * names the independently credited release group simply "Get Up".
+ * Only remove the artist-prefixed numbered EP wrapper when its prefix
+ * equals the EXACT Apple artist name; unrelated quoted titles stay intact.
+ * This is a comparison key, never a displayed Apple title rewrite.
+ */
+private fun applePr212NormalizedReleaseTitle(
+    text: String,
+    artistName: String,
+): String {
+    val normalized = applePr212NormalizedText(text)
+    val numbered = applePr212NumberedEpTitle.matchEntire(normalized)
+    if (numbered != null &&
+        numbered.groupValues[1] == applePr212NormalizedText(artistName)
+    ) return numbered.groupValues[2].trim()
+    return normalized.replace(
         Regex("""\s[-–—]\s(?:ep|single)$"""), "",
     ).trim()
+}
 
 private fun applePr212ReleaseYear(date: String?): String? =
     date?.take(4)?.takeIf {
@@ -54,7 +74,7 @@ internal fun applePr212VerifiedArtistMbid(
         }
         .mapNotNull { release ->
             val date = applePr212ReleaseYear(release.releaseDate) ?: return@mapNotNull null
-            val title = applePr212NormalizedReleaseTitle(release.title)
+            val title = applePr212NormalizedReleaseTitle(release.title, appleArtistName)
             if (title.isBlank()) null else title to date
         }
         .toSet()
@@ -72,7 +92,7 @@ internal fun applePr212VerifiedArtistMbid(
                 .mapNotNull { hit ->
                     val date = applePr212ReleaseYear(hit.firstReleaseDate)
                         ?: return@mapNotNull null
-                    val title = applePr212NormalizedReleaseTitle(hit.title)
+                    val title = applePr212NormalizedReleaseTitle(hit.title, appleArtistName)
                     if (title.isBlank()) null else title to date
                 }
                 .toSet()
