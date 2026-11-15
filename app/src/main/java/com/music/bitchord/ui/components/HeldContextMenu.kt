@@ -59,6 +59,12 @@ import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.roundToInt
 
+/** The source row keeps painting until its bitmap replacement is ready. */
+internal fun heldPreviewCanPaint(hasImage: Boolean, lifted: Boolean): Boolean = hasImage && lifted
+
+/** Real Haze source remains active; the solid plate is a reduced-blur fallback. */
+internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
+
 /**
  * The menu a *held* item lifts into, in the shape Apple Music uses: the item
  * itself pops out of its list, the page behind it blurs, and the actions hang
@@ -239,7 +245,12 @@ fun <T : Any> HeldContextMenu(
                     // Taps between rows land on the menu, not the scrim under it.
                     .pointerInput(Unit) {}
                     .clip(menuShape)
-                    .background(plate)
+                    .then(if (heldActionsUseHaze(reduceDynamicBlur)) {
+                        Modifier.optimizedHazeEffect(
+                            state = hazeState,
+                            style = HazeMaterials.regular(plate.copy(alpha = 0.56f)),
+                        )
+                    } else Modifier.background(plate))
                     .border(0.5.dp, hairline, menuShape)
                     .verticalScroll(rememberScrollState())
                     .testTag("held-context-actions"),
@@ -342,17 +353,21 @@ fun <T : Any> HeldContextMenu(
                 if (reduceMotion) {
                     scaleX = liftScale
                     scaleY = liftScale
-                    alpha = p.coerceIn(0f, 1f)
                 } else {
                     val scale = lerp(1f, liftScale, p)
                     scaleX = scale
                     scaleY = scale
                     translationX = lerp(fromDx, 0f, p)
                     translationY = lerp(fromDy, 0f, p)
-                    // Quick, because it starts over the very item it copies:
-                    // only the plate and shadow arriving are new.
-                    alpha = (p * 3f).coerceIn(0f, 1f)
                 }
+                // Snapshot conversion is asynchronous. Until BOTH the bitmap
+                // and source suppression are ready, keep the real source row
+                // visible and draw no solid empty lifted platter.
+                alpha = if (!heldPreviewCanPaint(
+                        hasImage = heldItem.image != null,
+                        lifted = heldItem.isLifted,
+                    )) 0f else if (reduceMotion) p.coerceIn(0f, 1f)
+                    else (p * 3f).coerceIn(0f, 1f)
             }
             menu.placeWithLayer(menuX, menuY) {
                 val p = progress.value
