@@ -32,6 +32,17 @@ import org.robolectric.annotation.ConscryptMode
 class NativeAlbumPlaylistToolbarTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun libraryDetailOverflowHighlightsOnlyForLiveUnheldMenu() {
+        val album = com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ALBUM
+        val artist = com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST
+        assertEquals(true, canonicalLibraryDetailLauncherActive(true, false, album, album))
+        assertEquals(true, canonicalLibraryDetailLauncherActive(true, false, artist, artist))
+        assertEquals(false, canonicalLibraryDetailLauncherActive(false, false, album, album))
+        assertEquals(false, canonicalLibraryDetailLauncherActive(true, true, album, album))
+        assertEquals(false, canonicalLibraryDetailLauncherActive(true, false, artist, album))
+    }
+
+
     @Test fun expandedPlaylistSearchShowsOnlyCloseAndHidesOverflowRatingAndSort() {
         val playlist = ListenBrainzPublicPlaylist(
             mbid = "66dd7663-76a4-4e31-93ae-730ccd49d7d8",
