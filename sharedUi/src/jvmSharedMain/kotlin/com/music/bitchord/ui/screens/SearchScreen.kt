@@ -963,9 +963,19 @@ internal fun canonicalServerNativeSearchRowUi(
     artistPortrait = false,
 )
 
-/** Only positive, independently supplied release classification may create an album tile. */
+/**
+ * Apple collectionType=Album is a verified collection identity but NOT a
+ * confirmed Album/EP/Single format. Include the product in the existing
+ * album-result rows without changing its null releaseKind or UI labels.
+ */
+private val appleExactAlbumProductKey = Regex("^itunes:[a-z]{2}:album:([1-9][0-9]*)$")
+
+/** Eligibility policy only: PR212 composables, typography and layout stay identical. */
 private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
-    row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single")
+    row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single") ||
+        (row.kind == CanonicalSearchKind.RELEASE &&
+            appleExactAlbumProductKey.matchEntire(row.musicBrainzId)?.groupValues?.get(1)
+                ?.toLongOrNull()?.let { it > 0L } == true)
 
 /** Presentation-only grouping; never changes the underlying indexed identities. */
 fun canonicalSearchDisplaySections(
