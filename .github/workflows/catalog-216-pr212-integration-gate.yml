@@ -91,19 +91,19 @@ jobs:
           baseline_shared = subprocess.check_output(
               ['git', 'show', f'{baseline}:{shared}'], text=True)
           old_rule = '''/** Only positive, independently supplied release classification may create an album tile. */
-private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
-    row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single")'''
+          private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
+              row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single")'''
           new_rule = '''/**
- * Apple collectionType=Album is a verified collection identity but NOT a
- * confirmed Album/EP/Single format. Include the product in the existing
- * album-result rows without changing its null releaseKind or UI labels.
- */
-private val appleExactAlbumProductKey = Regex("^itunes:[a-z]{2}:album:([1-9][0-9]*)$")
+           * Apple collectionType=Album is a verified collection identity but NOT a
+           * confirmed Album/EP/Single format. Include the product in the existing
+           * album-result rows without changing its null releaseKind or UI labels.
+           */
+          private val appleExactAlbumProductKey = Regex("^itunes:[a-z]{2}:album:([1-9][0-9]*)$")
 
-/** Eligibility policy only: PR212 composables, typography and layout stay identical. */
-private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
-    row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single") ||
-        (row.kind == CanonicalSearchKind.RELEASE &&
+          /** Eligibility policy only: PR212 composables, typography and layout stay identical. */
+          private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
+              row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single") ||
+                  (row.kind == CanonicalSearchKind.RELEASE &&
             appleExactAlbumProductKey.matchEntire(row.musicBrainzId)?.groupValues?.get(1)
                 ?.toLongOrNull()?.let { it > 0L } == true)'''
           assert baseline_shared.count(old_rule) == 1
