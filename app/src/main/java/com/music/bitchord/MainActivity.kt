@@ -7373,6 +7373,15 @@ private fun CanonicalLibraryAlbumRatingToolbarAction(
         // Observe the same exact entity row as the native Library editor,
         // rather than applying the MBID-only online-catalog gate.
         val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+        // A Library album rating can be opened without a network artwork URL.
+        // Resolve its existing release sleeve so this card can use the same
+        // diffused artwork as the other frosted action surfaces.
+        val ratingArtwork by produceState<String?>(null, selection.entityId) {
+            value = withContext(Dispatchers.IO) {
+                com.music.bitchord.data.catalog.CanonicalCatalogDatabase.get(context)
+                    .catalogDao().releaseById(selection.entityId)?.artworkUri
+            }
+        }
         val dao = remember(context) {
             com.music.bitchord.data.listening.ListeningEventDatabase.get(context)
                 .canonicalEntityRatingDao()
@@ -7394,6 +7403,7 @@ private fun CanonicalLibraryAlbumRatingToolbarAction(
                 selectedSource = selectedSource,
                 onDismiss = { editing = false },
                 anchorBounds = ratingAnchor,
+                artworkUrl = ratingArtwork,
             )
         }
         NativeCollectionRatingToolbarAction(
@@ -8083,6 +8093,8 @@ private fun FrostedMenuPanel(
     val solidPlate = com.music.bitchord.ui.components.nativeCompactPlateColor(
         isDark = darkPlate, artworkElevation = null,
     )
+    val reduceFilterBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    // Sort/filter cards sample the live page; only long-press cards stay solid.
     // The sort/source panels use the same native 18dp geometry.
     val shape = RoundedCornerShape(18.dp)
     val entrance = com.music.bitchord.ui.components.rememberFrostedMenuEntranceModifier(
@@ -8124,7 +8136,7 @@ private fun FrostedMenuPanel(
             }
         }
         Surface(
-            color = solidPlate,
+            color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
             shape = shape,
             shadowElevation = 0.dp,
@@ -8140,7 +8152,15 @@ private fun FrostedMenuPanel(
                 .clip(shape)
                 .clickable(onClick = {}),
         ) {
-            Column(Modifier.padding(vertical = 8.dp), content = content)
+            Box(Modifier.clip(shape).then(
+                if (reduceFilterBlur) Modifier.background(solidPlate)
+                else Modifier.optimizedHazeEffect(
+                    state = hazeState,
+                    style = HazeMaterials.regular(solidPlate.copy(alpha = 0.58f)),
+                )
+            )) {
+                Column(Modifier.padding(vertical = 8.dp), content = content)
+            }
         }
     }
 }

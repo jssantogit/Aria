@@ -33,11 +33,14 @@ class AnchoredFrostedPopupPositionTest {
 
     @Test fun playerMenuPrefersBelowWhileOtherMenusCanFlip() {
         val anchor = IntRect(260, 600, 300, 640)
-        val popup = IntSize(240, 90)
+        val popup = IntSize(240, 100)
         val screen = IntSize(360, 760)
-        assertEquals(IntOffset(60, 652), anchoredFrostedMenuPosition(
+        assertEquals(IntOffset(60, 648), anchoredFrostedMenuPosition(
             anchor, popup, screen, IntOffset.Zero, gap = 12, margin = 12,
             preferBelow = true,
+        ))
+        assertEquals(IntOffset(60, 488), anchoredFrostedMenuPosition(
+            anchor, popup, screen, IntOffset.Zero, gap = 12, margin = 12,
         ))
     }
 
