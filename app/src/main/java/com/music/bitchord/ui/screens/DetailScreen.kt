@@ -348,6 +348,8 @@ fun DetailScreen(
     onCanonicalFeaturedReleaseOpen: ((CanonicalCatalogSearchRow) -> Unit)? = null,
     /** MBID, title, creator and description only: no internal DTO in public API. */
     onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,
+    /** Only cross-catalog identity with independently verified Apple release proof. */
+    verifiedPublicArtistMbid: String? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
@@ -372,9 +374,13 @@ fun DetailScreen(
     // locally available recordings never constitute ranking evidence.
     val legacyRankedArtistFeed = isArtist &&
         nativeArtistLegacyRankedFeed(page.browseId)
-    val publicArtistMbid = page.browseId.takeIf {
-        isArtist && it.startsWith("catalog:ARTIST:")
-    }?.removePrefix("catalog:ARTIST:")
+    val publicArtistMbid = when {
+        !isArtist -> null
+        page.browseId.startsWith("catalog:ARTIST:") ->
+            page.browseId.removePrefix("catalog:ARTIST:")
+        page.browseId.startsWith("itunes:") -> verifiedPublicArtistMbid
+        else -> null
+    }
     val publicTopRows = if (publicArtistMbid != null &&
         onCanonicalPublicTopOpen != null
     ) canonicalPublicTopTracks.filter {
