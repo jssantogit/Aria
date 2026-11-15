@@ -14,6 +14,8 @@ enum class ProviderCapability {
     ACOUSTIC_IDENTIFICATION,
     RELEASE_ARTWORK,
     ARTIST_ARTWORK,
+    /** Legacy lyric provider selection without asserting output granularity. */
+    LYRICS_LOOKUP,
     LYRICS_SYNCED,
     LYRICS_PLAIN,
     CHART_MOST_PLAYED,
@@ -22,6 +24,8 @@ enum class ProviderCapability {
     PUBLIC_PLAYLISTS,
     PERSONAL_LIBRARY,
     AUDIO_PLAYBACK,
+    /** User-configured addons/modules, not all local or remote audio. */
+    EXTENSION_PLAYBACK,
     DOWNLOAD,
 }
 
