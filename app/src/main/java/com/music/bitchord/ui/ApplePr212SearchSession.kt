@@ -65,7 +65,8 @@ internal class ApplePr212SearchSession(
             rows = (artists + albums + tracks)
                 .distinctBy { it.kind to it.musicBrainzId },
             trackAlbums = trackAlbums,
-            hasMore = pages.any { it.hasMore },
+            hasMore = pages.any { it.hasMore } ||
+                kinds.any { it !in successKinds },
             coverageUncertain = pages.any { it.coverageUncertain },
         )
     }
@@ -97,8 +98,12 @@ internal class ApplePr212SearchSession(
     ): ApplePr212SearchPage? {
         for (kind in kinds) {
             val pager = pagers.getValue(kind)
-            if (!pager.snapshot().hasMore) continue
-            when (pager.loadMore()) {
+            val attempt = when {
+                kind !in successKinds -> pager.start()
+                pager.snapshot().hasMore -> pager.loadMore()
+                else -> continue
+            }
+            when (attempt) {
                 is ApplePublicSearchPageLoad.Success -> {
                     successKinds.add(kind)
                     onProgress(snapshot())
