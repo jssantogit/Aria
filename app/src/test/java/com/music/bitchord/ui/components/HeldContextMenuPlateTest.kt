@@ -6,7 +6,7 @@ import org.junit.Test
 
 class HeldContextMenuPlateTest {
     @Test fun liftedSelectionHasConsistentBrightEdgeOverArtwork() {
-        assertEquals(Color.White.copy(alpha = 0.88f), heldContextSelectionOutline())
+        assertEquals(Color.White.copy(alpha = 0.36f), heldContextSelectionOutline())
     }
 
     @Test fun neutralPagesKeepReadableDarkAndLightPlates() {
@@ -35,9 +35,13 @@ class HeldContextMenuPlateTest {
         assertEquals(1f, heldPreviewAlpha(hasImage = true, lifted = true))
     }
 
-    @Test fun longPressActionsStaySolidInEitherBlurSetting() {
-        assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = false))
+    @Test fun longPressActionsUseFrostedMaterialUnlessBlurIsDisabled() {
+        assertEquals(true, heldActionsUseHaze(reduceDynamicBlur = false))
         assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = true))
+    }
+
+    @Test fun heldSnapshotDoesNotReceiveASecondGreyCardSurface() {
+        assertEquals(Color.Transparent, heldPreviewBackingColor())
     }
 
     @Test fun artworkDoesNotTintTheLongPressActionPlateOrReduceContrast() {
