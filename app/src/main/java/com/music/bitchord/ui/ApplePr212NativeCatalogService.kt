@@ -7,6 +7,8 @@ import com.music.bitchord.data.catalog.metadata.ItunesCatalogItem
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 /** Source-owned metadata requests behind PR212's unchanged navigation surface. */
 internal class ApplePr212NativeCatalogService(
@@ -97,7 +99,7 @@ internal class ApplePr212NativeCatalogService(
         for (batch in visible.take(8).withIndex().toList().chunked(4)) {
             val results = kotlinx.coroutines.coroutineScope {
                 batch.map { entry ->
-                    kotlinx.coroutines.async {
+                    async {
                         val original = entry.value.artworkUrl
                         val verified = artwork.upgrade(
                             original, if (entry.index == 0) 1024 else 600,
