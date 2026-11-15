@@ -1203,6 +1203,25 @@ fun DetailScreen(
 }
 }
 
+/**
+ * A public MusicBrainz album needs the real release-to-artist credit, not
+ * matching display names. Never infer the artist of a release group from a
+ * similarly named release, and never turn multiple credited leads into one.
+ */
+internal fun verifiedCatalogReleaseLeadArtistRoute(
+    albumBrowseId: String,
+    credits: List<com.music.bitchord.data.catalog.MusicBrainzReleaseArtistCreditEntity>,
+): String? {
+    if (!albumBrowseId.startsWith("catalog:RELEASE:")) return null
+    val releaseId = albumBrowseId.removePrefix("catalog:RELEASE:")
+    val uuid = Regex("^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
+    if (!uuid.matches(releaseId)) return null
+    return credits.filter { it.releaseId.equals(releaseId, ignoreCase = true) &&
+        it.position == 0 && uuid.matches(it.musicBrainzArtistId) }
+        .distinctBy { it.musicBrainzArtistId.lowercase() }
+        .singleOrNull()?.musicBrainzArtistId?.let { "catalog:ARTIST:$it" }
+}
+
 /** Source-bound credit navigation is not inferred from display names of public releases. */
 internal fun detailAlbumArtistBrowseId(
     albumBrowseId: String,
@@ -1269,12 +1288,31 @@ private fun ReleaseHeader(
     // Source-owned local album groups have an equally source-owned artist
     // page even without a YouTube artistId. Do not turn arbitrary album
     // credits into public YouTube browse IDs or do a fuzzy name lookup.
+    val albumArtistRoute by androidx.compose.runtime.produceState<String?>(
+        initialValue = null, key1 = page.browseId,
+    ) {
+        if (!page.browseId.startsWith("catalog:RELEASE:")) return@produceState
+        val releaseId = page.browseId.removePrefix("catalog:RELEASE:")
+        value = try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val credits = com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+                    .get(androidx.compose.ui.platform.LocalContext.current.applicationContext)
+                    .catalogDao().musicBrainzReleaseArtistCredits(releaseId)
+                verifiedCatalogReleaseLeadArtistRoute(page.browseId, credits)
+            }
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (_: Exception) {
+            null
+        }
+    }
     val creditArtistId = artist?.let { song ->
         detailAlbumArtistBrowseId(page.browseId, song.artistId, song.artist)
-    }
+    } ?: albumArtistRoute
+    val creditName = artist?.artist?.takeIf(String::isNotBlank) ?: credit
     val onCreditClick: (() -> Unit)? =
-        if (creditArtistId != null && artist != null && onArtistClick != null) {
-            { onArtistClick(creditArtistId, artist.artist) }
+        if (creditArtistId != null && creditName.isNotBlank() && onArtistClick != null) {
+            { onArtistClick(creditArtistId, creditName) }
         } else null
 
     // Use the same approved native release compositor as unified Library
