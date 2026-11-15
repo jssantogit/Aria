@@ -3,6 +3,8 @@ package com.music.bitchord
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
+import com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit
+import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording
 import com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
@@ -439,7 +441,7 @@ class MusicBrainzPublicMetadataIndexTest {
         } finally { db.close() }
     }
 
-    private fun daoUpsertCoverArt(
+    private suspend fun daoUpsertCoverArt(
         db: CanonicalCatalogDatabase,
         kind: String,
         mbid: String,
