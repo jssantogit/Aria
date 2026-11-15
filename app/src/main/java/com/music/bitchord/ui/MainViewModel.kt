@@ -2753,6 +2753,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
+    /** Apple artist search rows have no portrait field. Enrich the existing
+     * PR212 row data from Apple's exact artist product page, never an album
+     * sleeve or an unverified same-name search result. */
+    private fun warmApplePr212SearchPortraits(
+        session: ApplePr212SearchSession,
+        query: String,
+        rows: List<CanonicalCatalogSearchRow>,
+    ) {
+        val candidates = rows.asSequence()
+            .filter { it.kind == CanonicalSearchKind.ARTIST && it.artworkUri.isNullOrBlank() }
+            .mapNotNull { row ->
+                ApplePr212CatalogRoute.parse(row.musicBrainzId)
+                    ?.takeIf { it.kind == com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ARTIST }
+                    ?.let { row to it }
+            }.take(8).toList()
+        val permits = kotlinx.coroutines.sync.Semaphore(2)
+        candidates.forEach { (row, route) ->
+            viewModelScope.launch(Dispatchers.IO) {
+                val verified = try {
+                    permits.withPermit {
+                        com.music.bitchord.data.canvas.AppleArtistArtRepository
+                            .artForVerifiedArtist(route.storefront, route.id)?.heroUrl
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) { null } ?: return@launch
+                if (applePr212SearchSession !== session ||
+                    _searchSource.value != SearchSource.CANONICAL ||
+                    _query.value.trim() != query
+                ) return@launch
+                _canonicalResults.update { current ->
+                    if (current is UiState.Success) {
+                        UiState.Success(current.data.map { item ->
+                            if (item.musicBrainzId == row.musicBrainzId &&
+                                item.artworkUri.isNullOrBlank()
+                            ) item.copy(artworkUri = verified) else item
+                        })
+                    } else current
+                }
+            }
+        }
+    }
+
     private fun runApplePr212Search(query: String) {
         canonicalSearchJob?.cancel()
         canonicalTypeaheadJob?.cancel()
@@ -2780,6 +2822,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (!isCurrent()) return@launch
             if (result != null) {
                 publish(result, complete = true)
+                warmApplePr212SearchPortraits(session, query, result.rows)
             } else {
                 _canonicalResults.value =
                     UiState.Error("Não foi possível consultar o catálogo Apple.")
