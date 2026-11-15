@@ -4,6 +4,8 @@ import com.music.bitchord.data.catalog.CanonicalArtistCreditRow
 import com.music.bitchord.data.catalog.ArtistEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class PlayerArtistEvidenceTest {
@@ -116,6 +118,23 @@ class PlayerArtistEvidenceTest {
         assertNull(verifiedLocalAlbumDisplayArtist(
             providerKey = "local-mediastore", albumCredit = "BTS",
             memberArtistNames = emptyList(),
+        ))
+    }
+
+    @Test fun localPlayerArtistNeverOffersANameSearchInsteadOfLibraryNavigation() {
+        assertFalse(shouldOfferFallbackArtistSearch(
+            localUri = "content://media/external/audio/media/42",
+            artist = "BTS",
+        ))
+        assertFalse(shouldOfferFallbackArtistSearch(
+            localUri = "file:///Music/Proof.flac",
+            artist = "BTS",
+        ))
+        assertTrue(shouldOfferFallbackArtistSearch(
+            localUri = null, artist = "BTS",
+        ))
+        assertFalse(shouldOfferFallbackArtistSearch(
+            localUri = null, artist = "  ",
         ))
     }
 
