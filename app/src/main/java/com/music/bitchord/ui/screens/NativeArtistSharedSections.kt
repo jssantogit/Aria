@@ -21,9 +21,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.trackColumnWidth
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.ui.theme.ArtworkPalette
@@ -84,6 +88,14 @@ internal fun nativeArtistVisibleSections(
 }
 
 /**
+ * Clip only moving LIST foreground above the floating chrome. The artwork
+ * backdrop is a separate layer and stays edge-to-edge behind the status bar.
+ * No layout offset or extra padding is introduced in the approved artist UI.
+ */
+internal fun nativeArtistListMaskTopPx(topBarBottomPx: Float, viewportHeightPx: Float): Float =
+    topBarBottomPx.coerceIn(0f, viewportHeightPx.coerceAtLeast(0f))
+
+/**
  * Exact native artist screen structure extracted from DetailScreen:
  * one photo wash beneath one scrolling list. The artist header, actions,
  * ratings, filters, albums and menus remain caller-provided native sections.
@@ -103,6 +115,10 @@ internal fun NativeArtistDetailFrame(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
+    // The native frosted top bar floats above this screen; the artwork should
+    // still paint behind it, but rows, logo and large Play/Shuffle/Rate circles
+    // must disappear before reaching its status/toolbar area while scrolling.
+    val topBarClearancePx = with(LocalDensity.current) { topBarContentPadding().toPx() }
     Box(modifier.fillMaxSize().background(palette.wash)) {
         PageBackground(
             palette = palette,
@@ -114,7 +130,12 @@ internal fun NativeArtistDetailFrame(
         )
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize()
+                .drawWithContent {
+                    clipRect(top = nativeArtistListMaskTopPx(topBarClearancePx, size.height)) {
+                        drawContent()
+                    }
+                },
             contentPadding = contentPadding,
             content = content,
         )
