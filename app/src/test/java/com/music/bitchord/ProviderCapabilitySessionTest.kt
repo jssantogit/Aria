@@ -8,6 +8,7 @@ import com.music.bitchord.data.providers.ProviderCapabilitySession
 import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderOperationalHealth
 import com.music.bitchord.data.providers.ProviderPreferenceStore
 import com.music.bitchord.data.providers.ProviderQueryExecutor
 import com.music.bitchord.data.providers.ProviderReadiness
@@ -240,7 +241,7 @@ class ProviderCapabilitySessionTest {
         assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
     }
 
-    @Test fun corruptedNewPreferencesFailClosedAndAreNotOverwritten(): Unit = runBlocking {
+    @Test fun corruptedNewPreferencesFailClosedAndSurfaceStorageErrorAndRecoverCleanly(): Unit = runBlocking {
         val bad = """{"version":999,"rows":[]}"""
         prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, bad).commit()
         val session = session()
@@ -249,7 +250,58 @@ class ProviderCapabilitySessionTest {
                 ProviderChoice(musicBrainz, true, 0),
             ),
         )))
+        assertEquals(ProviderSessionStatus.STORAGE_ERROR, session.state.value.status)
         assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
         assertEquals(bad, prefs.getString(ProviderPreferenceStore.STORAGE_KEY, null))
+
+        // Once the external schema corruption is repaired, re-initializing recovers cleanly.
+        prefs.edit().clear().commit()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(
+                ProviderChoice(musicBrainz, false, 0),
+            ),
+        )))
+        assertEquals(ProviderSessionStatus.READY, session.state.value.status)
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+    }
+
+    @Test fun quarantinedCapabilityRecoversWhenSubsequentSaveSucceeds(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, true, 0)),
+        )))
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{corrupt").commit()
+        assertFalse(session.update(ProviderCapability.CATALOG_SEARCH, emptyList()))
+        assertEquals(ProviderSessionStatus.STORAGE_ERROR, session.state.value.status)
+        assertTrue(ProviderCapability.CATALOG_SEARCH in session.state.value.quarantined)
+
+        // Repair storage and retry saving an explicit opt-out.
+        prefs.edit().clear().commit()
+        assertTrue(session.update(ProviderCapability.CATALOG_SEARCH, emptyList()))
+        assertEquals(ProviderSessionStatus.READY, session.state.value.status)
+        assertFalse(ProviderCapability.CATALOG_SEARCH in session.state.value.quarantined)
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+    }
+
+    @Test fun operationalHealthSuspendsDispatchWithoutDeletingUserAuthorization(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, true, 0)),
+        )))
+        assertEquals(
+            ProviderOperationalHealth.UNKNOWN,
+            session.statusOf(ProviderCapability.CATALOG_SEARCH, musicBrainz).operationalHealth,
+        )
+        session.reportHealth(musicBrainz, ProviderOperationalHealth.UNAVAILABLE)
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+        val status = session.statusOf(ProviderCapability.CATALOG_SEARCH, musicBrainz)
+        assertTrue(status.userAuthorized)
+        assertFalse(status.effectiveEligible)
+
+        session.reportHealth(musicBrainz, ProviderOperationalHealth.OPERATIONAL)
+        assertEquals(
+            listOf(musicBrainz),
+            session.gate.ordered(ProviderCapability.CATALOG_SEARCH).map { it.key },
+        )
     }
 }

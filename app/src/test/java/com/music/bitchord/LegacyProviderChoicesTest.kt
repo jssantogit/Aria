@@ -1,17 +1,31 @@
 package com.music.bitchord
 
+import android.content.Context
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.providers.LegacyProviderCompatibility
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilitySession
 import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPreferenceStore
+import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.providers.legacyProviderChoices
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
+import java.util.Locale
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.ConscryptMode
 
+@ConscryptMode(ConscryptMode.Mode.OFF)
+@RunWith(RobolectricTestRunner::class)
 class LegacyProviderChoicesTest {
     @Test fun lyricsSelectionsKeepExistingPriorityAndEveryExplicitOptOut() {
         val choices = legacyProviderChoices(
@@ -71,5 +85,88 @@ class LegacyProviderChoicesTest {
         )
         assertFalse(choices.containsKey(ProviderCapability.EXTENSION_PLAYBACK))
         assertTrue(choices.getValue(ProviderCapability.LYRICS_LOOKUP).none { it.enabled })
+    }
+
+    @Test fun singleAuthorityCompatibilityProjectsAndUpdatesWithoutDualWrite(): Unit = runBlocking {
+        val prefs = RuntimeEnvironment.getApplication().getSharedPreferences(
+            "legacy-provider-compatibility-test", Context.MODE_PRIVATE,
+        )
+        prefs.edit().clear().commit()
+        val store = ProviderPreferenceStore(prefs)
+        val lyricDescriptors = LyricsSource.offered.map { source ->
+            ProviderDescriptor(
+                key = ProviderKey(source.name.lowercase(Locale.ROOT)),
+                capabilities = setOf(ProviderCapability.LYRICS_LOOKUP),
+                readiness = ProviderReadiness.READY,
+            )
+        }
+        val addonA = SourceConfig(
+            id = "addon-1",
+            kind = SourceKind.ADDON,
+            baseUrl = "https://secret.example/manifest.json",
+            enabled = true,
+            allowDownloads = true,
+        )
+        val extensionDescriptors = listOf(
+            ProviderDescriptor(
+                key = ProviderKey("addon", "addon-1"),
+                capabilities = setOf(ProviderCapability.EXTENSION_PLAYBACK),
+                readiness = ProviderReadiness.READY,
+            ),
+        )
+        val session = ProviderCapabilitySession(store, lyricDescriptors + extensionDescriptors)
+        val initialOrder = listOf(LyricsSource.GENIUS, LyricsSource.LRCLIB)
+        val initialEnabled = setOf(LyricsSource.GENIUS)
+
+        assertTrue(
+            LegacyProviderCompatibility.migrateAllLegacy(
+                session = session,
+                lyricsOrder = initialOrder,
+                enabledLyrics = initialEnabled,
+                sources = listOf(addonA, SourceConfig(kind = SourceKind.YOUTUBE, enabled = true)),
+            )
+        )
+
+        // Update lyrics exclusively through the single-authority session (turn all off).
+        assertTrue(
+            LegacyProviderCompatibility.writeLyrics(
+                session = session,
+                order = listOf(LyricsSource.LRCLIB, LyricsSource.GENIUS),
+                enabled = emptySet(),
+            )
+        )
+        // Re-running migration with stale legacy inputs must NEVER resurrect Genius.
+        assertTrue(
+            LegacyProviderCompatibility.migrateAllLegacy(
+                session = session,
+                lyricsOrder = initialOrder,
+                enabledLyrics = initialEnabled,
+                sources = listOf(addonA),
+            )
+        )
+        val projectedLyrics = LegacyProviderCompatibility.projectLyrics(
+            snapshot = session.state.value,
+            fallbackOrder = initialOrder,
+            fallbackEnabled = initialEnabled,
+        )
+        assertEquals(LyricsSource.LRCLIB, projectedLyrics.order.first())
+        assertTrue(projectedLyrics.enabled.isEmpty())
+
+        // Disable addon-1 through single authority and verify private URL stays intact in SourceConfig
+        // while never leaking into ProviderPreferenceStore.
+        assertTrue(
+            LegacyProviderCompatibility.writeExtensions(
+                session = session,
+                sources = listOf(addonA.copy(enabled = false)),
+            )
+        )
+        val projectedExtensions = LegacyProviderCompatibility.projectExtensions(
+            snapshot = session.state.value,
+            rawSources = listOf(addonA, SourceConfig(kind = SourceKind.JIOSAAVN, enabled = true)),
+        )
+        assertEquals(1, projectedExtensions.size)
+        assertFalse(projectedExtensions.single().enabled)
+        assertEquals("https://secret.example/manifest.json", projectedExtensions.single().baseUrl)
+        assertFalse(prefs.all.toString().contains("secret.example"))
     }
 }

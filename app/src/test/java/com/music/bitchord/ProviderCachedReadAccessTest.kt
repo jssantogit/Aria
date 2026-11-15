@@ -51,6 +51,20 @@ class ProviderCachedReadAccessTest {
             ),
         )
 
+    @Test fun missingGateFailsClosedInsteadOfPermittingCacheRead(): Unit = runBlocking {
+        var queried = false
+        val result = ProviderCachedReadAccess { null }.read(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            musicBrainz,
+            emptyList<String>(),
+        ) {
+            queried = true
+            listOf("should-never-leak")
+        }
+        assertTrue(result.isEmpty())
+        assertFalse(queried)
+    }
+
     @Test fun disabledSourceDoesNotEvenReadCachedMusicBrainzData(): Unit = runBlocking {
         val gate = ProviderPolicyGate(policy(false))
         var queried = false

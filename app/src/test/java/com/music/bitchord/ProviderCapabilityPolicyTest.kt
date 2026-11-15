@@ -5,6 +5,7 @@ import com.music.bitchord.data.providers.ProviderCapabilityPolicy
 import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderOperationalHealth
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import org.junit.Assert.assertEquals
@@ -56,7 +57,7 @@ class ProviderCapabilityPolicyTest {
             ))),
             choices = mapOf(
                 ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(apple, false, 0)),
-                ProviderCapability.RELEASE_ARTWORK to listOf(ProviderChoice(apple, true, 0)),
+                ProviderChoice.RELEASE_ARTWORK to listOf(ProviderChoice(apple, true, 0)),
             ),
         )
         assertTrue(policy.eligible(ProviderCapability.CATALOG_SEARCH).isEmpty())
@@ -134,6 +135,54 @@ class ProviderCapabilityPolicyTest {
         gate.replace(policy(false))
         assertTrue(gate.accept(audio!!))
         assertFalse(gate.accept(artwork!!))
+    }
+
+    @Test fun distinguishesImplementationUserAuthorizationAndOperationalHealth() {
+        val policy = ProviderCapabilityPolicy(
+            descriptors = listOf(
+                ready(musicBrainz, setOf(ProviderCapability.CATALOG_SEARCH)),
+                ready(nasA, setOf(ProviderCapability.AUDIO_PLAYBACK)),
+                ProviderDescriptor(
+                    ProviderKey("discogs"),
+                    setOf(ProviderCapability.EDITION_METADATA),
+                    readiness = ProviderReadiness.NEEDS_CONFIGURATION,
+                ),
+            ),
+            choices = mapOf(
+                ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, true, 0)),
+                ProviderCapability.AUDIO_PLAYBACK to listOf(ProviderChoice(nasA, true, 0)),
+                ProviderCapability.EDITION_METADATA to listOf(
+                    ProviderChoice(ProviderKey("discogs"), true, 0),
+                ),
+            ),
+            health = mapOf(
+                musicBrainz to ProviderOperationalHealth.UNKNOWN,
+                nasA to ProviderOperationalHealth.UNAVAILABLE,
+            ),
+        )
+
+        val mbStatus = policy.status(ProviderCapability.CATALOG_SEARCH, musicBrainz)
+        assertTrue(mbStatus.implemented)
+        assertTrue(mbStatus.prerequisitesMet)
+        assertTrue(mbStatus.userAuthorized)
+        assertEquals(ProviderOperationalHealth.UNKNOWN, mbStatus.operationalHealth)
+        assertTrue(mbStatus.effectiveEligible)
+
+        val nasStatus = policy.status(ProviderCapability.AUDIO_PLAYBACK, nasA)
+        assertTrue(nasStatus.implemented)
+        assertTrue(nasStatus.prerequisitesMet)
+        assertTrue(nasStatus.userAuthorized)
+        assertEquals(ProviderOperationalHealth.UNAVAILABLE, nasStatus.operationalHealth)
+        assertFalse(nasStatus.effectiveEligible)
+        assertTrue(policy.eligible(ProviderCapability.AUDIO_PLAYBACK).isEmpty())
+
+        val discogsStatus = policy.status(
+            ProviderCapability.EDITION_METADATA, ProviderKey("discogs"),
+        )
+        assertTrue(discogsStatus.implemented)
+        assertFalse(discogsStatus.prerequisitesMet)
+        assertTrue(discogsStatus.userAuthorized)
+        assertFalse(discogsStatus.effectiveEligible)
     }
 
     @Test(expected = IllegalArgumentException::class)
