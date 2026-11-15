@@ -20,7 +20,7 @@ internal fun <T> ExploreCategoryContentTransition(
 ) {
     AnimatedContent(
         targetState = category,
-        transitionSpec = { rootTabContentTransform(reducedMotion) },
+        transitionSpec = { rootTabContentTransform(reduceMotion) },
         label = "explore-category-content",
     ) { visibleCategory ->
         content(visibleCategory)

@@ -42,3 +42,8 @@
 - **Implementação até o commit anterior a esta solicitação:** `84c8374de1c43e4683062917413a80341617756d` na branch da PR #212; o SHA do build será o novo HEAD contendo este documento.
 - **Gates obrigatórios:** regressões de avaliação, suíte Android completa (incluindo novos testes do Explorar), `shared:jvmTest` e `sharedUi:jvmTest`; somente se todos passarem compilar e disponibilizar o APK universal com SHA-256. Não executar TV, desktop, Wear, nem mesclar PR #212.
 - **Smoke no aparelho ainda não executado:** verificar Explorar → categoria → voltar, alternância rápida, preservação do scroll, redução de animação e ausência de flashes; repetir o smoke anterior do menu, blur e navegação local. APK disponibilizado não significa teste físico aprovado.
+
+## Gate #43728444128 — erro de compilação e nova tentativa
+
+- [Run #43728444128](https://github.com/jssantogit/BitChord/actions/runs/43728444128) falhou antes de executar testes, em `app:compileDevDebugKotlin`: parâmetro `reducedMotion` inexistente no helper de Explorar (o argumento é `reduceMotion`) e import da constante `LOCAL_MEDIASTORE_PROVIDER` feito como top-level em vez de usar `CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER` no módulo de artista do player. Nenhum APK foi gerado.
+- Os dois erros foram corrigidos preservando a política do smoke e todo o escopo funcional aprovado. Solicitar novamente o mesmo gate de testes Android/sharedUi/Automix antes de compilar qualquer APK. Não interpretar CI como smoke físico.

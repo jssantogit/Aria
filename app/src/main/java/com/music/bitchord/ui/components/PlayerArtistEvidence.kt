@@ -4,7 +4,7 @@ import android.content.Context
 import com.music.bitchord.data.catalog.ArtistEntity
 import com.music.bitchord.data.catalog.CanonicalArtistCreditRow
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
-import com.music.bitchord.data.catalog.LOCAL_MEDIASTORE_PROVIDER
+import com.music.bitchord.data.catalog.CanonicalLocalLibrary
 import com.music.bitchord.ui.screens.playlistDisplayArtistGroupId
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.playback.androidCanonicalQueueResolver
@@ -52,7 +52,7 @@ internal fun verifiedLocalDisplayArtist(
     memberRecordingIds: List<String>,
 ): SourceOwnedArtistEvidence? {
     val name = displayName.trim()
-    if (providerKey != LOCAL_MEDIASTORE_PROVIDER || recordingId.isBlank() ||
+    if (providerKey != CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER || recordingId.isBlank() ||
         name.isBlank() || name != displayName || recordingId !in memberRecordingIds
     ) return null
     return SourceOwnedArtistEvidence(playlistDisplayArtistGroupId(name), name, providerKey)
@@ -93,7 +93,7 @@ internal suspend fun verifiedPlayerSourceOwnedArtist(
             credits = dao.recordingArtistCredits(identity.recordingId),
             availableArtists = dao.providerScopedArtists(source),
             artistName = song.artist,
-        ) ?: if (source == LOCAL_MEDIASTORE_PROVIDER) {
+        ) ?: if (source == CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER) {
             verifiedLocalDisplayArtist(
                 recordingId = identity.recordingId,
                 providerKey = source,
