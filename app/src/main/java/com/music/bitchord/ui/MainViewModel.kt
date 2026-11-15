@@ -2650,7 +2650,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         } }
                     } to null
                 } else {
-                    val album = applePr212Catalog.album(route)
+                    val album = applePr212Catalog.album(route) { update ->
+                        _detailStack.update { stack -> stack.map { opened ->
+                            if (opened.browseId == route.scopedId) update.page else opened
+                        } }
+                        _appleNativeAlbumTracks.update { prev ->
+                            prev + (route.scopedId to ApplePr212CatalogRows.tracks(update))
+                        }
+                    }
                     album?.page to album
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
