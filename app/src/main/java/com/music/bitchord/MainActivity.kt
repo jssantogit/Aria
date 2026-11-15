@@ -3749,9 +3749,11 @@ private fun BitChordApp(
                                 continuationToken = latestPage?.continuation ?: page.continuation,
                             )
                         }
-                        val publicArtistMbid = page.browseId.takeIf {
-                            it.startsWith("catalog:ARTIST:")
-                        }?.removePrefix("catalog:ARTIST:")
+                        val verifiedAppleArtists by viewModel.appleVerifiedArtistMbids
+                            .collectAsStateWithLifecycle()
+                        val publicArtistMbid = com.music.bitchord.ui.applePr212ArtistEvidenceId(
+                            page, verifiedAppleArtists,
+                        )
                         // Navigating through a nested album must not clear a
                         // still-fresh artist chart or trigger an extra public
                         // fetch when returning to that same artist.
@@ -3880,6 +3882,8 @@ private fun BitChordApp(
                                 openedPublicPlaylist = playlist
                                 viewModel.loadCanonicalPublicPlaylistDetail(playlist)
                             },
+                            verifiedPublicArtistMbid = if (page.browseId.startsWith("itunes:"))
+                                publicArtistMbid else null,
                             contentPadding = listPadding,
                         )
                     } else when (key.removePrefix(TAB_KEY).toIntOrNull() ?: selectedTab) {
