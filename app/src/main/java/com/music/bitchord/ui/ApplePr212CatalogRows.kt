@@ -32,6 +32,32 @@ internal data class ApplePr212CatalogRoute(
     }
 }
 
+/**
+ * Patch only the exact Apple product and the exact thumbnail that was probed.
+ * An in-flight image request can never repaint a different edition, user
+ * storefront, or a newer album-art revision. Used by Home/genre/artist shelves.
+ */
+internal fun applePr212RowsWithVerifiedCover(
+    rows: List<CanonicalCatalogSearchRow>,
+    albumId: String,
+    original: String?,
+    verified: String?,
+): List<CanonicalCatalogSearchRow> {
+    if (verified == null || original == null || verified == original ||
+        ApplePr212CatalogRoute.parse(albumId)?.kind != ItunesCatalogItemType.ALBUM ||
+        com.music.bitchord.data.catalog.metadata.safeAppleArtwork(verified) == null
+    ) return rows
+    val matches = rows.withIndex().filter { it.value.musicBrainzId == albumId }
+    if (matches.size != 1) return rows
+    val index = matches[0].index
+    val current = matches[0].value
+    if (!isVerifiedAppleEditorialRelease(current) || current.artworkUri != original)
+        return rows
+    return rows.toMutableList().apply {
+        this[index] = current.copy(artworkUri = verified)
+    }
+}
+
 /** A real Apple edition can be shown without falsely classifying it as an Album. */
 internal fun isVerifiedAppleEditorialRelease(row: CanonicalCatalogSearchRow): Boolean =
     row.kind == CanonicalSearchKind.RELEASE &&
