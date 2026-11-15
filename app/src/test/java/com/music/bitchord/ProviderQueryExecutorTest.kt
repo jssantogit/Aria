@@ -17,7 +17,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -101,7 +100,10 @@ class ProviderQueryExecutorTest {
             ProviderCapability.CATALOG_SEARCH, apple,
         ) { throw error }
         assertTrue("Expected Failed, got $result", result is ProviderCallResult.Failed)
-        assertSame(error, (result as ProviderCallResult.Failed).cause)
+        val failure = (result as ProviderCallResult.Failed).cause
+        // Coroutine stacktrace recovery can copy the exception; identity is not a contract.
+        assertTrue(failure is IllegalStateException)
+        assertEquals(error.message, failure.message)
     }
 
     @Test fun cancellationIsNeverSwallowedAsProviderFailure() = runBlocking {
