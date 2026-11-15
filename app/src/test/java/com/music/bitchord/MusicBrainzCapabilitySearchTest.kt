@@ -33,6 +33,35 @@ class MusicBrainzCapabilitySearchTest {
         )),
     )
 
+    @Test fun genericCatalogEntryProtectsEveryMusicBrainzQueryWithoutAnExtraNetworkAttempt(): Unit = runBlocking {
+        val adapter = MusicBrainzCapabilitySearch(
+            executor = ProviderQueryExecutor(ProviderPolicyGate(policy(false))),
+        )
+        var queried = false
+        val result = adapter.executeCatalog {
+            queried = true
+            MusicBrainzCatalogSearchResult.Success(
+                MusicBrainzCatalogPage(emptyList<MusicBrainzArtistHit>(), 0, 0),
+            )
+        }
+        assertEquals(ProviderCallResult.Denied, result)
+        assertFalse(queried)
+    }
+
+    @Test fun genericCatalogEntryAllowsEnabledExistingSourceResults(): Unit = runBlocking {
+        val adapter = MusicBrainzCapabilitySearch(
+            executor = ProviderQueryExecutor(ProviderPolicyGate(policy(true))),
+        )
+        val result = adapter.executeCatalog {
+            MusicBrainzCatalogSearchResult.Success(
+                MusicBrainzCatalogPage(listOf(MusicBrainzArtistHit(
+                    "11111111-2222-4333-8444-555555555555", "NewJeans", null, "KR",
+                )), 1, 0),
+            )
+        }
+        assertTrue(result is ProviderCallResult.Success)
+    }
+
     @Test fun disabledMusicBrainzNeverStartsExistingCatalogClient() = runBlocking {
         var contacted = false
         val adapter = MusicBrainzCapabilitySearch(
