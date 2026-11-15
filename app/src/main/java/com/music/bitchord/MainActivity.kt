@@ -5455,9 +5455,6 @@ private fun BitChordApp(
                         null
                     }
                 }
-                val appleArtistRoute = remember(song.artistId) {
-                    com.music.bitchord.ui.components.verifiedAppleArtistBrowseRoute(song.artistId)
-                }
                 val share: () -> Unit = {
                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
@@ -5552,20 +5549,6 @@ private fun BitChordApp(
                             unifiedLibraryBackToken = 0
                             unifiedLibraryCategory =
                                 com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
-                        }
-                    },
-                    onOpenAppleArtist = appleArtistRoute?.let { route ->
-                        {
-                            songActions = null
-                            dismissPlayer()
-                            // A typed storefront artist ID is not a MusicBrainz
-                            // identifier. Keep it intact for the Apple detail
-                            // adapter supplied by the separate catalog integration.
-                            viewModel.openDetail(
-                                browseId = route, title = song.artist,
-                                subtitle = context.getString(R.string.artist),
-                                type = BrowseType.ARTIST,
-                            )
                         }
                     },
                     onOpenCanonicalAlbum = { route ->
