@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.ProviderCapability
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -306,7 +308,7 @@ internal class MusicBrainzCatalogSearch(
                 "dismax" to if (fieldedQuery) "false" else "true",
                 "limit" to limit.toString(),
                 "offset" to offset.toString(),
-            ))
+            ), capability = ProviderCapability.CATALOG_SEARCH)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
