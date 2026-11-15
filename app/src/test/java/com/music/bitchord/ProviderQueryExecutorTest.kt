@@ -100,7 +100,7 @@ class ProviderQueryExecutorTest {
         val result = ProviderQueryExecutor(gate()).execute(
             ProviderCapability.CATALOG_SEARCH, apple,
         ) { throw error }
-        assertTrue(result is ProviderCallResult.Failed)
+        assertTrue("Expected Failed, got $result", result is ProviderCallResult.Failed)
         assertSame(error, (result as ProviderCallResult.Failed).cause)
     }
 
