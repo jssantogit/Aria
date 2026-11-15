@@ -51,11 +51,29 @@ internal class ApplePr212HomeCoverage(
         }
         for (batch in planned.chunked(12)) {
             if (proven.size >= 8) break
+            var previousIdsInBatch = emptySet<String>()
+            suspend fun receiveBatch(snapshot: List<ItunesEditorialRelease>) {
+                val nextIds = snapshot.map { it.appleScopedId }.toSet()
+                // A later Apple response can explicitly contradict an earlier
+                // answer about the same product. The upstream discovery then
+                // retracts it: do not retain a stale Home card from progress.
+                val revoked = previousIdsInBatch - nextIds
+                if (revoked.isNotEmpty()) {
+                    revoked.forEach {
+                        proven.remove(it)
+                        disputed += it
+                    }
+                    incomplete = true
+                    onProgress(proven.values.toList())
+                }
+                previousIdsInBatch = nextIds
+                append(snapshot)
+            }
             scanned += batch.size
             val result = try {
                 discovery.discover(
                     seeds = batch, storefront = storefront, maxProbes = batch.size,
-                    onProgress = ::append,
+                    onProgress = ::receiveBatch,
                 )
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { AppleEditorialLoad.Failure(
@@ -64,7 +82,7 @@ internal class ApplePr212HomeCoverage(
             when (result) {
                 is AppleEditorialLoad.Success -> {
                     anySuccess = true
-                    append(result.releases)
+                    receiveBatch(result.releases)
                     if (result.state != AppleEditorialReadState.COMPLETE)
                         incomplete = true
                 }
