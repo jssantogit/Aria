@@ -17,6 +17,9 @@ internal class ApplePr212NativeCatalogService(
     private val repository: AppleEditorialCatalogRepository = AppleEditorialCatalogRepository(),
     private val artwork: com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork =
         com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(),
+    private val artistIdentityResolver:
+        com.music.bitchord.data.catalog.metadata.ApplePr212ArtistIdentityResolver =
+        com.music.bitchord.data.catalog.metadata.ApplePr212ArtistIdentityResolver(),
 ) {
     private val trackAlbumRoutes = ConcurrentHashMap<String, ApplePr212CatalogRoute>()
 
@@ -81,6 +84,7 @@ internal class ApplePr212NativeCatalogService(
         name: String,
         artwork: String?,
         onProgress: suspend (DetailPage) -> Unit = {},
+        onVerifiedArtistMbid: suspend (String) -> Unit = {},
     ): DetailPage? {
         if (route.kind != ItunesCatalogItemType.ARTIST || name.isBlank()) return null
         val artist = ItunesCatalogItem(
@@ -108,6 +112,12 @@ internal class ApplePr212NativeCatalogService(
         var page = ApplePr212DetailProjection.artistPage(artist, first.snapshot.visible)
             ?: return null
         onProgress(page)
+        // A cross-catalog ID is optional: prove it against two independent
+        // exact Apple products and MB release-groups; never infer from name.
+        var verifiedMbid = artistIdentityResolver.resolve(
+            name, route.id, route.storefront, first.snapshot.visible,
+        )
+        verifiedMbid?.let { onVerifiedArtistMbid(it) }
         // Publish append-only local display pages without ever rebuilding
         // another screen. The page's native scroll identity stays unchanged.
         for (pageIndex in 0 until 12) {
@@ -126,6 +136,12 @@ internal class ApplePr212NativeCatalogService(
         // Promote only verified, exact CDN assets. No title-joined artwork
         // and no 100px bitmap stretched over the large PR212 cards.
         val visible = pager.snapshot().visible
+        if (verifiedMbid == null && visible.size > first.snapshot.visible.size) {
+            verifiedMbid = artistIdentityResolver.resolve(
+                name, route.id, route.storefront, visible,
+            )
+            verifiedMbid?.let { onVerifiedArtistMbid(it) }
+        }
         // Warm the visible screen only, in two bounded batches. Avoid waiting
         // for dozens of network probes before rendering a complete page.
         val promoted = visible.toMutableList()
