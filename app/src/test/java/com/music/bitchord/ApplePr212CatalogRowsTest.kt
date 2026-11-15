@@ -56,6 +56,24 @@ class ApplePr212CatalogRowsTest {
             "itunes:us:album:456")))
     }
 
+    @Test fun AppleSearchTrackHasExactAlbumLinkButCannotBecomePlayable() {
+        val track = ItunesCatalogItem(
+            type = ItunesCatalogItemType.TRACK,
+            id = 789L, storefront = "br", title = "How Sweet",
+            artistName = "NewJeans", artistId = 123L, collectionId = 456L,
+            storeUrl = null, releaseDate = null, genre = "K-Pop",
+            durationMs = 205_000L, trackNumber = 1, discNumber = 1,
+        )
+        val row = requireNotNull(ApplePr212CatalogRows.track(track))
+        assertEquals("itunes:br:track:789", row.musicBrainzId)
+        assertEquals("NewJeans", row.subtitle)
+        assertEquals(CanonicalSearchKind.RECORDING, row.kind)
+        assertFalse(row.hasCatalogedAsset)
+        assertFalse(row.hasVerifiedLocalAsset)
+        assertNull(ApplePr212CatalogRows.track(track.copy(collectionId = null)))
+        assertNull(ApplePr212CatalogRows.track(track.copy(title = " ")))
+    }
+
     @Test fun tracksAreMetadataOnlyAndNeverClaimToBeMusicBrainzIds() {
         val page = com.music.bitchord.ui.ApplePr212AlbumDetailData(
             page = com.music.bitchord.data.model.DetailPage(
