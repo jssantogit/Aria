@@ -31,6 +31,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -652,6 +654,10 @@ private fun AppleQueueHeaderAction(
 ) {
     Box(
         Modifier.size(40.dp)
+            // The native three-dot vector stays unchanged. A restrained
+            // contrast puck makes it legible over bright/full-bleed artwork.
+            .background(Color.Black.copy(alpha = 0.22f), CircleShape)
+            .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
             .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
                 val bounds = coords.boundsInWindow()
                 onBoundsChanged(androidx.compose.ui.unit.IntRect(
