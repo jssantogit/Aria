@@ -166,12 +166,12 @@ private class AppleMarketingRssTransport : ApplePublicChartTransport {
             "https://rss.applemarketingtools.com/api/v2/$market/music/most-played/100/${kind.segment}.json",
         )
         if (response.status.value != 200) {
-            response.bodyAsChannel().cancel()
+            response.bodyAsChannel().cancel(java.io.IOException("Apple chart response rejected"))
             error("Public Apple chart unavailable")
         }
         val declared = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (declared != null && declared > MAX_CHART_RESPONSE_BYTES) {
-            response.bodyAsChannel().cancel()
+            response.bodyAsChannel().cancel(java.io.IOException("Apple chart response rejected"))
             error("Oversized Apple chart")
         }
         val out = ByteArrayOutputStream()
@@ -184,7 +184,7 @@ private class AppleMarketingRssTransport : ApplePublicChartTransport {
             if (n < 0) break
             if (n == 0) continue
             if (out.size() + n > MAX_CHART_RESPONSE_BYTES) {
-                channel.cancel()
+                channel.cancel(java.io.IOException("Oversized Apple chart"))
                 error("Oversized Apple chart")
             }
             out.write(buffer, 0, n)
