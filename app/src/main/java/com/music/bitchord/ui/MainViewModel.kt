@@ -2684,6 +2684,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Search songs open only their exact Apple collection, never an audio source. */
+    fun openApplePr212TrackAlbum(trackId: String): Boolean {
+        val route = applePr212Catalog.albumRouteForTrack(trackId) ?: return false
+        openApplePr212Detail(route, "Álbum")
+        return true
+    }
+
     private fun runApplePr212Search(query: String) {
         canonicalSearchJob?.cancel()
         canonicalSearchPagingJob?.cancel()
