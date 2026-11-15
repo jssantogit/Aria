@@ -182,6 +182,34 @@ class ProviderCapabilitySessionTest {
         assertTrue(session.gate.accept(fanartTicket))
     }
 
+    @Test fun restoringConfiguredExtensionDescriptorsAfterLegacyRegistryLoadMakesOnlySelectedInstanceEligible(): Unit = runBlocking {
+        val extensionA = ProviderKey("addon", "home-a")
+        val extensionB = ProviderKey("addon", "home-b")
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.EXTENSION_PLAYBACK to listOf(
+                ProviderChoice(extensionA, enabled = true, order = 0),
+                ProviderChoice(extensionB, enabled = false, order = 1),
+            ),
+        )))
+        assertTrue(session.gate.ordered(ProviderCapability.EXTENSION_PLAYBACK).isEmpty())
+        session.refreshDescriptors(listOf(
+            ProviderDescriptor(musicBrainz,
+                setOf(ProviderCapability.CATALOG_SEARCH),
+                readiness = ProviderReadiness.READY),
+            ProviderDescriptor(extensionA,
+                setOf(ProviderCapability.EXTENSION_PLAYBACK),
+                readiness = ProviderReadiness.READY),
+            ProviderDescriptor(extensionB,
+                setOf(ProviderCapability.EXTENSION_PLAYBACK),
+                readiness = ProviderReadiness.READY),
+        ))
+        assertEquals(listOf(extensionA),
+            session.gate.ordered(ProviderCapability.EXTENSION_PLAYBACK).map { it.key })
+        assertTrue(session.state.value.configured.getValue(
+            ProviderCapability.EXTENSION_PLAYBACK).any { it.key == extensionB && !it.enabled })
+    }
+
     @Test fun failedSettingsWriteIsRepresentedAsUnavailableNotAReactivatedSwitch(): Unit = runBlocking {
         val session = session()
         assertTrue(session.initialize(mapOf(
