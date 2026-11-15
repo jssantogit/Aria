@@ -174,6 +174,30 @@ internal class AppleEditorialCatalogRepository(
         }
     }
 
+    /**
+     * One broad, documented genreIndex search before slow title-by-title
+     * MusicBrainz hint probes. Every published item still comes from Apple's
+     * collection ID and exact primaryGenreName; no tag-to-artist fabrication.
+     */
+    suspend fun searchAlbumsByAppleGenre(
+        query: String,
+        storefront: String = "br",
+    ): AppleEditorialLoad = when (val source = itunes.search(
+        query, ItunesCatalogEntity.ALBUM, country = storefront, limit = 200,
+        attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
+    )) {
+        is ItunesCatalogResult.Failure ->
+            AppleEditorialLoad.Failure(source.reason)
+        is ItunesCatalogResult.Success -> AppleEditorialLoad.Success(
+            releases = ItunesEditorialCatalog.assemble(storefront, source.items),
+            state = when {
+                source.items.isEmpty() -> AppleEditorialReadState.NOT_IN_STOREFRONT
+                source.possiblyTruncated -> AppleEditorialReadState.POSSIBLY_TRUNCATED
+                else -> AppleEditorialReadState.COMPLETE
+            },
+        )
+    }
+
     suspend fun albumDetail(
         collectionId: Long,
         storefront: String = "br",

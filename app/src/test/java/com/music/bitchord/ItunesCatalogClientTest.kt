@@ -2,6 +2,7 @@ package com.music.bitchord
 
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogClient
 import com.music.bitchord.data.catalog.metadata.appleStoreLinkForExactProduct
+import com.music.bitchord.data.catalog.metadata.ItunesCatalogSearchAttribute
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogEntity
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogFailure
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
@@ -51,6 +52,19 @@ class ItunesCatalogClientTest {
         assertEquals("album", transport.parameters["entity"])
         assertEquals("br", transport.parameters["country"])
         assertEquals("20", transport.parameters["limit"])
+    }
+
+    @Test fun documentedAppleGenreIndexUsesOneStorefrontScopedAlbumRequest() = runBlocking {
+        val transport = FakeTransport("""{"resultCount":0,"results":[]}""")
+        ItunesCatalogClient(transport).search(
+            "K-Pop", ItunesCatalogEntity.ALBUM, country = "br", limit = 200,
+            attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
+        )
+        assertEquals("search", transport.path)
+        assertEquals("K-Pop", transport.parameters["term"])
+        assertEquals("genreIndex", transport.parameters["attribute"])
+        assertEquals("200", transport.parameters["limit"])
+        assertEquals("br", transport.parameters["country"])
     }
 
     @Test fun AppleStoreLinksMustBelongToTheExactProductAndStorefront() {

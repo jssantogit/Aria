@@ -25,6 +25,58 @@ class AppleExploreGenreEditorialTest {
         assertTrue(AppleExploreGenrePolicy.matches("hip-hop", edition(104, "Hip-Hop/Rap").genre))
     }
 
+    @Test fun oneDirectAppleGenreQueryCanPopulateEightNativeCardsWithoutMbHints() = runBlocking {
+        var fallbackCalled = false
+        var directTerm = ""
+        val finder = AppleExploreGenreDiscovery(
+            catalog = AppleHomeEditorialDiscovery(
+                source = AppleHomeAlbumSearchSource { _, _ ->
+                    fallbackCalled = true
+                    AppleEditorialLoad.Success(emptyList(),
+                        AppleEditorialReadState.NOT_IN_STOREFRONT)
+                },
+            ),
+            directApple = AppleGenreAlbumSearchSource { term, storefront ->
+                directTerm = term
+                assertEquals("br", storefront)
+                AppleEditorialLoad.Success(
+                    (1L..8L).map { edition(it, "K-Pop") } +
+                        edition(90L, "Pop"),
+                    AppleEditorialReadState.COMPLETE,
+                )
+            },
+        )
+        val published = mutableListOf<List<Long>>()
+        val outcome = finder.discover("k-pop", emptyList(), "br",
+            onProgress = { rows -> published += rows.map { it.appleCollectionId } },
+        ) as AppleEditorialLoad.Success
+        assertEquals("K-Pop", directTerm)
+        assertFalse(fallbackCalled)
+        assertEquals((1L..8L).toList(), outcome.releases.map { it.appleCollectionId })
+        assertEquals((1L..8L).toList(), published.single())
+    }
+
+    @Test fun sparseAppleGenreQueryKeepsValidatedDirectResultsWhenLegacyHintsFail() = runBlocking {
+        val finder = AppleExploreGenreDiscovery(
+            catalog = AppleHomeEditorialDiscovery(
+                source = AppleHomeAlbumSearchSource { _, _ ->
+                    AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
+                },
+            ),
+            directApple = AppleGenreAlbumSearchSource { _, _ ->
+                AppleEditorialLoad.Success(
+                    listOf(edition(101L, "K-Pop"), edition(102L, "Pop")),
+                    AppleEditorialReadState.COMPLETE,
+                )
+            },
+        )
+        val outcome = finder.discover(
+            "k-pop", listOf(AppleHomeEditorialSeed("Missing", "Band")),
+        ) as AppleEditorialLoad.Success
+        assertEquals(listOf(101L), outcome.releases.map { it.appleCollectionId })
+        assertEquals(AppleEditorialReadState.POSSIBLY_TRUNCATED, outcome.state)
+    }
+
     @Test fun boundedAppleGenreDiscoveryOnlyUsesAppleCategoryAndNeverCopiesMbids() =
         runBlocking {
             val calls = mutableListOf<String>()

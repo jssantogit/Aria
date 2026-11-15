@@ -3975,8 +3975,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             val outcome = try {
-                com.music.bitchord.data.catalog.metadata.AppleExploreGenreDiscovery()
-                    .discover(tag, seeds, "br", onProgress = ::publish)
+                com.music.bitchord.data.catalog.metadata.AppleExploreGenreDiscovery(
+                    directApple = com.music.bitchord.data.catalog.metadata
+                        .AppleGenreAlbumSearchSource { genre, storefront ->
+                            com.music.bitchord.data.catalog.metadata
+                                .AppleEditorialCatalogRepository()
+                                .searchAlbumsByAppleGenre(genre, storefront)
+                        },
+                ).discover(tag, seeds, "br", onProgress = ::publish)
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { null }
             if (!canonicalGenreEpoch.isCurrent(generation)) return@launch

@@ -43,6 +43,7 @@ internal enum class ItunesCatalogSearchAttribute(val apiValue: String) {
     ARTIST_TERM("artistTerm"),
     ALBUM_TERM("albumTerm"),
     SONG_TERM("songTerm"),
+    GENRE_INDEX("genreIndex"),
 }
 
 internal enum class ItunesCatalogItemType(val key: String) {
