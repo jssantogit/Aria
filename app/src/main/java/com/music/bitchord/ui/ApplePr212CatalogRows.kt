@@ -80,6 +80,26 @@ internal object ApplePr212CatalogRows {
         )
     }
 
+    /** Exact Apple track product with a proved Apple collection relationship. */
+    fun track(item: ItunesCatalogItem): CanonicalCatalogSearchRow? {
+        val route = ApplePr212CatalogRoute.parse(item.scopedId)
+            ?.takeIf { it.kind == ItunesCatalogItemType.TRACK } ?: return null
+        if (item.type != ItunesCatalogItemType.TRACK ||
+            item.collectionId?.let { it > 0L } != true ||
+            item.title.isBlank() || item.artistName.isNullOrBlank() ||
+            route.id != item.id || route.storefront != item.storefront
+        ) return null
+        return CanonicalCatalogSearchRow(
+            musicBrainzId = route.scopedId,
+            kind = CanonicalSearchKind.RECORDING,
+            title = item.title,
+            subtitle = item.artistName,
+            hasCatalogedAsset = false,
+            artworkUri = item.artworkUrl,
+            durationMs = item.durationMs,
+        )
+    }
+
     fun tracks(album: ApplePr212AlbumDetailData): List<CanonicalCatalogSearchRow> =
         album.tracks.map { track ->
             CanonicalCatalogSearchRow(
