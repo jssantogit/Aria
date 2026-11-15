@@ -39,6 +39,7 @@ import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.SearchHistory
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceResolver
@@ -58,6 +59,9 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        // Closed-by-default admission is installed before any Android caller
+        // can construct an outbound MusicBrainz request.
+        ProviderRuntime.install(this)
         val applicationStarted = SystemClock.elapsedRealtimeNanos()
         Diagnostics.install(this)
         if (BuildConfig.DEBUG) {
@@ -121,6 +125,14 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
             Diagnostics.span(DiagnosticCategory.STARTUP, "background_init_total") {
                 Diagnostics.span(DiagnosticCategory.STARTUP, "source_registry_init") {
                     SourceRegistry.init(this)
+                }
+                // Run existing MusicBrainz capability migration off the main
+                // thread, alongside the source registry's keystore open.
+                // Until it finishes, the HTTP boundary remains fail-closed.
+                Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
+                    kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                        ProviderRuntime.migrateMusicBrainzLegacyAccess()
+                    }
                 }
                 Diagnostics.span(DiagnosticCategory.STARTUP, "innertubex_init") {
                     AndroidStreamHooks.initInnerTubeX(this)
