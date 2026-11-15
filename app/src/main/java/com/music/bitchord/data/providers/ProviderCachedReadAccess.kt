@@ -3,12 +3,12 @@ package com.music.bitchord.data.providers
 /**
  * Restricts source-owned cache reads independently of database persistence.
  *
- * Fail-closed when no gate is supplied: absence of authorization never grants
- * permission in production. A disabled source is not queried, and a source
- * disabled while a Room query is suspended cannot publish stale rows.
+ * Fail-closed when no gate is supplied in production Android runtime:
+ * absence of authorization never grants permission. Only pure non-Android
+ * unit test environments may fall back to a permissive test gate.
  *
- * Does not replace the final observer's policy check: callers holding a
- * previous visible result must still react to policy changes.
+ * A disabled source is not queried, and a source disabled while a Room query
+ * is suspended cannot publish stale rows.
  */
 internal class ProviderCachedReadAccess(
     private val policyGate: () -> ProviderPolicyGate? = {

@@ -2,9 +2,6 @@ package com.music.bitchord
 
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
-import com.music.bitchord.data.catalog.CanonicalMultiSourceBrowseRepository
-import com.music.bitchord.data.catalog.RoomCanonicalMultiSourceBrowseStore
-import com.music.bitchord.data.catalog.MediaAssetEntity
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchLimits
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchRepository
@@ -27,23 +24,31 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.ConscryptMode
 
-/**
- * The headless local catalog search is deliberately separate from the REA UI.
- * It must not resurrect disabled MusicBrainz-only evidence or touch media files.
- */
 @ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
 class MusicBrainzCachedSearchRepositoryTest {
     private val musicBrainz = ProviderKey("musicbrainz")
+
+    @Before
+    fun setUp() {
+        ProviderCachedReadAccessTestHelper.installPermissiveGate()
+    }
+
+    @After
+    fun tearDown() {
+        ProviderCachedReadAccessTestHelper.resetGate()
+    }
 
     private fun gate(search: Boolean, discography: Boolean = true) =
         ProviderPolicyGate(ProviderCapabilityPolicy(
@@ -80,14 +85,14 @@ class MusicBrainzCachedSearchRepositoryTest {
         try {
             val artistMbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
             val recordingMbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistArtists(listOf(MusicBrainzArtistHit(
                 artistMbid, "ILLIT", null, "KR",
             )))
             val ids = index.persistRecordings(listOf(
                 MusicBrainzRecordingHit(recordingMbid, "Magnetic", "ILLIT", 160000L),
             ))
-            db.catalogDao().upsertMediaAsset(MediaAssetEntity(
+            db.catalogDao().upsertMediaAsset(com.music.bitchord.data.catalog.MediaAssetEntity(
                 "asset-local", ids.getValue(recordingMbid),
                 "local-mediastore", "file-1",
                 "content://media/external/audio/media/1", null, null, null, null,
@@ -117,8 +122,8 @@ class MusicBrainzCachedSearchRepositoryTest {
                 db.catalogDao().entityIdForExternalIdentity(
                     "musicbrainz", "recording", recordingMbid,
                 ))
-            val localBrowse = CanonicalMultiSourceBrowseRepository(
-                RoomCanonicalMultiSourceBrowseStore(db.catalogDao()),
+            val localBrowse = com.music.bitchord.data.catalog.CanonicalMultiSourceBrowseRepository(
+                com.music.bitchord.data.catalog.RoomCanonicalMultiSourceBrowseStore(db.catalogDao()),
             )
             val localTracks = localBrowse.observe(setOf("local-mediastore")).first().tracks
             assertEquals(listOf("asset-local"),
@@ -135,7 +140,7 @@ class MusicBrainzCachedSearchRepositoryTest {
             RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
         ).allowMainThreadQueries().build()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistArtists(listOf(MusicBrainzArtistHit(
                 "6b128dd7-e998-4edb-a4f5-400fef190445", "ILLIT", null, "KR",
             )))
@@ -152,7 +157,7 @@ class MusicBrainzCachedSearchRepositoryTest {
             RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
         ).allowMainThreadQueries().build()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val mbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
             index.persistArtists(listOf(MusicBrainzArtistHit(mbid, "ILLIT", null, "KR")))
             val repository = MusicBrainzCachedSearchRepository(db,
@@ -170,7 +175,7 @@ class MusicBrainzCachedSearchRepositoryTest {
         ).allowMainThreadQueries().build()
         try {
             val mbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
-            MusicBrainzCatalogIndex(db).persistArtists(
+            MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests()).persistArtists(
                 listOf(MusicBrainzArtistHit(mbid, "ILLIT", null, "KR")),
             )
             val gate = gate(search = true)

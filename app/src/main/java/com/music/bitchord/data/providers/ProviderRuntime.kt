@@ -2,23 +2,21 @@ package com.music.bitchord.data.providers
 
 import android.content.Context
 import android.os.Build
+import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.sources.SourceRegistry
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Process-owned provider policy: installed closed before Android startup launches
- * network work. A missing provider setting is migrated once from the behavior
- * already available in legacy BitChord; it is NOT inferred from YouTube mode.
- *
- * Only MusicBrainz HTTP is connected here. Lyrics and extension settings remain
- * owned by their legacy stores until a synchronized cutover exists.
+ * network work. Migrates legacy lyric and extension choices into the single
+ * authority session without creating dual-write discrepancies.
  */
 internal object ProviderRuntime {
     @Volatile private var session: ProviderCapabilitySession? = null
     @Volatile private var installedInProcess: Boolean = false
-    @Volatile private var testGateOverride: ProviderPolicyGate? = null
 
-    private val plainUnitTestGate: ProviderPolicyGate by lazy {
-        val mb = BuiltInProviderKeys.MUSICBRAINZ
+    private val plainJvmTestGate: ProviderPolicyGate by lazy {
+        val mb = ProviderKey("musicbrainz")
         val caps = setOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
@@ -32,16 +30,9 @@ internal object ProviderRuntime {
         )
     }
 
-    private fun isUnitTestHarness(): Boolean {
-        if (installedInProcess) return false
-        val isRobolectric = runCatching {
-            Build.FINGERPRINT.equals("robolectric", ignoreCase = true) ||
-                Class.forName("org.robolectric.Robolectric") != null
-        }.getOrDefault(false)
-        if (isRobolectric) return true
-        val isAndroidDevice = runCatching { Build.VERSION.SDK_INT != 0 }.getOrDefault(false)
-        return !isAndroidDevice
-    }
+    fun isAndroidEnvironment(): Boolean = installedInProcess || runCatching {
+        Build.VERSION.SDK_INT != 0
+    }.getOrDefault(false)
 
     fun install(context: Context) {
         installedInProcess = true
@@ -51,44 +42,36 @@ internal object ProviderRuntime {
             val prefs = context.applicationContext.getSharedPreferences(
                 "bit_chord_provider_capabilities", Context.MODE_PRIVATE,
             )
+            val lyricDescriptors = BuiltInProviderDescriptors.offeredLyrics(ProviderReadiness.READY)
+            val extensionDescriptors = SourceRegistry.configs.value
+                .filter { it.kind.let { k -> k == com.music.bitchord.data.sources.SourceKind.ADDON || k == com.music.bitchord.data.sources.SourceKind.CUSTOM_MODULE } }
+                .map { config ->
+                    ProviderDescriptor(
+                        key = ProviderKey(
+                            providerId = if (config.kind == com.music.bitchord.data.sources.SourceKind.ADDON) "addon" else "custom_module",
+                            instanceId = config.id,
+                        ),
+                        capabilities = setOf(ProviderCapability.EXTENSION_PLAYBACK),
+                        readiness = ProviderReadiness.READY,
+                    )
+                }
+            val mb = BuiltInProviderDescriptors.musicBrainz(ProviderReadiness.READY)
             session = ProviderCapabilitySession(
                 store = ProviderPreferenceStore(prefs),
-                descriptors = listOf(
-                    BuiltInProviderDescriptors.musicBrainz(ProviderReadiness.READY),
-                    BuiltInProviderDescriptors.coverArtArchive(ProviderReadiness.READY),
-                    BuiltInProviderDescriptors.itunes(ProviderReadiness.NOT_IMPLEMENTED),
-                    BuiltInProviderDescriptors.appleArtistArt(ProviderReadiness.NOT_IMPLEMENTED),
-                    BuiltInProviderDescriptors.discogs(
-                        tokenConfigured = false,
-                        implemented = false,
-                    ),
-                ) + BuiltInProviderDescriptors.offeredLyrics(ProviderReadiness.READY),
+                descriptors = listOf(mb) + lyricDescriptors + extensionDescriptors,
             )
         }
     }
 
     /** Null outside an installed Android runtime (e.g. plain JVM tests). */
-    fun gateOrNull(): ProviderPolicyGate? = session?.gate ?: testGateOverride
+    fun gateOrNull(): ProviderPolicyGate? = session?.gate
 
     /**
-     * In production Android, absence of an installed session gate fails closed
-     * (returns null so ProviderCachedReadAccess denies reads). Only non-installed
-     * JVM/Robolectric unit test harnesses use an explicit test gate.
+     * Cache reads fail closed in any Android runtime if the session gate is
+     * missing; only pure non-Android JVM tests fall back to a plain test gate.
      */
     fun gateForCacheReadOrNull(): ProviderPolicyGate? =
-        session?.gate
-            ?: testGateOverride
-            ?: if (isUnitTestHarness()) plainUnitTestGate else null
-
-    fun setTestGate(gate: ProviderPolicyGate?) {
-        testGateOverride = gate
-    }
-
-    fun resetForTesting() {
-        session = null
-        installedInProcess = false
-        testGateOverride = null
-    }
+        if (isAndroidEnvironment()) session?.gate else plainJvmTestGate
 
     fun sessionOrNull(): ProviderCapabilitySession? = session
 
@@ -96,28 +79,23 @@ internal object ProviderRuntime {
         get() = session?.state
 
     /**
-     * Old builds have no individual MusicBrainz toggle. Preserve the existing
-     * MusicBrainz catalog/identity capabilities ONCE for older installations.
-     * A saved off/empty selection in any category takes absolute precedence.
-     *
-     * Must execute on a background dispatcher after install(). Before this
-     * completes the installed gate is closed, never permissive.
+     * Migrate legacy MusicBrainz, lyrics and extension choices into the single
+     * authority session once during startup.
      */
     suspend fun migrateMusicBrainzLegacyAccess(): Boolean {
         val current = session ?: return false
-        val key = BuiltInProviderKeys.MUSICBRAINZ
-        val legacy = listOf(
-            ProviderCapability.CATALOG_SEARCH,
-            ProviderCapability.EDITORIAL_DISCOGRAPHY,
-            ProviderCapability.IDENTITY,
-        ).associateWith { listOf(ProviderChoice(key, enabled = true, order = 0)) }
-        return current.initialize(legacy)
+        val lyricsOrder = LyricsSource.offered
+        val enabledLyrics = LyricsSource.offered.toSet()
+        val sources = SourceRegistry.configs.value
+        return LegacyProviderCompatibility.migrateAllLegacy(
+            session = current,
+            lyricsOrder = lyricsOrder,
+            enabledLyrics = enabledLyrics,
+            sources = sources,
+            includeMusicBrainzDefaults = true,
+        )
     }
 
-    /**
-     * For a future native Settings switch; an explicit opt-out is applied to
-     * the running HTTP gate BEFORE its durable preference commit.
-     */
     suspend fun setChoices(
         capability: ProviderCapability,
         choices: List<ProviderChoice>,
