@@ -22,12 +22,22 @@ internal fun verifiedSourceOwnedPlayerArtist(
     providerKey: String,
     credits: List<CanonicalArtistCreditRow>,
     availableArtists: List<ArtistEntity>,
+    artistName: String? = null,
 ): SourceOwnedArtistEvidence? {
     if (recordingId.isBlank() || providerKey.isBlank()) return null
     val lead = credits.filter { it.position == 0 && it.artistId.isNotBlank() }
-        .distinctBy { it.artistId }.singleOrNull() ?: return null
-    val actual = availableArtists.filter { it.id == lead.artistId }.singleOrNull()
-        ?: return null
+        .distinctBy { it.artistId }
+    // Prefer the exact credited ArtistId. When a migrated local/provider
+    // recording lacks credits, accept only ONE artist in that *same provider*
+    // with the exact displayed name. Never resolve conflicting lead credits
+    // by fuzzy name or borrow an artist from another source.
+    val actual = when {
+        lead.size == 1 -> availableArtists.filter { it.id == lead.single().artistId }.singleOrNull()
+        lead.isEmpty() && !artistName.isNullOrBlank() ->
+            availableArtists.filter { it.name.equals(artistName, ignoreCase = true) }
+                .singleOrNull()
+        else -> null
+    } ?: return null
     return SourceOwnedArtistEvidence(actual.id, actual.name, providerKey)
 }
 
@@ -65,6 +75,7 @@ internal suspend fun verifiedPlayerSourceOwnedArtist(
             providerKey = source,
             credits = dao.recordingArtistCredits(identity.recordingId),
             availableArtists = dao.providerScopedArtists(source),
+            artistName = song.artist,
         )
     } catch (cancelled: CancellationException) {
         throw cancelled
