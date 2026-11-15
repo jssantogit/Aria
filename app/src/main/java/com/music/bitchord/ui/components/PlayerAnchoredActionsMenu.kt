@@ -217,7 +217,7 @@ fun PlayerAnchoredActionsMenu(
                             )
                         }
                         .size(highlightSize)
-                        .border(1.5.dp, Color.White.copy(alpha = 0.92f), CircleShape)
+                        .border(1.5.dp, heldContextSelectionOutline(), CircleShape)
                         .testTag("player-overflow-highlight")
                         .clickable(onClick = onDismiss),
                     color = plate,
