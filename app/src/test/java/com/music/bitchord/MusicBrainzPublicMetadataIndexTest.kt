@@ -338,7 +338,7 @@ class MusicBrainzPublicMetadataIndexTest {
                 .associateBy { it.musicBrainzId }
             assertEquals(4, raw.size)
             assertEquals(listOf(valid.musicBrainzId), raw.values
-                .filter(com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording)
+                .filter(::isCuratedMusicBrainzRecording)
                 .map { it.musicBrainzId })
             index.persistRecordings(listOf(valid.copy(
                 hasOfficialAudioRelease = null, isVideo = null)))
@@ -350,7 +350,7 @@ class MusicBrainzPublicMetadataIndexTest {
                 hasOfficialAudioRelease = true, isVideo = false)))
             assertEquals(setOf(valid.musicBrainzId, legacy.musicBrainzId),
                 db.catalogDao().searchKnownMusicBrainzRecordings("Hurt", 20)
-                    .filter(com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording)
+                    .filter(::isCuratedMusicBrainzRecording)
                     .map { it.musicBrainzId }.toSet())
         } finally { db.close() }
     }
