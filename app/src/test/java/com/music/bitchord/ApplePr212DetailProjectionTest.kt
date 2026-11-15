@@ -44,7 +44,7 @@ class ApplePr212DetailProjectionTest {
         ))
         assertEquals(BrowseType.ARTIST, result.type)
         assertEquals("itunes:br:artist:99", result.browseId)
-        assertEquals(listOf("Álbuns", "EPs", "Singles", "Outros lançamentos"),
+        assertEquals(listOf("Álbuns", "Singles e EPs", "Outros lançamentos"),
             result.sections.map { it.title })
         assertEquals(listOf("itunes:br:album:1", "itunes:br:album:2",
             "itunes:br:album:3", "itunes:br:album:4"),
@@ -52,6 +52,35 @@ class ApplePr212DetailProjectionTest {
         assertTrue(result.sections.flatMap { it.items }.all { it.videoId == null })
         assertTrue((result.songs as UiState.Success).data.isEmpty())
         assertNull(result.subscription)
+    }
+
+    @Test fun exactSameNamedAppleEditionsDoNotDuplicateTheNativeArtistShelf() {
+        val original = release(21, ItunesEditorialReleaseFormat.UNCLASSIFIED, "NJWMX")
+            .copy(releaseDate = "2023-12-19", trackCount = 12)
+        val redundant = release(22, ItunesEditorialReleaseFormat.UNCLASSIFIED, "NJWMX")
+            .copy(releaseDate = "2023-12-21", trackCount = 12)
+        val anotherYear = release(23, ItunesEditorialReleaseFormat.UNCLASSIFIED, "NJWMX")
+            .copy(releaseDate = "2024-12-19")
+        val page = requireNotNull(ApplePr212DetailProjection.artistPage(
+            item(ItunesCatalogItemType.ARTIST, 99),
+            listOf(redundant, original, anotherYear),
+        ))
+        assertEquals(listOf("itunes:br:album:21", "itunes:br:album:23"),
+            page.sections.single().items.map { it.browseId })
+    }
+
+    @Test fun singleAndEpUseOneNativeSectionAndNeverCollapseDifferentFormats() {
+        val page = requireNotNull(ApplePr212DetailProjection.artistPage(
+            item(ItunesCatalogItemType.ARTIST, 99),
+            listOf(
+                release(32, ItunesEditorialReleaseFormat.SINGLE, "EASY - Single"),
+                release(31, ItunesEditorialReleaseFormat.EP, "EASY - EP"),
+                release(33, ItunesEditorialReleaseFormat.SINGLE, "EASY - Single"),
+            ),
+        ))
+        assertEquals(listOf("Singles e EPs"), page.sections.map { it.title })
+        assertEquals(listOf("itunes:br:album:31", "itunes:br:album:32"),
+            page.sections.single().items.map { it.browseId })
     }
 
     @Test fun unrelatedArtistsAndConflictingDuplicatesNeverEnterAnArtistPage() {
