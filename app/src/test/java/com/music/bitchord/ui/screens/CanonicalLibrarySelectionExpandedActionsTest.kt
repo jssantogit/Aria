@@ -2,6 +2,7 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -23,6 +24,34 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class CanonicalLibrarySelectionExpandedActionsTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun selectionActionsRespectReducedMotionWithoutHidingTheControls() {
+        assertEquals(androidx.compose.animation.EnterTransition.None, selectionActionsEnterTransition(true))
+        assertEquals(androidx.compose.animation.ExitTransition.None, selectionActionsExitTransition(true))
+        org.junit.Assert.assertTrue(selectionActionsEnterTransition(false) != androidx.compose.animation.EnterTransition.None)
+        org.junit.Assert.assertTrue(selectionActionsExitTransition(false) != androidx.compose.animation.ExitTransition.None)
+
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.music.bitchord.ui.LocalReduceAnimations provides true,
+            ) {
+                MaterialTheme {
+                    CanonicalLibraryBatchActionBar(
+                        selectedEntityCount = 2,
+                        summary = "5 faixas · 2 itens",
+                        onClear = {},
+                        onAddToPlaylist = {},
+                        onPlayNext = {},
+                        onAddToQueue = {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("Recolher ações").performClick()
+        compose.onNodeWithTag("native-selection-expanded-actions").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Expandir ações").performClick()
+        compose.onNodeWithTag("native-selection-expanded-actions").assertIsDisplayed()
+    }
 
     @Test fun expandedMenuOffersNativeActionRowsAndCanCollapseWithoutLosingSelection() {
         var queued = 0
