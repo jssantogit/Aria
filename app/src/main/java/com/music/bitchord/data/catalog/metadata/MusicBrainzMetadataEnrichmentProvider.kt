@@ -1,6 +1,11 @@
 package com.music.bitchord.data.catalog.metadata
 
 import com.music.bitchord.BuildConfig
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderRequestDeniedException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -95,19 +100,44 @@ internal class MusicBrainzClient(
     internal val rateLimiter: MusicBrainzRateLimiter = MusicBrainzRequestBudget.limiter,
     val userAgent: String = defaultMusicBrainzUserAgent(),
     private val retryDelayMillis: suspend (Long) -> Unit = { millis -> delay(millis) },
+    private val admission: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
 ) {
     suspend fun get(
         path: String,
         parameters: Map<String, String> = mapOf("fmt" to "json"),
+        capability: ProviderCapability = ProviderCapability.IDENTITY,
     ): String {
+        // The process gate is installed fail-closed before Android startup
+        // launches any work. Plain JVM/unit fakes may leave it uninstalled.
+        val gate = admission()
+        val provider = ProviderKey("musicbrainz")
+        val ticket = gate?.open(capability, provider)
+        if (gate != null && ticket == null) {
+            throw ProviderRequestDeniedException(capability, provider)
+        }
+
+        fun ensureAdmitted() {
+            if (gate != null && !gate.accept(requireNotNull(ticket))) {
+                throw ProviderRequestDeniedException(capability, provider)
+            }
+        }
+
         var attempt = 1
         while (true) {
             try {
-                // A retry is a new request and must pass through the same shared
-                // budget as the first attempt and every other MusicBrainz endpoint.
-                return rateLimiter.runLimited {
-                    transport.get(path, parameters, userAgent)
+                // The guard is checked again AFTER waiting in the shared
+                // 1 req/s queue and again before publishing any HTTP response.
+                // A disabled provider cannot dispatch queued retries or return
+                // stale bytes to the caller's cache/index.
+                ensureAdmitted()
+                val response = rateLimiter.runLimited {
+                    ensureAdmitted()
+                    transport.get(path, parameters, userAgent).also {
+                        ensureAdmitted()
+                    }
                 }
+                ensureAdmitted()
+                return response
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (response: ResponseException) {
