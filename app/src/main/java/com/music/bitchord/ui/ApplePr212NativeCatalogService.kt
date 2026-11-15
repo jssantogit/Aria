@@ -3,6 +3,8 @@ package com.music.bitchord.ui
 import com.music.bitchord.data.catalog.metadata.AppleEditorialArtistLoad
 import com.music.bitchord.data.catalog.metadata.AppleEditorialCatalogRepository
 import com.music.bitchord.data.catalog.metadata.AppleEditorialLoad
+import com.music.bitchord.data.catalog.metadata.AppleEditorialTrackLoad
+import java.util.concurrent.ConcurrentHashMap
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItem
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
 import com.music.bitchord.data.model.DetailPage
@@ -16,6 +18,14 @@ internal class ApplePr212NativeCatalogService(
     private val artwork: com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork =
         com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(),
 ) {
+    private val trackAlbumRoutes = ConcurrentHashMap<String, ApplePr212CatalogRoute>()
+
+    fun albumRouteForTrack(scopedTrackId: String): ApplePr212CatalogRoute? =
+        trackAlbumRoutes[scopedTrackId].takeIf {
+            ApplePr212CatalogRoute.parse(scopedTrackId)?.kind ==
+                ItunesCatalogItemType.TRACK
+        }
+
     /** Incremental snapshots are data only; caller owns cancellation and UI state. */
     suspend fun search(
         query: String,
@@ -23,6 +33,7 @@ internal class ApplePr212NativeCatalogService(
         onProgress: (List<CanonicalCatalogSearchRow>) -> Unit = {},
     ): List<CanonicalCatalogSearchRow>? {
         val results = linkedMapOf<String, CanonicalCatalogSearchRow>()
+        trackAlbumRoutes.clear()
         var anySucceeded = false
         val artists = repository.searchArtists(query, storefront, 50)
         if (artists is AppleEditorialArtistLoad.Success) {
@@ -37,6 +48,20 @@ internal class ApplePr212NativeCatalogService(
             anySucceeded = true
             albums.releases.mapNotNull(ApplePr212CatalogRows::album).forEach {
                 results[it.musicBrainzId] = it
+            }
+            onProgress(results.values.toList())
+        }
+        val tracks = repository.searchTracks(query, storefront, 100)
+        if (tracks is AppleEditorialTrackLoad.Success) {
+            anySucceeded = true
+            tracks.tracks.forEach { track ->
+                val row = ApplePr212CatalogRows.track(track) ?: return@forEach
+                val collection = track.collectionId ?: return@forEach
+                val albumRoute = ApplePr212CatalogRoute.parse(
+                    "itunes:$storefront:album:$collection",
+                ) ?: return@forEach
+                trackAlbumRoutes[row.musicBrainzId] = albumRoute
+                results[row.musicBrainzId] = row
             }
             onProgress(results.values.toList())
         }
