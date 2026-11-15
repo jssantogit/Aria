@@ -1,12 +1,14 @@
 package com.music.bitchord.ui.screens
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -50,6 +52,37 @@ class NativeFrostedRatingInteractionTest {
         compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
         compose.onNodeWithText("Other album action").performClick()
         compose.runOnIdle { assertEquals(1, otherClicks) }
+    }
+
+    @Test fun albumToolbarRatingLauncherOpensAndReleasesSiblingActions() {
+        val editing = mutableStateOf(false)
+        var sortClicks = 0
+        compose.setContent {
+            MaterialTheme {
+                Column {
+                    NativeCollectionRatingToolbarAction(
+                        rating = 4.0,
+                        subject = "álbum",
+                        onClick = { editing.value = true },
+                    )
+                    TextButton(onClick = { sortClicks++ }) { Text("Sort album") }
+                }
+                if (editing.value) {
+                    CanonicalRecordingFeedbackPanel(
+                        rating = 4.0,
+                        onSave = {},
+                        onDismiss = { editing.value = false },
+                        anchorBounds = IntRect(24, 96, 72, 144),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("Avaliar álbum", substring = true).performClick()
+        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
+        compose.onNodeWithText("Sort album").performClick()
+        compose.runOnIdle { assertEquals(1, sortClicks) }
     }
 
     @Test fun numericStyleUsesExistingV3DigitVectorsInTheEditor() {
