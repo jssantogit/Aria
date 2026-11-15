@@ -369,7 +369,12 @@ internal fun CanonicalRecordingFeedbackPanel(
                 )
                 .testTag(if (anchorBounds == null) "native-rating-bottom-sheet"
                     else "native-rating-anchored-content")
-                .semantics { paneTitle = sheetTitle }
+                // The anchored parent Dialog already owns the pane. A second
+                // PaneTitle on its descendant cannot be merged by Compose.
+                // Preserve this title only on the standalone rating sheet.
+                .then(if (anchorBounds == null) Modifier.semantics {
+                    paneTitle = sheetTitle
+                } else Modifier)
                 // The lifted container owns its entrance. Animating the
                 // star row independently made it drift away from the button.
                 .then(if (anchorBounds == null) Modifier.graphicsLayer {
