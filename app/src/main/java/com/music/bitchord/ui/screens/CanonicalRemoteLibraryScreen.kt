@@ -273,6 +273,7 @@ internal fun CanonicalRemoteLibraryScreen(
     detailBackToken: Int = 0,
     onDetailChanged: (Boolean) -> Unit = {},
     onNestedAlbumChanged: (Boolean) -> Unit = {},
+    onDetailOverflowVisibilityChange: (CanonicalLibraryEntityType?) -> Unit = {},
     onAlbumRatingTargetChanged: (CanonicalLibrarySelection?) -> Unit = {},
     initialPinnedSelection: CanonicalLibraryPin? = null,
     initialContext: CanonicalSmartFilterContext = CanonicalSmartFilterContext.SONGS,
@@ -380,6 +381,21 @@ internal fun CanonicalRemoteLibraryScreen(
     var editingRecordingId by remember { mutableStateOf<String?>(null) }
     var libraryMenu by remember { mutableStateOf<CanonicalLibraryMenuTarget?>(null) }
     var heldLibraryMenuOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    // Report only a live toolbar-owned menu; held previews never select the toolbar button.
+    val toolbarMenuType = libraryMenu?.selection?.type?.takeIf { type ->
+        heldLibraryMenuOrigin == null && selectedEntity != null &&
+            ((type == CanonicalLibraryEntityType.ALBUM &&
+                selectedContext == CanonicalSmartFilterContext.ALBUMS) ||
+             (type == CanonicalLibraryEntityType.ARTIST &&
+                selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+                !artistNestedReleaseOpen))
+    }
+    LaunchedEffect(toolbarMenuType) {
+        onDetailOverflowVisibilityChange(toolbarMenuType)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onDetailOverflowVisibilityChange(null) }
+    }
     var playlistPickerSelection by remember {
         mutableStateOf<List<CanonicalLibrarySelection>?>(null)
     }
