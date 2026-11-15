@@ -1,10 +1,8 @@
 package com.music.bitchord.data.providers
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 
 /** A request was denied before dispatch, or invalidated before publication. */
 sealed interface ProviderCallResult<out T> {
@@ -29,13 +27,12 @@ class ProviderQueryExecutor(private val gate: ProviderPolicyGate) {
         operation: suspend () -> T,
     ): ProviderCallResult<T> {
         val ticket = gate.open(capability, key) ?: return ProviderCallResult.Denied
-        return coroutineScope {
+        return supervisorScope {
             var revoked = false
-            val executionJob = SupervisorJob(coroutineContext[Job])
-            val job = async(executionJob) { operation() }
+            val job = async { operation() }
             val unregister = gate.onRevoke(ticket) {
                 revoked = true
-                executionJob.cancel(CancellationException("Provider capability revoked"))
+                job.cancel(CancellationException("Provider capability revoked"))
             }
             try {
                 val value = job.await()
@@ -49,7 +46,6 @@ class ProviderQueryExecutor(private val gate: ProviderPolicyGate) {
                 else ProviderCallResult.Stale
             } finally {
                 unregister()
-                executionJob.cancel()
             }
         }
     }
