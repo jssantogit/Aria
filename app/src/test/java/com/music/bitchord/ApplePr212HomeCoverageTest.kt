@@ -70,4 +70,30 @@ class ApplePr212HomeCoverageTest {
         assertEquals(12, outcome.releases.size)
         assertFalse(outcome.releases.any { it.appleScopedId.startsWith("catalog:") })
     }
+    @Test fun revokedAppleProductIsRemovedFromProgressiveHomeSnapshot() = runBlocking {
+        var calls = 0
+        val discovery = AppleHomeEditorialDiscovery(
+            source = AppleHomeAlbumSearchSource { _, _ ->
+                calls++
+                AppleEditorialLoad.Success(
+                    listOf(edition(44, "Shared", "Artist $calls")),
+                    AppleEditorialReadState.COMPLETE,
+                )
+            },
+        )
+        val snapshots = mutableListOf<List<Long>>()
+        val result = ApplePr212HomeCoverage(discovery).discover(
+            seeds = listOf(
+                AppleHomeEditorialSeed("Shared", "Artist 1"),
+                AppleHomeEditorialSeed("Shared", "Artist 2"),
+            ),
+            storefront = "br",
+            onProgress = { snapshots += it.map { album -> album.appleCollectionId } },
+        ) as AppleEditorialLoad.Success
+        assertEquals(2, calls)
+        assertTrue(result.releases.isEmpty())
+        assertEquals(listOf(44L), snapshots.first())
+        assertTrue(snapshots.last().isEmpty())
+    }
+
 }
