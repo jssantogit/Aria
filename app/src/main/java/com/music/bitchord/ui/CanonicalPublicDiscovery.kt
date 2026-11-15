@@ -109,8 +109,8 @@ internal fun canonicalDailyPublicPicks(
     limit: Int = 12,
 ): List<ShelfItem> =
     releases.asSequence()
-        .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP &&
-            canonicalEditorialReleaseType(it) != null }
+        .filter { (it.kind == CanonicalSearchKind.RELEASE_GROUP &&
+            canonicalEditorialReleaseType(it) != null) || isVerifiedAppleEditorialRelease(it) }
         .sortedWith(compareBy<CanonicalCatalogSearchRow> {
             (it.musicBrainzId + todayIsoDate).hashCode()
         }.thenBy { it.musicBrainzId })
@@ -208,8 +208,8 @@ internal fun canonicalGenreEditorialShelves(
 ): List<HomeShelf> {
     val playlistShelf = canonicalPublicPlaylistShelf("Playlists", playlists)
     val eligible = rows.asSequence()
-        .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP &&
-            canonicalEditorialReleaseType(it) != null &&
+        .filter { ((it.kind == CanonicalSearchKind.RELEASE_GROUP &&
+            canonicalEditorialReleaseType(it) != null) || isVerifiedAppleEditorialRelease(it)) &&
             !it.subtitle.isNullOrBlank() &&
             canonicalStreamingTitleIsSafe(it.title) &&
             (it.releaseDate?.let { date -> date <= todayIsoDate } ?: true) }
@@ -340,8 +340,8 @@ internal fun canonicalHomeWithWorldwideEditorial(
     // Remove visual duplicates from an editorial feed, not from the canonical
     // catalog. Different MusicBrainz editions keep their real MBIDs in search.
     val publicRows = worldwideReleases.asSequence()
-        .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP &&
-            canonicalEditorialReleaseType(it) != null }
+        .filter { (it.kind == CanonicalSearchKind.RELEASE_GROUP &&
+            canonicalEditorialReleaseType(it) != null) || isVerifiedAppleEditorialRelease(it) }
         .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
         .sortedWith(
             compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
