@@ -62,6 +62,15 @@ import kotlin.math.roundToInt
 /** The source row keeps painting until its bitmap replacement is ready. */
 internal fun heldPreviewCanPaint(hasImage: Boolean, lifted: Boolean): Boolean = hasImage && lifted
 
+/**
+ * The real row is suppressed for as long as the snapshot is lifted. Fading
+ * this snapshot with the menu's progress creates a blank-tinted frame on
+ * return: both source and snapshot are partly/fully invisible at once.
+ * Its position and scale still animate; only the swap of PAINT is atomic.
+ */
+internal fun heldPreviewAlpha(hasImage: Boolean, lifted: Boolean): Float =
+    if (heldPreviewCanPaint(hasImage, lifted)) 1f else 0f
+
 /** Long-press actions stay opaque; blur belongs to filter/rating cards. */
 internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = false
 
@@ -340,14 +349,13 @@ fun <T : Any> HeldContextMenu(
                     translationX = lerp(fromDx, 0f, p)
                     translationY = lerp(fromDy, 0f, p)
                 }
-                // Snapshot conversion is asynchronous. Until BOTH the bitmap
-                // and source suppression are ready, keep the real source row
-                // visible and draw no solid empty lifted platter.
-                alpha = if (!heldPreviewCanPaint(
-                        hasImage = heldItem.image != null,
-                        lifted = heldItem.isLifted,
-                    )) 0f else if (reduceMotion) p.coerceIn(0f, 1f)
-                    else (p * 3f).coerceIn(0f, 1f)
+                // The source row is already hidden while this lifted snapshot
+                // exists. Never fade one before restoring the other: the image
+                // remains opaque as it returns to its exact original position.
+                alpha = heldPreviewAlpha(
+                    hasImage = heldItem.image != null,
+                    lifted = heldItem.isLifted,
+                )
             }
             menu.placeWithLayer(menuX, menuY) {
                 val p = progress.value
