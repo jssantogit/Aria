@@ -17,9 +17,10 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchResult
  */
 internal class MusicBrainzCapabilitySearch(
     private val executor: ProviderQueryExecutor,
+    private val catalog: MusicBrainzCatalogSearch = MusicBrainzCatalogSearch(),
     private val lookupArtists: suspend (String, Int, Int) ->
         MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> =
-        MusicBrainzCatalogSearch()::searchArtists,
+        catalog::searchArtists,
 ) {
     /**
      * Guard any MusicBrainz catalog query at one common boundary, including
@@ -33,7 +34,7 @@ internal class MusicBrainzCapabilitySearch(
         query: suspend MusicBrainzCatalogSearch.() -> MusicBrainzCatalogSearchResult<T>,
     ): ProviderCallResult<MusicBrainzCatalogSearchResult<T>> =
         executor.execute(ProviderCapability.CATALOG_SEARCH, PROVIDER_KEY) {
-            MusicBrainzCatalogSearch().query()
+            catalog.query()
         }
 
     suspend fun searchArtists(
