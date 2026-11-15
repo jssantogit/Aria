@@ -1225,7 +1225,9 @@ private fun BitChordApp(
             community = canonicalCommunityShelf,
             personal = canonicalPersonalShelf,
             publicPlaylists = canonicalHomePublicPlaylists,
-            globalDiscoveryHeading = canonicalHomeGlobalDiscoveryHeading,
+            // Use the existing PR212 format-specific shelves as the editorial
+            // data destination; do not merge them into a generic new section.
+            globalDiscoveryHeading = null,
         )
     }
     val canonicalHomeState: UiState<List<HomeShelf>> = when {
