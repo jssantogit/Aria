@@ -5,7 +5,6 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
-import androidx.compose.ui.graphics.Color
 import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
 import org.junit.Test
 
@@ -13,7 +12,7 @@ import org.junit.Test
  * even when a dialog window has a nonzero screen origin. */
 class PlayerAnchoredActionsHighlightTest {
     @Test fun activeOverflowUsesSharedWhiteHighlightWhileInactiveHasNone() {
-        assertEquals(Color.White.copy(alpha = 0.88f), com.music.bitchord.nativeCollectionOverflowOutline(true))
+        assertEquals(heldContextSelectionOutline(), com.music.bitchord.nativeCollectionOverflowOutline(true))
         assertEquals(null, com.music.bitchord.nativeCollectionOverflowOutline(false))
     }
 
