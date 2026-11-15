@@ -381,21 +381,6 @@ internal fun CanonicalRemoteLibraryScreen(
     var editingRecordingId by remember { mutableStateOf<String?>(null) }
     var libraryMenu by remember { mutableStateOf<CanonicalLibraryMenuTarget?>(null) }
     var heldLibraryMenuOrigin by remember { mutableStateOf<HeldItem?>(null) }
-    // Report only a live toolbar-owned menu; held previews never select the toolbar button.
-    val toolbarMenuType = libraryMenu?.selection?.type?.takeIf { type ->
-        heldLibraryMenuOrigin == null && selectedEntity != null &&
-            ((type == CanonicalLibraryEntityType.ALBUM &&
-                selectedContext == CanonicalSmartFilterContext.ALBUMS) ||
-             (type == CanonicalLibraryEntityType.ARTIST &&
-                selectedContext == CanonicalSmartFilterContext.ARTISTS &&
-                !artistNestedReleaseOpen))
-    }
-    LaunchedEffect(toolbarMenuType) {
-        onDetailOverflowVisibilityChange(toolbarMenuType)
-    }
-    DisposableEffect(Unit) {
-        onDispose { onDetailOverflowVisibilityChange(null) }
-    }
     var playlistPickerSelection by remember {
         mutableStateOf<List<CanonicalLibrarySelection>?>(null)
     }
@@ -493,6 +478,21 @@ internal fun CanonicalRemoteLibraryScreen(
     var detailQuery by remember(selectedEntity?.id) { mutableStateOf("") }
     var artistNestedReleaseOpen by remember { mutableStateOf(false) }
     var artistNestedBackToken by remember { mutableIntStateOf(0) }
+    // Report only a live toolbar-owned menu; held previews never select the toolbar button.
+    val toolbarMenuType = libraryMenu?.selection?.type?.takeIf { type ->
+        heldLibraryMenuOrigin == null && selectedEntity != null &&
+            ((type == CanonicalLibraryEntityType.ALBUM &&
+                selectedContext == CanonicalSmartFilterContext.ALBUMS) ||
+             (type == CanonicalLibraryEntityType.ARTIST &&
+                selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+                !artistNestedReleaseOpen))
+    }
+    LaunchedEffect(toolbarMenuType) {
+        onDetailOverflowVisibilityChange(toolbarMenuType)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onDetailOverflowVisibilityChange(null) }
+    }
     LaunchedEffect(selectedEntity?.id) { artistNestedReleaseOpen = false }
     LaunchedEffect(detailBackToken) {
         if (detailBackToken > 0) {
