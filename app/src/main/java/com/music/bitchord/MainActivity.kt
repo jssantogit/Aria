@@ -3859,6 +3859,27 @@ private fun BitChordApp(
                             onCanonicalFeaturedReleaseOpen = { release ->
                                 viewModel.openCanonicalNativeDetail(release)
                             },
+                            onCanonicalArtistEntityHold = { row ->
+                                val origin = LongPressOrigin.consume()
+                                if (origin != null) {
+                                    heldPublicPlaylistSearchRow = null
+                                    heldPublicPlaylistSearchOrigin = null
+                                    heldCatalogSearchOrigin = origin
+                                    heldCatalogSearchRow = row
+                                }
+                            },
+                            onCanonicalArtistPlaylistHold = { mbid, title, creator, _ ->
+                                val origin = LongPressOrigin.consume()
+                                if (origin != null) {
+                                    heldCatalogSearchRow = null
+                                    heldCatalogSearchOrigin = null
+                                    heldPublicPlaylistSearchOrigin = origin
+                                    heldPublicPlaylistSearchRow = CanonicalPublicPlaylistSearchRow(
+                                        mbid = mbid, title = title, creator = creator,
+                                        artworkUri = null,
+                                    )
+                                }
+                            },
                             onCanonicalArtistPlaylistOpen = { mbid, title, creator, description ->
                                 val playlist = com.music.bitchord.data.catalog.metadata
                                     .ListenBrainzPublicPlaylist(mbid, title, creator, description)
