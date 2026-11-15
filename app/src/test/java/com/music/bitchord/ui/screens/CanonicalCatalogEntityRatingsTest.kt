@@ -21,6 +21,20 @@ class CanonicalCatalogEntityRatingsTest {
         assertTrue(canPersistCanonicalCatalogRating(group!!))
     }
 
+    @Test fun exactAppleArtistAndAlbumEnableExistingNativeRatingActions() {
+        val artist = canonicalCatalogEntityRatingTarget("itunes:br:artist:1652349282")
+        val album = canonicalCatalogEntityRatingTarget("itunes:br:album:1234567890")
+        assertEquals(CanonicalEntityRatingTarget("ARTIST", "itunes:br:artist:1652349282"), artist)
+        assertEquals(CanonicalEntityRatingTarget("ALBUM", "itunes:br:album:1234567890"), album)
+        assertTrue(canPersistCanonicalCatalogRating(requireNotNull(artist)))
+        assertTrue(canPersistCanonicalCatalogRating(requireNotNull(album)))
+        for (invalid in listOf(
+            "itunes:br:artist:0", "itunes:BR:artist:1", "itunes:br:artist:01",
+            "itunes:br:artist:garbage", "itunes:br:track:12", "itunes:br:album:-5",
+            "itunes:br:artist:9999999999999999999999999",
+        )) assertNull(invalid, canonicalCatalogEntityRatingTarget(invalid))
+    }
+
     @Test fun onlinePlaylistCannotMasqueradeAsLocalPlaylistOrAnAlbum() {
         assertEquals(CanonicalEntityRatingTarget("PLAYLIST", "public:$id"),
             canonicalPublicPlaylistRatingTarget(id))
