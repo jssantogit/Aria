@@ -3,6 +3,7 @@ package com.music.bitchord.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import com.music.bitchord.ui.theme.rememberArtworkPalette
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -15,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -35,10 +37,13 @@ internal fun nativeContextPlateColor(dark: Boolean): Color =
 internal fun NativeContextActionPlate(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    /** Same album/track sleeve already visible behind a standalone rating dialog. */
+    artworkUrl: String? = null,
     content: @Composable () -> Unit,
 ) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val reduceBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val artworkPalette = rememberArtworkPalette(artworkUrl)
     val shape = RoundedCornerShape(18.dp)
     val base = nativeContextPlateColor(dark)
     Surface(
@@ -56,10 +61,25 @@ internal fun NativeContextActionPlate(
                 if (hazeState != null && !reduceBlur) {
                     Modifier.optimizedHazeEffect(
                         state = hazeState,
-                        style = HazeMaterials.regular(base),
+                        style = HazeMaterials.regular(base.copy(alpha = 0.56f)),
                     )
+                } else if (artworkUrl != null && !reduceBlur) {
+                    // A Dialog cannot sample the activity's Haze layer across
+                    // window boundaries. Use the same real blurred artwork as
+                    // the player instead of an opaque charcoal placeholder.
+                    Modifier
                 } else Modifier.background(base)
             ),
-        ) { content() }
+        ) {
+            if (hazeState == null && artworkUrl != null && !reduceBlur) {
+                ArtworkBackdrop(
+                    palette = artworkPalette,
+                    imageUrl = artworkUrl,
+                    modifier = Modifier.matchParentSize(),
+                    washFraction = 1f,
+                )
+            }
+            content()
+        }
     }
 }
