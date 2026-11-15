@@ -7327,6 +7327,7 @@ internal fun NativeCollectionRatingToolbarAction(
 private fun CanonicalToolbarRatingAction(
     target: com.music.bitchord.ui.screens.CanonicalEntityRatingTarget,
     subject: String,
+    artworkUrl: String? = null,
 ) {
     val score by com.music.bitchord.ui.screens.rememberCanonicalCatalogEntityRating(target)
     var editing by remember(target) { mutableStateOf(false) }
@@ -7339,6 +7340,7 @@ private fun CanonicalToolbarRatingAction(
             title = "Avaliar $subject",
             onDismiss = { editing = false },
             anchorBounds = ratingAnchor,
+            artworkUrl = artworkUrl,
         )
     }
     NativeCollectionRatingToolbarAction(
@@ -8389,7 +8391,7 @@ private fun NativeDetailAlbumTopBarActions(
     }
     if (searching) return
     if (ratingTarget != null) {
-        CanonicalToolbarRatingAction(ratingTarget, "álbum")
+        CanonicalToolbarRatingAction(ratingTarget, "álbum", thumbnailUrl)
     }
     Box(Modifier.onGloballyPositioned { coords ->
         onSortAnchor(nativeMenuAnchorBounds(coords))
