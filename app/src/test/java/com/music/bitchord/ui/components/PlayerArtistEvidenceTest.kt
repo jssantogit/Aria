@@ -75,6 +75,50 @@ class PlayerArtistEvidenceTest {
         ))
     }
 
+    @Test fun localMediaStoreAssetOpensArtistEvenWhenQueueIdentityIsUnavailable() {
+        val url = "content://media/external/audio/media/45"
+        val expected = SourceOwnedArtistEvidence(
+            "browse-display-artist:BTS", "BTS", "local-mediastore",
+        )
+        assertEquals(expected, verifiedLocalMediaAssetArtist(
+            requestedUri = url, verifiedSourceKey = url,
+            recordingId = "rec-45", displayName = "BTS",
+            memberRecordingIds = listOf("rec-45", "rec-46"),
+        ))
+        assertNull(verifiedLocalMediaAssetArtist(
+            requestedUri = url, verifiedSourceKey = "content://media/other",
+            recordingId = "rec-45", displayName = "BTS",
+            memberRecordingIds = listOf("rec-45"),
+        ))
+        assertNull(verifiedLocalMediaAssetArtist(
+            requestedUri = url, verifiedSourceKey = url,
+            recordingId = "rec-45", displayName = "BTS",
+            memberRecordingIds = emptyList(),
+        ))
+    }
+
+    @Test fun localAlbumArtistCreditOpensOnlyAnExactSameSourceDisplayGroup() {
+        val expected = SourceOwnedArtistEvidence(
+            "browse-display-artist:BTS", "BTS", "local-mediastore",
+        )
+        assertEquals(expected, verifiedLocalAlbumDisplayArtist(
+            providerKey = "local-mediastore", albumCredit = "BTS",
+            memberArtistNames = listOf("BTS", "BTS"),
+        ))
+        assertNull(verifiedLocalAlbumDisplayArtist(
+            providerKey = "opensubsonic:server", albumCredit = "BTS",
+            memberArtistNames = listOf("BTS"),
+        ))
+        assertNull(verifiedLocalAlbumDisplayArtist(
+            providerKey = "local-mediastore", albumCredit = "BTS",
+            memberArtistNames = listOf("BTS", "Various Artists"),
+        ))
+        assertNull(verifiedLocalAlbumDisplayArtist(
+            providerKey = "local-mediastore", albumCredit = "BTS",
+            memberArtistNames = emptyList(),
+        ))
+    }
+
     @Test fun appleRouteIsNotInventedFromMetadataName() {
         assertEquals(
             "itunes:br:artist:123",
