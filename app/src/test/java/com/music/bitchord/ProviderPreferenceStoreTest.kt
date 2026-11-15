@@ -92,6 +92,15 @@ class ProviderPreferenceStoreTest {
         assertEquals(future, preferences.getString(ProviderPreferenceStore.STORAGE_KEY, null))
     }
 
+    @Test fun explicitEmptyCategoryIsDistinctFromUnmigratedCategory() = runBlocking {
+        assertTrue(store.replaceCapability(ProviderCapability.CATALOG_SEARCH, emptyList()))
+        val saved = store.read() as ProviderPreferenceStore.Read.Loaded
+        assertTrue(saved.choices.containsKey(ProviderCapability.CATALOG_SEARCH))
+        assertEquals(emptyList<ProviderChoice>(),
+            saved.choices.getValue(ProviderCapability.CATALOG_SEARCH))
+        assertFalse(saved.choices.containsKey(ProviderCapability.RELEASE_ARTWORK))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun duplicateSelectionIsRejectedBeforeWriting() = runBlocking {
         store.replaceCapability(ProviderCapability.AUDIO_PLAYBACK, listOf(
