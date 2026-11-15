@@ -5,9 +5,7 @@ import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.metadata.*
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.*
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -22,16 +20,7 @@ class MusicBrainzOfflineEditionsTest {
     private val group = "529f87a1-1081-48a4-8ee1-3c08de229858"
     private val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
     private val track = "14f273b6-813b-4239-b0f8-c4b839b902c6"
-
-    @Before
-    fun setUp() {
-        ProviderCachedReadAccessTestHelper.installPermissiveGate()
-    }
-
-    @After
-    fun tearDown() {
-        ProviderCachedReadAccessTestHelper.resetGate()
-    }
+    private val japanTrack = "a5f07fd0-c0bd-4784-b074-8508ccbb5639"
 
     @Test fun editionSearchRetainsTerritoryAndDateWithoutInventingTracklistOrAudio() = runBlocking {
         val db = database()
@@ -73,6 +62,57 @@ class MusicBrainzOfflineEditionsTest {
         } finally { db.close() }
     }
 
+    @Test fun offlineEditionTrackDoesNotBorrowAnotherEditionsCreditForTheSameRecording() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+            index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
+                worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25", listOf(
+                    MusicBrainzCatalogTrack(
+                        track, recording, "Magnetic", 1, 2, 160000,
+                        artistDisplay = "Edition One credit",
+                        recordingArtistDisplay = "Recording credit",
+                    ),
+                ),
+            ))
+            index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
+                japan, group, "SUPER REAL ME", "ILLIT", "JP", "2024-03-25", listOf(
+                    MusicBrainzCatalogTrack(
+                        japanTrack, recording, "Magnetic", 1, 2, 160000,
+                        artistDisplay = "Edition Two credit",
+                        recordingArtistDisplay = "Recording credit",
+                    ),
+                ),
+            ))
+
+            val worldwideTrack = index.cachedRelease(worldwide)!!.tracks.single()
+            val japanEditionTrack = index.cachedRelease(japan)!!.tracks.single()
+
+            assertEquals("Edition One credit", worldwideTrack.artistDisplay)
+            assertEquals("Edition Two credit", japanEditionTrack.artistDisplay)
+            val recordingId = db.catalogDao().entityIdForExternalIdentity(
+                "musicbrainz", "recording", recording,
+            )!!
+            assertEquals("Recording credit", db.catalogDao().recordingById(recordingId)!!.artistDisplay)
+        } finally { db.close() }
+    }
+
+    @Test fun paginatedEditionAssociationsAccumulateAndRemainAvailableOffline() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+            index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
+                group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
+            )))
+            val pageOne = MusicBrainzReleaseHit(worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT")
+            val pageTwo = MusicBrainzReleaseHit(japan, "SUPER REAL ME", "JP", "2024-03-25", "ILLIT")
+            index.persistGroupEditions(group, listOf(pageOne))
+            index.persistGroupEditions(group, listOf(pageTwo))
+            index.persistGroupEditions(group, emptyList())
+            assertEquals(setOf(pageOne, pageTwo), index.cachedGroupReleases(group).toSet())
+        } finally { db.close() }
+    }
+
     @Test fun artistDiscographyCacheIsBoundToArtistMbidNotHomonymousArtistName() = runBlocking {
         val db = database()
         try {
@@ -96,6 +136,10 @@ class MusicBrainzOfflineEditionsTest {
             assertTrue(index.cachedArtistGroups("not-a-valid-mbid").isEmpty())
         } finally { db.close() }
     }
+
+    private fun database() = Room.inMemoryDatabaseBuilder(
+        RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+    ).allowMainThreadQueries().build()
 
     @Test fun artistDiscographyNeverPublishesExpiredFutureOrUnsafeVerifiedGroupFronts() =
         runBlocking {
@@ -134,10 +178,10 @@ class MusicBrainzOfflineEditionsTest {
                 assertNull(albumArt[expired])
                 assertNull(albumArt[invalid])
                 assertNull(albumArt[future])
+                // The offline search projection is not permitted to publish
+                // raw Front-v5 URLs without the shared eligibility gate.
+                assertTrue(dbDao.searchKnownMusicBrainzGroups("SUPER REAL ME", 25)
+                    .all { it.artworkUri == null })
             } finally { db.close() }
         }
-
-    private fun database() = Room.inMemoryDatabaseBuilder(
-        RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
-    ).allowMainThreadQueries().build()
 }
