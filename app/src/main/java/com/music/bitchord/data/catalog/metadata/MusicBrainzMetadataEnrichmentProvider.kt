@@ -6,6 +6,7 @@ import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderRequestDeniedException
+import com.music.bitchord.data.providers.ProviderSingleFlight
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -93,14 +94,30 @@ internal class MusicBrainzRateLimiter(
  */
 internal object MusicBrainzRequestBudget {
     val limiter = MusicBrainzRateLimiter()
+    // One HTTP client and one in-flight coalescer per Android process.
+    // Distinct provider capabilities and policy generations remain isolated.
+    val transport: MusicBrainzTransport by lazy { KtorMusicBrainzTransport() }
+    val inFlight = ProviderSingleFlight()
 }
 
+/** Reuse is limited to the exact transport and authorization generation. */
+private data class MusicBrainzInFlightKey(
+    val transport: MusicBrainzTransport,
+    val gate: ProviderPolicyGate?,
+    val revision: Long?,
+    val capability: ProviderCapability,
+    val path: String,
+    val parameters: Map<String, String>,
+    val userAgent: String,
+)
+
 internal class MusicBrainzClient(
-    private val transport: MusicBrainzTransport = KtorMusicBrainzTransport(),
+    private val transport: MusicBrainzTransport = MusicBrainzRequestBudget.transport,
     internal val rateLimiter: MusicBrainzRateLimiter = MusicBrainzRequestBudget.limiter,
     val userAgent: String = defaultMusicBrainzUserAgent(),
     private val retryDelayMillis: suspend (Long) -> Unit = { millis -> delay(millis) },
     private val admission: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
+    private val singleFlight: ProviderSingleFlight = MusicBrainzRequestBudget.inFlight,
 ) {
     suspend fun get(
         path: String,
@@ -122,39 +139,58 @@ internal class MusicBrainzClient(
             }
         }
 
-        var attempt = 1
-        while (true) {
-            try {
-                // The guard is checked again AFTER waiting in the shared
-                // 1 req/s queue and again before publishing any HTTP response.
-                // A disabled provider cannot dispatch queued retries or return
-                // stale bytes to the caller's cache/index.
-                ensureAdmitted()
-                val response = rateLimiter.runLimited {
+        // Only requests with the SAME transport, gate, revision, capability,
+        // path, query parameters and User-Agent may share in-flight work.
+        // In particular, switching a source OFF then ON cannot adopt a stale
+        // operation from an earlier authorization generation.
+        val requestKey = MusicBrainzInFlightKey(
+            transport = transport,
+            gate = gate,
+            revision = ticket?.revision,
+            capability = capability,
+            path = path,
+            parameters = parameters.toMap(),
+            userAgent = userAgent,
+        )
+        val result = singleFlight.run(requestKey) {
+            var attempt = 1
+            while (true) {
+                try {
+                    // Check before and after the global 1 req/s queue, before
+                    // retries and before delivering raw bytes to any caller.
                     ensureAdmitted()
-                    transport.get(path, parameters, userAgent).also {
+                    val response = rateLimiter.runLimited {
                         ensureAdmitted()
+                        transport.get(path, parameters, userAgent).also {
+                            ensureAdmitted()
+                        }
                     }
-                }
-                ensureAdmitted()
-                return response
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (response: ResponseException) {
-                val status = response.response.status.value
-                if (status != HTTP_TOO_MANY_REQUESTS && status != HTTP_SERVICE_UNAVAILABLE ||
-                    attempt >= MAX_ATTEMPTS
-                ) throw response
+                    ensureAdmitted()
+                    return@run response
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (response: ResponseException) {
+                    val status = response.response.status.value
+                    if (status != HTTP_TOO_MANY_REQUESTS &&
+                        status != HTTP_SERVICE_UNAVAILABLE || attempt >= MAX_ATTEMPTS
+                    ) throw response
 
-                val retryAfter = response.response.headers[HttpHeaders.RetryAfter]
-                val delay = when {
-                    retryAfter == null -> BACKOFF_MILLIS[attempt - 1]
-                    else -> retryAfter.retryAfterMillisOrNull() ?: throw response
+                    val retryAfter = response.response.headers[HttpHeaders.RetryAfter]
+                    val wait = if (retryAfter == null) {
+                        BACKOFF_MILLIS[attempt - 1]
+                    } else {
+                        retryAfter.retryAfterMillisOrNull() ?: throw response
+                    }
+                    retryDelayMillis(wait)
+                    attempt += 1
                 }
-                retryDelayMillis(delay)
-                attempt += 1
             }
+            @Suppress("UNREACHABLE_CODE")
+            error("MusicBrainz request unexpectedly fell through")
         }
+        // Followers must re-check their own ticket after sharing a response.
+        ensureAdmitted()
+        return result
     }
 
     private fun String.retryAfterMillisOrNull(): Long? {
