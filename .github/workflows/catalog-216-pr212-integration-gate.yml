@@ -39,33 +39,36 @@ jobs:
           python3 - <<'PY'
           import pathlib
           import subprocess
-          baseline = "65863b528b233a277421f45002b5f6baa50ebae1"
-          path = "app/src/main/java/com/music/bitchord/MainActivity.kt"
-          original = subprocess.check_output(["git", "show", f"{baseline}:{path}"], text=True)
-          old = '''canonicalTracks = if (
-                                page.browseId.startsWith("catalog:RELEASE:") ||
-                                page.browseId.startsWith("catalog:RELEASE_GROUP:")
-                            ) {'''
-          new = '''canonicalTracks = if (page.browseId.startsWith("itunes:")) {
-                                viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()
-                                    .value[page.browseId].orEmpty()
-                            } else if (
-                                page.browseId.startsWith("catalog:RELEASE:") ||
-                                page.browseId.startsWith("catalog:RELEASE_GROUP:")
-                            ) {'''
-          assert original.count(old) == 1, "PR212 baseline changed unexpectedly"
-          expected = original.replace(old, new)
-          home_old = '''metadata = (cachedCanonicalRows + canonicalWorldwideReleases)
-                .distinctBy { it.kind to it.musicBrainzId },'''
-          home_new = '''metadata = (cachedCanonicalRows.filter {
-                it.kind == CanonicalSearchKind.RECORDING
-            } + canonicalWorldwideReleases)
-                .distinctBy { it.kind to it.musicBrainzId },'''
-          assert expected.count(home_old) == 1, "PR212 home metadata binding missing"
-          expected = expected.replace(home_old, home_new)
+          baseline = '65863b528b233a277421f45002b5f6baa50ebae1'
+          path = 'app/src/main/java/com/music/bitchord/MainActivity.kt'
+          original = subprocess.check_output(['git', 'show', f'{baseline}:{path}'], text=True)
+          assert original.endswith('\n')
+          lines = original.splitlines()
+          positions = [i for i, line in enumerate(lines) if line.strip() == 'canonicalTracks = if (']
+          assert len(positions) == 1, 'Unexpected PR212 track binding'
+          i = positions[0]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          assert lines[i+3].strip() == ') {'
+          lines[i:i+4] = [
+              indent + 'canonicalTracks = if (page.browseId.startsWith("itunes:")) {',
+              indent + '    viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()',
+              indent + '        .value[page.browseId].orEmpty()',
+              indent + '} else if (',
+              lines[i+1], lines[i+2], lines[i+3],
+          ]
+          homes = [i for i, line in enumerate(lines) if line.strip() == 'metadata = (cachedCanonicalRows + canonicalWorldwideReleases)']
+          assert len(homes) == 1, 'Unexpected PR212 Home metadata binding'
+          i = homes[0]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          lines[i:i+1] = [
+              indent + 'metadata = (cachedCanonicalRows.filter {',
+              indent + '    it.kind == CanonicalSearchKind.RECORDING',
+              indent + '} + canonicalWorldwideReleases)',
+          ]
+          expected = '\n'.join(lines) + '\n'
           actual = pathlib.Path(path).read_text()
-          assert actual == expected, "MainActivity differs from PR212 beyond the two approved metadata bindings"
-          print("MainActivity: only two catalog data bindings; UI structure preserved")
+          assert actual == expected, 'MainActivity differs from PR212 beyond two exact metadata bindings'
+          print('PR212 MainActivity: only two source bindings changed; all other bytes match')
           PY
           echo "PR212 visual implementations unchanged from $ui_base"
       - name: Set up JDK 17
