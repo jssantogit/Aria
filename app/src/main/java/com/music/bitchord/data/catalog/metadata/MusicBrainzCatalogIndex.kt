@@ -1,6 +1,9 @@
 package com.music.bitchord.data.catalog.metadata
 
 import androidx.room.withTransaction
+import com.music.bitchord.data.providers.ProviderCachedReadAccess
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.ArtistEntity
 import com.music.bitchord.data.catalog.MusicBrainzArtistEnrichmentEntity
@@ -30,7 +33,9 @@ import java.util.UUID
 internal class MusicBrainzCatalogIndex(
     private val database: CanonicalCatalogDatabase,
     private val idFactory: () -> String = { UUID.randomUUID().toString() },
+    private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
 ) {
+    private val musicBrainz = ProviderKey("musicbrainz")
     suspend fun persistRecordings(hits: List<MusicBrainzRecordingHit>): Map<String, String> =
         database.withTransaction {
             val dao = database.catalogDao()
@@ -189,7 +194,12 @@ internal class MusicBrainzCatalogIndex(
     }
 
     suspend fun cachedArtistGroups(artistMbid: String): List<MusicBrainzReleaseGroupHit> =
-        database.withTransaction {
+        cacheRead.read(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            musicBrainz,
+            emptyList<MusicBrainzReleaseGroupHit>(),
+        ) {
+            database.withTransaction {
             val normalized = artistMbid.trim().lowercase(Locale.ROOT).takeIf(MBID::matches)
                 ?: return@withTransaction emptyList()
             val dao = database.catalogDao()
@@ -217,6 +227,7 @@ internal class MusicBrainzCatalogIndex(
                     record.mbid to url
                 }.toMap()
             rows.map { it.copy(artworkUri = verified[it.musicBrainzId]) }
+            }
         }
 
     /** Edition search evidence uses the existing source-specific v3 cache. */
@@ -269,7 +280,12 @@ internal class MusicBrainzCatalogIndex(
     }
 
     suspend fun cachedGroupReleases(groupMbid: String): List<MusicBrainzReleaseHit> =
-        database.withTransaction {
+        cacheRead.read(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            musicBrainz,
+            emptyList<MusicBrainzReleaseHit>(),
+        ) {
+            database.withTransaction {
             val dao = database.catalogDao()
             val normalized = groupMbid.trim().lowercase(Locale.ROOT).takeIf(MBID::matches)
                 ?: return@withTransaction emptyList()
@@ -285,10 +301,17 @@ internal class MusicBrainzCatalogIndex(
                     edition.artistDisplay, status = edition.status,
                 )
             }
+            }
         }
 
     /** A release seen in search alone does not prove a downloaded tracklist. */
-    suspend fun cachedRelease(mbid: String): MusicBrainzCatalogReleaseDetail? = database.withTransaction {
+    suspend fun cachedRelease(mbid: String): MusicBrainzCatalogReleaseDetail? =
+        cacheRead.read<MusicBrainzCatalogReleaseDetail?>(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            musicBrainz,
+            null,
+        ) {
+            database.withTransaction {
         val dao = database.catalogDao()
         val normalized = mbid.trim().lowercase(Locale.ROOT).takeIf(MBID::matches)
             ?: return@withTransaction null
@@ -303,7 +326,8 @@ internal class MusicBrainzCatalogIndex(
         MusicBrainzCatalogReleaseDetail(normalized,
             dao.musicBrainzGroupMbidsForRelease(releaseId).singleOrNull(), release.title,
             info?.artistDisplay ?: release.artistDisplay, info?.country, info?.releaseDate, tracks)
-    }
+            }
+        }
 
     /**
      * Canonical ReleaseGroup/Release/Track graph is independent of audio
