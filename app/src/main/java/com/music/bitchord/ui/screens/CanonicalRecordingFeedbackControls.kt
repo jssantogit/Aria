@@ -566,6 +566,7 @@ internal fun CanonicalRecordingFeedbackPanel(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 NativeContextActionPlate(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                    artworkUrl = artworkUrl,
                 ) { ratingEditorContent() }
             }
         }
