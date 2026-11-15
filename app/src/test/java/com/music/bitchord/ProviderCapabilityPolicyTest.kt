@@ -17,6 +17,7 @@ import org.junit.Test
 
 class ProviderCapabilityPolicyTest {
     private val apple = ProviderKey("itunes")
+    private val fanart = ProviderKey("fanarttv")
     private val musicBrainz = ProviderKey("musicbrainz")
     private val nasA = ProviderKey("opensubsonic", "nas-a")
     private val nasB = ProviderKey("opensubsonic", "nas-b")
@@ -57,7 +58,7 @@ class ProviderCapabilityPolicyTest {
             ))),
             choices = mapOf(
                 ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(apple, false, 0)),
-                ProviderChoice.RELEASE_ARTWORK to listOf(ProviderChoice(apple, true, 0)),
+                ProviderCapability.RELEASE_ARTWORK to listOf(ProviderChoice(apple, true, 0)),
             ),
         )
         assertTrue(policy.eligible(ProviderCapability.CATALOG_SEARCH).isEmpty())
@@ -113,6 +114,36 @@ class ProviderCapabilityPolicyTest {
         assertFalse(gate.accept(ticket))
         assertNull(gate.open(ProviderCapability.RELEASE_ARTWORK, apple))
         assertTrue(gate.ordered(ProviderCapability.RELEASE_ARTWORK).isEmpty())
+    }
+
+    @Test fun disablingOneProviderInstancePreservesInflightTicketOfSiblingProvider() {
+        val descriptors = listOf(
+            ready(apple, setOf(ProviderCapability.RELEASE_ARTWORK)),
+            ready(fanart, setOf(ProviderCapability.RELEASE_ARTWORK)),
+        )
+        fun policy(appleEnabled: Boolean, fanartEnabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = descriptors,
+            choices = mapOf(
+                ProviderCapability.RELEASE_ARTWORK to listOf(
+                    ProviderChoice(apple, appleEnabled, 0),
+                    ProviderChoice(fanart, fanartEnabled, 1),
+                ),
+            ),
+        )
+        val gate = ProviderPolicyGate(policy(appleEnabled = true, fanartEnabled = true))
+        val appleTicket = requireNotNull(gate.open(ProviderCapability.RELEASE_ARTWORK, apple))
+        val fanartTicket = requireNotNull(gate.open(ProviderCapability.RELEASE_ARTWORK, fanart))
+
+        var appleCancelled = false
+        var fanartCancelled = false
+        gate.onRevoke(appleTicket) { appleCancelled = true }
+        gate.onRevoke(fanartTicket) { fanartCancelled = true }
+
+        gate.replace(policy(appleEnabled = false, fanartEnabled = true))
+        assertFalse(gate.accept(appleTicket))
+        assertTrue(appleCancelled)
+        assertTrue(gate.accept(fanartTicket))
+        assertFalse(fanartCancelled)
     }
 
     @Test fun changingArtworkPolicyDoesNotCancelUnrelatedAudioRequests() {

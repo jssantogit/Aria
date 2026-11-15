@@ -12,7 +12,9 @@ import com.music.bitchord.data.providers.ProviderReadiness
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -56,21 +58,24 @@ class ProviderQueryExecutorTest {
         assertFalse(invoked)
     }
 
-    @Test fun disablingAnInflightProviderDiscardsItsLateResponse() = runBlocking {
+    @Test fun disablingAnInflightProviderActivelyCancelsOperationAndReturnsStale() = runBlocking {
         val gate = gate()
         val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
+        val operationCancelled = CompletableDeferred<Unit>()
         val response = async {
             ProviderQueryExecutor(gate).execute(ProviderCapability.CATALOG_SEARCH, apple) {
                 entered.complete(Unit)
-                release.await()
-                "late catalog response"
+                try {
+                    awaitCancellation()
+                } finally {
+                    operationCancelled.complete(Unit)
+                }
             }
         }
-        entered.await()
+        withTimeout(2_000) { entered.await() }
         gate.replace(policy(search = false))
-        release.complete(Unit)
-        assertEquals(ProviderCallResult.Stale, response.await())
+        withTimeout(2_000) { operationCancelled.await() }
+        assertEquals(ProviderCallResult.Stale, withTimeout(2_000) { response.await() })
     }
 
     @Test fun changingArtworkChoiceDoesNotInvalidateAnUnrelatedCatalogResponse() = runBlocking {

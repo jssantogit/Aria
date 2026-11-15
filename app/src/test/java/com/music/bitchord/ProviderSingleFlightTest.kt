@@ -1,9 +1,18 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityPolicy
+import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.ProviderDescriptor
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderReadiness
+import com.music.bitchord.data.providers.ProviderRequestDeniedException
 import com.music.bitchord.data.providers.ProviderSingleFlight
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -116,6 +125,47 @@ class ProviderSingleFlightTest {
         withTimeout(2_000) { cancelled.await() }
         assertEquals(0, flight.activeCount())
         assertEquals("recovered", flight.run("missing") { "recovered" })
+    }
+
+    @Test fun policyRevocationActivelyCancelsSharedInflightSlot(): Unit = runBlocking {
+        val mb = ProviderKey("musicbrainz")
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(
+                ProviderDescriptor(mb, setOf(ProviderCapability.CATALOG_SEARCH), ProviderReadiness.READY),
+            ),
+            choices = mapOf(
+                ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(mb, enabled, 0)),
+            ),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        val flight = ProviderSingleFlight<String>()
+        val started = CompletableDeferred<Unit>()
+        val aborted = CompletableDeferred<Unit>()
+        val waiter = async {
+            try {
+                flight.runGuarded(
+                    gate = gate,
+                    capability = ProviderCapability.CATALOG_SEARCH,
+                    provider = mb,
+                    key = "artist:illit",
+                ) {
+                    started.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        aborted.complete(Unit)
+                    }
+                }
+                false
+            } catch (_: ProviderRequestDeniedException) {
+                true
+            }
+        }
+        withTimeout(2_000) { started.await() }
+        gate.replace(policy(false))
+        withTimeout(2_000) { aborted.await() }
+        assertTrue(withTimeout(2_000) { waiter.await() })
+        assertEquals(0, flight.activeCount())
     }
 
     @Test fun failuresAreSharedOnlyWithTheirOwnKeyAndFutureRetriesAreAllowed(): Unit = runBlocking {
