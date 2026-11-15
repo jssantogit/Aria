@@ -15,9 +15,10 @@ import kotlinx.coroutines.sync.withLock
  */
 class ProviderCapabilitySession(
     private val store: ProviderPreferenceStore,
-    private val descriptors: List<ProviderDescriptor>,
+    initialDescriptors: List<ProviderDescriptor>,
 ) {
     private val lock = Mutex()
+    private var descriptors: List<ProviderDescriptor> = initialDescriptors.toList()
     private var choices: Map<ProviderCapability, List<ProviderChoice>> = emptyMap()
     // Granular per-instance quarantine: (capability, provider key)
     private val quarantinedSlots = mutableSetOf<Pair<ProviderCapability, ProviderKey>>()
@@ -26,7 +27,7 @@ class ProviderCapabilitySession(
     private var storageFailure: Boolean = false
 
     /** Admission gate shared by adapters; closed until initialization. */
-    val gate = ProviderPolicyGate(ProviderCapabilityPolicy(descriptors))
+    val gate = ProviderPolicyGate(ProviderCapabilityPolicy(initialDescriptors))
     private val _state = MutableStateFlow(ProviderSessionSnapshot())
     /** Immutable, non-secret status for future presentation or diagnostics. */
     val state: StateFlow<ProviderSessionSnapshot> = _state.asStateFlow()
@@ -155,6 +156,22 @@ class ProviderCapabilitySession(
         if (quarantinedSlots.isEmpty()) storageFailure = false
         publishSnapshot()
         true
+    }
+
+    /**
+     * Rebinds adapter descriptors after the legacy connection registry loads
+     * (or adds/removes a server). Never changes persisted user choices.
+     *
+     * Missing descriptors remain ineligible; a saved disabled instance cannot
+     * become active merely because it was discovered by SourceRegistry.
+     */
+    suspend fun refreshDescriptors(next: List<ProviderDescriptor>) = lock.withLock {
+        // Validate the replacement before touching the active descriptor set.
+        ProviderCapabilityPolicy(next)
+        if (descriptors == next) return@withLock
+        descriptors = next.toList()
+        gate.replace(effectivePolicy())
+        publishSnapshot()
     }
 
     /**
