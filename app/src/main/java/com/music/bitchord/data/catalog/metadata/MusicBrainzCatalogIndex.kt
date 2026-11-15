@@ -32,8 +32,10 @@ import java.util.UUID
  */
 internal class MusicBrainzCatalogIndex(
     private val database: CanonicalCatalogDatabase,
-    private val idFactory: () -> String = { UUID.randomUUID().toString() },
     private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
+    // Keep the function parameter LAST: existing Kotlin call sites use
+    // MusicBrainzCatalogIndex(db) { ... } with a trailing ID factory lambda.
+    private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
     private val musicBrainz = ProviderKey("musicbrainz")
     suspend fun persistRecordings(hits: List<MusicBrainzRecordingHit>): Map<String, String> =
