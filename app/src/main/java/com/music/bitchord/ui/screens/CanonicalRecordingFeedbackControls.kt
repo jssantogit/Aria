@@ -293,6 +293,10 @@ internal fun ratingDialogEntranceFrame(progress: Float, reducedMotion: Boolean):
     return RatingDialogEntranceFrame(alpha = 0.96f + 0.04f * p, scale = 0.97f + 0.03f * p)
 }
 
+/** Keep an anchored editor inside the window, even in Android multi-window. */
+internal fun anchoredRatingCardWidthDp(screenWidthDp: Int): Int =
+    ((screenWidthDp.takeIf { it > 0 } ?: 320) - 32).coerceIn(1, 300)
+
 /**
  * Icon-based, locally editable 1–5 star modal. Each star has a left (half)
  * and right (whole) touch target; every increment is explicit and accessible.
@@ -348,6 +352,10 @@ internal fun CanonicalRecordingFeedbackPanel(
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val sheetForeground = if (darkTheme) Color.White else Color.Black
     val sheetTitle = title ?: stringResource(Res.string.recording_feedback_dialog_title)
+    val anchoredWidthDp = anchoredRatingCardWidthDp(LocalConfiguration.current.screenWidthDp)
+    // Preserve the approved 40dp stars at normal widths; scale only if the
+    // window itself is narrower than the former fixed 248dp panel.
+    val anchoredGlyphSize = ((anchoredWidthDp - 24) / 5).coerceIn(18, 40).dp
     val ratingEditorContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth()
@@ -426,7 +434,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                             // A 48dp glyph viewport keeps the visible star
                             // near 28dp while maintaining generous touch slots.
                             Box(
-                                modifier = Modifier.size(if (anchorBounds == null) 56.dp else 40.dp)
+                                modifier = Modifier.size(if (anchorBounds == null) 56.dp else anchoredGlyphSize)
                                     .testTag("rating-editor-star-$i-${starFill.name.lowercase()}")
                                     .graphicsLayer {
                                         scaleX = starPulse.value
@@ -440,7 +448,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                                     compactRatingColorStops(scoreForSlot) else emptyList()
                                 val slotBrush = if (slotStops.map { it.second }.distinct().size > 1)
                                     Brush.linearGradient(*slotStops.toTypedArray()) else null
-                                val glyphSize = if (anchorBounds == null) 56.dp else 40.dp
+                                val glyphSize = if (anchorBounds == null) 56.dp else anchoredGlyphSize
                                 if (numericStars && filled) {
                                     // Each chosen step uses the actual V3 numeric
                                     // star vectors, including half scores.
@@ -532,8 +540,7 @@ internal fun CanonicalRecordingFeedbackPanel(
         // Same full-screen dialog and artwork blur as the ⋯ player menu.
         // A nested Popup used another window's coordinate space and could
         // appear detached or leave an invisible focus-stealing surface.
-        val cardWidth = (LocalConfiguration.current.screenWidthDp - 32)
-            .coerceAtMost(300).coerceAtLeast(248).dp
+        val cardWidth = anchoredWidthDp.dp
         PlayerAnchoredActionsMenu(
             anchorBounds = anchorBounds,
             artworkUrl = artworkUrl,
