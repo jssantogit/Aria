@@ -26,12 +26,17 @@ class NativeCompactHomePlateStyleTest {
         assertTrue(plate.luminance() < Color.White.luminance())
     }
 
-    @Test fun artworkMenusKeepTheirTintButReceiveTonalElevation() {
+    @Test fun dynamicallyTintedMenusKeepTheExactNeutralLibraryFilterPlate() {
         val albumElevation = Color(0xFF244C52)
-        val plate = nativeCompactPlateColor(isDark = true, artworkElevation = albumElevation)
-        assertEquals(1f, plate.alpha)
-        assertTrue(plate.luminance() > albumElevation.luminance())
-        assertTrue(plate.blue > plate.red)
+        val pinkElevation = Color(0xFFF340A0)
+        assertEquals(
+            nativeCompactPlateColor(isDark = true, artworkElevation = null),
+            nativeCompactPlateColor(isDark = true, artworkElevation = albumElevation),
+        )
+        assertEquals(
+            nativeCompactPlateColor(isDark = false, artworkElevation = null),
+            nativeCompactPlateColor(isDark = false, artworkElevation = pinkElevation),
+        )
     }
 
     @Test fun libraryFilterScrimDoesNotHideItsContext() {
