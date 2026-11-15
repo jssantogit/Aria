@@ -2,10 +2,8 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.unit.IntRect
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -33,8 +31,8 @@ class CanonicalRatingAnchorRoutesTest {
                 )
             }
         }
-        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
-        compose.onNodeWithTag("native-rating-bottom-sheet").assertDoesNotExist()
+        assertEquals(1, compose.onAllNodesWithTag("native-rating-anchored-card").fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodesWithTag("native-rating-bottom-sheet").fetchSemanticsNodes().size)
     }
     @Test fun anchoredRatingWidthShrinksForMultiWindowInsteadOfOverflowing() {
         assertEquals(300, anchoredRatingCardWidthDp(500))
