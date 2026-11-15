@@ -105,7 +105,7 @@ class ProviderSingleFlightTest {
             flight.run("missing") {
                 entered.complete(Unit)
                 try {
-                    CompletableDeferred<Unit>().await()
+                    CompletableDeferred<String>().await()
                 } finally {
                     cancelled.complete(Unit)
                 }
