@@ -2,12 +2,13 @@ package com.music.bitchord
 
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
+import com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogIndex
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -19,15 +20,138 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
 class MusicBrainzPublicMetadataIndexTest {
-    @Before
-    fun setUp() {
-        ProviderCachedReadAccessTestHelper.installPermissiveGate()
+@Test fun cachedArtistDiscographyReusesVerifiedCoverWithoutRequestingCAAAgain() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
+            CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            var number = 0
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "artist-card-${++number}" })
+            val artistMbid = "b51c672b-85e0-48fe-8648-470a2422229f"
+            val groupMbid = "529f87a1-1081-48a4-8ee1-3c08de229858"
+            val artistIds = index.persistArtists(listOf(MusicBrainzArtistHit(
+                artistMbid, "aespa", "South Korean group", "KR")))
+            index.persistArtistGroups(artistMbid, listOf(MusicBrainzReleaseGroupHit(
+                groupMbid, "SUPER REAL ME", "EP", "2024-03-25", "aespa",
+                secondaryTypes = "Remix",
+            )))
+            db.catalogDao().upsertMusicBrainzCoverArtCache(MusicBrainzCoverArtCacheEntity(
+                "release-group:front-v3", groupMbid,
+                "https://archive.org/stale-direct-shortcut.jpg", 10_000L,
+                thumbnailUri = "https://archive.org/stale-direct-500.jpg",
+            ))
+            assertEquals(null, index.cachedArtistGroups(artistMbid).single().artworkUri)
+            db.catalogDao().upsertMusicBrainzCoverArtCache(MusicBrainzCoverArtCacheEntity(
+                "release-group:front-v5", groupMbid,
+                "https://archive.org/verified-album-1200.jpg",
+                System.currentTimeMillis() - 1_000L,
+                thumbnailUri = "https://archive.org/verified-album-500.jpg",
+            ))
+            val joined = db.catalogDao().verifiedArtistDiscographyRows(
+                requireNotNull(artistIds[artistMbid])).single()
+            assertEquals(groupMbid, joined.musicBrainzId)
+            // DAO only returns group identity; index must validate the
+            // separately fetched Front-v5 record before publishing artwork.
+            assertEquals(null, joined.artworkUri)
+            assertEquals("Remix", joined.secondaryTypes)
+            val cached = index.cachedArtistGroups(artistMbid).single()
+            assertEquals(groupMbid, cached.musicBrainzId)
+            assertEquals("Remix", cached.secondaryTypes)
+            assertEquals("https://archive.org/verified-album-500.jpg", cached.artworkUri)
+        } finally { db.close() }
     }
 
-    @After
-    fun tearDown() {
-        ProviderCachedReadAccessTestHelper.resetGate()
+    @Test fun offlineDiscographyUsesDocumentedOfficialEditionDisplayLabelNotCompositeGroupTitle() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
+            CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            var id = 0
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "offline-title-" + (++id) })
+            val artist = "49204a7a-ed85-407a-828f-6fd46f1d8126"
+            val group = "9750354e-78df-4058-8758-b5a7a2eccf66"
+            index.persistArtists(listOf(MusicBrainzArtistHit(artist, "NewJeans", null, "KR")))
+            index.persistArtistGroups(artist, listOf(
+                MusicBrainzReleaseGroupHit(group, "How Sweet & Bubble Gum",
+                    "Single", "2024-05-24", "NewJeans"),
+            ))
+            assertEquals("How Sweet & Bubble Gum", index.cachedArtistGroups(artist).single().title)
+            index.persistGroupEditions(group, listOf(
+                MusicBrainzReleaseHit("11111111-1111-4111-8111-111111111111",
+                    "How Sweet", "XW", "2024-05-24", "NewJeans", status = "Official"),
+                MusicBrainzReleaseHit("22222222-2222-4222-8222-222222222222",
+                    "How Sweet (music video)", "KR", "2024-05-24", "NewJeans",
+                    status = "Official"),
+            ))
+            assertEquals("How Sweet", index.cachedArtistGroups(artist).single().title)
+            assertEquals("How Sweet", db.catalogDao().searchKnownMusicBrainzGroups(
+                "How Sweet", 30,
+            ).single { it.musicBrainzId == group }.title)
+            // A later raw MB browse must not undo the edition-backed display label.
+            index.persistArtistGroups(artist, listOf(
+                MusicBrainzReleaseGroupHit(group, "How Sweet & Bubble Gum",
+                    "Single", "2024-05-24", "NewJeans"),
+            ))
+            assertEquals("How Sweet", index.cachedArtistGroups(artist).single().title)
+        } finally { db.close() }
     }
+
+
+    @Test fun aRecordingMayReuseOnlyItsOwnOfficialReleaseGroupFront() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
+            CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            var n = 0
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "recording-cover-" + (++n) })
+            val group = "11111111-1111-4111-8111-111111111111"
+            val release = "22222222-2222-4222-8222-222222222222"
+            val record = "33333333-3333-4333-8333-333333333333"
+            val track = "44444444-4444-4444-8444-444444444444"
+            val unrelated = "55555555-5555-4555-8555-555555555555"
+            index.persistReleaseGroups(listOf(
+                MusicBrainzReleaseGroupHit(group, "Taste of Love", "EP", "2021-06-11", "TWICE"),
+            ))
+            index.persistGroupEditions(group, listOf(
+                MusicBrainzReleaseHit(release, "Taste of Love", "XW",
+                    "2021-06-11", "TWICE", status = "Official"),
+            ))
+            index.persistReleaseDetail(
+                com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogReleaseDetail(
+                    musicBrainzId = release, groupMbid = group, title = "Taste of Love",
+                    artistDisplay = "TWICE", country = "XW", releaseDate = "2021-06-11",
+                    tracks = listOf(com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogTrack(
+                        trackMbid = track, recordingMbid = record, title = "Alcohol-Free",
+                        mediumNumber = 1, trackNumber = 1, durationMs = 200000L,
+                    )),
+                ),
+            )
+            val dao = db.catalogDao()
+            // A known Recording->Track->Official Release->Group claim is required.
+            assertEquals(null, dao.verifiedRecordingCoverGroupMbid(record))
+            assertEquals(null, dao.verifiedRecordingCoverGroupMbid(unrelated))
+            dao.upsertMusicBrainzCoverArtCache(MusicBrainzCoverArtCacheEntity(
+                "release-group:front-v4", group, "https://archive.org/old-collector.jpg",
+                1000L,
+            ))
+            assertEquals(null, dao.verifiedRecordingCoverGroupMbid(record))
+            dao.upsertMusicBrainzCoverArtCache(MusicBrainzCoverArtCacheEntity(
+                "release-group:front-v5", group, "https://archive.org/verified-main.jpg",
+                2000L,
+            ))
+            assertEquals(group, dao.verifiedRecordingCoverGroupMbid(record))
+            assertEquals(null, dao.verifiedRecordingCoverGroupMbid(unrelated))
+            // Bulk hydration must share the same proven official-edition edge
+            // as the individual lookup. A twenty-song album cannot incur one
+            // expensive Room graph traversal per cover, and unrelated songs
+            // must not borrow the nearest album's artwork.
+            val batch = dao.verifiedRecordingCoverGroupMbids(
+                listOf(unrelated, record, record, "66666666-6666-4666-8666-666666666666"),
+            )
+            assertEquals(listOf(record to group), batch.map {
+                it.recordingMbid to it.groupMbid
+            }.distinct())
+
+        } finally { db.close() }
+    }
+
 
     @Test fun offlineArtistsWithSameNameKeepDistinctMbidsAndDisambiguation() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
