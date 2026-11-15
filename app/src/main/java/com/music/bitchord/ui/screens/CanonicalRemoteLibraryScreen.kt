@@ -843,6 +843,12 @@ internal fun CanonicalRemoteLibraryScreen(
                     providerKey = source,
                     credits = catalogDao.releaseArtistCredits(id),
                     availableArtists = catalogDao.providerScopedArtists(source),
+                    // Older local/Navidrome releases can have an album credit
+                    // but no releaseArtistCredits row yet. Only a unique artist
+                    // in the *same selected provider* is a safe fallback.
+                    artistName = (entityState as? CanonicalEntityBrowseState.Albums)
+                        ?.releases?.firstOrNull { it.id == id }?.artistDisplay
+                        ?: scopedDetailTracks.firstOrNull()?.artistDisplay,
                 )
             }
         } catch (cancelled: CancellationException) {
@@ -1688,7 +1694,9 @@ internal fun CanonicalRemoteLibraryScreen(
                     ratings.size == 1 &&
                     ratings.single().type == CanonicalLibraryEntityType.ARTIST
                 ) artistRatingAnchor else null,
-                artworkUrl = selectedEntity?.artworkUri,
+                artworkUrl = selectedEntity?.artworkUri
+                    ?: selectedEntity?.id?.let { entityArtworkById[it]?.artworkUri }
+                    ?: scopedDetailTracks.firstOrNull()?.artworkUri,
             )
         }
         // Keep the draft while navigating, but never float batch actions over
