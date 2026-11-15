@@ -97,7 +97,7 @@ internal object MusicBrainzRequestBudget {
     // One HTTP client and one in-flight coalescer per Android process.
     // Distinct provider capabilities and policy generations remain isolated.
     val transport: MusicBrainzTransport by lazy { KtorMusicBrainzTransport() }
-    val inFlight = ProviderSingleFlight()
+    val inFlight = ProviderSingleFlight<String>()
 }
 
 /** Reuse is limited to the exact transport and authorization generation. */
@@ -117,7 +117,7 @@ internal class MusicBrainzClient(
     val userAgent: String = defaultMusicBrainzUserAgent(),
     private val retryDelayMillis: suspend (Long) -> Unit = { millis -> delay(millis) },
     private val admission: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
-    private val singleFlight: ProviderSingleFlight = MusicBrainzRequestBudget.inFlight,
+    private val singleFlight: ProviderSingleFlight<String> = MusicBrainzRequestBudget.inFlight,
 ) {
     suspend fun get(
         path: String,
