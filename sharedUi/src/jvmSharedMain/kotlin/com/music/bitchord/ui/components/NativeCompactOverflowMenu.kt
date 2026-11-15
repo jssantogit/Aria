@@ -124,22 +124,17 @@ internal fun nativeCompactMenuCornerRadiusDp(homePlateStyle: Boolean): Int =
     if (homePlateStyle) 16 else 18
 
 /**
- * Elevation must remain legible on an AMOLED black page. A translucent black
- * overlay (the old 0.96f plate) is invisible over a black background, even
- * when the popup has a 20dp shadow.
+ * The Library's native filter is the canonical plate for compact popups,
+ * including ⋯ actions and selection. Artwork colors may influence the PAGE,
+ * never the command plate: one neutral opaque material prevents legibility
+ * failures on green/purple/blue artwork washes.
  *
- * Keep art-colored plates chromatic, but lift their luminance slightly. The
- * opaque surface prevents underlying text and covers bleeding into the menu.
- * No light hairline or outlined Material fallback is drawn.
+ * ArtworkElevation remains an accepted argument to preserve callers while
+ * deliberately removing palette-specific menu surfaces.
  */
-fun nativeCompactPlateColor(isDark: Boolean, artworkElevation: Color?): Color = when {
-    artworkElevation != null -> lerp(
-        artworkElevation, if (isDark) Color.White else Color.Black,
-        if (isDark) 0.12f else 0.06f,
-    ).copy(alpha = 1f)
-    isDark -> Color(0xFF29292D)
-    else -> Color(0xFFF5F5F7)
-}
+@Suppress("UNUSED_PARAMETER")
+fun nativeCompactPlateColor(isDark: Boolean, artworkElevation: Color?): Color =
+    if (isDark) Color(0xFF29292D) else Color(0xFFF5F5F7)
 
 /** Show enough of the actual page to preserve context while the plate lifts. */
 fun nativeCompactMenuScrimAlpha(isDark: Boolean): Float =

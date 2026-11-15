@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onSizeChanged
@@ -82,6 +83,10 @@ fun PlayerAnchoredActionsMenu(
     content: @Composable () -> Unit,
 ) {
     val palette = rememberArtworkPalette(imageUrl = artworkUrl)
+    val plate = nativeCompactPlateColor(
+        MaterialTheme.colorScheme.background.luminance() < 0.5f,
+        artworkElevation = null,
+    )
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     var plateSize by remember { mutableStateOf(IntSize.Zero) }
     var rootOrigin by remember { mutableStateOf(IntOffset.Zero) }
@@ -170,7 +175,7 @@ fun PlayerAnchoredActionsMenu(
                     // child's PaneTitle semantics and crashes Compose UI tests
                     // (and can break TalkBack). Child actions keep priority.
                     .pointerInput(Unit) { detectTapGestures(onTap = {}) },
-                color = palette.elevated,
+                color = plate,
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 shape = RoundedCornerShape(18.dp),
                 shadowElevation = 22.dp,
@@ -182,7 +187,9 @@ fun PlayerAnchoredActionsMenu(
                         modifier = Modifier.matchParentSize(),
                         washFraction = 0.78f,
                     )
-                    Box(Modifier.background(Color.Black.copy(alpha = 0.25f))) {
+                    // Diffused sleeve remains subtle, but the Library's
+                    // neutral filter tint owns the player menu's text surface.
+                    Box(Modifier.background(plate.copy(alpha = 0.88f))) {
                         content()
                     }
                 }
@@ -208,22 +215,16 @@ fun PlayerAnchoredActionsMenu(
                         .size(highlightSize)
                         .testTag("player-overflow-highlight")
                         .clickable(onClick = onDismiss),
-                    color = palette.elevated,
-                    contentColor = palette.onBackground,
+                    color = plate,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     shape = CircleShape,
                     shadowElevation = 8.dp,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        ArtworkBackdrop(
-                            palette = palette,
-                            imageUrl = artworkUrl,
-                            modifier = Modifier.fillMaxSize(),
-                            washFraction = 1f,
-                        )
                         Icon(
                             imageVector = PlaylistEditorIcons.More,
                             contentDescription = "Fechar opções do player",
-                            tint = palette.onBackground,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(24.dp),
                         )
                     }
