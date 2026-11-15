@@ -3428,8 +3428,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // For artists outside the top-100 sitewide, the bounded recording
             // popularity sample is still explicitly partial, never Spotify.
             val sampledRanking = if (original.isEmpty() && allTimeRanking.isEmpty() &&
-                _detailStack.value.lastOrNull()?.browseId
-                    ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                activePublicArtistMatches(id)
             ) try {
                 // MusicBrainz relevance order is not play-count order. Search
                 // up to four pages before asking ListenBrainz to sort the
@@ -3474,8 +3473,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
               catch (_: Exception) { emptySet() }
             val sampled = original.isEmpty() && allTimeRanking.isEmpty() && sampledRanking.isNotEmpty()
             if (success != null && ranked.isEmpty() && artistPublicTopEpoch.isCurrent(generation) &&
-                _detailStack.value.lastOrNull()?.browseId
-                    ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                activePublicArtistMatches(id)
             ) {
                 _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                     artistMbid = id, fetchedAtMs = success.fetchedAtMs,
@@ -3488,8 +3486,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val verifiedMutex = Mutex()
             fun publishVerified() {
                 if (artistPublicTopEpoch.isCurrent(generation) &&
-                    _detailStack.value.lastOrNull()?.browseId
-                        ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                    activePublicArtistMatches(id)
                 ) {
                     _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                         artistMbid = id,
@@ -3505,8 +3502,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 maxConcurrentCovers = 3,
                 verifyAndPublish = { candidate ->
                     currentCoroutineContext().ensureActive()
-                    if (_detailStack.value.lastOrNull()?.browseId
-                            ?.equals("catalog:ARTIST:$id", ignoreCase = true) != true
+                    if (!activePublicArtistMatches(id)
                     ) false
                     else {
                         val mbid = candidate.recordingMbid
@@ -3551,8 +3547,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val record = verifiedMutex.withLock { verified[mbid] }
                     val releaseId = record?.officialAudioReleaseMbid
                     if (releaseId != null && artistPublicTopEpoch.isCurrent(generation) &&
-                        _detailStack.value.lastOrNull()?.browseId
-                            ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                        activePublicArtistMatches(id)
                     ) {
                         val art = try {
                             withTimeoutOrNull(8_000L) {
