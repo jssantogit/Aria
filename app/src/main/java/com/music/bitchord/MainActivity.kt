@@ -4990,6 +4990,8 @@ private fun BitChordApp(
                                     if (openedCanonicalPlaylist == null) playlistLibrarySortMenu = true
                                     else playlistDetailOptionsMenu = true
                                 },
+                                overflowExpanded = if (openedCanonicalPlaylist == null)
+                                    playlistLibrarySortMenu else playlistDetailOptionsMenu,
                             )
                         }
                         if (showListenTogether) {
@@ -7226,6 +7228,7 @@ private fun CanonicalPlaylistToolbarActions(
     onSearch: () -> Unit,
     onSortOrFilter: () -> Unit,
     onOverflow: () -> Unit,
+    overflowExpanded: Boolean = false,
     onSortAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     onOverflowAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     sortMenu: (@Composable () -> Unit)? = null,
@@ -7279,6 +7282,7 @@ private fun CanonicalPlaylistToolbarActions(
         }) {
             NativeCollectionOverflowAction(
                 contentDescription = overflowDescription, onClick = onOverflow,
+                expanded = overflowExpanded,
             )
         }
     } else {
@@ -7288,6 +7292,7 @@ private fun CanonicalPlaylistToolbarActions(
             }) {
             NativeCollectionOverflowAction(
                 contentDescription = overflowDescription, onClick = onOverflow,
+                expanded = overflowExpanded,
             )
             overflowMenu()
         }
@@ -8403,6 +8408,7 @@ internal fun NativePublicPlaylistTopBarActions(
         onSearch = onToggleSearch,
         onSortOrFilter = onShowSort,
         onOverflow = onShowOptions,
+        overflowExpanded = optionsOpen,
         sortMenu = {
             com.music.bitchord.ui.screens.CanonicalPublicPlaylistSortMenu(
                 expanded = sortOpen,
