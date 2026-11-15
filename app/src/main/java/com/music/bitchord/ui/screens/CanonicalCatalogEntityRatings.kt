@@ -22,9 +22,23 @@ private val CATALOG_ENTITY_MBID = Regex(
     """^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"""
 )
 
+private val APPLE_RATING_ID = Regex("""^itunes:([a-z]{2}):(artist|album):([1-9][0-9]*)$""")
+
+private fun appleRatingTarget(browseId: String): CanonicalEntityRatingTarget? {
+    val hit = APPLE_RATING_ID.matchEntire(browseId) ?: return null
+    if (hit.groupValues[3].toLongOrNull() == null) return null
+    return CanonicalEntityRatingTarget(
+        if (hit.groupValues[2] == "artist") "ARTIST" else "ALBUM",
+        browseId,
+    )
+}
+
 /** Online catalog identity comes from the opened typed route, never a display title.
  * ReleaseGroup and specific Release are different rating targets. */
 internal fun canonicalCatalogEntityRatingTarget(browseId: String): CanonicalEntityRatingTarget? {
+    // A storefront-scoped Apple product is a stable, rateable local identity.
+    // It is never rewritten to an MBID or made eligible for playback.
+    appleRatingTarget(browseId)?.let { return it }
     val types = listOf(
         "catalog:ARTIST:" to "ARTIST",
         "catalog:RELEASE:" to "ALBUM",
@@ -50,7 +64,9 @@ internal fun canonicalOwnedPlaylistRatingTarget(id: String): CanonicalEntityRati
 
 internal fun canPersistCanonicalCatalogRating(target: CanonicalEntityRatingTarget): Boolean =
     when (target.entityType) {
-        "ARTIST", "ALBUM", "RELEASE_GROUP" -> CATALOG_ENTITY_MBID.matches(target.entityId)
+        "ARTIST", "ALBUM" -> CATALOG_ENTITY_MBID.matches(target.entityId) ||
+            appleRatingTarget(target.entityId)?.entityType == target.entityType
+        "RELEASE_GROUP" -> CATALOG_ENTITY_MBID.matches(target.entityId)
         "PLAYLIST" -> validLibraryPlaylistPin(LibraryPlaylistPin(target.entityId, "Playlist"))
         else -> false
     }
