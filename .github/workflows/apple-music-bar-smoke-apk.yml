@@ -38,10 +38,46 @@ jobs:
           echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
       # The physical smoke APK must be generated only from a tested HEAD.
       # Do not weaken these gates to get an artifact if a motion regression fails.
+      - name: Verify focused rating UI tests before the full suite
+        run: |
+          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest \
+            --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest" \
+            --tests "com.music.bitchord.ui.screens.NativeFrostedRatingInteractionTest" \
+            --tests "com.music.bitchord.ui.screens.CanonicalRecordingFeedbackControlsTest.numericRatingStyleShowsOneV3DigitPerSelectedStar"
       - name: Run Android unit tests
         run: |
           chmod +x gradlew
           ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Explain Android test failures
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          root = Path("app/build/test-results/testDevDebugUnitTest")
+          for path in sorted(root.rglob("TEST-*.xml")):
+              try:
+                  tree = ET.parse(path)
+              except ET.ParseError:
+                  continue
+              for case in tree.iter("testcase"):
+                  failure = case.find("failure")
+                  if failure is not None:
+                      print(f"\nFAILED {case.get('classname')}.{case.get('name')}")
+                      print((failure.get("message") or "").strip()[:1200])
+                      print((failure.text or "").strip()[:4000])
+          PY
+      - name: Upload Android failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea212-android-test-failures-${{ github.sha }}
+          path: |
+            app/build/test-results/testDevDebugUnitTest/
+            app/build/reports/tests/testDevDebugUnitTest/
+          retention-days: 3
+          if-no-files-found: ignore
       - name: Run shared Automix planner tests
         run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
       - name: Run shared native UI presentation tests
