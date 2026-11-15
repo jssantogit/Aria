@@ -39,6 +39,26 @@ internal object ApplePr212DetailProjection {
             release.title.isNotBlank() && release.artistName.isNotBlank()
 
     /**
+     * A storefront may sell multiple unlabeled product IDs for the same
+     * release. The native artist carousel is an editorial summary, not
+     * an edition browser. Preserve every exact Apple ID in search, but
+     * show only the first encountered product for an indistinguishable
+     * title / format / year. Distinct Apple editorial version names,
+     * formats and years remain independent.
+     *
+     * The first-wins policy deliberately preserves the ID already displayed
+     * when an asynchronous pagination batch finds a redundant edition.
+     */
+    private fun artistEditionDisplayKey(release: ItunesEditorialRelease): String {
+        val normalized = java.text.Normalizer.normalize(
+            release.title, java.text.Normalizer.Form.NFKC,
+        ).trim().lowercase(java.util.Locale.ROOT).replace(Regex("""\\s+"""), " ")
+        val year = release.releaseDate?.take(4)?.takeIf { it.length == 4 &&
+            it.all(Char::isDigit) }.orEmpty()
+        return "${release.artistId}|${release.format}|$year|$normalized"
+    }
+
+    /**
      * Artist ID, not a similar artist title, authorizes membership.
      * Contradictory responses about one Apple product are excluded instead of
      * making an unrelated release appear in the approved artist carousel.
@@ -56,15 +76,16 @@ internal object ApplePr212DetailProjection {
                 release.artistName.trim().equals(artist.title.trim(), ignoreCase = true)
         }.groupBy { it.appleScopedId }.values.mapNotNull { candidates ->
             candidates.firstOrNull()?.takeIf { chosen -> candidates.all { it == chosen } }
-        }
+        }.distinctBy(::artistEditionDisplayKey)
         val headings = listOf(
-            ItunesEditorialReleaseFormat.ALBUM to "Álbuns",
-            ItunesEditorialReleaseFormat.EP to "EPs",
-            ItunesEditorialReleaseFormat.SINGLE to "Singles",
-            ItunesEditorialReleaseFormat.UNCLASSIFIED to "Outros lançamentos",
+            "Álbuns" to setOf(ItunesEditorialReleaseFormat.ALBUM),
+            "Singles e EPs" to setOf(
+                ItunesEditorialReleaseFormat.EP, ItunesEditorialReleaseFormat.SINGLE,
+            ),
+            "Outros lançamentos" to setOf(ItunesEditorialReleaseFormat.UNCLASSIFIED),
         )
-        val sections = headings.mapNotNull { (format, heading) ->
-            exact.filter { it.format == format }.takeIf { it.isNotEmpty() }
+        val sections = headings.mapNotNull { (heading, formats) ->
+            exact.filter { it.format in formats }.takeIf { it.isNotEmpty() }
                 ?.map { release ->
                     ShelfItem(
                         title = release.title,
