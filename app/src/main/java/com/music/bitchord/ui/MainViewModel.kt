@@ -2644,7 +2644,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Exact product lookup; no MBID, title guess or playback fallback.
             val result = try {
                 if (kind == BrowseType.ARTIST) {
-                    applePr212Catalog.artist(route, title, artwork) to null
+                    applePr212Catalog.artist(route, title, artwork) { page ->
+                        _detailStack.update { stack -> stack.map { opened ->
+                            if (opened.browseId == route.scopedId) page else opened
+                        } }
+                    } to null
                 } else {
                     val album = applePr212Catalog.album(route)
                     album?.page to album
