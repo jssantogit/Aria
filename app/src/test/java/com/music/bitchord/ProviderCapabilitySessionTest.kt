@@ -67,6 +67,21 @@ class ProviderCapabilitySessionTest {
         assertFalse(contacted)
     }
 
+    @Test fun cleanInstallWithNoLegacyProvidersCanEnableItsFirstProvider(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(emptyMap()))
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+        assertTrue(session.update(ProviderCapability.CATALOG_SEARCH, listOf(
+            ProviderChoice(musicBrainz, enabled = true, order = 0),
+        )))
+        assertEquals(listOf(musicBrainz),
+            session.gate.ordered(ProviderCapability.CATALOG_SEARCH).map { it.key })
+        assertTrue(ProviderCapabilitySession(store, listOf(
+            ProviderDescriptor(musicBrainz, setOf(ProviderCapability.CATALOG_SEARCH),
+                readiness = ProviderReadiness.READY),
+        )).initialize(emptyMap()))
+    }
+
     @Test fun explicitLegacyImportEnablesOnlyItsDeclaredCapability(): Unit = runBlocking {
         val session = session()
         assertTrue(session.initialize(mapOf(
