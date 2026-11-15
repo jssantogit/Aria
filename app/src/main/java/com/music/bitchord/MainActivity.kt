@@ -5482,6 +5482,26 @@ private fun BitChordApp(
                     } else null,
                     signedIn = signedIn,
                     appleQueuePlayerMenu = fromAppleQueue,
+                    // A proven provider-owned/Apple artist opens directly.
+                    // If the recording lacks a verified artist identity, the
+                    // menu still offers a clearly labelled search in the
+                    // appropriate local/catalog source, never a fake route.
+                    onFindArtist = song.artist.takeIf { it.isNotBlank() }?.let { name ->
+                        {
+                            songActions = null
+                            dismissPlayer()
+                            selectedTab = TAB_SEARCH
+                            viewModel.setSearchSource(
+                                if (song.localUri != null) SearchSource.LIBRARY else SearchSource.CANONICAL,
+                            )
+                            viewModel.searchFor(name)
+                        }
+                    },
+                    onOpenAppleArtist = com.music.bitchord.ui.components.verifiedAppleArtistBrowseRoute(
+                        song.artistId,
+                    )?.let { route ->
+                        { openPage(route, song.artist, context.getString(R.string.artist), BrowseType.ARTIST) }
+                    },
                     verifiedAlbumTitle = verifiedMenuAlbum,
                     verifiedCanonicalAlbumRoute = verifiedAlbumRoute,
                     onOpenSourceOwnedAlbum = sourceOwnedAlbum?.let { album ->
