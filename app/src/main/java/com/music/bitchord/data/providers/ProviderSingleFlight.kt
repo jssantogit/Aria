@@ -20,25 +20,26 @@ import kotlinx.coroutines.withContext
  * in-flight response. Cancelling one observer preserves work needed by others;
  * cancelling the final observer cancels the underlying operation.
  *
+ * Each coordinator has ONE result type at compile time: a text HTTP response
+ * cannot be accidentally conflated with Unit, a parsed DTO or another type.
  * Keys MUST include provider instance, capability, authorization generation
  * and the complete normalized request identity. Never put credentials in a key.
  * Failure is not remembered and unrelated operations never share a slot.
  *
  * This lightweight coordinator owns no background polling or recurring work.
  */
-internal class ProviderSingleFlight(
+internal class ProviderSingleFlight<T>(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
-    private data class Entry(
-        val deferred: Deferred<Any?>,
+    private data class Entry<T>(
+        val deferred: Deferred<T>,
         var subscribers: Int,
     )
 
     private val mutex = Mutex()
-    private val ongoing = mutableMapOf<Any, Entry>()
+    private val ongoing = mutableMapOf<Any, Entry<T>>()
 
-    @Suppress("UNCHECKED_CAST")
-    suspend fun <T> run(
+    suspend fun run(
         key: Any,
         operation: suspend () -> T,
     ): T {
@@ -49,7 +50,7 @@ internal class ProviderSingleFlight(
                 existing
             } else {
                 val deferred = scope.async(start = CoroutineStart.LAZY) {
-                    operation() as Any?
+                    operation()
                 }
                 Entry(deferred, subscribers = 1).also { ongoing[key] = it }
             }
@@ -57,7 +58,7 @@ internal class ProviderSingleFlight(
 
         try {
             entry.deferred.start()
-            return entry.deferred.await() as T
+            return entry.deferred.await()
         } finally {
             // A cancelled observer still has to remove its subscription.
             // Never run this cleanup in the cancelled caller's context.
