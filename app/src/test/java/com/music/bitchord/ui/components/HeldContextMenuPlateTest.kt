@@ -6,9 +6,9 @@ import org.junit.Test
 
 class HeldContextMenuPlateTest {
     @Test fun neutralPagesKeepReadableDarkAndLightPlates() {
-        assertEquals(Color.Black.copy(alpha = 0.97f),
+        assertEquals(nativeCompactPlateColor(isDark = true, artworkElevation = null),
             heldContextPlateColor(Color.Black, null))
-        assertEquals(Color.White.copy(alpha = 0.97f),
+        assertEquals(nativeCompactPlateColor(isDark = false, artworkElevation = null),
             heldContextPlateColor(Color.White, null))
     }
 
@@ -24,9 +24,11 @@ class HeldContextMenuPlateTest {
         assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = true))
     }
 
-    @Test fun artworkPagesTintBothLiftedPreviewAndActionPanel() {
+    @Test fun artworkDoesNotTintTheLongPressActionPlateOrReduceContrast() {
         val tealAlbumSurface = Color(0xFF214D4C)
-        assertEquals(tealAlbumSurface.copy(alpha = 0.97f),
+        assertEquals(nativeCompactPlateColor(isDark = true, artworkElevation = null),
             heldContextPlateColor(Color(0xFF0E3333), tealAlbumSurface))
+        assertEquals(nativeCompactPlateColor(isDark = false, artworkElevation = null),
+            heldContextPlateColor(Color.White, Color(0xFFFF66BB)))
     }
 }

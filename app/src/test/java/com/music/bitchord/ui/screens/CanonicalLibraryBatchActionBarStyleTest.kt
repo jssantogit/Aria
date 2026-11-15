@@ -20,6 +20,29 @@ import org.robolectric.annotation.ConscryptMode
 class CanonicalLibraryBatchActionBarStyleTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun selectionAndFilterCardsShareOneNeutralSurfacePolicy() {
+        assertEquals(
+            com.music.bitchord.ui.components.nativeCompactPlateColor(true, null),
+            com.music.bitchord.ui.components.nativeContextPlateColor(true),
+        )
+        assertEquals(
+            com.music.bitchord.ui.components.nativeCompactPlateColor(false, null),
+            com.music.bitchord.ui.components.nativeContextPlateColor(false),
+        )
+        assertEquals(false, com.music.bitchord.ui.components.expandableActionCardUsesHaze(
+            treatment = com.music.bitchord.ui.components.NativeActionCardTreatment.SOLID,
+            hazeAvailable = true, reduceBlur = false,
+        ))
+        assertEquals(true, com.music.bitchord.ui.components.expandableActionCardUsesHaze(
+            treatment = com.music.bitchord.ui.components.NativeActionCardTreatment.FROSTED,
+            hazeAvailable = true, reduceBlur = false,
+        ))
+        assertEquals(false, com.music.bitchord.ui.components.expandableActionCardUsesHaze(
+            treatment = com.music.bitchord.ui.components.NativeActionCardTreatment.FROSTED,
+            hazeAvailable = true, reduceBlur = true,
+        ))
+    }
+
     @Test fun selectionUsesLiftedContextPlateAndStillCloses() {
         var closed = 0
         compose.setContent {

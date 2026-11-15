@@ -46,10 +46,12 @@ class CanonicalLibrarySelectionExpandedActionsTest {
                 }
             }
         }
-        compose.onNodeWithContentDescription("Recolher ações").performClick()
+        // The bottom dock must start compact. Opening the action list is explicit.
         compose.onNodeWithTag("native-selection-expanded-actions").assertDoesNotExist()
         compose.onNodeWithContentDescription("Expandir ações").performClick()
         compose.onNodeWithTag("native-selection-expanded-actions").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Recolher ações").performClick()
+        compose.onNodeWithTag("native-selection-expanded-actions").assertDoesNotExist()
     }
 
     @Test fun expandedMenuOffersNativeActionRowsAndCanCollapseWithoutLosingSelection() {
@@ -67,6 +69,8 @@ class CanonicalLibrarySelectionExpandedActionsTest {
                 )
             }
         }
+        compose.onNodeWithTag("native-selection-expanded-actions").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Expandir ações").performClick()
         compose.onNodeWithTag("native-selection-expanded-actions").assertIsDisplayed()
         compose.onNodeWithText("Tocar a seleção a seguir").performClick()
         compose.runOnIdle { assertEquals(1, queued) }
