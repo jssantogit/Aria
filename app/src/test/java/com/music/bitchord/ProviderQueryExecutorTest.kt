@@ -8,6 +8,7 @@ import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderQueryExecutor
+import com.music.bitchord.data.providers.ProviderReadiness
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -23,7 +24,7 @@ class ProviderQueryExecutorTest {
     private val descriptor = ProviderDescriptor(apple, setOf(
         ProviderCapability.CATALOG_SEARCH,
         ProviderCapability.RELEASE_ARTWORK,
-    ))
+    ), readiness = ProviderReadiness.READY)
 
     private fun gate(search: Boolean = true, art: Boolean = true) = ProviderPolicyGate(
         ProviderCapabilityPolicy(
