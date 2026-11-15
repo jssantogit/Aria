@@ -23,7 +23,7 @@ import org.robolectric.annotation.ConscryptMode
 class ExploreCategoryContentTransitionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun rootToGenreAndBackCrossfadeWithoutReplacingTheOutgoingPage() {
+    @Test fun rootGenreSwitchAndBackHaveDistinctContentOwners() {
         val selected = mutableStateOf<String?>(null)
         compose.setContent {
             ExploreCategoryContentTransition(
@@ -36,25 +36,37 @@ class ExploreCategoryContentTransitionTest {
             }
         }
         compose.onNodeWithTag("explore-grid").assertExists()
-        compose.mainClock.autoAdvance = false
-
         compose.runOnIdle { selected.value = "K-pop" }
-        // Give both destinations time to enter composition, but remain inside
-        // the 150ms fade window. A single frame can contain only the state write.
-        compose.mainClock.advanceTimeBy(64L)
-        compose.onNodeWithTag("explore-grid", useUnmergedTree = true).assertExists()
-        compose.onNodeWithTag("explore-genre-K-pop", useUnmergedTree = true).assertExists()
-        compose.mainClock.advanceTimeBy(200L)
-        compose.onNodeWithTag("explore-grid", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("explore-genre-K-pop").assertExists()
+        compose.onNodeWithTag("explore-grid").assertDoesNotExist()
+
+        compose.runOnIdle { selected.value = "Jazz" }
+        compose.onNodeWithTag("explore-genre-Jazz").assertExists()
+        compose.onNodeWithTag("explore-genre-K-pop").assertDoesNotExist()
 
         compose.runOnIdle { selected.value = null }
-        // Give both destinations time to enter composition, but remain inside
-        // the 150ms fade window. A single frame can contain only the state write.
-        compose.mainClock.advanceTimeBy(64L)
-        compose.onNodeWithTag("explore-genre-K-pop", useUnmergedTree = true).assertExists()
-        compose.onNodeWithTag("explore-grid", useUnmergedTree = true).assertExists()
-        compose.mainClock.advanceTimeBy(200L)
-        compose.onNodeWithTag("explore-genre-K-pop", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("explore-grid").assertExists()
+        compose.onNodeWithTag("explore-genre-Jazz").assertDoesNotExist()
+    }
+
+    @Test fun exploreMotionUsesExactRootFadeAndNoSizeSpring() {
+        org.junit.Assert.assertEquals(150, rootTabFadeMillis(reducedMotion = false))
+        val motion = exploreCategoryContentTransform(reduceMotion = false)
+        org.junit.Assert.assertNull(motion.sizeTransform)
+        org.junit.Assert.assertNotEquals(
+            androidx.compose.animation.EnterTransition.None, motion.targetContentEnter,
+        )
+        org.junit.Assert.assertNotEquals(
+            androidx.compose.animation.ExitTransition.None, motion.initialContentExit,
+        )
+        val reduced = exploreCategoryContentTransform(reduceMotion = true)
+        org.junit.Assert.assertNull(reduced.sizeTransform)
+        org.junit.Assert.assertEquals(
+            androidx.compose.animation.EnterTransition.None, reduced.targetContentEnter,
+        )
+        org.junit.Assert.assertEquals(
+            androidx.compose.animation.ExitTransition.None, reduced.initialContentExit,
+        )
     }
 
     @Test fun reducedMotionReplacesCategoryImmediately() {

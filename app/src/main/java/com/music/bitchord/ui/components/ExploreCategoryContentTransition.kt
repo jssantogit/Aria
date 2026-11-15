@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
 import androidx.compose.runtime.Composable
 
 /**
@@ -12,6 +13,10 @@ import androidx.compose.runtime.Composable
  * Match the approved 150ms linear root-tab fade. The global top bar, player
  * and bottom navigation remain outside this content transition.
  */
+/** Keep Explore's internal navigation on the same policy as root peers. */
+internal fun exploreCategoryContentTransform(reduceMotion: Boolean): ContentTransform =
+    rootTabContentTransform(reduceMotion)
+
 @Composable
 internal fun <T> ExploreCategoryContentTransition(
     category: T?,
@@ -20,7 +25,7 @@ internal fun <T> ExploreCategoryContentTransition(
 ) {
     AnimatedContent(
         targetState = category,
-        transitionSpec = { rootTabContentTransform(reduceMotion) },
+        transitionSpec = { exploreCategoryContentTransform(reduceMotion) },
         label = "explore-category-content",
     ) { visibleCategory ->
         content(visibleCategory)
