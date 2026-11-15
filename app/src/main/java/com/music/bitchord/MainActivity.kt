@@ -2416,6 +2416,9 @@ private fun BitChordApp(
     var unifiedLibrarySearching by remember { mutableStateOf(false) }
     var unifiedLibraryDetailOpen by remember { mutableStateOf(false) }
     var unifiedLibraryNestedAlbumOpen by remember { mutableStateOf(false) }
+    var unifiedDetailMenuActiveType by remember {
+        mutableStateOf<com.music.bitchord.ui.screens.CanonicalLibraryEntityType?>(null)
+    }
     var unifiedLibraryBackToken by remember { mutableIntStateOf(0) }
     // Put album action/sort state outside BitChordApp: it is already close
     // to the JVM Compose method-size limit, and its chrome is reused below.
@@ -3334,6 +3337,7 @@ private fun BitChordApp(
                             detailBackToken = unifiedLibraryBackToken,
                             onDetailChanged = { unifiedLibraryDetailOpen = it },
                             onNestedAlbumChanged = { unifiedLibraryNestedAlbumOpen = it },
+                            onDetailOverflowVisibilityChange = { unifiedDetailMenuActiveType = it },
                             initialContext = unifiedLibraryCategory
                                 ?: com.music.bitchord.data.listening.CanonicalSmartFilterContext.SONGS,
                             onClose = {
@@ -4928,6 +4932,7 @@ private fun BitChordApp(
                             },
                             unifiedControls = unifiedControls,
                             albumUi = unifiedAlbumUi,
+                            detailMenuActiveType = unifiedDetailMenuActiveType,
                             albumRatingSelection = unifiedAlbumRatingSelection,
                         )
                         if (openedPublicPlaylist != null && !showSettings && !showAccountScrobbling) {
@@ -7449,6 +7454,15 @@ private fun CanonicalLibraryAlbumRatingToolbarAction(
 internal fun nativeCollectionOverflowGlyph(): ImageVector =
     com.music.bitchord.ui.icons.PlaylistEditorIcons.More
 
+/** True only while the exact album/artist toolbar's action menu is showing.
+ * Event tokens are not booleans: they keep increasing after the sheet closes. */
+internal fun canonicalLibraryDetailLauncherActive(
+    menuOpen: Boolean,
+    heldPreview: Boolean,
+    menuType: com.music.bitchord.ui.screens.CanonicalLibraryEntityType,
+    launcherType: com.music.bitchord.ui.screens.CanonicalLibraryEntityType,
+): Boolean = menuOpen && !heldPreview && menuType == launcherType
+
 /** The launcher, not the popup plate, owns the universal selected white outline. */
 internal fun nativeCollectionOverflowOutline(expanded: Boolean): Color? =
     if (expanded) com.music.bitchord.ui.components.heldContextSelectionOutline() else null
@@ -7867,6 +7881,7 @@ private fun UnifiedLibraryRouteToolbar(
     onUnifiedSearch: () -> Unit,
     unifiedControls: UnifiedLibraryUiControls,
     albumUi: UnifiedAlbumDetailUiState,
+    detailMenuActiveType: com.music.bitchord.ui.screens.CanonicalLibraryEntityType?,
     albumRatingSelection: com.music.bitchord.ui.screens.CanonicalLibrarySelection?,
 ) {
     if (settingsOpen || otherDetailOpen) return
@@ -7890,6 +7905,10 @@ private fun UnifiedLibraryRouteToolbar(
             onAlbumSort = albumUi::openSort,
             onAlbumSortAnchor = { albumUi.sortMenuAnchor = it },
             onAlbumOptions = albumUi::requestOptions,
+            albumMenuActive = detailMenuActiveType ==
+                com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ALBUM,
+            artistMenuActive = detailMenuActiveType ==
+                com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
             albumRatingSelection = albumRatingSelection,
             artistDetail = shouldUseUnifiedArtistDetailToolbar(
                 category, detailOpen, nestedAlbumOpen,
@@ -7910,6 +7929,8 @@ private fun UnifiedLibraryToolbarActions(
     onAlbumSort: () -> Unit = {},
     onAlbumSortAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     onAlbumOptions: () -> Unit = {},
+    albumMenuActive: Boolean = false,
+    artistMenuActive: Boolean = false,
     albumRatingSelection: com.music.bitchord.ui.screens.CanonicalLibrarySelection? = null,
     artistDetail: Boolean = false,
     onArtistOptions: () -> Unit = {},
@@ -7944,11 +7965,13 @@ private fun UnifiedLibraryToolbarActions(
         NativeCollectionOverflowAction(
             contentDescription = "Opções do álbum",
             onClick = onAlbumOptions,
+            expanded = albumMenuActive,
         )
     } else if (artistDetail) {
         NativeCollectionOverflowAction(
             contentDescription = "Opções do artista",
             onClick = onArtistOptions,
+            expanded = artistMenuActive,
         )
     } else if (showBrowseFilters) {
         Box(Modifier.onGloballyPositioned { coords ->
