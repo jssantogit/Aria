@@ -17,7 +17,7 @@ import org.junit.Test
 /** Duplicate in-flight requests must share work, without sharing errors across keys. */
 class ProviderSingleFlightTest {
     @Test fun identicalConcurrentCallsDispatchOnlyOnce(): Unit = runBlocking {
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         var requests = 0
@@ -48,7 +48,7 @@ class ProviderSingleFlightTest {
     }
 
     @Test fun differentKeysDoNotBlockEachOther(): Unit = runBlocking {
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         val firstHeld = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val first = async {
@@ -68,7 +68,7 @@ class ProviderSingleFlightTest {
     }
 
     @Test fun cancellationOfOneObserverDoesNotCancelTheOther(): Unit = runBlocking {
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         var underlyingWasCancelled = false
@@ -98,7 +98,7 @@ class ProviderSingleFlightTest {
     }
 
     @Test fun cancellationOfLastObserverStopsUnneededWorkAndReleasesKey(): Unit = runBlocking {
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         val entered = CompletableDeferred<Unit>()
         val cancelled = CompletableDeferred<Unit>()
         val caller = launch {
@@ -119,7 +119,7 @@ class ProviderSingleFlightTest {
     }
 
     @Test fun failuresAreSharedOnlyWithTheirOwnKeyAndFutureRetriesAreAllowed(): Unit = runBlocking {
-        val flight = ProviderSingleFlight()
+        val flight = ProviderSingleFlight<String>()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         var requests = 0
