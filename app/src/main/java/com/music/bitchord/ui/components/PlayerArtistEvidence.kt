@@ -94,6 +94,12 @@ internal fun verifiedLocalAlbumDisplayArtist(
     return SourceOwnedArtistEvidence(playlistDisplayArtistGroupId(name), name, providerKey)
 }
 
+/** Local source ownership must stay in the Library. During asynchronous
+ * artist verification an apparent "Search artist" action could still win a
+ * tap; avoid leaving the app's own local artist route entirely. */
+internal fun shouldOfferFallbackArtistSearch(localUri: String?, artist: String): Boolean =
+    localUri.isNullOrBlank() && artist.isNotBlank()
+
 /** Exact Apple route format used by the iTunes catalog; no display-name search. */
 internal fun verifiedAppleArtistBrowseRoute(raw: String?): String? =
     raw?.takeIf { Regex("^itunes:[a-z]{2}:artist:[1-9][0-9]*$").matches(it) }

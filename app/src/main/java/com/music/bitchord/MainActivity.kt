@@ -5483,7 +5483,11 @@ private fun BitChordApp(
                     // If the recording lacks a verified artist identity, the
                     // menu still offers a clearly labelled search in the
                     // appropriate local/catalog source, never a fake route.
-                    onFindArtist = song.artist.takeIf { it.isNotBlank() }?.let { name ->
+                    onFindArtist = song.artist.takeIf { name ->
+                        com.music.bitchord.ui.components.shouldOfferFallbackArtistSearch(
+                            song.localUri, name,
+                        )
+                    }?.let { name ->
                         {
                             songActions = null
                             dismissPlayer()
