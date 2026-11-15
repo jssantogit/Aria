@@ -21,6 +21,21 @@ internal class MusicBrainzCapabilitySearch(
         MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> =
         MusicBrainzCatalogSearch()::searchArtists,
 ) {
+    /**
+     * Guard any MusicBrainz catalog query at one common boundary, including
+     * recordings, groups, editions and artist-scoped pagination.
+     *
+     * The block receives the existing typed MusicBrainz client. It is not
+     * invoked at all for a disabled capability; late responses are rejected.
+     * This is deliberately source-scoped, with no Apple or YouTube fallback.
+     */
+    suspend fun <T> executeCatalog(
+        query: suspend MusicBrainzCatalogSearch.() -> MusicBrainzCatalogSearchResult<T>,
+    ): ProviderCallResult<MusicBrainzCatalogSearchResult<T>> =
+        executor.execute(ProviderCapability.CATALOG_SEARCH, PROVIDER_KEY) {
+            MusicBrainzCatalogSearch().query()
+        }
+
     suspend fun searchArtists(
         query: String,
         limit: Int = 25,
