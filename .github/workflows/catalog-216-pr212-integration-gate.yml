@@ -34,13 +34,32 @@ jobs:
             app/src/main/java/com/music/bitchord/ui/screens/ \
             app/src/main/java/com/music/bitchord/ui/theme/ \
             sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
-            sharedUi/src/commonMain/composeResources/
+            sharedUi/src/commonMain/composeResources/ \
+            ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt'
           python3 - <<'PY'
           import pathlib
           import subprocess
           baseline = '2a9126f83043d9b93f0beae9cebad3ff4e4ee624'
           path = 'app/src/main/java/com/music/bitchord/MainActivity.kt'
           original = subprocess.check_output(['git', 'show', f'{baseline}:{path}'], text=True)
+          feedback = 'app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt'
+          feedback_original = subprocess.check_output(
+              ['git', 'show', f'{baseline}:{feedback}'], text=True)
+          old_semantics = '                .semantics { paneTitle = sheetTitle }\\n'
+          new_semantics = (
+              '                // The anchored parent Dialog already owns the pane. A second\\n'
+              '                // PaneTitle on its descendant cannot be merged by Compose.\\n'
+              '                // Preserve this title only on the standalone rating sheet.\\n'
+              '                .then(if (anchorBounds == null) Modifier.semantics {\\n'
+              '                    paneTitle = sheetTitle\\n'
+              '                } else Modifier)\\n'
+          )
+          assert feedback_original.count(old_semantics) == 1
+          assert pathlib.Path(feedback).read_text() == feedback_original.replace(
+              old_semantics, new_semantics), (
+                  'Rating presentation changed beyond one semantics-only PaneTitle repair'
+              )
+          print('PR212 anchored rating: one semantics-only fix; drawing is byte-identical')
           assert original.endswith('\n')
           lines = original.splitlines()
           positions = [i for i, line in enumerate(lines) if line.strip() == 'canonicalTracks = if (']
