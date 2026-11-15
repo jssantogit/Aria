@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.IntRect
@@ -64,6 +65,7 @@ class NativeFrostedRatingInteractionTest {
                 }
             }
         }
-        compose.onNodeWithTag("compact-rating-numeric", useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
+            .assertCountEquals(4)
     }
 }
