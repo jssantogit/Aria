@@ -52,7 +52,8 @@ internal object ApplePr212DetailProjection {
         ) return null
         val exact = releases.asSequence().filter { release ->
             validAlbum(release) && release.storefront == artist.storefront &&
-                release.artistId == artist.id
+                release.artistId == artist.id &&
+                release.artistName.trim().equals(artist.title.trim(), ignoreCase = true)
         }.groupBy { it.appleScopedId }.values.mapNotNull { candidates ->
             candidates.firstOrNull()?.takeIf { chosen -> candidates.all { it == chosen } }
         }
