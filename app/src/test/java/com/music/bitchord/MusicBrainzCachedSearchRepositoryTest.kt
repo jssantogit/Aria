@@ -18,8 +18,15 @@ import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
+import com.music.bitchord.data.providers.ProviderSessionSnapshot
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -154,6 +161,54 @@ class MusicBrainzCachedSearchRepositoryTest {
             assertTrue(repository.search("", MusicBrainzCachedSearchLimits(
                 artists = 0, groups = 0, releases = 0, recordings = 0,
             )).isEmpty)
+        } finally { db.close() }
+    }
+
+    @Test fun cacheFlowRevokesDisplayedSourceSnapshotWithoutDeletingStoredRecords(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            val mbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
+            MusicBrainzCatalogIndex(db).persistArtists(
+                listOf(MusicBrainzArtistHit(mbid, "ILLIT", null, "KR")),
+            )
+            val gate = gate(search = true)
+            val states = MutableStateFlow(ProviderSessionSnapshot(
+                status = ProviderSessionStatus.READY,
+                eligible = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(musicBrainz)),
+            ))
+            val repo = MusicBrainzCachedSearchRepository(
+                db, cacheRead = ProviderCachedReadAccess { gate },
+            )
+            val received = Channel<List<String>>(Channel.UNLIMITED)
+            val job = launch {
+                repo.observe("ILLIT", providerState = states,
+                    limits = MusicBrainzCachedSearchLimits(
+                        artists = 6, groups = 0, releases = 0, recordings = 0,
+                    ),
+                ).collect { snapshot ->
+                    received.send(snapshot.artists.map { it.musicBrainzId })
+                }
+            }
+            try {
+                assertEquals(listOf(mbid), withTimeout(5_000) { received.receive() })
+                gate.replace(policy(search = false))
+                states.value = ProviderSessionSnapshot(status = ProviderSessionStatus.READY)
+                assertEquals(emptyList<String>(), withTimeout(5_000) { received.receive() })
+                // Source-scope visibility may change, but the canonical claim remains.
+                assertTrue(db.catalogDao().entityIdForExternalIdentity(
+                    "musicbrainz", "artist", mbid,
+                ) != null)
+                gate.replace(policy(search = true))
+                states.value = ProviderSessionSnapshot(
+                    status = ProviderSessionStatus.READY,
+                    eligible = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(musicBrainz)),
+                )
+                assertEquals(listOf(mbid), withTimeout(5_000) { received.receive() })
+            } finally {
+                job.cancelAndJoin()
+            }
         } finally { db.close() }
     }
 
