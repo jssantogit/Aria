@@ -77,6 +77,14 @@ class AppleQueuePresentationTest {
         assertFalse(appleQueueShouldShowEmpty(pending))
     }
 
+    @Test fun reducedMotionDisablesQueueReorderSettleWithoutDisablingSwipeOrActions() {
+        assertTrue(queueRowMotionEnabled(reducedMotion = false))
+        assertFalse(queueRowMotionEnabled(reducedMotion = true))
+        // Removing a track is a command, not a visual animation; keep it usable.
+        assertTrue(appleQueueShouldCommitSwipe(-72f, 72f))
+        assertTrue(appleQueueShouldCommitSwipe(72f, 72f))
+    }
+
     @Test fun appleSwipeRemovalAcceptsBothDirectionsAndRejectsShortDrags() {
         assertFalse(appleQueueShouldCommitSwipe(-71f, 72f))
         assertFalse(appleQueueShouldCommitSwipe(71f, 72f))
