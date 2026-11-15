@@ -43,3 +43,14 @@ Filtros, ordenação, avaliação, editor, campo de busca e configurações não
 3. Confirmar player com menu aberto em Now Playing normal e fila (capa clara/escura) e contorno no mesmo lugar do botão original.
 4. Inspecionar a cobertura ainda não classificada de Home/Explorar e os menus compactos legados, sem substituir indiscriminadamente folhas editoriais.
 5. Não mesclar a PR #212 antes do aceite físico.
+
+
+## Continuação — settings globais e Home/Explorar (15/11/2026)
+
+A auditoria do lançamento global encontrou dois pontos ligados ao mesmo popup `AppleSettingsPopup`: `AppleRootSettingsOverflow` (raízes Explorar/Biblioteca) e `TopBarAccountButton` (Home e telas empilhadas). Ambos preservam o vetor `PlaylistEditorIcons.More`, o tamanho de 40dp e as ações existentes; agora recebem borda branca de 1,5dp **apenas enquanto expandidos**, reutilizando `heldContextSelectionOutline()`.
+
+Evidência funcional de rota: `MainActivity.kt` entrega `onItemLongPress = onShelfLongPress` tanto a `HomeScreen` quanto à `HomeScreen` usada nas páginas de gênero em Explorar. A raiz `ExploreScreen` exibe navegação por categoria — não se deve criar menu de entidade musical para categoria sem ações específicas documentadas.
+
+Os menus de detalhes de biblioteca com `optionsToken`/`artistOptionsToken` merecem uma verificação própria: o token é um evento de abertura consumido no componente de detalhe, **não** um booleano persistente de popup. Não inventar `expanded = token > 0` para o contorno, pois ficaria preso após o fechamento. Acompanhamento deve ser feito no dono do menu.
+
+Testes adicionados em `GlobalAppleTopBarChromeTest` cobrem o token de contorno ativo/inativo. Como não há Gradle funcional nem workflow dispatch disponível nesta sessão, são testes ainda não executados neste HEAD; a CI e o smoke físico continuam bloqueando a conclusão e o merge.
