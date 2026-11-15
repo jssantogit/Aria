@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.IntRect
+import com.music.bitchord.NativeCollectionRatingToolbarAction
 import com.music.bitchord.ui.components.CompactRatingStyle
 import com.music.bitchord.ui.components.LocalCompactRatingStyle
 import org.junit.Assert.assertEquals
@@ -47,9 +48,9 @@ class NativeFrostedRatingInteractionTest {
                 }
             }
         }
-        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
+        compose.onNodeWithTag("native-rating-anchored-card").fetchSemanticsNode()
         compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
+        assertEquals(0, compose.onAllNodesWithTag("native-rating-anchored-card").fetchSemanticsNodes().size)
         compose.onNodeWithText("Other album action").performClick()
         compose.runOnIdle { assertEquals(1, otherClicks) }
     }
@@ -78,9 +79,9 @@ class NativeFrostedRatingInteractionTest {
             }
         }
         compose.onNodeWithContentDescription("Avaliar álbum", substring = true).performClick()
-        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
+        compose.onNodeWithTag("native-rating-anchored-card").fetchSemanticsNode()
         compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
+        assertEquals(0, compose.onAllNodesWithTag("native-rating-anchored-card").fetchSemanticsNodes().size)
         compose.onNodeWithText("Sort album").performClick()
         compose.runOnIdle { assertEquals(1, sortClicks) }
     }
@@ -98,7 +99,7 @@ class NativeFrostedRatingInteractionTest {
                 }
             }
         }
-        compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
-            .assertCountEquals(4)
+        assertEquals(4, compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
+            .fetchSemanticsNodes().size)
     }
 }
