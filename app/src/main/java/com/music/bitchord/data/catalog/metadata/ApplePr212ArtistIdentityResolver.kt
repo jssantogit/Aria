@@ -102,20 +102,22 @@ internal class ApplePr212ArtistIdentityResolver(
         } catch (cancelled: CancellationException) { throw cancelled }
           catch (_: Exception) { return null }
         val exactName = applePr212NormalizedText(name)
-        val candidates = artists.asSequence()
+        val exact = artists.asSequence()
             .filter { applePr212NormalizedText(it.name) == exactName }
             .distinctBy { it.musicBrainzId }
-            .take(3)
-            .mapNotNull { artist ->
-                val releasesForArtist = try {
-                    (search.searchReleaseGroupsForArtistMbid(
-                        artist.musicBrainzId, limit = 100,
-                    ) as? MusicBrainzCatalogSearchResult.Success)?.page?.items
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: Exception) { null }
-                releasesForArtist?.let { ApplePr212ArtistIdentityCandidate(artist, it) }
-            }
-            .toList()
+            .take(3).toList()
+        val candidates = mutableListOf<ApplePr212ArtistIdentityCandidate>()
+        for (artist in exact) {
+            val groups = try {
+                (search.searchReleaseGroupsForArtistMbid(
+                    artist.musicBrainzId, limit = 100,
+                ) as? MusicBrainzCatalogSearchResult.Success)?.page?.items
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (groups != null) candidates.add(
+                ApplePr212ArtistIdentityCandidate(artist, groups),
+            )
+        }
         return applePr212VerifiedArtistMbid(
             name, appleArtistId, storefront, releases, candidates,
         )
