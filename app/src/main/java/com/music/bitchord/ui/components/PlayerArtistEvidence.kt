@@ -35,6 +35,13 @@ internal fun verifiedSourceOwnedPlayerArtist(
 internal fun verifiedAppleArtistBrowseRoute(raw: String?): String? =
     raw?.takeIf { Regex("^itunes:[a-z]{2}:artist:[1-9][0-9]*$").matches(it) }
 
+/** A provider-native artist key is not a legacy YouTube artist URL. */
+internal fun verifiedLegacyPlayerArtistBrowseId(value: String?): String? =
+    value?.takeIf { it.startsWith("UC") && it.length >= 20 }
+        ?: value?.takeIf {
+            Regex("^catalog:ARTIST:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$").matches(it)
+        }
+
 /**
  * Only a queue identity that resolves to one current MediaAsset may open an
  * artist inside the same provider. Avoid crossing local files and Navidrome.
