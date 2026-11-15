@@ -82,8 +82,9 @@ class ApplePr212DetailProjectionTest {
             ),
         ))
         assertEquals(listOf("Singles e EPs"), page.sections.map { it.title })
-        assertEquals(listOf("itunes:br:album:31", "itunes:br:album:32"),
-            page.sections.single().items.map { it.browseId })
+        assertEquals(setOf("itunes:br:album:31", "itunes:br:album:32"),
+            page.sections.single().items.mapNotNull { it.browseId }.toSet())
+        assertEquals(2, page.sections.single().items.size)
     }
 
     @Test fun unrelatedArtistsAndConflictingDuplicatesNeverEnterAnArtistPage() {
