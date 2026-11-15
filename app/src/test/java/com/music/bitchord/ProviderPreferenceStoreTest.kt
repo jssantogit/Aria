@@ -13,8 +13,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.ConscryptMode
 import org.robolectric.RuntimeEnvironment
 
+@ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
 class ProviderPreferenceStoreTest {
     private val apple = ProviderKey("itunes")
