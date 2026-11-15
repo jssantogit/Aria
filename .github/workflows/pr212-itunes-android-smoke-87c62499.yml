@@ -1,0 +1,86 @@
+# One-shot physical smoke APK from PR212 UI + PR216 iTunes integration.
+# Delivery branch begins at the exact CI-successful source commit; no merge.
+name: PR212 UI + iTunes — Android physical smoke APK
+
+on:
+  push:
+    branches:
+      - delivery/pr212-itunes-android-smoke-87c62499-20261114
+    paths:
+      - .github/workflows/pr212-itunes-android-smoke-87c62499.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr212-itunes-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-dev-apk:
+    name: PR212 visual parity / iTunes data · devDebug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact CI-approved integration source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert only this workflow differs from successful Android CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          approved="87c62499a300013d03ca37d50d6c5dc91e1c0f1a"
+          trigger=".github/workflows/pr212-itunes-android-smoke-87c62499.yml"
+          git cat-file -e "${approved}^{commit}"
+          git merge-base --is-ancestor "$approved" HEAD
+          changed="$(git diff --name-only "$approved" HEAD)"
+          if [[ "$changed" != "$trigger" ]]; then
+            echo "::error::APK source diverged from approved PR212+iTunes CI"
+            printf 'Unexpected files:\n%s\n' "$changed"
+            exit 1
+          fi
+          echo "Unchanged CI-approved code: $approved"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Android build properties
+        shell: bash
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+
+      - name: Build Android devDebug installable APK
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+
+      - name: Record provenance, APK path and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf 'source_prs=212+216\n'
+            printf 'ci_run=43665690931\n'
+            printf 'ci_approved_source=87c62499a300013d03ca37d50d6c5dc91e1c0f1a\n'
+            printf 'build_commit=%s\n' "$(git rev-parse HEAD)"
+          } > pr212-itunes-smoke-manifest.txt
+          find app/build/outputs/apk/dev/debug -maxdepth 1 -type f -name '*.apk' -print -exec sha256sum '{}' \; >> pr212-itunes-smoke-manifest.txt
+          grep -q '\.apk' pr212-itunes-smoke-manifest.txt
+
+      - name: Publish APK and SHA256 manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitchord-pr212-itunes-smoke-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/dev/debug/*.apk
+            pr212-itunes-smoke-manifest.txt
+          if-no-files-found: error
+          retention-days: 14
