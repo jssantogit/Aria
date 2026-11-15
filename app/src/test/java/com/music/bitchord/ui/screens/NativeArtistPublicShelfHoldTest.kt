@@ -12,7 +12,7 @@ class NativeArtistPublicShelfHoldTest {
             title = "Example", subtitle = "",
         )
         var forwarded: CanonicalCatalogSearchRow? = null
-        nativeArtistPublicShelfHoldAction(row) { forwarded = it }.invoke()
+        requireNotNull(nativeArtistPublicShelfHoldAction(row) { forwarded = it }).invoke()
         assertSame(row, forwarded)
     }
 
