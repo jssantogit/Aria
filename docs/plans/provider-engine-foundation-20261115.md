@@ -145,3 +145,46 @@ providers yet:
 
 The rules remain: Android only, no new paid APIs, no UI changes in #212, no
 forced merge and no APK until functional integration is ready.
+
+## Follow-up: fail-closed provider session and full catalog admission seam (2026-11-15)
+
+- `ProviderCapabilitySession` owns an immutable policy snapshot plus a shared
+  admission gate. On startup it has **zero eligible capabilities**. A snapshot
+  becomes active only after persisted preferences are verified and any *missing*
+  legacy categories have been imported without overwriting explicit opt-outs.
+- Mutating a capability **quarantines it before writing to disk**. In-flight
+  results are revoked immediately. A failed commit returns false and leaves the
+  capability quarantined for the remainder of the process, including across
+  unrelated setting edits; other capabilities remain unaffected. Saving an
+  identical preference does not write or revoke already permitted calls.
+- Reinitializing with damaged/newer persisted data is fail-closed; it cannot
+  recover silently by enabling a legacy provider.
+- `MusicBrainzCapabilitySearch.executeCatalog` now offers a single typed
+  guarded entry for any MusicBrainz catalog query (artists, recordings, release
+  groups, editions, scoped searches or pagination). It delegates to one
+  reused `MusicBrainzCatalogSearch` instance; denial happens before invoking
+  the lambda. The old viewmodel's queries have **not** been redirected yet.
+
+### Verification
+
+`ProviderCapabilitySessionTest` includes real persisted SharedPreferences
+(via Robolectric) and an injected catalog lookup, covering closed startup,
+legacy migration, persistent last-provider opt-out, ignored legacy re-enable,
+in-flight response rejection, independent artwork and invalid preferences.
+Additional regressions check failed-write quarantine and no-op updates.
+`MusicBrainzCapabilitySearchTest` covers a generic guarded catalog operation.
+
+### Remaining integration constraints
+
+**This phase is an additive runtime seam, not a completed setting migration.**
+Do not hook the session into legacy settings at process start without
+coordinating their existing setters and reload/import behavior. The old
+`AppSettings` lyric switches and `SourceRegistry` source switches remain
+authoritative for their current callers. New persisted choices must not be
+treated as active switches on old call paths until a controlled cutover
+eliminates bypass routes—including cached search results, artwork/graph
+lookups, workers and prefetch.
+
+The Android PR #212 layout must remain pixel-identical; PR #216's editorial
+catalog adapter must be integrated by contract rather than by copying UI or
+forcing a merge. Paid/unauthorized providers are not installed by this slice.
