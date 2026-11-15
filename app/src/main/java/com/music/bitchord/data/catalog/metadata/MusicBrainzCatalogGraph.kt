@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.ProviderCapability
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -57,7 +59,8 @@ internal class MusicBrainzCatalogGraph(
     suspend fun lookupRecordingCoverReleases(mbid: String): List<String> {
         val normalized = mbid.validMbid() ?: return emptyList()
         val raw = try {
-            client.get("recording/$normalized", mapOf("fmt" to "json", "inc" to "releases"))
+            client.get("recording/$normalized", mapOf("fmt" to "json", "inc" to "releases"),
+                capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) { return emptyList() }
@@ -156,7 +159,7 @@ internal class MusicBrainzCatalogGraph(
         val raw = try {
             client.get("release/$normalized", mapOf(
                 "fmt" to "json", "inc" to "recordings+artist-credits+release-groups",
-            ))
+            ), capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -234,7 +237,7 @@ internal class MusicBrainzCatalogGraph(
             client.get(path, mapOf(
                 "fmt" to "json", relation to normalized,
                 "limit" to limit.toString(), "offset" to offset.toString(),
-            ) + extraParameters)
+            ) + extraParameters, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
