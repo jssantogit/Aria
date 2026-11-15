@@ -481,6 +481,10 @@ internal fun FloatingLibraryTopBarCircle(
     ) { content() }
 }
 
+/** The root and pushed-screen settings launchers use the same selected edge as held cards. */
+internal fun appleSettingsLauncherOutline(expanded: Boolean): Color? =
+    if (expanded) heldContextSelectionOutline() else null
+
 /**
  * Root Explore and Library share this compact Apple-style menu.
  *
@@ -501,7 +505,14 @@ internal fun AppleRootSettingsOverflow(
     var expanded by remember { mutableStateOf(false) }
     Box {
         FloatingLibraryTopBarCircle(hazeState) {
-            IconButton(onClick = { expanded = true }) {
+            IconButton(
+                onClick = { expanded = true },
+                modifier = Modifier.size(AppleFloatingControlMetrics.toolbarDiameter)
+                    .then(appleSettingsLauncherOutline(expanded)?.let {
+                        Modifier.border(1.5.dp, it, CircleShape)
+                    } ?: Modifier)
+                    .testTag("apple-root-settings-launcher"),
+            ) {
                 Icon(
                     imageVector = PlaylistEditorIcons.More,
                     contentDescription = description,
@@ -779,6 +790,9 @@ fun TopBarAccountButton(
         IconButton(
             onClick = { expanded = true },
             modifier = Modifier.size(AppleFloatingControlMetrics.toolbarDiameter)
+                .then(appleSettingsLauncherOutline(expanded)?.let {
+                    Modifier.border(1.5.dp, it, CircleShape)
+                } ?: Modifier)
                 .testTag("apple-global-more-options"),
         ) {
             Icon(
