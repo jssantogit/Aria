@@ -15,7 +15,7 @@ import com.music.bitchord.ui.screens.CanonicalSearchKind
  * as if they were the user's main library artists.
  */
 internal fun canonicalBrowseCardId(row: CanonicalCatalogSearchRow): String? =
-    when (row.kind) {
+    if (isVerifiedAppleEditorialRelease(row)) row.musicBrainzId else when (row.kind) {
         CanonicalSearchKind.RELEASE, CanonicalSearchKind.RELEASE_GROUP ->
             "catalog:${row.kind}:${row.musicBrainzId}"
         // The click is gated again by the playback planner; this is a

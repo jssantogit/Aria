@@ -1,0 +1,103 @@
+package com.music.bitchord
+
+import com.music.bitchord.data.catalog.metadata.ItunesCatalogItem
+import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
+import com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
+import com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat
+import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.UiState
+import com.music.bitchord.ui.ApplePr212DetailProjection
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ApplePr212DetailProjectionTest {
+    private fun item(type: ItunesCatalogItemType, id: Long, collectionId: Long? = null) =
+        ItunesCatalogItem(
+            type = type, id = id, storefront = "br", title = "NewJeans",
+            artistName = "NewJeans", artistId = 99, collectionId = collectionId,
+            storeUrl = null, releaseDate = "2024-05-24", genre = "Pop",
+            durationMs = null, trackNumber = null, discNumber = null,
+        )
+
+    private fun release(id: Long, format: ItunesEditorialReleaseFormat,
+                        title: String = "Release $id", artistId: Long = 99) =
+        ItunesEditorialRelease(
+            appleScopedId = "itunes:br:album:$id", appleCollectionId = id,
+            storefront = "br", title = title, artistName = "NewJeans",
+            artistId = artistId, releaseDate = "2024-05-24", genre = "Pop",
+            format = format, artworkUrl = "https://is1-ssl.mzstatic.com/image/test/600x600bb.jpg",
+            trackCount = null, tracks = emptyList(), musicBrainzReleaseGroupId = null,
+            musicBrainzArtistId = null, musicBrainzRecordingIds = emptyMap(),
+        )
+
+    @Test fun artistShelvesKeepAppleProductIdsAndTheExistingDetailPage() {
+        val result = requireNotNull(ApplePr212DetailProjection.artistPage(
+            item(ItunesCatalogItemType.ARTIST, 99),
+            listOf(release(1, ItunesEditorialReleaseFormat.ALBUM),
+                   release(2, ItunesEditorialReleaseFormat.EP),
+                   release(3, ItunesEditorialReleaseFormat.SINGLE),
+                   release(4, ItunesEditorialReleaseFormat.UNCLASSIFIED)),
+        ))
+        assertEquals(BrowseType.ARTIST, result.type)
+        assertEquals("itunes:br:artist:99", result.browseId)
+        assertEquals(listOf("Álbuns", "EPs", "Singles", "Outros lançamentos"),
+            result.sections.map { it.title })
+        assertEquals(listOf("itunes:br:album:1", "itunes:br:album:2",
+            "itunes:br:album:3", "itunes:br:album:4"),
+            result.sections.flatMap { it.items }.map { it.browseId })
+        assertTrue(result.sections.flatMap { it.items }.all { it.videoId == null })
+        assertTrue((result.songs as UiState.Success).data.isEmpty())
+        assertNull(result.subscription)
+    }
+
+    @Test fun unrelatedArtistsAndConflictingDuplicatesNeverEnterAnArtistPage() {
+        val valid = release(1, ItunesEditorialReleaseFormat.EP)
+        val conflicting = valid.copy(title = "Unrelated edition")
+        val soundtrack = release(4, ItunesEditorialReleaseFormat.ALBUM)
+            .copy(artistName = "Various Artists")
+        val result = requireNotNull(ApplePr212DetailProjection.artistPage(
+            item(ItunesCatalogItemType.ARTIST, 99),
+            listOf(valid, conflicting, release(2, ItunesEditorialReleaseFormat.ALBUM,
+                artistId = 123), soundtrack,
+                release(3, ItunesEditorialReleaseFormat.SINGLE)),
+        ))
+        assertEquals(listOf("itunes:br:album:3"),
+            result.sections.flatMap { it.items }.mapNotNull { it.browseId })
+    }
+
+    @Test fun albumTracksRemainNonPlayableExactAppleMetadata() {
+        val track = item(ItunesCatalogItemType.TRACK, 101, collectionId = 10)
+            .copy(title = "How Sweet", trackNumber = 1, discNumber = 1)
+        val wrongAlbum = item(ItunesCatalogItemType.TRACK, 102, collectionId = 11)
+        val album = release(10, ItunesEditorialReleaseFormat.EP, "How Sweet - EP")
+            .copy(tracks = listOf(track, wrongAlbum))
+        val result = requireNotNull(ApplePr212DetailProjection.albumPage(album))
+        assertEquals(BrowseType.ALBUM, result.page.type)
+        assertEquals("itunes:br:album:10", result.page.browseId)
+        assertTrue((result.page.songs as UiState.Success).data.isEmpty())
+        assertEquals(listOf("itunes:br:track:101"), result.tracks.map { it.scopedId })
+        assertEquals(listOf(1), result.tracks.map { it.trackNumber })
+        assertFalse(result.page.browseId.startsWith("catalog:"))
+        assertNull(result.page.library)
+    }
+
+    @Test fun AppleOnlyAlbumWithoutArtistCrosswalkStillOpensWithoutPlayback() {
+        val album = release(12, ItunesEditorialReleaseFormat.UNCLASSIFIED)
+            .copy(artistId = null)
+        val page = requireNotNull(ApplePr212DetailProjection.albumPage(album))
+        assertEquals("itunes:br:album:12", page.page.browseId)
+        assertTrue((page.page.songs as UiState.Success).data.isEmpty())
+    }
+
+    @Test fun malformedOrCrossStorefrontIdentitiesAreRejected() {
+        assertNull(ApplePr212DetailProjection.artistPage(
+            item(ItunesCatalogItemType.ALBUM, 99), emptyList()))
+        assertNull(ApplePr212DetailProjection.albumPage(
+            release(10, ItunesEditorialReleaseFormat.ALBUM)
+                .copy(appleScopedId = "itunes:us:album:10")))
+    }
+}

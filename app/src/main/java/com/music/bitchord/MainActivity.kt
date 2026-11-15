@@ -1120,7 +1120,9 @@ private fun BitChordApp(
                     browseId = Downloads.pageIdFor(collection.id),
                 )
             },
-            metadata = (cachedCanonicalRows + canonicalWorldwideReleases)
+            metadata = (cachedCanonicalRows.filter {
+                it.kind == CanonicalSearchKind.RECORDING
+            } + canonicalWorldwideReleases)
                 .distinctBy { it.kind to it.musicBrainzId },
             localPicks = canonicalHomeLocalPicks,
             remotePicks = canonicalHomeRemotePicks,
@@ -3833,7 +3835,10 @@ private fun BitChordApp(
                             },
                             songSort = songSort,
                             folder = folder,
-                            canonicalTracks = if (
+                            canonicalTracks = if (page.browseId.startsWith("itunes:")) {
+                                viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()
+                                    .value[page.browseId].orEmpty()
+                            } else if (
                                 page.browseId.startsWith("catalog:RELEASE:") ||
                                 page.browseId.startsWith("catalog:RELEASE_GROUP:")
                             ) {
@@ -4166,7 +4171,13 @@ private fun BitChordApp(
                                 heldCatalogSearchOrigin = LongPressOrigin.consume()
                                 heldCatalogSearchRow = row
                             },
-                            onCanonicalRecordingInfo = { communityMetadataRecording = it },
+                            onCanonicalRecordingInfo = { recording ->
+                                if (recording.musicBrainzId.startsWith("itunes:")) {
+                                    viewModel.openApplePr212TrackAlbum(recording.musicBrainzId)
+                                } else {
+                                    communityMetadataRecording = recording
+                                }
+                            },
                             onCanonicalBack = viewModel::backCanonicalCatalogEntry,
                             onCanonicalLoadMore = viewModel::loadMoreCanonicalDetail,
                             canonicalLoadingMore = viewModel.canonicalLoadingMore.collectAsStateWithLifecycle().value,
