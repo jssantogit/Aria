@@ -39,12 +39,20 @@ class ProviderCapabilitySession(
             failClosed()
             return@withLock false
         }
-        val loaded = store.read() as? ProviderPreferenceStore.Read.Loaded
+        val loaded = when (val snapshot = store.read()) {
+            is ProviderPreferenceStore.Read.Loaded -> snapshot.choices
+            // A genuinely fresh installation has no provider preferences.
+            // Empty is valid: the user must still be able to opt into a
+            // first source without inheriting a fake mandatory fallback.
+            ProviderPreferenceStore.Read.Missing ->
+                if (legacyChoices.isEmpty()) emptyMap() else null
+            ProviderPreferenceStore.Read.Unreadable -> null
+        }
         if (loaded == null) {
             failClosed()
             return@withLock false
         }
-        choices = loaded.choices
+        choices = loaded
         quarantined.clear()
         initialized = true
         gate.replace(effectivePolicy())
