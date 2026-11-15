@@ -2,6 +2,7 @@ package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
@@ -154,7 +156,11 @@ fun PlayerAnchoredActionsMenu(
                     }
                     .clip(RoundedCornerShape(18.dp))
                     .testTag("player-anchored-actions-menu")
-                    .clickable(onClick = {}),
+                    // Absorb taps on blank plate space without marking the
+                    // entire editor clickable. A parent clickable merges the
+                    // child's PaneTitle semantics and crashes Compose UI tests
+                    // (and can break TalkBack). Child actions keep priority.
+                    .pointerInput(Unit) { detectTapGestures(onTap = {}) },
                 color = palette.elevated,
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 shape = RoundedCornerShape(18.dp),
