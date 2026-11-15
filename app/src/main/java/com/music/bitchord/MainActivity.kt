@@ -1120,7 +1120,9 @@ private fun BitChordApp(
                     browseId = Downloads.pageIdFor(collection.id),
                 )
             },
-            metadata = (cachedCanonicalRows + canonicalWorldwideReleases)
+            metadata = (cachedCanonicalRows.filter {
+                it.kind == CanonicalSearchKind.RECORDING
+            } + canonicalWorldwideReleases)
                 .distinctBy { it.kind to it.musicBrainzId },
             localPicks = canonicalHomeLocalPicks,
             remotePicks = canonicalHomeRemotePicks,
