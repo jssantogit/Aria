@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
@@ -41,6 +43,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /**
+ * Selecting is functional even when animation is disabled. Keep the action
+ * rows immediately reachable and avoid Compose's default expand/fade specs
+ * when the user's Reduce animations preference is enabled.
+ */
+internal fun selectionActionsEnterTransition(reducedMotion: Boolean): EnterTransition =
+    if (reducedMotion) EnterTransition.None else expandVertically() + fadeIn()
+
+internal fun selectionActionsExitTransition(reducedMotion: Boolean): ExitTransition =
+    if (reducedMotion) ExitTransition.None else shrinkVertically() + fadeOut()
+
+/**
  * Native small contextual selection strip. Composed entirely out of the
  * Settings group's existing shape/surface role and PlaylistWizardCompactAction
  * icon buttons; no separate generic Material3 bar or copied Symfonium design.
@@ -61,6 +74,7 @@ internal fun CanonicalLibraryBatchActionBar(
 ) {
     if (selectedEntityCount < 1) return
     var expanded by remember { mutableStateOf(true) }
+    val reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current
     // Compact phone-safe dock: the count is never squeezed between four
     // 48dp controls on one line. Both rows use the existing wizard actions
     // inside the same lifted plate as held-item menus, not a second Settings sheet.
@@ -103,8 +117,8 @@ internal fun CanonicalLibraryBatchActionBar(
             // as the held context menu, rather than the legacy strip of glyphs.
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
+                enter = selectionActionsEnterTransition(reduceMotion),
+                exit = selectionActionsExitTransition(reduceMotion),
             ) {
                 CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
                 Column(Modifier.fillMaxWidth().testTag("native-selection-expanded-actions")) {
