@@ -42,4 +42,11 @@ class PlayerArtistEvidenceTest {
         assertNull(verifiedAppleArtistBrowseRoute("123"))
         assertNull(verifiedAppleArtistBrowseRoute("itunes:br:artist:0"))
     }
+    @Test fun onlyVerifiedLegacyArtistRoutesMayUseLegacyNavigation() {
+        assertEquals("UC12345678901234567890", verifiedLegacyPlayerArtistBrowseId("UC12345678901234567890"))
+        assertNull(verifiedLegacyPlayerArtistBrowseId("opensubsonic:account:artist-1"))
+        assertNull(verifiedLegacyPlayerArtistBrowseId("artist-1"))
+        assertNull(verifiedLegacyPlayerArtistBrowseId("itunes:br:artist:123"))
+    }
+
 }
