@@ -1,5 +1,8 @@
 package com.music.bitchord.data.providers
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -18,9 +21,33 @@ class ProviderCapabilitySession(
     private var choices: Map<ProviderCapability, List<ProviderChoice>> = emptyMap()
     private val quarantined = mutableSetOf<ProviderCapability>()
     private var initialized: Boolean = false
+    private var storageFailure: Boolean = false
 
     /** Admission gate shared by adapters; closed until initialization. */
     val gate = ProviderPolicyGate(ProviderCapabilityPolicy(descriptors))
+    private val _state = MutableStateFlow(ProviderSessionSnapshot())
+    /** Immutable, non-secret status for future presentation or diagnostics. */
+    val state: StateFlow<ProviderSessionSnapshot> = _state.asStateFlow()
+
+    private fun publishSnapshot() {
+        val status = when {
+            !initialized -> ProviderSessionStatus.BOOTING
+            storageFailure -> ProviderSessionStatus.STORAGE_ERROR
+            quarantined.isNotEmpty() -> ProviderSessionStatus.PERSISTING
+            else -> ProviderSessionStatus.READY
+        }
+        val eligible = ProviderCapability.entries.mapNotNull { capability ->
+            gate.ordered(capability).map { it.key }
+                .takeIf { it.isNotEmpty() }
+                ?.let { capability to it }
+        }.toMap()
+        _state.value = ProviderSessionSnapshot(
+            status = status,
+            configured = choices.mapValues { (_, selections) -> selections.toList() },
+            eligible = eligible,
+            quarantined = quarantined.toSet(),
+        )
+    }
 
     private fun effectivePolicy(): ProviderCapabilityPolicy =
         ProviderCapabilityPolicy(
@@ -55,7 +82,9 @@ class ProviderCapabilitySession(
         choices = loaded
         quarantined.clear()
         initialized = true
+        storageFailure = false
         gate.replace(effectivePolicy())
+        publishSnapshot()
         true
     }
 
@@ -80,18 +109,27 @@ class ProviderCapabilitySession(
 
         quarantined.add(capability)
         gate.replace(effectivePolicy())
-        if (!store.replaceCapability(capability, next)) return@withLock false
+        publishSnapshot()
+        if (!store.replaceCapability(capability, next)) {
+            storageFailure = true
+            publishSnapshot()
+            return@withLock false
+        }
 
         choices = choices + (capability to next.toList())
         quarantined.remove(capability)
         gate.replace(effectivePolicy())
+        if (quarantined.isEmpty()) storageFailure = false
+        publishSnapshot()
         true
     }
 
     private fun failClosed() {
         initialized = false
+        storageFailure = false
         choices = emptyMap()
         quarantined.clear()
         gate.replace(ProviderCapabilityPolicy(descriptors))
+        publishSnapshot()
     }
 }
