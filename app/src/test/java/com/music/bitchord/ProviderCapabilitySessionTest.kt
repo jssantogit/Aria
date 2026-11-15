@@ -146,6 +146,31 @@ class ProviderCapabilitySessionTest {
             session.gate.ordered(ProviderCapability.RELEASE_ARTWORK).map { it.key })
     }
 
+    @Test fun repeatedIdenticalPreferenceDoesNotRevokeAnUnrelatedInflightRequest(): Unit = runBlocking {
+        val session = session()
+        val selected = listOf(ProviderChoice(musicBrainz, true, 0))
+        assertTrue(session.initialize(mapOf(ProviderCapability.CATALOG_SEARCH to selected)))
+        val ticket = session.gate.open(ProviderCapability.CATALOG_SEARCH, musicBrainz)
+        assertTrue(session.update(ProviderCapability.CATALOG_SEARCH, selected))
+        assertTrue(session.gate.accept(requireNotNull(ticket)))
+    }
+
+    @Test fun failedPersistenceKeepsOptedOutCapabilityClosedAcrossOtherEdits(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, true, 0)),
+        )))
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{bad").commit()
+        assertFalse(session.update(ProviderCapability.CATALOG_SEARCH, listOf(
+            ProviderChoice(musicBrainz, false, 0),
+        )))
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+        assertFalse(session.update(ProviderCapability.RELEASE_ARTWORK, listOf(
+            ProviderChoice(covers, true, 0),
+        )))
+        assertTrue(session.gate.ordered(ProviderCapability.CATALOG_SEARCH).isEmpty())
+    }
+
     @Test fun corruptedNewPreferencesFailClosedAndAreNotOverwritten(): Unit = runBlocking {
         val bad = """{"version":999,"rows":[]}"""
         prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, bad).commit()
