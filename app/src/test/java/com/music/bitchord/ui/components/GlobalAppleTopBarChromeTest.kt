@@ -62,6 +62,11 @@ import org.robolectric.annotation.ConscryptMode
 class GlobalAppleTopBarChromeTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun rootAndGlobalOverflowShareWhiteActiveOutlineOnlyWhileExpanded() {
+        assertEquals(heldContextSelectionOutline(), appleSettingsLauncherOutline(expanded = true))
+        assertEquals(null, appleSettingsLauncherOutline(expanded = false))
+    }
+
     @Test fun toolbarBackUsesSharedNativeVectorInsteadOfGenericMaterialArrow() {
         assertEquals(PlaylistEditorIcons.Back, artworkPageBackIcon())
     }
