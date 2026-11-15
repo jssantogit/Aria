@@ -96,3 +96,14 @@
 - [Run #43744226881](https://github.com/jssantogit/BitChord/actions/runs/43744226881) falhou em `app:compileDevDebugKotlin` (sem alcançar testes) no `NativeArtistSharedSections.kt`: `drawContent()` dentro da lambda de `clipRect` estava usando implicitamente `DrawScope` em vez de `ContentDrawScope`.
 - [Commit `63121b63`](https://github.com/jssantogit/BitChord/commit/63121b63422d36c48f93fd853764add1831d9a85) mantém uma referência explícita ao `ContentDrawScope` exterior antes de `clipRect` e desenha o conteúdo através dela. Os limites da máscara, semântica de interação e comportamento do snapshot não foram modificados.
 - Solicitar novamente o mesmo workflow test-gated Android; não contornar os testes, não declarar APK/validação física sem sucesso do build e do smoke no aparelho.
+
+
+## Solicitação autorizada — convergência de menus e destaque branco (15/11/2026)
+
+- Autorização explícita nesta conversa: **"Continue, se tudo certo, smoke"**. Interpretar "tudo certo" estritamente como gates automatizados aprovados no SHA exato, não como avaliação visual comprovada.
+- Escopo atual da PR #212: menus elevados das seções de artista (Artistas semelhantes, Incluído em, playlists e destaque), contorno branco compartilhado entre itens mantidos e os launchers de ⋯ da Home, Explorar, Biblioteca, álbum online, playlists e player, com vetor original do player.
+- Correção final: estados de menu de álbum e artista da Biblioteca são reportados pelo compositor que possui `libraryMenu`, e nunca inferidos de `albumMenuToken`/`artistMenuToken`, que são contadores de eventos. Prévia de hold não ativa botão ⋯.
+- Base anterior já aprovada: `66727ea4`. **Este pedido deve testar o HEAD de seu próprio commit de trigger**, incluindo as mudanças posteriores. Proibido reutilizar green/artefato de commit anterior.
+- Gates obrigatórios permanecem intocados: testes Android focalizados e integrais, shared Automix, `:sharedUi:jvmTest` e `:app:assembleDevDebug`; checksum SHA-256 da build universal.
+- Se qualquer gate falhar, não apresentar APK como pronto. Corrigir apenas a falha diagnosticada e repetir a solicitação no HEAD corrigido.
+- Se passar, disponibilizar URL e checksum para smoke físico; manter PR #212 draft, sem merge. Não alegar equivalência visual sem inspeção no Android real.
