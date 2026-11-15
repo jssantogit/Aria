@@ -15,7 +15,9 @@ import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.providers.ProviderRequestDeniedException
+import com.music.bitchord.data.providers.ProviderSingleFlight
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -43,6 +45,80 @@ class MusicBrainzTransportAdmissionTest {
                 ProviderCapability.IDENTITY to listOf(ProviderChoice(mb, identity, 0)),
             ),
         )
+
+    @Test fun identicalMusicBrainzRequestsShareOneRealHttpDispatch(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true, true, true))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val flight = ProviderSingleFlight()
+        var networkCalls = 0
+        val transport = object : MusicBrainzTransport {
+            override suspend fun get(
+                path: String, parameters: Map<String, String>, userAgent: String,
+            ): String {
+                networkCalls++
+                started.complete(Unit)
+                release.await()
+                return """{"count":0,"artists":[]}"""
+            }
+        }
+        val one = MusicBrainzClient(
+            transport = transport,
+            rateLimiter = MusicBrainzRateLimiter(),
+            admission = { gate },
+            singleFlight = flight,
+        )
+        val two = MusicBrainzClient(
+            transport = transport,
+            rateLimiter = MusicBrainzRateLimiter(),
+            admission = { gate },
+            singleFlight = flight,
+        )
+        val first = async { one.get("artist", capability = ProviderCapability.CATALOG_SEARCH) }
+        started.await()
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            two.get("artist", capability = ProviderCapability.CATALOG_SEARCH)
+        }
+        release.complete(Unit)
+        assertEquals(first.await(), second.await())
+        assertEquals(1, networkCalls)
+        assertEquals(0, flight.activeCount())
+    }
+
+    @Test fun samePathDifferentCapabilitiesMustNotShareTheResponse(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true, true, true))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val flight = ProviderSingleFlight()
+        var contacts = 0
+        val transport = object : MusicBrainzTransport {
+            override suspend fun get(path: String,
+                parameters: Map<String, String>, userAgent: String): String {
+                contacts++
+                if (contacts == 1) {
+                    entered.complete(Unit)
+                    release.await()
+                }
+                return "response"
+            }
+        }
+        val client = MusicBrainzClient(transport = transport,
+            rateLimiter = MusicBrainzRateLimiter(minimumIntervalMs = 1_000),
+            admission = { gate }, singleFlight = flight)
+        val first = async {
+            client.get("artist", capability = ProviderCapability.IDENTITY)
+        }
+        entered.await()
+        // Different capability must not borrow a response even with identical path.
+        // A second call is queued by the MusicBrainz budget until the first ends.
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            client.get("artist", capability = ProviderCapability.CATALOG_SEARCH)
+        }
+        release.complete(Unit)
+        first.await()
+        second.await()
+        assertEquals(2, contacts)
+    }
 
     @Test fun catalogDisabledNeverReachesTransportOrConsumesRetryBudget(): Unit = runBlocking {
         val gate = ProviderPolicyGate(policy(false, true, true))
