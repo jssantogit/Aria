@@ -345,7 +345,8 @@ internal fun canonicalCuratedHomeShelves(
             it.kind == CanonicalSearchKind.RELEASE_GROUP ||
                 it.kind == CanonicalSearchKind.RELEASE
         }
-        .filter { row -> canonicalEditorialReleaseType(row) != null }
+        .filter { row -> canonicalEditorialReleaseType(row) != null ||
+            isVerifiedAppleEditorialRelease(row) }
         .filter { row ->
             val date = row.releaseDate ?: return@filter true
             val normalized = when {
