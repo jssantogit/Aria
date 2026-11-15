@@ -37,6 +37,7 @@ jobs:
             sharedUi/src/commonMain/composeResources/ \
             ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt' \
             ':!app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt' \
+            ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalCatalogEntityRatings.kt' \
             ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalCatalogEntityRatings.kt'
           python3 - <<'PY'
           import pathlib
@@ -62,6 +63,16 @@ jobs:
                   'Rating presentation changed beyond one semantics-only PaneTitle repair'
               )
           print('PR212 anchored rating: one semantics-only fix; drawing is byte-identical')
+          # The PR212 native rating compositor is untouched: this reviewed
+          # exact blob only accepts typed, storefront-scoped Apple album/artist
+          # rating IDs, without enabling playback or changing any draw calls.
+          rating_path = 'app/src/main/java/com/music/bitchord/ui/screens/CanonicalCatalogEntityRatings.kt'
+          approved_rating_blob = '38a0b7e90d817f87a470dcc39d8f5f320f4159b1'
+          actual_rating_blob = subprocess.check_output(
+              ['git', 'hash-object', rating_path], text=True).strip()
+          assert actual_rating_blob == approved_rating_blob, (
+              'Native rating UI changed beyond reviewed typed Apple identity bridge')
+
           rating = 'app/src/main/java/com/music/bitchord/ui/screens/CanonicalCatalogEntityRatings.kt'
           # This file only adds typed Apple artist/album rating eligibility.
           # Freeze the exact reviewed implementation; any future visual
