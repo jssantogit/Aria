@@ -2630,7 +2630,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun enrichApplePr212Covers(
         rows: List<CanonicalCatalogSearchRow>,
         stillCurrent: () -> Boolean,
-        onVerified: (String, String?, String?) -> Unit,
+        onVerified: (String, String?, String) -> Unit,
     ) {
         val permits = Semaphore(2)
         coroutineScope {
