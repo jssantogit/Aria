@@ -33,7 +33,6 @@ jobs:
             app/src/main/java/com/music/bitchord/ui/components/ \
             app/src/main/java/com/music/bitchord/ui/screens/ \
             app/src/main/java/com/music/bitchord/ui/theme/ \
-            sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ \
             sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
             sharedUi/src/commonMain/composeResources/
           python3 - <<'PY'
@@ -82,7 +81,36 @@ jobs:
           expected = '\n'.join(lines) + '\n'
           actual = pathlib.Path(path).read_text()
           assert actual == expected, 'MainActivity differs from PR212 beyond three exact metadata bindings'
-          print('PR212 MainActivity: only two source bindings changed; all other bytes match')
+          print('PR212 MainActivity: exactly three source bindings; all other bytes match')
+          shared = 'sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/SearchScreen.kt'
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', baseline, 'HEAD', '--',
+               'sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/'],
+              text=True).splitlines()
+          assert changed == [shared], 'Other shared Search/Detail visuals changed: ' + str(changed)
+          baseline_shared = subprocess.check_output(
+              ['git', 'show', f'{baseline}:{shared}'], text=True)
+          old_rule = '''/** Only positive, independently supplied release classification may create an album tile. */
+private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
+    row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single")'''
+          new_rule = '''/**
+ * Apple collectionType=Album is a verified collection identity but NOT a
+ * confirmed Album/EP/Single format. Include the product in the existing
+ * album-result rows without changing its null releaseKind or UI labels.
+ */
+private val appleExactAlbumProductKey = Regex("^itunes:[a-z]{2}:album:([1-9][0-9]*)$")
+
+/** Eligibility policy only: PR212 composables, typography and layout stay identical. */
+private fun canonicalVerifiedGroupType(row: CanonicalCatalogSearchRow): Boolean =
+    row.releaseKind?.trim()?.lowercase(Locale.ROOT) in setOf("album", "ep", "single") ||
+        (row.kind == CanonicalSearchKind.RELEASE &&
+            appleExactAlbumProductKey.matchEntire(row.musicBrainzId)?.groupValues?.get(1)
+                ?.toLongOrNull()?.let { it > 0L } == true)'''
+          assert baseline_shared.count(old_rule) == 1
+          assert pathlib.Path(shared).read_text() == baseline_shared.replace(old_rule, new_rule), (
+              'PR212 SearchScreen changed outside the single data eligibility predicate'
+          )
+          print('PR212 shared SearchScreen: one typed Apple eligibility policy only')
           PY
           echo "PR212 visual implementations unchanged from $ui_base"
       - name: Set up JDK 17
