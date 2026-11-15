@@ -42,11 +42,11 @@ jobs:
           baseline = "65863b528b233a277421f45002b5f6baa50ebae1"
           path = "app/src/main/java/com/music/bitchord/MainActivity.kt"
           original = subprocess.check_output(["git", "show", f"{baseline}:{path}"], text=True)
-          old = '''                            canonicalTracks = if (
+          old = '''canonicalTracks = if (
                                 page.browseId.startsWith("catalog:RELEASE:") ||
                                 page.browseId.startsWith("catalog:RELEASE_GROUP:")
                             ) {'''
-          new = '''                            canonicalTracks = if (page.browseId.startsWith("itunes:")) {
+          new = '''canonicalTracks = if (page.browseId.startsWith("itunes:")) {
                                 viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()
                                     .value[page.browseId].orEmpty()
                             } else if (
