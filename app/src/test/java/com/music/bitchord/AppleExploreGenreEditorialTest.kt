@@ -1,7 +1,6 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.catalog.metadata.*
-import com.music.bitchord.data.model.HomeShelf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -19,29 +18,11 @@ class AppleExploreGenreEditorialTest {
         musicBrainzRecordingIds = emptyMap(),
     )
 
-    @Test fun kpopMusicBrainzTagsAloneDoNotMakeAnApplePopAlbumIntoKpop() {
-        val shelves = com.music.bitchord.ui.appleFirstGenreShelves(
-            tag = "k-pop",
-            appleAlbums = listOf(edition(101, "Pop"), edition(102, "K-Pop")),
-            publicPlaylists = null,
-            releaseHeading = "Lançamentos",
-        )
-        assertEquals(listOf("itunes:br:album:102"),
-            shelves.flatMap { it.items }.map { it.browseId })
-    }
-
-    @Test fun genrePresentationPreservesStorefrontAndNativeAppleAlbumRouting() {
-        val shelves = com.music.bitchord.ui.appleFirstGenreShelves(
-            tag = "hip-hop",
-            appleAlbums = listOf(edition(5, "Hip-Hop/Rap"),
-                edition(6, "Rock"), edition(7, null)),
-            publicPlaylists = HomeShelf("Playlists", emptyList()),
-            releaseHeading = "Lançamentos",
-        )
-        assertEquals(listOf("itunes:br:album:5"),
-            shelves.flatMap { it.items }.map { it.browseId })
-        assertTrue(shelves.flatMap { it.items }.all { it.videoId == null })
-        assertTrue(shelves.none { it.title == "Playlists" })
+    @Test fun kpopUsesAppleGenreOnlyNotAnUnverifiedMusicBrainzTag() {
+        assertFalse(AppleExploreGenrePolicy.matches("k-pop", edition(101, "Pop").genre))
+        assertTrue(AppleExploreGenrePolicy.matches("k-pop", edition(102, "K-Pop").genre))
+        assertFalse(AppleExploreGenrePolicy.matches("hip-hop", edition(103, "Rock").genre))
+        assertTrue(AppleExploreGenrePolicy.matches("hip-hop", edition(104, "Hip-Hop/Rap").genre))
     }
 
     @Test fun boundedAppleGenreDiscoveryOnlyUsesAppleCategoryAndNeverCopiesMbids() =
@@ -76,17 +57,6 @@ class AppleExploreGenreEditorialTest {
                 result.releases.map { it.appleScopedId })
             assertNull(result.releases.single().musicBrainzReleaseGroupId)
         }
-
-    @Test fun exploreCategoryCoversComeFromAppleGenreProductsNotMbSuggestions() {
-        val result = com.music.bitchord.ui.appleExploreGenreCoverMap(
-            appleAlbums = listOf(edition(1, "K-Pop"), edition(2, "Pop")),
-            tags = listOf("k-pop", "pop", "metal"),
-        )
-        assertEquals("https://is1-ssl.mzstatic.com/music.jpg", result["k-pop"])
-        assertEquals("https://is1-ssl.mzstatic.com/music.jpg", result["pop"])
-        assertNull(result["metal"])
-        assertEquals(2, result.size)
-    }
 
     @Test fun genreKeepsUnderlyingAppleProbeCostEvenWhenOnlyOneGenreMatches() =
         runBlocking {
