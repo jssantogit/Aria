@@ -19,6 +19,18 @@ class HeldContextMenuPlateTest {
         assertEquals(true, heldPreviewCanPaint(hasImage = true, lifted = true))
     }
 
+    /**
+     * The snapshot must not fade out while its originating row remains
+     * suppressed: doing so exposed a blank tinted card at the end of the
+     * physical long-press exit animation.
+     */
+    @Test fun readyHeldSnapshotStaysFullyOpaqueUntilSourcePaintIsRestored() {
+        assertEquals(0f, heldPreviewAlpha(hasImage = false, lifted = false))
+        assertEquals(0f, heldPreviewAlpha(hasImage = true, lifted = false))
+        assertEquals(0f, heldPreviewAlpha(hasImage = false, lifted = true))
+        assertEquals(1f, heldPreviewAlpha(hasImage = true, lifted = true))
+    }
+
     @Test fun longPressActionsStaySolidInEitherBlurSetting() {
         assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = false))
         assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = true))
