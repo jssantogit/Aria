@@ -3,8 +3,11 @@ package com.music.bitchord.ui.components
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,12 +80,25 @@ internal fun rootTabArrivalFrame(progress: Float): RouteArrivalFrame {
     return RouteArrivalFrame(alpha = 0.975f + 0.025f * p, translationDp = 0f)
 }
 
-/** Disable AnimatedContent's implicit SizeTransform spring for root peers. */
-internal fun rootTabContentTransform(): ContentTransform = ContentTransform(
-    targetContentEnter = EnterTransition.None,
-    initialContentExit = ExitTransition.None,
-    sizeTransform = null,
-)
+/**
+ * The AM-DECOMP #7 static tab transaction binds @animator/nav_default_*
+ * alpha enter/exit to 150ms linear. It does not prove video timing or
+ * tab-indicator motion. Keep both fades on the content only, never on chrome.
+ * Do not layer the previous 160ms host arrival over these two fades.
+ */
+internal fun rootTabFadeMillis(reducedMotion: Boolean): Int = if (reducedMotion) 0 else 150
+
+/** Root peers must not inherit AnimatedContent's SizeTransform spring. */
+internal fun rootTabContentTransform(reducedMotion: Boolean = false): ContentTransform {
+    val duration = rootTabFadeMillis(reducedMotion)
+    return ContentTransform(
+        targetContentEnter = if (duration == 0) EnterTransition.None else
+            fadeIn(animationSpec = tween(duration, easing = LinearEasing)),
+        initialContentExit = if (duration == 0) ExitTransition.None else
+            fadeOut(animationSpec = tween(duration, easing = LinearEasing)),
+        sizeTransform = null,
+    )
+}
 
 internal fun shouldAnimateRouteArrival(
     previous: String,
