@@ -5,6 +5,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HeldContextMenuPlateTest {
+    @Test fun liftedSelectionHasConsistentBrightEdgeOverArtwork() {
+        assertEquals(Color.White.copy(alpha = 0.88f), heldContextSelectionOutline())
+    }
+
     @Test fun neutralPagesKeepReadableDarkAndLightPlates() {
         assertEquals(nativeCompactPlateColor(isDark = true, artworkElevation = null),
             heldContextPlateColor(Color.Black, null))
