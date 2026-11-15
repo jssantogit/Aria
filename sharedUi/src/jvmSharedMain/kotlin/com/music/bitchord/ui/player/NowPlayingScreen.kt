@@ -3822,5 +3822,8 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
     onSettle(open)
 }
 
+/** The original unplattered Now Playing ⋯ vector, shared with Android's lifted menu. */
+fun originalNowPlayingOverflowGlyph() = AppleQueueVectors.MorePlain
+
 /** Unplattered ⋯ for the original circular Now Playing control. */
-internal fun nativeNowPlayingOverflowGlyph() = AppleQueueVectors.MorePlain
+internal fun nativeNowPlayingOverflowGlyph() = originalNowPlayingOverflowGlyph()
