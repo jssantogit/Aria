@@ -132,8 +132,12 @@ internal fun NativeArtistDetailFrame(
             state = listState,
             modifier = Modifier.fillMaxSize()
                 .drawWithContent {
+                    // clipRect switches the implicit receiver from
+                    // ContentDrawScope to DrawScope. Keep the outer content
+                    // scope so we draw the actual lazy list, not an empty rect.
+                    val contentScope = this
                     clipRect(top = nativeArtistListMaskTopPx(topBarClearancePx, size.height)) {
-                        drawContent()
+                        contentScope.drawContent()
                     }
                 },
             contentPadding = contentPadding,
