@@ -55,9 +55,17 @@ jobs:
                             ) {'''
           assert original.count(old) == 1, "PR212 baseline changed unexpectedly"
           expected = original.replace(old, new)
+          home_old = '''metadata = (cachedCanonicalRows + canonicalWorldwideReleases)
+                .distinctBy { it.kind to it.musicBrainzId },'''
+          home_new = '''metadata = (cachedCanonicalRows.filter {
+                it.kind == CanonicalSearchKind.RECORDING
+            } + canonicalWorldwideReleases)
+                .distinctBy { it.kind to it.musicBrainzId },'''
+          assert expected.count(home_old) == 1, "PR212 home metadata binding missing"
+          expected = expected.replace(home_old, home_new)
           actual = pathlib.Path(path).read_text()
-          assert actual == expected, "MainActivity differs from PR212 beyond the single approved metadata binding"
-          print("MainActivity: only one source-only track data binding; UI structure preserved")
+          assert actual == expected, "MainActivity differs from PR212 beyond the two approved metadata bindings"
+          print("MainActivity: only two catalog data bindings; UI structure preserved")
           PY
           echo "PR212 visual implementations unchanged from $ui_base"
       - name: Set up JDK 17
