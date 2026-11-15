@@ -24,11 +24,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -39,16 +37,6 @@ import org.robolectric.annotation.ConscryptMode
 @RunWith(RobolectricTestRunner::class)
 class MusicBrainzCachedSearchRepositoryTest {
     private val musicBrainz = ProviderKey("musicbrainz")
-
-    @Before
-    fun setUp() {
-        ProviderCachedReadAccessTestHelper.installPermissiveGate()
-    }
-
-    @After
-    fun tearDown() {
-        ProviderCachedReadAccessTestHelper.resetGate()
-    }
 
     private fun gate(search: Boolean, discography: Boolean = true) =
         ProviderPolicyGate(ProviderCapabilityPolicy(
