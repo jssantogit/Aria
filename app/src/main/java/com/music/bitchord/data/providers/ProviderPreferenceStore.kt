@@ -117,6 +117,62 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
         }
     }
 
+    /**
+     * One-time, atomic import of currently missing legacy categories.
+     *
+     * A configured empty category is a deliberate opt-out. Re-running migration
+     * must NEVER enable it, or replace an existing ordering. Unknown future
+     * records are retained byte-for-byte semantically, including their flags.
+     * The caller supplies read-only snapshots from initialized legacy stores.
+     */
+    suspend fun migrateMissing(
+        imported: Map<ProviderCapability, List<ProviderChoice>>,
+    ): Boolean {
+        imported.forEach { (capability, rows) ->
+            require(rows.distinctBy { it.key }.size == rows.size) {
+                "Duplicate legacy instance for $capability"
+            }
+        }
+        return withContext(Dispatchers.IO) {
+            synchronized(WRITE_LOCK) {
+                val current = when (val stored = decode()) {
+                    Decoded.Missing -> StoredDocument()
+                    Decoded.Unreadable -> return@synchronized false
+                    is Decoded.Parsed -> stored.document
+                }
+                val configured = (
+                    current.configuredCapabilities + current.rows.map { it.capability }
+                ).toSet()
+                val missing = imported.filterKeys { it.name !in configured }
+                if (missing.isEmpty()) return@synchronized true
+
+                val additional = missing.flatMap { (capability, choices) ->
+                    choices.map { choice ->
+                        StoredChoice(
+                            capability = capability.name,
+                            providerId = choice.key.providerId,
+                            instanceId = choice.key.instanceId,
+                            enabled = choice.enabled,
+                            priority = choice.order,
+                        )
+                    }
+                }
+                val next = current.copy(
+                    configuredCapabilities =
+                        current.configuredCapabilities + missing.keys.map { it.name },
+                    rows = current.rows + additional,
+                )
+                if (next.rows.size > MAX_CHOICES ||
+                    next.configuredCapabilities.size > MAX_CHOICES
+                ) return@synchronized false
+
+                val payload = json.encodeToString(StoredDocument.serializer(), next)
+                if (payload.length > MAX_DOCUMENT_CHARS) return@synchronized false
+                preferences.edit().putString(STORAGE_KEY, payload).commit()
+            }
+        }
+    }
+
     private fun decode(): Decoded {
         if (!preferences.contains(STORAGE_KEY)) return Decoded.Missing
         val raw = preferences.getString(STORAGE_KEY, null) ?: return Decoded.Unreadable
