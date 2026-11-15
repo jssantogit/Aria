@@ -46,6 +46,13 @@ data class AppleArtistArt(
     val keyColor: Int?,
 )
 
+/** Artist search products have no image field; request Apple's own page by
+ * verified storefront artist ID, never by a same-name album or first search hit. */
+internal fun appleArtistStorefrontPage(storefront: String, artistId: Long): String? =
+    if (Regex("[a-z]{2}").matches(storefront) && artistId > 0L)
+        "https://music.apple.com/$storefront/artist/$artistId"
+    else null
+
 /** Apple's colours for this artist, in the form the palette takes. */
 fun AppleArtistArt.keyColors() = ArtworkKeyColors(Color(background), Color(accent))
 
@@ -158,6 +165,40 @@ object AppleArtistArtRepository {
             synchronized(cache) { cache[key] = Entry(it) }
         }
         return art?.let { offlineStills(key, it) }
+    }
+
+    private fun appleProductCacheKey(storefront: String, artistId: Long) =
+        "itunes:$storefront:artist:$artistId"
+
+    fun cachedVerifiedArtist(storefront: String, artistId: Long): AppleArtistArt? {
+        if (appleArtistStorefrontPage(storefront, artistId) == null) return null
+        val key = appleProductCacheKey(storefront, artistId)
+        val known = synchronized(cache) { cache[key] }?.art
+            ?: fromDisk(key)?.also {
+                synchronized(cache) { cache[key] = Entry(it) }
+            }
+        return known?.let { offlineStills(key, it) }
+    }
+
+    /**
+     * This album-independent artist artwork is keyed to the *exact* Apple
+     * artist ID delivered by search. Never use a similarly titled release
+     * cover as the artist portrait. A failed HTML lookup leaves a placeholder
+     * and is retryable; the Apple storefront may omit editorial photographs.
+     */
+    suspend fun artForVerifiedArtist(storefront: String, artistId: Long): AppleArtistArt? {
+        val url = appleArtistStorefrontPage(storefront, artistId) ?: return null
+        cachedVerifiedArtist(storefront, artistId)?.let { return it }
+        val art = try {
+            withContext(Dispatchers.IO) { get(url)?.let(::parse) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) { null } ?: return null
+        val key = appleProductCacheKey(storefront, artistId)
+        synchronized(cache) { cache[key] = Entry(art) }
+        keepOffline(key, art)
+        _updates.value++
+        return offlineStills(key, art)
     }
 
     /** A file from the app-managed verified still store, not a remote
