@@ -125,7 +125,27 @@ jobs:
           echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
           echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
           chmod +x gradlew
+      - name: Apple search and metadata unit regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests "com.music.bitchord.Apple*"
+      - name: PR212 Apple search eligibility JVM regressions
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest --tests "com.music.bitchord.ui.screens.AppleNativeSearchReleaseEligibilityTest"
       - name: Android unit tests and Kotlin compile
         run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
       - name: Shared UI JVM regressions
         run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+      - name: Report exact test failures
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+          for path in sorted(glob.glob('app/build/test-results/**/TEST-*.xml', recursive=True) +
+                             glob.glob('sharedUi/build/test-results/**/TEST-*.xml', recursive=True)):
+              root = ET.parse(path).getroot()
+              for test in root.findall('.//testcase'):
+                  for failure in test.findall('failure') + test.findall('error'):
+                      print('FAIL', root.get('name'), test.get('name'))
+                      print('MESSAGE', failure.get('message'))
+                      print((failure.text or '')[:5500])
+          PY
