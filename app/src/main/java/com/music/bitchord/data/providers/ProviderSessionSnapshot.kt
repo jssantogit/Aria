@@ -5,7 +5,7 @@ package com.music.bitchord.data.providers
  *
  * This does not render UI or hold secrets. It intentionally separates user
  * selections (what was durably configured) from currently admitted sources
- * (what is READY, enabled and not quarantined).
+ * (what is READY, enabled, operationally available and not quarantined).
  */
 enum class ProviderSessionStatus {
     BOOTING,
@@ -19,4 +19,5 @@ data class ProviderSessionSnapshot(
     val configured: Map<ProviderCapability, List<ProviderChoice>> = emptyMap(),
     val eligible: Map<ProviderCapability, List<ProviderKey>> = emptyMap(),
     val quarantined: Set<ProviderCapability> = emptySet(),
+    val health: Map<ProviderKey, ProviderOperationalHealth> = emptyMap(),
 )

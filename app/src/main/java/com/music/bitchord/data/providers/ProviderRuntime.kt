@@ -1,6 +1,8 @@
 package com.music.bitchord.data.providers
 
 import android.content.Context
+import android.os.Build
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Process-owned provider policy: installed closed before Android startup launches
@@ -12,8 +14,29 @@ import android.content.Context
  */
 internal object ProviderRuntime {
     @Volatile private var session: ProviderCapabilitySession? = null
+    @Volatile private var installedInProcess: Boolean = false
+
+    private val plainJvmTestGate: ProviderPolicyGate by lazy {
+        val mb = ProviderKey("musicbrainz")
+        val caps = setOf(
+            ProviderCapability.CATALOG_SEARCH,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            ProviderCapability.IDENTITY,
+        )
+        ProviderPolicyGate(
+            ProviderCapabilityPolicy(
+                descriptors = listOf(ProviderDescriptor(mb, caps, ProviderReadiness.READY)),
+                choices = caps.associateWith { listOf(ProviderChoice(mb, enabled = true, order = 0)) },
+            ),
+        )
+    }
+
+    fun isAndroidEnvironment(): Boolean = installedInProcess || runCatching {
+        Build.VERSION.SDK_INT != 0
+    }.getOrDefault(false)
 
     fun install(context: Context) {
+        installedInProcess = true
         if (session != null) return
         synchronized(this) {
             if (session != null) return
@@ -36,8 +59,20 @@ internal object ProviderRuntime {
         }
     }
 
-    /** Null only outside the installed Android runtime, e.g. plain JVM tests. */
+    /** Null outside an installed Android runtime (e.g. plain JVM tests). */
     fun gateOrNull(): ProviderPolicyGate? = session?.gate
+
+    /**
+     * Cache reads fail closed in any Android runtime if the session gate is
+     * missing; only pure non-Android JVM tests fall back to a plain test gate.
+     */
+    fun gateForCacheReadOrNull(): ProviderPolicyGate? =
+        if (isAndroidEnvironment()) session?.gate else plainJvmTestGate
+
+    fun sessionOrNull(): ProviderCapabilitySession? = session
+
+    val state: StateFlow<ProviderSessionSnapshot>?
+        get() = session?.state
 
     /**
      * Old builds have no individual MusicBrainz toggle. Preserve the existing

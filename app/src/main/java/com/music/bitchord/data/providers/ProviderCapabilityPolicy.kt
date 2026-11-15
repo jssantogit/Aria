@@ -41,7 +41,7 @@ data class ProviderKey(
 }
 
 /**
- * READY means an adapter has independently established its prerequisites.
+ * Adapter implementation & static prerequisite state.
  * A registered-but-unimplemented service must NOT claim READY.
  */
 enum class ProviderReadiness {
@@ -50,6 +50,34 @@ enum class ProviderReadiness {
     NOT_IMPLEMENTED,
     BLOCKED,
 }
+
+/**
+ * Dynamic runtime service health, distinct from adapter implementation and
+ * user authorization. An UNAVAILABLE provider is excluded from dispatch
+ * without erasing the user's saved ProviderChoice.
+ */
+enum class ProviderOperationalHealth {
+    UNKNOWN,
+    OPERATIONAL,
+    DEGRADED,
+    UNAVAILABLE,
+}
+
+/**
+ * Explicit three-axis status for a (capability, provider instance) pair:
+ * 1) whether the adapter exists in this build,
+ * 2) whether static prerequisites/credentials are met,
+ * 3) whether the user authorized it (and it is not quarantined) + runtime health.
+ */
+data class ProviderCapabilityStatus(
+    val capability: ProviderCapability,
+    val key: ProviderKey,
+    val implemented: Boolean,
+    val prerequisitesMet: Boolean,
+    val userAuthorized: Boolean,
+    val operationalHealth: ProviderOperationalHealth,
+    val effectiveEligible: Boolean,
+)
 
 data class ProviderDescriptor(
     val key: ProviderKey,
@@ -82,24 +110,35 @@ data class ProviderChoice(
 class ProviderCapabilityPolicy(
     descriptors: List<ProviderDescriptor>,
     choices: Map<ProviderCapability, List<ProviderChoice>> = emptyMap(),
+    health: Map<ProviderKey, ProviderOperationalHealth> = emptyMap(),
 ) {
     private val byKey: Map<ProviderKey, ProviderDescriptor> = descriptors
         .also { require(it.distinctBy(ProviderDescriptor::key).size == it.size) }
         .associateBy(ProviderDescriptor::key)
 
-    private val eligibleByCapability: Map<ProviderCapability, List<ProviderDescriptor>> =
+    private val healthByKey: Map<ProviderKey, ProviderOperationalHealth> = health.toMap()
+
+    private val choicesByCapability: Map<ProviderCapability, Map<ProviderKey, ProviderChoice>> =
         ProviderCapability.entries.associateWith { capability ->
             val options = choices[capability].orEmpty()
             require(options.distinctBy(ProviderChoice::key).size == options.size) {
                 "A provider instance may only be selected once per capability"
             }
+            options.associateBy(ProviderChoice::key)
+        }
+
+    private val eligibleByCapability: Map<ProviderCapability, List<ProviderDescriptor>> =
+        ProviderCapability.entries.associateWith { capability ->
+            val options = choices[capability].orEmpty()
             options.asSequence()
                 .filter(ProviderChoice::enabled)
                 .sortedBy(ProviderChoice::order)
                 .mapNotNull { choice ->
                     byKey[choice.key]?.takeIf { descriptor ->
                         descriptor.readiness == ProviderReadiness.READY &&
-                            capability in descriptor.capabilities
+                            capability in descriptor.capabilities &&
+                            (healthByKey[descriptor.key] ?: ProviderOperationalHealth.UNKNOWN) !=
+                            ProviderOperationalHealth.UNAVAILABLE
                     }
                 }
                 .toList()
@@ -110,6 +149,30 @@ class ProviderCapabilityPolicy(
 
     fun permits(capability: ProviderCapability, key: ProviderKey): Boolean =
         eligibleByCapability.getValue(capability).any { it.key == key }
+
+    fun status(
+        capability: ProviderCapability,
+        key: ProviderKey,
+        quarantined: Boolean = false,
+    ): ProviderCapabilityStatus {
+        val descriptor = byKey[key]
+        val implemented = descriptor != null &&
+            descriptor.readiness != ProviderReadiness.NOT_IMPLEMENTED
+        val prerequisitesMet = descriptor?.readiness == ProviderReadiness.READY
+        val userAuthorized = !quarantined &&
+            choicesByCapability[capability]?.get(key)?.enabled == true
+        val operationalHealth = healthByKey[key] ?: ProviderOperationalHealth.UNKNOWN
+        val effectiveEligible = !quarantined && permits(capability, key)
+        return ProviderCapabilityStatus(
+            capability = capability,
+            key = key,
+            implemented = implemented,
+            prerequisitesMet = prerequisitesMet,
+            userAuthorized = userAuthorized,
+            operationalHealth = operationalHealth,
+            effectiveEligible = effectiveEligible,
+        )
+    }
 }
 
 /**

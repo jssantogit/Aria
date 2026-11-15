@@ -20,6 +20,7 @@ class ProviderCapabilitySession(
     private val lock = Mutex()
     private var choices: Map<ProviderCapability, List<ProviderChoice>> = emptyMap()
     private val quarantined = mutableSetOf<ProviderCapability>()
+    private val health = mutableMapOf<ProviderKey, ProviderOperationalHealth>()
     private var initialized: Boolean = false
     private var storageFailure: Boolean = false
 
@@ -31,8 +32,8 @@ class ProviderCapabilitySession(
 
     private fun publishSnapshot() {
         val status = when {
-            !initialized -> ProviderSessionStatus.BOOTING
             storageFailure -> ProviderSessionStatus.STORAGE_ERROR
+            !initialized -> ProviderSessionStatus.BOOTING
             quarantined.isNotEmpty() -> ProviderSessionStatus.PERSISTING
             else -> ProviderSessionStatus.READY
         }
@@ -46,13 +47,15 @@ class ProviderCapabilitySession(
             configured = choices.mapValues { (_, selections) -> selections.toList() },
             eligible = eligible,
             quarantined = quarantined.toSet(),
+            health = health.toMap(),
         )
     }
 
     private fun effectivePolicy(): ProviderCapabilityPolicy =
         ProviderCapabilityPolicy(
-            descriptors,
-            choices + quarantined.associateWith { emptyList<ProviderChoice>() },
+            descriptors = descriptors,
+            choices = choices + quarantined.associateWith { emptyList<ProviderChoice>() },
+            health = health,
         )
 
     /**
@@ -63,7 +66,7 @@ class ProviderCapabilitySession(
         legacyChoices: Map<ProviderCapability, List<ProviderChoice>>,
     ): Boolean = lock.withLock {
         if (!store.migrateMissing(legacyChoices)) {
-            failClosed()
+            failClosed(storageError = true)
             return@withLock false
         }
         val loaded = when (val snapshot = store.read()) {
@@ -76,7 +79,7 @@ class ProviderCapabilitySession(
             ProviderPreferenceStore.Read.Unreadable -> null
         }
         if (loaded == null) {
-            failClosed()
+            failClosed(storageError = true)
             return@withLock false
         }
         choices = loaded
@@ -92,8 +95,8 @@ class ProviderCapabilitySession(
      * Immediate capability-local revocation before durable I/O.
      *
      * A failed commit keeps the affected capability quarantined even when
-     * another category is edited later. The UI must report false to the user;
-     * it must never present a failed change as persisted.
+     * another category is edited later. A subsequent successful commit for
+     * that capability recovers it cleanly without re-enabling opt-outs.
      */
     suspend fun update(
         capability: ProviderCapability,
@@ -124,12 +127,35 @@ class ProviderCapabilitySession(
         true
     }
 
-    private fun failClosed() {
+    /**
+     * Update live operational health for a provider instance without mutating
+     * persisted user choices. UNAVAILABLE suspends dispatch immediately.
+     */
+    suspend fun reportHealth(
+        key: ProviderKey,
+        status: ProviderOperationalHealth,
+    ) = lock.withLock {
+        val previous = health[key] ?: ProviderOperationalHealth.UNKNOWN
+        if (previous == status) return@withLock
+        if (status == ProviderOperationalHealth.UNKNOWN) health.remove(key)
+        else health[key] = status
+        gate.replace(effectivePolicy())
+        publishSnapshot()
+    }
+
+    suspend fun statusOf(
+        capability: ProviderCapability,
+        key: ProviderKey,
+    ): ProviderCapabilityStatus = lock.withLock {
+        effectivePolicy().status(capability, key, capability in quarantined)
+    }
+
+    private fun failClosed(storageError: Boolean) {
         initialized = false
-        storageFailure = false
+        storageFailure = storageError
         choices = emptyMap()
         quarantined.clear()
-        gate.replace(ProviderCapabilityPolicy(descriptors))
+        gate.replace(ProviderCapabilityPolicy(descriptors, health = health))
         publishSnapshot()
     }
 }
