@@ -7,6 +7,7 @@ import com.music.bitchord.ui.canonicalGenreDisplayState
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
 import com.music.bitchord.ui.canonicalExploreDiscoveryShelves
 import com.music.bitchord.ui.canonicalDailyPublicPicks
 import com.music.bitchord.ui.canonicalExploreGenreForBrowseId
