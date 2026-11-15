@@ -71,6 +71,9 @@ internal fun heldPreviewCanPaint(hasImage: Boolean, lifted: Boolean): Boolean = 
 internal fun heldPreviewAlpha(hasImage: Boolean, lifted: Boolean): Float =
     if (heldPreviewCanPaint(hasImage, lifted)) 1f else 0f
 
+/** The active lifted item keeps the same bright outline over every artwork palette. */
+internal fun heldContextSelectionOutline(): Color = Color.White.copy(alpha = 0.88f)
+
 /** Long-press actions stay opaque; blur belongs to filter/rating cards. */
 internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = false
 
@@ -214,7 +217,7 @@ fun <T : Any> HeldContextMenu(
                     .pointerInput(Unit) {}
                     .clip(cardShape)
                     .background(plate)
-                    .border(0.5.dp, hairline, cardShape)
+                    .border(1.5.dp, heldContextSelectionOutline(), cardShape)
                     .then(
                         if (onPreviewClick != null) {
                             Modifier.clickable(enabled = open) { onPreviewClick(menuItem) }
