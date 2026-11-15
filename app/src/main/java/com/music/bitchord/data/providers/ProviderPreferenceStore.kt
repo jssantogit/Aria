@@ -40,6 +40,8 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
     @Serializable
     private data class StoredDocument(
         val version: Int = VERSION,
+        /** Includes explicitly empty categories, never inferred as enabled. */
+        val configuredCapabilities: List<String> = emptyList(),
         val rows: List<StoredChoice> = emptyList(),
     )
 
@@ -65,7 +67,11 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
                     )
                 }
             }
-            Read.Loaded(recognized.groupBy({ it.first }, { it.second }))
+            val byCapability = recognized.groupBy({ it.first }, { it.second })
+            val configured = (decoded.document.configuredCapabilities +
+                decoded.document.rows.map { it.capability }).distinct()
+                .mapNotNull(keys::get)
+            Read.Loaded(configured.associateWith { byCapability[it].orEmpty() })
         }
     }
 
@@ -90,8 +96,10 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
                     Decoded.Unreadable -> return@synchronized false
                     is Decoded.Parsed -> stored.document
                 }
-                val next = StoredDocument(rows =
-                    previous.rows.filterNot { it.capability == capability.name } +
+                val next = StoredDocument(
+                    configuredCapabilities = (previous.configuredCapabilities +
+                        capability.name).distinct(),
+                    rows = previous.rows.filterNot { it.capability == capability.name } +
                         choices.map { option ->
                             StoredChoice(
                                 capability = capability.name,
@@ -116,7 +124,12 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
         val document = runCatching {
             json.decodeFromString(StoredDocument.serializer(), raw)
         }.getOrNull() ?: return Decoded.Unreadable
-        if (document.version != VERSION || document.rows.size > MAX_CHOICES) {
+        if (document.version != VERSION || document.rows.size > MAX_CHOICES ||
+            document.configuredCapabilities.size > MAX_CHOICES ||
+            document.configuredCapabilities.distinct().size !=
+                document.configuredCapabilities.size ||
+            document.configuredCapabilities.any { it.isBlank() || it.length > MAX_NAME_CHARS }
+        ) {
             return Decoded.Unreadable
         }
         val seen = HashSet<Triple<String, String, String>>()
