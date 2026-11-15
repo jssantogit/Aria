@@ -47,3 +47,8 @@
 
 - [Run #43728444128](https://github.com/jssantogit/BitChord/actions/runs/43728444128) falhou antes de executar testes, em `app:compileDevDebugKotlin`: parâmetro `reducedMotion` inexistente no helper de Explorar (o argumento é `reduceMotion`) e import da constante `LOCAL_MEDIASTORE_PROVIDER` feito como top-level em vez de usar `CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER` no módulo de artista do player. Nenhum APK foi gerado.
 - Os dois erros foram corrigidos preservando a política do smoke e todo o escopo funcional aprovado. Solicitar novamente o mesmo gate de testes Android/sharedUi/Automix antes de compilar qualquer APK. Não interpretar CI como smoke físico.
+
+## Gate #43728868988 — corrigir import do novo teste do Explorar
+
+- [Run #43728868988](https://github.com/jssantogit/BitChord/actions/runs/43728868988) confirmou compilação de produção até `app:compileDevDebugKotlin`, mas `app:compileDevDebugUnitTestKotlin` falhou apenas por imports inexistentes de `assertDoesNotExist` e `assertExists` em `ExploreCategoryContentTransitionTest.kt`. São métodos de `SemanticsNodeInteraction`, já usados sem import em testes da branch; remover somente as linhas de import, preservando as assertivas e cenários.
+- Reexecutar o mesmo gate integral, sem desabilitar testes ou compilar APK após falha. Usuário autorizou explicitamente o smoke nesta rodada.
