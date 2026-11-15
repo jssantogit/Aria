@@ -11,6 +11,7 @@ import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPreferenceStore
 import com.music.bitchord.data.providers.ProviderQueryExecutor
 import com.music.bitchord.data.providers.ProviderReadiness
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogPage
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchResult
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
@@ -51,6 +52,59 @@ class ProviderCapabilitySessionTest {
     )
 
     @Before fun clear() { prefs.edit().clear().commit() }
+
+    @Test fun headlessStateIsObservableWithoutAnAndroidSettingsScreen(): Unit = runBlocking {
+        val session = session()
+        assertEquals(ProviderSessionStatus.BOOTING, session.state.value.status)
+        assertTrue(session.state.value.eligible.isEmpty())
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(
+                ProviderChoice(musicBrainz, enabled = true, order = 0),
+            ),
+        )))
+        val loaded = session.state.value
+        assertEquals(ProviderSessionStatus.READY, loaded.status)
+        assertEquals(listOf(musicBrainz),
+            loaded.eligible.getValue(ProviderCapability.CATALOG_SEARCH))
+        assertEquals(listOf(ProviderChoice(musicBrainz, true, 0)),
+            loaded.configured.getValue(ProviderCapability.CATALOG_SEARCH))
+
+        assertTrue(session.update(ProviderCapability.CATALOG_SEARCH, emptyList()))
+        val disabled = session.state.value
+        assertEquals(ProviderSessionStatus.READY, disabled.status)
+        assertTrue(disabled.configured.containsKey(ProviderCapability.CATALOG_SEARCH))
+        assertEquals(emptyList<ProviderChoice>(),
+            disabled.configured.getValue(ProviderCapability.CATALOG_SEARCH))
+        assertTrue(disabled.eligible[ProviderCapability.CATALOG_SEARCH].isNullOrEmpty())
+    }
+
+    @Test fun failedSettingsWriteIsRepresentedAsUnavailableNotAReactivatedSwitch(): Unit = runBlocking {
+        val session = session()
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(
+                ProviderChoice(musicBrainz, enabled = true, order = 0),
+            ),
+        )))
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{bad").commit()
+        assertFalse(session.update(ProviderCapability.CATALOG_SEARCH, emptyList()))
+        val failed = session.state.value
+        assertEquals(ProviderSessionStatus.STORAGE_ERROR, failed.status)
+        assertTrue(ProviderCapability.CATALOG_SEARCH in failed.quarantined)
+        assertTrue(failed.eligible[ProviderCapability.CATALOG_SEARCH].isNullOrEmpty())
+        // The stale saved selection must never be displayed as a successful
+        // OFF or ON change while the durable write has failed.
+        assertEquals(listOf(ProviderChoice(musicBrainz, true, 0)),
+            failed.configured[ProviderCapability.CATALOG_SEARCH])
+    }
+
+    @Test fun duplicateNoOpDoesNotPublishAnotherStateSnapshot(): Unit = runBlocking {
+        val session = session()
+        val selected = listOf(ProviderChoice(musicBrainz, true, 0))
+        assertTrue(session.initialize(mapOf(ProviderCapability.CATALOG_SEARCH to selected)))
+        val snapshot = session.state.value
+        assertTrue(session.update(ProviderCapability.CATALOG_SEARCH, selected))
+        assertTrue(session.state.value === snapshot)
+    }
 
     @Test fun noNetworkIsEligibleBeforeConfigurationIsLoaded(): Unit = runBlocking {
         val session = session()
