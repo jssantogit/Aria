@@ -1203,16 +1203,6 @@ fun DetailScreen(
 }
 }
 
-/**
- * An album or playlist, laid out as Apple Music does: the sleeve framed in the
- * middle of the page, the title, credit and meta under it, then Shuffle, a
- * labelled Play pill and Add to Library across one row.
- *
- * One flat page colour behind all of it — the sleeve is a picture *on* the
- * page, not the page's top edge, so there is nothing to blend into and no
- * layer drawn behind the list. Search, sort and the overflow menu are the top
- * bar's, not this header's.
- */
 /** Source-bound credit navigation is not inferred from display names of public releases. */
 internal fun detailAlbumArtistBrowseId(
     albumBrowseId: String,
@@ -1223,6 +1213,16 @@ internal fun detailAlbumArtistBrowseId(
         ?.takeIf { artistName.isNotBlank() }
         ?.let { folder -> com.music.bitchord.data.LocalGroups.artistPageId(folder, artistName) }
 
+/**
+ * An album or playlist, laid out as Apple Music does: the sleeve framed in the
+ * middle of the page, the title, credit and meta under it, then Shuffle, a
+ * labelled Play pill and Add to Library across one row.
+ *
+ * One flat page colour behind all of it — the sleeve is a picture *on* the
+ * page, not the page's top edge, so there is nothing to blend into and no
+ * layer drawn behind the list. Search, sort and the overflow menu are the top
+ * bar's, not this header's.
+ */
 @Composable
 private fun ReleaseHeader(
     page: DetailPage,
