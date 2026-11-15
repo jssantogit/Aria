@@ -454,12 +454,12 @@ internal fun canonicalHomeWithWorldwideEditorial(
             canonicalNativeBrowseId(it) in selected ||
                 it.musicBrainzId == reservedMore?.musicBrainzId
         }
-        if (publicPlaylists?.items.isNullOrEmpty()) {
-            appendPublic(singlesHeading,
-                listOfNotNull(reservedSingle) + unusedSingles.filter {
-                    canonicalEditorialReleaseType(it) in setOf("EP", "Single")
-                })
-        }
+        // Public playlists complement Singles/EPs, they do not replace the
+        // PR212 section. Each shelf still receives distinct Apple product IDs.
+        appendPublic(singlesHeading,
+            listOfNotNull(reservedSingle) + unusedSingles.filter {
+                canonicalEditorialReleaseType(it) in setOf("EP", "Single")
+            })
     }
     appendPublic(moreHeading,
         listOfNotNull(reservedMore) + publicRows.filterNot { canonicalNativeBrowseId(it) in selected })
