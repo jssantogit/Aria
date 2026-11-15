@@ -3833,7 +3833,10 @@ private fun BitChordApp(
                             },
                             songSort = songSort,
                             folder = folder,
-                            canonicalTracks = if (
+                            canonicalTracks = if (page.browseId.startsWith("itunes:")) {
+                                viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()
+                                    .value[page.browseId].orEmpty()
+                            } else if (
                                 page.browseId.startsWith("catalog:RELEASE:") ||
                                 page.browseId.startsWith("catalog:RELEASE_GROUP:")
                             ) {
