@@ -379,11 +379,11 @@ private suspend fun PointerInputScope.swallowAll() {
 }
 
 /**
- * A lifted preview and its actions belong to the page they hover above, not
- * always to the app-wide AMOLED surface. The caller hands the already readable
- * artwork.elevated swatch: don't re-quantize or invent color from the thumbnail.
- * A near-solid plate still prevents the duplicated text/artwork regression.
+ * Held item and its action plate share the same neutral opaque material as
+ * the Library filter. The caller's artwork tint is deliberately ignored:
+ * dynamic colors behind white menu text were causing illegible green/purple
+ * context menus and duplicated original-row content.
  */
+@Suppress("UNUSED_PARAMETER")
 internal fun heldContextPlateColor(themeBackground: Color, artworkElevation: Color?): Color =
-    (artworkElevation ?: if (themeBackground.luminance() < 0.5f) Color.Black else Color.White)
-        .copy(alpha = 0.97f)
+    nativeCompactPlateColor(themeBackground.luminance() < 0.5f, artworkElevation = null)

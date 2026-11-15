@@ -3,6 +3,7 @@ package com.music.bitchord.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
@@ -12,7 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
@@ -24,12 +28,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import com.music.bitchord.ui.components.NativeContextActionPlate
-import com.music.bitchord.ui.components.ActionRow
-import com.music.bitchord.ui.components.ActionRowStyle
-import com.music.bitchord.ui.components.LocalActionRowStyle
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,28 +36,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.components.NativeContextActionPlate
+import com.music.bitchord.ui.components.NativeActionCardTreatment
+import com.music.bitchord.ui.components.ActionRow
+import com.music.bitchord.ui.components.ActionRowStyle
+import com.music.bitchord.ui.components.LocalActionRowStyle
 
-/**
- * Selecting is functional even when animation is disabled. Keep the action
- * rows immediately reachable and avoid Compose's default expand/fade specs
- * when the user's Reduce animations preference is enabled.
- */
+/** The action list grows up from a stable summary dock, with no size spring. */
 internal fun selectionActionsEnterTransition(reducedMotion: Boolean): EnterTransition =
-    if (reducedMotion) EnterTransition.None else expandVertically() + fadeIn()
+    if (reducedMotion) EnterTransition.None else
+        expandVertically(expandFrom = Alignment.Bottom, animationSpec = tween(150)) +
+            fadeIn(tween(150))
 
 internal fun selectionActionsExitTransition(reducedMotion: Boolean): ExitTransition =
-    if (reducedMotion) ExitTransition.None else shrinkVertically() + fadeOut()
+    if (reducedMotion) ExitTransition.None else
+        shrinkVertically(shrinkTowards = Alignment.Bottom, animationSpec = tween(150)) +
+            fadeOut(tween(150))
 
 /**
- * Native small contextual selection strip. Composed entirely out of the
- * Settings group's existing shape/surface role and PlaylistWizardCompactAction
- * icon buttons; no separate generic Material3 bar or copied Symfonium design.
- *
- * The Library host positions this above the app's native floating bottom bar.
+ * Native multi-selection dock: a small, opaque, neutral plate. It starts
+ * COLLAPSED and never samples the underlying selectable rows as an action
+ * background. Opening actions must not move the dock against the bottom bar.
  */
 @Composable
 internal fun CanonicalLibraryBatchActionBar(
@@ -73,21 +76,61 @@ internal fun CanonicalLibraryBatchActionBar(
     hazeState: dev.chrisbanes.haze.HazeState? = null,
 ) {
     if (selectedEntityCount < 1) return
-    var expanded by remember { mutableStateOf(true) }
+    var expanded by remember { mutableStateOf(false) }
     val reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current
-    // Compact phone-safe dock: the count is never squeezed between four
-    // 48dp controls on one line. Both rows use the existing wizard actions
-    // inside the same lifted plate as held-item menus, not a second Settings sheet.
     NativeContextActionPlate(
         modifier = modifier.widthIn(max = 340.dp).testTag("native-selection-held-card"),
-        hazeState = hazeState,
+        // Selection is not a frosted filter: Haze on moving selectable rows
+        // caused the overlapping text and colors visible in the physical smoke.
+        treatment = NativeActionCardTreatment.SOLID,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // Put actions ABOVE the summary to expand toward the page, never
+            // down through the navigation capsule or the miniplayer.
+            AnimatedVisibility(
+                visible = expanded,
+                enter = selectionActionsEnterTransition(reduceMotion),
+                exit = selectionActionsExitTransition(reduceMotion),
+            ) {
+                CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
+                    Column(
+                        Modifier.fillMaxWidth().heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState())
+                            .testTag("native-selection-expanded-actions"),
+                    ) {
+                        ActionRow(
+                            icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                            label = "Adicionar seleção à playlist",
+                            onClick = onAddToPlaylist,
+                        )
+                        ActionRow(
+                            icon = Icons.Rounded.SkipNext,
+                            label = "Tocar a seleção a seguir",
+                            onClick = onPlayNext,
+                        )
+                        ActionRow(
+                            icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                            label = "Adicionar seleção à fila",
+                            onClick = onAddToQueue,
+                        )
+                        onRateSelection?.let { rate ->
+                            ActionRow(
+                                icon = Icons.Rounded.Star,
+                                label = "Avaliar seleção",
+                                onClick = rate,
+                            )
+                        }
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                        )
+                    }
+                }
+            }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("native-selection-summary-dock"),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -111,44 +154,6 @@ internal fun CanonicalLibraryBatchActionBar(
                     icon = if (expanded) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
                     onClick = { expanded = !expanded },
                 )
-            }
-            // The chosen items stay visible; only their action menu grows out
-            // of this summary. Use the very same full-width native action rows
-            // as the held context menu, rather than the legacy strip of glyphs.
-            AnimatedVisibility(
-                visible = expanded,
-                enter = selectionActionsEnterTransition(reduceMotion),
-                exit = selectionActionsExitTransition(reduceMotion),
-            ) {
-                CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
-                Column(Modifier.fillMaxWidth().testTag("native-selection-expanded-actions")) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                    )
-                    ActionRow(
-                        icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
-                        label = "Adicionar seleção à playlist",
-                        onClick = onAddToPlaylist,
-                    )
-                    ActionRow(
-                        icon = Icons.Rounded.SkipNext,
-                        label = "Tocar a seleção a seguir",
-                        onClick = onPlayNext,
-                    )
-                    ActionRow(
-                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
-                        label = "Adicionar seleção à fila",
-                        onClick = onAddToQueue,
-                    )
-                    onRateSelection?.let { rate ->
-                        ActionRow(
-                            icon = Icons.Rounded.Star,
-                            label = "Avaliar seleção",
-                            onClick = rate,
-                        )
-                    }
-                }
-                }
             }
         }
     }
