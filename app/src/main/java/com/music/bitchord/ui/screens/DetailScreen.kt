@@ -1256,13 +1256,21 @@ private fun ReleaseHeader(
     // own long-press "Open artist" already reads from.
     val artist = songs.firstOrNull()
 
-    val onCreditClick: (() -> Unit)? = artist?.let { song ->
-        song.artistId?.let { id ->
-            if (onArtistClick != null) {
-                { onArtistClick(id, song.artist) }
-            } else null
-        }
+    // Source-owned local album groups have an equally source-owned artist
+    // page even without a YouTube artistId. Do not turn arbitrary album
+    // credits into public YouTube browse IDs or do a fuzzy name lookup.
+    val creditArtistId = artist?.let { song ->
+        song.artistId?.takeIf(String::isNotBlank)
+            ?: com.music.bitchord.data.LocalGroups.folderOf(page.browseId)
+                ?.takeIf { song.artist.isNotBlank() }
+                ?.let { folder ->
+                    com.music.bitchord.data.LocalGroups.artistPageId(folder, song.artist)
+                }
     }
+    val onCreditClick: (() -> Unit)? =
+        if (creditArtistId != null && artist != null && onArtistClick != null) {
+            { onArtistClick(creditArtistId, artist.artist) }
+        } else null
 
     // Use the same approved native release compositor as unified Library
     // albums, nested artist albums and normal/smart playlists. This adapter
