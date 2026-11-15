@@ -1,0 +1,136 @@
+package com.music.bitchord
+
+import com.music.bitchord.data.catalog.metadata.MusicBrainzClient
+import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
+import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
+import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchResult
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityPolicy
+import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.ProviderDescriptor
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderReadiness
+import com.music.bitchord.data.providers.ProviderRequestDeniedException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Regression at the actual shared MusicBrainz HTTP admission boundary. */
+class MusicBrainzTransportAdmissionTest {
+    private val mb = ProviderKey("musicbrainz")
+    private val ready = ProviderDescriptor(mb,
+        setOf(ProviderCapability.CATALOG_SEARCH,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            ProviderCapability.IDENTITY),
+        readiness = ProviderReadiness.READY,
+    )
+
+    private fun policy(search: Boolean, discography: Boolean, identity: Boolean) =
+        ProviderCapabilityPolicy(
+            listOf(ready),
+            mapOf(
+                ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(mb, search, 0)),
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to
+                    listOf(ProviderChoice(mb, discography, 0)),
+                ProviderCapability.IDENTITY to listOf(ProviderChoice(mb, identity, 0)),
+            ),
+        )
+
+    @Test fun catalogDisabledNeverReachesTransportOrConsumesRetryBudget(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(false, true, true))
+        var contacts = 0
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    contacts++
+                    return """{"count":0,"offset":0,"artists":[]}"""
+                }
+            },
+            admission = { gate },
+        )
+        val search = MusicBrainzCatalogSearch(client)
+        assertTrue(search.searchArtists("ILLIT") is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(0, contacts)
+        // Identity traffic must remain available when catalog search alone is off.
+        assertEquals("identity", client.get("artist/123", capability = ProviderCapability.IDENTITY))
+    }
+
+    @Test fun capabilityRestrictionsAreIndependentAtTheHttpBoundary(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(false, true, true))
+        var contacts = 0
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String,
+                    parameters: Map<String, String>, userAgent: String): String {
+                    contacts++
+                    return "identity"
+                }
+            },
+            admission = { gate },
+        )
+        try {
+            client.get("artist", capability = ProviderCapability.CATALOG_SEARCH)
+            throw AssertionError("catalog HTTP must be rejected")
+        } catch (_: ProviderRequestDeniedException) { /* expected */ }
+        assertEquals("identity", client.get("artist/id", capability = ProviderCapability.IDENTITY))
+        assertEquals("identity",
+            client.get("release-group", capability = ProviderCapability.EDITORIAL_DISCOGRAPHY))
+        assertEquals(2, contacts)
+    }
+
+    @Test fun responseAfterProviderSwitchOffIsNeverReturnedToTheCaller(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true, true, true))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String,
+                    parameters: Map<String, String>, userAgent: String): String {
+                    entered.complete(Unit)
+                    release.await()
+                    return "late response"
+                }
+            },
+            admission = { gate },
+        )
+        val pending = async {
+            try {
+                client.get("artist", capability = ProviderCapability.CATALOG_SEARCH)
+                false
+            } catch (_: ProviderRequestDeniedException) {
+                true
+            }
+        }
+        entered.await()
+        gate.replace(policy(false, true, true))
+        release.complete(Unit)
+        assertTrue(pending.await())
+    }
+
+    @Test fun aClosedGateDoesNotContactMusicBrainzEvenWhenItIsTheLastProvider(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(listOf(ready)))
+        var contacted = false
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String,
+                    parameters: Map<String, String>, userAgent: String): String {
+                    contacted = true
+                    return "impossible"
+                }
+            },
+            admission = { gate },
+        )
+        try {
+            client.get("recording/id", capability = ProviderCapability.IDENTITY)
+            throw AssertionError("unexpected network request")
+        } catch (_: ProviderRequestDeniedException) { /* expected */ }
+        assertFalse(contacted)
+    }
+}
