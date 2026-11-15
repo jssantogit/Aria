@@ -61,7 +61,7 @@ class CanonicalRatingSelectionMotionTest {
         val blue = androidx.compose.ui.graphics.Color(0xFF0091FF)
         for (index in 0..4) {
             assertEquals(blue, ratingEditorStarTint(CompactRatingStyle.COLOR, selected, true, neutral))
-            assertEquals(false, ratingEditorUsesNumericGlyph(CompactRatingStyle.NUMERIC, 4.0, index))
+            assertEquals(index == 3, ratingEditorUsesNumericGlyph(CompactRatingStyle.NUMERIC, 4.0, index))
         }
         assertEquals(true, ratingEditorUsesNumericGlyph(CompactRatingStyle.NUMERIC, 4.0, 3))
         assertEquals(false, ratingEditorUsesNumericGlyph(CompactRatingStyle.NUMERIC, 0.0, 0))
