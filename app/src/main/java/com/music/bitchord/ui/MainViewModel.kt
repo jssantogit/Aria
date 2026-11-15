@@ -28,6 +28,15 @@ import com.music.bitchord.data.catalog.metadata.retryTransientArtistDiscography
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraphResult
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogReleaseDetail
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
+import com.music.bitchord.data.catalog.metadata.ApplePublicChartsClient
+import com.music.bitchord.data.catalog.metadata.ApplePublicChartsSnapshot
+import com.music.bitchord.data.catalog.metadata.ApplePublicChartKind
+import com.music.bitchord.data.catalog.metadata.ApplePublicChartEntry
+import com.music.bitchord.data.catalog.metadata.ItunesCatalogItem
+import com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
+import com.music.bitchord.data.catalog.metadata.AppleEditorialCatalogRepository
+import com.music.bitchord.data.catalog.metadata.AppleEditorialLoad
+import com.music.bitchord.data.catalog.metadata.AppleEditorialTrackLoad
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPublicPlaylist
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPublicPlaylistDetail
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPublicPlaylistClient
@@ -374,6 +383,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         MutableStateFlow<List<CanonicalCatalogSearchRow>>(emptyList())
     val canonicalWorldwideReleases: StateFlow<List<CanonicalCatalogSearchRow>> =
         _canonicalWorldwideReleases.asStateFlow()
+    // Apple Marketing RSS charts are the Home's native discovery source.
+    // Each chart row retains its market, Apple ID and rank: no MusicBrainz seeds.
+    private val _appleHomeCharts = MutableStateFlow(ApplePublicChartsSnapshot())
+    internal val appleHomeCharts: StateFlow<ApplePublicChartsSnapshot> =
+        _appleHomeCharts.asStateFlow()
+    private val _appleHomeGenreTracks =
+        MutableStateFlow<Map<String, List<ItunesCatalogItem>>>(emptyMap())
+    internal val appleHomeGenreTracks: StateFlow<Map<String, List<ItunesCatalogItem>>> =
+        _appleHomeGenreTracks.asStateFlow()
+    private val _appleHomeGenreAlbums =
+        MutableStateFlow<Map<String, List<ItunesEditorialRelease>>>(emptyMap())
+    internal val appleHomeGenreAlbums: StateFlow<Map<String, List<ItunesEditorialRelease>>> =
+        _appleHomeGenreAlbums.asStateFlow()
+    private val _appleHomeRecentPlays = MutableStateFlow<List<ShelfItem>>(emptyList())
+    internal val appleHomeRecentPlays: StateFlow<List<ShelfItem>> =
+        _appleHomeRecentPlays.asStateFlow()
+    private val appleChartsClient by lazy { ApplePublicChartsClient() }
+    private var appleChartsJob: Job? = null
+    private val appleChartsEpoch = DiscoveryRequestEpoch()
+    private var appleChartsFetchedAtMs = 0L
+    private var appleChartsRetryAtMs = 0L
+
     private val _canonicalWorldwideLoading = MutableStateFlow(false)
     val canonicalWorldwideLoading: StateFlow<Boolean> =
         _canonicalWorldwideLoading.asStateFlow()
@@ -3698,9 +3729,185 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Apple-first Home discovery: chart fetches run independently and publish
+     * the FIRST known storefront ASAP; optional iTunes genre probes and CDN
+     * cover verification never hold up the native PR212 HeroShelf's first paint.
+     */
+    private fun loadApplePr212Charts(force: Boolean) {
+        if (appleChartsJob?.isActive == true) return
+        val now = System.currentTimeMillis()
+        if (!force && (now < appleChartsRetryAtMs ||
+                (appleChartsFetchedAtMs > 0L &&
+                    now - appleChartsFetchedAtMs < 6L * 60 * 60_000L)
+            )) return
+        val generation = appleChartsEpoch.next()
+        _canonicalWorldwideLoading.value = true
+        appleChartsJob = viewModelScope.launch(Dispatchers.IO) {
+            val markets = listOf("br", "us", "kr", "jp")
+            val chartDate = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
+                .toString()
+            fun publishHome() {
+                if (!appleChartsEpoch.isCurrent(generation)) return
+                val projected = applePr212HomeProjection(
+                    _appleHomeCharts.value, emptyList(),
+                    _appleHomeGenreTracks.value, _appleHomeGenreAlbums.value,
+                    chartDate,
+                )
+                // Pass only source-tagged, exact Apple IDs through the
+                // original PR212 MainActivity collection. No Composable edits.
+                _canonicalWorldwideReleases.value =
+                    applePr212TaggedHomeRows(projected, chartDate)
+            }
+            val chartPermits = Semaphore(3)
+            val coverPermits = Semaphore(3)
+            val publishLock = Mutex()
+            val songs = mutableListOf<ApplePublicChartEntry>()
+            val albums = mutableListOf<ApplePublicChartEntry>()
+            val finishedMarkets = mutableSetOf<String>()
+            val scheduledCovers = mutableSetOf<String>()
+            var someFeedSucceeded = false
+            try {
+                coroutineScope {
+                    // Unlike the previous 24 sequential MB title-hint probes,
+                    // the two fixed public chart endpoints per market can
+                    // independently fill Home with ranked songs and albums.
+                    markets.forEach { market ->
+                        launch {
+                            val songRequest = async {
+                                chartPermits.withPermit {
+                                    appleChartsClient.load(market, ApplePublicChartKind.SONGS)
+                                }
+                            }
+                            val albumRequest = async {
+                                chartPermits.withPermit {
+                                    appleChartsClient.load(market, ApplePublicChartKind.ALBUMS)
+                                }
+                            }
+                            val incomingSongs = songRequest.await()
+                            val incomingAlbums = albumRequest.await()
+                            publishLock.withLock {
+                                if (incomingSongs != null) {
+                                    songs.addAll(incomingSongs)
+                                    someFeedSucceeded = true
+                                }
+                                if (incomingAlbums != null) {
+                                    albums.addAll(incomingAlbums)
+                                    someFeedSucceeded = true
+                                }
+                                finishedMarkets.add(market)
+                                if (songs.isNotEmpty() || albums.isNotEmpty()) {
+                                    val previous = _appleHomeCharts.value
+                                    // Preserve successfully promoted artwork
+                                    // when an additional country chart arrives.
+                                    fun patched(entries: List<ApplePublicChartEntry>) =
+                                        entries.map { fresh ->
+                                            val old = (previous.songs + previous.albums)
+                                                .firstOrNull { it.scopedId == fresh.scopedId }
+                                            val oldCover = old?.artwork
+                                            val sameExactCdnAsset =
+                                                oldCover != null && fresh.artwork != null &&
+                                                    listOf(600, 720, 1024).any { px ->
+                                                        com.music.bitchord.data.catalog.metadata
+                                                            .appleHighResolutionArtworkCandidate(
+                                                                fresh.artwork, px,
+                                                            ) == oldCover
+                                                    }
+                                            if (sameExactCdnAsset) fresh.copy(
+                                                artwork = oldCover,
+                                            ) else fresh
+                                        }
+                                    _appleHomeCharts.value = ApplePublicChartsSnapshot(
+                                        songs = patched(songs),
+                                        albums = patched(albums),
+                                        finishedMarkets = finishedMarkets.toSet(),
+                                    )
+                                    publishHome()
+                                }
+                                // Start exact CDN validation early, in bounded
+                                // parallel jobs; never request untrusted hosts.
+                                val covers = (incomingSongs.orEmpty().take(12) +
+                                    incomingAlbums.orEmpty().take(8))
+                                for (entry in covers) {
+                                    val original = entry.artwork ?: continue
+                                    if (!scheduledCovers.add(entry.scopedId) ||
+                                        scheduledCovers.size > 50) continue
+                                    launch {
+                                        coverPermits.withPermit {
+                                            val upgraded = appleArtwork.upgrade(
+                                                original,
+                                                if (entry.kind == ApplePublicChartKind.SONGS &&
+                                                    entry.rank <= 3) 1024 else 600,
+                                            )
+                                            if (upgraded != null && upgraded != original &&
+                                                appleChartsEpoch.isCurrent(generation)
+                                            ) {
+                                                _appleHomeCharts.update { current ->
+                                                    applePr212ChartArtworkPatch(
+                                                        current, entry.scopedId, original, upgraded,
+                                                    )
+                                                }
+                                                publishHome()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Two distinct daily-rotated genre queries use Apple-only
+                    // metadata. There is no new genre screen or UI component.
+                    val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+                    applePr212HomeGenres(day).forEach { genre ->
+                        launch {
+                            val repo = AppleEditorialCatalogRepository()
+                            val albumsResult = try {
+                                repo.searchAlbumsByAppleGenre(genre.title, "br")
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                              catch (_: Exception) { null }
+                            if (appleChartsEpoch.isCurrent(generation) &&
+                                albumsResult is AppleEditorialLoad.Success
+                            ) {
+                                _appleHomeGenreAlbums.update {
+                                    it + (genre.tag to albumsResult.releases)
+                                }
+                                publishHome()
+                            }
+                            val tracksResult = try {
+                                repo.searchTracksByAppleGenre(genre.title, "br")
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                              catch (_: Exception) { null }
+                            if (appleChartsEpoch.isCurrent(generation) &&
+                                tracksResult is AppleEditorialTrackLoad.Success
+                            ) {
+                                _appleHomeGenreTracks.update {
+                                    it + (genre.tag to tracksResult.tracks)
+                                }
+                                publishHome()
+                            }
+                        }
+                    }
+                }
+                if (appleChartsEpoch.isCurrent(generation)) {
+                    if (someFeedSucceeded && _appleHomeCharts.value.songs.isNotEmpty()) {
+                        appleChartsFetchedAtMs = System.currentTimeMillis()
+                        appleChartsRetryAtMs = 0L
+                    } else {
+                        // A transient 503 / malformed feed must not erase the
+                        // last good immutable chart snapshot.
+                        appleChartsRetryAtMs = System.currentTimeMillis() + 15 * 60_000L
+                    }
+                }
+            } finally {
+                if (appleChartsEpoch.isCurrent(generation))
+                    _canonicalWorldwideLoading.value = false
+            }
+        }
+    }
+
     fun loadCanonicalWorldwideReleases(force: Boolean = false) {
         if (applePublicCatalogEnabled) {
-            loadApplePr212WorldwideReleases(force)
+            loadApplePr212Charts(force)
             return
         }
         if (worldwideReleaseJob?.isActive == true) return
@@ -4230,6 +4437,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     youtubeProvider = "youtube", recordingEntityType = "recording",
                 ).groupBy { it.recordingId }
                 val songsByUri = picks.associateBy { it.localUri }
+                val recentRecordingIds = listening.recentlyStartedRecordingIds(limit = 48)
+                val recentlyPlayed = recentRecordingIds.mapNotNull { recordingId ->
+                    localByRecording[recordingId].orEmpty().firstNotNullOfOrNull { asset ->
+                        songsByUri[asset.uri]?.takeIf(::isPlayableLocalPick)
+                    }
+                }.distinctBy { it.localUri }.take(16)
+                if (canonicalDiscoveryCatalogEpoch.isCurrent(generation) &&
+                    isCanonicalDiscoverySelected()
+                ) _appleHomeRecentPlays.value = recentlyPlayed.map { song ->
+                    ShelfItem(
+                        title = song.title, subtitle = song.artist,
+                        thumbnailUrl = song.thumbnailUrl, videoId = null,
+                        browseId = canonicalLocalPickCardId(song),
+                    )
+                }
                 val trendingLocal = popular.mapNotNull { entry ->
                     localByRecording[entry.recordingId].orEmpty()
                         .firstNotNullOfOrNull { asset ->
@@ -4241,7 +4463,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (canonicalDiscoveryCatalogEpoch.isCurrent(generation) &&
                     isCanonicalDiscoverySelected()
                 ) {
-                    _canonicalTrendingLocalSongs.value = trendingLocal
+                    // Actual most-recent local playback starts drive the
+                    // Apple-first "Reproduções recentes" shelf. Listening
+                    // Event Store evidence, NOT a public popularity ranking.
+                    _canonicalTrendingLocalSongs.value = recentlyPlayed
                 }
                 popular.mapNotNull { entry ->
                     dao.externalIdentitiesForEntity(

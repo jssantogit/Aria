@@ -336,6 +336,11 @@ internal fun canonicalHomeWithWorldwideEditorial(
     /** Home worldwide discovery does not repeat the genre discography grid. */
     globalDiscoveryHeading: String? = null,
 ): List<HomeShelf> {
+    // Source-only Apple chart shelves replace MusicBrainz's old Home grouping.
+    // The unchanged PR212 MainActivity still supplies exactly the same model.
+    applePr212NativeHomeFromRows(
+        worldwideReleases, localShelves, trendingHeading, todayIsoDate,
+    )?.let { return it }
     val shelves = localShelves.toMutableList()
     // Remove visual duplicates from an editorial feed, not from the canonical
     // catalog. Different MusicBrainz editions keep their real MBIDs in search.

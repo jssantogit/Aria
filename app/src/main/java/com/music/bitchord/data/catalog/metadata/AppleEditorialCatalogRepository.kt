@@ -198,6 +198,24 @@ internal class AppleEditorialCatalogRepository(
         )
     }
 
+    /** Direct Apple genre search for songs, not a MusicBrainz release seed. */
+    suspend fun searchTracksByAppleGenre(
+        genre: String,
+        storefront: String = "br",
+    ): AppleEditorialTrackLoad = when (val result = itunes.search(
+        genre, ItunesCatalogEntity.SONG, country = storefront,
+        limit = 100, attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
+    )) {
+        is ItunesCatalogResult.Failure ->
+            AppleEditorialTrackLoad.Failure(result.reason)
+        is ItunesCatalogResult.Success -> AppleEditorialTrackLoad.Success(
+            tracks = result.items.filter {
+                it.storefront == storefront && it.type == ItunesCatalogItemType.TRACK
+            },
+            possiblyTruncated = result.possiblyTruncated,
+        )
+    }
+
     suspend fun albumDetail(
         collectionId: Long,
         storefront: String = "br",

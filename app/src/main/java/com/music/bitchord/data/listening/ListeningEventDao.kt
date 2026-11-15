@@ -35,6 +35,23 @@ internal interface ListeningEventDao {
     )
     suspend fun endSession(sessionId: String, endedAtEpochMs: Long): Int
 
+    /**
+     * Personal playback order, unlike recentPopularRecordings (>=2 starts).
+     * The persisted canonical RecordingId is resolved against a real local
+     * MediaAsset before a Home card is published.
+     */
+    @Query(
+        """
+        SELECT recordingId
+        FROM listening_event
+        WHERE type = 'PLAYBACK_STARTED'
+        GROUP BY recordingId
+        ORDER BY MAX(occurredAtEpochMs) DESC, recordingId
+        LIMIT :limit
+        """,
+    )
+    suspend fun recentlyStartedRecordingIds(limit: Int): List<String>
+
     @Query(
         """
         SELECT recordingId, COUNT(*) AS starts
