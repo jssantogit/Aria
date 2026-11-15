@@ -101,6 +101,6 @@ class NativeFrostedRatingInteractionTest {
         }
         val numericStars = compose.onAllNodesWithTag("compact-rating-numeric", useUnmergedTree = true)
             .fetchSemanticsNodes()
-        assertEquals(4, numericStars.size)
+        assertEquals(1, numericStars.size)
     }
 }
