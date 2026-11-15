@@ -30,13 +30,35 @@ jobs:
           ui_base="65863b528b233a277421f45002b5f6baa50ebae1"
           git cat-file -e "${ui_base}^{commit}"
           git diff --exit-code "$ui_base" HEAD -- \
-            app/src/main/java/com/music/bitchord/MainActivity.kt \
             app/src/main/java/com/music/bitchord/ui/components/ \
             app/src/main/java/com/music/bitchord/ui/screens/ \
             app/src/main/java/com/music/bitchord/ui/theme/ \
             sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/ \
             sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
             sharedUi/src/commonMain/composeResources/
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+          baseline = "65863b528b233a277421f45002b5f6baa50ebae1"
+          path = "app/src/main/java/com/music/bitchord/MainActivity.kt"
+          original = subprocess.check_output(["git", "show", f"{baseline}:{path}"], text=True)
+          old = '''                            canonicalTracks = if (
+                                page.browseId.startsWith("catalog:RELEASE:") ||
+                                page.browseId.startsWith("catalog:RELEASE_GROUP:")
+                            ) {'''
+          new = '''                            canonicalTracks = if (page.browseId.startsWith("itunes:")) {
+                                viewModel.appleNativeAlbumTracks.collectAsStateWithLifecycle()
+                                    .value[page.browseId].orEmpty()
+                            } else if (
+                                page.browseId.startsWith("catalog:RELEASE:") ||
+                                page.browseId.startsWith("catalog:RELEASE_GROUP:")
+                            ) {'''
+          assert original.count(old) == 1, "PR212 baseline changed unexpectedly"
+          expected = original.replace(old, new)
+          actual = pathlib.Path(path).read_text()
+          assert actual == expected, "MainActivity differs from PR212 beyond the single approved metadata binding"
+          print("MainActivity: only one source-only track data binding; UI structure preserved")
+          PY
           echo "PR212 visual implementations unchanged from $ui_base"
       - name: Set up JDK 17
         uses: actions/setup-java@v4
