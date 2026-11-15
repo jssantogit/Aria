@@ -168,6 +168,32 @@ class ApplePr212HomeDiscoveryTest {
         assertEquals(2, listOf(br, us).distinctBy { it.scopedId }.size)
     }
 
+    @Test fun homeClickRoutesAppleTrackAndArtistByTypedIdWithoutInventingAnAlbum() {
+        val song = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+            musicBrainzId = "itunes:br:track:800", kind =
+                com.music.bitchord.ui.screens.CanonicalSearchKind.RECORDING,
+            title = "Ditto", subtitle = "NewJeans",
+        )
+        val artist = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+            musicBrainzId = "itunes:br:artist:900", kind =
+                com.music.bitchord.ui.screens.CanonicalSearchKind.ARTIST,
+            title = "NewJeans", subtitle = "Artista",
+        )
+        assertEquals(song, canonicalEditorialRowForCard(
+            listOf(song, artist), "itunes:br:track:800",
+        ))
+        assertEquals(artist, canonicalEditorialRowForCard(
+            listOf(song, artist), "itunes:br:artist:900",
+        ))
+        assertNull(canonicalEditorialRowForCard(
+            listOf(song.copy(kind = com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE)),
+            "itunes:br:track:800",
+        ))
+        assertNull(canonicalEditorialRowForCard(
+            listOf(artist), "itunes:us:artist:900",
+        ))
+    }
+
     @Test fun roundRobinPromotesSeveralMarketsWithoutInventingWorldwideRank() {
         val entries = listOf(
             chart(11, "BR 1", "br", rank = 1),

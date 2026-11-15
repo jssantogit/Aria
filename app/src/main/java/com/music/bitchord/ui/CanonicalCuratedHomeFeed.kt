@@ -625,10 +625,25 @@ internal fun canonicalEditorialRowForCard(
 ): CanonicalCatalogSearchRow? {
     if (browseId.isNullOrBlank()) return null
     return rows.firstOrNull { row ->
-        val exactId = when (row.kind) {
-            CanonicalSearchKind.RECORDING -> if (CATALOG_RECORDING_MBID.matches(row.musicBrainzId.lowercase(java.util.Locale.ROOT))) {
-                "catalog:RECORDING:${row.musicBrainzId.lowercase(java.util.Locale.ROOT)}"
-            } else null
+        // Public RSS charts carry actual Apple track/artist IDs, never MBIDs.
+        // The former resolver recognized releases but returned null for every
+        // Apple song and artist, letting Home clicks fall through to a fake
+        // album browse route. Keep the same native destination as Search.
+        val apple = ApplePr212CatalogRoute.parse(row.musicBrainzId)
+        val exactId = if (apple != null) {
+            when (apple.kind) {
+                com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.TRACK ->
+                    apple.scopedId.takeIf { row.kind == CanonicalSearchKind.RECORDING }
+                com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ALBUM ->
+                    apple.scopedId.takeIf { row.kind == CanonicalSearchKind.RELEASE }
+                com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ARTIST ->
+                    apple.scopedId.takeIf { row.kind == CanonicalSearchKind.ARTIST }
+            }
+        } else when (row.kind) {
+            CanonicalSearchKind.RECORDING ->
+                if (CATALOG_RECORDING_MBID.matches(row.musicBrainzId.lowercase(java.util.Locale.ROOT)))
+                    "catalog:RECORDING:${row.musicBrainzId.lowercase(java.util.Locale.ROOT)}"
+                else null
             CanonicalSearchKind.RELEASE, CanonicalSearchKind.RELEASE_GROUP ->
                 canonicalBrowseCardId(row)
             CanonicalSearchKind.ARTIST -> null
