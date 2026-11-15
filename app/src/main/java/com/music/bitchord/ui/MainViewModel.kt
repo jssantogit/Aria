@@ -1402,6 +1402,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * BitChord. A public MBID remains a browse key, NEVER a Song.videoId.
      */
     fun openCanonicalNativeDetail(row: CanonicalCatalogSearchRow) {
+        ApplePr212CatalogRoute.parse(row.musicBrainzId)?.let { route ->
+            openApplePr212Detail(route, row.title, row.subtitle.orEmpty(), row.artworkUri)
+            return
+        }
         val nativeType = canonicalNativePageType(row.kind) ?: return
         val browseId = canonicalNativeBrowseId(row)
         if (_detailStack.value.lastOrNull()?.browseId == browseId) return
@@ -2602,6 +2606,97 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val _detailStack = MutableStateFlow<List<DetailPage>>(emptyList())
     val detailStack: StateFlow<List<DetailPage>> = _detailStack.asStateFlow()
+
+    // Apple editorial data is stored separately from MusicBrainz RecordingIds.
+    // Existing PR212 composers only receive the same native UI row type.
+    private val applePr212Catalog by lazy { ApplePr212NativeCatalogService() }
+    private val applePr212DetailJobs = mutableMapOf<String, Job>()
+    private val _appleNativeAlbumTracks =
+        MutableStateFlow<Map<String, List<CanonicalCatalogSearchRow>>>(emptyMap())
+    val appleNativeAlbumTracks: StateFlow<Map<String, List<CanonicalCatalogSearchRow>>> =
+        _appleNativeAlbumTracks.asStateFlow()
+
+    /** Never silently switch catalog metadata back to MusicBrainz on Apple failures. */
+    private val applePublicCatalogEnabled: Boolean get() = true
+
+    private fun openApplePr212Detail(
+        route: ApplePr212CatalogRoute,
+        title: String,
+        subtitle: String = "",
+        artwork: String? = null,
+    ) {
+        if (route.kind == com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.TRACK ||
+            title.isBlank() || _detailStack.value.lastOrNull()?.browseId == route.scopedId
+        ) return
+        val kind = if (route.kind ==
+            com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ARTIST
+        ) BrowseType.ARTIST else BrowseType.ALBUM
+        _detailStack.value += DetailPage(
+            browseId = route.scopedId,
+            title = title,
+            subtitle = subtitle,
+            thumbnailUrl = artwork,
+            type = kind,
+            songs = UiState.Loading,
+        )
+        applePr212DetailJobs.remove(route.scopedId)?.cancel()
+        applePr212DetailJobs[route.scopedId] = viewModelScope.launch(Dispatchers.IO) {
+            // Exact product lookup; no MBID, title guess or playback fallback.
+            val result = try {
+                if (kind == BrowseType.ARTIST) {
+                    applePr212Catalog.artist(route, title, artwork) to null
+                } else {
+                    val album = applePr212Catalog.album(route)
+                    album?.page to album
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null to null }
+            if (_detailStack.value.none { it.browseId == route.scopedId }) return@launch
+            val page = result.first
+            if (page != null) {
+                result.second?.let { album ->
+                    _appleNativeAlbumTracks.update { previous ->
+                        previous + (route.scopedId to ApplePr212CatalogRows.tracks(album))
+                    }
+                }
+                _detailStack.update { stack -> stack.map { opened ->
+                    if (opened.browseId == route.scopedId) page else opened
+                } }
+            } else {
+                _detailStack.update { stack -> stack.map { opened ->
+                    if (opened.browseId == route.scopedId)
+                        opened.copy(songs = UiState.Error(
+                            "Não foi possível carregar os metadados do catálogo Apple.",
+                        )) else opened
+                } }
+            }
+        }
+    }
+
+    private fun runApplePr212Search(query: String) {
+        canonicalSearchJob?.cancel()
+        canonicalSearchPagingJob?.cancel()
+        canonicalTypeaheadJob?.cancel()
+        resetCanonicalSearchPagination()
+        clearCanonicalCatalogNavigation()
+        _searchScrollReset.value += 1
+        _canonicalResults.value = UiState.Loading
+        canonicalSearchJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = try {
+                applePr212Catalog.search(query) { rows ->
+                    if (_searchSource.value == SearchSource.CANONICAL &&
+                        _query.value.trim() == query
+                    ) _canonicalResults.value = UiState.Success(rows)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (_searchSource.value != SearchSource.CANONICAL ||
+                _query.value.trim() != query
+            ) return@launch
+            _canonicalResults.value = if (result != null) UiState.Success(result)
+            else UiState.Error("Não foi possível consultar o catálogo Apple.")
+        }
+    }
 
     /** UI-side continuation fetches that can be handed to the playback service. */
 
@@ -4381,6 +4476,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * A provider-owned MediaAsset lookup must be wired before enabling play.
      */
     private fun runCanonicalCatalogSearch(query: String) {
+        if (applePublicCatalogEnabled) {
+            runApplePr212Search(query)
+            return
+        }
         val startedNanos = System.nanoTime()
         val firstPaintReported = java.util.concurrent.atomic.AtomicBoolean(false)
         fun reportFirstPaint(stage: String, count: Int) {
@@ -5267,6 +5366,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         thumbnailUrl: String? = null,
         type: BrowseType = BrowseType.OTHER,
     ) {
+        if (browseId.startsWith("itunes:")) {
+            ApplePr212CatalogRoute.parse(browseId)?.let { route ->
+                openApplePr212Detail(route, title, subtitle, thumbnailUrl)
+            }
+            return // Invalid Apple IDs must not fall through to retired browsing.
+        }
         // MusicBrainz has no YouTube playlist/album browse ID. Opening a
         // catalog card through an overflow menu must use the same native
         // metadata route as tapping its tile; no retired backend request.
@@ -5715,7 +5820,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val stack = _detailStack.value
         if (stack.isEmpty()) return false
         val wasCanonical = stack.last().browseId.startsWith("catalog:")
+        val closedApple = stack.last().browseId.takeIf { it.startsWith("itunes:") }
         _detailStack.value = stack.dropLast(1)
+        closedApple?.let { id ->
+            applePr212DetailJobs.remove(id)?.cancel()
+            _appleNativeAlbumTracks.update { it - id }
+        }
         if (wasCanonical) backCanonicalCatalogEntry()
         return true
     }
