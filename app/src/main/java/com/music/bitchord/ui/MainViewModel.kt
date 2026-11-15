@@ -520,6 +520,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var canonicalTypeaheadJob: Job? = null
     private var canonicalSearchPagingJob: Job? = null
     private var canonicalSearchPageCursors: CanonicalSearchPageCursors? = null
+    private var applePr212SearchSession: ApplePr212SearchSession? = null
     private val _canonicalSearchHasMore = MutableStateFlow(false)
     val canonicalSearchHasMore: StateFlow<Boolean> = _canonicalSearchHasMore.asStateFlow()
     private val _canonicalSearchLoadingMore = MutableStateFlow(false)
@@ -528,6 +529,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun resetCanonicalSearchPagination() {
         canonicalSearchPagingJob?.cancel()
         canonicalSearchPageCursors = null
+        applePr212SearchSession = null
+        applePr212Catalog.clearSearchTracks()
         _canonicalSearchHasMore.value = false
         _canonicalSearchLoadingMore.value = false
     }
@@ -2693,26 +2696,78 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun runApplePr212Search(query: String) {
         canonicalSearchJob?.cancel()
-        canonicalSearchPagingJob?.cancel()
         canonicalTypeaheadJob?.cancel()
         resetCanonicalSearchPagination()
         clearCanonicalCatalogNavigation()
         _searchScrollReset.value += 1
         _canonicalResults.value = UiState.Loading
+        val session = ApplePr212SearchSession(query)
+        applePr212SearchSession = session
         canonicalSearchJob = viewModelScope.launch(Dispatchers.IO) {
+            fun isCurrent() = applePr212SearchSession === session &&
+                _searchSource.value == SearchSource.CANONICAL &&
+                _query.value.trim() == query && _canonicalDetail.value == null
+            fun publish(page: ApplePr212SearchPage, complete: Boolean) {
+                if (!isCurrent()) return
+                applePr212Catalog.acceptSearchPage(page)
+                _canonicalResults.value = UiState.Success(page.rows)
+                if (complete) _canonicalSearchHasMore.value = page.hasMore
+            }
             val result = try {
-                applePr212Catalog.search(query) { rows ->
-                    if (_searchSource.value == SearchSource.CANONICAL &&
-                        _query.value.trim() == query
-                    ) _canonicalResults.value = UiState.Success(rows)
-                }
+                session.start { page -> publish(page, complete = false) }
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { null }
-            if (_searchSource.value != SearchSource.CANONICAL ||
-                _query.value.trim() != query
-            ) return@launch
-            _canonicalResults.value = if (result != null) UiState.Success(result)
-            else UiState.Error("Não foi possível consultar o catálogo Apple.")
+            if (!isCurrent()) return@launch
+            if (result != null) {
+                publish(result, complete = true)
+            } else {
+                _canonicalResults.value =
+                    UiState.Error("Não foi possível consultar o catálogo Apple.")
+                _canonicalSearchHasMore.value = false
+            }
+        }
+    }
+
+    /** A real continuation of Apple product IDs, never a MusicBrainz offset. */
+    private fun loadMoreApplePr212SearchResults() {
+        val session = applePr212SearchSession ?: return
+        if (_searchSource.value != SearchSource.CANONICAL ||
+            _query.value.trim() != session.query ||
+            _canonicalDetail.value != null ||
+            canonicalSearchJob?.isActive == true ||
+            _canonicalSearchLoadingMore.value ||
+            !_canonicalSearchHasMore.value ||
+            _canonicalResults.value !is UiState.Success
+        ) return
+        _canonicalSearchLoadingMore.value = true
+        canonicalSearchPagingJob?.cancel()
+        canonicalSearchPagingJob = viewModelScope.launch(Dispatchers.IO) {
+            fun isCurrent() = applePr212SearchSession === session &&
+                _searchSource.value == SearchSource.CANONICAL &&
+                _query.value.trim() == session.query &&
+                _canonicalDetail.value == null
+            try {
+                val result = session.loadMore { page ->
+                    if (isCurrent()) {
+                        applePr212Catalog.acceptSearchPage(page)
+                        _canonicalResults.value = UiState.Success(page.rows)
+                        _canonicalSearchHasMore.value = page.hasMore
+                    }
+                }
+                if (isCurrent() && result != null) {
+                    applePr212Catalog.acceptSearchPage(result)
+                    _canonicalResults.value = UiState.Success(result.rows)
+                    _canonicalSearchHasMore.value = result.hasMore
+                }
+                // A failed alternate-attribute probe is retryable. The
+                // underlying pager retains its attribute on failure.
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { /* Leave the previous Apple IDs available. */ }
+            finally {
+                if (applePr212SearchSession === session) {
+                    _canonicalSearchLoadingMore.value = false
+                }
+            }
         }
     }
 
@@ -4939,6 +4994,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Each entity type continues independently; failures retain its raw offset for retry. */
     fun loadMoreCanonicalSearchResults() {
+        if (applePublicCatalogEnabled) {
+            loadMoreApplePr212SearchResults()
+            return
+        }
         val cursor = canonicalSearchPageCursors ?: return
         if (_searchSource.value != SearchSource.CANONICAL ||
             _query.value.trim() != cursor.query ||
