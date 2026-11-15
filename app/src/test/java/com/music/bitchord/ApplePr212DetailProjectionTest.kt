@@ -57,10 +57,13 @@ class ApplePr212DetailProjectionTest {
     @Test fun unrelatedArtistsAndConflictingDuplicatesNeverEnterAnArtistPage() {
         val valid = release(1, ItunesEditorialReleaseFormat.EP)
         val conflicting = valid.copy(title = "Unrelated edition")
+        val soundtrack = release(4, ItunesEditorialReleaseFormat.ALBUM)
+            .copy(artistName = "Various Artists")
         val result = requireNotNull(ApplePr212DetailProjection.artistPage(
             item(ItunesCatalogItemType.ARTIST, 99),
             listOf(valid, conflicting, release(2, ItunesEditorialReleaseFormat.ALBUM,
-                artistId = 123), release(3, ItunesEditorialReleaseFormat.SINGLE)),
+                artistId = 123), soundtrack,
+                release(3, ItunesEditorialReleaseFormat.SINGLE)),
         ))
         assertEquals(listOf("itunes:br:album:3"),
             result.sections.flatMap { it.items }.mapNotNull { it.browseId })
