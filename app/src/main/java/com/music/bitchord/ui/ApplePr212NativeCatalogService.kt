@@ -11,6 +11,8 @@ import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
 /** Source-owned metadata requests behind PR212's unchanged navigation surface. */
 internal class ApplePr212NativeCatalogService(
     private val repository: AppleEditorialCatalogRepository = AppleEditorialCatalogRepository(),
+    private val artwork: com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork =
+        com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(),
 ) {
     /** Incremental snapshots are data only; caller owns cancellation and UI state. */
     suspend fun search(
@@ -86,15 +88,41 @@ internal class ApplePr212NativeCatalogService(
                 onProgress(page)
             }
         }
+        // Promote only verified, exact CDN assets. No title-joined artwork
+        // and no 100px bitmap stretched over the large PR212 cards.
+        val visible = pager.snapshot().visible
+        val upgraded = visible.take(24).mapIndexed { index, release ->
+            val original = release.artworkUrl
+            val verified = artwork.upgrade(original, if (index == 0) 1024 else 600)
+            if (verified == original) release else release.copy(artworkUrl = verified)
+        }
+        val enriched = ApplePr212DetailProjection.artistPage(
+            artist, upgraded + visible.drop(upgraded.size),
+        )
+        if (enriched != null && enriched.sections != page.sections) {
+            page = enriched
+            onProgress(page)
+        }
         return page
     }
 
-    suspend fun album(route: ApplePr212CatalogRoute): ApplePr212AlbumDetailData? {
+    suspend fun album(
+        route: ApplePr212CatalogRoute,
+        onProgress: suspend (ApplePr212AlbumDetailData) -> Unit = {},
+    ): ApplePr212AlbumDetailData? {
         if (route.kind != ItunesCatalogItemType.ALBUM) return null
         val source = repository.albumDetail(route.id, route.storefront)
         if (source !is AppleEditorialLoad.Success) return null
         val exact = source.releases.singleOrNull { it.appleScopedId == route.scopedId }
             ?: return null
-        return ApplePr212DetailProjection.albumPage(exact)
+        val initial = ApplePr212DetailProjection.albumPage(exact) ?: return null
+        onProgress(initial)
+        val verified = artwork.upgrade(exact.artworkUrl, 1024)
+        if (verified == exact.artworkUrl) return initial
+        val updated = ApplePr212DetailProjection.albumPage(
+            exact.copy(artworkUrl = verified),
+        ) ?: return initial
+        onProgress(updated)
+        return updated
     }
 }
