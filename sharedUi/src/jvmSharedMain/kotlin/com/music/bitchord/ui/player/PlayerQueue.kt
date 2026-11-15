@@ -252,9 +252,22 @@ internal fun splitQueue(queue: List<Song>, currentIndex: Int, showHistory: Boole
     return QueueTracks(track(currentIndex, "np"), user, context, autoplay, history)
 }
 
+/**
+ * Reduced motion removes only the visual settle, never queue commands, drag,
+ * or the selected ordering. The rows remain readable through each mutation.
+ */
+internal fun queueRowMotionEnabled(reducedMotion: Boolean): Boolean = !reducedMotion
+
 /** Placement-only item motion; see [QUEUE_ROW_MOTION]. */
-private fun LazyItemScope.queueMotion(): Modifier =
-    Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null, placementSpec = QUEUE_ROW_MOTION)
+@Composable
+private fun LazyItemScope.queueMotion(): Modifier {
+    val reducedMotion by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
+    return Modifier.animateItem(
+        fadeInSpec = null,
+        fadeOutSpec = null,
+        placementSpec = if (queueRowMotionEnabled(reducedMotion)) QUEUE_ROW_MOTION else snap(),
+    )
+}
 
 /** The live queue, in the player itself. */
 @Composable
@@ -878,9 +891,12 @@ private fun InlineQueueRow(
     val swipeCommitPx = with(LocalDensity.current) { 72.dp.toPx() }
     var swipeOffset by remember(song.queueEntryId, song.videoId) { mutableFloatStateOf(0f) }
     var swiping by remember { mutableStateOf(false) }
+    val reducedMotion by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
     val swipeTranslation by animateFloatAsState(
         targetValue = swipeOffset,
-        animationSpec = if (swiping) snap() else spring(stiffness = 500f),
+        // Follow the finger as before, but do not spring back in reduced motion.
+        animationSpec = if (swiping || !queueRowMotionEnabled(reducedMotion)) snap()
+            else spring(stiffness = 500f),
         label = "appleQueueSwipe",
     )
     Box(modifier.fillMaxWidth()) {
