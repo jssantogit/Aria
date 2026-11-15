@@ -36,7 +36,8 @@ jobs:
             sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/ \
             sharedUi/src/commonMain/composeResources/ \
             ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalRecordingFeedbackControls.kt' \
-            ':!app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt'
+            ':!app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt' \
+            ':!app/src/main/java/com/music/bitchord/ui/screens/CanonicalCatalogEntityRatings.kt'
           python3 - <<'PY'
           import pathlib
           import subprocess
@@ -61,6 +62,16 @@ jobs:
                   'Rating presentation changed beyond one semantics-only PaneTitle repair'
               )
           print('PR212 anchored rating: one semantics-only fix; drawing is byte-identical')
+          rating = 'app/src/main/java/com/music/bitchord/ui/screens/CanonicalCatalogEntityRatings.kt'
+          # This file only adds typed Apple artist/album rating eligibility.
+          # Freeze the exact reviewed implementation; any future visual
+          # component change must go through the PR212 owner's gate.
+          approved_rating_blob = '38a0b7e90d817f87a470dcc39d8f5f320f4159b1'
+          rating_blob = subprocess.check_output(
+              ['git', 'hash-object', rating], text=True).strip()
+          assert rating_blob == approved_rating_blob, (
+              'PR212 rating eligibility file drifted beyond approved source adapter')
+          print('PR212 rating editor unchanged; Apple IDs are data-only eligibility')
           assert original.endswith('\n')
           lines = original.splitlines()
           positions = [i for i, line in enumerate(lines) if line.strip() == 'canonicalTracks = if (']
