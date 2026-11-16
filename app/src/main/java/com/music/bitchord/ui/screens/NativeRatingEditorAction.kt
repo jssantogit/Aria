@@ -21,11 +21,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.theme.appleMusicKeyColor
 
+/** The rating editor shares compact menu controls, not opaque dialog pills. */
+internal data class RatingEditorActionColors(val background: Color, val ink: Color)
+
+internal fun ratingEditorActionHeightDp(): Int = 48
+internal fun ratingEditorActionCornerRadiusDp(): Int = 12
+
+internal fun ratingEditorActionColors(
+    darkTheme: Boolean,
+    emphasized: Boolean,
+    enabled: Boolean,
+    loading: Boolean,
+): RatingEditorActionColors {
+    val ink = if (darkTheme) Color.White else Color.Black
+    val surface = if (darkTheme) Color(0xFF36363B) else Color(0xFFE5E5E8)
+    return RatingEditorActionColors(
+        background = if (emphasized) surface else Color.Transparent,
+        ink = ink.copy(alpha = if (enabled && !loading) 1f else 0.40f),
+    )
+}
+
 /**
- * A native 52dp solid action for the minimal star-rating sheet.
- * Colors/geometry retain BitChord's prior concept, with no Material 3 Button
- * container, elevation or default disabled treatment. Saving callbacks live
- * with the canonical rating editor, not this presentation control.
+ * Compact, readable commands on the same frosted neutral plate as Library
+ * filters and overflow. The confirm action is gently surfaced rather than a
+ * bright white pill that visually detaches from the expandable card.
  */
 @Composable
 internal fun NativeRatingEditorAction(
@@ -38,27 +57,12 @@ internal fun NativeRatingEditorAction(
     loading: Boolean = false,
     tag: String,
 ) {
-    val neutral = if (darkTheme) Color.White else Color.Black
-    val background = when {
-        // The frosted contextual card uses neutral primary controls, not a
-        // bright blue pill that belongs to a different visual language.
-        emphasized && enabled && !loading -> if (darkTheme) Color.White else Color.Black
-        emphasized && darkTheme -> Color(0xFF343437)
-        emphasized -> Color(0xFFDEDEE1)
-        darkTheme -> Color(0xFF2B2B2D)
-        else -> Color(0xFFF0F0F2)
-    }
-    val ink = when {
-        emphasized && enabled && !loading -> if (darkTheme) Color.Black else Color.White
-        emphasized -> neutral.copy(alpha = 0.45f)
-        enabled -> neutral
-        else -> neutral.copy(alpha = 0.40f)
-    }
+    val colors = ratingEditorActionColors(darkTheme, emphasized, enabled, loading)
     Box(
         modifier = modifier
-            .height(52.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(background)
+            .height(ratingEditorActionHeightDp().dp)
+            .clip(RoundedCornerShape(ratingEditorActionCornerRadiusDp().dp))
+            .background(colors.background)
             .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .testTag(tag),
         contentAlignment = Alignment.Center,
@@ -66,13 +70,13 @@ internal fun NativeRatingEditorAction(
         if (loading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(18.dp).testTag("native-rating-action-loading"),
-                color = ink,
+                color = colors.ink,
                 strokeWidth = 2.dp,
             )
         } else {
             Text(
                 text = label,
-                color = ink,
+                color = colors.ink,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
