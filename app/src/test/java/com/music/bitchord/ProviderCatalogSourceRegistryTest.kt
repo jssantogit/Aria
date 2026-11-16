@@ -43,6 +43,20 @@ class ProviderCatalogSourceRegistryTest {
         assertTrue(SourceRegistry.extensionEligibleConfigs(listOf(entries.last()), gate).isEmpty())
     }
 
+    @Test fun legacyProjectionCannotRebuildRetiredBackends() {
+        val before = SourceRegistry.configs.value
+        try {
+            val jio = SourceConfig(id = "retired-jio", kind = SourceKind.JIOSAAVN, enabled = true)
+            val yt = SourceConfig(id = "retired-yt", kind = SourceKind.YOUTUBE, enabled = true)
+            SourceRegistry.applyProviderProjection(listOf(jio, yt))
+            assertTrue(SourceRegistry.configs.value.isEmpty())
+            assertTrue(SourceRegistry.instance(jio.id) == null)
+            assertTrue(SourceRegistry.instance(yt.id) == null)
+        } finally {
+            SourceRegistry.applyProviderProjection(before)
+        }
+    }
+
     @Test fun retiredJioSaavnCannotBeSeededDisplayedOrSelectedFromLegacyPreferences() {
         val retired = SourceConfig(id = "old-jiosaavn", kind = SourceKind.JIOSAAVN, enabled = true)
         val userAddon = SourceConfig(
