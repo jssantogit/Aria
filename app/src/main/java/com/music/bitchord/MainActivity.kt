@@ -2422,6 +2422,9 @@ private fun BitChordApp(
     var unifiedDetailMenuActiveType by remember {
         mutableStateOf<com.music.bitchord.ui.screens.CanonicalLibraryEntityType?>(null)
     }
+    var unifiedDetailOverflowAnchor by remember {
+        mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+    }
     var unifiedLibraryBackToken by remember { mutableIntStateOf(0) }
     // Put album action/sort state outside BitChordApp: it is already close
     // to the JVM Compose method-size limit, and its chrome is reused below.
@@ -3341,6 +3344,11 @@ private fun BitChordApp(
                             onDetailChanged = { unifiedLibraryDetailOpen = it },
                             onNestedAlbumChanged = { unifiedLibraryNestedAlbumOpen = it },
                             onDetailOverflowVisibilityChange = { unifiedDetailMenuActiveType = it },
+                            detailOverflowAnchor = unifiedDetailOverflowAnchor,
+                            onOpenSettings = {
+                                unifiedDetailMenuActiveType = null
+                                showSettings = true
+                            },
                             initialContext = unifiedLibraryCategory
                                 ?: com.music.bitchord.data.listening.CanonicalSmartFilterContext.SONGS,
                             onClose = {
@@ -4936,6 +4944,7 @@ private fun BitChordApp(
                             unifiedControls = unifiedControls,
                             albumUi = unifiedAlbumUi,
                             detailMenuActiveType = unifiedDetailMenuActiveType,
+                            onDetailOverflowAnchor = { unifiedDetailOverflowAnchor = it },
                             albumRatingSelection = unifiedAlbumRatingSelection,
                         )
                         if (openedPublicPlaylist != null && !showSettings && !showAccountScrobbling) {
@@ -7490,7 +7499,7 @@ private fun NativeCollectionOverflowAction(
 ) {
     val outline = nativeCollectionOverflowOutline(expanded)
     val selectedOutline = if (outline == null) Modifier else
-        Modifier.border(1.5.dp, outline, CircleShape)
+        Modifier.border(0.75.dp, outline, CircleShape)
     IconButton(onClick = onClick, modifier = Modifier.size(40.dp).then(selectedOutline)) {
         Icon(nativeCollectionOverflowGlyph(), contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurface)
@@ -7896,6 +7905,7 @@ private fun UnifiedLibraryRouteToolbar(
     unifiedControls: UnifiedLibraryUiControls,
     albumUi: UnifiedAlbumDetailUiState,
     detailMenuActiveType: com.music.bitchord.ui.screens.CanonicalLibraryEntityType?,
+    onDetailOverflowAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     albumRatingSelection: com.music.bitchord.ui.screens.CanonicalLibrarySelection?,
 ) {
     if (settingsOpen || otherDetailOpen) return
@@ -7919,6 +7929,7 @@ private fun UnifiedLibraryRouteToolbar(
             onAlbumSort = albumUi::openSort,
             onAlbumSortAnchor = { albumUi.sortMenuAnchor = it },
             onAlbumOptions = albumUi::requestOptions,
+            onDetailOverflowAnchor = onDetailOverflowAnchor,
             albumMenuActive = detailMenuActiveType ==
                 com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ALBUM,
             artistMenuActive = detailMenuActiveType ==
@@ -7945,6 +7956,7 @@ private fun UnifiedLibraryToolbarActions(
     onAlbumOptions: () -> Unit = {},
     albumMenuActive: Boolean = false,
     artistMenuActive: Boolean = false,
+    onDetailOverflowAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     albumRatingSelection: com.music.bitchord.ui.screens.CanonicalLibrarySelection? = null,
     artistDetail: Boolean = false,
     onArtistOptions: () -> Unit = {},
@@ -7976,17 +7988,21 @@ private fun UnifiedLibraryToolbarActions(
                 onClick = onAlbumSort,
             )
         }
-        NativeCollectionOverflowAction(
-            contentDescription = "Opções do álbum",
-            onClick = onAlbumOptions,
-            expanded = albumMenuActive,
-        )
+        Box(Modifier.onGloballyPositioned { onDetailOverflowAnchor(nativeMenuAnchorBounds(it)) }) {
+            NativeCollectionOverflowAction(
+                contentDescription = "Opções do álbum",
+                onClick = onAlbumOptions,
+                expanded = albumMenuActive,
+            )
+        }
     } else if (artistDetail) {
-        NativeCollectionOverflowAction(
-            contentDescription = "Opções do artista",
-            onClick = onArtistOptions,
-            expanded = artistMenuActive,
-        )
+        Box(Modifier.onGloballyPositioned { onDetailOverflowAnchor(nativeMenuAnchorBounds(it)) }) {
+            NativeCollectionOverflowAction(
+                contentDescription = "Opções do artista",
+                onClick = onArtistOptions,
+                expanded = artistMenuActive,
+            )
+        }
     } else if (showBrowseFilters) {
         Box(Modifier.onGloballyPositioned { coords ->
             controls.sourceMenuAnchor = nativeMenuAnchorBounds(coords)
@@ -8161,7 +8177,7 @@ private fun FrostedUnifiedLibrarySortMenu(
 /** The scrim and frosted panel both top-bar menus are drawn on. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
-private fun FrostedMenuPanel(
+internal fun FrostedMenuPanel(
     hazeState: HazeState,
     onDismiss: () -> Unit,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
