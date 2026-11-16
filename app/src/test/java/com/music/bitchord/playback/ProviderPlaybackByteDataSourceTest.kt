@@ -12,6 +12,14 @@ import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import java.io.IOException
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -40,9 +48,12 @@ class ProviderPlaybackByteDataSourceTest {
             )),
         )
 
-    private fun spec(lease: ProviderPlaybackByteLease?): DataSpec =
+    private fun spec(
+        lease: ProviderPlaybackByteLease?,
+        uri: String = "https://cdn.example/audio.flac",
+    ): DataSpec =
         DataSpec.Builder()
-            .setUri(Uri.parse("https://cdn.example/audio.flac"))
+            .setUri(Uri.parse(uri))
             .setCustomData(lease)
             .build()
 
@@ -68,6 +79,49 @@ class ProviderPlaybackByteDataSourceTest {
         override fun getResponseHeaders(): Map<String, List<String>> = emptyMap()
         override fun addTransferListener(transferListener: TransferListener) = Unit
         override fun close() { closes++ }
+    }
+
+    @Test fun revocationCancelsPhysicalOkHttpCallBeforeServerResponds() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        server.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+        val calls = ProviderPlaybackCallFactory(
+            OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build(),
+        )
+        val source = ProviderPlaybackByteDataSource(
+            OkHttpDataSource.Factory(calls).createDataSource(),
+            cancelNetwork = calls::revoke,
+        )
+        val finished = AtomicBoolean(false)
+        val error = AtomicReference<Throwable?>()
+        val worker = Thread {
+            try {
+                source.open(spec(ProviderPlaybackByteLease(gate, ticket),
+                    server.url("/never-respond").toString()))
+            } catch (failure: Throwable) {
+                error.set(failure)
+            } finally {
+                runCatching { source.close() }
+                finished.set(true)
+            }
+        }
+        try {
+            worker.start()
+            assertTrue("HTTP request must reach the local fixture",
+                server.takeRequest(5, TimeUnit.SECONDS) != null)
+            gate.replace(policy(false))
+            worker.join(5_000L)
+            assertFalse("Revocation must cancel the pending HTTP Call, not just future reads",
+                worker.isAlive)
+            assertTrue(finished.get())
+            assertTrue("Cancelled open must fail", error.get() is IOException)
+        } finally {
+            gate.replace(policy(false))
+            worker.interrupt()
+            server.shutdown()
+        }
     }
 
     @Test fun disablingWinningAddonClosesTransportAndPreventsFurtherBytes() {
