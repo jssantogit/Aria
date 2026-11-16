@@ -262,6 +262,12 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                     lyricsOrder = AppSettings.lyricsSourceOrder.value,
                     enabledLyrics = AppSettings.lyricsSources.value,
                     sources = SourceRegistry.configs.value,
+                    lastfmConfigured = AppSettings.lastfmSessionKey.value.isNotBlank() &&
+                        AppSettings.lastfmApiKey.value.isNotBlank(),
+                    listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                    lastfmEnabled = AppSettings.lastfmEnabled.value &&
+                        AppSettings.lastfmScrobbleEnabled.value,
+                    listenBrainzEnabled = AppSettings.listenBrainzEnabled.value,
                 )
             }
         }
