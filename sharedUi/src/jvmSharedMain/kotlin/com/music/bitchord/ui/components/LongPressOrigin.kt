@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.drawLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onPlaced
@@ -166,18 +167,28 @@ fun Modifier.longPressMenuClickable(
         }
         .then(gesture)
         .drawWithContent {
-            // When the bitmap copy is ready, suppress the originating paint.
-            // The row retains its dimensions, gestures and scroll position.
-            if (capture.active?.isLifted != true) drawContent()
-            // Reading the counter is what subscribes this draw to a hold;
-            // nothing state-backed is written back from inside the draw.
+            // When the bitmap is lifted, its source retains layout and touch
+            // semantics without painting duplicate text or artwork.
             val request = capture.requests
-            if (request == capture.handled) return@drawWithContent
+            if (request == capture.handled) {
+                if (capture.active?.isLifted != true) drawContent()
+                return@drawWithContent
+            }
             capture.handled = request
-            val item = capture.pending ?: return@drawWithContent
+            val item = capture.pending
             capture.pending = null
+            if (item == null || capture.active?.isLifted == true) {
+                if (capture.active?.isLifted != true) drawContent()
+                return@drawWithContent
+            }
+            // Record the unpressed item ONCE and draw that exact layer in the
+            // source frame. Previously drawContent() was called separately
+            // before record(), meaning the item was rendered twice while
+            // its gesture/child layers were changing state. The lifted bitmap
+            // and the source must have identical pixels at the handoff.
             val layer = graphicsContext.createGraphicsLayer()
             layer.record { this@drawWithContent.drawContent() }
+            drawLayer(layer)
             scope.launch {
                 try {
                     item.image = layer.toImageBitmap()
