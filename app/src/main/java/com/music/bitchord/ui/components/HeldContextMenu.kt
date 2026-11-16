@@ -182,7 +182,8 @@ fun <T : Any> HeldContextMenu(
         else Color.Black.copy(alpha = 0.18f)
     val cardShape = RoundedCornerShape(20.dp)
     val menuShape = RoundedCornerShape(16.dp)
-    val platePadding = 2.dp
+    // Border sits outside the original pixels: album text and thumbnails never touch it.
+    val platePadding = 8.dp
 
     val insets = WindowInsets.safeDrawing
     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
@@ -362,11 +363,12 @@ fun <T : Any> HeldContextMenu(
                         pivotFractionX = if (alignEnd) 1f else 0f,
                         pivotFractionY = if (placement.menuBelow) 0f else 1f,
                     )
-                    val scale = lerp(0.55f, 1f, p)
+                    val scale = lerp(0.96f, 1f, p)
                     scaleX = scale
                     scaleY = scale
-                    translationX = lerp(fromDx, 0f, p)
-                    translationY = lerp(fromDy, 0f, p)
+                    // The menu stays anchored to its measured position;
+                    // translating it by a snapshot's displacement could
+                    // overlap neighbouring cards and top-bar controls.
                 }
             }
         }
