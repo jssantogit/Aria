@@ -134,6 +134,33 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun extensionPriorityRestoresFromCanonicalPreferencesAfterRestart(): Unit = runBlocking {
+        val first = SourceConfig(
+            id = "first", kind = SourceKind.ADDON,
+            baseUrl = "https://first.example/manifest.json",
+        )
+        val second = SourceConfig(
+            id = "second", kind = SourceKind.ADDON,
+            baseUrl = "https://second.example/manifest.json",
+        )
+        val sources = listOf(first, second)
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(sources = sources),
+        )
+        val session = ProviderCapabilitySession(ProviderPreferenceStore(prefs), descriptors)
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(emptyList(), emptySet(), sources))
+        assertTrue(coordinator.reorderExtensions(listOf(second.id, first.id), sources))
+        assertEquals(listOf("second", "first"),
+            coordinator.currentExtensionsProjection(sources).map { it.id })
+        val restarted = ProviderCapabilitySession(ProviderPreferenceStore(prefs), descriptors)
+        val restored = ProviderAuthorityCoordinator(restarted)
+        assertTrue(restored.migrateOnce(emptyList(), emptySet(), sources))
+        assertEquals(listOf("second", "first"),
+            restored.currentExtensionsProjection(sources).map { it.id })
+    }
+
+    @Test
     fun newExtensionBecomesEligibleAndPreviouslyDisabledInstanceStaysOffAfterRefresh(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
