@@ -1,6 +1,8 @@
 package com.music.bitchord.acquisition.a0
 
 import android.content.Context
+import com.music.bitchord.BuildConfig
+import com.music.bitchord.data.providers.ProviderRuntime
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
@@ -103,6 +105,10 @@ internal class SoulseekCredentialVault(context: Context) {
                 ciphertext.fill(0)
             }
         } finally { plaintext.fill(0) }
+        // Only the explicitly enabled devDebug pilot can become READY.
+        ProviderRuntime.refreshSoulseekAccountReadiness(
+            BuildConfig.DEBUG && BuildConfig.FLAVOR == "dev",
+        )
     }
 
     @Synchronized fun forget() {
@@ -113,6 +119,7 @@ internal class SoulseekCredentialVault(context: Context) {
             val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             store.deleteEntry(ALIAS)
         }
+        ProviderRuntime.refreshSoulseekAccountReadiness(false)
     }
 
     private fun key(create: Boolean): SecretKey? {
