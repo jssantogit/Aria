@@ -110,6 +110,40 @@ class RouteArrivalMotionTest {
         }
     }
 
+    @Test fun openingSearchFromAnyRootTabNeverCompositesThePreviousTab() {
+        val search = "tab:3"
+        for (source in listOf("tab:0", "tab:1", "tab:2")) {
+            assertTrue(mainPageMustReplaceImmediately(source, search, "tab:", search))
+            assertTrue(mainPageMustReplaceImmediately(search, source, "tab:", search))
+        }
+        assertFalse(mainPageMustReplaceImmediately("tab:0", "tab:2", "tab:", search))
+    }
+
+    @Test fun libraryToPlaylistBuilderAndItsBackNavigationNeverDoubleDraw() {
+        for (library in listOf("tab:2", "canonical_playlist_library")) {
+            assertTrue(mainPageMustReplaceImmediately(
+                library, "smart_playlist_builder", "tab:", "tab:3",
+            ))
+            assertTrue(mainPageMustReplaceImmediately(
+                "smart_playlist_builder", library, "tab:", "tab:3",
+            ))
+        }
+        assertFalse(mainPageMustReplaceImmediately("tab:2", "settings", "tab:", "tab:3"))
+    }
+
+    @Test fun atomicPageChangeHasNoEntryFadeOrRetainedExitFade() {
+        val transform = immediatePageContentTransform()
+        assertEquals(
+            androidx.compose.animation.EnterTransition.None,
+            transform.targetContentEnter,
+        )
+        org.junit.Assert.assertNull(transform.sizeTransform)
+        assertEquals(
+            androidx.compose.animation.ExitTransition.None,
+            immediatePageContentTransform(reducedMotion = true).initialContentExit,
+        )
+    }
+
     @Test fun rootPeersAloneRetainTheirApprovedCrossfade() {
         assertFalse(mainPageRequiresImmediateExit("tab:0", "tab:3", "tab:"))
         assertFalse(mainPageRequiresImmediateExit("tab:3", "tab:1", "tab:"))
