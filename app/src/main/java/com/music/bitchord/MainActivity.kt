@@ -3052,34 +3052,21 @@ private fun BitChordApp(
                     // Pushed pages retain the separate BitChord 180ms fade;
                     // Library Show all still switches immediately.
                     transitionSpec = {
-                        val tabSwap = initialState.startsWith(TAB_KEY) && targetState.startsWith(TAB_KEY)
                         val libraryTabKey = "$TAB_KEY$TAB_LIBRARY"
-                        val libraryShowAllSwap = (initialState == "library_show_all" && targetState == libraryTabKey) ||
-                            (targetState == "library_show_all" && initialState == libraryTabKey)
+                        val libraryShowAllSwap =
+                            (initialState == "library_show_all" && targetState == libraryTabKey) ||
+                                (targetState == "library_show_all" && initialState == libraryTabKey)
                         when {
                             libraryShowAllSwap ->
                                 com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = true)
-                            // Library category arrivals must not reveal the outgoing
-                            // Library landing beneath their loading/empty states.
-                            libraryCategoryRequiresImmediateExit(initialState, targetState) ->
-                                fadeIn(tween(180)) togetherWith fadeOut(tween(0))
-                            tabSwap || initialState in setOf(
-                                "settings", "unified_library", "smart_playlist_builder",
-                                "canonical_playlist_library",
-                            ) || targetState in setOf(
-                                "settings", "unified_library", "smart_playlist_builder",
-                                "canonical_playlist_library",
-                            ) ->
-                                com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = reducePlayerMotion)
-                            // Native catalog details must not crossfade over the
-                            // retiring search page: its legacy list otherwise
-                            // flashes on top of the artist/album/playlist.
-                            // Drop the old layer immediately but retain the
-                            // incoming native page's normal 180ms arrival.
-                            onlineDetailRequiresImmediateExit(targetState) ->
-                                fadeIn(tween(180)) togetherWith fadeOut(tween(0))
-                            reducePlayerMotion -> EnterTransition.None togetherWith ExitTransition.None
-                            else -> fadeIn(tween(180)) togetherWith fadeOut(tween(180))
+                            com.music.bitchord.ui.components.mainPageRequiresImmediateExit(
+                                initialState, targetState, TAB_KEY,
+                            ) -> com.music.bitchord.ui.components.isolatedPageContentTransform(
+                                reducedMotion = reducePlayerMotion,
+                            )
+                            else -> com.music.bitchord.ui.components.rootTabContentTransform(
+                                reducedMotion = reducePlayerMotion,
+                            )
                         }
                     },
                     modifier = Modifier
