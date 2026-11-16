@@ -49,6 +49,10 @@ import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
 /** Same drawable as the original Now Playing launcher; never substitute a generic More icon. */
 internal fun playerAnchoredMenuHighlightGlyph() = originalPortraitNowPlayingOverflowGlyph()
 
+/** An anchored rating is a contextual card, not the player's action sheet. */
+internal fun playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher: Boolean): Boolean =
+    !highlightLauncher
+
 /**
  * Draw the visible selected ⋯ over the exact launcher, even though the menu
  * owns a separate dialog window. Bounds and origin are window pixels.
@@ -158,8 +162,7 @@ fun PlayerAnchoredActionsMenu(
                         preferBelow = highlightLauncher,
                     )
                 }
-            Surface(
-                modifier = place
+            val plateModifier = place
                     .widthIn(min = minOf(248.dp, menuMaxWidth), max = menuMaxWidth)
                     .heightIn(max = maxPlateHeight)
                     .onSizeChanged { plateSize = it }
@@ -179,22 +182,33 @@ fun PlayerAnchoredActionsMenu(
                     // child's PaneTitle semantics and crashes Compose UI tests
                     // (and can break TalkBack). Child actions keep priority.
                     .pointerInput(Unit) { detectTapGestures(onTap = {}) },
-                color = plate,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                shape = RoundedCornerShape(18.dp),
-                shadowElevation = 22.dp,
-            ) {
-                Box {
-                    ArtworkBackdrop(
-                        palette = palette,
-                        imageUrl = artworkUrl,
-                        modifier = Modifier.matchParentSize(),
-                        washFraction = 0.78f,
-                    )
-                    // Diffused sleeve remains subtle, but the Library's
-                    // neutral filter tint owns the player menu's text surface.
-                    Box(Modifier.background(plate.copy(alpha = 0.88f))) {
-                        content()
+            if (playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher)) {
+                // The rating editor now uses the exact material used by
+                // Library filters and the other expandable action cards.
+                NativeContextActionPlate(
+                    modifier = plateModifier,
+                    artworkUrl = artworkUrl,
+                ) {
+                    content()
+                }
+            } else {
+                Surface(
+                    modifier = plateModifier,
+                    color = plate,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    shape = RoundedCornerShape(18.dp),
+                    shadowElevation = 22.dp,
+                ) {
+                    Box {
+                        ArtworkBackdrop(
+                            palette = palette,
+                            imageUrl = artworkUrl,
+                            modifier = Modifier.matchParentSize(),
+                            washFraction = 0.78f,
+                        )
+                        Box(Modifier.background(plate.copy(alpha = 0.88f))) {
+                            content()
+                        }
                     }
                 }
             }
