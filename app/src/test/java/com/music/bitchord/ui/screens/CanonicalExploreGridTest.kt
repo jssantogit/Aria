@@ -206,13 +206,17 @@ class CanonicalExploreGridTest {
             }
         }
         compose.onNodeWithContentDescription("Mais opções de Explorar").performClick()
-        compose.onNodeWithTag("apple-root-settings-popup").assertExists()
-        compose.onNodeWithTag("apple-root-settings-item").assertExists()
+        compose.mainClock.advanceTimeBy(250L)
+        compose.waitForIdle()
+        compose.onNodeWithTag("native-compact-overflow").assertExists()
+        compose.onNodeWithTag("native-compact-menu-item").assertExists()
         compose.onNodeWithText("Editar Fixadas").assertDoesNotExist()
         compose.onNodeWithText("Conta").assertDoesNotExist()
-        compose.onNodeWithTag("apple-root-settings-item").performClick()
+        compose.onNodeWithTag("native-compact-menu-item").performClick()
         compose.runOnIdle { assertEquals(1, openedSettings) }
-        compose.onNodeWithTag("apple-root-settings-popup").assertDoesNotExist()
+        compose.mainClock.advanceTimeBy(250L)
+        compose.waitForIdle()
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
