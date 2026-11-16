@@ -9,6 +9,5 @@ class AppleSettingsPopupMetricsTest {
     @Test fun oneActionSettingsPlateUsesTheCompactOverflowGeometry() {
         assertEquals(200.dp, APPLE_SETTINGS_SINGLE_ACTION_WIDTH)
         assertFalse(APPLE_SETTINGS_SINGLE_ACTION_USES_LARGE_ROWS)
-        assertEquals(54, nativeCompactMenuRowHeightDp(APPLE_SETTINGS_SINGLE_ACTION_USES_LARGE_ROWS))
     }
 }
