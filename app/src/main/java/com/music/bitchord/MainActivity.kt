@@ -3059,6 +3059,10 @@ private fun BitChordApp(
                         when {
                             libraryShowAllSwap ->
                                 com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = true)
+                            // Library category arrivals must not reveal the outgoing
+                            // Library landing beneath their loading/empty states.
+                            initialState == "unified_library" || targetState == "unified_library" ->
+                                fadeIn(tween(180)) togetherWith fadeOut(tween(0))
                             tabSwap || initialState in setOf(
                                 "settings", "unified_library", "smart_playlist_builder",
                                 "canonical_playlist_library",
