@@ -30,6 +30,26 @@ class RetiredWatchCacheGateTest {
         assertFalse(isRetiredWatchCacheRequest(Uri.parse("bitchord:historical?v=old")))
     }
 
+    @Test fun adaptiveCdnSegmentWithVideoLookingQueryIsNeverHistorical() {
+        assertFalse(isRetiredWatchCacheRequest(
+            Uri.parse("https://cdn.example/media/segment.ts?v=movie-version&token=signed")))
+        assertFalse(isRetiredWatchCacheRequest(
+            Uri.parse("http://cdn.example/segment.m4s?v=3")))
+        assertFalse(isRetiredWatchCacheRequest(
+            Uri.parse("https://source/segment.ts?v=3")))
+    }
+
+    @Test fun onlyLogicalBitChordSourceRouteIsAllowedToInvokeSourceResolver() {
+        assertTrue(isLogicalSourcePlaybackUri(
+            Uri.parse("bitchord://source?s=addon-one&t=track")))
+        assertFalse(isLogicalSourcePlaybackUri(
+            Uri.parse("https://source/segment.ts?v=1")))
+        assertFalse(isLogicalSourcePlaybackUri(
+            Uri.parse("bitchord://watch?v=1")))
+        assertFalse(isLogicalSourcePlaybackUri(
+            Uri.parse("bitchord://canonical?recordingId=r")))
+    }
+
     @Test fun localFilesAndNonBitChordUrlsAreUnaffected() {
         assertFalse(isRetiredWatchCacheRequest(Uri.parse("file:///sdcard/Music/v.mp3")))
         assertFalse(isRetiredWatchCacheRequest(Uri.parse("content://media/external/audio/3")))
