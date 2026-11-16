@@ -29,6 +29,48 @@ class SoulseekActiveSessionPolicyTest {
 
     @After fun cleanUp() { SoulseekActiveSession.bindDownloadPermission(null) }
 
+    @Test fun changingSavedCredentialsClosesOldTransportBeforeReadinessRefresh() {
+        val gate = ProviderPolicyGate(policy(true))
+        assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
+        val oldSocket = Socket()
+        val generation = SoulseekActiveSession.generation()
+        assertTrue(SoulseekActiveSession.register(oldSocket, generation))
+        var readinessRefreshed = false
+
+        SoulseekActiveSession.onCredentialsChanged(configured = false) { configured ->
+            assertFalse(configured)
+            assertTrue(oldSocket.isClosed)
+            assertFalse(SoulseekActiveSession.isCurrent(generation))
+            val lateSocket = Socket()
+            assertFalse(SoulseekActiveSession.register(
+                lateSocket, SoulseekActiveSession.generation()))
+            assertTrue(lateSocket.isClosed)
+            readinessRefreshed = true
+            true
+        }
+        assertTrue(readinessRefreshed)
+    }
+
+    @Test fun credentialSaveRefreshesReadinessWithoutReusingPriorTicket() {
+        val gate = ProviderPolicyGate(policy(true))
+        assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
+        val former = SoulseekActiveSession.generation()
+        var refreshed = false
+        SoulseekActiveSession.onCredentialsChanged(configured = true) { configured ->
+            assertTrue(configured)
+            assertFalse(SoulseekActiveSession.isCurrent(former))
+            refreshed = true
+            true
+        }
+        assertTrue(refreshed)
+        // A fresh manual-search admission must explicitly bind a new ticket.
+        val lateSocket = Socket()
+        assertFalse(SoulseekActiveSession.register(
+            lateSocket, SoulseekActiveSession.generation()))
+        assertTrue(lateSocket.isClosed)
+        assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
+    }
+
     @Test fun revokingCanonicalDownloadClosesActiveSoulseekSocketImmediately() {
         val gate = ProviderPolicyGate(policy(true))
         assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
