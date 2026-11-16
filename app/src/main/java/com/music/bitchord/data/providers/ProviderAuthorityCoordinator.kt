@@ -18,6 +18,8 @@ import java.util.Locale
 internal class ProviderAuthorityCoordinator(
     private val session: ProviderCapabilitySession,
 ) {
+    private var lastfmReady = false
+    private var listenBrainzReady = false
     suspend fun migrateOnce(
         lyricsOrder: List<LyricsSource>,
         enabledLyrics: Set<LyricsSource>,
@@ -40,6 +42,8 @@ internal class ProviderAuthorityCoordinator(
             ),
         )
         session.refreshDescriptors(descriptors)
+        lastfmReady = lastfmConfigured
+        listenBrainzReady = listenBrainzConfigured
 
         val imported = mutableMapOf<ProviderCapability, List<ProviderChoice>>()
         if (includeMusicBrainzBaseline) {
@@ -66,7 +70,11 @@ internal class ProviderAuthorityCoordinator(
             it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
         }
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
-            ProviderCapabilityRegistry.inventory(sources = cleanedSources),
+            ProviderCapabilityRegistry.inventory(
+                sources = cleanedSources,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+            ),
         )
         session.refreshDescriptors(descriptors)
     }
