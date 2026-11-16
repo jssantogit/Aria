@@ -119,7 +119,7 @@ class RouteArrivalMotionTest {
 
     @Test fun isolatedPageTransformNeverFadesTheOutgoingRoute() {
         val transform = isolatedPageContentTransform(reducedMotion = false)
-        assertEquals(
+        org.junit.Assert.assertNotEquals(
             androidx.compose.animation.ExitTransition.None,
             transform.initialContentExit,
         )
