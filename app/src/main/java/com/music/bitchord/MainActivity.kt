@@ -3067,6 +3067,13 @@ private fun BitChordApp(
                                 "canonical_playlist_library",
                             ) ->
                                 com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = reducePlayerMotion)
+                            // Native catalog details must not crossfade over the
+                            // retiring search page: its legacy list otherwise
+                            // flashes on top of the artist/album/playlist.
+                            // Drop the old layer immediately but retain the
+                            // incoming native page's normal 180ms arrival.
+                            onlineDetailRequiresImmediateExit(targetState) ->
+                                fadeIn(tween(180)) togetherWith fadeOut(tween(0))
                             reducePlayerMotion -> EnterTransition.None togetherWith ExitTransition.None
                             else -> fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                         }
