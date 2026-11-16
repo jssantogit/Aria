@@ -279,8 +279,10 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                     AppSettings.lyricsSourceOrder.value = lyrics.order
                     AppSettings.lyricsSources.value = lyrics.enabled
                     val raw = SourceRegistry.configs.value
-                    val extensions = authority.currentExtensionsProjection(raw).associateBy { it.id }
-                    SourceRegistry.applyProviderProjection(raw.map { extensions[it.id] ?: it })
+                    val extensions = authority.currentExtensionsProjection(raw)
+                    SourceRegistry.applyProviderProjection(extensions + raw.filterNot {
+                        it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE
+                    })
                 }
             }
         }
