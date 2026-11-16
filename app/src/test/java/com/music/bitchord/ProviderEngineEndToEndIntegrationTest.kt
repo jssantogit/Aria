@@ -108,6 +108,28 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun newExtensionBecomesEligibleAndPreviouslyDisabledInstanceStaysOffAfterRefresh(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(ProviderCapabilityRegistry.inventory()),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(emptyList(), emptySet(), emptyList()))
+        val addon = SourceConfig(
+            id = "later-addon", kind = SourceKind.ADDON,
+            baseUrl = "https://extension.example/manifest.json",
+            enabled = true,
+        )
+        coordinator.onSourcesChanged(listOf(addon))
+        val key = com.music.bitchord.data.providers.ProviderKey("addon", addon.id)
+        assertTrue(session.gate.open(ProviderCapability.EXTENSION_PLAYBACK, key) != null)
+        assertTrue(coordinator.setExtensionEnabled(addon.id, false, listOf(addon)))
+        coordinator.onSourcesChanged(emptyList())
+        coordinator.onSourcesChanged(listOf(addon))
+        assertNull(session.gate.open(ProviderCapability.EXTENSION_PLAYBACK, key))
+    }
+
+    @Test
     fun endToEndSingleAuthorityMigrationPreservesOptOutsExcludesRetiredAndSurvivesRestart(): Unit = runBlocking {
         val store = ProviderPreferenceStore(prefs)
         val addonA = SourceConfig(
