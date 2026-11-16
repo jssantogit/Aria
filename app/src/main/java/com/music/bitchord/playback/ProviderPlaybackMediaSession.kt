@@ -72,9 +72,9 @@ internal class ProviderPlaybackMediaSession {
     private fun originOf(url: String): Origin? = runCatching {
         val uri = URI(url)
         val scheme = uri.scheme?.lowercase(Locale.ROOT)
-        if (scheme != "http" && scheme != "https") return null
+        if (scheme != "http" && scheme != "https") return@runCatching null
         val host = uri.host?.lowercase(Locale.ROOT)?.takeIf(String::isNotBlank)
-            ?: return null
+            ?: return@runCatching null
         val port = if (uri.port >= 0) uri.port else if (scheme == "https") 443 else 80
         Origin(scheme, host, port)
     }.getOrNull()
