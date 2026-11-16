@@ -893,6 +893,9 @@ object AudioCache {
                 activeDs = if (
                     scheme == "file" ||
                     scheme == "content" ||
+                    // Do not let a historical video-id cache hit bypass the
+                    // PlaybackService refusal of retired audio backends.
+                    isRetiredWatchCacheRequest(dataSpec.uri) ||
                     CanonicalRemotePlaybackUri.isCanonical(dataSpec.uri.toString())
                 ) {
                     // Canonical remote direct play deliberately has no offline/cache
