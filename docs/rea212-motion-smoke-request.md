@@ -134,3 +134,13 @@
 - Avaliação ancorada: `NativeContextActionPlate`, o mesmo material dos cards expansíveis e filtros; preservar estrelas e ações.
 - Testes acrescentados em `HeldContextMenuGeometryTest` e `PlayerAnchoredActionsHighlightTest`.
 - Executar os gates integrais da CI Android, incluindo testes Android, Automix e sharedUi. Apenas produzir universal APK quando todos passarem, sem relaxar critérios e sem smoke físico automático.
+
+
+## Rodada parcial 1 — overflow de álbuns e playlists, 16/11/2026
+
+- Autorização: usuário relatou a primeira parte do smoke físico: menu de três pontos divergente entre Biblioteca, playlists próprias e catálogo online; exige card expansível ancorado, ações legadas intactas, ação Configurações, e mesmo vetor sem aros duplicados.
+- Os menus de playlists próprias não usam mais `ModalBottomSheet` no detalhe: `CanonicalPlaylistMenus` usa `FrostedMenuPanel` ancorado, mantendo Tocar a seguir, Adicionar à fila e Editar playlist, acrescentando Configurações. No índice de playlists, as opções de ordenação continuam e ganham Configurações.
+- `CanonicalRemoteLibraryScreen` usa `FrostedMenuPanel` no overflow do detalhe de álbum ou artista (mantendo `BrowseActionsSheet` e suas ações), recebendo as coordenadas reais da toolbar; o hold de item conserva seu próprio menu.
+- Álbum online MusicBrainz e playlist pública ListenBrainz agora têm o menu montado na camada contextual de nível superior, com `FrostedMenuPanel`, preservando avaliação, fixar/desafixar, abrir no MusicBrainz / compartilhar, e ganhando Configurações.
+- `NativeCollectionOverflowAction`: não troca o vetor entre fechado e aberto; a borda ativa é 0,75dp e usa o token branco compartilhado.
+- CI: manter gates atuais. Se qualquer teste falhar, não liberar APK nem concluir este bloco. A PR #212 continua draft, sem merge. Não confundir validação automatizada com smoke físico.
