@@ -818,7 +818,10 @@ object AudioCache {
      * through, and anything already there is served without a request.
      * Local file and content URIs bypass disk caching to prevent redundant writes.
      */
-    fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory = DataSource.Factory {
+    fun playbackFactory(
+        upstream: DataSource.Factory,
+        onSourceCacheLease: ((ProviderPlaybackByteLease) -> Unit)? = null,
+    ): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
         val upstreamDs = upstream.createDataSource()
         object : DataSource {
@@ -867,6 +870,10 @@ object AudioCache {
                     }
                     return
                 }
+                // A complete cached manifest also skips the resolver.
+                // Bind its independently admitted owner to the enclosing
+                // MediaSource before Media3 opens any HLS/DASH segment.
+                onSourceCacheLease?.invoke(lease)
                 cachedSourceLease = lease
                 unsubscribeCachedSource = lease.onRevoke {
                     cachedSourceRevoked = true
