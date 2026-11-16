@@ -44,6 +44,13 @@ internal class ProviderPlaybackMediaSession {
             manifestOrigin = originOf(manifestUrl)
                 ?: throw IOException("Provider manifest origin is not HTTP(S)")
             originalHeaders = headers.toMap()
+        } else {
+            // A fully cached manifest supplies provenance, never current
+            // credentials or a verified CDN origin. Dropping stale secrets
+            // also protects a reenabled or rotated account on the same
+            // provider instance from inheriting the previous session.
+            manifestOrigin = null
+            originalHeaders = emptyMap()
         }
         lease = incoming
     }
