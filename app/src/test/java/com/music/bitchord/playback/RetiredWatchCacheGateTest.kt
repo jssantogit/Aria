@@ -5,9 +5,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.ConscryptMode
 import org.robolectric.RobolectricTestRunner
 
 /** A stored cache span is not grandfathered authorization for retired video IDs. */
+@ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
 class RetiredWatchCacheGateTest {
     @Test fun historicalWatchUriCannotBeAnsweredByCacheBeforeResolverDeniesIt() {
