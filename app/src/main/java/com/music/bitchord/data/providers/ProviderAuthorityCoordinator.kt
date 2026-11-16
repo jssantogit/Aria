@@ -20,6 +20,7 @@ internal class ProviderAuthorityCoordinator(
 ) {
     private var lastfmReady = false
     private var listenBrainzReady = false
+    private var soulseekReady = false
     suspend fun migrateOnce(
         lyricsOrder: List<LyricsSource>,
         enabledLyrics: Set<LyricsSource>,
@@ -28,6 +29,7 @@ internal class ProviderAuthorityCoordinator(
         includeDefaultArtworkBaseline: Boolean = true,
         lastfmConfigured: Boolean = false,
         listenBrainzConfigured: Boolean = false,
+        soulseekConfigured: Boolean = false,
         lastfmEnabled: Boolean = false,
         listenBrainzEnabled: Boolean = false,
     ): Boolean {
@@ -39,11 +41,13 @@ internal class ProviderAuthorityCoordinator(
                 sources = cleanedSources,
                 lastfmConfigured = lastfmConfigured,
                 listenBrainzConfigured = listenBrainzConfigured,
+                soulseekConfigured = soulseekConfigured,
             ),
         )
         session.refreshDescriptors(descriptors)
         lastfmReady = lastfmConfigured
         listenBrainzReady = listenBrainzConfigured
+        soulseekReady = soulseekConfigured
 
         val imported = mutableMapOf<ProviderCapability, List<ProviderChoice>>()
         if (includeMusicBrainzBaseline) {
@@ -62,6 +66,12 @@ internal class ProviderAuthorityCoordinator(
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
         )
         imported.putAll(legacyProviderChoices(lyricsOrder, enabledLyrics, cleanedSources))
+        // Existing manually configured Soulseek pilot is a separate DOWNLOAD
+        // instance. It is initially opt-in, but remains ineligible without a
+        // credential and all future explicit opt-outs win over this baseline.
+        imported[ProviderCapability.DOWNLOAD] = imported[ProviderCapability.DOWNLOAD].orEmpty() +
+            ProviderChoice(ProviderKey("soulseek"), enabled = true,
+                order = imported[ProviderCapability.DOWNLOAD].orEmpty().size)
         return session.initialize(imported)
     }
 
@@ -84,6 +94,7 @@ internal class ProviderAuthorityCoordinator(
                 sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
                 lastfmConfigured = lastfmReady,
                 listenBrainzConfigured = listenBrainzReady,
+                soulseekConfigured = soulseekReady,
             ),
         )
         session.refreshDescriptors(descriptors)
@@ -95,6 +106,19 @@ internal class ProviderAuthorityCoordinator(
                 ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
             ),
         )
+    }
+
+    /** Credential changes refresh readiness, never overwrite a saved opt-out. */
+    suspend fun updateSoulseekReadiness(configured: Boolean) {
+        soulseekReady = configured
+        session.refreshDescriptors(ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+                soulseekConfigured = soulseekReady,
+            ),
+        ))
     }
 
     suspend fun onSourcesChanged(rawSources: List<SourceConfig>) {
