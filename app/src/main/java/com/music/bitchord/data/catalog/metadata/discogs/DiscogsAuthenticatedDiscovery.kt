@@ -1,6 +1,10 @@
 package com.music.bitchord.data.catalog.metadata.discogs
 
 import com.music.bitchord.BuildConfig
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderRequestDeniedException
+import com.music.bitchord.data.providers.RateLimitedProviderTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -130,6 +134,7 @@ internal class DiscogsDatabaseSearchClient(
     private val tokenProvider: () -> String? = { null },
     private val enabled: Boolean = false,
     private val limiter: DiscogsRateLimiter = DiscogsRequestBudget.limiter,
+    private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
@@ -143,9 +148,16 @@ internal class DiscogsDatabaseSearchClient(
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return DiscogsSearchResult.AuthRequired
         val response = try {
-            limiter.runHttpLimited { transport.search(query, token, userAgent) }
+            admission.execute(
+                capability = ProviderCapability.EDITION_METADATA,
+                provider = BuiltInProviderKeys.DISCOGS,
+                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                networkCall = { transport.search(query, token, userAgent) },
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: ProviderRequestDeniedException) {
+            return DiscogsSearchResult.Disabled
         } catch (_: Exception) {
             return DiscogsSearchResult.Unavailable
         }
