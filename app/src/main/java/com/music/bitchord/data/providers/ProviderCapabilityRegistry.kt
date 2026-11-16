@@ -214,6 +214,18 @@ internal object ProviderCapabilityRegistry {
         add(
             ProviderInventoryEntry(
                 key = BuiltInProviderKeys.LISTENBRAINZ,
+                capability = ProviderCapability.PERSONAL_RECOMMENDATIONS,
+                tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
+                displayName = "ListenBrainz (Recomendações Pessoais)",
+                readiness = if (listenBrainzConfigured) ProviderReadiness.READY
+                    else ProviderReadiness.NEEDS_CONFIGURATION,
+                supportsReordering = false,
+                notes = "Opt-in separado do scrobbling; valida a conta antes da recomendação",
+            ),
+        )
+        add(
+            ProviderInventoryEntry(
+                key = BuiltInProviderKeys.LISTENBRAINZ,
                 capability = ProviderCapability.PUBLIC_PLAYLISTS,
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
                 displayName = "ListenBrainz (Playlists Públicas)",
