@@ -4068,7 +4068,6 @@ private fun BitChordApp(
                                     artworkUrl = song.thumbnailUrl,
                                     entityType = EntityType.TRACK,
                                 ))
-                                viewModel.loadPlaylists()
                                 playlistTarget = song
                             },
                             onBrowseClick = { item ->
@@ -5823,7 +5822,6 @@ private fun BitChordApp(
                     } else null,
                     onAddToPlaylist = {
                         songActions = null
-                        viewModel.loadPlaylists()
                         playlistTarget = song
                     },
                     onRemoveFromPlaylist = editable?.let {
@@ -6030,97 +6028,24 @@ private fun BitChordApp(
                 DownloadSession.markSeen()
             }
 
-            // ---- Add to playlist / new playlist ----
-            // One sheet for both, because they are one decision: the list of
-            // playlists with a way to make another. `creatingPlaylist` opens it
-            // straight onto the form, which is what the Library tile means.
-            if (playlistTarget != null || creatingPlaylist) {
-                val target = playlistTarget
-                var playlistDraftDirty by remember { mutableStateOf(false) }
-                var playlistFormSaving by remember { mutableStateOf(false) }
-                var confirmPlaylistDismiss by remember { mutableStateOf(false) }
-                val dismiss = {
-                    playlistTarget = null
-                    creatingPlaylist = false
-                }
-                val playlistSheetState = rememberModalBottomSheetState(
-                    skipPartiallyExpanded = true,
-                    confirmValueChange = { destination ->
-                        if (destination == androidx.compose.material3.SheetValue.Hidden && playlistFormSaving) {
-                            false
-                        } else if (destination == androidx.compose.material3.SheetValue.Hidden && playlistDraftDirty) {
-                            confirmPlaylistDismiss = true
-                            false
-                        } else true
-                    },
+            // ---- Playlist entrypoints: canonical normal storage only ----
+            // A displayed Song is a legacy playback adapter. Its exact
+            // RecordingId must be proven before the canonical picker opens;
+            // never store its videoId/title or create a parallel YouTube-style
+            // LocalPlaylistStore entry.
+            playlistTarget?.let { target ->
+                com.music.bitchord.ui.screens.CanonicalSongPlaylistPicker(
+                    song = target,
+                    onDismiss = { playlistTarget = null },
                 )
-                ModalBottomSheet(
-                    onDismissRequest = {
-                        if (playlistFormSaving) Unit
-                        else if (playlistDraftDirty) confirmPlaylistDismiss = true
-                        else dismiss()
-                    },
-                    sheetState = playlistSheetState,
-                    containerColor = MaterialTheme.colorScheme.background,
-                ) {
-                    PlaylistPickerSheet(
-                        playlists = playlists,
-                        loading = playlistsLoading,
-                        song = target,
-                        startCreating = target == null,
-                        onDraftChanged = { playlistDraftDirty = it },
-                        onSavingChanged = { playlistFormSaving = it },
-                        onRequestDismiss = {
-                            if (playlistFormSaving) Unit
-                            else if (playlistDraftDirty) confirmPlaylistDismiss = true
-                            else dismiss()
-                        },
-                        onAdd = { picked ->
-                            target?.let { song ->
-                                viewModel.addToPlaylists(picked, song) { added, alreadyThere, failed ->
-                                    // One line for the whole batch, saying the
-                                    // outcome that matters most: what went in, else
-                                    // that it was all there already, else that it
-                                    // didn't work.
-                                    showQueueNotice(
-                                        when {
-                                            added > 1 -> context.resources.getQuantityString(
-                                                R.plurals.added_to_playlists_notice, added, added,
-                                            )
-                                            added == 1 -> context.getString(R.string.song_added_to_playlist)
-                                            alreadyThere > 0 && failed == 0 ->
-                                                context.getString(R.string.song_already_in_playlist)
-                                            else -> context.getString(R.string.failed)
-                                        },
-                                    )
-                                }
-                            }
-                            dismiss()
-                        },
-                        onCreate = { title, privacy, onResult ->
-                            viewModel.createPlaylist(title, privacy, target) { succeeded ->
-                                onResult(succeeded)
-                                if (succeeded) dismiss()
-                            }
-                        },
-                    )
-                }
-                if (confirmPlaylistDismiss && !playlistFormSaving) {
-                    ConfirmationAlert(
-                        hazeState = null,
-                        title = androidx.compose.ui.res.stringResource(R.string.editor_discard_title),
-                        description = androidx.compose.ui.res.stringResource(R.string.editor_discard_playlist_body),
-                        confirmLabel = androidx.compose.ui.res.stringResource(R.string.editor_discard_confirm),
-                        dismissLabel = androidx.compose.ui.res.stringResource(R.string.editor_keep_editing),
-                        destructive = true,
-                        onConfirm = {
-                            confirmPlaylistDismiss = false
-                            playlistDraftDirty = false
-                            dismiss()
-                        },
-                        onDismiss = { confirmPlaylistDismiss = false },
-                    )
-                }
+            }
+            // The Library's own creation action remains the full native wizard
+            // (normal OR smart). The "Add to playlist -> New" route inside the
+            // canonical picker is intentionally restricted to normal only.
+            if (creatingPlaylist) {
+                com.music.bitchord.ui.screens.SmartPlaylistBuilderScreen(
+                    onBack = { creatingPlaylist = false },
+                )
             }
 
             if (showSpotifyImportDialog) {

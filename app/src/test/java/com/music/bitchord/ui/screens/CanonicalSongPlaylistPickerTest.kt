@@ -10,7 +10,7 @@ class CanonicalSongPlaylistPickerTest {
     @Test fun addingAPlayableSongUsesItsVerifiedCanonicalRecordingNotVideoOrTitle() {
         val target = canonicalSongPlaylistSelection("verified-recording-1")
         assertEquals(CanonicalLibraryEntityType.TRACK, target?.type)
-        assertEquals("verified-recording-1", target?.id)
+        assertEquals("verified-recording-1", target?.entityId)
         assertNull(canonicalSongPlaylistSelection(null))
         assertNull(canonicalSongPlaylistSelection(""))
         assertNull(canonicalSongPlaylistSelection("  "))

@@ -218,6 +218,8 @@ internal fun SmartPlaylistBuilderScreen(
     onPreviewAction: ((RuleBasedSmartPlaylistQuery, CanonicalCollectionIntent) -> Unit)? = null,
     onSavedV2Action: ((String, CanonicalCollectionIntent) -> Unit)? = null,
     onPreviewV2Action: ((SmartPlaylistV2Query, String?, CanonicalCollectionIntent) -> Unit)? = null,
+    /** "Add to playlist" cannot create a rule-based/smart definition. */
+    normalOnlyCreation: Boolean = false,
 ) {
     var showAdvanced by remember { mutableStateOf(true) }
     if (showAdvanced) {
@@ -225,12 +227,13 @@ internal fun SmartPlaylistBuilderScreen(
             onBack = onBack,
             initialPlaylistId = initialV2Id,
             initialNormalPlaylistId = initialNormalId,
+            normalOnlyCreation = normalOnlyCreation,
             startOnNormalSongs = startOnNormalSongs,
             embeddedInLibrary = embeddedInLibrary,
             initialLibraryRecordingIds = initialLibraryRecordingIds,
             initialLibrarySource = initialLibrarySource,
             onLibraryNormalSaved = onLibraryNormalSaved,
-            onClassic = { showAdvanced = false },
+            onClassic = { if (!normalOnlyCreation) showAdvanced = false },
             onSavedAction = onSavedV2Action,
             onPreviewAction = onPreviewV2Action,
         )

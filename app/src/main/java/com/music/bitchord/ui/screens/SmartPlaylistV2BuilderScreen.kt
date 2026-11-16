@@ -273,6 +273,7 @@ internal fun SmartPlaylistV2BuilderScreen(
     onClassic: () -> Unit,
     onSavedAction: ((String, CanonicalCollectionIntent) -> Unit)? = null,
     onPreviewAction: ((SmartPlaylistV2Query, String?, CanonicalCollectionIntent) -> Unit)? = null,
+    normalOnlyCreation: Boolean = false,
 ) {
     val context = LocalContext.current.applicationContext
     val repo = remember(context) {
@@ -312,7 +313,9 @@ internal fun SmartPlaylistV2BuilderScreen(
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var coverUri by remember { mutableStateOf<String?>(null) }
-    var normalMode by remember { mutableStateOf(false) }
+    var normalMode by remember { mutableStateOf(
+        initialPlaylistWizardNormalMode(normalOnlyCreation)
+    ) }
     var editingNormalId by remember { mutableStateOf<String?>(null) }
     var normalSearch by remember { mutableStateOf("") }
     var normalSourceProviderKey by remember {
@@ -909,6 +912,7 @@ internal fun SmartPlaylistV2BuilderScreen(
                     filterNotice = filterNotice,
                     hasExportedFilter = exportedFilterId != null,
                     startOnNormalSongs = startOnNormalSongs,
+                    normalOnlyCreation = normalOnlyCreation,
                     embeddedInLibrary = embeddedInLibrary,
                     savedDefinitions = saved.filterNot { it.id == editingId },
                     onNameChange = { name = it; filterNotice = null },
@@ -1010,14 +1014,16 @@ internal fun SmartPlaylistV2BuilderScreen(
                     },
                     onNormalBrowseGroupChange = { group -> normalBrowseGroup = group },
                     onNormalModeChange = { selected ->
-                        if (selected && !normalMode && !normalSourceTouched &&
-                            editingNormalId == null && normalSelectedIds.isEmpty()
-                        ) {
-                            normalSourceProviderKey =
-                                defaultCanonicalNormalPlaylistSource(availableSourceKeys)
-                            normalSourceTouched = true
+                        if (playlistWizardAllowsSmartCreation(normalOnlyCreation) || selected) {
+                            if (selected && !normalMode && !normalSourceTouched &&
+                                editingNormalId == null && normalSelectedIds.isEmpty()
+                            ) {
+                                normalSourceProviderKey =
+                                    defaultCanonicalNormalPlaylistSource(availableSourceKeys)
+                                normalSourceTouched = true
+                            }
+                            normalMode = selected
                         }
-                        normalMode = selected
                     },
                     onNormalSearchChange = { normalSearch = it },
                     onToggleNormalTrack = { id ->
@@ -1220,8 +1226,10 @@ internal fun SmartPlaylistV2BuilderScreen(
                     },
                     onPreviewAction = onPreviewAction,
                     onManage = {
-                        manageTab = SmartPlaylistManageTab.FILTERS
-                        showWizard = false
+                        if (playlistWizardAllowsSmartCreation(normalOnlyCreation)) {
+                            manageTab = SmartPlaylistManageTab.FILTERS
+                            showWizard = false
+                        }
                     },
                     onBack = onBack,
                 )

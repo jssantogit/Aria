@@ -452,6 +452,13 @@ internal fun <T> WizardChoiceDialog(
     }
 }
 
+/** Only the dedicated Library creator can offer smart or filter definitions. */
+internal fun playlistWizardAllowsSmartCreation(normalOnlyCreation: Boolean): Boolean =
+    !normalOnlyCreation
+
+internal fun initialPlaylistWizardNormalMode(normalOnlyCreation: Boolean): Boolean =
+    normalOnlyCreation
+
 @Composable
 internal fun SmartPlaylistV2WizardUi(
     name: String,
@@ -484,6 +491,7 @@ internal fun SmartPlaylistV2WizardUi(
     onSave: () -> Unit,
     onSaveFilter: () -> Unit,
     normalMode: Boolean = false,
+    normalOnlyCreation: Boolean = false,
     editingNormalId: String? = null,
     openingAsEdit: Boolean = false,
     startOnNormalSongs: Boolean = false,
@@ -682,8 +690,9 @@ internal fun SmartPlaylistV2WizardUi(
                     hazeState = null,
                     modifier = Modifier.align(Alignment.CenterStart),
                 )
-                if (page == WizardStep.IDENTITY || page == WizardStep.EDIT ||
-                    page == WizardStep.RULES || page == WizardStep.REVIEW) {
+                if (playlistWizardAllowsSmartCreation(normalOnlyCreation) &&
+                    (page == WizardStep.IDENTITY || page == WizardStep.EDIT ||
+                     page == WizardStep.RULES || page == WizardStep.REVIEW)) {
                     Box(modifier = Modifier.align(Alignment.CenterEnd)
                         .testTag("playlist-creator-overflow")) {
                         CircleIconButton(
@@ -879,7 +888,8 @@ internal fun SmartPlaylistV2WizardUi(
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onBackground,
                                 )
-                                if (editingId != null || filterMode || editingNormalId != null) {
+                                if (normalOnlyCreation || editingId != null || filterMode ||
+                                    editingNormalId != null) {
                                     Text(if (normalMode) "Normal" else "Inteligente",
                                         style = MaterialTheme.typography.bodyMedium)
                                 } else {
