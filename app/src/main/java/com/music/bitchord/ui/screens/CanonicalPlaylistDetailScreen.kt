@@ -722,7 +722,7 @@ internal fun CanonicalPlaylistDetailScreen(
             }
         }
         if (rows == null && card !is LibraryPlaylistCard.Normal) item(key = "playlist-detail-loading") {
-            NativeLoadingSpinner()
+            NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.62f))
         }
         if (rows?.isEmpty() == true && card !is LibraryPlaylistCard.Normal) {
             if (trackLoadFailed) {
