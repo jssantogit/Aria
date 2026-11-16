@@ -263,7 +263,6 @@ private data class CanonicalLibraryMenuTarget(
  * a credential-free disk cache or authenticate a cover-art request at runtime.
  * Authenticated URLs and provider cover IDs never enter Compose state.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 /** Only album/artist detail toolbars open the frosted anchored overflow card.
  * A held item keeps its lifted representation; track actions retain their route.
  */
@@ -272,6 +271,7 @@ internal fun canonicalLibraryDetailUsesAnchoredOverflow(
     type: CanonicalLibraryEntityType,
 ): Boolean = detailOpen && type != CanonicalLibraryEntityType.TRACK
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CanonicalRemoteLibraryScreen(
     providerKey: String,
