@@ -1,7 +1,12 @@
 package com.music.bitchord.data.scrobbling
 
-import com.music.bitchord.data.DebugLog as Log
+import android.util.Log
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -15,6 +20,7 @@ class ScrobbleManager(
     var minSongDuration: Int = 30,
     var scrobbleDelayPercent: Float = 0.5f,
     var scrobbleDelaySeconds: Int = 180,
+    private val policyGate: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
 ) {
     private var scrobbleJob: Job? = null
     private var scrobbleRemainingMillis: Long = 0L
@@ -23,6 +29,17 @@ class ScrobbleManager(
     private var songStarted = false
     var useNowPlaying = true
     var usePrimaryArtistOnly = false
+
+    private fun isLastFmListeningPermitted(): Boolean {
+        val snapshot = ProviderRuntime.state?.value
+        if (snapshot?.status == ProviderSessionStatus.STORAGE_ERROR) return false
+        val gate = policyGate() ?: return true
+        // Enforce gate whenever LISTENING_STATISTICS is configured in policy.
+        val configured = snapshot == null ||
+            ProviderCapability.LISTENING_STATISTICS in snapshot.configured
+        if (!configured) return true
+        return gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM) != null
+    }
 
     fun destroy() {
         scrobbleJob?.cancel()
@@ -36,7 +53,7 @@ class ScrobbleManager(
         song: Song?,
         durationMs: Long? = null,
     ) {
-        if (song == null) return
+        if (song == null || !isLastFmListeningPermitted()) return
         songStartedAt = System.currentTimeMillis() / 1000
         songStarted = true
         startScrobbleTimer(song, durationMs)
@@ -46,6 +63,7 @@ class ScrobbleManager(
     }
 
     fun onSongResume(song: Song) {
+        if (!isLastFmListeningPermitted()) return
         resumeScrobbleTimer(song)
     }
 
@@ -115,8 +133,10 @@ class ScrobbleManager(
     }
 
     private fun scrobbleSong(song: Song, durationSeconds: Int) {
+        if (!isLastFmListeningPermitted()) return
         val scrobbleArtist = song.artist.forScrobble()
         scope.launch {
+            if (!isLastFmListeningPermitted()) return@launch
             LastFM
                 .scrobble(
                     artist = scrobbleArtist,
@@ -134,8 +154,10 @@ class ScrobbleManager(
     }
 
     private fun updateNowPlaying(song: Song) {
+        if (!isLastFmListeningPermitted()) return
         val scrobbleArtist = song.artist.forScrobble()
         scope.launch {
+            if (!isLastFmListeningPermitted()) return@launch
             LastFM
                 .updateNowPlaying(
                     artist = scrobbleArtist,
@@ -168,9 +190,6 @@ class ScrobbleManager(
         }
     }
 
-    /**
-     * Parse "M:SS" or "MM:SS" duration text to total seconds.
-     */
     private fun parseDurationSeconds(text: String): Int {
         val parts = text.split(":")
         if (parts.size != 2) return 0

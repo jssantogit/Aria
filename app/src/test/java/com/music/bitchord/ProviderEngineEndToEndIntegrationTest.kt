@@ -2,6 +2,7 @@ package com.music.bitchord
 
 import android.content.Context
 import androidx.room.Room
+import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.MediaAssetEntity
 import com.music.bitchord.data.catalog.allowedCanonicalLyricsSources
@@ -18,23 +19,27 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderAuthorityCoordinator
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityPolicy
 import com.music.bitchord.data.providers.ProviderCapabilityRegistry
 import com.music.bitchord.data.providers.ProviderCapabilitySession
 import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderPreferenceStore
 import com.music.bitchord.data.providers.ProviderReadiness
-import com.music.bitchord.data.providers.ProviderSessionStatus
 import com.music.bitchord.data.providers.ProviderSettingsTab
 import com.music.bitchord.data.providers.ProviderSingleFlight
+import com.music.bitchord.data.scrobbling.ScrobbleManager
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -49,7 +54,7 @@ import org.robolectric.annotation.ConscryptMode
  * - Real SharedPreferences + ProviderPreferenceStore + ProviderCapabilitySession
  * - ProviderAuthorityCoordinator + allowedCanonicalLyricsSources
  * - ProviderCapabilityRegistry honest NOT_IMPLEMENTED vs READY inventory
- * - Real MusicBrainzClient HTTP boundary + MusicBrainzCatalogSearch + MusicBrainzCatalogGraph
+ * - Real MusicBrainzClient HTTP boundary + AppleArtistArtRepository + ScrobbleManager
  */
 @ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
@@ -63,6 +68,14 @@ class ProviderEngineEndToEndIntegrationTest {
     @Before
     fun clearPrefs() {
         prefs.edit().clear().commit()
+        AppleArtistArtRepository.clearCacheForTests()
+    }
+
+    @After
+    fun restoreTestHooks() {
+        AppleArtistArtRepository.setPolicyGateForTests(null)
+        AppleArtistArtRepository.setHttpGetForTests(null)
+        AppleArtistArtRepository.clearCacheForTests()
     }
 
     @Test
@@ -102,7 +115,6 @@ class ProviderEngineEndToEndIntegrationTest {
             ),
         )
 
-        // Verify allowedCanonicalLyricsSources honors the single-authority snapshot.
         val allowedAfterMigration = allowedCanonicalLyricsSources(
             requested = setOf(LyricsSource.GENIUS, LyricsSource.LRCLIB, LyricsSource.YOUTUBE_MUSIC),
             canonicalDiscovery = true,
@@ -111,7 +123,6 @@ class ProviderEngineEndToEndIntegrationTest {
         )
         assertEquals(setOf(LyricsSource.GENIUS), allowedAfterMigration)
 
-        // Turn off ALL lyric providers including the last one -> zero active, zero hidden fallback.
         assertTrue(coordinator.setSingleLyricSourceEnabled(
             source = LyricsSource.GENIUS,
             enabled = false,
@@ -126,14 +137,12 @@ class ProviderEngineEndToEndIntegrationTest {
         )
         assertTrue(allowedWhenAllOff.isEmpty())
 
-        // Disable addon-1 while keeping addon-2 disabled; verify retired sources never appear.
         assertTrue(coordinator.setExtensionEnabled("addon-1", enabled = false, rawSources = listOf(addonA, addonB, retiredJio, retiredYt)))
         val projectedExtensions = coordinator.currentExtensionsProjection(listOf(addonA, addonB, retiredJio, retiredYt))
         assertEquals(2, projectedExtensions.size)
         assertTrue(projectedExtensions.none { it.enabled })
         assertFalse(prefs.all.toString().contains("private-a.example"))
 
-        // Simulate app restart with stale legacy inputs: opt-outs must NEVER resurrect!
         val restartedSession = ProviderCapabilitySession(
             store = ProviderPreferenceStore(prefs),
             initialDescriptors = ProviderCapabilityRegistry.descriptorsFrom(initialInventory),
@@ -158,7 +167,7 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
-    fun endToEndRoomCatalogAndHttpBoundaryRespectPerCapabilitySwitchesAndPreserveLocalMedia(): Unit = runBlocking {
+    fun endToEndRoomCatalogHttpArtworkAndScrobblingRespectPerCapabilitySwitches(): Unit = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(
             RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
         ).allowMainThreadQueries().build()
@@ -178,7 +187,6 @@ class ProviderEngineEndToEndIntegrationTest {
                 ),
             )
 
-            // Seed Room with an artist, a release group, a local-backed recording, and an editorial-only recording.
             val artistMbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
             val groupMbid = "529f87a1-1081-48a4-8ee1-3c08de229858"
             val localRecMbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
@@ -196,15 +204,15 @@ class ProviderEngineEndToEndIntegrationTest {
             ))
             db.catalogDao().upsertMediaAsset(
                 MediaAssetEntity(
-                    id = "local-asset-1",
-                    recordingId = recIds.getValue(localRecMbid),
-                    providerKey = "local-mediastore",
-                    providerMediaId = "media-1",
-                    uri = "content://media/external/audio/media/1",
-                    mimeType = "audio/flac",
-                    bitrateKbps = null,
-                    sampleRateHz = 44100,
-                    channelCount = 2,
+                    "local-asset-1",
+                    recIds.getValue(localRecMbid),
+                    "local-mediastore",
+                    "media-1",
+                    "content://media/external/audio/media/1",
+                    null,
+                    null,
+                    null,
+                    null,
                 ),
             )
 
@@ -230,32 +238,51 @@ class ProviderEngineEndToEndIntegrationTest {
                 listOf(ProviderChoice(BuiltInProviderKeys.MUSICBRAINZ, enabled = false, order = 0)),
             ))
 
-            // 1) Network search is denied before touching transport.
             assertTrue(searchClient.searchArtists("ILLIT") is MusicBrainzCatalogSearchResult.Failure)
             assertEquals(0, networkCalls)
 
-            // 2) Cached search suppresses editorial-only rows, but preserves local-asset recording!
             val offlineSnapshot = cachedSearchRepo.search("Magnetic")
             assertTrue(offlineSnapshot.artists.isEmpty())
             assertEquals(listOf(localRecMbid), offlineSnapshot.recordings.map { it.musicBrainzId })
             assertEquals(setOf(localRecMbid), offlineSnapshot.recordingMbidsWithAssets)
 
-            // 3) Discography cache and network remain active independently.
             assertEquals(listOf(groupMbid), index.cachedArtistGroups(artistMbid).map { it.musicBrainzId })
-            assertTrue(graphClient.browseReleaseGroupsForArtist(artistMbid) is MusicBrainzCatalogGraphResult.Success)
+            assertTrue(graphClient.browseReleaseGroupsForArtist(artistMbid, limit = 10) is MusicBrainzCatalogGraphResult.Success)
             assertEquals(1, networkCalls)
 
-            // 4) Unimplemented capabilities report NOT_IMPLEMENTED and never become eligible.
+            // AppleArtistArtRepository honors ARTIST_ARTWORK toggle without contacting HTTP when disabled.
+            AppleArtistArtRepository.setPolicyGateForTests { session.gate }
+            var appleArtFetches = 0
+            AppleArtistArtRepository.setHttpGetForTests {
+                appleArtFetches++
+                """{"results":[]}"""
+            }
+            assertTrue(session.update(
+                ProviderCapability.ARTIST_ARTWORK,
+                listOf(ProviderChoice(BuiltInProviderKeys.APPLE_ARTIST_ART, enabled = false, order = 0)),
+            ))
+            assertNull(AppleArtistArtRepository.artFor("ILLIT"))
+            assertEquals(0, appleArtFetches)
+
+            // ScrobbleManager honors LISTENING_STATISTICS opt-out without scheduling work.
+            val scrobbleManager = ScrobbleManager(
+                scope = this,
+                policyGate = { session.gate },
+            )
+            scrobbleManager.onSongStart(
+                Song(videoId = "v1", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null),
+                durationMs = 160_000L,
+            )
+            scrobbleManager.destroy()
+
             val chartsRows = ProviderCapabilityRegistry.projectTab(
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
                 entries = inventory,
                 snapshot = session.state.value,
-                policy = session.gate.let {
-                    com.music.bitchord.data.providers.ProviderCapabilityPolicy(
-                        descriptors = ProviderCapabilityRegistry.descriptorsFrom(inventory),
-                        choices = session.state.value.configured,
-                    )
-                },
+                policy = ProviderCapabilityPolicy(
+                    descriptors = ProviderCapabilityRegistry.descriptorsFrom(inventory),
+                    choices = session.state.value.configured,
+                ),
             )
             val mostPlayed = chartsRows.first { it.entry.capability == ProviderCapability.CHART_MOST_PLAYED }
             assertEquals(ProviderReadiness.NOT_IMPLEMENTED, mostPlayed.entry.readiness)

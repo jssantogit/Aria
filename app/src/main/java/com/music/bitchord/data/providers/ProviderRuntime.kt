@@ -20,18 +20,27 @@ internal object ProviderRuntime {
     @Volatile private var installedInProcess: Boolean = false
 
     private val plainJvmTestGate: ProviderPolicyGate by lazy {
-        val mb = ProviderKey("musicbrainz")
-        val caps = setOf(
+        val mb = BuiltInProviderKeys.MUSICBRAINZ
+        val caa = BuiltInProviderKeys.COVER_ART_ARCHIVE
+        val appleArt = BuiltInProviderKeys.APPLE_ARTIST_ART
+        val mbCaps = setOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
             ProviderCapability.IDENTITY,
         )
         ProviderPolicyGate(
             ProviderCapabilityPolicy(
-                descriptors = listOf(ProviderDescriptor(mb, caps, ProviderReadiness.READY)),
-                choices = caps.associateWith {
+                descriptors = listOf(
+                    ProviderDescriptor(mb, mbCaps, ProviderReadiness.READY),
+                    ProviderDescriptor(caa, setOf(ProviderCapability.RELEASE_ARTWORK), ProviderReadiness.READY),
+                    ProviderDescriptor(appleArt, setOf(ProviderCapability.ARTIST_ARTWORK), ProviderReadiness.READY),
+                ),
+                choices = mbCaps.associateWith {
                     listOf(ProviderChoice(mb, enabled = true, order = 0))
-                },
+                } + mapOf(
+                    ProviderCapability.RELEASE_ARTWORK to listOf(ProviderChoice(caa, enabled = true, order = 0)),
+                    ProviderCapability.ARTIST_ARTWORK to listOf(ProviderChoice(appleArt, enabled = true, order = 0)),
+                ),
             ),
         )
     }
