@@ -119,6 +119,10 @@ import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.catalog.allowedCanonicalLyricsSources
 import com.music.bitchord.download.Downloads
 import java.util.concurrent.ConcurrentHashMap
@@ -1413,10 +1417,31 @@ class PlaybackService : MediaLibraryService() {
                 if (fullMediaId != null) {
                     NerdStats.recordSource(fullMediaId, sourceName)
                 }
+                // The winning source may differ from the queued/pinned
+                // source. Bind the HTTP byte lease to the actual winner,
+                // never to the original queue id or the CDN hostname.
+                val winningSource = stream.sourceConfigId?.let(SourceRegistry::config)
+                    ?: throw java.io.IOException("Resolved playback source no longer configured")
+                val byteLease = when (winningSource.kind) {
+                    SourceKind.ADDON, SourceKind.CUSTOM_MODULE -> {
+                        val gate = ProviderRuntime.gateOrNull()
+                            ?: throw java.io.IOException("Playback source policy unavailable")
+                        val key = ProviderKey(
+                            if (winningSource.kind == SourceKind.ADDON) "addon"
+                            else "custom_module",
+                            winningSource.id,
+                        )
+                        val ticket = gate.open(ProviderCapability.EXTENSION_PLAYBACK, key)
+                            ?: throw java.io.IOException("Playback source capability revoked")
+                        ProviderPlaybackByteLease(gate, ticket)
+                    }
+                    else -> null
+                }
                 NerdStats.recordSource(trackParam, sourceName)
                 return@Resolver dataSpec.buildUpon()
                     .setUri(Uri.parse(stream.url))
                     .setHttpRequestHeaders(stream.headers)
+                    .apply { if (byteLease != null) setCustomData(byteLease) }
                     .build()
             }
             // Historical watch/video IDs are archival identity only. They no
@@ -1442,7 +1467,11 @@ class PlaybackService : MediaLibraryService() {
             // Innermost, so it chunks the real googlevideo URL the resolver
             // above has already substituted in — see [ChunkedDataSource] for
             // why an open-ended read of one is worth avoiding.
-            ChunkedDataSource.Factory(OkHttpDataSource.Factory(Http.client), STREAM_CHUNK_BYTES),
+            ProviderPlaybackByteDataSource.Factory(
+                ChunkedDataSource.Factory(
+                    OkHttpDataSource.Factory(Http.client), STREAM_CHUNK_BYTES,
+                ),
+            ),
         ) { dataSpec ->
             // Wrapped rather than folded into the resolver above so the record
             // is made in one place for every branch of it, and made from what
