@@ -4,12 +4,18 @@ import android.util.Log
 import com.music.bitchord.data.Http
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCallResult
+import com.music.bitchord.data.providers.ProviderQueryExecutor
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderSessionStatus
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
+import kotlin.coroutines.resume
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -21,12 +27,42 @@ object ListenBrainzManager {
     @Volatile
     internal var policyGateForTests: (() -> ProviderPolicyGate?)? = null
 
-    private fun isListenBrainzListeningPermitted(): Boolean {
-        val snapshot = ProviderRuntime.state?.value
-        if (snapshot?.status == ProviderSessionStatus.STORAGE_ERROR) return false
+    /** Test hook replaces only transport, never policy authorization. */
+    @Volatile internal var submitForTests: (suspend (Request) -> Boolean)? = null
+
+    private suspend fun sendWithPolicy(request: Request): Boolean {
         val gate = policyGateForTests?.invoke() ?: ProviderRuntime.gateOrNull() ?: return false
-        return gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ) != null
+        val result = ProviderQueryExecutor(gate).execute(
+            ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ,
+        ) {
+            val testTransport = submitForTests
+            if (testTransport == null) sendCancellable(request) else testTransport(request)
+        }
+        return when (result) {
+            is ProviderCallResult.Success -> result.value
+            is ProviderCallResult.Failed -> {
+                Log.e(TAG, "Submission failed", result.cause)
+                false
+            }
+            ProviderCallResult.Denied, ProviderCallResult.Stale -> false
+        }
     }
+
+    private suspend fun sendCancellable(request: Request): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            val call = Http.client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resume(false)
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        if (continuation.isActive) continuation.resume(response.isSuccessful)
+                    }
+                }
+            })
+        }
 
     suspend fun submitPlayingNow(
         token: String,
@@ -35,10 +71,8 @@ object ListenBrainzManager {
         durationMsOverride: Long? = null,
         primaryArtistOnly: Boolean = false,
     ): Boolean {
-        if (token.isBlank() || song == null || !isListenBrainzListeningPermitted()) return false
-        return withContext(Dispatchers.IO) {
-            if (!isListenBrainzListeningPermitted()) return@withContext false
-            try {
+        if (token.isBlank() || song == null) return false
+        return run {
                 val durationMs = durationMsOverride?.takeIf { it > 0 } ?: parseDurationMs(song.durationText)
                 val durationPart = if (durationMs > 0) "\"duration_ms\":$durationMs," else ""
                 val releaseName = song.albumName.orEmpty()
@@ -56,20 +90,7 @@ object ListenBrainzManager {
                         .addHeader("Authorization", "Token $token")
                         .build()
 
-                Http.client.newCall(request).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        Log.d(TAG, "playing_now submitted for ${song.title}")
-                        true
-                    } else {
-                        val bodyText = try { resp.body?.string() ?: "" } catch (_: Exception) { "" }
-                        Log.w(TAG, "playing_now submit failed: ${resp.code} - $bodyText")
-                        false
-                    }
-                }
-            } catch (ex: Exception) {
-                Log.e(TAG, "submitPlayingNow failed", ex)
-                false
-            }
+                sendWithPolicy(request)
         }
     }
 
@@ -81,10 +102,8 @@ object ListenBrainzManager {
         durationMsOverride: Long? = null,
         primaryArtistOnly: Boolean = false,
     ): Boolean {
-        if (token.isBlank() || song == null || !isListenBrainzListeningPermitted()) return false
-        return withContext(Dispatchers.IO) {
-            if (!isListenBrainzListeningPermitted()) return@withContext false
-            try {
+        if (token.isBlank() || song == null) return false
+        return run {
                 val durationMs = durationMsOverride?.takeIf { it > 0 } ?: parseDurationMs(song.durationText)
                 val durationPart = if (durationMs > 0) "\"duration_ms\":$durationMs," else ""
                 val releaseName = song.albumName.orEmpty()
@@ -107,20 +126,7 @@ object ListenBrainzManager {
                         .addHeader("Authorization", "Token $token")
                         .build()
 
-                Http.client.newCall(request).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        Log.d(TAG, "finished listen submitted for ${song.title}")
-                        true
-                    } else {
-                        val bodyText = try { resp.body?.string() ?: "" } catch (_: Exception) { "" }
-                        Log.w(TAG, "finished listen submit failed: ${resp.code} - $bodyText")
-                        false
-                    }
-                }
-            } catch (ex: Exception) {
-                Log.e(TAG, "submitFinished failed", ex)
-                false
-            }
+                sendWithPolicy(request)
         }
     }
 
