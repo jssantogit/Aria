@@ -107,7 +107,6 @@ class GlobalAppleTopBarChromeTest {
         val res = RuntimeEnvironment.getApplication().resources
         compose.onNodeWithContentDescription(res.getString(R.string.more)).performClick()
         compose.onNodeWithTag("native-compact-overflow", useUnmergedTree = true).assertExists()
-        compose.onNodeWithTag("apple-root-settings-popup", useUnmergedTree = true).assertExists()
         compose.onNodeWithText(res.getString(R.string.settings)).assertExists()
     }
 
@@ -136,15 +135,15 @@ class GlobalAppleTopBarChromeTest {
         // Popup owns an independent window: its initial composition must
         // complete with Compose's normal auto-advancing clock. We control
         // time only while checking the subsequent *exit* transition.
-        compose.onNodeWithTag("apple-root-settings-popup", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("native-compact-overflow", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("native-root-settings-action", useUnmergedTree = true).assertExists()
         compose.mainClock.autoAdvance = false
         compose.onNodeWithText(res.getString(R.string.settings)).performClick()
         compose.runOnIdle { assertEquals(1, settingsOpened) }
         // The popup used to disappear immediately as soon as expanded=false.
-        compose.onNodeWithTag("apple-root-settings-popup", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("native-compact-overflow", useUnmergedTree = true).assertExists()
         compose.mainClock.advanceTimeBy(350L)
-        compose.onNodeWithTag("apple-root-settings-popup", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("native-compact-overflow", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test fun topBarDisablesSizeSpringsForRootTabsAndReducedMotion() {
