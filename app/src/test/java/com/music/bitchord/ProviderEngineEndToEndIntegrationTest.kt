@@ -40,6 +40,7 @@ import com.music.bitchord.data.providers.ProviderSettingsTab
 import com.music.bitchord.data.providers.ProviderSingleFlight
 import com.music.bitchord.data.scrobbling.ListenBrainzManager
 import com.music.bitchord.data.scrobbling.ScrobbleManager
+import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import kotlinx.coroutines.CompletableDeferred
@@ -87,6 +88,37 @@ class ProviderEngineEndToEndIntegrationTest {
         AppleArtistArtRepository.clearCacheForTests()
         ListenBrainzManager.policyGateForTests = null
         ListenBrainzManager.submitForTests = null
+    }
+
+    @Test
+    fun disablingAddonDownloadDoesNotDisablePlaybackAndCannotFallback(): Unit = runBlocking {
+        val addon = SourceConfig(
+            id = "download-addon",
+            kind = SourceKind.ADDON,
+            baseUrl = "https://download-addon.example/manifest.json",
+            enabled = true,
+            allowDownloads = true,
+        )
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(
+                ProviderCapabilityRegistry.inventory(sources = listOf(addon)),
+            ),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = listOf(addon),
+        ))
+        val key = com.music.bitchord.data.providers.ProviderKey("addon", addon.id)
+        assertTrue(session.gate.open(ProviderCapability.DOWNLOAD, key) != null)
+        assertEquals(listOf(addon),
+            SourceRegistry.downloadEligibleConfigs(listOf(addon), session.gate))
+        assertTrue(session.update(
+            ProviderCapability.DOWNLOAD,
+            listOf(ProviderChoice(key, false, 0)),
+        ))
+        assertTrue(session.gate.open(ProviderCapability.EXTENSION_PLAYBACK, key) != null)
+        assertTrue(SourceRegistry.downloadEligibleConfigs(listOf(addon), session.gate).isEmpty())
     }
 
     @Test
