@@ -161,7 +161,9 @@ internal class PolicyGuardedCoverArtArchiveTransport(
  * 3.1s global spacing and Discogs' 3.0s spacing + 429 cooldown).
  */
 internal class RateLimitedProviderTransport(
-    private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
+    // The test-only plain-JVM gate is never reachable after Android startup.
+    // Production remains fail-closed if install/migration was not completed.
+    private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateForCacheReadOrNull() },
 ) {
     suspend fun <T> execute(
         capability: ProviderCapability,
