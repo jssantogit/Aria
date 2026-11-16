@@ -910,6 +910,13 @@ object AudioCache {
                 releaseCachedLease()
                 cachedSourceRevoked = false
                 val scheme = dataSpec.uri.scheme
+                // Untrusted HLS/DASH playlists may reference file:// or
+                // content:// segments. Only the initial logical source route
+                // and HTTP(S) media are valid inside a provider media item.
+                // Ordinary local playback has no adaptiveSegmentLease and is
+                // unaffected by this boundary.
+                if (adaptiveSegmentLease != null)
+                    requireAdaptiveSourceResourceScheme(scheme, dataSpec.uri.authority)
                 activeDs = if (
                     scheme == "file" ||
                     scheme == "content" ||
