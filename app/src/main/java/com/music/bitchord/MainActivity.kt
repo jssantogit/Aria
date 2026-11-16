@@ -5106,10 +5106,31 @@ private fun BitChordApp(
                                     },
                                 )
                             }
-                            // Share the artist's name without inventing a provider-specific link.
+                            // Artist details share the album/playlist frosted overflow.
+                            // Preserve their existing BrowseActionsSheet commands instead
+                            // of showing the legacy full-screen action sheet.
                             if (detail != null && detail.type == BrowseType.ARTIST &&
                                 detailActiveShelf == null) {
-                                NativeArtistShareTopBarAction(detail.title)
+                                Box(Modifier.onGloballyPositioned {
+                                    catalogAlbumOverflowAnchor = nativeMenuAnchorBounds(it)
+                                }) {
+                                    NativeCollectionOverflowAction(
+                                        contentDescription = "Opções do artista",
+                                        expanded = shouldAnchorNativeAlbumOverflow(
+                                            browseActions, detail.browseId, browseMenuOrigin != null,
+                                        ),
+                                        onClick = {
+                                            browseActions = BrowseTarget(
+                                                browseId = detail.browseId,
+                                                title = detail.title,
+                                                subtitle = detail.subtitle,
+                                                thumbnailUrl = detail.thumbnailUrl,
+                                                type = BrowseType.ARTIST,
+                                                fromCard = false,
+                                            )
+                                        },
+                                    )
+                                }
                             }
                             // Left of the account photo, and only there while
                             // there is a batch to report on — see
@@ -7308,13 +7329,14 @@ private fun ConnectionEditors(
 
 }
 
-/** A toolbar overflow is not a held card or a generic browse-action popup. */
+/** An album/artist toolbar overflow is not a held card or generic browse popup. */
 internal fun shouldAnchorNativeAlbumOverflow(
     target: BrowseTarget?,
     currentBrowseId: String?,
     held: Boolean,
 ): Boolean = target != null && !held && !target.fromCard &&
-    target.type == BrowseType.ALBUM && target.browseId == currentBrowseId
+    (target.type == BrowseType.ALBUM || target.type == BrowseType.ARTIST) &&
+    target.browseId == currentBrowseId
 
 /** Visible actions in the owned playlist overflow; no inherited legacy sheet. */
 internal fun nativeOwnedPlaylistDetailOverflowLabels() = listOf(
