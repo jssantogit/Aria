@@ -40,6 +40,49 @@ class HeldContextMenuGeometryTest {
         assertEquals(next.y, first.y + first.height)
     }
 
+    @Test fun selectionOnSquareCardsStaysCompletelyOutsideTheCapturedArtwork() {
+        val ring = requireNotNull(heldSelectionOuterRing(
+            widthPx = 320f, heightPx = 420f,
+            gapPx = 2f, strokeWidthPx = 1f,
+        ))
+        assertEquals(2.5f, ring.offsetPx)
+        assertEquals(2f, ring.contentClearancePx)
+        // The screenshot bitmap remains at its original pixels; the border
+        // does not consume card space or cover the first/last text pixel.
+        val frame = heldPreviewFixedFrame(
+            androidx.compose.ui.geometry.Rect(24f, 120f, 344f, 540f),
+            androidx.compose.ui.geometry.Offset.Zero,
+        )
+        assertEquals(24, frame.x)
+        assertEquals(320, frame.width)
+        assertEquals(420, frame.height)
+    }
+
+    @Test fun denseTrackArtistAndPlaylistRowsNeverAddAnExternalBorderAcrossNeighbouringItems() {
+        // Physical smoke: artwork and title can reach the row edge; a white
+        // stroke inside crosses pixels and one outside overlaps the next row.
+        assertEquals(null, heldSelectionOuterRing(
+            widthPx = 760f, heightPx = 92f,
+            gapPx = 2f, strokeWidthPx = 1f,
+        ))
+        assertEquals(null, heldSelectionOuterRing(
+            widthPx = 760f, heightPx = 170f,
+            gapPx = 2f, strokeWidthPx = 1f,
+        ))
+    }
+
+    @Test fun onlyCardsWithPositiveStrokeClearanceGetASelectionRing() {
+        assertEquals(null, heldSelectionOuterRing(
+            widthPx = 220f, heightPx = 280f,
+            gapPx = 0f, strokeWidthPx = 1f,
+        ))
+        val ring = requireNotNull(heldSelectionOuterRing(
+            widthPx = 220f, heightPx = 280f,
+            gapPx = 1.5f, strokeWidthPx = 1f,
+        ))
+        assertTrue(ring.contentClearancePx > 0f)
+    }
+
     @Test fun menuNeverMovesSourceCardEvenWhenActionsDoNotFitBelow() {
         val placement = heldMenuAnchoredVerticalPlacement(
             sourceTop = 420f, sourceHeight = 110f, viewportTop = 40, viewportBottom = 780,

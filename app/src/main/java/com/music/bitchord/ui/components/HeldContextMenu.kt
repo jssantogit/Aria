@@ -33,9 +33,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -76,6 +80,40 @@ internal fun heldContextSelectionOutline(): Color = Color.White.copy(alpha = 0.3
 
 /** The original snapshot is the entire content. Never repaint it with a grey tile. */
 internal fun heldPreviewBackingColor(): Color = Color.Transparent
+
+/**
+ * The lifted bitmap is the source of truth; DO NOT clip it to an invented
+ * radius or paint a white border on top of its artwork and captions.
+ *
+ * A square/tall card can have a slim decorative ring OUTSIDE its bitmap,
+ * with two pixels of clear space between ring and content. Wide rows do not
+ * have enough inter-row clearance for an external ring: their shadow and
+ * backdrop provide the lift without drawing over a neighbour's artwork.
+ */
+internal data class HeldSelectionOuterRing(
+    val offsetPx: Float,
+    val strokeWidthPx: Float,
+) {
+    /** Positive clearance is mandatory: not one pixel of stroke enters the bitmap. */
+    val contentClearancePx: Float get() = offsetPx - strokeWidthPx / 2f
+}
+
+internal fun heldSelectionOuterRing(
+    widthPx: Float,
+    heightPx: Float,
+    gapPx: Float,
+    strokeWidthPx: Float,
+): HeldSelectionOuterRing? {
+    if (widthPx <= 0f || heightPx <= 0f || gapPx <= 0f || strokeWidthPx <= 0f) return null
+    // Full-width list rows have no guaranteed gap to the row above/below.
+    // Leaving them without a hard white border prevents cut artwork,
+    // captions and the neighbouring-row overlap observed in physical smoke.
+    if (widthPx > heightPx * 2.25f) return null
+    return HeldSelectionOuterRing(
+        offsetPx = gapPx + strokeWidthPx / 2f,
+        strokeWidthPx = strokeWidthPx,
+    )
+}
 
 /** Reuse the Library filter's frosted action surface; keep a solid fallback for reduced blur. */
 internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
@@ -182,9 +220,10 @@ fun <T : Any> HeldContextMenu(
         else Color.Black.copy(alpha = 0.18f)
     val cardShape = RoundedCornerShape(20.dp)
     val menuShape = RoundedCornerShape(16.dp)
-    // The selection edge sits INSIDE the exact bitmap bounds. Enlarging the
-    // lifted frame painted white strokes over adjacent rows and clipped edges
-    // when a row touched the screen's horizontal viewport.
+    // A selection ring on top of the captured image is not safe. It crosses
+    // artwork and text, while clipping every shape to 20dp crops native corners.
+    // The bitmap keeps its exact original bounds and clipping; only small card
+    // previews gain a detached decorative ring, never drawn over the content.
 
     val insets = WindowInsets.safeDrawing
     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
@@ -214,17 +253,36 @@ fun <T : Any> HeldContextMenu(
                         onClick = onDismiss,
                     ),
             )
-            // The held item, on its plate. Sized by the layout below to the
-            // item's own bounds plus the plate's margin.
+            // The held item is drawn AT its original coordinates and size.
+            // A separate ring (where there is guaranteed card-like breathing
+            // room) is painted BEHIND the bitmap, outside its visual bounds.
+            // Do not use clip(cardShape): that cropped artist/album covers and
+            // caption corners even before the white border painted over them.
             Box(
                 Modifier
                     .then(if (reduceMotion) Modifier else Modifier.shadow(20.dp, cardShape, clip = false))
                     .pointerInput(Unit) {}
-                    .clip(cardShape)
-                    // Lift the exact original bitmap; a neutral background here
-                    // visibly repaints bright/dark album and artist tiles grey.
                     .background(heldPreviewBackingColor())
-                    .border(0.75.dp, heldContextSelectionOutline(), cardShape)
+                    .drawBehind {
+                        val ring = heldSelectionOuterRing(
+                            widthPx = size.width,
+                            heightPx = size.height,
+                            gapPx = 2.dp.toPx(),
+                            strokeWidthPx = 0.75.dp.toPx(),
+                        )
+                        if (ring != null) {
+                            drawRoundRect(
+                                color = heldContextSelectionOutline(),
+                                topLeft = Offset(-ring.offsetPx, -ring.offsetPx),
+                                size = Size(
+                                    size.width + ring.offsetPx * 2f,
+                                    size.height + ring.offsetPx * 2f,
+                                ),
+                                cornerRadius = CornerRadius(20.dp.toPx() + ring.offsetPx),
+                                style = Stroke(width = ring.strokeWidthPx),
+                            )
+                        }
+                    }
                     .then(
                         if (onPreviewClick != null) {
                             Modifier.clickable(enabled = open) { onPreviewClick(menuItem) }
@@ -359,8 +417,8 @@ fun <T : Any> HeldContextMenu(
     }
 }
 
-/** The preview's outline is drawn INSIDE the source frame; never allocate
- * exterior padding that escapes the viewport or paints over neighbouring rows.
+/** The preview bitmap preserves exactly the source frame; any decorative
+ * ring is drawn independently in the canvas without changing bitmap layout.
  * No animation progress or viewport-fitting scale participates in placement. */
 internal data class HeldPreviewFixedFrame(
     val x: Int, val y: Int, val width: Int, val height: Int,
