@@ -58,11 +58,43 @@ internal class ProviderAuthorityCoordinator(
             )
         }
         imported[ProviderCapability.LISTENING_STATISTICS] = listOf(
-            ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled && lastfmConfigured, order = 0),
-            ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled && listenBrainzConfigured, order = 1),
+            ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled, order = 0),
+            ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
         )
         imported.putAll(legacyProviderChoices(lyricsOrder, enabledLyrics, cleanedSources))
         return session.initialize(imported)
+    }
+
+    /**
+     * Live account readiness and explicit legacy switch changes share the
+     * durable policy: a missing credential does not discard a saved opt-in.
+     * When only credentials change, keep the user's existing choices intact.
+     */
+    suspend fun updateListeningSettings(
+        lastfmConfigured: Boolean,
+        listenBrainzConfigured: Boolean,
+        lastfmEnabled: Boolean,
+        listenBrainzEnabled: Boolean,
+        updateChoices: Boolean = true,
+    ): Boolean {
+        lastfmReady = lastfmConfigured
+        listenBrainzReady = listenBrainzConfigured
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+            ),
+        )
+        session.refreshDescriptors(descriptors)
+        if (!updateChoices) return true
+        return session.update(
+            ProviderCapability.LISTENING_STATISTICS,
+            listOf(
+                ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled, order = 0),
+                ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
+            ),
+        )
     }
 
     suspend fun onSourcesChanged(rawSources: List<SourceConfig>) {
