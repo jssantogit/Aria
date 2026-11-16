@@ -1560,6 +1560,7 @@ class PlaybackService : MediaLibraryService() {
                     AudioCache.playbackFactory(
                         sourceDataFactory,
                         onSourceCacheLease = mediaSession::bind,
+                        adaptiveSegmentLease = mediaSession::currentLease,
                     ),
                     DsdExtractorsFactory(),
                 )
