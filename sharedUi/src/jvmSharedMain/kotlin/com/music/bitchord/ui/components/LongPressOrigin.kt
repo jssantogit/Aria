@@ -112,15 +112,15 @@ fun Modifier.longPressMenuClickable(
     val graphicsContext = LocalGraphicsContext.current
     val scope = rememberCoroutineScope()
     val longClick = onLongClick?.let { held ->
-        {
+        longClick@{
             // Do not resurrect detached Lazy items or capture a sliver of a
             // horizontally clipped shelf card. A partial bitmap would be
             // stretched to the clipped bounds by the lifted preview.
             val coordinates = capture.coordinates?.takeIf { it.isAttached }
-                ?: return@let
+                ?: return@longClick
             val bounds = coordinates.boundsInWindow()
             if (!heldOriginFullyVisible(bounds, coordinates.size.width, coordinates.size.height)) {
-                return@let
+                return@longClick
             }
             capture.active?.releaseLift()
             val item = HeldItem(bounds)
