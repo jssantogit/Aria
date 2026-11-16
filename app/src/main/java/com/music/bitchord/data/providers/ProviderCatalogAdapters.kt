@@ -1,5 +1,7 @@
 package com.music.bitchord.data.providers
 
+import com.music.bitchord.data.catalog.metadata.CoverArtArchiveResponse
+import com.music.bitchord.data.catalog.metadata.CoverArtArchiveTransport
 import com.music.bitchord.data.lyrics.LyricsSource
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -99,13 +101,62 @@ internal object BuiltInProviderDescriptors {
 }
 
 /**
+ * Policy-guarded wrapper for [CoverArtArchiveTransport] enforcing
+ * [ProviderCapability.RELEASE_ARTWORK] on [BuiltInProviderKeys.COVER_ART_ARCHIVE]
+ * before dispatch, actively cancelling on mid-flight revocation, and suppressing
+ * revoked responses.
+ */
+internal class PolicyGuardedCoverArtArchiveTransport(
+    private val delegate: CoverArtArchiveTransport,
+    private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateForCacheReadOrNull() },
+) : CoverArtArchiveTransport {
+    override suspend fun get(path: String): CoverArtArchiveResponse {
+        val gate = gateProvider()
+            ?: throw ProviderRequestDeniedException(
+                ProviderCapability.RELEASE_ARTWORK,
+                BuiltInProviderKeys.COVER_ART_ARCHIVE,
+            )
+        val ticket = gate.open(
+            ProviderCapability.RELEASE_ARTWORK,
+            BuiltInProviderKeys.COVER_ART_ARCHIVE,
+        ) ?: throw ProviderRequestDeniedException(
+            ProviderCapability.RELEASE_ARTWORK,
+            BuiltInProviderKeys.COVER_ART_ARCHIVE,
+        )
+        val callerJob = coroutineContext[Job]
+        val requestJob = Job(callerJob)
+        val revoked = AtomicBoolean(false)
+        val unregister = gate.onRevoke(ticket) {
+            revoked.set(true)
+            requestJob.cancel(CancellationException("Cover Art Archive capability revoked"))
+        }
+        return try {
+            val response = withContext(requestJob) { delegate.get(path) }
+            if (revoked.get() || !gate.accept(ticket)) {
+                throw ProviderRequestDeniedException(
+                    ProviderCapability.RELEASE_ARTWORK,
+                    BuiltInProviderKeys.COVER_ART_ARCHIVE,
+                )
+            }
+            response
+        } catch (cancelled: CancellationException) {
+            if (revoked.get() || !gate.accept(ticket)) {
+                throw ProviderRequestDeniedException(
+                    ProviderCapability.RELEASE_ARTWORK,
+                    BuiltInProviderKeys.COVER_ART_ARCHIVE,
+                )
+            }
+            throw cancelled
+        } finally {
+            unregister()
+            requestJob.cancel()
+        }
+    }
+}
+
+/**
  * Policy-guarded boundary for rate-limited HTTP transports (such as iTunes'
  * 3.1s global spacing and Discogs' 3.0s spacing + 429 cooldown).
- *
- * Admission is checked BEFORE entering the rate-limiter queue, CANCELLED
- * immediately if revoked while queued, re-checked AFTER exiting the queue
- * before opening the network socket, and re-checked again at the outer return
- * boundary after await().
  */
 internal class RateLimitedProviderTransport(
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
@@ -144,7 +195,6 @@ internal class RateLimitedProviderTransport(
                 ensureAdmitted()
                 response
             }
-            // Final boundary verification after withContext/await completes.
             if (revoked.get() || !gate.accept(ticket)) {
                 throw ProviderRequestDeniedException(capability, provider)
             }
@@ -165,11 +215,6 @@ internal class RateLimitedProviderTransport(
  * Guards secondary image/CDN HTTP probes (such as HttpURLConnection range
  * requests for 600/720/1024px artwork variants or artist portraits) that
  * bypass the primary catalog Ktor client.
- *
- * - If [capability] is NOT permitted for [provider] (or is revoked mid-probe),
- *   returns [deniedFallback] (default `null` — never a URL from the disabled provider).
- * - If [capability] IS permitted and remains accepted after a probe error,
- *   returns [onProbeError].
  */
 internal class ArtworkProbePolicyGuard(
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },

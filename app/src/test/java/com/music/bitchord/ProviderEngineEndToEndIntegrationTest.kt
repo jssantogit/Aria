@@ -6,6 +6,9 @@ import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.MediaAssetEntity
 import com.music.bitchord.data.catalog.allowedCanonicalLyricsSources
+import com.music.bitchord.data.catalog.metadata.CoverArtArchive
+import com.music.bitchord.data.catalog.metadata.CoverArtArchiveResponse
+import com.music.bitchord.data.catalog.metadata.CoverArtArchiveTransport
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchRepository
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
@@ -21,6 +24,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.PolicyGuardedCoverArtArchiveTransport
 import com.music.bitchord.data.providers.ProviderAuthorityCoordinator
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.providers.ProviderCapability
@@ -32,6 +36,7 @@ import com.music.bitchord.data.providers.ProviderPreferenceStore
 import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.providers.ProviderSettingsTab
 import com.music.bitchord.data.providers.ProviderSingleFlight
+import com.music.bitchord.data.scrobbling.ListenBrainzManager
 import com.music.bitchord.data.scrobbling.ScrobbleManager
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
@@ -54,7 +59,7 @@ import org.robolectric.annotation.ConscryptMode
  * - Real SharedPreferences + ProviderPreferenceStore + ProviderCapabilitySession
  * - ProviderAuthorityCoordinator + allowedCanonicalLyricsSources
  * - ProviderCapabilityRegistry honest NOT_IMPLEMENTED vs READY inventory
- * - Real MusicBrainzClient HTTP boundary + AppleArtistArtRepository + ScrobbleManager
+ * - Real MusicBrainzClient HTTP boundary + CoverArtArchive + AppleArtistArtRepository + ScrobbleManager + ListenBrainzManager
  */
 @ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
@@ -76,6 +81,7 @@ class ProviderEngineEndToEndIntegrationTest {
         AppleArtistArtRepository.setPolicyGateForTests(null)
         AppleArtistArtRepository.setHttpGetForTests(null)
         AppleArtistArtRepository.clearCacheForTests()
+        ListenBrainzManager.policyGateForTests = null
     }
 
     @Test
@@ -250,6 +256,26 @@ class ProviderEngineEndToEndIntegrationTest {
             assertTrue(graphClient.browseReleaseGroupsForArtist(artistMbid, limit = 10) is MusicBrainzCatalogGraphResult.Success)
             assertEquals(1, networkCalls)
 
+            // CoverArtArchive guarded transport blocks CAA network calls when RELEASE_ARTWORK is off.
+            var caaCalls = 0
+            val caa = CoverArtArchive(
+                transport = PolicyGuardedCoverArtArchiveTransport(
+                    delegate = object : CoverArtArchiveTransport {
+                        override suspend fun get(path: String): CoverArtArchiveResponse {
+                            caaCalls++
+                            return CoverArtArchiveResponse(200, """{"images":[]}""")
+                        }
+                    },
+                    gateProvider = { session.gate },
+                ),
+            )
+            assertTrue(session.update(
+                ProviderCapability.RELEASE_ARTWORK,
+                listOf(ProviderChoice(BuiltInProviderKeys.COVER_ART_ARCHIVE, enabled = false, order = 0)),
+            ))
+            assertNull(caa.findCover("271b31f8-8ab6-483c-97d9-8f0fabb2d4f4", null))
+            assertEquals(0, caaCalls)
+
             // AppleArtistArtRepository honors ARTIST_ARTWORK toggle without contacting HTTP when disabled.
             AppleArtistArtRepository.setPolicyGateForTests { session.gate }
             var appleArtFetches = 0
@@ -264,16 +290,16 @@ class ProviderEngineEndToEndIntegrationTest {
             assertNull(AppleArtistArtRepository.artFor("ILLIT"))
             assertEquals(0, appleArtFetches)
 
-            // ScrobbleManager honors LISTENING_STATISTICS opt-out without scheduling work.
+            // ScrobbleManager and ListenBrainzManager honor LISTENING_STATISTICS opt-out.
+            ListenBrainzManager.policyGateForTests = { session.gate }
+            val song = Song(videoId = "v1", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null)
             val scrobbleManager = ScrobbleManager(
                 scope = this,
                 policyGate = { session.gate },
             )
-            scrobbleManager.onSongStart(
-                Song(videoId = "v1", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null),
-                durationMs = 160_000L,
-            )
+            scrobbleManager.onSongStart(song, durationMs = 160_000L)
             scrobbleManager.destroy()
+            assertFalse(ListenBrainzManager.submitPlayingNow("token-123", song, 0L, 160_000L))
 
             val chartsRows = ProviderCapabilityRegistry.projectTab(
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,

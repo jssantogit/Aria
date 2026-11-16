@@ -1,17 +1,35 @@
 package com.music.bitchord.data.scrobbling
 
-import com.music.bitchord.data.DebugLog as Log
+import android.util.Log
+import com.music.bitchord.data.Http
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import com.music.bitchord.data.Http
 
 object ListenBrainzManager {
     private const val TAG = "ListenBrainzManager"
     private const val API_URL = "https://api.listenbrainz.org/1/submit-listens"
+
+    @Volatile
+    internal var policyGateForTests: (() -> ProviderPolicyGate?)? = null
+
+    private fun isListenBrainzListeningPermitted(): Boolean {
+        val snapshot = ProviderRuntime.state?.value
+        if (snapshot?.status == ProviderSessionStatus.STORAGE_ERROR) return false
+        val gate = policyGateForTests?.invoke() ?: ProviderRuntime.gateOrNull() ?: return true
+        val configured = policyGateForTests != null || snapshot == null ||
+            ProviderCapability.LISTENING_STATISTICS in snapshot.configured
+        if (!configured) return true
+        return gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ) != null
+    }
 
     suspend fun submitPlayingNow(
         token: String,
@@ -20,18 +38,17 @@ object ListenBrainzManager {
         durationMsOverride: Long? = null,
         primaryArtistOnly: Boolean = false,
     ): Boolean {
-        if (token.isBlank() || song == null) return false
+        if (token.isBlank() || song == null || !isListenBrainzListeningPermitted()) return false
         return withContext(Dispatchers.IO) {
+            if (!isListenBrainzListeningPermitted()) return@withContext false
             try {
-                val durationMs = durationMsOverride ?: parseDurationMs(song.durationText)
-                // The API rejects a zero/negative duration_ms, and it is
-                // optional — so only send it when it is actually known.
+                val durationMs = durationMsOverride?.takeIf { it > 0 } ?: parseDurationMs(song.durationText)
                 val durationPart = if (durationMs > 0) "\"duration_ms\":$durationMs," else ""
                 val releaseName = song.albumName.orEmpty()
                 val releasePart = if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
                 val artist = if (primaryArtistOnly) song.artist.primaryArtist() else song.artist
                 val trackMetadata = """{"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"position_ms":$positionMs,"submission_client":"BitChord"}}}"""
-                val bodyJson = "{\"listen_type\":\"playing_now\",\"payload\":[$trackMetadata]}"
+                val bodyJson = """{"listen_type":"playing_now","payload":[$trackMetadata]}"""
                 Log.d(TAG, "submitPlayingNow: $bodyJson")
                 val body = bodyJson.toRequestBody("application/json".toMediaType())
                 val request =
@@ -67,10 +84,11 @@ object ListenBrainzManager {
         durationMsOverride: Long? = null,
         primaryArtistOnly: Boolean = false,
     ): Boolean {
-        if (token.isBlank() || song == null) return false
+        if (token.isBlank() || song == null || !isListenBrainzListeningPermitted()) return false
         return withContext(Dispatchers.IO) {
+            if (!isListenBrainzListeningPermitted()) return@withContext false
             try {
-                val durationMs = durationMsOverride ?: parseDurationMs(song.durationText)
+                val durationMs = durationMsOverride?.takeIf { it > 0 } ?: parseDurationMs(song.durationText)
                 val durationPart = if (durationMs > 0) "\"duration_ms\":$durationMs," else ""
                 val releaseName = song.albumName.orEmpty()
                 val releasePart = if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
@@ -81,7 +99,7 @@ object ListenBrainzManager {
                 }
                 val artist = if (primaryArtistOnly) song.artist.primaryArtist() else song.artist
                 val trackMetadata = """{"listened_at":$listenedAtStart,"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"start_ms":$startMs,"end_ms":$endMs,"submission_client":"BitChord"}}}"""
-                val bodyJson = "{\"listen_type\":\"single\",\"payload\":[$trackMetadata]}"
+                val bodyJson = """{"listen_type":"single","payload":[$trackMetadata]}"""
                 Log.d(TAG, "submitFinished: $bodyJson")
                 val body = bodyJson.toRequestBody("application/json".toMediaType())
                 val request =
