@@ -161,6 +161,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.time.LocalDate
@@ -377,11 +378,12 @@ internal fun CanonicalRemoteLibraryScreen(
     // EMPTY is valid after the first Room emission, but not before it. A
     // placeholder empty list briefly rendered a false 'Nenhuma música' frame
     // while the local index/database had not produced their initial results.
-    val librarySnapshot by produceState<CanonicalBrowseLibrary?>(
-        initialValue = null, key1 = libraryFlow,
-    ) {
-        libraryFlow.collectLatest { value = it }
+    // Keep the original lifecycle-aware collection; only its initial value
+    // becomes nullable so an unobserved flow cannot masquerade as empty data.
+    val nullableLibraryFlow = remember(libraryFlow) {
+        libraryFlow.map<CanonicalBrowseLibrary, CanonicalBrowseLibrary?> { it }
     }
+    val librarySnapshot by nullableLibraryFlow.collectAsStateWithLifecycle(initialValue = null)
     val initialLibraryLoading = canonicalLibraryInitialLoading(
         unified = unified,
         firstEmissionReceived = librarySnapshot != null,
