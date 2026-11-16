@@ -148,6 +148,8 @@ class NativeAlbumPlaylistToolbarTest {
         compose.onNodeWithContentDescription("Ordenar músicas").assertWidthIsEqualTo(40.dp)
         compose.onNodeWithContentDescription("Opções da playlist")
             .assertWidthIsEqualTo(40.dp).performClick()
+        compose.mainClock.advanceTimeBy(250L)
+        compose.waitForIdle()
         compose.onNodeWithTag("native-compact-overflow").assertExists()
         compose.onNodeWithText("Compartilhar playlist").assertExists()
     }
