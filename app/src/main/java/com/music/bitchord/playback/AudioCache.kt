@@ -826,7 +826,7 @@ object AudioCache {
      */
     // Public compatibility API for other existing playback consumers.
     fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory =
-        playbackFactory(upstream, null, null)
+        playbackFactory(upstream, null, null, null)
 
     // Scoped adaptive playback uses a per-MediaItem ticket; this overload is
     // intentionally internal so no public API exposes a private policy lease.
@@ -834,6 +834,7 @@ object AudioCache {
         upstream: DataSource.Factory,
         onSourceCacheLease: ((ProviderPlaybackByteLease) -> Unit)?,
         adaptiveSegmentLease: (() -> ProviderPlaybackByteLease?)?,
+        adaptiveSegmentRequest: ((DataSpec) -> DataSpec)?,
     ): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
         val upstreamDs = upstream.createDataSource()
@@ -941,12 +942,18 @@ object AudioCache {
                         if (adaptiveSegmentLease != null &&
                             (scheme == "http" || scheme == "https")) {
                             val lease = admitAdaptiveSegmentCacheRead(adaptiveSegmentLease())
-                            // Never share a raw CDN URL cache bucket across
-                            // distinct provider instances, and never persist
-                            // tokens from signed query URLs in cleartext.
-                            openingSpec = dataSpec.buildUpon().setKey(
+                            // Restore the manifest's request headers only for
+                            // the same trusted origin. Perform this *before*
+                            // cache keying: a static URL behind two account
+                            // headers must never reuse another account's bytes.
+                            val request = adaptiveSegmentRequest?.invoke(dataSpec) ?: dataSpec
+                            // Hash both the signed URL and effective headers.
+                            // Neither tokens nor secrets appear in plaintext
+                            // filenames, cache keys or cache metadata.
+                            openingSpec = request.buildUpon().setKey(
                                 providerAdaptiveSegmentCacheKey(
-                                    lease.providerKey, dataSpec.uri.toString(), dataSpec.key,
+                                    lease.providerKey, request.uri.toString(), request.key,
+                                    request.httpRequestHeaders,
                                 ),
                             ).build()
                             cachedSourceLease = lease
