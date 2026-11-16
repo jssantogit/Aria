@@ -13,6 +13,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import com.music.bitchord.data.providers.*
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -57,6 +58,39 @@ class ListenBrainzPublicPlaylistTest {
          "creator":"kpopfan","title":"Best K-pop songs",
          "extension":{"https://musicbrainz.org/doc/jspf#playlist":{"public":true}}}}
     ]}"""
+
+    @Test fun canonicalPublicPlaylistOptOutHidesCachedResultsWithoutErasingThem() = runBlocking {
+        val key = BuiltInProviderKeys.LISTENBRAINZ
+        val descriptor = ProviderDescriptor(key, setOf(
+            ProviderCapability.PUBLIC_PLAYLISTS), ProviderReadiness.READY)
+        fun policy(on: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(descriptor),
+            choices = mapOf(ProviderCapability.PUBLIC_PLAYLISTS to listOf(
+                ProviderChoice(key, on, 0))),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        var requests = 0
+        val client = ListenBrainzPublicPlaylistClient(
+            transport = object : ListenBrainzPublicPlaylistTransport {
+                override suspend fun search(query: String): ListenBrainzPublicPlaylistHttp {
+                    requests++
+                    return ListenBrainzPublicPlaylistHttp(200, response())
+                }
+                override suspend fun detail(mbid: String): ListenBrainzPublicPlaylistHttp =
+                    ListenBrainzPublicPlaylistHttp(404, "")
+            },
+            limiter = ListenBrainzRateLimiter(minimumIntervalMs = 0L),
+            cacheRead = ProviderCachedReadAccess { gate },
+        )
+        assertTrue(client.searchGenre("rock")?.isNotEmpty() == true)
+        val before = requests
+        gate.replace(policy(false))
+        assertNull(client.searchGenre("rock"))
+        assertEquals(before, requests)
+        gate.replace(policy(true))
+        assertTrue(client.searchGenre("rock")?.isNotEmpty() == true)
+        assertEquals(before, requests)
+    }
 
     @Test fun publicPlaylistDetailsReuseSuccessfulExactIdWithinFreshnessWindow() = runBlocking {
         var now = 1_000L
