@@ -86,6 +86,45 @@ class ProviderCapabilitySessionTest {
         assertTrue(restored.gate.open(ProviderCapability.LISTENING_STATISTICS, provider) == null)
     }
 
+    @Test fun explicitlyEmptyDownloadCategoryNeverReenablesSoulseekDuringMigration(): Unit = runBlocking {
+        // An empty persisted category is a user choice, not an unmigrated feature.
+        assertTrue(store.replaceCapability(ProviderCapability.DOWNLOAD, emptyList()))
+        val restored = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(restored).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false, includeDefaultArtworkBaseline = false,
+            soulseekConfigured = true,
+        ))
+        assertEquals(emptyList<ProviderChoice>(),
+            restored.state.value.configured.getValue(ProviderCapability.DOWNLOAD))
+        assertTrue(restored.gate.open(ProviderCapability.DOWNLOAD, ProviderKey("soulseek")) == null)
+        val persisted = store.read() as ProviderPreferenceStore.Read.Loaded
+        assertEquals(emptyList<ProviderChoice>(),
+            persisted.choices.getValue(ProviderCapability.DOWNLOAD))
+    }
+
+    @Test fun existingDownloadChoicesNeverAutoGrantNewSoulseekProvider(): Unit = runBlocking {
+        val addon = ProviderKey("addon", "existing-addon")
+        val prior = listOf(ProviderChoice(addon, enabled = true, order = 0))
+        assertTrue(store.replaceCapability(ProviderCapability.DOWNLOAD, prior))
+        val restored = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(restored).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(),
+            sources = listOf(com.music.bitchord.data.sources.SourceConfig(
+                id = "existing-addon",
+                kind = com.music.bitchord.data.sources.SourceKind.ADDON,
+                baseUrl = "https://configured.example",
+                enabled = true,
+            )),
+            includeMusicBrainzBaseline = false, includeDefaultArtworkBaseline = false,
+            soulseekConfigured = true,
+        ))
+        assertEquals(prior,
+            restored.state.value.configured.getValue(ProviderCapability.DOWNLOAD))
+        assertTrue(restored.gate.open(ProviderCapability.DOWNLOAD, addon) != null)
+        assertTrue(restored.gate.open(ProviderCapability.DOWNLOAD, ProviderKey("soulseek")) == null)
+    }
+
     @Test fun publicChartMigrationPreservesExistingOptOutAcrossRestart(): Unit = runBlocking {
         val first = ProviderCapabilitySession(store, emptyList())
         assertTrue(ProviderAuthorityCoordinator(first).migrateOnce(
