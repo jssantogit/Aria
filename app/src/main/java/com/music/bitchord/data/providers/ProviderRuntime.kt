@@ -27,7 +27,6 @@ internal object ProviderRuntime {
         val appleArt = BuiltInProviderKeys.APPLE_ARTIST_ART
         val itunes = BuiltInProviderKeys.ITUNES
         val discogs = BuiltInProviderKeys.DISCOGS
-        val listenBrainz = BuiltInProviderKeys.LISTENBRAINZ
         val listenbrainz = BuiltInProviderKeys.LISTENBRAINZ
         val mbCaps = setOf(
             ProviderCapability.CATALOG_SEARCH,
@@ -42,11 +41,11 @@ internal object ProviderRuntime {
                     ProviderDescriptor(appleArt, setOf(ProviderCapability.ARTIST_ARTWORK), ProviderReadiness.READY),
                     BuiltInProviderDescriptors.itunes(ProviderReadiness.READY),
                     BuiltInProviderDescriptors.discogs(tokenConfigured = true, implemented = true),
-                    ProviderDescriptor(listenBrainz,
-                        setOf(ProviderCapability.PERSONAL_RECOMMENDATIONS),
-                        ProviderReadiness.READY),
-                    ProviderDescriptor(listenbrainz, setOf(ProviderCapability.PUBLIC_PLAYLISTS,
-                        ProviderCapability.CHART_MOST_PLAYED), ProviderReadiness.READY),
+                    ProviderDescriptor(listenbrainz, setOf(
+                        ProviderCapability.PUBLIC_PLAYLISTS,
+                        ProviderCapability.CHART_MOST_PLAYED,
+                        ProviderCapability.PERSONAL_RECOMMENDATIONS,
+                    ), ProviderReadiness.READY),
                 ),
                 choices = mbCaps.associateWith { capability ->
                     listOf(ProviderChoice(mb, enabled = true, order = 0)) +
@@ -60,7 +59,7 @@ internal object ProviderRuntime {
                     ProviderCapability.ARTIST_ARTWORK to listOf(ProviderChoice(appleArt, enabled = true, order = 0)),
                     ProviderCapability.EDITION_METADATA to listOf(ProviderChoice(discogs, enabled = true, order = 0)),
                     ProviderCapability.PERSONAL_RECOMMENDATIONS to listOf(
-                        ProviderChoice(listenBrainz, enabled = true, order = 0)),
+                        ProviderChoice(listenbrainz, enabled = true, order = 0)),
                     ProviderCapability.PUBLIC_PLAYLISTS to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
                     ProviderCapability.CHART_MOST_PLAYED to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
                 ),
