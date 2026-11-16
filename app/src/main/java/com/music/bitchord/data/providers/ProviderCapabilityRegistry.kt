@@ -217,9 +217,9 @@ internal object ProviderCapabilityRegistry {
                 capability = ProviderCapability.PUBLIC_PLAYLISTS,
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
                 displayName = "ListenBrainz (Playlists Públicas)",
-                readiness = ProviderReadiness.NOT_IMPLEMENTED,
+                readiness = ProviderReadiness.READY,
                 supportsReordering = false,
-                notes = "Awaiting PR #209/#216 cutover",
+                notes = "Public anonymous playlists; canonical capability-gated transport and cache",
             ),
         )
         add(
