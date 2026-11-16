@@ -40,6 +40,8 @@ import com.music.bitchord.playback.PlaybackListeningBridge
 import com.music.bitchord.data.AndroidDiagnosticsHooks
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.scrobbling.LastFM
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.acquisition.a0.SoulseekCredentialVault
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.SearchHistory
 import com.music.bitchord.data.sources.SourceRegistry
@@ -62,6 +64,8 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         val applicationStarted = SystemClock.elapsedRealtimeNanos()
         Diagnostics.install(this)
+        // Install a fail-closed policy gate before any metadata network access.
+        ProviderRuntime.install(this)
         if (BuildConfig.DEBUG) {
             com.music.bitchord.diagnostics.RuntimePerformanceMonitor.install(this)
             // Process-wide watchdog: no periodic work in non-debug builds.
@@ -244,6 +248,32 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         }
         Diagnostics.span(DiagnosticCategory.STARTUP, "background_join_wait") {
             backgroundInit.join()
+        }
+        // Restore BOTH legacy stores before granting provider capabilities.
+        // On this integration branch iTunes is implemented by #216; Discogs
+        // remains default-off, preserving its independent legal/account gate.
+        Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
+            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                ProviderRuntime.authorityOrNull()?.migrateOnce(
+                    lyricsOrder = AppSettings.lyricsSourceOrder.value,
+                    enabledLyrics = AppSettings.lyricsSources.value,
+                    sources = SourceRegistry.configs.value,
+                    itunesImplemented = true,
+                    discogsImplemented = true,
+                    discogsTokenConfigured = false,
+                    lastfmConfigured = AppSettings.lastfmSessionKey.value.isNotBlank() &&
+                        AppSettings.lastfmApiKey.value.isNotBlank(),
+                    listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                    lastfmEnabled = AppSettings.lastfmEnabled.value &&
+                        AppSettings.lastfmScrobbleEnabled.value,
+                    listenBrainzEnabled = AppSettings.listenBrainzEnabled.value,
+                    soulseekConfigured = BuildConfig.FLAVOR == "dev" && BuildConfig.DEBUG &&
+                        (SoulseekCredentialVault(this@BitChordApplication).read()?.let {
+                            it.erase()
+                            true
+                        } == true),
+                )
+            }
         }
         Diagnostics.event(
             category = DiagnosticCategory.STARTUP,
