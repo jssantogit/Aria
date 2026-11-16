@@ -107,6 +107,7 @@ object SourceRegistry {
     /** Independent download producer scopes: playback revocation must never
      * cancel an otherwise authorized download from this same addon instance. */
     private var addonDownloadInstances: Map<String, AddonSource> = emptyMap()
+    private var moduleDownloadInstances: Map<String, ModuleSource> = emptyMap()
 
     fun init(context: Context) {
         // Same repair and degradation as AuthStore; see EncryptedPrefs.
@@ -195,7 +196,8 @@ object SourceRegistry {
         downloadCandidateConfigs(configs.value, ProviderRuntime.gateOrNull())
             .sortedBy { it.kind.rank }
             .mapNotNull { source ->
-                addonDownloadInstances[source.id] ?: instances[source.id]
+                addonDownloadInstances[source.id] ?:
+                    moduleDownloadInstances[source.id] ?: instances[source.id]
             }
 
     /**
@@ -475,8 +477,12 @@ object SourceRegistry {
         // would be answering a question about the old address with the new one
         // selected.
         previous.values.filterNot { it in instances.values }
-            .filterIsInstance<AddonSource>()
-            .forEach { it.release() }
+            .forEach { source ->
+                when (source) {
+                    is AddonSource -> source.release()
+                    is ModuleSource -> source.release()
+                }
+            }
         // The same addon can have DOWNLOAD enabled while EXTENSION_PLAYBACK is
         // disabled. Separate client scopes ensure revoking playback cancels
         // only playback HTTP and never the authorized download producer.
@@ -489,6 +495,16 @@ object SourceRegistry {
                 config.id to (existing ?: AddonSource(config, ProviderCapability.DOWNLOAD))
             }
         previousDownload.values.filterNot { it in addonDownloadInstances.values }
+            .forEach { it.release() }
+        val previousModules = moduleDownloadInstances
+        moduleDownloadInstances = activeConfigs
+            .filter { it.kind == SourceKind.CUSTOM_MODULE }
+            .associate { config ->
+                val existing = previousModules[config.id]
+                    ?.takeIf { it.config.withPolicyOf(config) == config }
+                config.id to (existing ?: ModuleSource(config, ProviderCapability.DOWNLOAD))
+            }
+        previousModules.values.filterNot { it in moduleDownloadInstances.values }
             .forEach { it.release() }
         if (persist && ::prefs.isInitialized) {
             prefs.edit()
@@ -601,7 +617,7 @@ object SourceRegistry {
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
         SourceKind.ADDON -> AddonSource(config, ProviderCapability.EXTENSION_PLAYBACK)
         // Same protocol, same implementation — the kinds differ only in rank.
-        SourceKind.CUSTOM_MODULE -> ModuleSource(config)
+        SourceKind.CUSTOM_MODULE -> ModuleSource(config, ProviderCapability.EXTENSION_PLAYBACK)
         SourceKind.MODULE -> ModuleSource(config)
         SourceKind.JIOSAAVN -> error("Retired JioSaavn source cannot be constructed")
         // Stored legacy rows are deserialized but never turned into clients.
