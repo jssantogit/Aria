@@ -376,8 +376,13 @@ object AudioCache {
         if (spec.uri.getQueryParameter(WATCH_READ_PARAM) != null) "$key#watch" else key
     }
 
-    private fun phoneKey(spec: androidx.media3.datasource.DataSpec): String =
-        spec.uri.getQueryParameter("v")
+    private fun phoneKey(spec: androidx.media3.datasource.DataSpec): String {
+        // HTTP(S) HLS/DASH segments are not YouTube watch identities. A
+        // random CDN query `v=` must never collapse unrelated files onto the
+        // same cache span; use the scoped key when supplied, else exact URL.
+        if (spec.uri.scheme == "http" || spec.uri.scheme == "https")
+            return spec.key ?: spec.uri.toString()
+        return spec.uri.getQueryParameter("v")
             // A YouTube id can name several different recordings on disk: the
             // Opus rendition YouTube serves, whatever a source ranked above it
             // hands over instead — see [SourceResolver.substituteForYouTube] —
@@ -428,6 +433,7 @@ object AudioCache {
             }
             ?: spec.key
             ?: spec.uri.toString()
+    }
 
     /**
      * Splits the `#alt` bucket in two along whatever this process currently
@@ -919,6 +925,7 @@ object AudioCache {
                     cacheDs
                 }
                 return try {
+                    var openingSpec = dataSpec
                     if (activeDs === cacheDs) {
                         // HLS/DASH segment DataSpecs use their own HTTP URLs,
                         // so they can hit CacheDataSource without touching
@@ -927,6 +934,14 @@ object AudioCache {
                         if (adaptiveSegmentLease != null &&
                             (scheme == "http" || scheme == "https")) {
                             val lease = admitAdaptiveSegmentCacheRead(adaptiveSegmentLease())
+                            // Never share a raw CDN URL cache bucket across
+                            // distinct provider instances, and never persist
+                            // tokens from signed query URLs in cleartext.
+                            openingSpec = dataSpec.buildUpon().setKey(
+                                providerAdaptiveSegmentCacheKey(
+                                    lease.providerKey, dataSpec.uri.toString(), dataSpec.key,
+                                ),
+                            ).build()
                             cachedSourceLease = lease
                             unsubscribeCachedSource = lease.onRevoke {
                                 cachedSourceRevoked = true
@@ -935,7 +950,7 @@ object AudioCache {
                         }
                         checkSourceCache(dataSpec)
                     }
-                    val available = activeDs.open(dataSpec)
+                    val available = activeDs.open(openingSpec)
                     checkCachedSourcePermission()
                     available
                 } catch (error: Exception) {
