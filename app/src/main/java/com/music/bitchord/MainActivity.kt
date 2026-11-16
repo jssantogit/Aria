@@ -7419,9 +7419,12 @@ private fun CanonicalPlaylistToolbarActions(
     }
     val overflowDescription = if (hasDetail) "Opções da playlist" else "Ordenar playlists"
     if (overflowMenu == null) {
-        Box(Modifier.onGloballyPositioned { coords ->
-            onOverflowAnchor(nativeMenuAnchorBounds(coords))
-        }) {
+        // The launcher owns the same anchor semantics whether its card is
+        // hosted here or by the parent detail screen.
+        Box(Modifier.testTag("native-toolbar-overflow-anchor")
+            .onGloballyPositioned { coords ->
+                onOverflowAnchor(nativeMenuAnchorBounds(coords))
+            }) {
             NativeCollectionOverflowAction(
                 contentDescription = overflowDescription, onClick = onOverflow,
                 expanded = overflowExpanded,
