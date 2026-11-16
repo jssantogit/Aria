@@ -377,10 +377,7 @@ internal fun UnifiedPlaylistLibraryShelf(
             )
         }
         if (!normalLoaded || !smartLoaded) item(key = "playlist-loading") {
-            Box(
-                Modifier.fillMaxWidth().height(240.dp),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
         }
         if (normalLoaded && smartLoaded && visible.isEmpty()) item(key = "playlist-empty") {
             Box(
