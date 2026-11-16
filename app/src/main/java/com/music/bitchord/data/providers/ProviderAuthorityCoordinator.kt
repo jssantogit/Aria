@@ -106,6 +106,13 @@ internal class ProviderAuthorityCoordinator(
         imported[ProviderCapability.PUBLIC_PLAYLISTS] = listOf(
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = true, order = 0),
         )
+        // Import personal recommendations only when the legacy ListenBrainz
+        // account is explicitly enabled. Later changes never override its
+        // independently saved opt-out.
+        imported[ProviderCapability.PERSONAL_RECOMMENDATIONS] = listOf(
+            ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ,
+                enabled = listenBrainzEnabled, order = 0),
+        )
         imported[ProviderCapability.LISTENING_STATISTICS] = listOf(
             ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled, order = 0),
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
