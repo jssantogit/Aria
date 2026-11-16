@@ -2,6 +2,7 @@ package com.music.bitchord.playback
 
 import com.music.bitchord.data.providers.ProviderCapability
 import java.io.IOException
+import java.security.MessageDigest
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 
@@ -39,3 +40,25 @@ internal fun admitAdaptiveSegmentCacheRead(
 ): ProviderPlaybackByteLease =
     lease?.takeIf(ProviderPlaybackByteLease::allowed)
         ?: throw IOException("Adaptive segment cache requires current provider authorization")
+
+/**
+ * Adaptive segment requests are HTTP URLs, not logical `bitchord://watch`
+ * tracks. Their `v=` query parameters must never become the whole cache key:
+ * that would collide across unrelated CDNs, addons and media items.
+ *
+ * Hash the full URL (including any short-lived signature) and Media3 request
+ * key, and namespace it by provider instance. Persist no URL tokens in
+ * plaintext cache metadata. Retain byte-range identity within each URL.
+ */
+internal fun providerAdaptiveSegmentCacheKey(
+    owner: ProviderKey,
+    url: String,
+    requestKey: String? = null,
+): String {
+    val input = (url + "\u0000" + requestKey.orEmpty())
+        .toByteArray(Charsets.UTF_8)
+    val hash = MessageDigest.getInstance("SHA-256")
+        .digest(input).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    input.fill(0)
+    return "source-segment:${owner.providerId}:${owner.instanceId}:$hash"
+}
