@@ -73,6 +73,38 @@ class ProviderCatalogSourceRegistryTest {
         })
     }
 
+    @Test fun downloadWalkIsIndependentOfAddonPlaybackChoiceAndLegacyEnabledFlag() {
+        val key = ProviderKey("addon", "download-only")
+        fun policy(playback: Boolean, download: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(
+                key,
+                setOf(ProviderCapability.EXTENSION_PLAYBACK, ProviderCapability.DOWNLOAD),
+                ProviderReadiness.READY,
+            )),
+            choices = mapOf(
+                ProviderCapability.EXTENSION_PLAYBACK to listOf(ProviderChoice(key, playback, 0)),
+                ProviderCapability.DOWNLOAD to listOf(ProviderChoice(key, download, 0)),
+            ),
+        )
+        val addon = SourceConfig(
+            id = "download-only",
+            kind = SourceKind.ADDON,
+            baseUrl = "https://example.org/manifest.json",
+            enabled = false, // Mirrors disabled legacy playback projection.
+            allowDownloads = true,
+        )
+        val gate = ProviderPolicyGate(policy(playback = false, download = true))
+        assertTrue(SourceRegistry.extensionEligibleConfigs(listOf(addon), gate).isEmpty())
+        assertEquals(listOf(addon), SourceRegistry.downloadCandidateConfigs(listOf(addon), gate))
+        gate.replace(policy(playback = true, download = false))
+        assertTrue(SourceRegistry.downloadCandidateConfigs(listOf(addon), gate).isEmpty())
+        assertEquals(listOf(addon), SourceRegistry.extensionEligibleConfigs(listOf(addon), gate))
+        assertTrue(SourceRegistry.downloadCandidateConfigs(listOf(addon), null).isEmpty())
+        assertTrue(SourceRegistry.downloadCandidateConfigs(
+            listOf(addon.copy(baseUrl = "")), ProviderPolicyGate(policy(false, true)),
+        ).isEmpty())
+    }
+
     @Test fun addonDownloadRevocationPreservesPlaybackAndCannotUseLegacyEnabledFallback() {
         val key = ProviderKey("addon", "addon-one")
         val provider = ProviderDescriptor(
