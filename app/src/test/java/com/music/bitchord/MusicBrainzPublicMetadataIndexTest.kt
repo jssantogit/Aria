@@ -290,7 +290,11 @@ class MusicBrainzPublicMetadataIndexTest {
                 archive.cachedVerifiedGroupCover(groupId))
             assertEquals("https://archive.org/verified-group-front.jpg",
                 dao.musicBrainzCoverArtCache("release-group:front-v5", groupId)?.artworkUri)
+            // The DAO still retains Front-v3 evidence, but must never publish
+            // it directly without the source's artwork authorization.
             assertEquals("https://archive.org/verified-release-front.jpg",
+                dao.musicBrainzCoverArtCache("release:front-v3", editionId)?.artworkUri)
+            assertEquals(null,
                 dao.searchKnownMusicBrainzReleases("New Jeans", 10).single().artworkUri)
         } finally { db.close() }
     }
