@@ -271,7 +271,19 @@ class MusicBrainzPublicMetadataIndexTest {
             // Offline SQL cannot leak raw URLs without TTL/host validation.
             assertEquals(null, dao.searchKnownMusicBrainzGroups("New Jeans", 10)
                 .single().artworkUri)
+            // This Room TTL/allowlist test explicitly authorizes CAA; the
+            // production archive stays fail-closed without a provider session.
+            val artworkGate = ProviderCachedReadAccess.permissiveForUnitTests(
+                provider = com.music.bitchord.data.providers.BuiltInProviderKeys.COVER_ART_ARCHIVE,
+                capabilities = setOf(
+                    com.music.bitchord.data.providers.ProviderCapability.RELEASE_ARTWORK,
+                ),
+            ).currentGateOrNull()
             val archive = com.music.bitchord.data.catalog.metadata.CoverArtArchive(
+                transport = com.music.bitchord.data.providers.PolicyGuardedCoverArtArchiveTransport(
+                    com.music.bitchord.data.catalog.metadata.KtorCoverArtArchiveTransport(),
+                    gateProvider = { artworkGate },
+                ),
                 store = com.music.bitchord.data.catalog.metadata.RoomMusicBrainzCoverArtStore(dao),
             )
             assertEquals("https://archive.org/verified-group-thumb-500.jpg",
