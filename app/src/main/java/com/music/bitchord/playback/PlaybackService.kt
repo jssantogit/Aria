@@ -65,6 +65,7 @@ import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
@@ -561,7 +562,7 @@ class PlaybackService : MediaLibraryService() {
     private val trackAnalyzer = com.music.bitchord.playback.smart.TrackAnalyzer(this, AudioCache)
 
     /** Shared with the crossfade's tail player, so both read the same disk cache. */
-    private var mediaSourceFactory: DefaultMediaSourceFactory? = null
+    private var mediaSourceFactory: MediaSource.Factory? = null
 
     /** Last sampled position of the playing track, in seconds. */
     private var lastPositionSeconds = 0L
@@ -1518,11 +1519,52 @@ class PlaybackService : MediaLibraryService() {
         AudioCache.setUpstream(defaultDataSourceFactory)
         // DsdExtractorsFactory: the stock extractors plus DSF/DFF, which Media3
         // cannot open at all. A DSD file leaves the extractor as float PCM.
-        mediaSourceFactory = DefaultMediaSourceFactory(
-            AudioCache.playbackFactory(defaultDataSourceFactory),
-            DsdExtractorsFactory(),
-        )
-            .setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())
+        mediaSourceFactory = SourceScopedMediaSourceFactory(
+            defaultFactory = DefaultMediaSourceFactory(
+                AudioCache.playbackFactory(defaultDataSourceFactory),
+                DsdExtractorsFactory(),
+            ),
+            createSourceFactory = {
+                // The manifest and every HLS/DASH segment for this *one*
+                // MediaItem share an authority ticket. A different item (or
+                // crossfade deck) creates its own session and HTTP factory.
+                // No global CDN URL maps or shared provider identity.
+                val mediaSession = ProviderPlaybackMediaSession()
+                val scopedResolving = ResolvingDataSource.Factory(
+                    ProviderPlaybackByteDataSource.Factory(
+                        Http.client, STREAM_CHUNK_BYTES,
+                        fallbackLease = mediaSession::currentLease,
+                        requireLease = true,
+                    ),
+                ) { spec ->
+                    streamResolver.resolveDataSpec(spec).also { resolved ->
+                        if (spec.uri.scheme == "bitchord" &&
+                            spec.uri.authority == "source") {
+                            val lease = resolved.customData as? ProviderPlaybackByteLease
+                                ?: throw java.io.IOException(
+                                    "Resolved source lacks a revocable media ticket",
+                                )
+                            mediaSession.bind(lease)
+                        }
+                        mediaIdIn(spec.uri)?.let {
+                            StreamContainer.served(it, resolved.uri.toString())
+                        }
+                        AudioCache.recordServed(
+                            spec, resolved.uri.toString(),
+                            (resolved.customData as? ProviderPlaybackByteLease)?.providerKey,
+                        )
+                    }
+                }
+                val sourceDataFactory = DefaultDataSource.Factory(this, scopedResolving)
+                DefaultMediaSourceFactory(
+                    AudioCache.playbackFactory(
+                        sourceDataFactory,
+                        onSourceCacheLease = mediaSession::bind,
+                    ),
+                    DsdExtractorsFactory(),
+                )
+            },
+        ).setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())
         // The watch, when it is the speaker, reads tracks through this same chain.
         WearBridge.attachStreams(AudioCache.playbackFactory(defaultDataSourceFactory))
 
