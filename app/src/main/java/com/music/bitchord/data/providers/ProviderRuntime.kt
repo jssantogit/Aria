@@ -157,6 +157,17 @@ internal object ProviderRuntime {
         }
     }
 
+    /** Login/logout changes only Soulseek prerequisite readiness. */
+    fun refreshSoulseekAccountReadiness(configured: Boolean): Boolean? {
+        val current = session ?: return null
+        if (current.state.value.status == ProviderSessionStatus.BOOTING) return null
+        val authority = coordinator ?: return false
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            authority.updateSoulseekReadiness(configured)
+            true
+        }
+    }
+
     fun updateListeningFromLegacyUi(
         lastfmEnabled: Boolean,
         lastfmScrobbleEnabled: Boolean,
