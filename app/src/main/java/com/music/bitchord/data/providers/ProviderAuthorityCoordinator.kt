@@ -21,6 +21,9 @@ internal class ProviderAuthorityCoordinator(
     private var lastfmReady = false
     private var listenBrainzReady = false
     private var soulseekReady = false
+    private var itunesReady = false
+    private var discogsReady = false
+    private var discogsTokenReady = false
     suspend fun migrateOnce(
         lyricsOrder: List<LyricsSource>,
         enabledLyrics: Set<LyricsSource>,
@@ -30,6 +33,9 @@ internal class ProviderAuthorityCoordinator(
         lastfmConfigured: Boolean = false,
         listenBrainzConfigured: Boolean = false,
         soulseekConfigured: Boolean = false,
+        itunesImplemented: Boolean = false,
+        discogsImplemented: Boolean = false,
+        discogsTokenConfigured: Boolean = false,
         lastfmEnabled: Boolean = false,
         listenBrainzEnabled: Boolean = false,
     ): Boolean {
@@ -42,12 +48,18 @@ internal class ProviderAuthorityCoordinator(
                 lastfmConfigured = lastfmConfigured,
                 listenBrainzConfigured = listenBrainzConfigured,
                 soulseekConfigured = soulseekConfigured,
+                itunesImplemented = itunesImplemented,
+                discogsImplemented = discogsImplemented,
+                discogsTokenConfigured = discogsTokenConfigured,
             ),
         )
         session.refreshDescriptors(descriptors)
         lastfmReady = lastfmConfigured
         listenBrainzReady = listenBrainzConfigured
         soulseekReady = soulseekConfigured
+        itunesReady = itunesImplemented
+        discogsReady = discogsImplemented
+        discogsTokenReady = discogsTokenConfigured
 
         val imported = mutableMapOf<ProviderCapability, List<ProviderChoice>>()
         if (includeMusicBrainzBaseline) {
@@ -59,6 +71,30 @@ internal class ProviderAuthorityCoordinator(
             )
             imported[ProviderCapability.ARTIST_ARTWORK] = listOf(
                 ProviderChoice(BuiltInProviderKeys.APPLE_ARTIST_ART, enabled = true, order = 0),
+            )
+        }
+        if (itunesImplemented) {
+            // The iTunes API is live on the reconciled #216 baseline. Catalog,
+            // discography and artwork have independent opt-outs; existing
+            // persisted choices always supersede these first-install defaults.
+            for (capability in listOf(
+                ProviderCapability.CATALOG_SEARCH,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            )) {
+                imported[capability] = imported[capability].orEmpty() +
+                    ProviderChoice(BuiltInProviderKeys.ITUNES, enabled = true,
+                        order = imported[capability].orEmpty().size)
+            }
+            imported[ProviderCapability.RELEASE_ARTWORK] = listOf(
+                ProviderChoice(BuiltInProviderKeys.ITUNES, enabled = true, order = 0),
+                ProviderChoice(BuiltInProviderKeys.COVER_ART_ARCHIVE, enabled = false, order = 1),
+            )
+        }
+        if (discogsImplemented) {
+            // Public legal/credential gate is independent from implementation:
+            // no Discogs request is implicitly enabled.
+            imported[ProviderCapability.EDITION_METADATA] = listOf(
+                ProviderChoice(BuiltInProviderKeys.DISCOGS, enabled = false, order = 0),
             )
         }
         imported[ProviderCapability.LISTENING_STATISTICS] = listOf(
@@ -109,6 +145,9 @@ internal class ProviderAuthorityCoordinator(
                 lastfmConfigured = lastfmReady,
                 listenBrainzConfigured = listenBrainzReady,
                 soulseekConfigured = soulseekReady,
+                itunesImplemented = itunesReady,
+                discogsImplemented = discogsReady,
+                discogsTokenConfigured = discogsTokenReady,
             ),
         )
         session.refreshDescriptors(descriptors)
