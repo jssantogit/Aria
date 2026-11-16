@@ -4,6 +4,7 @@ import com.music.bitchord.BuildConfig
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
+import com.music.bitchord.data.providers.RateLimitedProviderTransport
 import com.music.bitchord.diagnostics.DiagnosticCategory
 import com.music.bitchord.diagnostics.Diagnostics
 import io.ktor.client.HttpClient
@@ -84,12 +85,21 @@ internal class KtorListenBrainzPublicPlaylistTransport(
             socketTimeoutMillis = 90_000L
         }
     },
+    private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
 ) : ListenBrainzPublicPlaylistTransport {
+    private suspend fun <T> authorized(block: suspend () -> T): T =
+        admission.execute(
+            capability = ProviderCapability.PUBLIC_PLAYLISTS,
+            provider = BuiltInProviderKeys.LISTENBRAINZ,
+            scheduleLimited = { task -> task() },
+            networkCall = block,
+        )
+
     override suspend fun search(query: String): ListenBrainzPublicPlaylistHttp =
-        getPublicPlaylists(query, count = 25)
+        authorized { getPublicPlaylists(query, count = 25) }
 
     override suspend fun searchWide(query: String): ListenBrainzPublicPlaylistHttp =
-        getPublicPlaylists(query, count = 75)
+        authorized { getPublicPlaylists(query, count = 75) }
 
     private suspend fun getPublicPlaylists(
         query: String, count: Int,
@@ -109,6 +119,9 @@ internal class KtorListenBrainzPublicPlaylistTransport(
         }
 
     override suspend fun detail(mbid: String): ListenBrainzPublicPlaylistHttp =
+        authorized { detailUnchecked(mbid) }
+
+    private suspend fun detailUnchecked(mbid: String): ListenBrainzPublicPlaylistHttp =
         measureMetadataHttp(
             provider = "listenbrainz", endpoint = "public_playlist_detail",
             status = { r: ListenBrainzPublicPlaylistHttp -> r.status },
@@ -121,6 +134,9 @@ internal class KtorListenBrainzPublicPlaylistTransport(
         }
 
     override suspend fun recordingArtwork(recordingMbids: List<String>): ListenBrainzPublicPlaylistHttp =
+        authorized { recordingArtworkUnchecked(recordingMbids) }
+
+    private suspend fun recordingArtworkUnchecked(recordingMbids: List<String>): ListenBrainzPublicPlaylistHttp =
         measureMetadataHttp(
             provider = "listenbrainz", endpoint = "public_playlist_recording_art",
             status = { r: ListenBrainzPublicPlaylistHttp -> r.status },
