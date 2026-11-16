@@ -1571,6 +1571,7 @@ class PlaybackService : MediaLibraryService() {
                         sourceDataFactory,
                         onSourceCacheLease = { lease -> mediaSession.bind(lease) },
                         adaptiveSegmentLease = mediaSession::currentLease,
+                        adaptiveSegmentRequest = mediaSession::withSegmentHeaders,
                     ),
                     DsdExtractorsFactory(),
                 )
