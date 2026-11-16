@@ -204,6 +204,29 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun soulseekCredentialReadinessAndDownloadOptOutRemainIndependentOfAddonDownloads(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(ProviderCapabilityRegistry.inventory()),
+        )
+        val authority = ProviderAuthorityCoordinator(session)
+        val soulseek = com.music.bitchord.data.providers.ProviderKey("soulseek")
+        assertTrue(authority.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            soulseekConfigured = false,
+        ))
+        assertNull(session.gate.open(ProviderCapability.DOWNLOAD, soulseek))
+        authority.updateSoulseekReadiness(true)
+        assertTrue(session.gate.open(ProviderCapability.DOWNLOAD, soulseek) != null)
+
+        assertTrue(session.update(ProviderCapability.DOWNLOAD,
+            listOf(ProviderChoice(soulseek, false, 0))))
+        authority.updateSoulseekReadiness(false)
+        authority.updateSoulseekReadiness(true)
+        assertNull(session.gate.open(ProviderCapability.DOWNLOAD, soulseek))
+    }
+
+    @Test
     fun migratedScrobblingIsDenyByDefaultAndPreservesExplicitConfiguredOptIn(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
