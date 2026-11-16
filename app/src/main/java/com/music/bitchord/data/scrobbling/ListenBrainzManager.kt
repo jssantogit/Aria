@@ -8,6 +8,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.music.bitchord.data.Http
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ListeningSubmissionGate
+import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.catalog.metadata.ListenBrainzRequestBudget
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -23,7 +26,7 @@ object ListenBrainzManager {
         primaryArtistOnly: Boolean = false,
     ): Boolean {
         if (token.isBlank() || song == null) return false
-        return withContext(Dispatchers.IO) {
+        return submitWithProviderPermission { withContext(Dispatchers.IO) {
             try {
                 val durationMs = durationMsOverride ?: parseDurationMs(song.durationText)
                 // The API rejects a zero/negative duration_ms, and it is
@@ -62,7 +65,7 @@ object ListenBrainzManager {
                 Log.e(TAG, "submitPlayingNow failed", ex)
                 false
             }
-        }
+        } }
     }
 
     suspend fun submitFinished(
@@ -79,7 +82,7 @@ object ListenBrainzManager {
         if (token.isBlank() || song == null || startMs / 1_000L < 1_033_430_400L ||
             endMs <= startMs
         ) return false
-        return withContext(Dispatchers.IO) {
+        return submitWithProviderPermission { withContext(Dispatchers.IO) {
             try {
                 val durationMs = durationMsOverride?.takeIf { it > 0L }
                     ?: parseDurationMs(song.durationText)
@@ -121,7 +124,17 @@ object ListenBrainzManager {
                 Log.e(TAG, "submitFinished failed", ex)
                 false
             }
-        }
+        } }
+    }
+
+    private suspend fun submitWithProviderPermission(
+        operation: suspend () -> Boolean,
+    ): Boolean = when (val result = ListeningSubmissionGate.execute(
+        BuiltInProviderKeys.LISTENBRAINZ, operation,
+    )) {
+        is ProviderCallResult.Success -> result.value
+        is ProviderCallResult.Failed, ProviderCallResult.Denied,
+        ProviderCallResult.Stale -> false
     }
 
     private fun parseDurationMs(text: String?): Long = listenBrainzDurationMsFromLabel(text)
