@@ -21,6 +21,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.CancellationException
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
+import kotlin.coroutines.resume
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -291,7 +298,7 @@ object AppleArtistArtRepository {
         return entry.art?.let { offlineStills(key, it) }
     }
 
-    private fun lookup(artistName: String, key: String): Entry? {
+    private suspend fun lookup(artistName: String, key: String): Entry? {
         val search = get(
             "https://itunes.apple.com/search?term=${URLEncoder.encode(artistName, "UTF-8")}" +
                 "&entity=musicArtist&limit=5",
@@ -389,12 +396,9 @@ object AppleArtistArtRepository {
             .replace("{f}", format)
     }
 
-    private fun get(url: String): String? {
+    private suspend fun get(url: String): String? {
         val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
-        Http.client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            return response.body?.string()
-        }
+        return awaitAppleArtistPage(Http.client.newCall(request))
     }
 
     /** Case, accents and punctuation are not what makes two names different. */
@@ -402,3 +406,27 @@ object AppleArtistArtRepository {
         java.text.Normalizer.normalize(lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD)
             .filter { it.isLetterOrDigit() }
 }
+
+/**
+ * OkHttp's blocking execute() does not react to coroutine revocation.
+ * This bridge cancels the actual socket operation when the probe's Job
+ * is cancelled, without altering the existing Apple identity verification.
+ */
+internal suspend fun awaitAppleArtistPage(call: Call): String? =
+    suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) continuation.resume(null)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val body = try {
+                    response.use { if (it.isSuccessful) it.body?.string() else null }
+                } catch (_: IOException) {
+                    null
+                }
+                if (continuation.isActive) continuation.resume(body)
+            }
+        })
+    }
