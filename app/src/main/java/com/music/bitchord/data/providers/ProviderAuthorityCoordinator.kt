@@ -77,6 +77,27 @@ internal class ProviderAuthorityCoordinator(
             ),
         )
         session.refreshDescriptors(descriptors)
+        // Adding a configured extension is an explicit user action. Import
+        // newly introduced instance identities once, never overwrite a saved
+        // opt-out when an existing instance disappears and later returns.
+        val prior = session.state.value.configured[ProviderCapability.EXTENSION_PLAYBACK].orEmpty()
+        val savedKeys = prior.mapTo(HashSet()) { it.key }
+        val added = cleanedSources
+            .filter { it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE }
+            .distinctBy { it.id }
+            .mapNotNull { source ->
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                if (key in savedKeys) null else ProviderChoice(
+                    key, enabled = source.enabled, order = prior.size + savedKeys.size,
+                )
+            }
+        if (added.isNotEmpty()) {
+            session.update(ProviderCapability.EXTENSION_PLAYBACK,
+                prior + added.mapIndexed { i, choice -> choice.copy(order = prior.size + i) })
+        }
     }
 
     fun currentLyricsProjection(
