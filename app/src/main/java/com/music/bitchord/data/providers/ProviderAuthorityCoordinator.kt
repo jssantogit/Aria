@@ -24,12 +24,20 @@ internal class ProviderAuthorityCoordinator(
         sources: List<SourceConfig>,
         includeMusicBrainzBaseline: Boolean = true,
         includeDefaultArtworkBaseline: Boolean = true,
+        lastfmConfigured: Boolean = false,
+        listenBrainzConfigured: Boolean = false,
+        lastfmEnabled: Boolean = false,
+        listenBrainzEnabled: Boolean = false,
     ): Boolean {
         val cleanedSources = sources.filterNot {
             it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
         }
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
-            ProviderCapabilityRegistry.inventory(sources = cleanedSources),
+            ProviderCapabilityRegistry.inventory(
+                sources = cleanedSources,
+                lastfmConfigured = lastfmConfigured,
+                listenBrainzConfigured = listenBrainzConfigured,
+            ),
         )
         session.refreshDescriptors(descriptors)
 
@@ -45,6 +53,10 @@ internal class ProviderAuthorityCoordinator(
                 ProviderChoice(BuiltInProviderKeys.APPLE_ARTIST_ART, enabled = true, order = 0),
             )
         }
+        imported[ProviderCapability.LISTENING_STATISTICS] = listOf(
+            ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled && lastfmConfigured, order = 0),
+            ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled && listenBrainzConfigured, order = 1),
+        )
         imported.putAll(legacyProviderChoices(lyricsOrder, enabledLyrics, cleanedSources))
         return session.initialize(imported)
     }
