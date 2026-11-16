@@ -144,3 +144,11 @@
 - Álbum online MusicBrainz e playlist pública ListenBrainz agora têm o menu montado na camada contextual de nível superior, com `FrostedMenuPanel`, preservando avaliação, fixar/desafixar, abrir no MusicBrainz / compartilhar, e ganhando Configurações.
 - `NativeCollectionOverflowAction`: não troca o vetor entre fechado e aberto; a borda ativa é 0,75dp e usa o token branco compartilhado.
 - CI: manter gates atuais. Se qualquer teste falhar, não liberar APK nem concluir este bloco. A PR #212 continua draft, sem merge. Não confundir validação automatizada com smoke físico.
+
+
+### Complemento — outros álbuns de detalhe (16/11/2026)
+
+- O menu ⋯ de álbuns locais ou de servidor aberto via `NativeDetailAlbumTopBarActions` também era um `browseActions` sheet legado. Agora é distinguido de menus de cards/hold por `shouldAnchorNativeAlbumOverflow` e exibido em `FrostedMenuPanel` com a âncora real da toolbar; todas as ações verificadas de `browseMenuBody` continuam, junto de Configurações.
+- O menu de cards comuns continua com sua origem e seu próprio comportamento. Não trocar operações de download/queue de origem local por operações de metadata-only.
+- Teste adicionado no `NativeAlbumPlaylistToolbarTest` para comprovar separação entre toolbar, card e hold.
+- Nova build do HEAD completo, sem aceitar o green anterior de outro SHA.
