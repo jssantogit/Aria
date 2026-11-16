@@ -104,6 +104,9 @@ object SourceRegistry {
      * tracks instead of re-probing on every resolve.
      */
     private var instances: Map<String, MusicSource> = emptyMap()
+    /** Independent download producer scopes: playback revocation must never
+     * cancel an otherwise authorized download from this same addon instance. */
+    private var addonDownloadInstances: Map<String, AddonSource> = emptyMap()
 
     fun init(context: Context) {
         // Same repair and degradation as AuthStore; see EncryptedPrefs.
@@ -191,7 +194,9 @@ object SourceRegistry {
     fun activeForDownload(): List<MusicSource> =
         downloadCandidateConfigs(configs.value, ProviderRuntime.gateOrNull())
             .sortedBy { it.kind.rank }
-            .mapNotNull { instances[it.id] }
+            .mapNotNull { source ->
+                addonDownloadInstances[source.id] ?: instances[source.id]
+            }
 
     /**
      * Download consent is independent from playback consent. Do not start with
@@ -472,6 +477,19 @@ object SourceRegistry {
         previous.values.filterNot { it in instances.values }
             .filterIsInstance<AddonSource>()
             .forEach { it.release() }
+        // The same addon can have DOWNLOAD enabled while EXTENSION_PLAYBACK is
+        // disabled. Separate client scopes ensure revoking playback cancels
+        // only playback HTTP and never the authorized download producer.
+        val previousDownload = addonDownloadInstances
+        addonDownloadInstances = activeConfigs
+            .filter { it.kind == SourceKind.ADDON }
+            .associate { config ->
+                val existing = previousDownload[config.id]
+                    ?.takeIf { it.config.withPolicyOf(config) == config }
+                config.id to (existing ?: AddonSource(config, ProviderCapability.DOWNLOAD))
+            }
+        previousDownload.values.filterNot { it in addonDownloadInstances.values }
+            .forEach { it.release() }
         if (persist && ::prefs.isInitialized) {
             prefs.edit()
                 .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), activeConfigs))
@@ -581,7 +599,7 @@ object SourceRegistry {
     }
 
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
-        SourceKind.ADDON -> AddonSource(config)
+        SourceKind.ADDON -> AddonSource(config, ProviderCapability.EXTENSION_PLAYBACK)
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
