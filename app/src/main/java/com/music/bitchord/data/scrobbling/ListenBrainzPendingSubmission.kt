@@ -1,6 +1,9 @@
 package com.music.bitchord.data.scrobbling
 
 import com.music.bitchord.data.Http
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ListeningSubmissionGate
+import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.catalog.metadata.ListenBrainzRequestBudget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +19,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 internal enum class ListenBrainzSubmissionResult {
-    ACCEPTED, RETRYABLE, AUTH_ERROR, REJECTED,
+    ACCEPTED, RETRYABLE, AUTH_ERROR, REJECTED, REVOKED,
 }
 
 /**
@@ -66,8 +69,9 @@ internal suspend fun ListenBrainzManager.submitPending(
 
     val bodyJson = listenBrainzImportPayload(listen)
 
-    return withContext(Dispatchers.IO) {
-        try {
+    val guarded = ListeningSubmissionGate.execute(BuiltInProviderKeys.LISTENBRAINZ) {
+        withContext(Dispatchers.IO) {
+            try {
             val request = Request.Builder()
                 .url("https://api.listenbrainz.org/1/submit-listens")
                 .post(bodyJson.toRequestBody("application/json".toMediaType()))
@@ -82,9 +86,16 @@ internal suspend fun ListenBrainzManager.submitPending(
             disposition
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            ListenBrainzSubmissionResult.RETRYABLE
+            } catch (_: Exception) {
+                ListenBrainzSubmissionResult.RETRYABLE
+            }
         }
+    }
+    return when (guarded) {
+        is ProviderCallResult.Success -> guarded.value
+        is ProviderCallResult.Failed -> ListenBrainzSubmissionResult.RETRYABLE
+        ProviderCallResult.Denied, ProviderCallResult.Stale ->
+            ListenBrainzSubmissionResult.REVOKED
     }
 }
 
