@@ -5120,6 +5120,7 @@ private fun BitChordApp(
                                             browseActions, detail.browseId, browseMenuOrigin != null,
                                         ),
                                         onClick = {
+                                            browseMenuOrigin = null
                                             browseActions = BrowseTarget(
                                                 browseId = detail.browseId,
                                                 title = detail.title,
