@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import okhttp3.Call
+import okhttp3.Request
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRequestTicket
 import java.io.IOException
@@ -22,6 +25,38 @@ internal class ProviderPlaybackByteLease(
 }
 
 /**
+ * The Media3 OkHttpDataSource.close() path cannot cancel a Call whose HTTP
+ * headers have not arrived yet: there is no established response stream to
+ * close. Hold the actual OkHttp Call per Media3 data source and cancel it even
+ * during the initial pending open. A revoked session cannot create a later
+ * network Call; sibling data sources have separate factories and are untouched.
+ */
+internal class ProviderPlaybackCallFactory(
+    private val upstream: Call.Factory,
+) : Call.Factory {
+    private val lock = Any()
+    private var revoked = false
+    private var latest: Call? = null
+
+    override fun newCall(request: Request): Call {
+        val call = upstream.newCall(request)
+        synchronized(lock) {
+            if (revoked) call.cancel()
+            else latest = call
+        }
+        return call
+    }
+
+    fun revoke() {
+        val pending = synchronized(lock) {
+            revoked = true
+            latest.also { latest = null }
+        }
+        pending?.cancel()
+    }
+}
+
+/**
  * Sits AFTER ResolvingDataSource and BEFORE the HTTP/ChunkedDataSource chain.
  * Stream URL discovery alone is not permission to continue downloading bytes:
  * disabling the source must cancel an already open HTTP call and suppress
@@ -32,6 +67,7 @@ internal class ProviderPlaybackByteLease(
  */
 internal class ProviderPlaybackByteDataSource(
     private val upstream: DataSource,
+    private val cancelNetwork: () -> Unit = {},
 ) : DataSource {
     @Volatile private var revoked = false
     private var lease: ProviderPlaybackByteLease? = null
@@ -53,8 +89,9 @@ internal class ProviderPlaybackByteDataSource(
             }
             unsubscribe = permission.onRevoke {
                 revoked = true
-                // OkHttp close releases an in-flight call. The same invalid
-                // ticket will also be tested on either side of every read.
+                // Cancel the actual OkHttp Call first; Media3.close() alone
+                // cannot abort a pending open before response headers arrive.
+                cancelNetwork()
                 runCatching { upstream.close() }
             }
             if (revoked || !permission.allowed()) {
@@ -96,11 +133,22 @@ internal class ProviderPlaybackByteDataSource(
         unsubscribe?.invoke()
         unsubscribe = null
         lease = null
+        cancelNetwork()
         upstream.close()
     }
 
-    internal class Factory(private val upstream: DataSource.Factory) : DataSource.Factory {
-        override fun createDataSource(): DataSource =
-            ProviderPlaybackByteDataSource(upstream.createDataSource())
+    internal class Factory(
+        private val calls: Call.Factory,
+        private val chunkBytes: Long,
+    ) : DataSource.Factory {
+        override fun createDataSource(): DataSource {
+            val scopedCalls = ProviderPlaybackCallFactory(calls)
+            return ProviderPlaybackByteDataSource(
+                ChunkedDataSource(
+                    OkHttpDataSource.Factory(scopedCalls).createDataSource(), chunkBytes,
+                ),
+                cancelNetwork = scopedCalls::revoke,
+            )
+        }
     }
 }
