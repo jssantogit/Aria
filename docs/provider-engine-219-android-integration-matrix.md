@@ -20,7 +20,7 @@ Date: 2026-11-16. Scope: Android only. GitHub issue [#218](https://github.com/js
 | Last.fm | LISTENING_STATISTICS | track.scrobble/now playing gated; account authorization remains separate | Connected | ListeningSubmissionGateTest |
 | Lyrics providers | LYRICS_LOOKUP / variants | Canonical selection bridged from legacy settings, per-instance opt-out | Connected for offered sources | ProviderRuntimeMigrationSafetyTest, provider preference/compatibility tests |
 | Addon / custom module | EXTENSION_PLAYBACK and optional DOWNLOAD | SourceRegistry exact instance-local EXTENSION_PLAYBACK selection and independent DOWNLOAD eligibility; source client in-flight dispatch remains to audit | Partial; audit actual per-addon network dispatch | ProviderCatalogSourceRegistryTest |
-| Soulseek | DOWNLOAD | Configurable native acquisition, readiness refreshed separately from unrelated providers | Partial; final consent / dispatch audit outstanding | ProviderCapabilitySessionTest |
+| Soulseek | DOWNLOAD | Native manual search now denies without canonical DOWNLOAD ticket as well as legacy pilot readiness; active socket/transfer revocation still requires separate audit | Partial; final consent / dispatch audit outstanding | ProviderCapabilitySessionTest |
 | Local MediaStore | PERSONAL_LIBRARY | Local personal data never depends on remote editorials | Connected locally; not subject to external network gate | provider provenance tests |
 | AcoustID | ACOUSTIC_IDENTIFICATION | No implemented adapter | NOT_IMPLEMENTED | Inventory only |
 | Store sales | CHART_SALES | No implemented adapter | NOT_IMPLEMENTED | Inventory only |
