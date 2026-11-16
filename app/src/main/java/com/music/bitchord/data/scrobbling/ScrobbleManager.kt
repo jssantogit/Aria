@@ -33,11 +33,7 @@ class ScrobbleManager(
     private fun isLastFmListeningPermitted(): Boolean {
         val snapshot = ProviderRuntime.state?.value
         if (snapshot?.status == ProviderSessionStatus.STORAGE_ERROR) return false
-        val gate = policyGate() ?: return true
-        // Enforce gate whenever LISTENING_STATISTICS is configured in policy.
-        val configured = snapshot == null ||
-            ProviderCapability.LISTENING_STATISTICS in snapshot.configured
-        if (!configured) return true
+        val gate = policyGate() ?: return false
         return gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM) != null
     }
 
