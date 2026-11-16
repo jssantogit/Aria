@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** An initial empty placeholder is not proof that the library is empty. */
+// CI trigger: comment-only change, no executable behavior or test assertions changed.
 class CanonicalLibraryInitialLoadingTest {
     @Test fun unifiedLibraryWaitsForFirstDatabaseEmission() {
         assertTrue(canonicalLibraryInitialLoading(
