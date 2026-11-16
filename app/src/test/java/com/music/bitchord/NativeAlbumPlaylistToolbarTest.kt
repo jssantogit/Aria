@@ -32,6 +32,16 @@ import org.robolectric.annotation.ConscryptMode
 class NativeAlbumPlaylistToolbarTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun artistDetailOverflowIsAnchoredWithoutMakingArtistCardsIntoToolbarMenus() {
+        val artist = com.music.bitchord.ui.components.BrowseTarget(
+            browseId = "catalog:ARTIST:verified-id", title = "ablume", subtitle = "Artista",
+            type = com.music.bitchord.data.model.BrowseType.ARTIST, fromCard = false,
+        )
+        assertEquals(true, shouldAnchorNativeAlbumOverflow(artist, artist.browseId, false))
+        assertEquals(false, shouldAnchorNativeAlbumOverflow(artist.copy(fromCard = true), artist.browseId, false))
+        assertEquals(false, shouldAnchorNativeAlbumOverflow(artist, artist.browseId, true))
+    }
+
     @Test fun onlyTheOpenedAlbumToolbarMenuUsesAnchoredFrostedCard() {
         val target = com.music.bitchord.ui.components.BrowseTarget(
             browseId = "local:album:verified", title = "Album", subtitle = "Artist",
