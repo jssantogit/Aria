@@ -1,5 +1,6 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.PolicyGuardedCoverArtArchiveTransport
 import com.music.bitchord.data.catalog.CanonicalCatalogDao
 import com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity
 import io.ktor.client.HttpClient
@@ -163,7 +164,8 @@ private sealed interface CoverLookup {
  * Transient network/503 responses are not treated as permanent missing art.
  */
 internal class CoverArtArchive(
-    private val transport: CoverArtArchiveTransport = KtorCoverArtArchiveTransport(),
+    private val transport: CoverArtArchiveTransport =
+        PolicyGuardedCoverArtArchiveTransport(KtorCoverArtArchiveTransport()),
     private val store: MusicBrainzCoverArtStore = MemoryCoverArtStore(),
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
     private val requestTimeoutMs: Long = 6_000L,
