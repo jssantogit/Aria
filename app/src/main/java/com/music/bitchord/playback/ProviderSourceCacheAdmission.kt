@@ -2,8 +2,8 @@ package com.music.bitchord.playback
 
 import com.music.bitchord.data.providers.ProviderCapability
 import java.io.IOException
-import java.security.MessageDigest
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.providerSegmentCacheKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 
 /**
@@ -55,12 +55,7 @@ internal fun providerAdaptiveSegmentCacheKey(
     url: String,
     requestKey: String? = null,
 ): String {
-    val input = (url + "\u0000" + requestKey.orEmpty())
-        .toByteArray(Charsets.UTF_8)
-    val hash = MessageDigest.getInstance("SHA-256")
-        .digest(input).joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    input.fill(0)
-    return "source-segment:${owner.providerId}:${owner.instanceId}:$hash"
+    return providerSegmentCacheKey(owner, url, requestKey)
 }
 
 /**
