@@ -985,6 +985,9 @@ private fun BitChordApp(
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
     }
     var catalogAlbumOverflowOpen by remember(detail?.browseId) { mutableStateOf(false) }
+    var catalogAlbumOverflowAnchor by remember(detail?.browseId) {
+        mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+    }
     // A device folder's equivalents — its sort and whether it is a grid —
     // kept apart for Downloads and shared by every other folder, as they
     // always were. Up here because both the page and the top bar's menu read
@@ -2135,6 +2138,9 @@ private fun BitChordApp(
     }
     var publicPlaylistSortOpen by remember { mutableStateOf(false) }
     var publicPlaylistOptionsOpen by remember { mutableStateOf(false) }
+    var publicPlaylistOverflowAnchor by remember {
+        mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+    }
     LaunchedEffect(openedPublicPlaylist?.mbid) {
         publicPlaylistSearching = false
         publicPlaylistQuery = ""
@@ -4961,6 +4967,7 @@ private fun BitChordApp(
                                 optionsOpen = publicPlaylistOptionsOpen,
                                 onShowSort = { publicPlaylistSortOpen = true },
                                 onShowOptions = { publicPlaylistOptionsOpen = true },
+                                onOverflowAnchor = { publicPlaylistOverflowAnchor = it },
                                 onSortDismiss = { publicPlaylistSortOpen = false },
                                 onOptionsDismiss = { publicPlaylistOptionsOpen = false },
                             )
@@ -5076,6 +5083,7 @@ private fun BitChordApp(
                                     },
                                     catalogOverflowExpanded = catalogAlbumOverflowOpen,
                                     onOpenCatalogOverflow = { catalogAlbumOverflowOpen = true },
+                                    onCatalogOverflowAnchor = { catalogAlbumOverflowAnchor = it },
                                     onDismissCatalogOverflow = { catalogAlbumOverflowOpen = false },
                                     onAlbumActions = {
                                         browseActions = BrowseTarget(
@@ -5432,6 +5440,40 @@ private fun BitChordApp(
         // Keep contextual menus and playlist sheets in a separate Compose
         // lambda, so BitChordApp's JVM method stays below the 64 KiB limit.
         val contextualActionOverlays: @Composable () -> Unit = {
+            // Menus must live at the window's top layer rather than inside a
+            // 40dp toolbar Box. The same Haze source then samples the real page.
+            detail?.takeIf {
+                it.browseId.startsWith("catalog:RELEASE:") ||
+                    it.browseId.startsWith("catalog:RELEASE_GROUP:")
+            }?.let { catalogDetail ->
+                com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
+                    browseId = catalogDetail.browseId,
+                    title = catalogDetail.title,
+                    subtitle = catalogDetail.subtitle.orEmpty(),
+                    cover = catalogDetail.thumbnailUrl,
+                    expanded = catalogAlbumOverflowOpen,
+                    onDismiss = { catalogAlbumOverflowOpen = false },
+                    hazeState = hazeState,
+                    anchorBounds = catalogAlbumOverflowAnchor,
+                    onSettings = {
+                        catalogAlbumOverflowOpen = false
+                        showSettings = true
+                    },
+                )
+            }
+            openedPublicPlaylist?.let { publicPlaylist ->
+                com.music.bitchord.ui.screens.CanonicalPublicPlaylistOverflowMenu(
+                    playlist = publicPlaylist,
+                    expanded = publicPlaylistOptionsOpen,
+                    onDismiss = { publicPlaylistOptionsOpen = false },
+                    hazeState = hazeState,
+                    anchorBounds = publicPlaylistOverflowAnchor,
+                    onSettings = {
+                        publicPlaylistOptionsOpen = false
+                        showSettings = true
+                    },
+                )
+            }
             // ---- Album / playlist detail ----
             // ---- Long-press track actions ----
             // One body for both presentations of the track menu: the sheet the ⋮
@@ -8449,6 +8491,7 @@ internal fun NativePublicPlaylistTopBarActions(
     optionsOpen: Boolean,
     onShowSort: () -> Unit,
     onShowOptions: () -> Unit,
+    onOverflowAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     onSortDismiss: () -> Unit,
     onOptionsDismiss: () -> Unit,
 ) {
@@ -8462,6 +8505,7 @@ internal fun NativePublicPlaylistTopBarActions(
         onSortOrFilter = onShowSort,
         onOverflow = onShowOptions,
         overflowExpanded = optionsOpen,
+        onOverflowAnchor = onOverflowAnchor,
         sortMenu = {
             com.music.bitchord.ui.screens.CanonicalPublicPlaylistSortMenu(
                 expanded = sortOpen,
@@ -8470,13 +8514,7 @@ internal fun NativePublicPlaylistTopBarActions(
                 onSort = onSort,
             )
         },
-        overflowMenu = {
-            com.music.bitchord.ui.screens.CanonicalPublicPlaylistOverflowMenu(
-                playlist = playlist,
-                expanded = optionsOpen,
-                onDismiss = onOptionsDismiss,
-            )
-        },
+
     )
 }
 
@@ -8498,6 +8536,7 @@ private fun NativeDetailAlbumTopBarActions(
     onSortAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     catalogOverflowExpanded: Boolean,
     onOpenCatalogOverflow: () -> Unit,
+    onCatalogOverflowAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     onDismissCatalogOverflow: () -> Unit,
     onAlbumActions: () -> Unit,
 ) {
@@ -8531,20 +8570,13 @@ private fun NativeDetailAlbumTopBarActions(
         )
     }
     if (isReleaseDetail && onlineMetadata) {
-        Box {
+        Box(Modifier.onGloballyPositioned {
+            onCatalogOverflowAnchor(nativeMenuAnchorBounds(it))
+        }) {
             NativeCollectionOverflowAction(
                 contentDescription = stringResource(R.string.more),
                 onClick = onOpenCatalogOverflow,
                 expanded = catalogOverflowExpanded,
-            )
-            com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
-                browseId = browseId,
-                title = title,
-                subtitle = subtitle,
-                cover = thumbnailUrl,
-                plateTint = plateTint,
-                expanded = catalogOverflowExpanded,
-                onDismiss = onDismissCatalogOverflow,
             )
         }
     } else if (isReleaseDetail && songs.isNotEmpty()) {
