@@ -5143,6 +5143,7 @@ private fun BitChordApp(
                             // three of its own controls — Apple Music leaves the
                             // profile off its album pages too.
                             if (!appleSearchRootChrome && !isReleaseDetail &&
+                                !(detail?.type == BrowseType.ARTIST && detailActiveShelf == null) &&
                                 openedPublicPlaylist == null &&
                                 !shouldUseUnifiedAlbumDetailToolbar(
                                     unifiedLibraryCategory, unifiedLibraryDetailOpen,
