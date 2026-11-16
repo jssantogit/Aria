@@ -2710,8 +2710,9 @@ private fun BitChordApp(
             onOpenMenu = { loadedArtworkModel -> openMenuFromPlayer(loadedArtworkModel, true) },
             onOpenQueueMenu = { loadedArtworkModel -> openMenuFromPlayer(loadedArtworkModel, true) },
             onOverflowAnchorChange = { bounds -> playerMenuAnchor = bounds },
-            modifier = if (menuFromPlayer && menuFromAppleQueue && songActions != null &&
-                !reduceDynamicBlur) Modifier.blur(18.dp) else Modifier,
+            // Contextual menus no longer blur the entire Now Playing surface.
+            // Only the compact card owns its neutral action material.
+            modifier = Modifier,
             onOpenAlbum = { id ->
                 dismissPlayer()
                 showReplay = false
