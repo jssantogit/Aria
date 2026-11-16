@@ -34,6 +34,10 @@ class CanonicalRatingAnchorRoutesTest {
         compose.onNodeWithTag("native-rating-anchored-card").assertExists()
         compose.onNodeWithTag("native-rating-bottom-sheet").assertDoesNotExist()
     }
+    @Test fun nonAnchoredRatingUsesCompactFloatingPlateInsteadOfFullScreenWidth() {
+        assertEquals(320, ratingEditorFloatingMaxWidthDp())
+    }
+
     @Test fun anchoredRatingWidthShrinksForMultiWindowInsteadOfOverflowing() {
         assertEquals(300, anchoredRatingCardWidthDp(500))
         assertEquals(288, anchoredRatingCardWidthDp(320))
