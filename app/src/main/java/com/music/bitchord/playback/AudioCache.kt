@@ -823,13 +823,72 @@ object AudioCache {
         val upstreamDs = upstream.createDataSource()
         object : DataSource {
             private var activeDs: DataSource = cacheDs
+            private var cachedSourceLease: ProviderPlaybackByteLease? = null
+            private var unsubscribeCachedSource: (() -> Unit)? = null
+            @Volatile private var cachedSourceRevoked = false
 
             override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) {
                 cacheDs.addTransferListener(transferListener)
                 upstreamDs.addTransferListener(transferListener)
             }
 
+            /**
+             * Complete cache hits never reach the HTTP guard or resolver. For
+             * provider-owned source rows, authorize the *actual provider that
+             * produced these bytes*, not the pinned row's source id.
+             *
+             * A cache entry with unknown provenance or incomplete bytes could
+             * combine two different recordings if a later resolution changes
+             * providers. Remove those spans before falling back to a new
+             * authorized resolve, or fail closed if another reader holds them.
+             */
+            private fun checkSourceCache(dataSpec: DataSpec) {
+                if (dataSpec.uri.scheme != "bitchord" ||
+                    dataSpec.uri.authority != "source") return
+                val key = keyFactory.buildCacheKey(dataSpec)
+                if (cache.getCachedSpans(key).isEmpty()) return
+                val meta = cache.getContentMetadata(key)
+                val length = ContentMetadata.getContentLength(meta)
+                val complete = length > 0L && cache.isCached(key, 0L, length)
+                val lease = sourceCacheReadLease(
+                    meta.get(META_SOURCE_PROVIDER, null as String?),
+                    meta.get(META_SOURCE_INSTANCE, null as String?),
+                    complete,
+                    ProviderRuntime.gateOrNull(),
+                )
+                if (lease == null) {
+                    try {
+                        cache.removeResource(key)
+                        if (cache.getCachedSpans(key).isNotEmpty()) {
+                            throw IOException("Source cache still in use")
+                        }
+                    } catch (_: Exception) {
+                        throw IOException("Cannot safely reuse source-owned audio cache")
+                    }
+                    return
+                }
+                cachedSourceLease = lease
+                unsubscribeCachedSource = lease.onRevoke {
+                    cachedSourceRevoked = true
+                    runCatching { cacheDs.close() }
+                }
+                checkCachedSourcePermission()
+            }
+
+            private fun checkCachedSourcePermission() {
+                if (cachedSourceRevoked || cachedSourceLease?.allowed() == false)
+                    throw IOException("Cached source playback capability revoked")
+            }
+
+            private fun releaseCachedLease() {
+                unsubscribeCachedSource?.invoke()
+                unsubscribeCachedSource = null
+                cachedSourceLease = null
+            }
+
             override fun open(dataSpec: DataSpec): Long {
+                releaseCachedLease()
+                cachedSourceRevoked = false
                 val scheme = dataSpec.uri.scheme
                 activeDs = if (
                     scheme == "file" ||
@@ -842,15 +901,29 @@ object AudioCache {
                 } else {
                     cacheDs
                 }
-                return activeDs.open(dataSpec)
+                return try {
+                    if (activeDs === cacheDs) checkSourceCache(dataSpec)
+                    val available = activeDs.open(dataSpec)
+                    checkCachedSourcePermission()
+                    available
+                } catch (error: Exception) {
+                    releaseCachedLease()
+                    runCatching { activeDs.close() }
+                    throw error
+                }
             }
 
-            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
-                activeDs.read(buffer, offset, length)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                checkCachedSourcePermission()
+                val read = activeDs.read(buffer, offset, length)
+                checkCachedSourcePermission()
+                return read
+            }
 
             override fun getUri(): Uri? = activeDs.uri
 
             override fun close() {
+                releaseCachedLease()
                 activeDs.close()
             }
         }
