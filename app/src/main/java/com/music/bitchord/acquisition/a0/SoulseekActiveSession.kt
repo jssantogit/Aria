@@ -1,6 +1,10 @@
 package com.music.bitchord.acquisition.a0
 
 import java.net.Socket
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRequestTicket
 
 /**
  * Process-local P2P socket generation. Saving or forgetting an account revokes
@@ -10,6 +14,53 @@ internal object SoulseekActiveSession {
     private var epoch = 0L
     private val sockets = mutableSetOf<Socket>()
     private val activeTransfers = mutableSetOf<A0ObservedCandidateHandoff>()
+
+    private var currentDownloadGate: ProviderPolicyGate? = null
+    private var currentDownloadTicket: ProviderRequestTicket? = null
+    private var removeDownloadListener: (() -> Unit)? = null
+
+    /** Bind an authenticated P2P session to the exact canonical DOWNLOAD
+     * capability; removing Soulseek consent physically closes tracked sockets
+     * and cancels peer transfers, without touching sibling download providers.
+     */
+    @Synchronized fun bindDownloadPermission(gate: ProviderPolicyGate?): Boolean {
+        val ticket = gate?.open(ProviderCapability.DOWNLOAD, ProviderKey("soulseek"))
+        if (ticket == null) {
+            removeDownloadListener?.invoke()
+            removeDownloadListener = null
+            currentDownloadGate = null
+            currentDownloadTicket = null
+            revoke()
+            return false
+        }
+        if (currentDownloadGate === gate && currentDownloadTicket == ticket &&
+            gate.accept(ticket)) return true
+
+        removeDownloadListener?.invoke()
+        if (currentDownloadTicket != null) revoke()
+        currentDownloadGate = gate
+        currentDownloadTicket = ticket
+        val unsubscribe = gate.onRevoke(ticket) {
+            synchronized(this) {
+                if (currentDownloadGate === gate && currentDownloadTicket == ticket) {
+                    currentDownloadGate = null
+                    currentDownloadTicket = null
+                    removeDownloadListener = null
+                    revoke()
+                }
+            }
+        }
+        if (!gate.accept(ticket)) {
+            unsubscribe()
+            currentDownloadGate = null
+            currentDownloadTicket = null
+            removeDownloadListener = null
+            revoke()
+            return false
+        }
+        removeDownloadListener = unsubscribe
+        return true
+    }
 
     @Synchronized fun generation(): Long = epoch
 
