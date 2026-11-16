@@ -13,6 +13,7 @@ import android.net.Uri
  */
 internal fun isRetiredWatchCacheRequest(uri: Uri): Boolean =
     uri.scheme.equals("bitchord", ignoreCase = true) &&
+        uri.isHierarchical &&
         uri.authority != "source" &&
         uri.authority != "canonical" &&
         uri.getQueryParameter("v") != null
