@@ -6,6 +6,9 @@ import android.net.Uri
 import android.util.Log
 import com.music.bitchord.auth.EncryptedPrefs
 import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderSessionStatus
 import com.music.bitchord.data.settings.AppSettings
@@ -197,8 +200,32 @@ object SourceRegistry {
      * [active], minus the addons whose manifest said `allowDownloads: 0`. A
      * download walks this instead, so the next source in line serves it.
      */
-    fun activeForDownload(): List<MusicSource> =
-        active().filter { config(it.configId)?.allowDownloads != false }
+    fun activeForDownload(): List<MusicSource> {
+        val activeSources = active()
+        val eligibleIds = downloadEligibleConfigs(
+            activeSources.mapNotNull { config(it.configId) },
+            ProviderRuntime.gateOrNull(),
+        ).mapTo(HashSet()) { it.id }
+        return activeSources.filter { it.configId in eligibleIds }
+    }
+
+    /** DOWNLOAD is independent of EXTENSION_PLAYBACK; no hidden addon fallback. */
+    internal fun downloadEligibleConfigs(
+        sources: List<SourceConfig>,
+        gate: ProviderPolicyGate?,
+    ): List<SourceConfig> = sources.filter { source ->
+        if (!source.allowDownloads) return@filter false
+        when (source.kind) {
+            SourceKind.ADDON, SourceKind.CUSTOM_MODULE -> {
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                gate?.open(ProviderCapability.DOWNLOAD, key) != null
+            }
+            else -> true // Existing built-in stream/download behavior is unchanged.
+        }
+    }
 
     /**
      * Records what an addon's manifest said about downloads and lossless
