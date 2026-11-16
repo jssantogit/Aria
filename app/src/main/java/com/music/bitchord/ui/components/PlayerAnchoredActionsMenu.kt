@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import com.music.bitchord.ui.components.CompactRatingIndicator
+import com.music.bitchord.ui.components.CompactRatingGeometry
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.music.bitchord.ui.theme.rememberArtworkPalette
@@ -87,6 +89,8 @@ fun PlayerAnchoredActionsMenu(
     artworkUrl: String?,
     onDismiss: () -> Unit,
     highlightLauncher: Boolean = true,
+    highlightRatingLauncher: Boolean = false,
+    ratingLauncherScore: Double? = null,
     maxWidth: Dp = 340.dp,
     content: @Composable () -> Unit,
 ) {
@@ -210,6 +214,38 @@ fun PlayerAnchoredActionsMenu(
                             content()
                         }
                     }
+                }
+            }
+
+            // The native rating star lives behind this separate dialog window.
+            // Repaint its exact circular launcher above the scrim while the
+            // editor is open, just as the player's overflow menu does for ⋯.
+            if (highlightRatingLauncher && !highlightLauncher && anchorBounds != null) {
+                val highlightSize = 40.dp
+                val highlightPx = with(density) { highlightSize.roundToPx() }
+                Box(
+                    modifier = Modifier.align(Alignment.TopStart)
+                        .offset {
+                            playerAnchoredMenuHighlightPosition(
+                                anchor = anchorBounds,
+                                overlayOrigin = rootOrigin,
+                                overlaySize = rootSize,
+                                highlightSizePx = highlightPx,
+                            )
+                        }
+                        .size(highlightSize)
+                        .border(0.75.dp, heldContextSelectionOutline(), CircleShape)
+                        .testTag("player-rating-launcher-highlight")
+                        .clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompactRatingIndicator(
+                        value = ratingLauncherScore,
+                        geometry = CompactRatingGeometry.CIRCULAR,
+                        size = 34.dp,
+                        showUnrated = true,
+                        neutralColor = Color.White,
+                    )
                 }
             }
 
