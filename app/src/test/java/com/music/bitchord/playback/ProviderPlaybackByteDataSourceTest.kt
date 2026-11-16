@@ -156,6 +156,29 @@ class ProviderPlaybackByteDataSourceTest {
             lowerCaseOverride.httpRequestHeaders.keys.none { it == "X-Source-Token" })
     }
 
+    @Test fun cachedManifestAfterAccountChangeCannotInheritPriorSourceSecret() {
+        val gate = ProviderPolicyGate(policy(true))
+        val session = ProviderPlaybackMediaSession()
+        val oldTicket = requireNotNull(
+            gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+        session.bind(
+            ProviderPlaybackByteLease(gate, oldTicket),
+            "https://assets.example/master.m3u8",
+            mapOf("Authorization" to "Bearer previous-account"),
+        )
+        gate.replace(policy(false))
+        gate.replace(policy(true))
+        val reauthorized = requireNotNull(
+            gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+        // A complete cached manifest knows only its provider provenance.
+        // Its new ticket does NOT prove that the old URL or private headers
+        // still belong to the reauthorized account.
+        session.bind(ProviderPlaybackByteLease(gate, reauthorized))
+        val segment = session.withSegmentHeaders(
+            DataSpec.Builder().setUri("https://assets.example/segment.ts").build())
+        assertTrue(segment.httpRequestHeaders.isEmpty())
+    }
+
     @Test fun revokedManifestTicketNeverSuppliesHeadersToLaterSegment() {
         val gate = ProviderPolicyGate(policy(true))
         val session = ProviderPlaybackMediaSession()
