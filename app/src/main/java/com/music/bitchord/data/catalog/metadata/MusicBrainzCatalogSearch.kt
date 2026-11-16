@@ -1,5 +1,6 @@
 package com.music.bitchord.data.catalog.metadata
 
+import androidx.room.Ignore
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -57,7 +58,11 @@ internal data class MusicBrainzReleaseGroupHit(
     val artworkUri: String? = null,
     /** Pipe-separated MusicBrainz types: null = absent/unknown, "" = explicitly no tags. */
     val secondaryTypes: String? = null,
-)
+) {
+    /** All credited artist MBIDs in source order. Null means incomplete proof.
+     * Live search only: Room never reads or stores this field. */
+    @Ignore var artistCreditMbids: List<String>? = null
+}
 
 internal data class MusicBrainzReleaseHit(
     val musicBrainzId: String,
@@ -78,7 +83,11 @@ internal data class MusicBrainzReleaseHit(
     val isVideoOnlyMedia: Boolean? = null,
     /** Evidence from exact Release's Track/Recording graph, when cached. */
     val isVideoOnlyContent: Boolean? = null,
-)
+) {
+    /** Source artist MBIDs, never inferred from display names or aliases.
+     * Live search only: Room never reads or stores this field. */
+    @Ignore var artistCreditMbids: List<String>? = null
+}
 
 // A MusicBrainz cover-art-archive.front flag is a presence hint only.
 // Never synthesize direct /front-500 URLs from it: CAA may label the
@@ -314,7 +323,7 @@ internal class MusicBrainzCatalogSearch(
                         secondaryTypes = group.secondaryTypes
                             ?.map(String::trim)?.filter(String::isNotBlank)
                             ?.joinToString("|"),
-                    )
+                    ).also { it.artistCreditMbids = group.artistCredit.completeArtistMbids() }
                 }
             }
         }
@@ -351,7 +360,7 @@ internal class MusicBrainzCatalogSearch(
                         status = release.status.nonEmpty(),
                         releaseGroupMbid = release.releaseGroup?.id.validSearchMbidOrNull(),
                         releaseGroupPrimaryType = release.releaseGroup?.primaryType.nonEmpty(),
-                    )
+                    ).also { it.artistCreditMbids = release.artistCredit.completeArtistMbids() }
                 }
             }
         }
@@ -469,6 +478,17 @@ internal class MusicBrainzCatalogSearch(
     private fun String?.validSearchMbidOrNull(): String? =
         nonEmpty()?.takeIf(MBID_PATTERN::matches)?.lowercase(java.util.Locale.ROOT)
 
+    /** Artist identity is valid only if EVERY credited artist has a real MBID.
+     * A partial response or an alias alone cannot establish equivalence. */
+    private fun List<SearchArtistCredit>?.completeArtistMbids(): List<String>? {
+        val credits = this?.takeIf { it.isNotEmpty() } ?: return null
+        val ids = mutableListOf<String>()
+        for (credit in credits) {
+            ids += credit.artist?.id.validSearchMbidOrNull() ?: return null
+        }
+        return ids
+    }
+
     private fun List<SearchArtistCredit>?.displayArtistCredit(): String? =
         this?.joinToString("") { credit ->
             (credit.name.nonEmpty() ?: credit.artist?.name.nonEmpty().orEmpty()) + credit.joinPhrase.orEmpty()
@@ -504,6 +524,7 @@ private interface SearchEnvelope {
 @Serializable
 private data class SearchArtistReference(
     val name: String? = null,
+    val id: String? = null,
 )
 
 @Serializable

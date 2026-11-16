@@ -4,6 +4,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogReleaseDetail
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogTrack
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRelease
+import com.music.bitchord.ui.canonicalArtworkEditionsForGroup
 import com.music.bitchord.ui.canonicalCachedOfficialGroupTracklist
 import com.music.bitchord.ui.canonicalPreferredEditions
 import kotlinx.coroutines.runBlocking
@@ -41,6 +42,67 @@ class CanonicalPreferredVideoEditionTest {
         // Unknown format is not equivalent to a proven video release.
         assertEquals(listOf(audio), canonicalPreferredEditions(
             listOf(edition(audio, null)), "OMG",
+        ).map { it.musicBrainzId })
+    }
+
+    @Test fun artworkRequiresExactReleaseGroupEvenWhenTitlesAndArtistsAreIdentical() {
+        val foreignGroup = "9750354e-78df-4058-8758-b5a7a2eccf66"
+        val foreign = edition("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", false)
+            .copy(releaseGroupMbid = foreignGroup, hasFrontCover = true)
+        val unknown = edition("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", false)
+            .copy(releaseGroupMbid = null, hasFrontCover = true)
+        val own = edition(audio, false).copy(hasFrontCover = true)
+
+        assertEquals(listOf(audio), canonicalArtworkEditionsForGroup(
+            listOf(foreign, unknown, own), "OMG", group,
+        ).map { it.musicBrainzId })
+        assertTrue(canonicalArtworkEditionsForGroup(
+            listOf(foreign, unknown), "OMG", group,
+        ).isEmpty())
+        // A group-bound official edition remains eligible for artwork,
+        // even when the name used on its release differs by packaging.
+        assertEquals(listOf(audio), canonicalArtworkEditionsForGroup(
+            listOf(own), "OMG", group,
+        ).map { it.musicBrainzId })
+    }
+
+    @Test fun compositeGroupLabelCannotBorrowArtworkFromAnUnrelatedOfficialSingle() {
+        val howSweetGroup = "9750354e-78df-4058-8758-b5a7a2eccf66"
+        val foreignGroup = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val foreign = MusicBrainzReleaseHit(
+            musicBrainzId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            title = "How Sweet", country = "XW", releaseDate = "2024-05-24",
+            artistDisplay = "NewJeans", status = "Official",
+            releaseGroupMbid = foreignGroup, hasFrontCover = true,
+        )
+        val own = foreign.copy(
+            musicBrainzId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            releaseGroupMbid = howSweetGroup,
+        )
+        assertEquals(listOf(own.musicBrainzId), canonicalArtworkEditionsForGroup(
+            listOf(foreign, own), "How Sweet & Bubble Gum", howSweetGroup,
+        ).map { it.musicBrainzId })
+    }
+
+    @Test fun sameTitleHotEpCannotBorrowArtworkFromSeparateSameTitleSingle() {
+        // These are two DIFFERENT real MusicBrainz ReleaseGroups, both named
+        // HOT by LE SSERAFIM. Fixture edition MBIDs are synthetic.
+        val epGroup = "50bcea80-692f-4e36-a7a5-825a3233cb13"
+        val singleGroup = "44adb7df-66bd-4ebe-a43a-3ea45a93529d"
+        val ep = MusicBrainzReleaseHit(
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "HOT", "XW", "2025-03-14",
+            "LE SSERAFIM", status = "Official", releaseGroupMbid = epGroup,
+            hasFrontCover = true,
+        )
+        val single = ep.copy(
+            musicBrainzId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            releaseGroupMbid = singleGroup,
+        )
+        assertEquals(listOf(ep.musicBrainzId), canonicalArtworkEditionsForGroup(
+            listOf(single, ep), "HOT", epGroup,
+        ).map { it.musicBrainzId })
+        assertEquals(listOf(single.musicBrainzId), canonicalArtworkEditionsForGroup(
+            listOf(ep, single), "HOT", singleGroup,
         ).map { it.musicBrainzId })
     }
 

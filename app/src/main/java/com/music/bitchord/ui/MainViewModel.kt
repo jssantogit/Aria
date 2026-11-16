@@ -623,15 +623,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { emptyList() }
             var vetted = canonicalArtworkEditionsForGroup(
-                prefetchedOfficialEditions.orEmpty(), row.title,
-            ).ifEmpty { canonicalArtworkEditionsForGroup(saved, row.title) }
+                prefetchedOfficialEditions.orEmpty(), row.title, row.musicBrainzId,
+            ).ifEmpty { canonicalArtworkEditionsForGroup(saved, row.title, row.musicBrainzId) }
             if (vetted.isEmpty()) {
                 val fetched = musicBrainzGraph.browseGroupReleases(row.musicBrainzId, limit = 40)
                 if (fetched is MusicBrainzCatalogGraphResult.Success) {
                     try { index.persistGroupEditions(row.musicBrainzId, fetched.value.items) }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { /* Fresh response remains usable. */ }
-                    vetted = canonicalArtworkEditionsForGroup(fetched.value.items, row.title)
+                    vetted = canonicalArtworkEditionsForGroup(
+                        fetched.value.items, row.title, row.musicBrainzId,
+                    )
                 }
             }
             for (edition in vetted) {
@@ -4318,7 +4320,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 fromOfflineCache = true,
                             ))
                         }
-                        dao.searchKnownMusicBrainzGroups(query, 6).forEach { group ->
+                        canonicalCuratedCachedMusicBrainzGroups(
+                            dao.searchKnownMusicBrainzGroups(query, 6),
+                        ).forEach { group ->
                             add(CanonicalCatalogSearchRow(
                                 group.musicBrainzId, CanonicalSearchKind.RELEASE_GROUP,
                                 group.title, group.artistDisplay ?: group.primaryType,
@@ -4490,6 +4494,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     releaseDate = hit.firstReleaseDate,
                     releaseKind = hit.primaryType,
                     secondaryTypes = hit.secondaryTypes,
+                    artistCreditMbids = hit.artistCreditMbids,
                     artistScopeMbid = artistScopeMbid,
                 ) }
                 val current = (_canonicalResults.value as? UiState.Success)?.data.orEmpty()
@@ -4583,6 +4588,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             releaseDate = hit.firstReleaseDate,
                             releaseKind = hit.primaryType,
                             secondaryTypes = hit.secondaryTypes,
+                            artistCreditMbids = hit.artistCreditMbids,
                             artistScopeMbid = artistScopeMbid,
                         ))
                     }
@@ -4598,6 +4604,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             releaseDate = hit.releaseDate,
                             artistScopeMbid = artistScopeMbid,
                             coverGroupMbid = hit.releaseGroupMbid,
+                            artistCreditMbids = hit.artistCreditMbids,
                         ))
                     }
                 }
@@ -4691,9 +4698,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 else emptyList(),
             )
             val combined = withVerifiedLocalBadges(
-                editionLabelRows.filter { row ->
+                canonicalSearchRowsWithoutRedundantEditions(editionLabelRows.filter { row ->
                     row.kind != CanonicalSearchKind.RECORDING || canonicalStreamingTitleIsSafe(row.title)
-                },
+                }),
             )
             if (_searchSource.value != SearchSource.CANONICAL ||
                 _query.value.trim() != query
@@ -4795,6 +4802,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 hit.artistDisplay ?: hit.primaryType,
                                 releaseDate = hit.firstReleaseDate, releaseKind = hit.primaryType,
                                 secondaryTypes = hit.secondaryTypes,
+                                artistCreditMbids = hit.artistCreditMbids,
                                 artistScopeMbid = cursor.artistScopeMbid,
                             ))
                         }
@@ -4807,6 +4815,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     .joinToString(" · "),
                                 artistScopeMbid = cursor.artistScopeMbid,
                                 coverGroupMbid = hit.releaseGroupMbid,
+                                artistCreditMbids = hit.artistCreditMbids,
                             ))
                         }
                     }
@@ -4826,7 +4835,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (editions is MusicBrainzCatalogSearchResult.Success) editions.page.items
                     else emptyList(),
                 )
-                val verified = withVerifiedLocalBadges(named)
+                val verified = withVerifiedLocalBadges(
+                    canonicalSearchRowsWithoutRedundantEditions(named),
+                )
                 if (_searchSource.value != SearchSource.CANONICAL ||
                     _query.value.trim() != cursor.query ||
                     canonicalSearchPageCursors !== cursor || _canonicalDetail.value != null

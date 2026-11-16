@@ -171,6 +171,16 @@ internal class MusicBrainzCatalogGraph(
             countKey = "release-count", offsetKey = "release-offset", arrayKey = "releases",
             identity = MusicBrainzReleaseHit::musicBrainzId,
         ) { row ->
+            // Exact browse scope proves the group, but a contradictory
+            // nested claim must never be silently overwritten. Count the
+            // malformed row for pagination, then reject its identity.
+            val claimedGroup = row["release-group"]
+            if (claimedGroup != null) {
+                val claimedId = (claimedGroup as? JsonObject)?.string("id")?.validMbid()
+                    ?: return@paged null
+                if (!claimedId.equals(groupMbid.trim(), ignoreCase = true))
+                    return@paged null
+            }
             MusicBrainzReleaseHit(
                 musicBrainzId = row.string("id").validMbid() ?: return@paged null,
                 title = row.string("title")?.trim()?.takeIf(String::isNotEmpty) ?: return@paged null,
@@ -178,6 +188,10 @@ internal class MusicBrainzCatalogGraph(
                 releaseDate = row.string("date"),
                 artistDisplay = row.artistDisplay(),
                 status = row.string("status"),
+                // This is an exact release-group=<MBID> browse. MusicBrainz
+                // often omits nested release-group in this response; carry
+                // the verified scope as explicit edition provenance.
+                releaseGroupMbid = groupMbid.trim().lowercase(Locale.ROOT),
                 hasFrontCover = (row["cover-art-archive"] as? JsonObject)
                     ?.get("front")?.jsonPrimitive?.booleanOrNull,
                 isVideoOnlyMedia = row.videoOnlyMediaEvidence(),

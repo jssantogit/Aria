@@ -530,4 +530,101 @@ class MusicBrainzArtistAppearancesTest {
             ), target,
         ).isEmpty())
     }
+    @Test fun incompleteReleasePrimaryCreditCannotProveGuestOnAnotherArtistsWork() {
+        val recording = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val body = """{"releases":[{
+            "id":"55555555-5555-4555-8555-555555555555",
+            "status":"Official","barcode":"0196588123456",
+            "artist-credit":[
+                {"artist":{"name":"Selected artist without MBID"}},
+                {"artist":{"id":"$other","name":"Host artist"}}
+            ],
+            "release-group":{"id":"$releaseGroup","title":"Possible collaboration",
+                "primary-type":"Single"},
+            "media":[{"tracks":[{"artist-credit":[{"artist":{"id":"$target"}}],
+                "recording":{"id":"$recording","title":"Guest track"}}]}]
+        }]}"""
+        // The unidentifiable first release artist could be the requested
+        // artist. Keeping the remaining valid host credit is not enough to
+        // prove this belongs to another artist's editorial discography.
+        assertTrue(parseMusicBrainzTrackArtistAppearances(body, target).isEmpty())
+
+        val completeHost = body.replace(
+            """"artist":{"name":"Selected artist without MBID"}""",
+            """"artist":{"id":"33333333-3333-4333-8333-333333333334","name":"Other collaborator"}""",
+        )
+        assertEquals(listOf("Possible collaboration"),
+            parseMusicBrainzTrackArtistAppearances(completeHost, target).map { it.title })
+    }
+
+    @Test fun identicalRecordingInTwoDifferentReleaseGroupsIsTwoValidGuestAppearances() = runBlocking {
+        val recording = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val firstGroup = "33333333-3333-4333-8333-333333333333"
+        val secondGroup = "44444444-4444-4444-8444-444444444444"
+        fun release(id: String, group: String, title: String) = """
+            {"id":"$id","status":"Official","barcode":"0196588123456",
+             "artist-credit":[{"artist":{"id":"$other","name":"Host artist"}}],
+             "release-group":{"id":"$group","title":"$title",
+                "primary-type":"Album","first-release-date":"2025-06-01"},
+             "media":[{"tracks":[{"artist-credit":[{"artist":{"id":"$target"}}],
+                 "recording":{"id":"$recording","title":"Shared guest recording"}}]}]}"""
+        val first = release("55555555-5555-4555-8555-555555555555",
+            firstGroup, "Host studio album")
+        val alternateEdition = release("66666666-6666-4666-8666-666666666666",
+            firstGroup, "Host studio album")
+        val second = release("77777777-7777-4777-8777-777777777777",
+            secondGroup, "Host standalone single")
+        val body = """{"release-count":3,"releases":[$first,$alternateEdition,$second]}"""
+        val parsed = parseMusicBrainzTrackArtistAppearances(body, target)
+        assertEquals(setOf(firstGroup, secondGroup),
+            parsed.map { it.releaseGroupMbid }.toSet())
+        assertEquals(2, parsed.size)
+        // The public browse must preserve both WORKS, while collapsing
+        // alternate editions of the same Group+Recording.
+        val visible = MusicBrainzArtistAppearancesClient(fetch = { body }).browse(target)
+        assertEquals(setOf(firstGroup, secondGroup),
+            visible.map { it.releaseGroupMbid }.toSet())
+        assertEquals(2, visible.size)
+    }
+
+
+    @Test fun realNewJeansWorldMusicRadioGuestDoesNotConflateJointSingleWithGuestAlbum() {
+        // MusicBrainz-verified artist/ReleaseGroup IDs (Nov 2026).
+        // Edition/Recording IDs below are controlled fixture IDs, not claims
+        // about live edition membership. This tests the credit boundary.
+        val newJeans = "49204a7a-ed85-407a-828f-6fd46f1d8126"
+        val jonBatiste = "a2a72dba-3a08-43c4-859c-4c7f5fcc9599"
+        val jointSingleGroup = "2817894d-e004-4de0-a575-da1fc3675dd0"
+        val hostAlbumGroup = "4c894acb-b0fd-49ce-93ad-7cea649d8ab8"
+        val body = """{"releases":[
+            {"id":"55555555-5555-4555-8555-555555555555",
+             "status":"Official","barcode":"00602455811936",
+             "artist-credit":[{"artist":{"id":"$jonBatiste","name":"Jon Batiste"}},
+                 {"artist":{"id":"$newJeans","name":"NewJeans"}}],
+             "release-group":{"id":"$jointSingleGroup",
+                 "title":"Be Who You Are (Real Magic)","primary-type":"Single",
+                 "artist-credit":[{"artist":{"id":"$jonBatiste","name":"Jon Batiste"}},
+                     {"artist":{"id":"$newJeans","name":"NewJeans"}}]},
+             "media":[{"tracks":[{"artist-credit":[{"artist":{"id":"$newJeans"}}],
+                 "recording":{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                     "title":"Be Who You Are (Real Magic)"}}]}]},
+            {"id":"66666666-6666-4666-8666-666666666666",
+             "status":"Official","barcode":"602455882738",
+             "artist-credit":[{"artist":{"id":"$jonBatiste","name":"Jon Batiste"}}],
+             "release-group":{"id":"$hostAlbumGroup","title":"World Music Radio",
+                 "primary-type":"Album",
+                 "artist-credit":[{"artist":{"id":"$jonBatiste","name":"Jon Batiste"}}]},
+             "media":[{"tracks":[{"artist-credit":[
+                 {"artist":{"id":"$jonBatiste"}},
+                 {"artist":{"id":"$newJeans"}}],
+                 "recording":{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                     "title":"Be Who You Are"}}]}]}
+        ]}"""
+        val results = parseMusicBrainzTrackArtistAppearances(body, newJeans)
+        assertEquals(listOf(hostAlbumGroup), results.map { it.releaseGroupMbid })
+        assertEquals(listOf("Be Who You Are"), results.map { it.trackTitle })
+        assertEquals(listOf("World Music Radio"), results.map { it.title })
+    }
+
+
 }

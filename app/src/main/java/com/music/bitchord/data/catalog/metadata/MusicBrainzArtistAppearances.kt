@@ -66,13 +66,19 @@ internal fun parseMusicBrainzTrackArtistAppearances(
         if (!release.appearanceText("status").equals("Official", ignoreCase = true))
             return@mapNotNull null
         val credit = release["artist-credit"] as? JsonArray ?: return@mapNotNull null
-        val artists = credit.mapNotNull { component ->
+        // The release's artist credit must be COMPLETE before this can be
+        // classified as another artist's work. Silently dropping a malformed
+        // credit can erase the selected primary artist, creating a false
+        // guest appearance. Plain-string join phrases are not artist objects.
+        val artists = mutableListOf<Pair<String, String?>>()
+        for (component in credit) {
+            if (component is JsonPrimitive && component.isString) continue
             val item = component as? JsonObject ?: return@mapNotNull null
             val artist = item["artist"] as? JsonObject ?: return@mapNotNull null
             val id = artist.appearanceText("id")?.lowercase(Locale.ROOT)
+                ?.takeIf(ARTIST_APPEARANCE_MBID::matches)
                 ?: return@mapNotNull null
-            if (!ARTIST_APPEARANCE_MBID.matches(id)) return@mapNotNull null
-            id to (item.appearanceText("name") ?: artist.appearanceText("name"))
+            artists += id to (item.appearanceText("name") ?: artist.appearanceText("name"))
         }
         // A track_artist browse may include tribute, cover, remix or
         // miscellaneous credit links. Verify the exact MBID in a real
@@ -223,9 +229,33 @@ internal fun parseMusicBrainzTrackArtistAppearances(
             !it.conflictingTrackCredit
         }.thenByDescending { it.commerciallyVerified }
             .thenByDescending { it.releaseDate.orEmpty() })
-        .distinctBy { it.recordingMbid ?: it.releaseGroupMbid }
-        .take(limit.coerceIn(0, 20))
+        // The SAME Recording can legitimately occur on different published
+        // works (e.g. an artist's standalone single and later album).
+        // Collapse alternate editions within a work, never across groups.
+        .distinctBy { it.releaseGroupMbid to it.recordingMbid }
         .toList()
+        .let { sorted ->
+            // A single album can own more than twelve credited recordings.
+            // Reserve a representative for EVERY commercially verified
+            // ReleaseGroup before applying the per-page cap; otherwise a
+            // later independent work is discarded before browse sees it.
+            // Incomplete/conflicting credit evidence cannot displace a
+            // genuine work merely by carrying a different Group MBID.
+            val verifiedGroups = sorted.asSequence()
+                .filter { row ->
+                    row.commerciallyVerified && !row.conflictingTrackCredit &&
+                        !row.recordingMbid.isNullOrBlank() &&
+                        row.trackTitle?.let(::canonicalStreamingTitleIsSafe) == true
+                }
+                .distinctBy { it.releaseGroupMbid }
+                .toList()
+            val reservedIds = verifiedGroups.map {
+                it.releaseGroupMbid to it.recordingMbid
+            }.toSet()
+            (verifiedGroups + sorted.filterNot {
+                (it.releaseGroupMbid to it.recordingMbid) in reservedIds
+            }).take(limit.coerceIn(0, 20))
+        }
 }
 
 internal class MusicBrainzArtistAppearancesClient(
@@ -260,11 +290,14 @@ internal class MusicBrainzArtistAppearancesClient(
                     else -> 6L * 60L * 60L * 1_000L
                 }
             ) return prior.appearances
-            // One page can be filled entirely by alternate editions of a
-            // popular act. Browse up to three pages, only when a page is
-            // complete and no verified guest release has been found yet.
-            // Do not make title-based guesses or sweep the whole catalog.
-            val foundByRecording = linkedMapOf<String, MusicBrainzArtistAppearance>()
+            // A full browse page can contain one verified work plus many
+            // alternate editions, hiding another genuine guest release in
+            // the next page. Inspect at most three pages until TWO distinct
+            // ReleaseGroups are verified, never counting duplicate editions
+            // or recordings as independent works. The first page is enough
+            // when two groups are already verified.
+            val foundByWorkAndRecording =
+                linkedMapOf<Pair<String, String>, MusicBrainzArtistAppearance>()
             var offset = 0
             var healthy = true
             for (page in 0 until 3) {
@@ -308,22 +341,34 @@ internal class MusicBrainzArtistAppearancesClient(
                             !it.trackTitle.isNullOrBlank()
                     }
                     .forEach { appearance ->
-                        foundByRecording.putIfAbsent(
-                            requireNotNull(appearance.recordingMbid), appearance,
+                        foundByWorkAndRecording.putIfAbsent(
+                            appearance.releaseGroupMbid to
+                                requireNotNull(appearance.recordingMbid), appearance,
                         )
                     }
                 val count = list.size
                 val total = (root?.get("release-count") as? JsonPrimitive)?.intOrNull
                 offset += count
-                // Captures use the old simple fetch callback and represent one
-                // page only. More pages require a real offset-aware transport.
-                if (foundByRecording.isNotEmpty() || count == 0 ||
+                // Stop on a minimum of two different *works*, not the
+                // first valid Recording. Keep raw server row offsets and the
+                // existing three-page network bound unchanged.
+                val verifiedWorkCount = foundByWorkAndRecording.keys.asSequence()
+                    .map { it.first }.distinct().take(2).count()
+                // Legacy one-argument fixture transports cannot paginate.
+                if (verifiedWorkCount >= 2 || count == 0 ||
                     (total != null && offset >= total) ||
                     (total == null && count < 25) ||
                     (fetch != null && pagedFetch == null)
                 ) break
             }
-            val found = foundByRecording.values.take(12).toList()
+            // An album can contain 12 verified guest Recordings and exhaust
+            // the public shelf before a second discovered Group is shown.
+            // Reserve one representative per distinct Group first, then fill
+            // remaining slots with the other verified tracks in source order.
+            val candidates = foundByWorkAndRecording.values.toList()
+            val groupRepresentatives = candidates.distinctBy { it.releaseGroupMbid }
+            val found = (groupRepresentatives +
+                candidates.filterNot { it in groupRepresentatives }).take(12)
             if (cache.size >= 64) cache.remove(cache.keys.first())
             cache[id] = Cached(nowMillis(), found, healthy = healthy)
             return found
