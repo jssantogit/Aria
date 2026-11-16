@@ -42,6 +42,27 @@ class MusicBrainzOfflineEditionsTest {
         } finally { db.close() }
     }
 
+    @Test fun offlineEditionSearchNeverPublishesRawFrontV3WithoutCaaAuthorization() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(
+                db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+            index.persistReleases(listOf(MusicBrainzReleaseHit(
+                worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT")))
+            val url = "https://archive.org/download/example/release-front-500.jpg"
+            db.catalogDao().upsertMusicBrainzCoverArtCache(
+                com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity(
+                    "release:front-v3", worldwide, url, System.currentTimeMillis(), url,
+                ))
+            // DAO queries cannot establish CAA permission or apply TTL/host checks.
+            // Keep source evidence offline, but never project raw URLs from SQL.
+            assertNull(db.catalogDao().searchKnownMusicBrainzReleases("SUPER REAL", 25)
+                .single().artworkUri)
+            assertEquals(url, db.catalogDao()
+                .musicBrainzCoverArtCache("release:front-v3", worldwide)?.artworkUri)
+        } finally { db.close() }
+    }
+
     @Test fun correctedEditionMetadataReachesOfflineSearchGroupAndExactCachedDetail() = runBlocking {
         val db = database()
         try {
