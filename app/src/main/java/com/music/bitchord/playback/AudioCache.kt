@@ -23,6 +23,8 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceResolver
 import com.music.bitchord.data.sources.TrackMatcher
@@ -578,7 +580,7 @@ object AudioCache {
      * it is evicted, discarded and cleared together with the bytes it
      * describes, and there is nothing to keep in step.
      */
-    fun recordServed(spec: DataSpec, servedUrl: String) {
+    fun recordServed(spec: DataSpec, servedUrl: String, sourceOwner: ProviderKey? = null) {
         if (!::cache.isInitialized) return
         if (spec.uri.scheme != "bitchord") return
         val mediaId = mediaIdIn(spec.uri) ?: return
@@ -595,11 +597,15 @@ object AudioCache {
             fun has(name: String) = meta.get(name, null as String?) != null
             val usedByPlayback = has(META_PLAYBACK) || !analysis
             val played = has(META_PLAYED) || (!analysis && mediaId in playedIds)
+            val sourceBacked = spec.uri.authority == "source"
             val tagged = meta.get(META_ORIGIN, null as String?) == origin.name &&
                 meta.get(META_MEDIA_ID, null as String?) == mediaId &&
                 has(META_PLAYBACK) == usedByPlayback &&
                 (usedByPlayback || has(META_ANALYSIS)) &&
-                has(META_PLAYED) == played
+                has(META_PLAYED) == played &&
+                (!sourceBacked || (sourceOwner != null &&
+                    meta.get(META_SOURCE_PROVIDER, null as String?) == sourceOwner.providerId &&
+                    meta.get(META_SOURCE_INSTANCE, null as String?) == sourceOwner.instanceId))
             // Every re-open — a seek, a continuation fetch — passes through
             // here. Only write when something would actually change.
             if (tagged && (song == null || has(META_TITLE))) return
@@ -608,6 +614,18 @@ object AudioCache {
                 ContentMetadataMutations().also { mutations ->
                     mutations.set(META_ORIGIN, origin.name)
                     mutations.set(META_MEDIA_ID, mediaId)
+                    if (sourceBacked) {
+                        // The logical source id names the queued row, not
+                        // necessarily the instance whose bytes actually won.
+                        // Persist only that verified winning provider identity.
+                        if (sourceOwner != null) {
+                            mutations.set(META_SOURCE_PROVIDER, sourceOwner.providerId)
+                            mutations.set(META_SOURCE_INSTANCE, sourceOwner.instanceId)
+                        } else {
+                            mutations.remove(META_SOURCE_PROVIDER)
+                            mutations.remove(META_SOURCE_INSTANCE)
+                        }
+                    }
                     if (usedByPlayback) mutations.set(META_PLAYBACK, "1") else mutations.set(META_ANALYSIS, "1")
                     if (played) mutations.set(META_PLAYED, "1")
                     describe(mutations, song, spec.uri)
@@ -772,6 +790,8 @@ object AudioCache {
 
     private const val META_ORIGIN = "bc_origin"
     private const val META_MEDIA_ID = "bc_media_id"
+    private const val META_SOURCE_PROVIDER = "bc_source_provider"
+    private const val META_SOURCE_INSTANCE = "bc_source_instance"
     private const val META_TITLE = "bc_title"
     private const val META_ARTIST = "bc_artist"
     private const val META_ALBUM = "bc_album"
