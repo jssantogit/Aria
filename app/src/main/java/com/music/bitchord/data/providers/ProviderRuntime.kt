@@ -27,6 +27,7 @@ internal object ProviderRuntime {
         val appleArt = BuiltInProviderKeys.APPLE_ARTIST_ART
         val itunes = BuiltInProviderKeys.ITUNES
         val discogs = BuiltInProviderKeys.DISCOGS
+        val listenbrainz = BuiltInProviderKeys.LISTENBRAINZ
         val mbCaps = setOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
@@ -40,6 +41,7 @@ internal object ProviderRuntime {
                     ProviderDescriptor(appleArt, setOf(ProviderCapability.ARTIST_ARTWORK), ProviderReadiness.READY),
                     BuiltInProviderDescriptors.itunes(ProviderReadiness.READY),
                     BuiltInProviderDescriptors.discogs(tokenConfigured = true, implemented = true),
+                    ProviderDescriptor(listenbrainz, setOf(ProviderCapability.PUBLIC_PLAYLISTS), ProviderReadiness.READY),
                 ),
                 choices = mbCaps.associateWith { capability ->
                     listOf(ProviderChoice(mb, enabled = true, order = 0)) +
@@ -52,6 +54,7 @@ internal object ProviderRuntime {
                     ),
                     ProviderCapability.ARTIST_ARTWORK to listOf(ProviderChoice(appleArt, enabled = true, order = 0)),
                     ProviderCapability.EDITION_METADATA to listOf(ProviderChoice(discogs, enabled = true, order = 0)),
+                    ProviderCapability.PUBLIC_PLAYLISTS to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
                 ),
             ),
         )
