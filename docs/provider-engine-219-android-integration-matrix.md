@@ -44,7 +44,17 @@ Date: 2026-11-16. Scope: Android only. GitHub issue [#218](https://github.com/js
 - PR #219 is stacked on draft PR #216. Final integration of the latter must not introduce competing catalog routes or duplicate provider authority.
 - PR #212 is an independent frozen UI. No new UI, shadow screen or layout changes may replace its pixel parity; the planned native Sources tabs must be integrated only once the UI dependency can be reconciled. Its mergeability may change independently; do not mistake absence of Git conflicts for pixel parity or approval.
 - Physical smoke, merge, and release are not authorized at this stage.
-- Android CI [#43932559597](https://github.com/jssantogit/BitChord/actions/runs/43932559597) passed on code HEAD `b11610a` for the addon, module and Soulseek cuts above. Reconfirm SUCCESS if subsequent commits change HEAD.
+- Android CI [#43932559597](https://github.com/jssantogit/BitChord/actions/runs/43932559597) passed on code HEAD `b11610a` for the addon, module and Soulseek cuts above. Android CI [#43934240210](https://github.com/jssantogit/BitChord/actions/runs/43934240210) also passed on the documentation-only former HEAD `f483e82`. Both are historical gates: subsequent code changes require a fresh exact-HEAD SUCCESS.
 - Still audit downstream media bytes, server/provider redirects, personal-data provenance in every presentation flow, active P2P pilot entrypoints and final source list UI before closing #218.
 
 This document intentionally distinguishes implemented cuts from incomplete acceptance, and should be revised from code and CI evidence rather than assumed green.
+
+## Hardening continuation — 2026-11-16 (after `f483e82`)
+
+The following changes are code-level cuts, **not** final integration/merge approval:
+
+- **No implicit Soulseek opt-in on upgrade:** `ProviderAuthorityCoordinator.migrateOnce` no longer appends an enabled Soulseek choice to an already-persisted `DOWNLOAD` category. A persisted empty list and an existing addon-only selection stay untouched; only a genuinely absent category receives the first-install import baseline. Regression tests cover both cases.
+- **Credential / P2P lifecycle:** `SoulseekCredentialVault.save/forget` invalidates the previously bound P2P session ticket and refreshes canonical Soulseek readiness after the vault transition. Unit tests prove old sockets close before readiness refresh, late socket registration is refused and a subsequent admission must bind a new ticket. This is not evidence of complete A0 entrypoint coverage.
+- **Independent dispatch order:** `SourceRegistry.active()` and `activeForDownload()` now select provider instances using their own `EXTENSION_PLAYBACK` and `DOWNLOAD` canonical priorities respectively; legacy rank and persisted list order serve only as stable fallbacks. Regression tests cover opposite priority orders for the same addon and module.
+- **Still open:** the `PlaybackService` source-backed stream path hands resolved URLs to generic Media3 `OkHttpDataSource`; in-flight media-byte revocation and redirect scope are not yet proved. The experimental A0 P2P transports require an actual entrypoint audit, including consent, socket lifecycle, durable publication, credential changes and device acceptance. The new native Sources tabs, provider provenance across presentation flows, and frozen #212 / catalog #216 reconciliation remain separate blockers.
+- **CI:** this continuation changes code and tests after `f483e82`; the exact final commit must pass Android unit/build and both shared test steps. Earlier green runs must not be transferred to the new SHA.
