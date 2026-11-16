@@ -1,5 +1,8 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.RateLimitedProviderTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -137,10 +140,18 @@ internal object ItunesCatalogRequestBudget {
 internal class KtorItunesCatalogTransport(
     private val client: HttpClient = defaultItunesHttpClient,
     private val limiter: ItunesCatalogRateLimiter = ItunesCatalogRequestBudget.limiter,
+    private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
+    private val testExchange: (suspend (String, Map<String, String>) -> String)? = null,
 ) : ItunesCatalogTransport {
     override suspend fun get(path: String, parameters: Map<String, String>): String {
         require(path == "search" || path == "lookup")
-        return limiter.run {
+        return admission.execute(
+            capability = if (path == "search") ProviderCapability.CATALOG_SEARCH
+                else ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            provider = BuiltInProviderKeys.ITUNES,
+            scheduleLimited = { block -> limiter.run(block) },
+            networkCall = {
+                testExchange?.let { return@execute it(path, parameters) }
             // Measure the real HTTP exchange, not the 3.1s global-budget
             // queue wait. Endpoint is strictly "search" or "lookup"; never
             // emit a query, UPC, artist, album, URL or personal identifier.
@@ -185,7 +196,8 @@ internal class KtorItunesCatalogTransport(
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(output.toByteArray())).toString()
-        }
+            },
+        )
     }
 }
 
