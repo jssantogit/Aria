@@ -14,6 +14,7 @@ import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -97,7 +98,7 @@ class AppleArtistArtCapabilityTest {
             val call = OkHttpClient().newCall(
                 Request.Builder().url(server.url("/artist")).build())
             val gate = ProviderPolicyGate(policy(true))
-            val pending = async {
+            val pending = async(Dispatchers.IO) {
                 com.music.bitchord.data.providers.ArtworkProbePolicyGuard { gate }.probe(
                     ProviderCapability.ARTIST_ARTWORK, key,
                 ) { awaitAppleArtistPage(call) }
