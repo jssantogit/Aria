@@ -16,11 +16,6 @@ class PlayerAnchoredActionsHighlightTest {
         assertEquals(null, com.music.bitchord.nativeCollectionOverflowOutline(false))
     }
 
-    @Test fun ratingUsesSharedFrostedPlateWhilePlayerActionsKeepTheirPlayerPlate() {
-        assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = false))
-        assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = true))
-    }
-
     @Test fun playerOverflowAndRatingUseTheSameNeutralActionPlate() {
         assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = false))
         assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = true))
