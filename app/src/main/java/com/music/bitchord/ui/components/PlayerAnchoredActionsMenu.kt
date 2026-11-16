@@ -181,7 +181,7 @@ fun PlayerAnchoredActionsMenu(
                     // entire editor clickable. A parent clickable merges the
                     // child's PaneTitle semantics and crashes Compose UI tests
                     // (and can break TalkBack). Child actions keep priority.
-                    .pointerInput(Unit) { detectTapGestures(onTap = {}) },
+                    .pointerInput(Unit) { detectTapGestures(onTap = {}) }
             if (playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher)) {
                 // The rating editor now uses the exact material used by
                 // Library filters and the other expandable action cards.
