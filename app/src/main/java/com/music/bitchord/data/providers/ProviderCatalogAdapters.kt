@@ -281,18 +281,21 @@ internal class LyricsCapabilityDispatcher(
         if (orderedProviders.isEmpty()) return null
 
         val callerJob = coroutineContext[Job]
+        val executor = ProviderQueryExecutor(gate)
         for (descriptor in orderedProviders) {
             if (callerJob?.isActive == false) break
-            val ticket = gate.open(capability, descriptor.key) ?: continue
-            val candidate = try {
+            // The same ticket must cover the active lyric request, not just
+            // the admission/publication edges. Revocation cancels a blocked
+            // HTTP lookup immediately; other authorized providers survive.
+            when (val result = executor.execute(capability, descriptor.key) {
                 lookup(descriptor.key)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                null
-            }
-            if (candidate != null && gate.accept(ticket)) {
-                return candidate
+            }) {
+                is ProviderCallResult.Success -> {
+                    if (result.value != null) return result.value
+                }
+                is ProviderCallResult.Failed,
+                ProviderCallResult.Denied,
+                ProviderCallResult.Stale -> Unit
             }
         }
         return null
