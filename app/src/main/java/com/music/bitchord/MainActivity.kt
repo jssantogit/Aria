@@ -984,6 +984,14 @@ private fun BitChordApp(
     var detailSortMenuAnchor by remember {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
     }
+    var rootSettingsOverflowOpen by remember { mutableStateOf(false) }
+    var rootSettingsOverflowAnchor by remember {
+        mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+    }
+    // Close the root overlay on navigation; no menu state leaks to another tab.
+    LaunchedEffect(selectedTab, detail?.browseId, showSettings) {
+        rootSettingsOverflowOpen = false
+    }
     var catalogAlbumOverflowOpen by remember(detail?.browseId) { mutableStateOf(false) }
     var catalogAlbumOverflowAnchor by remember(detail?.browseId) {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
@@ -4935,15 +4943,20 @@ private fun BitChordApp(
                                     }
                                 }
                             }
-                            com.music.bitchord.ui.components.AppleRootSettingsOverflow(
-                                hazeState = hazeState,
-                                description = when {
-                                    appleExploreRootChrome || appleExploreGenreChrome -> "Mais opções de Explorar"
-                                    appleDownloadsChrome -> "Mais opções de Downloads"
-                                    else -> "Mais opções da biblioteca"
-                                },
-                                onSettings = { showSettings = true },
-                            )
+                            Box(Modifier.onGloballyPositioned {
+                                rootSettingsOverflowAnchor = nativeMenuAnchorBounds(it)
+                            }) {
+                                com.music.bitchord.ui.components.AppleRootSettingsOverflow(
+                                    hazeState = hazeState,
+                                    description = when {
+                                        appleExploreRootChrome || appleExploreGenreChrome -> "Mais opções de Explorar"
+                                        appleDownloadsChrome -> "Mais opções de Downloads"
+                                        else -> "Mais opções da biblioteca"
+                                    },
+                                    expanded = rootSettingsOverflowOpen,
+                                    onOpen = { rootSettingsOverflowOpen = true },
+                                )
+                            }
                         } else {
                         UnifiedLibraryRouteToolbar(
                             recentPage = showAllLocalRecentAdditions,
@@ -6099,6 +6112,23 @@ private fun BitChordApp(
                 )
             }
 
+            // Root Library/Explore/Downloads settings use the same frosted
+            // menu and action row as the artist detail overflow, not a second
+            // oversized, solid NativeCompactOverflowMenu.
+            if (rootSettingsOverflowOpen) {
+                FrostedMenuPanel(
+                    hazeState = hazeState,
+                    anchorBounds = rootSettingsOverflowAnchor,
+                    menuWidth = FROSTED_SETTINGS_MENU_WIDTH,
+                    onDismiss = { rootSettingsOverflowOpen = false },
+                ) {
+                    FrostedSettingsAction {
+                        rootSettingsOverflowOpen = false
+                        showSettings = true
+                    }
+                }
+            }
+
             // ---- Album / playlist actions ----
             // Opened by holding a card on any tab, or from the release page's own
             // overflow. What a track's long-press menu is to one song, this is to
@@ -6152,19 +6182,14 @@ private fun BitChordApp(
                     FrostedMenuPanel(
                         hazeState = hazeState,
                         anchorBounds = catalogAlbumOverflowAnchor,
-                        menuWidth = 240.dp,
+                        menuWidth = FROSTED_SETTINGS_MENU_WIDTH,
                         onDismiss = { browseActions = null },
                     ) {
                         browseMenuBody(target, SongActionsPresentation.Menu)
-                        FrostedMenuRow(
-                            label = "Configurações",
-                            checked = false,
-                            icon = Icons.Rounded.Settings,
-                            onClick = {
-                                browseActions = null
-                                showSettings = true
-                            },
-                        )
+                        FrostedSettingsAction {
+                            browseActions = null
+                            showSettings = true
+                        }
                     }
                 } else {
                 val browseSheetState = rememberModalBottomSheetState(
@@ -8300,6 +8325,9 @@ private fun FrostedUnifiedLibrarySortMenu(
     }
 }
 
+/** Width of the approved artist overflow plate, also used by root Settings. */
+internal val FROSTED_SETTINGS_MENU_WIDTH = 240.dp
+
 /** The scrim and frosted panel both top-bar menus are drawn on. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -8437,6 +8465,17 @@ internal fun FrostedMenuRow(
             )
         }
     }
+}
+
+/** Same Settings action for root tabs and album/artist detail overflow. */
+@Composable
+internal fun FrostedSettingsAction(onClick: () -> Unit) {
+    FrostedMenuRow(
+        label = stringResource(R.string.settings),
+        checked = false,
+        icon = Icons.Rounded.Settings,
+        onClick = onClick,
+    )
 }
 
 @Composable

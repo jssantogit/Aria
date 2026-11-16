@@ -501,35 +501,27 @@ internal fun appleSettingsLauncherOutline(expanded: Boolean): Color? =
 internal fun AppleRootSettingsOverflow(
     hazeState: HazeState?,
     description: String,
-    onSettings: () -> Unit,
+    expanded: Boolean,
+    onOpen: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        FloatingLibraryTopBarCircle(hazeState) {
-            IconButton(
-                onClick = { expanded = true },
-                modifier = Modifier.size(AppleFloatingControlMetrics.toolbarDiameter)
-                    .then(appleSettingsLauncherOutline(expanded)?.let {
-                        Modifier.border(1.5.dp, it, CircleShape)
-                    } ?: Modifier)
-                    .testTag("apple-root-settings-launcher"),
-            ) {
-                Icon(
-                    imageVector = PlaylistEditorIcons.More,
-                    contentDescription = description,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+    // The root launcher is deliberately only a launcher. Its menu is hosted
+    // by MainActivity in the same full-screen FrostedMenuPanel as artist pages,
+    // preserving the correct haze sampling, scrim and positioning.
+    FloatingLibraryTopBarCircle(hazeState) {
+        IconButton(
+            onClick = onOpen,
+            modifier = Modifier.size(AppleFloatingControlMetrics.toolbarDiameter)
+                .then(appleSettingsLauncherOutline(expanded)?.let {
+                    Modifier.border(1.5.dp, it, CircleShape)
+                } ?: Modifier)
+                .testTag("apple-root-settings-launcher"),
+        ) {
+            Icon(
+                imageVector = PlaylistEditorIcons.More,
+                contentDescription = description,
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
         }
-        AppleSettingsPopup(
-            expanded = expanded,
-            hazeState = hazeState,
-            onDismiss = { expanded = false },
-            onSettings = {
-                expanded = false
-                onSettings()
-            },
-        )
     }
 }
 

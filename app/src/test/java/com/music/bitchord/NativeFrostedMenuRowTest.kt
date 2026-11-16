@@ -1,6 +1,8 @@
 package com.music.bitchord
 
 import android.app.Application
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.music.bitchord.ui.theme.BitChordTheme
 import org.junit.Assert.assertEquals
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,6 +36,23 @@ class NativeFrostedMenuRowTest {
             }
         }
         compose.onNodeWithText("Fonte local").assertIsSelected().performClick()
+        compose.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test fun rootSettingsAndArtistUseTheSameFrostedMenuWidth() {
+        assertEquals(240.dp, FROSTED_SETTINGS_MENU_WIDTH)
+    }
+
+    @Test fun sharedArtistSettingsActionIsClickableAndNeverSelected() {
+        var clicks by mutableIntStateOf(0)
+        val label = ApplicationProvider.getApplicationContext<Context>()
+            .getString(R.string.settings)
+        compose.setContent {
+            BitChordTheme {
+                FrostedSettingsAction { clicks++ }
+            }
+        }
+        compose.onNodeWithText(label).assertIsNotSelected().performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
     }
 
