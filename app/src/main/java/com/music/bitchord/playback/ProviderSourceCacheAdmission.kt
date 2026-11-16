@@ -62,3 +62,21 @@ internal fun providerAdaptiveSegmentCacheKey(
     input.fill(0)
     return "source-segment:${owner.providerId}:${owner.instanceId}:$hash"
 }
+
+/**
+ * A manifest from a remote addon/module is untrusted. The initial logical
+ * bitchord://source URI is resolved under its canonical provider gate; every
+ * subsequently referenced resource must remain HTTP(S). Otherwise a malicious
+ * HLS/DASH playlist could cause DefaultDataSource to open local file://,
+ * content:// or SMB assets on the user's device on behalf of the provider.
+ *
+ * Normal local/MediaStore playback is outside this per-source factory.
+ */
+internal fun requireAdaptiveSourceResourceScheme(
+    scheme: String?,
+    authority: String?,
+) {
+    if (scheme == "http" || scheme == "https") return
+    if (scheme == "bitchord" && authority == "source") return
+    throw IOException("Unsupported scheme in remote provider media item")
+}
