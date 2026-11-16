@@ -36,7 +36,7 @@ class NativeLibraryLoadingGeometryTest {
         }
         val bounds = compose.onNodeWithTag("native-library-loading")
             .getUnclippedBoundsInRoot()
-        assertTrue("Loader should occupy the remaining page, not the old 88dp row", (bounds.bottom - bounds.top) >= 450.dp)
+        assertTrue("Loader should occupy the remaining page, not the old 88dp row; bounds=$bounds", (bounds.bottom - bounds.top) >= 450.dp)
         val spinner = compose.onNodeWithTag("native-library-loading-indicator")
             .getUnclippedBoundsInRoot()
         assertEquals(((bounds.left + bounds.right) / 2f).value, ((spinner.left + spinner.right) / 2f).value, 1f)
