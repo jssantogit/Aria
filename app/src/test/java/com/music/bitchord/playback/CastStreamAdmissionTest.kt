@@ -5,12 +5,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.ConscryptMode
 import org.robolectric.RobolectricTestRunner
 
 /**
  * A Cast receiver cannot honor an in-process extension capability revocation
  * after being handed a resolved CDN URL. Do not export such URLs from BitChord.
  */
+@ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
 class CastStreamAdmissionTest {
     @Test fun sourceBackedAddonNeverHandsUnrevocableCdnUrlToCast() {
