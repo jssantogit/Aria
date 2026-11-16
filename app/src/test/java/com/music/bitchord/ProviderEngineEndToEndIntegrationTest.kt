@@ -295,10 +295,14 @@ class ProviderEngineEndToEndIntegrationTest {
         coordinator.onSourcesChanged(listOf(addon))
         val key = com.music.bitchord.data.providers.ProviderKey("addon", addon.id)
         assertTrue(session.gate.open(ProviderCapability.EXTENSION_PLAYBACK, key) != null)
+        assertTrue(session.gate.open(ProviderCapability.DOWNLOAD, key) != null)
+        assertTrue(session.update(ProviderCapability.DOWNLOAD,
+            listOf(ProviderChoice(key, false, 0))))
         assertTrue(coordinator.setExtensionEnabled(addon.id, false, listOf(addon)))
         coordinator.onSourcesChanged(emptyList())
         coordinator.onSourcesChanged(listOf(addon))
         assertNull(session.gate.open(ProviderCapability.EXTENSION_PLAYBACK, key))
+        assertNull(session.gate.open(ProviderCapability.DOWNLOAD, key))
     }
 
     @Test
