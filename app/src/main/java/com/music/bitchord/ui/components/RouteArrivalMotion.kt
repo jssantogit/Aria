@@ -100,6 +100,25 @@ internal fun rootTabContentTransform(reducedMotion: Boolean = false): ContentTra
     )
 }
 
+/** Only two root tabs may crossfade each other's *current* content.
+ * Pushed pages and nested destinations must not show the retiring route
+ * during their own initial loading frame. */
+internal fun mainPageRequiresImmediateExit(
+    previous: String,
+    next: String,
+    rootTabPrefix: String,
+): Boolean = !(previous.startsWith(rootTabPrefix) && next.startsWith(rootTabPrefix))
+
+/** The outgoing page is gone on the first frame; the incoming page may fade in
+ * over the stable host background, without resurrecting stale route content. */
+internal fun isolatedPageContentTransform(reducedMotion: Boolean): ContentTransform =
+    ContentTransform(
+        targetContentEnter = if (reducedMotion) EnterTransition.None else
+            fadeIn(animationSpec = tween(180)),
+        initialContentExit = ExitTransition.None,
+        sizeTransform = null,
+    )
+
 internal fun shouldAnimateRouteArrival(
     previous: String,
     next: String,
