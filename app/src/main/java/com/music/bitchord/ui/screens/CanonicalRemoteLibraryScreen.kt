@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.MusicNote
@@ -274,6 +275,8 @@ internal fun CanonicalRemoteLibraryScreen(
     onDetailChanged: (Boolean) -> Unit = {},
     onNestedAlbumChanged: (Boolean) -> Unit = {},
     onDetailOverflowVisibilityChange: (CanonicalLibraryEntityType?) -> Unit = {},
+    detailOverflowAnchor: androidx.compose.ui.unit.IntRect? = null,
+    onOpenSettings: () -> Unit = {},
     onAlbumRatingTargetChanged: (CanonicalLibrarySelection?) -> Unit = {},
     initialPinnedSelection: CanonicalLibraryPin? = null,
     initialContext: CanonicalSmartFilterContext = CanonicalSmartFilterContext.SONGS,
@@ -1546,11 +1549,14 @@ internal fun CanonicalRemoteLibraryScreen(
             )
             val menuBody: @Composable () -> Unit = {
                 BrowseActionsSheet(
-                    presentation = if (canonicalLibraryHeldPresentation(
-                        heldNow = useHeldMenu,
-                        liveMenuVisible = libraryMenu != null,
-                        heldBeforeExit = exitLibraryWasHeld,
-                    )) SongActionsPresentation.Menu else SongActionsPresentation.Sheet,
+                    presentation = if (
+                        canonicalLibraryHeldPresentation(
+                            heldNow = useHeldMenu,
+                            liveMenuVisible = libraryMenu != null,
+                            heldBeforeExit = exitLibraryWasHeld,
+                        ) || (selectedEntity != null &&
+                            menu.selection.type != CanonicalLibraryEntityType.TRACK)
+                    ) SongActionsPresentation.Menu else SongActionsPresentation.Sheet,
                     target = BrowseTarget(
                         browseId = null,
                         title = menu.title,
@@ -1673,16 +1679,43 @@ internal fun CanonicalRemoteLibraryScreen(
                 }
             }
             if (libraryMenu != null && !useHeldMenu) {
-                ModalBottomSheet(
-                    onDismissRequest = {
-                        libraryMenu = null
-                        heldLibraryMenuOrigin = null
-                    },
-                    shape = androidx.compose.ui.graphics.RectangleShape,
-                    dragHandle = null,
-                    containerColor = MaterialTheme.colorScheme.background,
+                if (selectedEntity != null &&
+                    menu.selection.type != CanonicalLibraryEntityType.TRACK
                 ) {
-                    menuBody()
+                    // The detail toolbar owns this menu. Do not open the old
+                    // bottom sheet: expand the same frosted card from its ⋯.
+                    com.music.bitchord.FrostedMenuPanel(
+                        hazeState = heldLibraryHaze,
+                        anchorBounds = detailOverflowAnchor,
+                        onDismiss = {
+                            libraryMenu = null
+                            heldLibraryMenuOrigin = null
+                        },
+                    ) {
+                        menuBody()
+                        com.music.bitchord.FrostedMenuRow(
+                            label = "Configurações",
+                            checked = false,
+                            icon = androidx.compose.material.icons.Icons.Rounded.Settings,
+                            onClick = {
+                                libraryMenu = null
+                                heldLibraryMenuOrigin = null
+                                onOpenSettings()
+                            },
+                        )
+                    }
+                } else {
+                    ModalBottomSheet(
+                        onDismissRequest = {
+                            libraryMenu = null
+                            heldLibraryMenuOrigin = null
+                        },
+                        shape = androidx.compose.ui.graphics.RectangleShape,
+                        dragHandle = null,
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ) {
+                        menuBody()
+                    }
                 }
             }
         }
