@@ -103,6 +103,17 @@ import com.music.bitchord.ui.player.MeshPalette
 /** How far the Listen now heading and feed sit above the shared top inset. */
 private val HOME_TITLE_LIFT = 28.dp
 
+/**
+ * Home intentionally raises its large heading. Explore genre details have an
+ * independent floating Back control, so they must use the FULL top-bar inset
+ * instead of lifting the heading under that control.
+ */
+internal fun homeTitleTopInset(
+    topBarInset: Dp,
+    reserveFloatingBackSpace: Boolean,
+): Dp = if (reserveFloatingBackSpace) topBarInset.coerceAtLeast(0.dp)
+else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
+
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
 
@@ -152,6 +163,8 @@ fun HomeScreen(
     /** The page's heading, or null for none — the desktop's pages carry no heading. */
     title: String?,
     onBack: (() -> Unit)? = null,
+    /** Pushed Explore categories keep the full inset below the floating Back. */
+    reserveFloatingBackSpace: Boolean = false,
     headerActions: List<HomeHeaderAction> = emptyList(),
     signedIn: Boolean = true,
     onSignIn: (() -> Unit)? = null,
@@ -214,7 +227,10 @@ fun HomeScreen(
             // whole feed up by [HOME_TITLE_LIFT] with it.
             contentPadding = if (title != null) {
                 PaddingValues(
-                    top = (contentPadding.calculateTopPadding() - HOME_TITLE_LIFT).coerceAtLeast(0.dp),
+                    top = homeTitleTopInset(
+                        contentPadding.calculateTopPadding(),
+                        reserveFloatingBackSpace = reserveFloatingBackSpace,
+                    ),
                     bottom = contentPadding.calculateBottomPadding(),
                 )
             } else {

@@ -3988,6 +3988,9 @@ private fun BitChordApp(
                             pullState = explorePull,
                             contentPadding = listPadding,
                             title = visibleGenre.title,
+                            // The global floating Back sits above this in-list
+                            // heading. Do not apply Home's upward title lift.
+                            reserveFloatingBackSpace = true,
                             onItemLongPress = onShelfLongPress,
                             publicPlaylistNotice = canonicalGenrePlaylistNotice,
                             // The global FrostedTopBar owns this back button.
