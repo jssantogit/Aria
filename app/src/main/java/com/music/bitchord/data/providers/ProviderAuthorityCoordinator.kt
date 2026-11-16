@@ -72,7 +72,21 @@ internal class ProviderAuthorityCoordinator(
         imported[ProviderCapability.DOWNLOAD] = imported[ProviderCapability.DOWNLOAD].orEmpty() +
             ProviderChoice(ProviderKey("soulseek"), enabled = true,
                 order = imported[ProviderCapability.DOWNLOAD].orEmpty().size)
-        return session.initialize(imported)
+        if (!session.initialize(imported)) return false
+        // Earlier Provider Engine builds could already have DOWNLOAD choices
+        // for addons but no Soulseek slot. migrateMissing() adds categories,
+        // never entries within an existing category; fill this gap once while
+        // preserving all existing opt-outs and priorities.
+        val downloadChoices = session.state.value.configured[ProviderCapability.DOWNLOAD].orEmpty()
+        if (downloadChoices.none { it.key == ProviderKey("soulseek") }) {
+            return session.update(
+                ProviderCapability.DOWNLOAD,
+                downloadChoices + ProviderChoice(
+                    ProviderKey("soulseek"), enabled = true, order = downloadChoices.size,
+                ),
+            )
+        }
+        return true
     }
 
     /**
