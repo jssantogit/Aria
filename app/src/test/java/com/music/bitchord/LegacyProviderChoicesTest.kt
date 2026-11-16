@@ -113,8 +113,12 @@ class LegacyProviderChoicesTest {
         assertEquals(listOf(false, true, true), rows.map { it.enabled })
         assertEquals(listOf(0, 1, 2), rows.map { it.order })
         assertFalse(choices.containsKey(ProviderCapability.AUDIO_PLAYBACK))
-        assertFalse(choices.containsKey(ProviderCapability.DOWNLOAD))
+        val downloads = choices.getValue(ProviderCapability.DOWNLOAD)
+        assertEquals(listOf(ProviderKey("addon", "a"), ProviderKey("custom_module", "c")),
+            downloads.map { it.key })
+        assertEquals(listOf(false, true), downloads.map { it.enabled })
         assertFalse(rows.toString().contains("private.example"))
+        assertFalse(downloads.toString().contains("private.example"))
     }
 
     @Test fun absentUserExtensionsAreNotMisrepresentedAsExplicitAudioOptOut() {
