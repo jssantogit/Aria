@@ -1,6 +1,8 @@
 package com.music.bitchord.playback
 
 import android.net.Uri
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
@@ -65,6 +67,7 @@ internal class ProviderPlaybackCallFactory(
  * Non-extension requests are passed through untouched (local media and
  * OpenSubsonic use their own playback transports).
  */
+@OptIn(UnstableApi::class)
 internal class ProviderPlaybackByteDataSource(
     private val upstream: DataSource,
     private val cancelNetwork: () -> Unit = {},
