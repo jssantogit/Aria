@@ -1,5 +1,10 @@
 package com.music.bitchord.data.canvas
 
+import com.music.bitchord.data.providers.ArtworkProbePolicyGuard
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.DebugLog as Log
 import com.music.bitchord.data.Http
 import android.content.Context
@@ -89,6 +94,23 @@ internal fun exactAppleArtistPageUrl(browseId: String, storeUrl: String?): Strin
  */
 object AppleArtistArtRepository {
 
+    @Volatile
+    private var gateProvider: () -> ProviderPolicyGate? = {
+        ProviderRuntime.gateForCacheReadOrNull()
+    }
+
+    internal fun setPolicyGateForTests(provider: (() -> ProviderPolicyGate?)?) {
+        gateProvider = provider ?: { ProviderRuntime.gateForCacheReadOrNull() }
+    }
+
+    private fun artistArtPermitted(): Boolean {
+        val gate = gateProvider() ?: return false
+        return gate.open(
+            ProviderCapability.ARTIST_ARTWORK,
+            BuiltInProviderKeys.APPLE_ARTIST_ART,
+        ) != null
+    }
+
     private const val TAG = "AppleArtistArt"
     private val offlineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var offlinePrefs: SharedPreferences? = null
@@ -131,13 +153,15 @@ object AppleArtistArtRepository {
     }
 
     private fun warmStills(key: String, art: AppleArtistArt) {
-        if (!AppSettings.saveVisualStillImages.value) return
+        if (!AppSettings.saveVisualStillImages.value || !artistArtPermitted()) return
         offlineScope.launch {
+            if (!artistArtPermitted()) return@launch
             VisualStillMedia.save(VisualSurface.ARTIST, "apple-hero|$key", art.heroUrl)
+            if (!artistArtPermitted()) return@launch
             art.logoUrl?.let { VisualStillMedia.save(
                 VisualSurface.ARTIST, "apple-logo|$key", it,
             ) }
-            _updates.value++
+            if (artistArtPermitted()) _updates.value++
         }
     }
 
@@ -176,6 +200,7 @@ object AppleArtistArtRepository {
      * same thing to a caller that is only deciding what to draw first.
      */
     fun cached(artistName: String): AppleArtistArt? {
+        if (!artistArtPermitted()) return null
         val key = artistName.normalized()
         if (key.isBlank()) return null
         val known = synchronized(cache) { cache[key] }
@@ -188,13 +213,20 @@ object AppleArtistArtRepository {
     /** A file from the app-managed verified still store, not a remote
      * file URL. Similar artists can safely reuse this after losing network. */
     fun savedHeroFile(artistName: String): java.io.File? {
+        if (!artistArtPermitted()) return null
         val key = artistName.normalized()
         if (key.isBlank()) return null
         return VisualStillMedia.cached(VisualSurface.ARTIST, "apple-hero|$key")
     }
 
     /** The header art for [artistName], or null when Apple has none. Never throws. */
-    suspend fun artFor(artistName: String): AppleArtistArt? {
+    suspend fun artFor(artistName: String): AppleArtistArt? =
+        ArtworkProbePolicyGuard(gateProvider).probe(
+            capability = ProviderCapability.ARTIST_ARTWORK,
+            provider = BuiltInProviderKeys.APPLE_ARTIST_ART,
+        ) { artForAuthorized(artistName) }
+
+    private suspend fun artForAuthorized(artistName: String): AppleArtistArt? {
         val key = artistName.normalized()
         if (key.isEmpty()) return null
         synchronized(cache) { cache[key] }?.let {
@@ -226,7 +258,15 @@ object AppleArtistArtRepository {
      * selects the first result by name (which confuses duplicate stage names).
      * Apple's public page hydration JSON is undocumented, so failure is null.
      */
-    suspend fun artForExactStoreArtist(browseId: String, storeUrl: String?): AppleArtistArt? {
+    suspend fun artForExactStoreArtist(browseId: String, storeUrl: String?): AppleArtistArt? =
+        ArtworkProbePolicyGuard(gateProvider).probe(
+            capability = ProviderCapability.ARTIST_ARTWORK,
+            provider = BuiltInProviderKeys.APPLE_ARTIST_ART,
+        ) { artForExactAuthorized(browseId, storeUrl) }
+
+    private suspend fun artForExactAuthorized(
+        browseId: String, storeUrl: String?,
+    ): AppleArtistArt? {
         val page = exactAppleArtistPageUrl(browseId, storeUrl) ?: return null
         val key = "exact|$browseId"
         synchronized(cache) { cache[key] }?.let { entry ->
