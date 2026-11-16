@@ -21,6 +21,8 @@ enum class ProviderCapability {
     CHART_MOST_PLAYED,
     CHART_SALES,
     LISTENING_STATISTICS,
+    /** Account-scoped ListenBrainz suggestions, separate from listening uploads. */
+    PERSONAL_RECOMMENDATIONS,
     PUBLIC_PLAYLISTS,
     PERSONAL_LIBRARY,
     AUDIO_PLAYBACK,
