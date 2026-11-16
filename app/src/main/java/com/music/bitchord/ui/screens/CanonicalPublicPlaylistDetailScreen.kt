@@ -188,7 +188,9 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                     onRate = if (ratingTarget != null) ({ editingRating = true }) else null,
                     sleeveSize = maxWidth * .76f,
                     artwork = {
-                        Box(Modifier.fillMaxSize()) {
+                        // The Library's custom-cover branch clips its whole
+                        // sleeve, not just the fallback underneath the image.
+                        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
                             CanonicalPlaylistCoverArt(
                                 rows = emptyList(), modifier = Modifier.fillMaxSize(),
                             )
