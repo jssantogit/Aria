@@ -10,6 +10,9 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertDoesNotExist
+import com.music.bitchord.ui.components.TopBarAccountButton
 import androidx.compose.ui.test.performClick
 import com.music.bitchord.ui.theme.BitChordTheme
 import org.junit.Assert.assertEquals
@@ -37,6 +40,23 @@ class NativeFrostedMenuRowTest {
         }
         compose.onNodeWithText("Fonte local").assertIsSelected().performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test fun homeSettingsLauncherDelegatesToArtistStyleHostWithoutOpeningAnotherPopup() {
+        var opens by mutableIntStateOf(0)
+        compose.setContent {
+            BitChordTheme {
+                TopBarAccountButton(
+                    account = null,
+                    onClick = {},
+                    hostedExpanded = false,
+                    onShowHostedMenu = { opens++ },
+                )
+            }
+        }
+        compose.onNodeWithTag("apple-global-more-options").performClick()
+        compose.runOnIdle { assertEquals(1, opens) }
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
     }
 
     @Test fun rootSettingsAndArtistUseTheSameFrostedMenuWidth() {

@@ -721,11 +721,18 @@ fun TopBarAccountButton(
     onSwipeProfile: ((forward: Boolean) -> Boolean)? = null,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    /** MainActivity provides the artist-style frosted settings overlay. */
+    hostedExpanded: Boolean? = null,
+    onShowHostedMenu: (() -> Unit)? = null,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var localExpanded by remember { mutableStateOf(false) }
+    val expanded = hostedExpanded ?: localExpanded
     Box(modifier = modifier) {
         IconButton(
-            onClick = { expanded = true },
+            onClick = {
+                if (onShowHostedMenu != null) onShowHostedMenu()
+                else localExpanded = true
+            },
             modifier = Modifier.size(AppleFloatingControlMetrics.toolbarDiameter)
                 .then(appleSettingsLauncherOutline(expanded)?.let {
                     Modifier.border(1.5.dp, it, CircleShape)
@@ -739,15 +746,19 @@ fun TopBarAccountButton(
                 modifier = Modifier.size(AppleFloatingControlMetrics.toolbarGlyphSize),
             )
         }
-        AppleSettingsPopup(
-            expanded = expanded,
-            hazeState = hazeState,
-            onDismiss = { expanded = false },
-            onSettings = {
-                expanded = false
-                onClick()
-            },
-        )
+        // Only legacy callers retain a local compact popup. App root routes
+        // always use the same full-screen frosted host as the artist page.
+        if (onShowHostedMenu == null) {
+            AppleSettingsPopup(
+                expanded = expanded,
+                hazeState = hazeState,
+                onDismiss = { localExpanded = false },
+                onSettings = {
+                    localExpanded = false
+                    onClick()
+                },
+            )
+        }
     }
 }
 

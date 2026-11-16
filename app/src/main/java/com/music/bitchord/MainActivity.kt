@@ -5178,13 +5178,19 @@ private fun BitChordApp(
                                     unifiedLibraryCategory, unifiedLibraryDetailOpen,
                                     unifiedLibraryNestedAlbumOpen,
                                 )
-                            ) TopBarAccountButton(
-                                account = account,
-                                // Shared three-dot overflow opens a compact Settings
-                                // menu. Profile switching stays in Settings itself.
-                                onClick = { showSettings = true },
-                                hazeState = hazeState,
-                            )
+                            ) Box(Modifier.onGloballyPositioned {
+                                rootSettingsOverflowAnchor = nativeMenuAnchorBounds(it)
+                            }) {
+                                TopBarAccountButton(
+                                    account = account,
+                                    // All Settings-only launchers use the same
+                                    // frosted host as the artist toolbar.
+                                    onClick = { showSettings = true },
+                                    hazeState = hazeState,
+                                    hostedExpanded = rootSettingsOverflowOpen,
+                                    onShowHostedMenu = { rootSettingsOverflowOpen = true },
+                                )
+                            }
                         }
                         }
                     },
