@@ -22,6 +22,7 @@ class ScrobbleManager(
     var scrobbleDelayPercent: Float = 0.5f,
     var scrobbleDelaySeconds: Int = 180,
     private val policyGate: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
+    private val networkCall: suspend (suspend () -> String) -> String = { request -> request() },
 ) {
     private var scrobbleJob: Job? = null
     private var scrobbleRemainingMillis: Long = 0L
@@ -137,13 +138,13 @@ class ScrobbleManager(
             when (val outcome = ProviderQueryExecutor(gate).execute(
                 ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM,
             ) {
-                LastFM.scrobble(
+                networkCall { LastFM.scrobble(
                     artist = scrobbleArtist,
                     track = song.title,
                     duration = durationSeconds,
                     timestamp = startedAt,
                     album = song.albumName,
-                ).getOrThrow()
+                ).getOrThrow() }
             }) {
                 is ProviderCallResult.Success -> Log.d(TAG, "Scrobbled: ${song.title} by ${song.artist}")
                 is ProviderCallResult.Failed -> Log.e(TAG, "Failed to scrobble: ${song.title}", outcome.cause)
@@ -159,7 +160,7 @@ class ScrobbleManager(
             when (val outcome = ProviderQueryExecutor(gate).execute(
                 ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM,
             ) {
-                LastFM.updateNowPlaying(
+                networkCall { LastFM.updateNowPlaying(
                     artist = scrobbleArtist,
                     track = song.title,
                     album = song.albumName,
