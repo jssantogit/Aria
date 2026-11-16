@@ -45,15 +45,14 @@ import com.music.bitchord.ui.components.CompactRatingIndicator
 import com.music.bitchord.ui.components.CompactRatingGeometry
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.music.bitchord.ui.theme.rememberArtworkPalette
 import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
 
 /** Same drawable as the original Now Playing launcher; never substitute a generic More icon. */
 internal fun playerAnchoredMenuHighlightGlyph() = originalPortraitNowPlayingOverflowGlyph()
 
-/** An anchored rating is a contextual card, not the player's action sheet. */
-internal fun playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher: Boolean): Boolean =
-    !highlightLauncher
+/** Both player overflow and rating use the shared contextual action plate. */
+@Suppress("UNUSED_PARAMETER")
+internal fun playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher: Boolean): Boolean = true
 
 /**
  * Draw the visible selected ⋯ over the exact launcher, even though the menu
@@ -94,11 +93,6 @@ fun PlayerAnchoredActionsMenu(
     maxWidth: Dp = 340.dp,
     content: @Composable () -> Unit,
 ) {
-    val palette = rememberArtworkPalette(imageUrl = artworkUrl)
-    val plate = nativeCompactPlateColor(
-        MaterialTheme.colorScheme.background.luminance() < 0.5f,
-        artworkElevation = null,
-    )
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     var plateSize by remember { mutableStateOf(IntSize.Zero) }
     var rootOrigin by remember { mutableStateOf(IntOffset.Zero) }
@@ -186,35 +180,13 @@ fun PlayerAnchoredActionsMenu(
                     // child's PaneTitle semantics and crashes Compose UI tests
                     // (and can break TalkBack). Child actions keep priority.
                     .pointerInput(Unit) { detectTapGestures(onTap = {}) }
-            if (playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher)) {
-                // The rating editor now uses the exact material used by
-                // Library filters and the other expandable action cards.
-                NativeContextActionPlate(
-                    modifier = plateModifier,
-                    artworkUrl = artworkUrl,
-                ) {
-                    content()
-                }
-            } else {
-                Surface(
-                    modifier = plateModifier,
-                    color = plate,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    shape = RoundedCornerShape(18.dp),
-                    shadowElevation = 22.dp,
-                ) {
-                    Box {
-                        ArtworkBackdrop(
-                            palette = palette,
-                            imageUrl = artworkUrl,
-                            modifier = Modifier.matchParentSize(),
-                            washFraction = 0.78f,
-                        )
-                        Box(Modifier.background(plate.copy(alpha = 0.88f))) {
-                            content()
-                        }
-                    }
-                }
+            // One shared neutral card for the player ⋯ and rating controls.
+            // No separate album-art backdrop or second menu tint layer.
+            NativeContextActionPlate(
+                modifier = plateModifier,
+                treatment = NativeActionCardTreatment.SOLID,
+            ) {
+                content()
             }
 
             // The native rating star lives behind this separate dialog window.
