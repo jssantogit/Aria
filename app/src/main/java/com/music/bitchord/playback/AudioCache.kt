@@ -820,13 +820,14 @@ object AudioCache {
      */
     // Public compatibility API for other existing playback consumers.
     fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory =
-        playbackFactory(upstream, null)
+        playbackFactory(upstream, null, null)
 
     // Scoped adaptive playback uses a per-MediaItem ticket; this overload is
     // intentionally internal so no public API exposes a private policy lease.
     internal fun playbackFactory(
         upstream: DataSource.Factory,
         onSourceCacheLease: ((ProviderPlaybackByteLease) -> Unit)?,
+        adaptiveSegmentLease: (() -> ProviderPlaybackByteLease?)?,
     ): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
         val upstreamDs = upstream.createDataSource()
@@ -918,7 +919,22 @@ object AudioCache {
                     cacheDs
                 }
                 return try {
-                    if (activeDs === cacheDs) checkSourceCache(dataSpec)
+                    if (activeDs === cacheDs) {
+                        // HLS/DASH segment DataSpecs use their own HTTP URLs,
+                        // so they can hit CacheDataSource without touching
+                        // the provider-aware HTTP transport or its customData.
+                        // This per-MediaItem gate protects those cached bytes.
+                        if (adaptiveSegmentLease != null &&
+                            (scheme == "http" || scheme == "https")) {
+                            val lease = admitAdaptiveSegmentCacheRead(adaptiveSegmentLease())
+                            cachedSourceLease = lease
+                            unsubscribeCachedSource = lease.onRevoke {
+                                cachedSourceRevoked = true
+                                runCatching { cacheDs.close() }
+                            }
+                        }
+                        checkSourceCache(dataSpec)
+                    }
                     val available = activeDs.open(dataSpec)
                     checkCachedSourcePermission()
                     available
