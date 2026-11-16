@@ -1,6 +1,7 @@
 package com.music.bitchord.acquisition.a0
 
 import java.net.Socket
+import java.net.ServerSocket
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
@@ -14,6 +15,7 @@ import com.music.bitchord.data.providers.ProviderRuntime
 internal object SoulseekActiveSession {
     private var epoch = 0L
     private val sockets = mutableSetOf<Socket>()
+    private val searchListeners = mutableSetOf<ServerSocket>()
     private val activeTransfers = mutableSetOf<A0ObservedCandidateHandoff>()
 
     private var currentDownloadGate: ProviderPolicyGate? = null
@@ -83,6 +85,14 @@ internal object SoulseekActiveSession {
         return refreshReadiness(configured)
     }
 
+    /**
+     * Mandatory preflight for a manual A0 session. Captures a generation only
+     * after an exact DOWNLOAD × soulseek ticket has been admitted. A direct
+     * pilot launch must never bypass the normal download routing decision.
+     */
+    @Synchronized fun admitManualSession(gate: ProviderPolicyGate?): Long? =
+        if (bindDownloadPermission(gate)) epoch else null
+
     @Synchronized fun generation(): Long = epoch
 
     @Synchronized fun isCurrent(expected: Long): Boolean = epoch == expected
@@ -125,17 +135,39 @@ internal object SoulseekActiveSession {
         sockets.remove(socket)
     }
 
+    /** A ServerSocket also holds a live P2P entrypoint during search; unlike
+     * accepted peers it cannot be tracked through register(Socket).
+     */
+    @Synchronized fun registerListener(
+        listener: ServerSocket, expectedGeneration: Long,
+    ): Boolean {
+        if (expectedGeneration != epoch || !downloadAuthorized()) {
+            runCatching { listener.close() }
+            return false
+        }
+        searchListeners.add(listener)
+        return true
+    }
+
+    @Synchronized fun detachListener(listener: ServerSocket) {
+        searchListeners.remove(listener)
+    }
+
     @Synchronized fun revoke() {
         epoch++
         // P/F transport can stay alive after the authenticated server socket
         // is no longer in use. Its own cancel closes both peer channels.
         val transfers = activeTransfers.toList()
+        val listeners = searchListeners.toList()
         val connections = sockets.toList()
         activeTransfers.clear()
+        searchListeners.clear()
         sockets.clear()
         // Cancel outside the mutable-set iteration: closing a transfer may
-        // synchronously detach itself from the active session.
+        // synchronously detach itself from the active session. Close search
+        // listeners too, so a pending accept cannot outlive the opt-out.
         transfers.forEach { runCatching { it.cancel() } }
+        listeners.forEach { runCatching { it.close() } }
         connections.forEach { runCatching { it.close() } }
     }
 }
