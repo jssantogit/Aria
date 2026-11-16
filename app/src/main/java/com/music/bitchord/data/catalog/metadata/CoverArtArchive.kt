@@ -1,6 +1,8 @@
 package com.music.bitchord.data.catalog.metadata
 
 import com.music.bitchord.data.providers.PolicyGuardedCoverArtArchiveTransport
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.catalog.CanonicalCatalogDao
 import com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity
 import io.ktor.client.HttpClient
@@ -171,6 +173,16 @@ internal class CoverArtArchive(
     private val requestTimeoutMs: Long = 6_000L,
     private val telemetry: CatalogCoverTelemetry = CatalogCoverTelemetry.process,
 ) {
+    private fun cachePermitted(): Boolean {
+        // Custom transports are used by legacy unit tests; production's
+        // default guarded transport enforces the same gate on Room cache hits.
+        val guarded = transport as? PolicyGuardedCoverArtArchiveTransport ?: return true
+        return guarded.currentGate()?.open(
+            ProviderCapability.RELEASE_ARTWORK,
+            BuiltInProviderKeys.COVER_ART_ARCHIVE,
+        ) != null
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     // Different Home/search cards often resolve the same Release concurrently.
@@ -183,20 +195,21 @@ internal class CoverArtArchive(
         size: CoverArtSize = CoverArtSize.HERO,
     ): String? {
         // Invalid supplied IDs fail closed, including before attempting group art.
+        if (!cachePermitted()) return null
         if (releaseMbid != null && !validMbid(releaseMbid)) return null
         if (groupMbid != null && !validMbid(groupMbid)) return null
         if (releaseMbid == null && groupMbid == null) return null
 
         releaseMbid?.let { mbid ->
             when (val primary = fetch("release", mbid.lowercase(Locale.ROOT))) {
-                is CoverLookup.Found -> return primary.urlFor(size)
+                is CoverLookup.Found -> return primary.urlFor(size).takeIf { cachePermitted() }
                 CoverLookup.Unavailable -> return null // Never replace an unknown edition cover.
                 CoverLookup.Missing -> Unit // Only a confirmed absence permits group fallback.
             }
         }
         groupMbid?.let { mbid ->
             return when (val fallback = fetch("release-group", mbid.lowercase(Locale.ROOT))) {
-                is CoverLookup.Found -> fallback.urlFor(size)
+                is CoverLookup.Found -> fallback.urlFor(size).takeIf { cachePermitted() }
                 CoverLookup.Missing, CoverLookup.Unavailable -> null
             }
         }
@@ -210,12 +223,13 @@ internal class CoverArtArchive(
     suspend fun cachedVerifiedGroupCover(
         groupMbid: String, size: CoverArtSize = CoverArtSize.THUMBNAIL,
     ): String? {
-        if (!validMbid(groupMbid)) return null
+        if (!validMbid(groupMbid) || !cachePermitted()) return null
         val cached = try { store.read("verified-artist-group", groupMbid.lowercase(Locale.ROOT)) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { null } ?: return null
         val url = eligibleVerifiedGroupFrontUrl(cached, nowEpochMs(), size)
             ?: return null
+        if (!cachePermitted()) return null
         telemetry.recordCacheHit()
         return url
     }
@@ -233,7 +247,7 @@ internal class CoverArtArchive(
         val ids = groupMbids.asSequence()
             .map { it.lowercase(Locale.ROOT) }
             .filter(::validMbid).distinct().toList()
-        if (ids.isEmpty()) return emptyMap()
+        if (ids.isEmpty() || !cachePermitted()) return emptyMap()
         val records = try {
             store.readVerifiedGroupFronts(ids)
         } catch (cancelled: CancellationException) {
@@ -252,6 +266,7 @@ internal class CoverArtArchive(
                 telemetry.recordCacheHit()
             }
         }
+        if (!cachePermitted()) return emptyMap()
         telemetry.recordVerifiedGroupCachedBatch(verified.size)
         return verified
     }
