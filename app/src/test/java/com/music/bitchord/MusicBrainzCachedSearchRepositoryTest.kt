@@ -66,22 +66,24 @@ class MusicBrainzCachedSearchRepositoryTest {
             ),
         )
 
-    @Test fun disabledSearchReturnsNoMusicBrainzRowsWithoutDeletingSourceEvidence(): Unit = runBlocking {
+    @Test fun disabledSearchHidesEditorialOnlyRowsWhilePreservingLocalAssetMbids(): Unit = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(
             RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
         ).allowMainThreadQueries().build()
         try {
             val artistMbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
-            val recordingMbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+            val localRecordingMbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+            val editorialOnlyMbid = "3e619ba2-34f0-4649-83d8-05483e2fabe5"
             val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistArtists(listOf(MusicBrainzArtistHit(
                 artistMbid, "ILLIT", null, "KR",
             )))
             val ids = index.persistRecordings(listOf(
-                MusicBrainzRecordingHit(recordingMbid, "Magnetic", "ILLIT", 160000L),
+                MusicBrainzRecordingHit(localRecordingMbid, "Magnetic", "ILLIT", 160000L),
+                MusicBrainzRecordingHit(editorialOnlyMbid, "Magnetic (Editorial Only)", "ILLIT", 162000L),
             ))
             db.catalogDao().upsertMediaAsset(com.music.bitchord.data.catalog.MediaAssetEntity(
-                "asset-local", ids.getValue(recordingMbid),
+                "asset-local", ids.getValue(localRecordingMbid),
                 "local-mediastore", "file-1",
                 "content://media/external/audio/media/1", null, null, null, null,
             ))
@@ -98,17 +100,24 @@ class MusicBrainzCachedSearchRepositoryTest {
             val song = repository.search("Magnetic", MusicBrainzCachedSearchLimits(
                 artists = 0, recordings = 4, groups = 0, releases = 0,
             ))
-            assertEquals(listOf(recordingMbid),
-                song.recordings.map { it.musicBrainzId })
-            assertEquals(setOf(recordingMbid), song.recordingMbidsWithAssets)
+            assertEquals(
+                setOf(localRecordingMbid, editorialOnlyMbid),
+                song.recordings.map { it.musicBrainzId }.toSet(),
+            )
+            assertEquals(setOf(localRecordingMbid), song.recordingMbidsWithAssets)
 
+            // Disabling MusicBrainz editorial search suppresses editorial-only rows,
+            // while keeping recordings backed by local/personal MediaAssets visible.
             gate.replace(policy(search = false))
             val disabled = repository.search("Magnetic")
-            assertTrue(disabled.isEmpty)
-            assertTrue(disabled.recordingMbidsWithAssets.isEmpty())
-            assertEquals(ids.getValue(recordingMbid),
+            assertTrue(disabled.artists.isEmpty())
+            assertTrue(disabled.groups.isEmpty())
+            assertTrue(disabled.releases.isEmpty())
+            assertEquals(listOf(localRecordingMbid), disabled.recordings.map { it.musicBrainzId })
+            assertEquals(setOf(localRecordingMbid), disabled.recordingMbidsWithAssets)
+            assertEquals(ids.getValue(localRecordingMbid),
                 db.catalogDao().entityIdForExternalIdentity(
-                    "musicbrainz", "recording", recordingMbid,
+                    "musicbrainz", "recording", localRecordingMbid,
                 ))
             val localBrowse = com.music.bitchord.data.catalog.CanonicalMultiSourceBrowseRepository(
                 com.music.bitchord.data.catalog.RoomCanonicalMultiSourceBrowseStore(db.catalogDao()),
@@ -118,8 +127,10 @@ class MusicBrainzCachedSearchRepositoryTest {
                 localTracks.flatMap { it.availableAssets }.map { it.mediaAssetId })
 
             gate.replace(policy(search = true))
-            assertEquals(listOf(recordingMbid),
-                repository.search("Magnetic").recordings.map { it.musicBrainzId })
+            assertEquals(
+                setOf(localRecordingMbid, editorialOnlyMbid),
+                repository.search("Magnetic").recordings.map { it.musicBrainzId }.toSet(),
+            )
         } finally { db.close() }
     }
 

@@ -8,16 +8,15 @@ import com.music.bitchord.data.sources.SourceRegistry
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Installed early in Android startup, fail-closed. MusicBrainz is currently
- * the only legacy network source migrated into this session automatically.
+ * Installed early in Android startup, fail-closed.
  *
- * Lyrics and addon switches are STILL written by AppSettings/SourceRegistry.
- * Do not snapshot their default values into this store until their writers and
- * consumers have been atomically cut over to a single authority. In particular,
- * never treat "all offered lyrics" as the user's persisted opt-in.
+ * Registers the full built-in provider inventory (honestly marking unimplemented
+ * capabilities as NOT_IMPLEMENTED rather than READY) and exposes both the
+ * admission [ProviderPolicyGate] and the single-authority [ProviderAuthorityCoordinator].
  */
 internal object ProviderRuntime {
     @Volatile private var session: ProviderCapabilitySession? = null
+    @Volatile private var coordinator: ProviderAuthorityCoordinator? = null
     @Volatile private var installedInProcess: Boolean = false
 
     private val plainJvmTestGate: ProviderPolicyGate by lazy {
@@ -42,9 +41,9 @@ internal object ProviderRuntime {
     }.getOrDefault(false)
 
     private fun installedDescriptors(sources: List<SourceConfig>): List<ProviderDescriptor> =
-        listOf(BuiltInProviderDescriptors.musicBrainz(ProviderReadiness.READY)) +
-            BuiltInProviderDescriptors.offeredLyrics(ProviderReadiness.READY) +
-            extensionDescriptors(sources)
+        ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(sources = sources),
+        )
 
     /** Source identity only. This must be evaluated AFTER SourceRegistry.init. */
     fun extensionDescriptors(sources: List<SourceConfig>): List<ProviderDescriptor> =
@@ -72,12 +71,12 @@ internal object ProviderRuntime {
             val prefs = context.applicationContext.getSharedPreferences(
                 "bit_chord_provider_capabilities", Context.MODE_PRIVATE,
             )
-            // SourceRegistry is not yet initialized: do NOT capture its empty
-            // in-memory list and mistake it for the user's configured servers.
-            session = ProviderCapabilitySession(
+            val created = ProviderCapabilitySession(
                 store = ProviderPreferenceStore(prefs),
                 initialDescriptors = installedDescriptors(emptyList()),
             )
+            session = created
+            coordinator = ProviderAuthorityCoordinator(created)
         }
     }
 
@@ -88,6 +87,8 @@ internal object ProviderRuntime {
         if (isAndroidEnvironment()) session?.gate else plainJvmTestGate
 
     fun sessionOrNull(): ProviderCapabilitySession? = session
+
+    fun authorityOrNull(): ProviderAuthorityCoordinator? = coordinator
 
     val state: StateFlow<ProviderSessionSnapshot>?
         get() = session?.state

@@ -8,9 +8,7 @@ import com.music.bitchord.data.providers.ProvenanceScopedItem
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderKey
-import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReactiveCache
-import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderSessionSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,7 +57,6 @@ internal data class MusicBrainzCachedSearchSnapshot(
 internal class MusicBrainzCachedSearchRepository(
     private val database: CanonicalCatalogDatabase,
     private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
-    private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateForCacheReadOrNull() },
 ) {
     private val musicBrainz = ProviderKey("musicbrainz")
 
@@ -79,11 +76,12 @@ internal class MusicBrainzCachedSearchRepository(
         limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
     ): MusicBrainzCachedSearchSnapshot {
         val normalized = query.trim()
-        val gate = gateProvider()
+        val gate = cacheRead.currentGateOrNull()
         val editorialPermitted = gate?.open(ProviderCapability.CATALOG_SEARCH, musicBrainz) != null
 
-        // When MusicBrainz editorial search is disabled, skip editorial-only artist/group/release
-        // queries completely, while still preserving recordings backed by personal MediaAssets.
+        // When MusicBrainz editorial search is disabled (or gate is missing/fail-closed),
+        // skip editorial-only artist/group/release queries while preserving recordings
+        // backed by personally owned local/server MediaAssets.
         if (!editorialPermitted) {
             if (limits.recordings == 0) return MusicBrainzCachedSearchSnapshot()
             return database.withTransaction {

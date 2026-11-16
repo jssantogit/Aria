@@ -15,6 +15,8 @@ internal class ProviderCachedReadAccess(
         ProviderRuntime.gateForCacheReadOrNull()
     },
 ) {
+    internal fun currentGateOrNull(): ProviderPolicyGate? = policyGate()
+
     suspend fun <T> read(
         capability: ProviderCapability,
         provider: ProviderKey,
