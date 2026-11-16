@@ -143,6 +143,7 @@ internal fun CanonicalSongRatingDialog(
     song: Song,
     onDismiss: () -> Unit,
     anchorBounds: IntRect? = null,
+    highlightPlayerLauncher: Boolean = false,
     artworkUrl: String? = song.thumbnailUrl,
 ) {
     val context = LocalContext.current.applicationContext
@@ -175,6 +176,7 @@ internal fun CanonicalSongRatingDialog(
     if (id != null) {
         CanonicalRecordingRatingDialog(
             recordingId = id, onDismiss = onDismiss, anchorBounds = anchorBounds,
+            highlightPlayerLauncher = highlightPlayerLauncher,
             artworkUrl = artworkUrl,
         )
     } else {
@@ -197,6 +199,7 @@ internal fun CanonicalRecordingRatingDialog(
     recordingId: String,
     onDismiss: () -> Unit,
     anchorBounds: IntRect? = null,
+    highlightPlayerLauncher: Boolean = false,
     artworkUrl: String? = null,
 ) {
     val context = LocalContext.current.applicationContext
@@ -218,6 +221,7 @@ internal fun CanonicalRecordingRatingDialog(
     key(recordingId) { CanonicalRecordingFeedbackPanel(
         rating = current?.value,
         anchorBounds = anchorBounds,
+        highlightPlayerLauncher = highlightPlayerLauncher,
         artworkUrl = artworkUrl,
         saving = saving,
         denied = denied,
@@ -326,6 +330,8 @@ internal fun CanonicalRecordingFeedbackPanel(
     title: String? = null,
     /** Window-space bounds of a dedicated star control. Menu actions leave this null. */
     anchorBounds: IntRect? = null,
+    /** Only the player needs its star repainted over the dialog scrim. */
+    highlightPlayerLauncher: Boolean = false,
     /** Actual artwork on the launcher surface; used by the shared frosted plate. */
     artworkUrl: String? = null,
 ) {
@@ -554,6 +560,8 @@ internal fun CanonicalRecordingFeedbackPanel(
             artworkUrl = artworkUrl,
             onDismiss = requestDismiss,
             highlightLauncher = false,
+            highlightRatingLauncher = highlightPlayerLauncher,
+            ratingLauncherScore = rating?.takeIf { it.isFinite() && it in 1.0..5.0 },
             maxWidth = cardWidth,
         ) {
             Box(Modifier.width(cardWidth).testTag("native-rating-anchored-card")) {
