@@ -132,6 +132,38 @@ class ProviderCatalogAdaptersTest {
         assertEquals("https://is1-ssl.mzstatic.com/artist-hero.jpg", artistHero)
     }
 
+    @Test fun lyricsDispatcherCancelsRevokedProviderAndTriesOnlyAuthorizedSibling(): Unit = runBlocking {
+        val keyA = BuiltInProviderKeys.lyrics(LyricsSource.LRC_RED)
+        val keyB = BuiltInProviderKeys.lyrics(LyricsSource.LRCLIB)
+        val descriptors = BuiltInProviderDescriptors.offeredLyrics()
+        fun policy(a: Boolean) = ProviderCapabilityPolicy(
+            descriptors = descriptors,
+            choices = mapOf(ProviderCapability.LYRICS_LOOKUP to listOf(
+                ProviderChoice(keyA, enabled = a, order = 0),
+                ProviderChoice(keyB, enabled = true, order = 1),
+            )),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val visited = mutableListOf<String>()
+        val request = async {
+            LyricsCapabilityDispatcher { gate }.fetchFirst { key ->
+                visited += key.providerId
+                if (key == keyA) {
+                    started.complete(Unit)
+                    try { awaitCancellation() }
+                    finally { cancelled.complete(Unit) }
+                } else "authorized-sibling"
+            }
+        }
+        withTimeout(2_000) { started.await() }
+        gate.replace(policy(false))
+        withTimeout(2_000) { cancelled.await() }
+        assertEquals("authorized-sibling", withTimeout(2_000) { request.await() })
+        assertEquals(listOf(keyA.providerId, keyB.providerId), visited)
+    }
+
     @Test fun lyricsDispatcherHonorsPriorityAndFailsClosedWhenAllDisabled(): Unit = runBlocking {
         val descriptors = BuiltInProviderDescriptors.offeredLyrics()
         val lrclib = BuiltInProviderKeys.lyrics(LyricsSource.LRCLIB)
