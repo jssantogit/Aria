@@ -3,11 +3,12 @@ package com.music.bitchord.data.scrobbling
 import android.util.Log
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCallResult
+import com.music.bitchord.data.providers.ProviderQueryExecutor
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderSessionStatus
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -129,43 +130,46 @@ class ScrobbleManager(
     }
 
     private fun scrobbleSong(song: Song, durationSeconds: Int) {
-        if (!isLastFmListeningPermitted()) return
+        val gate = policyGate() ?: return
         val scrobbleArtist = song.artist.forScrobble()
+        val startedAt = songStartedAt
         scope.launch {
-            if (!isLastFmListeningPermitted()) return@launch
-            LastFM
-                .scrobble(
+            when (val outcome = ProviderQueryExecutor(gate).execute(
+                ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM,
+            ) {
+                LastFM.scrobble(
                     artist = scrobbleArtist,
                     track = song.title,
                     duration = durationSeconds,
-                    timestamp = songStartedAt,
+                    timestamp = startedAt,
                     album = song.albumName,
-                ).onSuccess {
-                    Log.d(TAG, "Scrobbled: ${song.title} by ${song.artist}")
-                }.onFailure { throwable ->
-                    if (throwable is CancellationException) throw throwable
-                    Log.e(TAG, "Failed to scrobble: ${song.title}", throwable)
-                }
+                ).getOrThrow()
+            }) {
+                is ProviderCallResult.Success -> Log.d(TAG, "Scrobbled: ${song.title} by ${song.artist}")
+                is ProviderCallResult.Failed -> Log.e(TAG, "Failed to scrobble: ${song.title}", outcome.cause)
+                ProviderCallResult.Denied, ProviderCallResult.Stale -> Unit
+            }
         }
     }
 
     private fun updateNowPlaying(song: Song) {
-        if (!isLastFmListeningPermitted()) return
+        val gate = policyGate() ?: return
         val scrobbleArtist = song.artist.forScrobble()
         scope.launch {
-            if (!isLastFmListeningPermitted()) return@launch
-            LastFM
-                .updateNowPlaying(
+            when (val outcome = ProviderQueryExecutor(gate).execute(
+                ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM,
+            ) {
+                LastFM.updateNowPlaying(
                     artist = scrobbleArtist,
                     track = song.title,
                     album = song.albumName,
                     duration = song.durationText?.let { parseDurationSeconds(it) },
-                ).onSuccess {
-                    Log.d(TAG, "Updated now playing: ${song.title}")
-                }.onFailure { throwable ->
-                    if (throwable is CancellationException) throw throwable
-                    Log.e(TAG, "Failed to update now playing: ${song.title}", throwable)
-                }
+                ).getOrThrow()
+            }) {
+                is ProviderCallResult.Success -> Log.d(TAG, "Updated now playing: ${song.title}")
+                is ProviderCallResult.Failed -> Log.e(TAG, "Failed to update now playing: ${song.title}", outcome.cause)
+                ProviderCallResult.Denied, ProviderCallResult.Stale -> Unit
+            }
         }
     }
 
