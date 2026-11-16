@@ -654,7 +654,9 @@ fun DetailScreen(
     AnimatedContent(
         targetState = activeShelf,
         transitionSpec = {
-            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+            // The prior shelf may belong to a different artist/album state.
+            // Keep its pixels out of the arriving section without moving the hero.
+            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(0))
         },
         label = "artist_shelf_transition",
         modifier = modifier.fillMaxSize(),
