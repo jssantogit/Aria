@@ -28,6 +28,26 @@ class ProviderCapabilityPolicyTest {
     ): ProviderDescriptor = ProviderDescriptor(key, capabilities,
         readiness = ProviderReadiness.READY)
 
+    @Test fun oneReadyCapabilityCannotAuthorizeUnimplementedSibling() {
+        val listenbrainz = ProviderKey("listenbrainz")
+        val descriptor = ProviderDescriptor(
+            listenbrainz,
+            setOf(ProviderCapability.LISTENING_STATISTICS, ProviderCapability.PUBLIC_PLAYLISTS),
+            readiness = ProviderReadiness.NOT_IMPLEMENTED,
+            capabilityReadiness = mapOf(
+                ProviderCapability.LISTENING_STATISTICS to ProviderReadiness.READY,
+                ProviderCapability.PUBLIC_PLAYLISTS to ProviderReadiness.NOT_IMPLEMENTED,
+            ),
+        )
+        val policy = ProviderCapabilityPolicy(listOf(descriptor), mapOf(
+            ProviderCapability.LISTENING_STATISTICS to listOf(ProviderChoice(listenbrainz, true, 0)),
+            ProviderCapability.PUBLIC_PLAYLISTS to listOf(ProviderChoice(listenbrainz, true, 0)),
+        ))
+        assertTrue(policy.permits(ProviderCapability.LISTENING_STATISTICS, listenbrainz))
+        assertFalse(policy.permits(ProviderCapability.PUBLIC_PLAYLISTS, listenbrainz))
+        assertFalse(policy.status(ProviderCapability.PUBLIC_PLAYLISTS, listenbrainz).implemented)
+    }
+
     @Test fun unimplementedDescriptorsAreExcludedByDefault() {
         val notImplemented = ProviderDescriptor(apple, setOf(ProviderCapability.CATALOG_SEARCH))
         val policy = ProviderCapabilityPolicy(listOf(notImplemented), mapOf(
