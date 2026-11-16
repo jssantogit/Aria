@@ -165,7 +165,7 @@ class ScrobbleManager(
                     track = song.title,
                     album = song.albumName,
                     duration = song.durationText?.let { parseDurationSeconds(it) },
-                ).getOrThrow()
+                ).getOrThrow() }
             }) {
                 is ProviderCallResult.Success -> Log.d(TAG, "Updated now playing: ${song.title}")
                 is ProviderCallResult.Failed -> Log.e(TAG, "Failed to update now playing: ${song.title}", outcome.cause)
