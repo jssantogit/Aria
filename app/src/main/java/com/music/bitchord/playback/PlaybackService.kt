@@ -1537,23 +1537,33 @@ class PlaybackService : MediaLibraryService() {
                         requireLease = true,
                     ),
                 ) { spec ->
-                    streamResolver.resolveDataSpec(spec).also { resolved ->
-                        if (spec.uri.scheme == "bitchord" &&
-                            spec.uri.authority == "source") {
+                    val resolved = streamResolver.resolveDataSpec(spec)
+                    val authorized = when {
+                        isLogicalSourcePlaybackUri(spec.uri) -> {
                             val lease = resolved.customData as? ProviderPlaybackByteLease
                                 ?: throw java.io.IOException(
                                     "Resolved source lacks a revocable media ticket",
                                 )
-                            mediaSession.bind(lease)
+                            // Headers returned with the *winning* manifest
+                            // are inherited only by segments on that exact
+                            // HTTP origin; never leak tokens to a sibling CDN.
+                            mediaSession.bind(
+                                lease, resolved.uri.toString(), resolved.httpRequestHeaders,
+                            )
+                            resolved
                         }
-                        mediaIdIn(spec.uri)?.let {
-                            StreamContainer.served(it, resolved.uri.toString())
-                        }
-                        AudioCache.recordServed(
-                            spec, resolved.uri.toString(),
-                            (resolved.customData as? ProviderPlaybackByteLease)?.providerKey,
-                        )
+                        spec.uri.scheme == "http" || spec.uri.scheme == "https" ->
+                            mediaSession.withSegmentHeaders(resolved)
+                        else -> resolved
                     }
+                    mediaIdIn(spec.uri)?.let {
+                        StreamContainer.served(it, authorized.uri.toString())
+                    }
+                    AudioCache.recordServed(
+                        spec, authorized.uri.toString(),
+                        (authorized.customData as? ProviderPlaybackByteLease)?.providerKey,
+                    )
+                    authorized
                 }
                 val sourceDataFactory = DefaultDataSource.Factory(this, scopedResolving)
                 DefaultMediaSourceFactory(
