@@ -15,6 +15,8 @@ import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -101,6 +103,28 @@ class ProviderCachedReadAccessTest {
         assertEquals(emptyList<String>(), request.await())
         assertEquals(listOf(artwork),
             gate.ordered(ProviderCapability.RELEASE_ARTWORK).map { it.key })
+    }
+
+    @Test fun revokingCachedReadCancelsBlockedSourceOperationImmediately(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true))
+        val entered = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val request = async {
+            ProviderCachedReadAccess { gate }.read(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                musicBrainz,
+                emptyList<String>(),
+            ) {
+                entered.complete(Unit)
+                try { awaitCancellation() }
+                finally { cancelled.complete(Unit) }
+            }
+        }
+        withTimeout(5_000) { entered.await() }
+        gate.replace(policy(false))
+        withTimeout(5_000) { cancelled.await() }
+        assertEquals(emptyList<String>(), withTimeout(5_000) { request.await() })
+        assertTrue(gate.open(ProviderCapability.RELEASE_ARTWORK, artwork) != null)
     }
 
     @Test fun existingArtistDiscographyCacheRemainsStoredButIsNotVisibleWhileOff(): Unit = runBlocking {
