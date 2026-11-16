@@ -45,14 +45,15 @@ object ListenBrainzManager {
                         .build()
 
                 ListenBrainzRequestBudget.limiter.run {
-                    Http.client.newCall(request).execute().use { resp ->
-                        if (resp.isSuccessful) {
-                            Log.d(TAG, "playing_now submitted")
-                            true
-                        } else {
-                            Log.w(TAG, "playing_now submit failed: HTTP ${resp.code}")
-                            false
-                        }
+                    val status = awaitListenBrainzSubmissionResponse(
+                        Http.client.newCall(request),
+                    ).first
+                    if (status == ListenBrainzSubmissionResult.ACCEPTED) {
+                        Log.d(TAG, "playing_now submitted")
+                        true
+                    } else {
+                        Log.w(TAG, "playing_now submit failed: $status")
+                        false
                     }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -103,14 +104,15 @@ object ListenBrainzManager {
                         .build()
 
                 ListenBrainzRequestBudget.limiter.run {
-                    Http.client.newCall(request).execute().use { resp ->
-                        if (resp.isSuccessful) {
-                            Log.d(TAG, "finished listen submitted")
-                            true
-                        } else {
-                            Log.w(TAG, "finished listen submit failed: HTTP ${resp.code}")
-                            false
-                        }
+                    val status = awaitListenBrainzSubmissionResponse(
+                        Http.client.newCall(request),
+                    ).first
+                    if (status == ListenBrainzSubmissionResult.ACCEPTED) {
+                        Log.d(TAG, "finished listen submitted")
+                        true
+                    } else {
+                        Log.w(TAG, "finished listen submit failed: $status")
+                        false
                     }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
