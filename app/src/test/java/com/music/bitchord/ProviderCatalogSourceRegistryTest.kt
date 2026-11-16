@@ -11,6 +11,8 @@ import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.SourceHealth
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +54,9 @@ class ProviderCatalogSourceRegistryTest {
         assertTrue(SourceRegistry.sourcesForInit(emptyList(), false).isEmpty())
         assertTrue(SourceRegistry.displayConfigs(listOf(retired)).isEmpty())
         assertTrue(SourceRegistry.audioCandidateConfigs(listOf(retired)).isEmpty())
+        assertTrue(runBlocking {
+            SourceRegistry.probeCandidate(retired) is SourceHealth.Rejected
+        })
     }
 
     @Test fun addonDownloadRevocationPreservesPlaybackAndCannotUseLegacyEnabledFallback() {
