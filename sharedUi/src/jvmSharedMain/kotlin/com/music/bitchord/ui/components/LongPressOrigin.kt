@@ -113,20 +113,21 @@ fun Modifier.longPressMenuClickable(
     val scope = rememberCoroutineScope()
     val longClick = onLongClick?.let { held ->
         {
-            // A recycled LazyColumn row may have been detached between
-            // placement and the hold callback. Retain its last on-screen
-            // bounds so a genuine hold still opens the lifted menu instead
-            // of silently falling back to the generic action sheet.
-            val bounds = capture.coordinates?.takeIf { it.isAttached }
-                ?.boundsInWindow() ?: capture.lastBounds
-            bounds?.takeIf { it.width > 0f && it.height > 0f }?.let { visibleBounds ->
-                capture.active?.releaseLift()
-                val item = HeldItem(visibleBounds)
-                LongPressOrigin.record(item)
-                capture.active = item
-                capture.pending = item
-                capture.requests++
+            // Do not resurrect detached Lazy items or capture a sliver of a
+            // horizontally clipped shelf card. A partial bitmap would be
+            // stretched to the clipped bounds by the lifted preview.
+            val coordinates = capture.coordinates?.takeIf { it.isAttached }
+                ?: return@let
+            val bounds = coordinates.boundsInWindow()
+            if (!heldOriginFullyVisible(bounds, coordinates.size.width, coordinates.size.height)) {
+                return@let
             }
+            capture.active?.releaseLift()
+            val item = HeldItem(bounds)
+            LongPressOrigin.record(item)
+            capture.active = item
+            capture.pending = item
+            capture.requests++
             held()
         }
     }
@@ -163,7 +164,6 @@ fun Modifier.longPressMenuClickable(
     return this
         .onPlaced {
             capture.coordinates = it
-            if (it.isAttached) capture.lastBounds = it.boundsInWindow()
         }
         .then(gesture)
         .drawWithContent {
@@ -212,10 +212,23 @@ internal fun heldCaptureFrame(lifted: Boolean, capturePending: Boolean): HeldCap
 
 private class HoldCapture {
     var coordinates: LayoutCoordinates? = null
-    var lastBounds: Rect? = null
     var active: HeldItem? = null
     var pending: HeldItem? = null
     /** Read while drawing, so bumping it is what asks for a frame to record. */
     var requests by mutableIntStateOf(0)
     var handled = 0
 }
+
+/**
+ * A clipped item has fewer on-window pixels than the snapshot produced by
+ * drawWithContent. Never let HeldContextMenu stretch that snapshot to fit.
+ * Only attached, fully visible items are eligible for the lifted interaction.
+ */
+internal fun heldOriginFullyVisible(
+    bounds: Rect,
+    sourceWidth: Int,
+    sourceHeight: Int,
+): Boolean = sourceWidth > 0 && sourceHeight > 0 &&
+    bounds.width > 0f && bounds.height > 0f &&
+    kotlin.math.abs(bounds.width - sourceWidth) <= 1f &&
+    kotlin.math.abs(bounds.height - sourceHeight) <= 1f
