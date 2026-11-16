@@ -1907,7 +1907,9 @@ internal fun NativeLoadingSpinner(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth().heightIn(min = 88.dp).testTag("native-library-loading"),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+        CircularProgressIndicator(
+            modifier = Modifier.size(28.dp).testTag("native-library-loading-indicator"),
+        )
     }
 }
 
