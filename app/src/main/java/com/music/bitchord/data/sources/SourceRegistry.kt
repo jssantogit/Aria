@@ -386,6 +386,11 @@ object SourceRegistry {
                 .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), next))
                 .apply()
         }
+        if (persist && ProviderRuntime.state?.value?.status == ProviderSessionStatus.READY) {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                ProviderRuntime.authorityOrNull()?.onSourcesChanged(next)
+            }
+        }
     }
 
     /**
