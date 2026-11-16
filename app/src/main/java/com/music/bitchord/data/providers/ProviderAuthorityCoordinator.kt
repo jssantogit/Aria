@@ -130,6 +130,32 @@ internal class ProviderAuthorityCoordinator(
             session.update(ProviderCapability.EXTENSION_PLAYBACK,
                 prior + added.mapIndexed { i, choice -> choice.copy(order = prior.size + i) })
         }
+
+        // Newly installed download-capable addons acquire a separate slot.
+        // A removed/reinstalled addon retains its saved DOWNLOAD opt-out.
+        val priorDownloads = session.state.value.configured[ProviderCapability.DOWNLOAD].orEmpty()
+        val savedDownloadKeys = priorDownloads.mapTo(HashSet()) { it.key }
+        val newDownloads = cleanedSources
+            .filter { (it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE) &&
+                it.allowDownloads }
+            .distinctBy { it.id }
+            .mapNotNull { source ->
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                if (key in savedDownloadKeys) null else ProviderChoice(
+                    key, enabled = source.enabled, order = priorDownloads.size,
+                )
+            }
+        if (newDownloads.isNotEmpty()) {
+            session.update(
+                ProviderCapability.DOWNLOAD,
+                priorDownloads + newDownloads.mapIndexed { i, choice ->
+                    choice.copy(order = priorDownloads.size + i)
+                },
+            )
+        }
     }
 
     fun currentLyricsProjection(
