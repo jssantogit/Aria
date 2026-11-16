@@ -1,8 +1,14 @@
 package com.music.bitchord.data.scrobbling
 
-import com.music.bitchord.data.DebugLog as Log
+import android.util.Log
 import com.music.bitchord.data.model.Song
-import kotlinx.coroutines.CancellationException
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCallResult
+import com.music.bitchord.data.providers.ProviderQueryExecutor
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,6 +21,8 @@ class ScrobbleManager(
     var minSongDuration: Int = 30,
     var scrobbleDelayPercent: Float = 0.5f,
     var scrobbleDelaySeconds: Int = 180,
+    private val policyGate: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
+    private val networkCall: suspend (suspend () -> String) -> String = { request -> request() },
 ) {
     private var scrobbleJob: Job? = null
     private var scrobbleRemainingMillis: Long = 0L
@@ -23,6 +31,13 @@ class ScrobbleManager(
     private var songStarted = false
     var useNowPlaying = true
     var usePrimaryArtistOnly = false
+
+    private fun isLastFmListeningPermitted(): Boolean {
+        val snapshot = ProviderRuntime.state?.value
+        if (snapshot?.status == ProviderSessionStatus.STORAGE_ERROR) return false
+        val gate = policyGate() ?: return false
+        return gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM) != null
+    }
 
     fun destroy() {
         scrobbleJob?.cancel()
@@ -36,7 +51,7 @@ class ScrobbleManager(
         song: Song?,
         durationMs: Long? = null,
     ) {
-        if (song == null) return
+        if (song == null || !isLastFmListeningPermitted()) return
         songStartedAt = System.currentTimeMillis() / 1000
         songStarted = true
         startScrobbleTimer(song, durationMs)
@@ -46,6 +61,7 @@ class ScrobbleManager(
     }
 
     fun onSongResume(song: Song) {
+        if (!isLastFmListeningPermitted()) return
         resumeScrobbleTimer(song)
     }
 
@@ -115,39 +131,46 @@ class ScrobbleManager(
     }
 
     private fun scrobbleSong(song: Song, durationSeconds: Int) {
+        val gate = policyGate() ?: return
         val scrobbleArtist = song.artist.forScrobble()
+        val startedAt = songStartedAt
         scope.launch {
-            LastFM
-                .scrobble(
+            when (val outcome = ProviderQueryExecutor(gate).execute(
+                ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM,
+            ) {
+                networkCall { LastFM.scrobble(
                     artist = scrobbleArtist,
                     track = song.title,
                     duration = durationSeconds,
-                    timestamp = songStartedAt,
+                    timestamp = startedAt,
                     album = song.albumName,
-                ).onSuccess {
-                    Log.d(TAG, "Scrobbled: ${song.title} by ${song.artist}")
-                }.onFailure { throwable ->
-                    if (throwable is CancellationException) throw throwable
-                    Log.e(TAG, "Failed to scrobble: ${song.title}", throwable)
-                }
+                ).getOrThrow() }
+            }) {
+                is ProviderCallResult.Success -> Log.d(TAG, "Scrobbled: ${song.title} by ${song.artist}")
+                is ProviderCallResult.Failed -> Log.e(TAG, "Failed to scrobble: ${song.title}", outcome.cause)
+                ProviderCallResult.Denied, ProviderCallResult.Stale -> Unit
+            }
         }
     }
 
     private fun updateNowPlaying(song: Song) {
+        val gate = policyGate() ?: return
         val scrobbleArtist = song.artist.forScrobble()
         scope.launch {
-            LastFM
-                .updateNowPlaying(
+            when (val outcome = ProviderQueryExecutor(gate).execute(
+                ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM,
+            ) {
+                networkCall { LastFM.updateNowPlaying(
                     artist = scrobbleArtist,
                     track = song.title,
                     album = song.albumName,
                     duration = song.durationText?.let { parseDurationSeconds(it) },
-                ).onSuccess {
-                    Log.d(TAG, "Updated now playing: ${song.title}")
-                }.onFailure { throwable ->
-                    if (throwable is CancellationException) throw throwable
-                    Log.e(TAG, "Failed to update now playing: ${song.title}", throwable)
-                }
+                ).getOrThrow() }
+            }) {
+                is ProviderCallResult.Success -> Log.d(TAG, "Updated now playing: ${song.title}")
+                is ProviderCallResult.Failed -> Log.e(TAG, "Failed to update now playing: ${song.title}", outcome.cause)
+                ProviderCallResult.Denied, ProviderCallResult.Stale -> Unit
+            }
         }
     }
 
@@ -168,9 +191,6 @@ class ScrobbleManager(
         }
     }
 
-    /**
-     * Parse "M:SS" or "MM:SS" duration text to total seconds.
-     */
     private fun parseDurationSeconds(text: String): Int {
         val parts = text.split(":")
         if (parts.size != 2) return 0

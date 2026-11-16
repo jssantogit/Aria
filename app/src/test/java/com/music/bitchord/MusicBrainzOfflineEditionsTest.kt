@@ -3,6 +3,7 @@ package com.music.bitchord
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.metadata.*
+import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -24,7 +25,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun editionSearchRetainsTerritoryAndDateWithoutInventingTracklistOrAudio() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val hits = listOf(
                 MusicBrainzReleaseHit(worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT"),
                 MusicBrainzReleaseHit(japan, "SUPER REAL ME", "JP", "2024-03-25", "ILLIT"),
@@ -43,7 +44,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun cachedGraphKeepsEditionTrackIdentityAndNeverPrunesOnSparseBrowse() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val detail = MusicBrainzCatalogReleaseDetail(worldwide, group, "SUPER REAL ME",
                 "ILLIT", "XW", "2024-03-25", listOf(
                     MusicBrainzCatalogTrack(track, recording, "Magnetic", 1, 2, 160000, "ILLIT"),
@@ -64,7 +65,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun offlineEditionTrackDoesNotBorrowAnotherEditionsCreditForTheSameRecording() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
                 worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25", listOf(
                     MusicBrainzCatalogTrack(
@@ -99,7 +100,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun paginatedEditionAssociationsAccumulateAndRemainAvailableOffline() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
                 group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
             )))
@@ -115,7 +116,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun artistDiscographyCacheIsBoundToArtistMbidNotHomonymousArtistName() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val illit = "6b128dd7-e998-4edb-a4f5-400fef190445"
             val namesake = "fa741e5c-1a5d-4a7a-a041-9d8061bd18fb"
             val anotherGroup = "6cdf5ba6-70f1-4bf6-82b6-f9c821a7ec5a"
@@ -150,7 +151,7 @@ class MusicBrainzOfflineEditionsTest {
                 val expired = "33333333-3333-4333-8333-333333333333"
                 val invalid = "44444444-4444-4444-8444-444444444444"
                 val future = "55555555-5555-4555-8555-555555555555"
-                val index = MusicBrainzCatalogIndex(db)
+                val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
                 index.persistArtists(listOf(MusicBrainzArtistHit(
                     artist, "ILLIT", null, "KR",
                 )))

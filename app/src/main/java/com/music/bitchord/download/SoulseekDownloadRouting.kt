@@ -1,5 +1,10 @@
 package com.music.bitchord.download
 
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
+
 /**
  * A download tap is a request for a manual Soulseek file search, not authority to
  * fetch bytes. This contract is shared by track, album and playlist actions.
@@ -11,9 +16,13 @@ internal object SoulseekDownloadRouting {
         data object Unavailable : Decision
     }
 
-    fun route(artist: String, title: String, count: Int, pilotAvailable: Boolean): Decision {
+    fun route(
+        artist: String, title: String, count: Int, pilotAvailable: Boolean,
+        gate: ProviderPolicyGate? = ProviderRuntime.gateOrNull(),
+    ): Decision {
         if (count != 1) return Decision.BulkNotSupported
-        if (!pilotAvailable) return Decision.Unavailable
+        if (!pilotAvailable || gate?.open(ProviderCapability.DOWNLOAD, ProviderKey("soulseek")) == null)
+            return Decision.Unavailable
         val safeArtist = artist.trim().filterNot { it.isISOControl() }.replace(Regex("\\s+"), " ")
         val safeTitle = title.trim().filterNot { it.isISOControl() }.replace(Regex("\\s+"), " ")
         if (safeArtist.isBlank() || safeTitle.isBlank()) return Decision.Unavailable

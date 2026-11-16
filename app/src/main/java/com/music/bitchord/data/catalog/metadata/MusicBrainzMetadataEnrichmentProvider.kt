@@ -1,13 +1,17 @@
 package com.music.bitchord.data.catalog.metadata
 
 import com.music.bitchord.BuildConfig
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRequestDeniedException
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderSingleFlight
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.ResponseException
 import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import kotlinx.coroutines.CancellationException
@@ -16,13 +20,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.io.IOException
+
+internal const val HTTP_TOO_MANY_REQUESTS = 429
+internal const val HTTP_SERVICE_UNAVAILABLE = 503
+private const val MAX_ATTEMPTS = 3
+private val BACKOFF_MILLIS = listOf(1_000L, 2_000L)
+
+internal fun defaultMusicBrainzUserAgent(): String =
+    "Bitchord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)"
 
 internal interface MusicBrainzTransport {
-    suspend fun get(
-        path: String,
-        parameters: Map<String, String>,
-        userAgent: String,
-    ): String
+    suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String
 }
 
 internal class KtorMusicBrainzTransport(
@@ -40,18 +49,12 @@ internal class KtorMusicBrainzTransport(
         path: String,
         parameters: Map<String, String>,
         userAgent: String,
-    ): String = client.get("${baseUrl.trimEnd('/')}/$path") {
-        header(HttpHeaders.UserAgent, userAgent)
-        parameters.forEach { (name, value) -> parameter(name, value) }
+    ): String = client.get("${baseUrl.trimEnd('/')}/${path.trimStart('/')}") {
+        headers.append(HttpHeaders.UserAgent, userAgent)
+        parameters.forEach { (name, value) -> url.parameters.append(name, value) }
     }.bodyAsText()
 }
 
-/**
- * One limiter is shared by every endpoint used through a MusicBrainzClient.
- * It deliberately serializes dispatch as well as spacing request starts, which
- * is stricter than MusicBrainz's one-request-per-second requirement and avoids
- * endpoint-specific limiters accidentally racing each other.
- */
 internal class MusicBrainzRateLimiter(
     private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
     private val delayMillis: suspend (Long) -> Unit = { millis -> delay(millis) },
@@ -82,68 +85,106 @@ internal class MusicBrainzRateLimiter(
 }
 
 /**
- * Enrichment, identity discovery and public catalog search must share one
- * per-process request budget. Individual MusicBrainzClient instances are not
- * allowed to independently send one request per second each.
+ * Shared MusicBrainz request budget across the Android application process.
  */
 internal object MusicBrainzRequestBudget {
     val limiter = MusicBrainzRateLimiter()
+    val transport: MusicBrainzTransport by lazy { KtorMusicBrainzTransport() }
+    val inFlight = ProviderSingleFlight<String>()
 }
 
+private data class MusicBrainzInFlightKey(
+    val transport: MusicBrainzTransport,
+    val gate: ProviderPolicyGate?,
+    val revision: Long?,
+    val capability: ProviderCapability,
+    val path: String,
+    val parameters: Map<String, String>,
+    val userAgent: String,
+)
+
 internal class MusicBrainzClient(
-    private val transport: MusicBrainzTransport = KtorMusicBrainzTransport(),
+    private val transport: MusicBrainzTransport = MusicBrainzRequestBudget.transport,
     internal val rateLimiter: MusicBrainzRateLimiter = MusicBrainzRequestBudget.limiter,
     val userAgent: String = defaultMusicBrainzUserAgent(),
     private val retryDelayMillis: suspend (Long) -> Unit = { millis -> delay(millis) },
+    private val admission: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
+    private val singleFlight: ProviderSingleFlight<String> = MusicBrainzRequestBudget.inFlight,
 ) {
     suspend fun get(
         path: String,
         parameters: Map<String, String> = mapOf("fmt" to "json"),
+        capability: ProviderCapability = ProviderCapability.IDENTITY,
     ): String {
-        var attempt = 1
-        while (true) {
-            try {
-                // A retry is a new request and must pass through the same shared
-                // budget as the first attempt and every other MusicBrainz endpoint.
-                return rateLimiter.runLimited {
-                    transport.get(path, parameters, userAgent)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (response: ResponseException) {
-                val status = response.response.status.value
-                if (status != HTTP_TOO_MANY_REQUESTS && status != HTTP_SERVICE_UNAVAILABLE ||
-                    attempt >= MAX_ATTEMPTS
-                ) throw response
+        val gate = admission()
+        val provider = ProviderKey("musicbrainz")
+        val ticket = gate?.open(capability, provider)
+        if (gate != null && ticket == null) {
+            throw ProviderRequestDeniedException(capability, provider)
+        }
 
-                val retryAfter = response.response.headers[HttpHeaders.RetryAfter]
-                val delay = when {
-                    retryAfter == null -> BACKOFF_MILLIS[attempt - 1]
-                    else -> retryAfter.retryAfterMillisOrNull() ?: throw response
-                }
-                retryDelayMillis(delay)
-                attempt += 1
+        fun ensureAdmitted() {
+            if (gate != null && !gate.accept(requireNotNull(ticket))) {
+                throw ProviderRequestDeniedException(capability, provider)
             }
+        }
+
+        val requestKey = MusicBrainzInFlightKey(
+            transport = transport,
+            gate = gate,
+            revision = ticket?.revision,
+            capability = capability,
+            path = path,
+            parameters = parameters.toMap(),
+            userAgent = userAgent,
+        )
+        return singleFlight.runGuarded(
+            gate = gate,
+            capability = capability,
+            provider = provider,
+            key = requestKey,
+        ) {
+            var attempt = 1
+            while (true) {
+                try {
+                    ensureAdmitted()
+                    val response = rateLimiter.runLimited {
+                        ensureAdmitted()
+                        transport.get(path, parameters, userAgent).also {
+                            ensureAdmitted()
+                        }
+                    }
+                    ensureAdmitted()
+                    return@runGuarded response
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (response: ResponseException) {
+                    val status = response.response.status.value
+                    if (status != HTTP_TOO_MANY_REQUESTS &&
+                        status != HTTP_SERVICE_UNAVAILABLE || attempt >= MAX_ATTEMPTS
+                    ) throw response
+
+                    val retryAfter = response.response.headers[HttpHeaders.RetryAfter]
+                    val wait = if (retryAfter == null) {
+                        BACKOFF_MILLIS[attempt - 1]
+                    } else {
+                        retryAfter.retryAfterMillisOrNull() ?: throw response
+                    }
+                    retryDelayMillis(wait)
+                    attempt += 1
+                } catch (io: IOException) {
+                    if (attempt >= MAX_ATTEMPTS) throw io
+                    retryDelayMillis(BACKOFF_MILLIS[attempt - 1])
+                    attempt += 1
+                }
+            }
+            error("MusicBrainz request unexpectedly fell through")
         }
     }
 
-    private fun String.retryAfterMillisOrNull(): Long? {
-        val seconds = toLongOrNull()?.takeIf { it in 0L..MAX_RETRY_AFTER_SECONDS } ?: return null
-        return seconds * MILLIS_PER_SECOND
-    }
-
-    private companion object {
-        const val HTTP_TOO_MANY_REQUESTS = 429
-        const val HTTP_SERVICE_UNAVAILABLE = 503
-        const val MAX_ATTEMPTS = 3
-        const val MAX_RETRY_AFTER_SECONDS = 30L
-        const val MILLIS_PER_SECOND = 1_000L
-        val BACKOFF_MILLIS = longArrayOf(1_000L, 2_000L)
-    }
+    private fun String.retryAfterMillisOrNull(): Long? =
+        toLongOrNull()?.takeIf { it in 0L..30L }?.times(1000L)
 }
-
-internal fun defaultMusicBrainzUserAgent(): String =
-    "Bitchord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)"
 
 internal class MusicBrainzMetadataEnrichmentProvider(
     private val client: MusicBrainzClient = MusicBrainzClient(),

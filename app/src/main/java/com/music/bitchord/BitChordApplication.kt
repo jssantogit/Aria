@@ -39,6 +39,8 @@ import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.SearchHistory
+import com.music.bitchord.acquisition.a0.SoulseekCredentialVault
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceResolver
@@ -58,6 +60,9 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        // Closed-by-default admission is installed before any Android caller
+        // can construct an outbound MusicBrainz request.
+        ProviderRuntime.install(this)
         val applicationStarted = SystemClock.elapsedRealtimeNanos()
         Diagnostics.install(this)
         if (BuildConfig.DEBUG) {
@@ -248,6 +253,44 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         }
         Diagnostics.span(DiagnosticCategory.STARTUP, "background_join_wait") {
             backgroundInit.join()
+        }
+        // Both legacy stores are now restored. Import their ACTUAL choices
+        // before opening the provider admission gate; never snapshot offered
+        // lyrics as a replacement for a user's saved disabled/reordered sources.
+        Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
+            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                val authority = ProviderRuntime.authorityOrNull()
+                val migrated = authority?.migrateOnce(
+                    lyricsOrder = AppSettings.lyricsSourceOrder.value,
+                    enabledLyrics = AppSettings.lyricsSources.value,
+                    sources = SourceRegistry.configs.value,
+                    lastfmConfigured = AppSettings.lastfmSessionKey.value.isNotBlank() &&
+                        AppSettings.lastfmApiKey.value.isNotBlank(),
+                    listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                    // No TCP session is started. Only a securely restored
+                    // account in the devDebug pilot may become DOWNLOAD-ready.
+                    soulseekConfigured = BuildConfig.DEBUG && BuildConfig.FLAVOR == "dev" &&
+                        (SoulseekCredentialVault(this@BitChordApplication).read()
+                            ?.let { credentials -> credentials.erase(); true } == true),
+                    lastfmEnabled = AppSettings.lastfmEnabled.value &&
+                        AppSettings.lastfmScrobbleEnabled.value,
+                    listenBrainzEnabled = AppSettings.listenBrainzEnabled.value,
+                ) == true
+                if (migrated && authority != null) {
+                    // A restarted process must project persisted canonical choices
+                    // into legacy UI/source flows, not resurrect stale legacy opt-ins.
+                    val lyrics = authority.currentLyricsProjection(
+                        AppSettings.lyricsSourceOrder.value, AppSettings.lyricsSources.value,
+                    )
+                    AppSettings.lyricsSourceOrder.value = lyrics.order
+                    AppSettings.lyricsSources.value = lyrics.enabled
+                    val raw = SourceRegistry.configs.value
+                    val extensions = authority.currentExtensionsProjection(raw)
+                    SourceRegistry.applyProviderProjection(extensions + raw.filterNot {
+                        it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE
+                    })
+                }
+            }
         }
         // Warming YouTube's account scope is a discovery request. Wait until
         // persisted settings and source opt-outs are loaded, and skip it when

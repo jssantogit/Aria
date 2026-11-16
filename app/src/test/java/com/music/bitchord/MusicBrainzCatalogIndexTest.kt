@@ -8,6 +8,7 @@ import com.music.bitchord.data.catalog.RoomCanonicalMultiSourceBrowseStore
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogIndex
 import com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit
 import kotlinx.coroutines.flow.first
+import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -29,7 +30,7 @@ class MusicBrainzCatalogIndexTest {
         ).allowMainThreadQueries().build()
         try {
             var counter = 0
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "known-${++counter}" })
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "known-${++counter}" })
             val original = MusicBrainzRecordingHit(
                 "e614e432-ca77-41c1-82c1-4e3a24ebbb0c", "Magnetic", "ILLIT", 160_000L,
             )
@@ -82,7 +83,7 @@ class MusicBrainzCatalogIndexTest {
         ).allowMainThreadQueries().build()
         try {
             var counter = 0
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "known-${++counter}" })
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "known-${++counter}" })
             val normal = MusicBrainzRecordingHit(
                 "e614e432-ca77-41c1-82c1-4e3a24ebbb0c", "Magnetic", "ILLIT", 160000L,
             )
@@ -105,7 +106,7 @@ class MusicBrainzCatalogIndexTest {
         ).allowMainThreadQueries().build()
         try {
             var serial = 0
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "recording-${++serial}" })
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "recording-${++serial}" })
             val metadataOnly = MusicBrainzRecordingHit(
                 "e614e432-ca77-41c1-82c1-4e3a24ebbb0c", "A metadata-only song", "A artist", 160000,
             )
@@ -133,7 +134,7 @@ class MusicBrainzCatalogIndexTest {
         ).allowMainThreadQueries().build()
         try {
             val mbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
-            val ids = MusicBrainzCatalogIndex(db).persistArtists(listOf(
+            val ids = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests()).persistArtists(listOf(
                 com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit(
                     mbid, "ILLIT", "South Korean girl group", "KR",
                 ),
@@ -156,7 +157,7 @@ class MusicBrainzCatalogIndexTest {
             RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
         ).allowMainThreadQueries().build()
         try {
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "unexpected" })
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(), idFactory = { "unexpected" })
             assertTrue(index.persistRecordings(listOf(
                 MusicBrainzRecordingHit("not-an-mbid", "Magnetic", "ILLIT", null),
             )).isEmpty())

@@ -1,0 +1,274 @@
+package com.music.bitchord.data.providers
+
+import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.sources.SourceConfig
+import com.music.bitchord.data.sources.SourceKind
+import java.util.Locale
+
+/**
+ * Single-authority cutover coordinator for legacy settings (AppSettings lyrics
+ * and SourceRegistry extensions/servers).
+ *
+ * Eliminates dual-write and conflicting state:
+ * - Reads project exclusively from [ProviderCapabilitySession] once initialized.
+ * - Writes mutate exclusively [ProviderCapabilitySession] (never a second store).
+ * - Retired providers (JioSaavn, YouTube) are filtered out safely without
+ *   deleting historical IDs or private server URLs.
+ */
+internal class ProviderAuthorityCoordinator(
+    private val session: ProviderCapabilitySession,
+) {
+    private var lastfmReady = false
+    private var listenBrainzReady = false
+    private var soulseekReady = false
+    suspend fun migrateOnce(
+        lyricsOrder: List<LyricsSource>,
+        enabledLyrics: Set<LyricsSource>,
+        sources: List<SourceConfig>,
+        includeMusicBrainzBaseline: Boolean = true,
+        includeDefaultArtworkBaseline: Boolean = true,
+        lastfmConfigured: Boolean = false,
+        listenBrainzConfigured: Boolean = false,
+        soulseekConfigured: Boolean = false,
+        lastfmEnabled: Boolean = false,
+        listenBrainzEnabled: Boolean = false,
+    ): Boolean {
+        val cleanedSources = sources.filterNot {
+            it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
+        }
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = cleanedSources,
+                lastfmConfigured = lastfmConfigured,
+                listenBrainzConfigured = listenBrainzConfigured,
+                soulseekConfigured = soulseekConfigured,
+            ),
+        )
+        session.refreshDescriptors(descriptors)
+        lastfmReady = lastfmConfigured
+        listenBrainzReady = listenBrainzConfigured
+        soulseekReady = soulseekConfigured
+
+        val imported = mutableMapOf<ProviderCapability, List<ProviderChoice>>()
+        if (includeMusicBrainzBaseline) {
+            imported.putAll(ProviderRuntime.musicBrainzBaseline())
+        }
+        if (includeDefaultArtworkBaseline) {
+            imported[ProviderCapability.RELEASE_ARTWORK] = listOf(
+                ProviderChoice(BuiltInProviderKeys.COVER_ART_ARCHIVE, enabled = true, order = 0),
+            )
+            imported[ProviderCapability.ARTIST_ARTWORK] = listOf(
+                ProviderChoice(BuiltInProviderKeys.APPLE_ARTIST_ART, enabled = true, order = 0),
+            )
+        }
+        imported[ProviderCapability.LISTENING_STATISTICS] = listOf(
+            ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled, order = 0),
+            ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
+        )
+        imported.putAll(legacyProviderChoices(lyricsOrder, enabledLyrics, cleanedSources))
+        // Existing manually configured Soulseek pilot is a separate DOWNLOAD
+        // instance. It is initially opt-in, but remains ineligible without a
+        // credential and all future explicit opt-outs win over this baseline.
+        imported[ProviderCapability.DOWNLOAD] = imported[ProviderCapability.DOWNLOAD].orEmpty() +
+            ProviderChoice(ProviderKey("soulseek"), enabled = true,
+                order = imported[ProviderCapability.DOWNLOAD].orEmpty().size)
+        if (!session.initialize(imported)) return false
+        // Earlier Provider Engine builds could already have DOWNLOAD choices
+        // for addons but no Soulseek slot. migrateMissing() adds categories,
+        // never entries within an existing category; fill this gap once while
+        // preserving all existing opt-outs and priorities.
+        val downloadChoices = session.state.value.configured[ProviderCapability.DOWNLOAD].orEmpty()
+        if (downloadChoices.none { it.key == ProviderKey("soulseek") }) {
+            return session.update(
+                ProviderCapability.DOWNLOAD,
+                downloadChoices + ProviderChoice(
+                    ProviderKey("soulseek"), enabled = true, order = downloadChoices.size,
+                ),
+            )
+        }
+        return true
+    }
+
+    /**
+     * Live account readiness and explicit legacy switch changes share the
+     * durable policy: a missing credential does not discard a saved opt-in.
+     * When only credentials change, keep the user's existing choices intact.
+     */
+    suspend fun updateListeningSettings(
+        lastfmConfigured: Boolean,
+        listenBrainzConfigured: Boolean,
+        lastfmEnabled: Boolean,
+        listenBrainzEnabled: Boolean,
+        updateChoices: Boolean = true,
+    ): Boolean {
+        lastfmReady = lastfmConfigured
+        listenBrainzReady = listenBrainzConfigured
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+                soulseekConfigured = soulseekReady,
+            ),
+        )
+        session.refreshDescriptors(descriptors)
+        if (!updateChoices) return true
+        return session.update(
+            ProviderCapability.LISTENING_STATISTICS,
+            listOf(
+                ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled, order = 0),
+                ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
+            ),
+        )
+    }
+
+    /** Credential changes refresh readiness, never overwrite a saved opt-out. */
+    suspend fun updateSoulseekReadiness(configured: Boolean) {
+        soulseekReady = configured
+        session.refreshDescriptors(ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+                soulseekConfigured = soulseekReady,
+            ),
+        ))
+    }
+
+    suspend fun onSourcesChanged(rawSources: List<SourceConfig>) {
+        val cleanedSources = rawSources.filterNot {
+            it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
+        }
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = cleanedSources,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+            ),
+        )
+        session.refreshDescriptors(descriptors)
+        // Adding a configured extension is an explicit user action. Import
+        // newly introduced instance identities once, never overwrite a saved
+        // opt-out when an existing instance disappears and later returns.
+        val prior = session.state.value.configured[ProviderCapability.EXTENSION_PLAYBACK].orEmpty()
+        val savedKeys = prior.mapTo(HashSet()) { it.key }
+        val added = cleanedSources
+            .filter { it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE }
+            .distinctBy { it.id }
+            .mapNotNull { source ->
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                if (key in savedKeys) null else ProviderChoice(
+                    key, enabled = source.enabled, order = prior.size + savedKeys.size,
+                )
+            }
+        if (added.isNotEmpty()) {
+            session.update(ProviderCapability.EXTENSION_PLAYBACK,
+                prior + added.mapIndexed { i, choice -> choice.copy(order = prior.size + i) })
+        }
+
+        // Newly installed download-capable addons acquire a separate slot.
+        // A removed/reinstalled addon retains its saved DOWNLOAD opt-out.
+        val priorDownloads = session.state.value.configured[ProviderCapability.DOWNLOAD].orEmpty()
+        val savedDownloadKeys = priorDownloads.mapTo(HashSet()) { it.key }
+        val newDownloads = cleanedSources
+            .filter { (it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE) &&
+                it.allowDownloads }
+            .distinctBy { it.id }
+            .mapNotNull { source ->
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                if (key in savedDownloadKeys) null else ProviderChoice(
+                    key, enabled = source.enabled, order = priorDownloads.size,
+                )
+            }
+        if (newDownloads.isNotEmpty()) {
+            session.update(
+                ProviderCapability.DOWNLOAD,
+                priorDownloads + newDownloads.mapIndexed { i, choice ->
+                    choice.copy(order = priorDownloads.size + i)
+                },
+            )
+        }
+    }
+
+    fun currentLyricsProjection(
+        fallbackOrder: List<LyricsSource>,
+        fallbackEnabled: Set<LyricsSource>,
+    ): LegacyLyricsProjection = LegacyProviderCompatibility.projectLyrics(
+        snapshot = session.state.value,
+        fallbackOrder = fallbackOrder,
+        fallbackEnabled = fallbackEnabled,
+    )
+
+    suspend fun setLyricsPreferences(
+        order: List<LyricsSource>,
+        enabled: Set<LyricsSource>,
+    ): Boolean = LegacyProviderCompatibility.writeLyrics(
+        session = session,
+        order = order,
+        enabled = enabled,
+    )
+
+    suspend fun setSingleLyricSourceEnabled(
+        source: LyricsSource,
+        enabled: Boolean,
+        fallbackOrder: List<LyricsSource>,
+        fallbackEnabled: Set<LyricsSource>,
+    ): Boolean {
+        if (source !in LyricsSource.offered || source.hidden) return false
+        val current = currentLyricsProjection(fallbackOrder, fallbackEnabled)
+        val nextEnabled = if (enabled) current.enabled + source else current.enabled - source
+        return setLyricsPreferences(current.order, nextEnabled)
+    }
+
+    suspend fun reorderLyricSources(
+        newOrder: List<LyricsSource>,
+        fallbackOrder: List<LyricsSource>,
+        fallbackEnabled: Set<LyricsSource>,
+    ): Boolean {
+        val current = currentLyricsProjection(fallbackOrder, fallbackEnabled)
+        return setLyricsPreferences(newOrder, current.enabled)
+    }
+
+    fun currentExtensionsProjection(rawSources: List<SourceConfig>): List<SourceConfig> =
+        LegacyProviderCompatibility.projectExtensions(
+            snapshot = session.state.value,
+            rawSources = rawSources,
+        )
+
+    suspend fun setExtensionEnabled(
+        configId: String,
+        enabled: Boolean,
+        rawSources: List<SourceConfig>,
+    ): Boolean {
+        val extensions = currentExtensionsProjection(rawSources).map { config ->
+            if (config.id == configId) config.copy(enabled = enabled) else config
+        }
+        return LegacyProviderCompatibility.writeExtensions(session, extensions)
+    }
+
+    suspend fun reorderExtensions(
+        orderedIds: List<String>,
+        rawSources: List<SourceConfig>,
+    ): Boolean {
+        val current = currentExtensionsProjection(rawSources)
+        val byId = current.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull { byId[it] } +
+            current.filterNot { it.id in orderedIds.toSet() }
+        return LegacyProviderCompatibility.writeExtensions(session, reordered)
+    }
+
+    fun isLyricSourcePermitted(source: LyricsSource): Boolean {
+        if (source !in LyricsSource.offered || source.hidden) return false
+        val snapshot = session.state.value
+        if (snapshot.status == ProviderSessionStatus.STORAGE_ERROR) return false
+        val key = BuiltInProviderKeys.lyrics(source)
+        if ((ProviderCapability.LYRICS_LOOKUP to key) in snapshot.quarantinedProviders) return false
+        return session.gate.open(ProviderCapability.LYRICS_LOOKUP, key) != null
+    }
+}
