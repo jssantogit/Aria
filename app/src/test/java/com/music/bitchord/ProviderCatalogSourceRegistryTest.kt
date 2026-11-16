@@ -41,6 +41,19 @@ class ProviderCatalogSourceRegistryTest {
         assertTrue(SourceRegistry.extensionEligibleConfigs(listOf(entries.last()), gate).isEmpty())
     }
 
+    @Test fun retiredJioSaavnCannotBeSeededDisplayedOrSelectedFromLegacyPreferences() {
+        val retired = SourceConfig(id = "old-jiosaavn", kind = SourceKind.JIOSAAVN, enabled = true)
+        val userAddon = SourceConfig(
+            id = "new-addon", kind = SourceKind.ADDON,
+            baseUrl = "https://example.org/manifest.json", enabled = true,
+        )
+        val migrated = SourceRegistry.sourcesForInit(listOf(retired, userAddon), false)
+        assertEquals(listOf(userAddon), migrated)
+        assertTrue(SourceRegistry.sourcesForInit(emptyList(), false).isEmpty())
+        assertTrue(SourceRegistry.displayConfigs(listOf(retired)).isEmpty())
+        assertTrue(SourceRegistry.audioCandidateConfigs(listOf(retired)).isEmpty())
+    }
+
     @Test fun addonDownloadRevocationPreservesPlaybackAndCannotUseLegacyEnabledFallback() {
         val key = ProviderKey("addon", "addon-one")
         val provider = ProviderDescriptor(
