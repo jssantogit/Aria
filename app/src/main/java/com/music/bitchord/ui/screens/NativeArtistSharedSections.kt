@@ -22,7 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -88,12 +92,37 @@ internal fun nativeArtistVisibleSections(
 }
 
 /**
- * Clip only moving LIST foreground above the floating chrome. The artwork
- * backdrop is a separate layer and stays edge-to-edge behind the status bar.
- * No layout offset or extra padding is introduced in the approved artist UI.
+ * Foreground stops being visible below the floating top bar, while the separate
+ * artist photograph stays edge-to-edge. Preserve the existing scroll geometry;
+ * the old hard clipRect generated a conspicuous straight 'invisible ceiling'
+ * through artist name/logo glyphs as they scrolled behind the toolbar.
  */
 internal fun nativeArtistListMaskTopPx(topBarBottomPx: Float, viewportHeightPx: Float): Float =
     topBarBottomPx.coerceIn(0f, viewportHeightPx.coerceAtLeast(0f))
+
+internal data class NativeArtistListFadeRange(
+    val transparentUntilPx: Float,
+    val fullyVisibleFromPx: Float,
+)
+
+/**
+ * Fade the entire moving foreground over a short strip *below* toolbar chrome.
+ * A viewport shorter than the toolbar must stay hidden rather than reappear.
+ */
+internal fun nativeArtistListFadeRangePx(
+    topBarBottomPx: Float,
+    viewportHeightPx: Float,
+    fadeHeightPx: Float,
+): NativeArtistListFadeRange {
+    val start = nativeArtistListMaskTopPx(topBarBottomPx, viewportHeightPx)
+    val feather = fadeHeightPx.takeIf { it.isFinite() && it > 0f } ?: 1f
+    return NativeArtistListFadeRange(start, start + feather)
+}
+
+/** Mirrors the linear alpha ramp supplied to the GPU brush; useful for tests. */
+internal fun nativeArtistListFadeAlphaAtPx(yPx: Float, range: NativeArtistListFadeRange): Float =
+    ((yPx - range.transparentUntilPx) /
+        (range.fullyVisibleFromPx - range.transparentUntilPx)).coerceIn(0f, 1f)
 
 /**
  * Exact native artist screen structure extracted from DetailScreen:
@@ -115,9 +144,8 @@ internal fun NativeArtistDetailFrame(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
-    // The native frosted top bar floats above this screen; the artwork should
-    // still paint behind it, but rows, logo and large Play/Shuffle/Rate circles
-    // must disappear before reaching its status/toolbar area while scrolling.
+    // The top bar floats over the artist photo. The moving text/buttons fade
+    // smoothly beneath it instead of meeting a visible clip boundary.
     val topBarClearancePx = with(LocalDensity.current) { topBarContentPadding().toPx() }
     Box(modifier.fillMaxSize().background(palette.wash)) {
         PageBackground(
@@ -131,14 +159,24 @@ internal fun NativeArtistDetailFrame(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize()
+                // DstIn must operate on the list's own layer, or it will erase
+                // the independently rendered photo wash behind the foreground.
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
-                    // clipRect switches the implicit receiver from
-                    // ContentDrawScope to DrawScope. Keep the outer content
-                    // scope so we draw the actual lazy list, not an empty rect.
-                    val contentScope = this
-                    clipRect(top = nativeArtistListMaskTopPx(topBarClearancePx, size.height)) {
-                        contentScope.drawContent()
-                    }
+                    drawContent()
+                    val fade = nativeArtistListFadeRangePx(
+                        topBarBottomPx = topBarClearancePx,
+                        viewportHeightPx = size.height,
+                        fadeHeightPx = 64.dp.toPx(),
+                    )
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black),
+                            startY = fade.transparentUntilPx,
+                            endY = fade.fullyVisibleFromPx,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
                 },
             contentPadding = contentPadding,
             content = content,
