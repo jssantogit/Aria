@@ -19,6 +19,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
 
 /** Library loaders use the remaining page, not an 88dp strip under the header. */
+// CI revalidation marker: no change to layout assertions or test behavior.
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 @ConscryptMode(ConscryptMode.Mode.OFF)
