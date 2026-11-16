@@ -66,7 +66,7 @@ internal fun heldPreviewCanPaint(hasImage: Boolean, lifted: Boolean): Boolean = 
  * The real row is suppressed for as long as the snapshot is lifted. Fading
  * this snapshot with the menu's progress creates a blank-tinted frame on
  * return: both source and snapshot are partly/fully invisible at once.
- * Its position and scale still animate; only the swap of PAINT is atomic.
+ * Its position and size remain fixed; only the swap of PAINT is atomic.
  */
 internal fun heldPreviewAlpha(hasImage: Boolean, lifted: Boolean): Float =
     if (heldPreviewCanPaint(hasImage, lifted)) 1f else 0f
@@ -82,7 +82,7 @@ internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDy
 
 /**
  * The menu a *held* item lifts into, in the shape Apple Music uses: the item
- * itself pops out of its list, the page behind it blurs, and the actions hang
+ * itself remains stationary in its list, the page behind it dims, and actions hang
  * off it.
  *
  * What lifts is the item exactly as it was drawn — see [HeldItem] — so a
