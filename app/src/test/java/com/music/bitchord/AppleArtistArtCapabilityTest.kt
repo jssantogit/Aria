@@ -99,7 +99,7 @@ class AppleArtistArtCapabilityTest {
             val call = OkHttpClient().newCall(
                 Request.Builder().url(server.url("/artist")).build())
             val pending = async { awaitAppleArtistPage(call) }
-            withTimeout(5_000) { server.takeRequest() }
+            assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
             pending.cancelAndJoin()
             assertEquals(true, call.isCanceled())
         }
