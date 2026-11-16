@@ -24,6 +24,10 @@ class RetiredWatchCacheGateTest {
             Uri.parse("bitchord://canonical?recordingId=record-1")))
     }
 
+    @Test fun opaqueBitChordUriCannotCrashPlaybackPolicyInspection() {
+        assertFalse(isRetiredWatchCacheRequest(Uri.parse("bitchord:historical?v=old")))
+    }
+
     @Test fun localFilesAndNonBitChordUrlsAreUnaffected() {
         assertFalse(isRetiredWatchCacheRequest(Uri.parse("file:///sdcard/Music/v.mp3")))
         assertFalse(isRetiredWatchCacheRequest(Uri.parse("content://media/external/audio/3")))
