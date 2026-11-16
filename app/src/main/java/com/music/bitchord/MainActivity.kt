@@ -5082,6 +5082,9 @@ private fun BitChordApp(
                                         if (isLocalDetail) folderMenuAnchor = bounds
                                     },
                                     catalogOverflowExpanded = catalogAlbumOverflowOpen,
+                                    localOverflowExpanded = shouldAnchorNativeAlbumOverflow(
+                                        browseActions, detail.browseId, browseMenuOrigin != null,
+                                    ),
                                     onOpenCatalogOverflow = { catalogAlbumOverflowOpen = true },
                                     onCatalogOverflowAnchor = { catalogAlbumOverflowAnchor = it },
                                     onDismissCatalogOverflow = { catalogAlbumOverflowOpen = false },
@@ -6105,6 +6108,29 @@ private fun BitChordApp(
                 )
             }
             browseActions?.takeIf { browseMenuOrigin == null }?.let { target ->
+                val fromAlbumToolbar = shouldAnchorNativeAlbumOverflow(
+                    target = target,
+                    currentBrowseId = detail?.browseId,
+                    held = browseMenuOrigin != null,
+                )
+                if (fromAlbumToolbar) {
+                    FrostedMenuPanel(
+                        hazeState = hazeState,
+                        anchorBounds = catalogAlbumOverflowAnchor,
+                        onDismiss = { browseActions = null },
+                    ) {
+                        browseMenuBody(target, SongActionsPresentation.Menu)
+                        FrostedMenuRow(
+                            label = "Configurações",
+                            checked = false,
+                            icon = Icons.Rounded.Settings,
+                            onClick = {
+                                browseActions = null
+                                showSettings = true
+                            },
+                        )
+                    }
+                } else {
                 val browseSheetState = rememberModalBottomSheetState(
                     skipPartiallyExpanded = true,
                     confirmValueChange = { destination ->
@@ -6125,6 +6151,7 @@ private fun BitChordApp(
                     containerColor = MaterialTheme.colorScheme.background,
                 ) {
                     browseMenuBody(target, SongActionsPresentation.Sheet)
+                }
                 }
             }
             if (confirmBrowseDismiss) {
@@ -7280,6 +7307,14 @@ private fun ConnectionEditors(
 
 
 }
+
+/** A toolbar overflow is not a held card or a generic browse-action popup. */
+internal fun shouldAnchorNativeAlbumOverflow(
+    target: BrowseTarget?,
+    currentBrowseId: String?,
+    held: Boolean,
+): Boolean = target != null && !held && !target.fromCard &&
+    target.type == BrowseType.ALBUM && target.browseId == currentBrowseId
 
 /** Visible actions in the owned playlist overflow; no inherited legacy sheet. */
 internal fun nativeOwnedPlaylistDetailOverflowLabels() = listOf(
@@ -8550,6 +8585,7 @@ private fun NativeDetailAlbumTopBarActions(
     onSort: () -> Unit,
     onSortAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     catalogOverflowExpanded: Boolean,
+    localOverflowExpanded: Boolean = false,
     onOpenCatalogOverflow: () -> Unit,
     onCatalogOverflowAnchor: (androidx.compose.ui.unit.IntRect) -> Unit = {},
     onDismissCatalogOverflow: () -> Unit,
@@ -8595,10 +8631,15 @@ private fun NativeDetailAlbumTopBarActions(
             )
         }
     } else if (isReleaseDetail && songs.isNotEmpty()) {
-        NativeCollectionOverflowAction(
-            contentDescription = stringResource(R.string.more),
-            onClick = onAlbumActions,
-        )
+        Box(Modifier.onGloballyPositioned {
+            onCatalogOverflowAnchor(nativeMenuAnchorBounds(it))
+        }) {
+            NativeCollectionOverflowAction(
+                contentDescription = stringResource(R.string.more),
+                onClick = onAlbumActions,
+                expanded = localOverflowExpanded,
+            )
+        }
     }
 }
 
