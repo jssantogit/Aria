@@ -144,4 +144,50 @@ class ProviderCachedReadAccessTest {
             ProviderCapability.RELEASE_ARTWORK, artwork, emptyList<String>(),
         ) { listOf("art") })
     }
+
+    @Test fun frontV5ArtistShelfKeepsEditorialRowsButHidesCaaArtworkWhenDisabled(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            val caa = ProviderKey("coverartarchive")
+            fun frontPolicy(enabled: Boolean) = ProviderCapabilityPolicy(
+                descriptors = listOf(
+                    ProviderDescriptor(musicBrainz,
+                        setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY),
+                        ProviderReadiness.READY),
+                    ProviderDescriptor(caa, setOf(ProviderCapability.RELEASE_ARTWORK),
+                        ProviderReadiness.READY),
+                ),
+                choices = mapOf(
+                    ProviderCapability.EDITORIAL_DISCOGRAPHY to
+                        listOf(ProviderChoice(musicBrainz, true, 0)),
+                    ProviderCapability.RELEASE_ARTWORK to
+                        listOf(ProviderChoice(caa, enabled, 0)),
+                ),
+            )
+            val gate = ProviderPolicyGate(frontPolicy(true))
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess { gate })
+            val artist = "12121212-1212-4121-8121-121212121212"
+            val group = "22222222-2222-4222-8222-222222222222"
+            val url = "https://archive.org/download/example/front-500.jpg"
+            index.persistArtists(listOf(MusicBrainzArtistHit(artist, "Artist", null, "BR")))
+            index.persistArtistGroups(artist, listOf(
+                MusicBrainzReleaseGroupHit(group, "Album", "Album", "2024-01-01", "Artist"),
+            ))
+            db.catalogDao().upsertMusicBrainzCoverArtCache(
+                com.music.bitchord.data.catalog.MusicBrainzCoverArtCacheEntity(
+                    "release-group:front-v5", group, url, System.currentTimeMillis(), url,
+                ),
+            )
+            assertEquals(url, index.cachedArtistGroups(artist).single().artworkUri)
+            gate.replace(frontPolicy(false))
+            val withoutCaa = index.cachedArtistGroups(artist).single()
+            assertEquals("Album", withoutCaa.title)
+            assertEquals(null, withoutCaa.artworkUri)
+            assertTrue(db.catalogDao().musicBrainzCoverArtCache("release-group:front-v5", group) != null)
+            gate.replace(frontPolicy(true))
+            assertEquals(url, index.cachedArtistGroups(artist).single().artworkUri)
+        } finally { db.close() }
+    }
 }
