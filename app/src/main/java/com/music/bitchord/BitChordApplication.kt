@@ -39,6 +39,7 @@ import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.SearchHistory
+import com.music.bitchord.acquisition.a0.SoulseekCredentialVault
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceKind
@@ -266,6 +267,11 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                     lastfmConfigured = AppSettings.lastfmSessionKey.value.isNotBlank() &&
                         AppSettings.lastfmApiKey.value.isNotBlank(),
                     listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                    // No TCP session is started. Only a securely restored
+                    // account in the devDebug pilot may become DOWNLOAD-ready.
+                    soulseekConfigured = BuildConfig.DEBUG && BuildConfig.FLAVOR == "dev" &&
+                        (SoulseekCredentialVault(this@BitChordApplication).read()
+                            ?.let { credentials -> credentials.erase(); true } == true),
                     lastfmEnabled = AppSettings.lastfmEnabled.value &&
                         AppSettings.lastfmScrobbleEnabled.value,
                     listenBrainzEnabled = AppSettings.listenBrainzEnabled.value,
