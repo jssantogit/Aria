@@ -92,7 +92,7 @@ class ListenBrainzPublicPlaylistTest {
                 override suspend fun search(query: String) = ListenBrainzPublicPlaylistHttp(404, "")
                 override suspend fun detail(mbid: String) = ListenBrainzPublicPlaylistHttp(200, jspf)
             },
-            limiter = ListenBrainzRateLimiter(minimumIntervalMs = 0L),
+            limiter = ListenBrainzRateLimiter(waitMillis = {}),
             cacheRead = ProviderCachedReadAccess { gate },
         )
         val without = client.detail(selected)!!
@@ -124,7 +124,7 @@ class ListenBrainzPublicPlaylistTest {
                 override suspend fun detail(mbid: String): ListenBrainzPublicPlaylistHttp =
                     ListenBrainzPublicPlaylistHttp(404, "")
             },
-            limiter = ListenBrainzRateLimiter(minimumIntervalMs = 0L),
+            limiter = ListenBrainzRateLimiter(waitMillis = {}),
             cacheRead = ProviderCachedReadAccess { gate },
         )
         assertTrue(client.searchGenre("rock")?.isNotEmpty() == true)
