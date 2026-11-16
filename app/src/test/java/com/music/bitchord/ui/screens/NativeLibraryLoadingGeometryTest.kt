@@ -38,8 +38,8 @@ class NativeLibraryLoadingGeometryTest {
         assertTrue("Loader should occupy the remaining page, not the old 88dp row", bounds.height >= 450.dp)
         val spinner = compose.onNodeWithTag("native-library-loading-indicator")
             .getUnclippedBoundsInRoot()
-        assertEquals(bounds.center.x.value, spinner.center.x.value, 1f)
-        assertEquals(bounds.center.y.value, spinner.center.y.value, 1f)
+        assertEquals(((bounds.left + bounds.right) / 2f).value, ((spinner.left + spinner.right) / 2f).value, 1f)
+        assertEquals(((bounds.top + bounds.bottom) / 2f).value, ((spinner.top + spinner.bottom) / 2f).value, 1f)
     }
 
     @Test fun shortInlineLoaderStillPreservesMinimumReadableHeight() {
@@ -53,7 +53,7 @@ class NativeLibraryLoadingGeometryTest {
         assertTrue(bounds.height >= 88.dp)
         val spinner = compose.onNodeWithTag("native-library-loading-indicator")
             .getUnclippedBoundsInRoot()
-        assertEquals(bounds.center.x.value, spinner.center.x.value, 1f)
-        assertEquals(bounds.center.y.value, spinner.center.y.value, 1f)
+        assertEquals(((bounds.left + bounds.right) / 2f).value, ((spinner.left + spinner.right) / 2f).value, 1f)
+        assertEquals(((bounds.top + bounds.bottom) / 2f).value, ((spinner.top + spinner.bottom) / 2f).value, 1f)
     }
 }
