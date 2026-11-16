@@ -98,6 +98,19 @@ class GlobalAppleTopBarChromeTest {
         )
     }
 
+    @Test fun rootSettingsUsesSharedExpandableMenuInsteadOfLegacyCapsule() {
+        compose.setContent {
+            BitChordTheme {
+                TopBarAccountButton(account = null, onClick = {})
+            }
+        }
+        val res = RuntimeEnvironment.getApplication().resources
+        compose.onNodeWithContentDescription(res.getString(R.string.more)).performClick()
+        compose.onNodeWithTag("native-compact-overflow", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("apple-root-settings-popup", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(res.getString(R.string.settings)).assertExists()
+    }
+
     @Test fun accountAvatarBecomesThreeDotSettingsMenu() {
         var enteredSettings = false
         compose.setContent {
