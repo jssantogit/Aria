@@ -170,17 +170,18 @@ fun Modifier.longPressMenuClickable(
             // When the bitmap is lifted, its source retains layout and touch
             // semantics without painting duplicate text or artwork.
             val request = capture.requests
-            if (request == capture.handled) {
-                if (capture.active?.isLifted != true) drawContent()
-                return@drawWithContent
+            val pending = if (request != capture.handled) capture.pending else null
+            when (heldCaptureFrame(capture.active?.isLifted == true, pending != null)) {
+                HeldCaptureFrame.HIDDEN -> return@drawWithContent
+                HeldCaptureFrame.SOURCE -> {
+                    drawContent()
+                    return@drawWithContent
+                }
+                HeldCaptureFrame.CAPTURED -> Unit
             }
             capture.handled = request
-            val item = capture.pending
+            val item = pending ?: return@drawWithContent
             capture.pending = null
-            if (item == null || capture.active?.isLifted == true) {
-                if (capture.active?.isLifted != true) drawContent()
-                return@drawWithContent
-            }
             // Record the unpressed item ONCE and draw that exact layer in the
             // source frame. Previously drawContent() was called separately
             // before record(), meaning the item was rendered twice while
@@ -198,6 +199,15 @@ fun Modifier.longPressMenuClickable(
                 }
             }
         }
+}
+
+/** Exactly one paint path per hold frame, even during bitmap handoff. */
+internal enum class HeldCaptureFrame { SOURCE, CAPTURED, HIDDEN }
+
+internal fun heldCaptureFrame(lifted: Boolean, capturePending: Boolean): HeldCaptureFrame = when {
+    lifted -> HeldCaptureFrame.HIDDEN
+    capturePending -> HeldCaptureFrame.CAPTURED
+    else -> HeldCaptureFrame.SOURCE
 }
 
 private class HoldCapture {
