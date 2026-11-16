@@ -314,7 +314,8 @@ internal object ProviderCapabilityRegistry {
             ProviderDescriptor(
                 key = key,
                 capabilities = group.map { it.capability }.toSet(),
-                readiness = readiness,
+                readiness = ProviderReadiness.NOT_IMPLEMENTED,
+                capabilityReadiness = group.associate { it.capability to it.readiness },
             )
         }
 
