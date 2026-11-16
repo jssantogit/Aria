@@ -24,9 +24,16 @@ internal class ProviderCachedReadAccess(
         fetch: suspend () -> T,
     ): T {
         val gate = policyGate() ?: return unavailable
-        val ticket = gate.open(capability, provider) ?: return unavailable
-        val fetched = fetch()
-        return if (gate.accept(ticket)) fetched else unavailable
+        // The common provider executor revokes the active child operation
+        // immediately. A post-read ticket check alone leaves a blocked Room
+        // query or rate-limit wait alive after the user disables its source.
+        return when (val result = ProviderQueryExecutor(gate).execute(
+            capability, provider, fetch,
+        )) {
+            is ProviderCallResult.Success -> result.value
+            is ProviderCallResult.Failed -> throw result.cause
+            ProviderCallResult.Denied, ProviderCallResult.Stale -> unavailable
+        }
     }
 
     companion object {
