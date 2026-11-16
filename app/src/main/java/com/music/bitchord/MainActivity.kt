@@ -82,6 +82,9 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Upgrade
 import com.music.bitchord.data.listentogether.ServerConnectionState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -6368,6 +6371,11 @@ private fun BitChordApp(
                         else -> Unit
                     }
                 },
+                onSettings = {
+                    playlistLibrarySortMenu = false
+                    playlistDetailOptionsMenu = false
+                    showSettings = true
+                },
                 onDetailEdit = { selected ->
                     openedCanonicalPlaylist = null
                     when (selected) {
@@ -7222,6 +7230,13 @@ private fun ConnectionEditors(
 
 }
 
+/** Visible actions in the owned playlist overflow; no inherited legacy sheet. */
+internal fun nativeOwnedPlaylistDetailOverflowLabels() = listOf(
+    "Tocar a seguir", "Adicionar à fila", "Editar playlist", "Configurações",
+)
+
+internal fun nativeOwnedPlaylistDetailOverflowIsAnchored(): Boolean = true
+
 /** Native toolbar actions shared by library and canonical playlist details. */
 @Composable
 private fun CanonicalPlaylistToolbarActions(
@@ -7512,6 +7527,7 @@ private fun CanonicalPlaylistMenus(
         com.music.bitchord.playback.CanonicalCollectionIntent,
     ) -> Unit,
     onDetailEdit: (com.music.bitchord.ui.screens.LibraryPlaylistCard) -> Unit,
+    onSettings: () -> Unit,
 ) {
     if (librarySortOpen && selectedCard == null) {
         BackHandler { onLibrarySortDismiss() }
@@ -7570,41 +7586,39 @@ private fun CanonicalPlaylistMenus(
             onDetailOptionsDismiss()
             onDetailQueue(selected, intent)
         }
-        ModalBottomSheet(
-            onDismissRequest = onDetailOptionsDismiss,
-            shape = androidx.compose.ui.graphics.RectangleShape,
-            dragHandle = null,
-            containerColor = MaterialTheme.colorScheme.background,
+        FrostedMenuPanel(
+            hazeState = hazeState,
+            anchorBounds = overflowAnchor,
+            onDismiss = onDetailOptionsDismiss,
         ) {
-            BrowseActionsSheet(
-                target = BrowseTarget(
-                    browseId = null,
-                    title = selected.title,
-                    subtitle = com.music.bitchord.ui.screens.canonicalPlaylistDetailMeta(
-                        smart = selected is com.music.bitchord.ui.screens.LibraryPlaylistCard.Smart,
-                        rows = detailRows,
-                    ),
-                    type = BrowseType.PLAYLIST,
-                    fromCard = false,
-                ),
-                onPlayNext = {
-                    queue(com.music.bitchord.playback.CanonicalCollectionIntent.ADD_NEXT)
-                },
-                onAddToQueue = {
-                    queue(com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE)
-                },
-                headerArtwork = {
-                    com.music.bitchord.ui.screens.CanonicalPlaylistCoverArt(
-                        rows = detailRows.orEmpty(),
-                        modifier = Modifier.fillMaxSize(),
-                        // The menu must show a manually selected cover even if
-                        // the smart playlist currently matches zero recordings.
-                        customCoverUri = selected.explicitCoverUri(),
-                    )
-                },
-                onEdit = {
+            FrostedMenuRow(
+                label = "Tocar a seguir",
+                checked = false,
+                icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                onClick = { queue(com.music.bitchord.playback.CanonicalCollectionIntent.ADD_NEXT) },
+            )
+            FrostedMenuRow(
+                label = "Adicionar à fila",
+                checked = false,
+                icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                onClick = { queue(com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE) },
+            )
+            FrostedMenuRow(
+                label = "Editar playlist",
+                checked = false,
+                icon = PlaylistEditorIcons.Edit,
+                onClick = {
                     onDetailOptionsDismiss()
                     onDetailEdit(selected)
+                },
+            )
+            FrostedMenuRow(
+                label = "Configurações",
+                checked = false,
+                icon = Icons.Rounded.Settings,
+                onClick = {
+                    onDetailOptionsDismiss()
+                    onSettings()
                 },
             )
         }
