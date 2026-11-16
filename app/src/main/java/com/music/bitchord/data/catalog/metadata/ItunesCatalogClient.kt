@@ -2,6 +2,8 @@ package com.music.bitchord.data.catalog.metadata
 
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.RateLimitedProviderTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -221,6 +223,9 @@ private val defaultItunesHttpClient: HttpClient by lazy {
  */
 internal class ItunesCatalogClient(
     private val transport: ItunesCatalogTransport = KtorItunesCatalogTransport(),
+    private val artworkGateProvider: () -> ProviderPolicyGate? = {
+        ProviderRuntime.gateForCacheReadOrNull()
+    },
 ) {
     suspend fun search(
         term: String,
@@ -334,8 +339,18 @@ internal class ItunesCatalogClient(
             val items = filtered.filterNot { it.scopedId in disputed }
                 .distinctBy { it.scopedId }
             val requestedLimit = params["limit"]?.toIntOrNull()
+            // The editorial listing and Apple CDN imagery have separate opt-
+            // outs. Keep catalog metadata visible without publishing images
+            // (including low-res fallbacks) from a revoked artwork capability.
+            val artGate = artworkGateProvider()
+            val artTicket = artGate?.open(
+                ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES,
+            )
+            val permittedArtwork = artTicket != null && artGate.accept(artTicket)
             ItunesCatalogResult.Success(
-                items = items,
+                items = if (permittedArtwork) items else items.map {
+                    it.copy(artworkUrl = null)
+                },
                 possiblyTruncated = disputed.isNotEmpty() ||
                     (requestedLimit != null && rows.size >= requestedLimit) ||
                     count > rows.size,
