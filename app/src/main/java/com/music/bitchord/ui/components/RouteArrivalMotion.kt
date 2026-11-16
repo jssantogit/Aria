@@ -115,7 +115,11 @@ internal fun isolatedPageContentTransform(reducedMotion: Boolean): ContentTransf
     ContentTransform(
         targetContentEnter = if (reducedMotion) EnterTransition.None else
             fadeIn(animationSpec = tween(180)),
-        initialContentExit = ExitTransition.None,
+        // AnimatedContent retains the outgoing composition while enter runs.
+        // None would leave those pixels visible; a zero-duration alpha exit
+        // suppresses them immediately without altering the incoming motion.
+        initialContentExit = if (reducedMotion) ExitTransition.None else
+            fadeOut(animationSpec = tween(0)),
         sizeTransform = null,
     )
 
