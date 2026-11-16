@@ -108,6 +108,32 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun listeningAccountBecomesReadyAfterLoginWithoutReenablingExplicitOptOut(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(ProviderCapabilityRegistry.inventory()),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            lastfmEnabled = true, listenBrainzEnabled = false,
+        ))
+        assertNull(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM))
+        assertTrue(coordinator.updateListeningSettings(
+            lastfmConfigured = true, listenBrainzConfigured = false,
+            lastfmEnabled = true, listenBrainzEnabled = false,
+        ))
+        assertTrue(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM) != null)
+        assertNull(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ))
+        assertTrue(coordinator.updateListeningSettings(
+            lastfmConfigured = true, listenBrainzConfigured = true,
+            lastfmEnabled = false, listenBrainzEnabled = false,
+        ))
+        assertNull(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM))
+        assertNull(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ))
+    }
+
+    @Test
     fun newExtensionBecomesEligibleAndPreviouslyDisabledInstanceStaysOffAfterRefresh(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
