@@ -2,6 +2,8 @@ package com.music.bitchord
 
 import android.content.Context
 import com.music.bitchord.data.providers.MusicBrainzCapabilitySearch
+import com.music.bitchord.data.providers.ProviderAuthorityCoordinator
+import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilitySession
@@ -57,6 +59,40 @@ class ProviderCapabilitySessionTest {
     )
 
     @Before fun clear() { prefs.edit().clear().commit() }
+
+    @Test fun sourceRefreshDoesNotDisableUnrelatedReadyBuiltInProviders(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(store, emptyList())
+        val authority = ProviderAuthorityCoordinator(session)
+        assertTrue(authority.migrateOnce(
+            lyricsOrder = emptyList(),
+            enabledLyrics = emptySet(),
+            sources = emptyList(),
+            includeMusicBrainzBaseline = false,
+            includeDefaultArtworkBaseline = false,
+            itunesImplemented = true,
+            discogsImplemented = true,
+            discogsTokenConfigured = true,
+            soulseekConfigured = true,
+        ))
+        assertTrue(session.update(ProviderCapability.EDITION_METADATA, listOf(
+            ProviderChoice(BuiltInProviderKeys.DISCOGS, true, 0))))
+        val itunes = requireNotNull(session.gate.open(
+            ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.ITUNES))
+        val discogs = requireNotNull(session.gate.open(
+            ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS))
+        val soulseek = requireNotNull(session.gate.open(
+            ProviderCapability.DOWNLOAD, ProviderKey("soulseek")))
+
+        authority.onSourcesChanged(emptyList())
+        assertTrue(session.gate.accept(itunes))
+        assertTrue(session.gate.accept(discogs))
+        assertTrue(session.gate.accept(soulseek))
+
+        authority.updateSoulseekReadiness(configured = true)
+        assertTrue(session.gate.accept(itunes))
+        assertTrue(session.gate.accept(discogs))
+        assertTrue(session.gate.accept(soulseek))
+    }
 
     @Test fun headlessStateIsObservableWithoutAnAndroidSettingsScreen(): Unit = runBlocking {
         val session = session()
