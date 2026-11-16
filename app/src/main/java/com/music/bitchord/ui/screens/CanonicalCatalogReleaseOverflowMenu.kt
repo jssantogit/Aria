@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -21,6 +23,9 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
     plateTint: Color? = null,
     expanded: Boolean,
     onDismiss: () -> Unit,
+    hazeState: dev.chrisbanes.haze.HazeState,
+    anchorBounds: androidx.compose.ui.unit.IntRect? = null,
+    onSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val target = remember(browseId) { canonicalCatalogEntityRatingTarget(browseId) }
@@ -38,37 +43,52 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
             onDismiss = { ratingOpen = false },
         )
     }
-    com.music.bitchord.ui.components.NativeCompactOverflowMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        plateTint = plateTint,
-    ) {
-        if (target != null) {
-            com.music.bitchord.ui.components.NativeCompactMenuItem(
-                label = "Avaliar álbum",
-                icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.RatingPlain,
+    if (expanded) {
+        com.music.bitchord.FrostedMenuPanel(
+            hazeState = hazeState,
+            anchorBounds = anchorBounds,
+            onDismiss = onDismiss,
+        ) {
+            if (target != null) {
+                com.music.bitchord.FrostedMenuRow(
+                    label = "Avaliar álbum",
+                    checked = false,
+                    icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.RatingPlain,
+                    onClick = {
+                        onDismiss()
+                        ratingOpen = true
+                    },
+                )
+            }
+            if (validCatalogMetadataPin(pin)) {
+                com.music.bitchord.FrostedMenuRow(
+                    label = if (isPinned) "Desafixar da Biblioteca" else "Fixar na Biblioteca",
+                    checked = false,
+                    icon = com.music.bitchord.ui.icons.BitChordIcons.Pin,
+                    onClick = { repo.toggle(pin); onDismiss() },
+                )
+            }
+            if (target != null) {
+                com.music.bitchord.FrostedMenuRow(
+                    label = "Ver no MusicBrainz",
+                    checked = false,
+                    icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Globe,
+                    onClick = {
+                        onDismiss()
+                        val endpoint = if (target.entityType == "RELEASE_GROUP")
+                            "release-group" else "release"
+                        val url = Uri.parse("https://musicbrainz.org/$endpoint/" + target.entityId)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url))
+                    },
+                )
+            }
+            com.music.bitchord.FrostedMenuRow(
+                label = "Configurações",
+                checked = false,
+                icon = androidx.compose.material.icons.Icons.Rounded.Settings,
                 onClick = {
                     onDismiss()
-                    ratingOpen = true
-                },
-            )
-        }
-        if (validCatalogMetadataPin(pin)) {
-            com.music.bitchord.ui.components.NativeCompactMenuItem(
-                label = if (isPinned) "Desafixar da Biblioteca" else "Fixar na Biblioteca",
-                icon = com.music.bitchord.ui.icons.BitChordIcons.Pin,
-                onClick = { repo.toggle(pin); onDismiss() },
-            )
-        }
-        if (target != null) {
-            com.music.bitchord.ui.components.NativeCompactMenuItem(
-                label = "Ver no MusicBrainz",
-                icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Globe,
-                onClick = {
-                    onDismiss()
-                    val endpoint = if (target.entityType == "RELEASE_GROUP") "release-group" else "release"
-                    val url = Uri.parse("https://musicbrainz.org/$endpoint/" + target.entityId)
-                    context.startActivity(Intent(Intent.ACTION_VIEW, url))
+                    onSettings()
                 },
             )
         }
