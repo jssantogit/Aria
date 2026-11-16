@@ -86,6 +86,22 @@ class NativeFrostedRatingInteractionTest {
         compose.runOnIdle { assertEquals(1, sortClicks) }
     }
 
+    @Test fun playerRatingEditorHighlightsItsActualStarLauncher() {
+        compose.setContent {
+            MaterialTheme {
+                CanonicalRecordingFeedbackPanel(
+                    rating = 4.0,
+                    onSave = {},
+                    onDismiss = {},
+                    anchorBounds = IntRect(24, 96, 64, 136),
+                    highlightPlayerLauncher = true,
+                )
+            }
+        }
+        compose.onNodeWithTag("player-rating-launcher-highlight").assertExists()
+        compose.onNodeWithTag("player-overflow-highlight").assertDoesNotExist()
+    }
+
     @Test fun numericStyleUsesExistingV3DigitVectorsInTheEditor() {
         compose.setContent {
             MaterialTheme {
