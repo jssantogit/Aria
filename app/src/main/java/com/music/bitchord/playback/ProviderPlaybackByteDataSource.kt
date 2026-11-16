@@ -109,6 +109,8 @@ internal class ProviderPlaybackByteDataSource(
     private val upstream: DataSource,
     private val cancelNetwork: () -> Unit = {},
     private val beginNetworkOpen: (Boolean) -> Unit = {},
+    private val fallbackLease: () -> ProviderPlaybackByteLease? = { null },
+    private val requireLease: Boolean = false,
 ) : DataSource {
     @Volatile private var revoked = false
     private var lease: ProviderPlaybackByteLease? = null
@@ -120,9 +122,15 @@ internal class ProviderPlaybackByteDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         if (opened) throw IOException("Playback byte transport already open")
-        val permission = dataSpec.customData as? ProviderPlaybackByteLease
+        // DASH/HLS segments arrive as new HTTP DataSpecs without the
+        // initial logical manifest's customData. A scoped MediaSource factory
+        // supplies its own immutable winning-provider session for those hops.
+        val permission = (dataSpec.customData as? ProviderPlaybackByteLease)
+            ?: fallbackLease()
         beginNetworkOpen(permission != null)
         revoked = false
+        if (requireLease && permission == null)
+            throw IOException("Adaptive playback requires a provider media-session ticket")
         lease = permission
         if (permission != null) {
             if (!permission.allowed()) {
@@ -182,6 +190,8 @@ internal class ProviderPlaybackByteDataSource(
     internal class Factory(
         private val calls: Call.Factory,
         private val chunkBytes: Long,
+        private val fallbackLease: () -> ProviderPlaybackByteLease? = { null },
+        private val requireLease: Boolean = false,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource {
             val scopedCalls = ProviderPlaybackCallFactory(calls)
@@ -191,6 +201,8 @@ internal class ProviderPlaybackByteDataSource(
                 ),
                 cancelNetwork = scopedCalls::revoke,
                 beginNetworkOpen = scopedCalls::beginOpen,
+                fallbackLease = fallbackLease,
+                requireLease = requireLease,
             )
         }
     }
