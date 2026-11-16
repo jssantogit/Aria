@@ -254,7 +254,8 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // remains default-off, preserving its independent legal/account gate.
         Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
             kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                ProviderRuntime.authorityOrNull()?.migrateOnce(
+                val authority = ProviderRuntime.authorityOrNull()
+                val migrated = authority?.migrateOnce(
                     lyricsOrder = AppSettings.lyricsSourceOrder.value,
                     enabledLyrics = AppSettings.lyricsSources.value,
                     sources = SourceRegistry.configs.value,
@@ -272,7 +273,20 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                             it.erase()
                             true
                         } == true),
-                )
+                ) == true
+                if (migrated && authority != null) {
+                    val lyrics = authority.currentLyricsProjection(
+                        AppSettings.lyricsSourceOrder.value, AppSettings.lyricsSources.value,
+                    )
+                    AppSettings.lyricsSourceOrder.value = lyrics.order
+                    AppSettings.lyricsSources.value = lyrics.enabled
+                    val raw = SourceRegistry.configs.value
+                    val projected = authority.currentExtensionsProjection(raw)
+                    SourceRegistry.applyProviderProjection(projected + raw.filterNot {
+                        it.kind == com.music.bitchord.data.sources.SourceKind.ADDON ||
+                            it.kind == com.music.bitchord.data.sources.SourceKind.CUSTOM_MODULE
+                    })
+                }
             }
         }
         Diagnostics.event(
