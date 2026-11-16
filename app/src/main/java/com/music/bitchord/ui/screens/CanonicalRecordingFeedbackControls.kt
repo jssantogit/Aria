@@ -314,6 +314,9 @@ internal fun ratingEditorModalWidthDp(screenWidthDp: Int): Int =
     ((screenWidthDp.takeIf { it > 0 } ?: 320) - 32)
         .coerceIn(1, ratingEditorFloatingMaxWidthDp())
 
+internal fun ratingEditorModalGlyphSizeDp(screenWidthDp: Int): Int =
+    ((ratingEditorModalWidthDp(screenWidthDp) - 24) / 5).coerceIn(18, 56)
+
 /** Legacy geometry helper remains for callers, but no modal is anchored. */
 internal fun anchoredRatingCardWidthDp(screenWidthDp: Int): Int =
     ((screenWidthDp.takeIf { it > 0 } ?: 320) - 32).coerceIn(1, 300)
@@ -375,7 +378,7 @@ internal fun CanonicalRecordingFeedbackPanel(
     val modalWidth = modalWidthDp.dp
     // Keep the familiar large stars wherever five slots safely fit. Only
     // narrow multi-window layouts reduce their size.
-    val modalGlyphSize = ((modalWidthDp - 24) / 5).coerceIn(18, 56).dp
+    val modalGlyphSize = ratingEditorModalGlyphSizeDp(LocalConfiguration.current.screenWidthDp).dp
     val ratingEditorContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth()
