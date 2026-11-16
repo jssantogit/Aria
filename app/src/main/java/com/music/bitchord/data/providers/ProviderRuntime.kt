@@ -25,6 +25,8 @@ internal object ProviderRuntime {
         val mb = BuiltInProviderKeys.MUSICBRAINZ
         val caa = BuiltInProviderKeys.COVER_ART_ARCHIVE
         val appleArt = BuiltInProviderKeys.APPLE_ARTIST_ART
+        val itunes = BuiltInProviderKeys.ITUNES
+        val discogs = BuiltInProviderKeys.DISCOGS
         val mbCaps = setOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
@@ -36,12 +38,20 @@ internal object ProviderRuntime {
                     ProviderDescriptor(mb, mbCaps, ProviderReadiness.READY),
                     ProviderDescriptor(caa, setOf(ProviderCapability.RELEASE_ARTWORK), ProviderReadiness.READY),
                     ProviderDescriptor(appleArt, setOf(ProviderCapability.ARTIST_ARTWORK), ProviderReadiness.READY),
+                    BuiltInProviderDescriptors.itunes(ProviderReadiness.READY),
+                    BuiltInProviderDescriptors.discogs(tokenConfigured = true, implemented = true),
                 ),
-                choices = mbCaps.associateWith {
-                    listOf(ProviderChoice(mb, enabled = true, order = 0))
+                choices = mbCaps.associateWith { capability ->
+                    listOf(ProviderChoice(mb, enabled = true, order = 0)) +
+                        if (capability == ProviderCapability.IDENTITY) emptyList()
+                        else listOf(ProviderChoice(itunes, enabled = true, order = 1))
                 } + mapOf(
-                    ProviderCapability.RELEASE_ARTWORK to listOf(ProviderChoice(caa, enabled = true, order = 0)),
+                    ProviderCapability.RELEASE_ARTWORK to listOf(
+                        ProviderChoice(caa, enabled = true, order = 0),
+                        ProviderChoice(itunes, enabled = true, order = 1),
+                    ),
                     ProviderCapability.ARTIST_ARTWORK to listOf(ProviderChoice(appleArt, enabled = true, order = 0)),
+                    ProviderCapability.EDITION_METADATA to listOf(ProviderChoice(discogs, enabled = true, order = 0)),
                 ),
             ),
         )
