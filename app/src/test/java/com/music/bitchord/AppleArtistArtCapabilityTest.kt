@@ -15,7 +15,6 @@ import com.music.bitchord.data.providers.ProviderReadiness
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.cancelAndJoin
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
@@ -98,9 +97,15 @@ class AppleArtistArtCapabilityTest {
             server.start()
             val call = OkHttpClient().newCall(
                 Request.Builder().url(server.url("/artist")).build())
-            val pending = async { awaitAppleArtistPage(call) }
+            val gate = ProviderPolicyGate(policy(true))
+            val pending = async {
+                com.music.bitchord.data.providers.ArtworkProbePolicyGuard { gate }.probe(
+                    ProviderCapability.ARTIST_ARTWORK, key,
+                ) { awaitAppleArtistPage(call) }
+            }
             assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
-            pending.cancelAndJoin()
+            gate.replace(policy(false))
+            assertNull(withTimeout(5_000) { pending.await() })
             assertEquals(true, call.isCanceled())
         }
     }
