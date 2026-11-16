@@ -29,6 +29,38 @@ class ProviderSourceCacheAdmissionTest {
             )),
         ))
 
+    @Test fun adaptiveSegmentCacheHitRequiresCurrentMediaItemLease() {
+        val gate = gate(addonOn = true, siblingOn = true)
+        val addonTicket = requireNotNull(gate.open(
+            ProviderCapability.EXTENSION_PLAYBACK, addon))
+        val siblingTicket = requireNotNull(gate.open(
+            ProviderCapability.EXTENSION_PLAYBACK, sibling))
+        val addonLease = ProviderPlaybackByteLease(gate, addonTicket)
+        val siblingLease = ProviderPlaybackByteLease(gate, siblingTicket)
+
+        assertTrue(admitAdaptiveSegmentCacheRead(addonLease) === addonLease)
+        try {
+            admitAdaptiveSegmentCacheRead(null)
+            org.junit.Assert.fail("An unknown segment must not read cached HTTP bytes")
+        } catch (_: java.io.IOException) {}
+
+        gate.replace(ProviderCapabilityPolicy(
+            listOf(addon, sibling).map {
+                ProviderDescriptor(it, setOf(ProviderCapability.EXTENSION_PLAYBACK),
+                    ProviderReadiness.READY)
+            },
+            mapOf(ProviderCapability.EXTENSION_PLAYBACK to listOf(
+                ProviderChoice(addon, false, 0),
+                ProviderChoice(sibling, true, 1),
+            )),
+        ))
+        try {
+            admitAdaptiveSegmentCacheRead(addonLease)
+            org.junit.Assert.fail("Cached segment bypassed disabled addon")
+        } catch (_: java.io.IOException) {}
+        assertTrue(admitAdaptiveSegmentCacheRead(siblingLease) === siblingLease)
+    }
+
     @Test fun fullyCachedBytesNeedAnExplicitEnabledWinningProvider() {
         val gate = gate(addonOn = true)
         assertNotNull(sourceCacheReadLease("addon", "one", true, gate))
