@@ -81,6 +81,99 @@ class ProviderPlaybackByteDataSourceTest {
         override fun close() { closes++ }
     }
 
+    @Test fun segmentedStreamUsesSameSourceLeaseWithoutCustomDataOnEachSegment() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("manifest"))
+        server.enqueue(MockResponse().setBody("segment!"))
+        server.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+        val session = ProviderPlaybackMediaSession()
+        val lease = ProviderPlaybackByteLease(gate, ticket)
+        session.bind(lease)
+        val factory = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 65536L,
+            fallbackLease = session::currentLease,
+            requireLease = true,
+        )
+        try {
+            factory.createDataSource().useSource { source ->
+                assertEquals(8L, source.open(spec(lease, server.url("/playlist").toString())))
+                assertEquals(8, source.read(ByteArray(8), 0, 8))
+            }
+            factory.createDataSource().useSource { segment ->
+                // Media3's HLS/DASH segment DataSpec is a fresh HTTP URI with
+                // no original customData. It must inherit the *media-item*
+                // provider session, not become a generic unguarded request.
+                assertEquals(8L, segment.open(spec(null, server.url("/segment").toString())))
+                assertEquals(8, segment.read(ByteArray(8), 0, 8))
+            }
+        } finally { server.shutdown() }
+        assertEquals("/playlist", server.takeRequest(1, TimeUnit.SECONDS)?.path)
+        assertEquals("/segment", server.takeRequest(1, TimeUnit.SECONDS)?.path)
+    }
+
+    @Test fun revokedSessionRejectsNewAdaptiveSegmentBeforeNetworkOpen() {
+        val server = MockWebServer()
+        server.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val session = ProviderPlaybackMediaSession()
+        session.bind(ProviderPlaybackByteLease(gate, requireNotNull(
+            gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))))
+        gate.replace(policy(false))
+        val segment = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 65536L,
+            fallbackLease = session::currentLease,
+            requireLease = true,
+        ).createDataSource()
+        try {
+            try {
+                segment.open(spec(null, server.url("/late-segment").toString()))
+                fail("Revoked manifest permission leaked into an adaptive segment")
+            } catch (_: IOException) {}
+            assertTrue(server.takeRequest(400, TimeUnit.MILLISECONDS) == null)
+        } finally {
+            runCatching { segment.close() }
+            server.shutdown()
+        }
+    }
+
+    @Test fun adaptiveSegmentWithoutEstablishedSourceSessionFailsClosed() {
+        val server = MockWebServer()
+        server.start()
+        val segment = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 65536L,
+            fallbackLease = ProviderPlaybackMediaSession()::currentLease,
+            requireLease = true,
+        ).createDataSource()
+        try {
+            try {
+                segment.open(spec(null, server.url("/unclaimed").toString()))
+                fail("A segment without a resolved provider must not start HTTP")
+            } catch (_: IOException) {}
+            assertTrue(server.takeRequest(400, TimeUnit.MILLISECONDS) == null)
+        } finally {
+            runCatching { segment.close() }
+            server.shutdown()
+        }
+    }
+
+    @Test fun anotherSourceCannotTakeOverMediaItemSessionMidStream() {
+        val gate = ProviderPolicyGate(policy(true, true))
+        val session = ProviderPlaybackMediaSession()
+        session.bind(ProviderPlaybackByteLease(gate, requireNotNull(
+            gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))))
+        try {
+            session.bind(ProviderPlaybackByteLease(gate, requireNotNull(
+                gate.open(ProviderCapability.EXTENSION_PLAYBACK, module))))
+            fail("Provider identity cannot switch during one adaptive rendition")
+        } catch (_: IOException) {}
+    }
+
+    private inline fun DataSource.useSource(action: (DataSource) -> Unit) {
+        try { action(this) } finally { close() }
+    }
+
     @Test fun revocationCancelsPhysicalOkHttpCallBeforeServerResponds() {
         val server = MockWebServer()
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
