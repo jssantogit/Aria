@@ -7,6 +7,7 @@ import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
+import java.net.ServerSocket
 import java.net.Socket
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -69,6 +70,67 @@ class SoulseekActiveSessionPolicyTest {
             lateSocket, SoulseekActiveSession.generation()))
         assertTrue(lateSocket.isClosed)
         assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
+    }
+
+    @Test fun manualPilotMustBindDownloadBeforeAnySocketOrSearch() {
+        val denied = ProviderPolicyGate(policy(false))
+        assertTrue(SoulseekActiveSession.admitManualSession(denied) == null)
+        val premature = Socket()
+        assertFalse(SoulseekActiveSession.register(
+            premature, SoulseekActiveSession.generation()))
+        assertTrue(premature.isClosed)
+        assertTrue(SoulseekActiveSession.admitManualSession(null) == null)
+
+        val allowed = ProviderPolicyGate(policy(true))
+        val session = SoulseekActiveSession.admitManualSession(allowed)
+        assertTrue(session != null)
+        val socket = Socket()
+        assertTrue(SoulseekActiveSession.register(socket, requireNotNull(session)))
+        allowed.replace(policy(false))
+        assertTrue(socket.isClosed)
+        assertFalse(SoulseekActiveSession.isCurrent(session))
+        assertTrue(SoulseekActiveSession.admitManualSession(allowed) == null)
+    }
+
+    @Test fun revocationClosesSearchListenerAndDirectAndIndirectPeerSockets() {
+        val gate = ProviderPolicyGate(policy(true))
+        val session = requireNotNull(SoulseekActiveSession.admitManualSession(gate))
+        val listener = ServerSocket(0)
+        val direct = Socket()
+        val indirect = Socket()
+        try {
+            assertTrue(SoulseekActiveSession.registerListener(listener, session))
+            assertTrue(SoulseekActiveSession.register(direct, session))
+            assertTrue(SoulseekActiveSession.register(indirect, session))
+            gate.replace(policy(false))
+            assertTrue(listener.isClosed)
+            assertTrue(direct.isClosed)
+            assertTrue(indirect.isClosed)
+            assertFalse(SoulseekActiveSession.isCurrent(session))
+            val lateListener = ServerSocket(0)
+            assertFalse(SoulseekActiveSession.registerListener(
+                lateListener, SoulseekActiveSession.generation()))
+            assertTrue(lateListener.isClosed)
+        } finally {
+            listener.close()
+            direct.close()
+            indirect.close()
+        }
+    }
+
+    @Test fun revokingUnrelatedDownloadProviderDoesNotCloseSoulseekListener() {
+        val gate = ProviderPolicyGate(policy(true, true))
+        val session = requireNotNull(SoulseekActiveSession.admitManualSession(gate))
+        val listener = ServerSocket(0)
+        try {
+            assertTrue(SoulseekActiveSession.registerListener(listener, session))
+            gate.replace(policy(true, false))
+            assertFalse(listener.isClosed)
+            assertTrue(SoulseekActiveSession.isCurrent(session))
+        } finally {
+            SoulseekActiveSession.detachListener(listener)
+            listener.close()
+        }
     }
 
     @Test fun revokingCanonicalDownloadClosesActiveSoulseekSocketImmediately() {
