@@ -8269,6 +8269,9 @@ internal fun FrostedMenuPanel(
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // The menu owns Back just like the Popup it replaces; otherwise Android
+    // navigates away from the album/playlist while the card is still open.
+    BackHandler { onDismiss() }
     // Shared with the anchored catalog-source and compact ⋯ menus:
     // consistent opaque-looking neutral plate; only the page behind is dimmed.
     val darkPlate = MaterialTheme.colorScheme.background.luminance() < 0.5f
