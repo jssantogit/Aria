@@ -90,10 +90,9 @@ class AppleArtistArtCapabilityTest {
 
     @Test fun cancelledArtistPageRequestPhysicallyCancelsOkHttpCall() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse.Builder()
-                .headersDelay(30, TimeUnit.SECONDS)
-                .body("late portrait")
-                .build())
+            server.enqueue(MockResponse()
+                .setHeadersDelay(30, TimeUnit.SECONDS)
+                .setBody("late portrait"))
             server.start()
             val call = OkHttpClient().newCall(
                 Request.Builder().url(server.url("/artist")).build())
