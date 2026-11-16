@@ -126,14 +126,6 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                 Diagnostics.span(DiagnosticCategory.STARTUP, "source_registry_init") {
                     SourceRegistry.init(this)
                 }
-                // Run existing MusicBrainz capability migration off the main
-                // thread, alongside the source registry's keystore open.
-                // Until it finishes, the HTTP boundary remains fail-closed.
-                Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
-                    kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                        ProviderRuntime.migrateMusicBrainzLegacyAccess()
-                    }
-                }
                 Diagnostics.span(DiagnosticCategory.STARTUP, "innertubex_init") {
                     AndroidStreamHooks.initInnerTubeX(this)
                 }
@@ -260,6 +252,18 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         }
         Diagnostics.span(DiagnosticCategory.STARTUP, "background_join_wait") {
             backgroundInit.join()
+        }
+        // Both legacy stores are now restored. Import their ACTUAL choices
+        // before opening the provider admission gate; never snapshot offered
+        // lyrics as a replacement for a user's saved disabled/reordered sources.
+        Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
+            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                ProviderRuntime.authorityOrNull()?.migrateOnce(
+                    lyricsOrder = AppSettings.lyricsSourceOrder.value,
+                    enabledLyrics = AppSettings.lyricsSources.value,
+                    sources = SourceRegistry.configs.value,
+                )
+            }
         }
         // Warming YouTube's account scope is a discovery request. Wait until
         // persisted settings and source opt-outs are loaded, and skip it when
