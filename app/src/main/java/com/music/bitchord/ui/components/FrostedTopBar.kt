@@ -559,82 +559,22 @@ private fun AppleSettingsPopup(
     onDismiss: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    // Keep the Popup window alive just long enough to draw its exit.
-    // A normal if (!expanded) return drops the whole window in one frame.
-    // The measured Apple popup animation is unknown; these are restrained
-    // BitChord timings, shared by the root and pushed-screen ⋮ actions.
-    val reduced by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
-    val visibility = remember { MutableTransitionState(false) }
-    visibility.targetState = expanded
-    // A very fast second tap may reverse the entrance before currentState
-    // reaches true. Do not drop the Popup window while that reversal is
-    // still animating.
-    if (!visibility.currentState && !visibility.targetState && visibility.isIdle) return
-
-    // Anchor to the real toolbar control, not the window's top edge.
-    // This also flips above the launcher or clamps on short/RTL windows.
-    val gapPx = with(LocalDensity.current) {
-        (APPLE_SETTINGS_POPUP_OFFSET - AppleFloatingControlMetrics.toolbarDiameter).roundToPx()
-    }
-    val popupPositionProvider = remember(gapPx) {
-        object : PopupPositionProvider {
-            override fun calculatePosition(
-                anchorBounds: IntRect,
-                windowSize: IntSize,
-                layoutDirection: LayoutDirection,
-                popupContentSize: IntSize,
-            ): IntOffset = settingsPopupPosition(
-                anchorBounds, popupContentSize, windowSize, layoutDirection, gapPx,
-            )
-        }
-    }
-    Popup(
-        popupPositionProvider = popupPositionProvider,
+    // The root ⋯ has no private presentation anymore. A single compact card
+    // provides the same neutral surface, geometry, anchored animation, action
+    // spacing and outside/back dismissal used by other overflow launchers.
+    NativeCompactOverflowMenu(
+        expanded = expanded,
         onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
+        modifier = Modifier.testTag("apple-root-settings-popup"),
+        minMenuWidth = 192.dp,
+        maxMenuWidth = 208.dp,
+        homePlateStyle = true,
     ) {
-        AnimatedVisibility(
-            visibleState = visibility,
-            enter = if (reduced) EnterTransition.None else
-                fadeIn(tween(200)) + scaleIn(
-                    animationSpec = tween(200, easing = FastOutSlowInEasing),
-                    initialScale = 0.92f,
-                    transformOrigin = TransformOrigin(1f, 0f),
-                ),
-            exit = if (reduced) ExitTransition.None else
-                fadeOut(tween(160)) + scaleOut(
-                    animationSpec = tween(160, easing = FastOutSlowInEasing),
-                    targetScale = 0.96f,
-                    transformOrigin = TransformOrigin(1f, 0f),
-                ),
-        ) {
-            // One native solid catalog plate across Settings and all ⋯ menus.
-            // The system-owned Popup remains anchored to its launcher.
-            val plateShape = RoundedCornerShape(18.dp)
-            val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-            val plateColor = nativeCompactPlateColor(isDark, artworkElevation = null)
-            Box(
-                Modifier.width(208.dp)
-                    .nativeCompactMenuLiftShadow(isDark, plateShape)
-                    .clip(plateShape)
-                    .background(plateColor)
-                    .testTag("apple-root-settings-popup"),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                        .clickable(enabled = expanded, onClick = onSettings)
-                        .testTag("apple-root-settings-item")
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.settings),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-        }
+        NativeCompactMenuItem(
+            label = stringResource(R.string.settings),
+            icon = Icons.Rounded.Settings,
+            onClick = onSettings,
+        )
     }
 }
 
