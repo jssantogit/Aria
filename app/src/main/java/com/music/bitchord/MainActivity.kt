@@ -4643,6 +4643,17 @@ private fun BitChordApp(
 
                 // Only the Library landing and its undrilled collections use
                 // independently surfaced Apple-style round top actions.
+                // The Home heading is a large in-list title below the compact
+                // toolbar. Lower its Settings launcher only while that heading
+                // is visible, then return it continuously as the list scrolls.
+                val homeSettingsOffset = with(LocalDensity.current) {
+                    homeSettingsOverflowOffsetDp(
+                        homeVisible = homeRootVisible,
+                        firstItemIndex = homeListState.firstVisibleItemIndex,
+                        scrollOffsetDp = homeListState.firstVisibleItemScrollOffset.toFloat() / density,
+                    ).dp
+                }
+
                 val appleLibraryLandingChrome = selectedTab == TAB_LIBRARY &&
                     detail == null && libraryShowAll == null &&
                     unifiedLibraryCategory == null && !showPlaylistLibrary &&
@@ -4725,6 +4736,7 @@ private fun BitChordApp(
                     showActions = !appleSearchRootChrome,
                     separateActions = appleLibraryRoundChrome,
                     rootActionsOffset = when {
+                        homeRootVisible -> homeSettingsOffset
                         appleExploreRootChrome -> 20.dp
                         appleExploreGenreChrome -> 12.dp
                         appleLibraryLandingChrome -> 10.dp
@@ -8768,3 +8780,12 @@ internal fun NativeUpdateTopBarAction(version: String, onClick: () -> Unit) {
         )
     }
 }
+
+/** Vertical alignment of Home's global Settings control with its large title. */
+internal fun homeSettingsOverflowOffsetDp(
+    homeVisible: Boolean,
+    firstItemIndex: Int,
+    scrollOffsetDp: Float,
+): Float = if (homeVisible && firstItemIndex == 0) {
+    (34f - scrollOffsetDp).coerceAtLeast(0f)
+} else 0f
