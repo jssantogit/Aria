@@ -124,3 +124,13 @@
 - Causa comprovada nos logs: asserção antiga de opacidade branca `0.88f`, enquanto o token compartilhado `heldContextSelectionOutline()` passou para `0.36f` conforme feedback físico do usuário.
 - Correção isolada: teste compara o valor com o token canônico em vez de manter uma cópia desatualizada. Nenhuma regra de aprovação foi reduzida.
 - Solicitar novamente workflow completo para este HEAD (incluindo o commit de solicitação), mantendo testes focalizados, `:app:testDevDebugUnitTest`, Automix, `:sharedUi:jvmTest` e `:app:assembleDevDebug` condicionada a todos verdes. Não afirmar APK disponível antes do artefato ser publicado.
+
+
+## Rodada estrutural aprovada — estabilidade de menus (15/11/2026)
+
+- Solicitação do usuário: corrigir deslocamentos para cima, duplicação da prévia, margem inadequada do conteúdo, vetor errado do ⋯ do player e tratamento visual da avaliação, **sem merge**.
+- `HeldContextMenu`: prévia deve ficar centrada exatamente na origem, sem ser movida para abrir espaço para ações; o menu deve escolher a região acima/abaixo e rolar quando necessário. Contorno usa margem externa de 8dp, preservando pixels e cores. Ações não herdam translação da captura.
+- `PlayerAnchoredActionsMenu`: o launcher real no player retrato usa `AppleQueueVectors.More` (círculo incluso), NÃO `MorePlain`. Overlay usa exatamente o mesmo vetor, cor e dimensões (40dp de botão, 34dp de vetor), acrescentando somente borda 0,75dp.
+- Avaliação ancorada: `NativeContextActionPlate`, o mesmo material dos cards expansíveis e filtros; preservar estrelas e ações.
+- Testes acrescentados em `HeldContextMenuGeometryTest` e `PlayerAnchoredActionsHighlightTest`.
+- Executar os gates integrais da CI Android, incluindo testes Android, Automix e sharedUi. Apenas produzir universal APK quando todos passarem, sem relaxar critérios e sem smoke físico automático.
