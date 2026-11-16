@@ -194,29 +194,24 @@ class CanonicalExploreGridTest {
         assertTrue("Scrollable source tabs must have width", indicator.boundsInRoot.width > 1f)
     }
 
-    @Test fun exploreAndLibraryShareCompactSettingsOnlyOverflow() {
-        var openedSettings = 0
+    @Test fun exploreAndLibraryDelegateSettingsToTheSharedFrostedHost() {
+        var openRequests = 0
         compose.setContent {
             MaterialTheme {
                 com.music.bitchord.ui.components.AppleRootSettingsOverflow(
                     hazeState = null,
                     description = "Mais opções de Explorar",
-                    onSettings = { openedSettings++ },
+                    expanded = false,
+                    onOpen = { openRequests++ },
                 )
             }
         }
         compose.onNodeWithContentDescription("Mais opções de Explorar").performClick()
-        compose.mainClock.advanceTimeBy(250L)
-        compose.waitForIdle()
-        compose.onNodeWithTag("native-compact-overflow").assertExists()
-        compose.onNodeWithTag("native-compact-menu-item").assertExists()
-        compose.onNodeWithText("Editar Fixadas").assertDoesNotExist()
-        compose.onNodeWithText("Conta").assertDoesNotExist()
-        compose.onNodeWithTag("native-compact-menu-item").performClick()
-        compose.runOnIdle { assertEquals(1, openedSettings) }
-        compose.mainClock.advanceTimeBy(250L)
-        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, openRequests) }
+        // Launcher does not instantiate a second compact popup; the host
+        // presents the artist-style FrostedMenuPanel on all root routes.
         compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
+        compose.onNodeWithTag("native-compact-menu-item").assertDoesNotExist()
     }
 
     @OptIn(ExperimentalMaterial3Api::class)

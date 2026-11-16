@@ -7635,9 +7635,10 @@ internal fun canonicalLibraryDetailLauncherActive(
     launcherType: com.music.bitchord.ui.screens.CanonicalLibraryEntityType,
 ): Boolean = menuOpen && !heldPreview && menuType == launcherType
 
-/** The launcher, not the popup plate, owns the universal selected white outline. */
-internal fun nativeCollectionOverflowOutline(expanded: Boolean): Color? =
-    if (expanded) com.music.bitchord.ui.components.heldContextSelectionOutline() else null
+/** The control already sits in a round surface. A second border on the inner
+ * IconButton produced detached white arcs around the artist/album overflow. */
+internal fun nativeCollectionOverflowActiveFill(expanded: Boolean, ink: Color): Color =
+    if (expanded) ink.copy(alpha = 0.14f) else Color.Transparent
 
 @Composable
 private fun NativeCollectionOverflowAction(
@@ -7645,12 +7646,14 @@ private fun NativeCollectionOverflowAction(
     onClick: () -> Unit,
     expanded: Boolean = false,
 ) {
-    val outline = nativeCollectionOverflowOutline(expanded)
-    val selectedOutline = if (outline == null) Modifier else
-        Modifier.border(0.75.dp, outline, CircleShape)
-    IconButton(onClick = onClick, modifier = Modifier.size(40.dp).then(selectedOutline)) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp)
+            .background(nativeCollectionOverflowActiveFill(expanded, ink), CircleShape),
+    ) {
         Icon(nativeCollectionOverflowGlyph(), contentDescription = contentDescription,
-            tint = MaterialTheme.colorScheme.onSurface)
+            tint = ink)
     }
 }
 
@@ -8334,6 +8337,10 @@ private fun FrostedUnifiedLibrarySortMenu(
 /** Width of the approved artist overflow plate, also used by root Settings. */
 internal val FROSTED_SETTINGS_MENU_WIDTH = 240.dp
 
+/** Opaque canvas fallback: Haze can temporarily be missing its source while opening. */
+internal fun frostedMenuPanelOpaquePlate(isDark: Boolean): Color =
+    com.music.bitchord.ui.components.nativeCompactPlateColor(isDark, artworkElevation = null)
+
 /** The scrim and frosted panel both top-bar menus are drawn on. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -8350,9 +8357,7 @@ internal fun FrostedMenuPanel(
     // Shared with the anchored catalog-source and compact ⋯ menus:
     // consistent opaque-looking neutral plate; only the page behind is dimmed.
     val darkPlate = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val solidPlate = com.music.bitchord.ui.components.nativeCompactPlateColor(
-        isDark = darkPlate, artworkElevation = null,
-    )
+    val solidPlate = frostedMenuPanelOpaquePlate(darkPlate)
     val reduceFilterBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     // Sort/filter cards sample the live page; only long-press cards stay solid.
     // The sort/source panels use the same native 18dp geometry.
@@ -8396,7 +8401,9 @@ internal fun FrostedMenuPanel(
             }
         }
         Surface(
-            color = Color.Transparent,
+            // Always paint the neutral plate first. Haze only enriches it:
+            // without an opaque fallback, artwork shows through the actions.
+            color = solidPlate,
             contentColor = MaterialTheme.colorScheme.onSurface,
             shape = shape,
             shadowElevation = 0.dp,
@@ -8421,7 +8428,7 @@ internal fun FrostedMenuPanel(
                 .clickable(onClick = {}),
         ) {
             Box(Modifier.clip(shape).then(
-                if (reduceFilterBlur) Modifier.background(solidPlate)
+                if (reduceFilterBlur) Modifier
                 else Modifier.optimizedHazeEffect(
                     state = hazeState,
                     style = HazeMaterials.regular(solidPlate.copy(alpha = 0.58f)),

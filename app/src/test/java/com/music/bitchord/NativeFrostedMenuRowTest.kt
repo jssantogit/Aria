@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotSelected
@@ -11,7 +12,6 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.assertDoesNotExist
 import com.music.bitchord.ui.components.TopBarAccountButton
 import androidx.compose.ui.test.performClick
 import com.music.bitchord.ui.theme.BitChordTheme
@@ -57,6 +57,22 @@ class NativeFrostedMenuRowTest {
         compose.onNodeWithTag("apple-global-more-options").performClick()
         compose.runOnIdle { assertEquals(1, opens) }
         compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
+    }
+
+    @Test fun frostedArtistActionsAlwaysHaveAnOpaqueNeutralBase() {
+        assertEquals(Color(0xFF29292D), frostedMenuPanelOpaquePlate(isDark = true))
+        assertEquals(Color(0xFFF5F5F7), frostedMenuPanelOpaquePlate(isDark = false))
+        assertEquals(1f, frostedMenuPanelOpaquePlate(isDark = true).alpha)
+        assertEquals(1f, frostedMenuPanelOpaquePlate(isDark = false).alpha)
+    }
+
+    @Test fun expandedOverflowHasSubtleFillAndNoSecondWhiteRing() {
+        assertEquals(Color.Transparent,
+            nativeCollectionOverflowActiveFill(expanded = false, ink = Color.White))
+        assertEquals(Color.White.copy(alpha = 0.14f),
+            nativeCollectionOverflowActiveFill(expanded = true, ink = Color.White))
+        assertEquals(Color.Black.copy(alpha = 0.14f),
+            nativeCollectionOverflowActiveFill(expanded = true, ink = Color.Black))
     }
 
     @Test fun rootSettingsAndArtistUseTheSameFrostedMenuWidth() {
