@@ -110,6 +110,8 @@ internal class PolicyGuardedCoverArtArchiveTransport(
     private val delegate: CoverArtArchiveTransport,
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateForCacheReadOrNull() },
 ) : CoverArtArchiveTransport {
+    internal fun currentGate(): ProviderPolicyGate? = gateProvider()
+
     override suspend fun get(path: String): CoverArtArchiveResponse {
         val gate = gateProvider()
             ?: throw ProviderRequestDeniedException(
