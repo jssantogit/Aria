@@ -60,6 +60,31 @@ class ProviderCapabilitySessionTest {
 
     @Before fun clear() { prefs.edit().clear().commit() }
 
+    @Test fun anonymousPublicPlaylistMigrationPreservesExistingOptOutOnRestart(): Unit = runBlocking {
+        val first = ProviderCapabilitySession(store, emptyList())
+        val old = ProviderAuthorityCoordinator(first)
+        assertTrue(old.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false,
+            includeDefaultArtworkBaseline = false,
+        ))
+        val provider = BuiltInProviderKeys.LISTENBRAINZ
+        assertTrue(first.gate.open(ProviderCapability.PUBLIC_PLAYLISTS, provider) != null)
+        assertTrue(first.update(ProviderCapability.PUBLIC_PLAYLISTS, listOf(
+            ProviderChoice(provider, false, 0))))
+        assertTrue(first.gate.open(ProviderCapability.PUBLIC_PLAYLISTS, provider) == null)
+
+        val restored = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(restored).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false,
+            includeDefaultArtworkBaseline = false,
+        ))
+        assertTrue(restored.gate.open(ProviderCapability.PUBLIC_PLAYLISTS, provider) == null)
+        assertEquals(listOf(ProviderChoice(provider, false, 0)),
+            restored.state.value.configured[ProviderCapability.PUBLIC_PLAYLISTS])
+    }
+
     @Test fun sourceRefreshDoesNotDisableUnrelatedReadyBuiltInProviders(): Unit = runBlocking {
         val session = ProviderCapabilitySession(store, emptyList())
         val authority = ProviderAuthorityCoordinator(session)
