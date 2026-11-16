@@ -2844,6 +2844,7 @@ private fun BitChordApp(
                 song = displayedSong,
                 onDismiss = { localRatingDialogOpen = false },
                 anchorBounds = playerRatingAnchor,
+                highlightPlayerLauncher = true,
             )
         }
         recoveryNotice?.let { notice ->
