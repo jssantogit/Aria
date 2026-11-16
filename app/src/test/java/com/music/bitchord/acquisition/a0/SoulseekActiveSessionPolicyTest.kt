@@ -41,6 +41,24 @@ class SoulseekActiveSessionPolicyTest {
         assertFalse(SoulseekActiveSession.bindDownloadPermission(gate))
     }
 
+    @Test fun revokedCapabilityCannotRegisterNewPeerSocketOrCommitNewFile() {
+        val gate = ProviderPolicyGate(policy(true))
+        assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
+        val former = SoulseekActiveSession.generation()
+        gate.replace(policy(false))
+        val lateSocket = Socket()
+        assertFalse(SoulseekActiveSession.register(
+            lateSocket, SoulseekActiveSession.generation()))
+        assertTrue(lateSocket.isClosed)
+        var published = false
+        try {
+            SoulseekActiveSession.commitIfCurrent(
+                SoulseekActiveSession.generation()) { published = true }
+        } catch (_: java.io.IOException) { }
+        assertFalse(published)
+        assertFalse(SoulseekActiveSession.isCurrent(former))
+    }
+
     @Test fun revokingSiblingDownloaderDoesNotCloseSoulseekSocket() {
         val gate = ProviderPolicyGate(policy(true, true))
         assertTrue(SoulseekActiveSession.bindDownloadPermission(gate))
