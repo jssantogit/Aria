@@ -113,6 +113,67 @@ class ProviderPlaybackByteDataSourceTest {
         assertEquals("/segment", server.takeRequest(1, TimeUnit.SECONDS)?.path)
     }
 
+    @Test fun revocationPhysicallyCancelsInflightAdaptiveSegment() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        server.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val session = ProviderPlaybackMediaSession()
+        session.bind(ProviderPlaybackByteLease(gate, requireNotNull(
+            gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))))
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build(), 65536L,
+            fallbackLease = session::currentLease,
+            requireLease = true,
+        ).createDataSource()
+        val result = AtomicReference<Throwable?>()
+        val done = AtomicBoolean(false)
+        val worker = Thread {
+            try { source.open(spec(null, server.url("/segment-waits").toString())) }
+            catch (failure: Throwable) { result.set(failure) }
+            finally {
+                runCatching { source.close() }
+                done.set(true)
+            }
+        }
+        try {
+            worker.start()
+            assertTrue(server.takeRequest(5, TimeUnit.SECONDS) != null)
+            gate.replace(policy(false))
+            worker.join(5_000)
+            assertFalse("Revoked HLS/DASH segment still reading", worker.isAlive)
+            assertTrue(done.get())
+            assertTrue(result.get() is IOException)
+        } finally {
+            gate.replace(policy(false))
+            worker.interrupt()
+            server.shutdown()
+        }
+    }
+
+    @Test fun siblingModuleSegmentsRemainUsableWhenAddonIsRevoked() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("segment"))
+        server.start()
+        val gate = ProviderPolicyGate(policy(true, true))
+        val siblingSession = ProviderPlaybackMediaSession()
+        siblingSession.bind(ProviderPlaybackByteLease(gate, requireNotNull(
+            gate.open(ProviderCapability.EXTENSION_PLAYBACK, module))))
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 65536L,
+            fallbackLease = siblingSession::currentLease,
+            requireLease = true,
+        ).createDataSource()
+        try {
+            gate.replace(policy(false, true))
+            assertEquals(7L, source.open(spec(null, server.url("/module").toString())))
+            assertEquals(7, source.read(ByteArray(7), 0, 7))
+        } finally {
+            runCatching { source.close() }
+            server.shutdown()
+        }
+    }
+
     @Test fun revokedSessionRejectsNewAdaptiveSegmentBeforeNetworkOpen() {
         val server = MockWebServer()
         server.start()
