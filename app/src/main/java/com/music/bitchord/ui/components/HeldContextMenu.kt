@@ -280,24 +280,21 @@ fun <T : Any> HeldContextMenu(
 
         val backdrop = measurables[0].measure(Constraints.fixed(width, height))
 
-        // The held item, in this layout's own coordinates.
+        // Keep the captured image EXACTLY where the source row was drawn.
+        // A width-constrained preview used to scale from 1f to liftScale:
+        // its shrinking edges looked like a row moving on every long press.
+        // The menu may adapt to the viewport, but the selected row must not.
         val itemBounds = heldItem.bounds.translate(-overlayOffset)
-        // The plate at the item's own size, so at rest the picture on it is
-        // pixel for pixel what was held; a full-width row is then scaled down
-        // just enough for the plate to clear the screen edges.
-        val plateW = (itemBounds.width.roundToInt() + pad * 2).coerceAtLeast(1)
-        val plateH = (itemBounds.height.roundToInt() + pad * 2).coerceAtLeast(1)
+        val previewFrame = heldPreviewFixedFrame(heldItem.bounds, overlayOffset, pad)
+        val plateW = previewFrame.width
+        val plateH = previewFrame.height
         val card = measurables[1].measure(Constraints.fixed(plateW, plateH))
         val menuWidth = (width - margin * 2).coerceAtMost(280.dp.roundToPx()).coerceAtLeast(0)
         val availableHeight = (bottom - top).coerceAtLeast(0)
-        // Keep the source item fixed. The ACTIONS must adapt to the remaining
-        // space; lifting the item to make room caused the visible upward jump.
-        val liftScale = (width - 2 * margin).toFloat().div(plateW.coerceAtLeast(1))
-            .coerceIn(0.1f, 1f)
-        val visualW = plateW * liftScale
-        val visualH = plateH * liftScale
-        val visualLeft = itemBounds.center.x - visualW / 2f
-        val visualTop = itemBounds.center.y - visualH / 2f
+        val visualW = itemBounds.width
+        val visualH = itemBounds.height
+        val visualLeft = itemBounds.left
+        val visualTop = itemBounds.top
         val placement = heldMenuAnchoredVerticalPlacement(
             sourceTop = visualTop,
             sourceHeight = visualH,
@@ -324,27 +321,15 @@ fun <T : Any> HeldContextMenu(
         } else {
             (visualTop - gap - menu.height).roundToInt()
         }.coerceIn(top, (bottom - menu.height).coerceAtLeast(top))
-        val cardX = (visualCenterX - plateW / 2f).roundToInt()
-        val cardY = (visualCenterY - plateH / 2f).roundToInt()
-        // No positional animation: the captured frame already occupies its
-        // source coordinates. Only a subtle scale/shadow denotes elevation.
-        val fromDx = itemBounds.center.x - visualCenterX
-        val fromDy = itemBounds.center.y - visualCenterY
+        val cardX = previewFrame.x
+        val cardY = previewFrame.y
 
         layout(width, height) {
             backdrop.place(0, 0)
             card.placeWithLayer(cardX, cardY) {
-                val p = progress.value
-                if (reduceMotion) {
-                    scaleX = liftScale
-                    scaleY = liftScale
-                } else {
-                    val scale = lerp(1f, liftScale, p)
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = lerp(fromDx, 0f, p)
-                    translationY = lerp(fromDy, 0f, p)
-                }
+                // Never scale or translate the item. Even a small width-fit
+                // scale visibly pulls its cover and text across the screen.
+                // Leave animation to the action menu and surrounding scrim.
                 // The source row is already hidden while this lifted snapshot
                 // exists. Never fade one before restoring the other: the image
                 // remains opaque as it returns to its exact original position.
@@ -373,6 +358,27 @@ fun <T : Any> HeldContextMenu(
             }
         }
     }
+}
+
+/** Physical source frame with only the decorative border margin added.
+ * No animation progress or viewport-fitting scale participates in placement. */
+internal data class HeldPreviewFixedFrame(
+    val x: Int, val y: Int, val width: Int, val height: Int,
+    val scale: Float = 1f,
+)
+
+internal fun heldPreviewFixedFrame(
+    sourceBounds: androidx.compose.ui.geometry.Rect,
+    overlayOrigin: Offset,
+    paddingPx: Int,
+): HeldPreviewFixedFrame {
+    val pad = paddingPx.coerceAtLeast(0)
+    return HeldPreviewFixedFrame(
+        x = (sourceBounds.left - overlayOrigin.x).roundToInt() - pad,
+        y = (sourceBounds.top - overlayOrigin.y).roundToInt() - pad,
+        width = (sourceBounds.width.roundToInt() + pad * 2).coerceAtLeast(1),
+        height = (sourceBounds.height.roundToInt() + pad * 2).coerceAtLeast(1),
+    )
 }
 
 /** Menu height is constrained to the available side; preview never moves. */
