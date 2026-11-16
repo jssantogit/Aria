@@ -165,6 +165,12 @@ internal class RateLimitedProviderTransport(
     // Production remains fail-closed if install/migration was not completed.
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateForCacheReadOrNull() },
 ) {
+    /** Admission-only check for optional prerequisite probes (identity,
+     * credentials) that must not run when the source is disabled. The actual
+     * network dispatch still takes a revocable ticket in execute(). */
+    fun permitted(capability: ProviderCapability, provider: ProviderKey): Boolean =
+        gateProvider()?.open(capability, provider) != null
+
     suspend fun <T> execute(
         capability: ProviderCapability,
         provider: ProviderKey,
