@@ -68,8 +68,8 @@ internal class ListenBrainzRecommendationClient(
             BuiltInProviderKeys.LISTENBRAINZ,
         ) { recordingsAuthorized(token, count) }) {
             is ProviderCallResult.Success -> outcome.value
-            is ProviderCallResult.Denied,
-            is ProviderCallResult.Stale,
+            ProviderCallResult.Denied,
+            ProviderCallResult.Stale,
             is ProviderCallResult.Failed -> ListenBrainzRecommendationFetchResult.Unavailable
         }
     }
