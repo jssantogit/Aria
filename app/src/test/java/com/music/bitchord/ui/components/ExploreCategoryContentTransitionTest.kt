@@ -55,7 +55,7 @@ class ExploreCategoryContentTransitionTest {
         org.junit.Assert.assertNotEquals(
             androidx.compose.animation.EnterTransition.None, motion.targetContentEnter,
         )
-        org.junit.Assert.assertEquals(
+        org.junit.Assert.assertNotEquals(
             androidx.compose.animation.ExitTransition.None, motion.initialContentExit,
         )
         val reduced = exploreCategoryContentTransform(reduceMotion = true)
