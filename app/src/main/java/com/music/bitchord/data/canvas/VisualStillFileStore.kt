@@ -163,21 +163,21 @@ internal suspend fun downloadVisualStill(call: Call, output: File): Boolean =
 
             override fun onResponse(call: Call, response: Response) {
                 val complete = try {
-                    response.use { received ->
+                    response.use responseHandler@ { received ->
                         if (!received.isSuccessful ||
                             !isSafeVisualMediaUrl(received.request.url.toString())
-                        ) return@use false
-                        val body = received.body ?: return@use false
+                        ) return@responseHandler false
+                        val body = received.body ?: return@responseHandler false
                         if (body.contentLength() > VisualStillFileStore.MAX_STILL_BYTES)
-                            return@use false
+                            return@responseHandler false
                         val mime = body.contentType()?.toString()
-                        if (mime != null && !mime.startsWith("image/")) return@use false
+                        if (mime != null && !mime.startsWith("image/")) return@responseHandler false
                         body.byteStream().use { input ->
                             output.outputStream().buffered().use { sink ->
                                 val buffer = ByteArray(16 * 1024)
                                 var bytes = 0L
                                 while (true) {
-                                    if (!continuation.isActive) return@use false
+                                    if (!continuation.isActive) return@responseHandler false
                                     val read = input.read(buffer)
                                     if (read == -1) break
                                     bytes += read
