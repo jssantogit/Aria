@@ -16,6 +16,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProviderCatalogSourceRegistryTest {
+    @Test fun playbackSelectionRequiresExactExtensionInstanceTicket() {
+        val a = ProviderKey("addon", "addon-one")
+        val b = ProviderKey("addon", "addon-two")
+        val descriptor = listOf(a, b).map { ProviderDescriptor(
+            it, setOf(ProviderCapability.EXTENSION_PLAYBACK), ProviderReadiness.READY,
+        ) }
+        fun policy(enabledB: Boolean) = ProviderCapabilityPolicy(
+            descriptor,
+            mapOf(ProviderCapability.EXTENSION_PLAYBACK to listOf(
+                ProviderChoice(a, true, 0),
+                ProviderChoice(b, enabledB, 1),
+            )),
+        )
+        val entries = listOf("addon-one", "addon-two").map { SourceConfig(
+            id = it, kind = SourceKind.ADDON,
+            baseUrl = "https://example.org/manifest.json", enabled = true,
+        ) }
+        assertTrue(SourceRegistry.extensionEligibleConfigs(entries, null).isEmpty())
+        val gate = ProviderPolicyGate(policy(true))
+        assertEquals(entries, SourceRegistry.extensionEligibleConfigs(entries, gate))
+        gate.replace(policy(false))
+        assertEquals(listOf(entries.first()), SourceRegistry.extensionEligibleConfigs(entries, gate))
+        assertTrue(SourceRegistry.extensionEligibleConfigs(listOf(entries.last()), gate).isEmpty())
+    }
+
     @Test fun addonDownloadRevocationPreservesPlaybackAndCannotUseLegacyEnabledFallback() {
         val key = ProviderKey("addon", "addon-one")
         val provider = ProviderDescriptor(
