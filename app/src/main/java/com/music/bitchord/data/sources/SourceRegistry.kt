@@ -550,8 +550,8 @@ object SourceRegistry {
     suspend fun probeCandidate(config: SourceConfig): SourceHealth {
         // Historical source rows remain deserializable, but cannot become
         // live YouTube clients through the editor's health-check endpoint.
-        if (config.kind == SourceKind.YOUTUBE) {
-            return SourceHealth.Rejected("YouTube Music is retired as an audio source")
+        if (config.kind == SourceKind.YOUTUBE || config.kind == SourceKind.JIOSAAVN) {
+            return SourceHealth.Rejected("This built-in audio source is retired")
         }
         return build(config).health()
     }
@@ -561,7 +561,7 @@ object SourceRegistry {
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
-        SourceKind.JIOSAAVN -> JioSaavnSource(config)
+        SourceKind.JIOSAAVN -> error("Retired JioSaavn source cannot be constructed")
         // Stored legacy rows are deserialized but never turned into clients.
         SourceKind.YOUTUBE -> error("Retired YouTube source cannot be constructed")
     }
