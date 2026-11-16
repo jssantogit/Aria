@@ -1441,13 +1441,14 @@ internal interface CanonicalCatalogDao {
             info.releaseDate AS releaseDate, info.status AS status,
              info.isVideoOnlyMedia AS isVideoOnlyMedia,
              info.isVideoOnlyContent AS isVideoOnlyContent,
-            COALESCE(art.thumbnailUri, art.artworkUri) AS artworkUri
+            -- An offline URL is not authorization to publish CAA images.
+            -- Keep Front-v3 in Room; image resolvers must apply provider policy,
+            -- cache freshness and host validation before projecting artwork.
+            NULL AS artworkUri
         FROM catalog_external_identity identity
         JOIN catalog_release edition ON edition.id = identity.entityId
         LEFT JOIN musicbrainz_release_enrichment info
             ON info.releaseId = edition.id AND info.mbid = identity.externalId
-        LEFT JOIN catalog_cover_art_cache art
-            ON art.entityType = 'release:front-v3' AND art.mbid = identity.externalId
         WHERE identity.provider = 'musicbrainz' AND identity.entityType = 'release'
             AND (instr(lower(edition.title), lower(:query)) > 0
                 OR instr(lower(edition.artistDisplay), lower(:query)) > 0
