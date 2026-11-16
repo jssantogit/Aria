@@ -4,6 +4,12 @@ import com.music.bitchord.data.Http
 import com.music.bitchord.data.catalog.metadata.ListenBrainzRequestBudget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
+import kotlin.coroutines.resume
 import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -69,13 +75,7 @@ internal suspend fun ListenBrainzManager.submitPending(
                 .addHeader("Authorization", "Token $token")
                 .build()
             val (disposition, remaining, resetInSeconds) = ListenBrainzRequestBudget.limiter.run {
-                Http.client.newCall(request).execute().use { response ->
-                    Triple(
-                        listenBrainzSubmissionDisposition(response.code),
-                        response.header("X-RateLimit-Remaining")?.toLongOrNull(),
-                        response.header("X-RateLimit-Reset-In")?.toLongOrNull(),
-                    )
-                }
+                awaitListenBrainzSubmissionResponse(Http.client.newCall(request))
             }
             // Never acquire the limiter's mutex again while inside run().
             ListenBrainzRequestBudget.limiter.observeRateLimit(remaining, resetInSeconds)
@@ -87,3 +87,32 @@ internal suspend fun ListenBrainzManager.submitPending(
         }
     }
 }
+
+/**
+ * Worker cancellation must abort the actual OkHttp request. A blocking
+ * execute() keeps a socket active after WorkManager revokes the worker.
+ * Each response is closed, and rate-limit metadata is returned intact.
+ */
+internal suspend fun awaitListenBrainzSubmissionResponse(
+    call: Call,
+): Triple<ListenBrainzSubmissionResult, Long?, Long?> =
+    suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) continuation.resume(
+                    Triple(ListenBrainzSubmissionResult.RETRYABLE, null, null))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val result = response.use {
+                    Triple(
+                        listenBrainzSubmissionDisposition(it.code),
+                        it.header("X-RateLimit-Remaining")?.toLongOrNull(),
+                        it.header("X-RateLimit-Reset-In")?.toLongOrNull(),
+                    )
+                }
+                if (continuation.isActive) continuation.resume(result)
+            }
+        })
+    }
