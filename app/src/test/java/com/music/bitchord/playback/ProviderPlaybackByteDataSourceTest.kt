@@ -124,6 +124,69 @@ class ProviderPlaybackByteDataSourceTest {
         }
     }
 
+    @Test fun sameDataSourceCanOpenAgainAfterCleanCloseWithFreshAuthorizedLease() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("first"))
+        server.enqueue(MockResponse().setBody("again"))
+        server.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 64 * 1024L,
+        ).createDataSource()
+        try {
+            repeat(2) { index ->
+                val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+                val path = if (index == 0) "/first" else "/again"
+                assertEquals(5L, source.open(spec(
+                    ProviderPlaybackByteLease(gate, ticket), server.url(path).toString(),
+                )))
+                val bytes = ByteArray(5)
+                assertEquals(5, source.read(bytes, 0, bytes.size))
+                assertEquals(if (index == 0) "first" else "again", String(bytes))
+                source.close()
+            }
+            assertEquals("/first", server.takeRequest(5, TimeUnit.SECONDS)?.path)
+            assertEquals("/again", server.takeRequest(5, TimeUnit.SECONDS)?.path)
+        } finally {
+            runCatching { source.close() }
+            server.shutdown()
+        }
+    }
+
+    @Test fun sameDataSourceCanRecoverAfterRevocationWithNewUserAuthorization() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("new"))
+        server.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 64 * 1024L,
+        ).createDataSource()
+        try {
+            val firstTicket = requireNotNull(
+                gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+            // With the ticket revoked before open, the next attempt must not
+            // touch the network, but the reused DataSource is not poisoned.
+            gate.replace(policy(false))
+            try {
+                source.open(spec(ProviderPlaybackByteLease(gate, firstTicket),
+                    server.url("/denied").toString()))
+                fail("Stale provider ticket must be rejected")
+            } catch (_: IOException) {}
+            source.close()
+            gate.replace(policy(true))
+            val newTicket = requireNotNull(
+                gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+            assertEquals(3L, source.open(spec(
+                ProviderPlaybackByteLease(gate, newTicket), server.url("/new").toString(),
+            )))
+            assertEquals(3, source.read(ByteArray(3), 0, 3))
+            assertEquals("/new", server.takeRequest(5, TimeUnit.SECONDS)?.path)
+        } finally {
+            runCatching { source.close() }
+            server.shutdown()
+        }
+    }
+
     @Test fun disablingWinningAddonClosesTransportAndPreventsFurtherBytes() {
         val gate = ProviderPolicyGate(policy(true))
         val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
