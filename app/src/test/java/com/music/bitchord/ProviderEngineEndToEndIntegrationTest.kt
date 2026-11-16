@@ -42,6 +42,8 @@ import com.music.bitchord.data.scrobbling.ListenBrainzManager
 import com.music.bitchord.data.scrobbling.ScrobbleManager
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -84,6 +86,47 @@ class ProviderEngineEndToEndIntegrationTest {
         AppleArtistArtRepository.setHttpGetForTests(null)
         AppleArtistArtRepository.clearCacheForTests()
         ListenBrainzManager.policyGateForTests = null
+        ListenBrainzManager.submitForTests = null
+    }
+
+    @Test
+    fun listenBrainzRevocationCancelsInflightRequestAndSuppressesSuccess(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(ProviderCapabilityRegistry.inventory(
+                listenBrainzConfigured = true,
+            )),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            listenBrainzConfigured = true, listenBrainzEnabled = true,
+        ))
+        ListenBrainzManager.policyGateForTests = { session.gate }
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        ListenBrainzManager.submitForTests = {
+            started.complete(Unit)
+            try {
+                kotlinx.coroutines.awaitCancellation()
+            } finally {
+                cancelled.complete(Unit)
+            }
+        }
+        val song = Song(videoId = "local", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null)
+        val request = async {
+            ListenBrainzManager.submitPlayingNow("token", song, 0L, 160_000L)
+        }
+        started.await()
+        assertTrue(session.update(
+            ProviderCapability.LISTENING_STATISTICS,
+            listOf(
+                ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = false, order = 0),
+                ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = false, order = 1),
+            ),
+        ))
+        cancelled.await()
+        assertFalse(request.await())
     }
 
     @Test
