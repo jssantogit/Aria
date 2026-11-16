@@ -169,7 +169,6 @@ internal fun CanonicalPublicPlaylistDetailScreen(
     NativePlaylistDetailFrame(
         palette = palette,
         listState = listState,
-        topPadding = contentPadding.calculateTopPadding(),
         bottomPadding = contentPadding.calculateBottomPadding(),
     ) {
         item(key = "public-playlist-cover") {
