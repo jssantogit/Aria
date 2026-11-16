@@ -1,5 +1,7 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.providers.ProviderCachedReadAccess
+
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.ExternalIdentityEntity
@@ -65,7 +67,7 @@ class MusicBrainzReleaseGraphIndexTest {
 
             val online = (graph.lookupRelease(release) as
                 MusicBrainzCatalogGraphResult.Success<MusicBrainzCatalogReleaseDetail>).value
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(online)
             val cached = index.cachedRelease(release)!!
 
@@ -101,7 +103,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val index = MusicBrainzCatalogIndex(db, proofClient = MusicBrainzClient(
                 transport = KtorMusicBrainzTransport(server.url("/ws/2").toString(), http),
                 rateLimiter = MusicBrainzRateLimiter(delayMillis = {}),
-            ))
+            ), cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(a to ra, b to rb)))
             server.enqueue(MockResponse().setResponseCode(404)
                 .setChunkedBody("z".repeat(2_100_000), 8_192))
@@ -146,7 +148,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>, userAgent: String,
                     maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = client)
+            val index = MusicBrainzCatalogIndex(db, proofClient = client, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(a to ra, b to rb))
                 .copy(releaseDate = "2024-03-25"))
             val dao = db.catalogDao()
@@ -201,7 +203,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>,
                     userAgent: String, maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = proof)
+            val index = MusicBrainzCatalogIndex(db, proofClient = proof, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(trackA to recordingA, trackB to recordingB)))
             val dao = db.catalogDao()
             val releaseId = dao.entityIdForExternalIdentity("musicbrainz", "release", release)!!
@@ -245,7 +247,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>,
                     userAgent: String, maxResponseBytes: Long) = xml
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = proof)
+            val index = MusicBrainzCatalogIndex(db, proofClient = proof, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(trackA to recording, trackB to recording)))
             index.persistReleaseDetail(detail(release, listOf(trackA to recording)))
 
@@ -283,7 +285,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>, userAgent: String,
                     maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = client)
+            val index = MusicBrainzCatalogIndex(db, proofClient = client, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(a to ra)))
             index.persistReleaseDetail(detail(release, listOf(a to ra, b to rb)))
             assertEquals(0, xmlCalls)
@@ -323,7 +325,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>, userAgent: String,
                     maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            index = MusicBrainzCatalogIndex(db, proofClient = client)
+            index = MusicBrainzCatalogIndex(db, proofClient = client, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(a to ra, b to rb)))
 
             val result = index.persistReleaseDetail(detail(release, listOf(a to ra)))
@@ -361,7 +363,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>, userAgent: String,
                     maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = client)
+            val index = MusicBrainzCatalogIndex(db, proofClient = client, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val oldDetail = detail(release, listOf(track to original))
             index.persistReleaseDetail(oldDetail)
             val dao = db.catalogDao()
@@ -403,7 +405,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>, userAgent: String,
                     maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = client)
+            val index = MusicBrainzCatalogIndex(db, proofClient = client, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(track to original)))
             val partial = detail(release, listOf(track to replacement)).copy(
                 completeness = MusicBrainzReleaseJsonCompleteness(),
@@ -436,7 +438,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 override suspend fun getLimited(path: String, parameters: Map<String, String>,
                     userAgent: String, maxResponseBytes: Long): String = get(path, parameters, userAgent)
             }, rateLimiter = MusicBrainzRateLimiter(delayMillis = {}))
-            val index = MusicBrainzCatalogIndex(db, proofClient = client)
+            val index = MusicBrainzCatalogIndex(db, proofClient = client, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val dao = db.catalogDao()
             index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
                 release, null, "Edition", null, null, null,
@@ -511,7 +513,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val release = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
             val track = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             val recording = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail(release, listOf(track to recording))
                 .copy(releaseDate = "2024-03-25"))
             val dao = db.catalogDao()
@@ -531,7 +533,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val release = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
             val track = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             val recording = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val initial = detail(release, listOf(track to recording))
             index.persistReleaseDetail(initial)
             val dao = db.catalogDao()
@@ -560,7 +562,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val release = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
             val track = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             val recording = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val initial = detail(release, listOf(track to recording))
             index.persistReleaseDetail(initial)
             val dao = db.catalogDao()
@@ -590,7 +592,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val cachedRecording = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
             val partialTrack = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
             val partialRecording = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
                 release, null, "Known cached edition", null, null, null,
                 listOf(MusicBrainzCatalogTrack(
@@ -648,7 +650,7 @@ class MusicBrainzReleaseGraphIndexTest {
 
             val online = (graph.lookupRelease(release) as
                 MusicBrainzCatalogGraphResult.Success<MusicBrainzCatalogReleaseDetail>).value
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(online)
             val cached = index.cachedRelease(release)!!
 
@@ -684,7 +686,7 @@ class MusicBrainzReleaseGraphIndexTest {
             assertEquals("Magnetic", detail.tracks.single().title)
             assertEquals(160_000L, detail.tracks.single().durationMs)
 
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(detail)
             val recordingId = db.catalogDao().entityIdForExternalIdentity(
                 "musicbrainz", "recording", recording,
@@ -711,7 +713,7 @@ class MusicBrainzReleaseGraphIndexTest {
         try {
             val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
             val release = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val id = index.persistRecordings(listOf(
                 com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit(
                     recording, "Preserved local title", "Local credits", 99_000L,
@@ -746,7 +748,7 @@ class MusicBrainzReleaseGraphIndexTest {
         ).allowMainThreadQueries().build()
         try {
             var serial = 0
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "local-${++serial}" })
+            val index = MusicBrainzCatalogIndex(db, idFactory = { "local-${++serial}" }, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val group = "529f87a1-1081-48a4-8ee1-3c08de229858"
             val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
             val worldwide = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"

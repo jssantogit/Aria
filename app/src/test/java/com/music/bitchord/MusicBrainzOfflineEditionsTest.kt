@@ -1,5 +1,7 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.providers.ProviderCachedReadAccess
+
 import androidx.room.Room
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.metadata.*
@@ -24,7 +26,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun editionSearchRetainsTerritoryAndDateWithoutInventingTracklistOrAudio() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val hits = listOf(
                 MusicBrainzReleaseHit(worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT"),
                 MusicBrainzReleaseHit(japan, "SUPER REAL ME", "JP", "2024-03-25", "ILLIT"),
@@ -43,7 +45,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun correctedEditionMetadataReachesOfflineSearchGroupAndExactCachedDetail() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
                 group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
             )))
@@ -91,7 +93,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun groupEditionCacheRejectsExplicitForeignGroupAndRestoresExactGroupOwnership() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val foreignGroup = "a01e48fc-9861-4ebc-88dd-aa31f61f4c11"
             index.persistReleaseGroups(listOf(
                 MusicBrainzReleaseGroupHit(group, "EASY", "EP", "2024-02-19", "LE SSERAFIM"),
@@ -126,7 +128,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun cachedGraphKeepsEditionTrackIdentityAndNeverPrunesOnSparseBrowse() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val detail = MusicBrainzCatalogReleaseDetail(worldwide, group, "SUPER REAL ME",
                 "ILLIT", "XW", "2024-03-25", listOf(
                     MusicBrainzCatalogTrack(track, recording, "Magnetic", 1, 2, 160000, "ILLIT"),
@@ -147,7 +149,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun groupEditionCachePreservesProvenVideoMediaAfterSparseRefresh() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
                 group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
             )))
@@ -160,7 +162,7 @@ class MusicBrainzOfflineEditionsTest {
                 status = "Official", isVideoOnlyMedia = false,
             )
             index.persistGroupEditions(group, listOf(videoEdition, audioEdition))
-            val cached = MusicBrainzCatalogIndex(db).cachedGroupReleases(group)
+            val cached = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests()).cachedGroupReleases(group)
                 .associateBy { it.musicBrainzId }
             assertEquals(true, cached[worldwide]?.isVideoOnlyMedia)
             assertEquals(false, cached[japan]?.isVideoOnlyMedia)
@@ -172,7 +174,7 @@ class MusicBrainzOfflineEditionsTest {
                 videoEdition.copy(isVideoOnlyMedia = null),
                 audioEdition.copy(isVideoOnlyMedia = null),
             ))
-            val reloaded = MusicBrainzCatalogIndex(db).cachedGroupReleases(group)
+            val reloaded = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests()).cachedGroupReleases(group)
                 .associateBy { it.musicBrainzId }
             assertEquals(true, reloaded[worldwide]?.isVideoOnlyMedia)
             assertEquals(false, reloaded[japan]?.isVideoOnlyMedia)
@@ -182,7 +184,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun exactCachedReleaseRetainsVideoOnlyContentProofAndSparseLookupDoesNotClearIt() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val detail = MusicBrainzCatalogReleaseDetail(
                 worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25",
                 listOf(MusicBrainzCatalogTrack(
@@ -191,15 +193,15 @@ class MusicBrainzOfflineEditionsTest {
                 isVideoOnlyContent = true,
             )
             index.persistReleaseDetail(detail)
-            assertEquals(true, MusicBrainzCatalogIndex(db)
+            assertEquals(true, MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
                 .cachedRelease(worldwide)?.isVideoOnlyContent)
             index.persistReleaseDetail(detail.copy(isVideoOnlyContent = null))
-            assertEquals(true, MusicBrainzCatalogIndex(db)
+            assertEquals(true, MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
                 .cachedRelease(worldwide)?.isVideoOnlyContent)
             // An explicit newer non-video proof can correct stale editorial data
             // without touching canonical Track or Recording MBIDs.
             index.persistReleaseDetail(detail.copy(isVideoOnlyContent = false))
-            assertEquals(false, MusicBrainzCatalogIndex(db)
+            assertEquals(false, MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
                 .cachedRelease(worldwide)?.isVideoOnlyContent)
         } finally { db.close() }
     }
@@ -207,7 +209,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun releaseTrackAliasWithoutRecordingCreditCannotUndoCorrectedRecordingMetadata() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistRecordings(listOf(MusicBrainzRecordingHit(
                 recording, "Corrected recording title", "Verified recording artist", 163_000L,
             )))
@@ -238,7 +240,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun offlineEditionTrackDoesNotBorrowAnotherEditionsCreditForTheSameRecording() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
                 worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25", listOf(
                     MusicBrainzCatalogTrack(
@@ -273,7 +275,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun paginatedEditionAssociationsAccumulateAndRemainAvailableOffline() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
                 group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
             )))
@@ -296,7 +298,7 @@ class MusicBrainzOfflineEditionsTest {
     @Test fun artistDiscographyCacheIsBoundToArtistMbidNotHomonymousArtistName() = runBlocking {
         val db = database()
         try {
-            val index = MusicBrainzCatalogIndex(db)
+            val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
             val illit = "6b128dd7-e998-4edb-a4f5-400fef190445"
             val namesake = "fa741e5c-1a5d-4a7a-a041-9d8061bd18fb"
             val anotherGroup = "6cdf5ba6-70f1-4bf6-82b6-f9c821a7ec5a"
@@ -331,7 +333,7 @@ class MusicBrainzOfflineEditionsTest {
                 val expired = "33333333-3333-4333-8333-333333333333"
                 val invalid = "44444444-4444-4444-8444-444444444444"
                 val future = "55555555-5555-4555-8555-555555555555"
-                val index = MusicBrainzCatalogIndex(db)
+                val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
                 index.persistArtists(listOf(MusicBrainzArtistHit(
                     artist, "ILLIT", null, "KR",
                 )))
