@@ -182,8 +182,9 @@ fun <T : Any> HeldContextMenu(
         else Color.Black.copy(alpha = 0.18f)
     val cardShape = RoundedCornerShape(20.dp)
     val menuShape = RoundedCornerShape(16.dp)
-    // Border sits outside the original pixels: album text and thumbnails never touch it.
-    val platePadding = 8.dp
+    // The selection edge sits INSIDE the exact bitmap bounds. Enlarging the
+    // lifted frame painted white strokes over adjacent rows and clipped edges
+    // when a row touched the screen's horizontal viewport.
 
     val insets = WindowInsets.safeDrawing
     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
@@ -231,7 +232,6 @@ fun <T : Any> HeldContextMenu(
                             Modifier
                         },
                     )
-                    .padding(platePadding)
                     .testTag("held-context-preview"),
             ) {
                 heldItem.image?.let { image ->
@@ -270,7 +270,6 @@ fun <T : Any> HeldContextMenu(
         val height = constraints.maxHeight
         val margin = 12.dp.roundToPx()
         val gap = 10.dp.roundToPx()
-        val pad = platePadding.roundToPx()
         val top = insets.getTop(this) + 8.dp.roundToPx()
         val bottom = heldMenuVisibleBottom(
             viewportHeight = height,
@@ -285,7 +284,7 @@ fun <T : Any> HeldContextMenu(
         // its shrinking edges looked like a row moving on every long press.
         // The menu may adapt to the viewport, but the selected row must not.
         val itemBounds = heldItem.bounds.translate(-overlayOffset)
-        val previewFrame = heldPreviewFixedFrame(heldItem.bounds, overlayOffset, pad)
+        val previewFrame = heldPreviewFixedFrame(heldItem.bounds, overlayOffset)
         val plateW = previewFrame.width
         val plateH = previewFrame.height
         val card = measurables[1].measure(Constraints.fixed(plateW, plateH))
@@ -360,7 +359,8 @@ fun <T : Any> HeldContextMenu(
     }
 }
 
-/** Physical source frame with only the decorative border margin added.
+/** The preview's outline is drawn INSIDE the source frame; never allocate
+ * exterior padding that escapes the viewport or paints over neighbouring rows.
  * No animation progress or viewport-fitting scale participates in placement. */
 internal data class HeldPreviewFixedFrame(
     val x: Int, val y: Int, val width: Int, val height: Int,
@@ -370,16 +370,12 @@ internal data class HeldPreviewFixedFrame(
 internal fun heldPreviewFixedFrame(
     sourceBounds: androidx.compose.ui.geometry.Rect,
     overlayOrigin: Offset,
-    paddingPx: Int,
-): HeldPreviewFixedFrame {
-    val pad = paddingPx.coerceAtLeast(0)
-    return HeldPreviewFixedFrame(
-        x = (sourceBounds.left - overlayOrigin.x).roundToInt() - pad,
-        y = (sourceBounds.top - overlayOrigin.y).roundToInt() - pad,
-        width = (sourceBounds.width.roundToInt() + pad * 2).coerceAtLeast(1),
-        height = (sourceBounds.height.roundToInt() + pad * 2).coerceAtLeast(1),
-    )
-}
+): HeldPreviewFixedFrame = HeldPreviewFixedFrame(
+    x = (sourceBounds.left - overlayOrigin.x).roundToInt(),
+    y = (sourceBounds.top - overlayOrigin.y).roundToInt(),
+    width = sourceBounds.width.roundToInt().coerceAtLeast(1),
+    height = sourceBounds.height.roundToInt().coerceAtLeast(1),
+)
 
 /** Menu height is constrained to the available side; preview never moves. */
 internal data class HeldAnchoredVerticalPlacement(

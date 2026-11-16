@@ -553,6 +553,11 @@ internal fun settingsPopupPosition(
  * The 180dp/17dp/38dp measurements are screenshot-calibrated Bitchord
  * approximations; REA confirms popup content/placement class, not exact size.
  */
+/** One-action Settings menus are narrower and shorter than multi-action plates.
+ * All root/pushed-screen ⋯ launchers consume these same visual tokens. */
+internal val APPLE_SETTINGS_SINGLE_ACTION_WIDTH = 200.dp
+internal const val APPLE_SETTINGS_SINGLE_ACTION_USES_LARGE_ROWS = false
+
 @Composable
 private fun AppleSettingsPopup(
     expanded: Boolean,
@@ -566,9 +571,9 @@ private fun AppleSettingsPopup(
     NativeCompactOverflowMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        minMenuWidth = 192.dp,
-        maxMenuWidth = 208.dp,
-        homePlateStyle = true,
+        minMenuWidth = APPLE_SETTINGS_SINGLE_ACTION_WIDTH,
+        maxMenuWidth = APPLE_SETTINGS_SINGLE_ACTION_WIDTH,
+        homePlateStyle = APPLE_SETTINGS_SINGLE_ACTION_USES_LARGE_ROWS,
     ) {
         NativeCompactMenuItem(
             label = stringResource(R.string.settings),

@@ -53,11 +53,13 @@ internal fun NativeArtistTopReleaseCard(
             .fillMaxWidth()
             .padding(horizontal = PAGE_GUTTER)
             .padding(bottom = 22.dp)
+            // Capture (and hide) the native featured-card fill and edge along
+            // with its contents; otherwise a white backing remains in the list.
+            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .clip(shape)
             .background(Color.White.copy(alpha = NativeMediaCardMetrics.featuredFillAlpha), shape)
             .border(1.dp, Color.White.copy(alpha = NativeMediaCardMetrics.featuredEdgeAlpha), shape)
             .clip(shape)
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
