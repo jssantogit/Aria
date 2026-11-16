@@ -124,6 +124,83 @@ class ProviderPlaybackByteDataSourceTest {
         }
     }
 
+    @Test fun protectedExtensionRedirectCannotSendHeadersToDifferentOrigin() {
+        val origin = MockWebServer()
+        val other = MockWebServer()
+        other.start()
+        origin.enqueue(MockResponse().setResponseCode(302)
+            .addHeader("Location", other.url("/private").toString()))
+        origin.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 64 * 1024L,
+        ).createDataSource()
+        try {
+            val request = spec(ProviderPlaybackByteLease(gate, ticket),
+                origin.url("/playlist").toString()).buildUpon()
+                .setHttpRequestHeaders(mapOf("X-Source-Token" to "sensitive-header"))
+                .build()
+            try {
+                source.open(request)
+                fail("Provider-owned HTTP must not follow cross-origin redirect")
+            } catch (_: IOException) {}
+            assertEquals("/playlist", origin.takeRequest(5, TimeUnit.SECONDS)?.path)
+            assertTrue("Cross-origin server must see no request or secret headers",
+                other.takeRequest(800, TimeUnit.MILLISECONDS) == null)
+        } finally {
+            runCatching { source.close() }
+            origin.shutdown()
+            other.shutdown()
+        }
+    }
+
+    @Test fun protectedSameOriginRedirectKeepsWorking() {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(302)
+            .addHeader("Location", server.url("/audio").toString()))
+        server.enqueue(MockResponse().setBody("audio"))
+        val gate = ProviderPolicyGate(policy(true))
+        val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 64 * 1024L,
+        ).createDataSource()
+        try {
+            assertEquals(5L, source.open(spec(
+                ProviderPlaybackByteLease(gate, ticket), server.url("/entry").toString(),
+            )))
+            assertEquals(5, source.read(ByteArray(5), 0, 5))
+            assertEquals("/entry", server.takeRequest(5, TimeUnit.SECONDS)?.path)
+            assertEquals("/audio", server.takeRequest(5, TimeUnit.SECONDS)?.path)
+        } finally {
+            runCatching { source.close() }
+            server.shutdown()
+        }
+    }
+
+    @Test fun ordinaryNonProviderHttpKeepsCrossOriginRedirects() {
+        val origin = MockWebServer()
+        val cdn = MockWebServer()
+        cdn.start()
+        cdn.enqueue(MockResponse().setBody("audio"))
+        origin.enqueue(MockResponse().setResponseCode(302)
+            .addHeader("Location", cdn.url("/audio").toString()))
+        origin.start()
+        val source = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 64 * 1024L,
+        ).createDataSource()
+        try {
+            assertEquals(5L, source.open(spec(null, origin.url("/entry").toString())))
+            assertEquals(5, source.read(ByteArray(5), 0, 5))
+            assertEquals("/audio", cdn.takeRequest(5, TimeUnit.SECONDS)?.path)
+        } finally {
+            runCatching { source.close() }
+            origin.shutdown()
+            cdn.shutdown()
+        }
+    }
+
     @Test fun sameDataSourceCanOpenAgainAfterCleanCloseWithFreshAuthorizedLease() {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("first"))
