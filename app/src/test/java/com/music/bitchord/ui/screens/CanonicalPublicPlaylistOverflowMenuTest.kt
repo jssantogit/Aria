@@ -2,6 +2,8 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.remember
+import dev.chrisbanes.haze.HazeState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.performClick
@@ -32,10 +34,12 @@ class CanonicalPublicPlaylistOverflowMenuTest {
                         title = "Test Playlist", creator = "Author", description = null,
                     ),
                     expanded = true, onDismiss = {},
+                    hazeState = remember { HazeState() }, onSettings = {},
                 )
             }
         }
-        compose.onNodeWithTag("native-compact-overflow").assertExists()
+        compose.onNodeWithTag("native-frosted-overflow").assertExists()
+        compose.onNodeWithText("Configurações").assertExists()
         compose.onNodeWithText("Compartilhar playlist").assertExists()
     }
     @Test fun publicPlaylistSortUsesSharedCompactPopupAndRestoresSelectedChoice() {
