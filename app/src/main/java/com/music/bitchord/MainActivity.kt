@@ -8363,6 +8363,7 @@ internal fun FrostedMenuPanel(
                 )
                 .onSizeChanged { popupSize = it }
                 .then(entrance)
+                .testTag("native-frosted-overflow")
                 .clip(shape)
                 .clickable(onClick = {}),
         ) {
