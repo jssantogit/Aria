@@ -263,6 +263,14 @@ private data class CanonicalLibraryMenuTarget(
  * Authenticated URLs and provider cover IDs never enter Compose state.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+/** Only album/artist detail toolbars open the frosted anchored overflow card.
+ * A held item keeps its lifted representation; track actions retain their route.
+ */
+internal fun canonicalLibraryDetailUsesAnchoredOverflow(
+    detailOpen: Boolean,
+    type: CanonicalLibraryEntityType,
+): Boolean = detailOpen && type != CanonicalLibraryEntityType.TRACK
+
 @Composable
 internal fun CanonicalRemoteLibraryScreen(
     providerKey: String,
@@ -1554,8 +1562,9 @@ internal fun CanonicalRemoteLibraryScreen(
                             heldNow = useHeldMenu,
                             liveMenuVisible = libraryMenu != null,
                             heldBeforeExit = exitLibraryWasHeld,
-                        ) || (selectedEntity != null &&
-                            menu.selection.type != CanonicalLibraryEntityType.TRACK)
+                        ) || (canonicalLibraryDetailUsesAnchoredOverflow(
+                            selectedEntity != null, menu.selection.type,
+                        ))
                     ) SongActionsPresentation.Menu else SongActionsPresentation.Sheet,
                     target = BrowseTarget(
                         browseId = null,
@@ -1679,9 +1688,9 @@ internal fun CanonicalRemoteLibraryScreen(
                 }
             }
             if (libraryMenu != null && !useHeldMenu) {
-                if (selectedEntity != null &&
-                    menu.selection.type != CanonicalLibraryEntityType.TRACK
-                ) {
+                if (canonicalLibraryDetailUsesAnchoredOverflow(
+                    selectedEntity != null, menu.selection.type,
+                )) {
                     // The detail toolbar owns this menu. Do not open the old
                     // bottom sheet: expand the same frosted card from its ⋯.
                     com.music.bitchord.FrostedMenuPanel(
