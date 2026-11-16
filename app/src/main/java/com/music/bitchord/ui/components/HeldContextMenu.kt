@@ -360,7 +360,7 @@ fun <T : Any> HeldContextMenu(
                     // with it.
                     transformOrigin = TransformOrigin(
                         pivotFractionX = if (alignEnd) 1f else 0f,
-                        pivotFractionY = if (menuBelow) 0f else 1f,
+                        pivotFractionY = if (placement.menuBelow) 0f else 1f,
                     )
                     val scale = lerp(0.55f, 1f, p)
                     scaleX = scale
