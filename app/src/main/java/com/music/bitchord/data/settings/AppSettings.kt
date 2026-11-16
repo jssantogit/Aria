@@ -11,6 +11,7 @@ import com.music.bitchord.BuildConfig
 import com.music.bitchord.auth.AuthStore
 import com.music.bitchord.data.canvas.SpotifyToken
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
@@ -1305,7 +1306,10 @@ object AppSettings {
     }
 
     fun setLyricsSources(value: Set<LyricsSource>) {
+        val persisted = ProviderRuntime.updateLyricsFromLegacyUi(lyricsSourceOrder.value, value)
+        if (persisted == false) return
         lyricsSources.value = value
+        if (persisted == true) return // canonical provider store is the sole writer
         prefs.edit()
             .putString(KEY_LYRICS_SOURCES, value.joinToString(",") { it.name })
             // Everything that was on the list this choice was made from, so a
@@ -1360,7 +1364,10 @@ object AppSettings {
     )
 
     fun setLyricsSourceOrder(value: List<LyricsSource>) {
+        val persisted = ProviderRuntime.updateLyricsFromLegacyUi(value, lyricsSources.value)
+        if (persisted == false) return
         lyricsSourceOrder.value = value
+        if (persisted == true) return // canonical provider store is the sole writer
         prefs.edit().putString(KEY_LYRICS_SOURCE_ORDER, value.joinToString(",") { it.name }).apply()
     }
 
