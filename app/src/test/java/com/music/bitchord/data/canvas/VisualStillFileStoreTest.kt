@@ -46,6 +46,7 @@ class VisualStillFileStoreTest {
             withTimeout(5_000) { pending.join() }
             assertTrue(call.isCanceled())
             target.delete()
+            Unit
         }
     }
 
