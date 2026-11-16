@@ -1904,7 +1904,7 @@ internal fun NativeLoadingSpinner(modifier: Modifier = Modifier) {
     // Same first-party progress indicator already used by the playlists UI.
     // Loading is neither an empty-state sentence nor an error message.
     Box(
-        modifier = modifier.fillMaxWidth().height(88.dp).testTag("native-library-loading"),
+        modifier = modifier.fillMaxWidth().heightIn(min = 88.dp).testTag("native-library-loading"),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator(modifier = Modifier.size(28.dp))
@@ -2628,7 +2628,7 @@ private fun NativeUnifiedLibraryBody(
             when (selectedContext) {
                 CanonicalSmartFilterContext.SONGS -> when (filteredState) {
                     CanonicalSongFilterState.Loading -> item {
-                        NativeLoadingSpinner()
+                        NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
                     }
                     CanonicalSongFilterState.Failed -> item {
                         RemoteBrowseMessage("Não foi possível aplicar o filtro.")
@@ -2695,7 +2695,7 @@ private fun NativeUnifiedLibraryBody(
                 }
                 CanonicalSmartFilterContext.ALBUMS -> when (entityState) {
                     CanonicalEntityBrowseState.Loading -> item {
-                        NativeLoadingSpinner()
+                        NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
                     }
                     CanonicalEntityBrowseState.Failed -> item {
                         RemoteBrowseMessage("Não foi possível carregar os álbuns.")
@@ -2790,7 +2790,7 @@ private fun NativeUnifiedLibraryBody(
                 }
                 CanonicalSmartFilterContext.ARTISTS -> when (entityState) {
                     CanonicalEntityBrowseState.Loading -> item {
-                        NativeLoadingSpinner()
+                        NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
                     }
                     CanonicalEntityBrowseState.Failed -> item {
                         RemoteBrowseMessage("Não foi possível carregar os artistas.")
