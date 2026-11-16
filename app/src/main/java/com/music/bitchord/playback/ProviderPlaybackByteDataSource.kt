@@ -9,6 +9,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import okhttp3.Call
 import okhttp3.Request
+import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRequestTicket
 import java.io.IOException
@@ -22,6 +23,8 @@ internal class ProviderPlaybackByteLease(
     private val gate: ProviderPolicyGate,
     private val ticket: ProviderRequestTicket,
 ) {
+    /** Non-secret instance identity for tagging temporary provider-owned cache. */
+    val providerKey: ProviderKey get() = ticket.key
     fun allowed(): Boolean = gate.accept(ticket)
     fun onRevoke(callback: () -> Unit): () -> Unit = gate.onRevoke(ticket, callback)
 }
