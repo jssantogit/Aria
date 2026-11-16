@@ -159,3 +159,9 @@
 - O painel frosted compartilhado agora intercepta Voltar enquanto aberto, antes da navegação do detalhe, preservando a semântica do antigo Popup/BottomSheet.
 - A nova rodada deve validar o HEAD exato com todas as alterações de album/playlist online e biblioteca, e apenas gerar APK universal se todos os gates forem verdes.
 - Não marcar REA #212 pronta para merge: o usuário está reportando os defeitos do smoke por partes; este checkpoint cobre apenas a primeira parte.
+
+
+### Regressão de primeira medição (16/11/2026)
+
+- O painel ancorado não deve renderizar largura de 1px enquanto `rootSize` ainda está zerado na primeira composição. Usar largura inicial estável de 280dp e só limitar à janela após a medição.
+- Reexecutar os mesmos gates no HEAD que inclui esse ajuste; não reaproveitar o resultado de builds canceladas.
