@@ -7595,6 +7595,15 @@ private fun CanonicalPlaylistMenus(
                     onClick = { onLibrarySort(choice); onLibrarySortDismiss() },
                 )
             }
+            FrostedMenuRow(
+                label = "Configurações",
+                checked = false,
+                icon = Icons.Rounded.Settings,
+                onClick = {
+                    onLibrarySortDismiss()
+                    onSettings()
+                },
+            )
         }
     }
     if (libraryFilterOpen && selectedCard == null) {
@@ -8279,7 +8288,13 @@ internal fun FrostedMenuPanel(
             shape = shape,
             shadowElevation = 0.dp,
             modifier = position
-                .width(IntrinsicSize.Max)
+                // A fixed, window-clamped card width avoids unsupported intrinsic
+                // measurement of nested scrollable legacy action rows.
+                .width(
+                    with(androidx.compose.ui.platform.LocalDensity.current) {
+                        (rootSize.width - 2 * margin).coerceAtLeast(1).toDp()
+                    }.coerceAtMost(280.dp)
+                )
                 .then(
                     Modifier.nativeCompactMenuLiftShadow(
                         isDark = darkPlate, shape = shape,
