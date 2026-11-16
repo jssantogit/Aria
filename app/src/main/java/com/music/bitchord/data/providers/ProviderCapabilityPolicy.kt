@@ -83,10 +83,18 @@ data class ProviderDescriptor(
     val key: ProviderKey,
     val capabilities: Set<ProviderCapability>,
     val readiness: ProviderReadiness = ProviderReadiness.NOT_IMPLEMENTED,
+    val capabilityReadiness: Map<ProviderCapability, ProviderReadiness> = emptyMap(),
 ) {
     init {
         require(capabilities.isNotEmpty()) { "A provider must declare at least one capability" }
+        require(capabilityReadiness.keys.all { it in capabilities }) {
+            "Capability readiness must belong to this descriptor"
+        }
     }
+
+    fun readinessFor(capability: ProviderCapability): ProviderReadiness =
+        if (capability in capabilities) capabilityReadiness[capability] ?: readiness
+        else ProviderReadiness.NOT_IMPLEMENTED
 }
 
 /** Activation and ordering belong to a capability, not to the whole provider. */
@@ -135,7 +143,7 @@ class ProviderCapabilityPolicy(
                 .sortedBy(ProviderChoice::order)
                 .mapNotNull { choice ->
                     byKey[choice.key]?.takeIf { descriptor ->
-                        descriptor.readiness == ProviderReadiness.READY &&
+                        descriptor.readinessFor(capability) == ProviderReadiness.READY &&
                             capability in descriptor.capabilities &&
                             (healthByKey[descriptor.key] ?: ProviderOperationalHealth.UNKNOWN) !=
                             ProviderOperationalHealth.UNAVAILABLE
@@ -157,8 +165,8 @@ class ProviderCapabilityPolicy(
     ): ProviderCapabilityStatus {
         val descriptor = byKey[key]
         val implemented = descriptor != null &&
-            descriptor.readiness != ProviderReadiness.NOT_IMPLEMENTED
-        val prerequisitesMet = descriptor?.readiness == ProviderReadiness.READY
+            descriptor.readinessFor(capability) != ProviderReadiness.NOT_IMPLEMENTED
+        val prerequisitesMet = descriptor?.readinessFor(capability) == ProviderReadiness.READY
         val userAuthorized = !quarantined &&
             choicesByCapability[capability]?.get(key)?.enabled == true
         val operationalHealth = healthByKey[key] ?: ProviderOperationalHealth.UNKNOWN
