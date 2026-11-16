@@ -7,6 +7,27 @@ import org.junit.Test
 
 /** A lifted menu must never disappear behind the Android navigation capsule. */
 class HeldContextMenuGeometryTest {
+    @Test fun menuNeverMovesSourceCardEvenWhenActionsDoNotFitBelow() {
+        val placement = heldMenuAnchoredVerticalPlacement(
+            sourceTop = 420f, sourceHeight = 110f, viewportTop = 40, viewportBottom = 780,
+            gap = 10, requestedMenuHeight = 540,
+        )
+        assertEquals(420f, placement.previewTop)
+        assertFalse(placement.menuBelow)
+        assertTrue(placement.menuTop + placement.menuMaxHeight <= 780)
+        assertTrue(placement.menuMaxHeight > 0)
+    }
+
+    @Test fun bottomCardKeepsOriginalPositionAndScrollsActionsAbove() {
+        val placement = heldMenuAnchoredVerticalPlacement(
+            sourceTop = 670f, sourceHeight = 90f, viewportTop = 40, viewportBottom = 780,
+            gap = 10, requestedMenuHeight = 500,
+        )
+        assertEquals(670f, placement.previewTop)
+        assertFalse(placement.menuBelow)
+        assertTrue(placement.menuMaxHeight <= 620)
+    }
+
     @Test fun floatingBarsAreExcludedFromTheHeldMenuViewport() {
         assertEquals(770, heldMenuVisibleBottom(
             viewportHeight = 1000, systemBottomInset = 30, chromeReserve = 200,
