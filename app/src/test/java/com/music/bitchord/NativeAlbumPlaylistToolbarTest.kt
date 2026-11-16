@@ -32,6 +32,14 @@ import org.robolectric.annotation.ConscryptMode
 class NativeAlbumPlaylistToolbarTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun detailOverflowUsesAnchoredMenuAndRetainsLegacyActionsPlusSettings() {
+        assertEquals(
+            listOf("Tocar a seguir", "Adicionar à fila", "Editar playlist", "Configurações"),
+            nativeOwnedPlaylistDetailOverflowLabels(),
+        )
+        assertEquals(true, nativeOwnedPlaylistDetailOverflowIsAnchored())
+    }
+
     @Test fun libraryDetailOverflowHighlightsOnlyForLiveUnheldMenu() {
         val album = com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ALBUM
         val artist = com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST
