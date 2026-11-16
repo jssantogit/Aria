@@ -17,3 +17,12 @@ internal fun isRetiredWatchCacheRequest(uri: Uri): Boolean =
         uri.authority != "source" &&
         uri.authority != "canonical" &&
         uri.getQueryParameter("v") != null
+
+/** Only BitChord's own logical source URI may enter SourceResolver.
+ * HTTP CDN resources, even on a host named "source", are media bytes and
+ * must not be reclassified as catalogue requests.
+ */
+internal fun isLogicalSourcePlaybackUri(uri: Uri): Boolean =
+    uri.scheme.equals("bitchord", ignoreCase = true) &&
+        uri.isHierarchical &&
+        uri.authority == "source"
