@@ -141,7 +141,9 @@ internal class DiscogsDatabaseSearchClient(
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun search(query: DiscogsSearchRequest): DiscogsSearchResult {
-        if (!enabled) return DiscogsSearchResult.Disabled
+        if (!enabled || !admission.permitted(
+            ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
+        )) return DiscogsSearchResult.Disabled
         if (!query.isValid()) return DiscogsSearchResult.InvalidQuery
         // Authentication is opt-in and fail-closed, including if Keystore is
         // unavailable. Never log or embed credentials in diagnostics/results.
