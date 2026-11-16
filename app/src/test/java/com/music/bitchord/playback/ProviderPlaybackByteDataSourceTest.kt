@@ -146,6 +146,14 @@ class ProviderPlaybackByteDataSourceTest {
         assertTrue(session.withSegmentHeaders(
             DataSpec.Builder().setUri("https://assets.example:8443/seg.m4s").build()
         ).httpRequestHeaders.isEmpty())
+
+        val lowerCaseOverride = session.withSegmentHeaders(
+            DataSpec.Builder().setUri("https://assets.example/seg2.m4s")
+                .setHttpRequestHeaders(mapOf("x-source-token" to "new-token"))
+                .build())
+        assertEquals("new-token", lowerCaseOverride.httpRequestHeaders["x-source-token"])
+        assertTrue("HTTP field names must not be duplicated with different casing",
+            lowerCaseOverride.httpRequestHeaders.keys.none { it == "X-Source-Token" })
     }
 
     @Test fun revokedManifestTicketNeverSuppliesHeadersToLaterSegment() {
