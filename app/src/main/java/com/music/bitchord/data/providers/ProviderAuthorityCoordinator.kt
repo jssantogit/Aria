@@ -97,6 +97,12 @@ internal class ProviderAuthorityCoordinator(
                 ProviderChoice(BuiltInProviderKeys.DISCOGS, enabled = false, order = 0),
             )
         }
+        // Anonymous public playlists were already available on the #216
+        // product. Preserve that behavior on first import while honoring
+        // every explicitly saved disabled/empty choice on subsequent boots.
+        imported[ProviderCapability.PUBLIC_PLAYLISTS] = listOf(
+            ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = true, order = 0),
+        )
         imported[ProviderCapability.LISTENING_STATISTICS] = listOf(
             ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = lastfmEnabled, order = 0),
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
