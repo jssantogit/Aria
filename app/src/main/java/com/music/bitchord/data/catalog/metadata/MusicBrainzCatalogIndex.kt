@@ -64,6 +64,26 @@ internal class MusicBrainzCatalogIndex private constructor(
             { UUID.randomUUID().toString() }, MusicBrainzClient(), cacheRead,
         ))
 
+    /** Unit tests opt into editorial cache reads without weakening Android defaults. */
+    constructor(
+        database: CanonicalCatalogDatabase,
+        idFactory: () -> String,
+        cacheRead: ProviderCachedReadAccess,
+    ) : this(database, Configuration(idFactory, MusicBrainzClient(), cacheRead))
+
+    constructor(
+        database: CanonicalCatalogDatabase,
+        proofClient: MusicBrainzClient,
+        cacheRead: ProviderCachedReadAccess,
+    ) : this(database, Configuration({ UUID.randomUUID().toString() }, proofClient, cacheRead))
+
+    constructor(
+        database: CanonicalCatalogDatabase,
+        proofClient: MusicBrainzClient,
+        idFactory: () -> String,
+        cacheRead: ProviderCachedReadAccess,
+    ) : this(database, Configuration(idFactory, proofClient, cacheRead))
+
     /** Supports proof-client injection together with an existing trailing id factory. */
     constructor(
         database: CanonicalCatalogDatabase,
