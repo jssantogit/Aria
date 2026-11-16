@@ -24,10 +24,7 @@ object ListenBrainzManager {
     private fun isListenBrainzListeningPermitted(): Boolean {
         val snapshot = ProviderRuntime.state?.value
         if (snapshot?.status == ProviderSessionStatus.STORAGE_ERROR) return false
-        val gate = policyGateForTests?.invoke() ?: ProviderRuntime.gateOrNull() ?: return true
-        val configured = policyGateForTests != null || snapshot == null ||
-            ProviderCapability.LISTENING_STATISTICS in snapshot.configured
-        if (!configured) return true
+        val gate = policyGateForTests?.invoke() ?: ProviderRuntime.gateOrNull() ?: return false
         return gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ) != null
     }
 
