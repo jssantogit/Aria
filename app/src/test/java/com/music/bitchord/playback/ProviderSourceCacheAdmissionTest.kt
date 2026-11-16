@@ -29,6 +29,33 @@ class ProviderSourceCacheAdmissionTest {
             )),
         ))
 
+    @Test fun remoteManifestCannotOpenFileContentOrSmbSegmentsOnThePhone() {
+        val denied = listOf(
+            "file" to null,
+            "content" to "media",
+            "smb" to "private-server",
+            "ftp" to "remote",
+            "data" to null,
+            "bitchord" to "canonical",
+            "bitchord" to "watch",
+            null to null,
+        )
+        denied.forEach { (scheme, authority) ->
+            try {
+                requireAdaptiveSourceResourceScheme(scheme, authority)
+                org.junit.Assert.fail("Unsafe adaptive segment scheme passed: $scheme")
+            } catch (_: java.io.IOException) {
+                // A manifest is untrusted input; it cannot gain device access.
+            }
+        }
+    }
+
+    @Test fun logicalSourceManifestAndHttpSegmentsRemainAvailable() {
+        requireAdaptiveSourceResourceScheme("bitchord", "source")
+        requireAdaptiveSourceResourceScheme("https", "cdn.example")
+        requireAdaptiveSourceResourceScheme("http", "cdn.example")
+    }
+
     @Test fun adaptiveSegmentsUseProviderScopedHashedKeysInsteadOfSharedVideoQuery() {
         val urlA = "https://cdn.example/track.ts?v=same&token=private-A"
         val urlB = "https://cdn.example/other.ts?v=same&token=private-B"
