@@ -1,11 +1,17 @@
 package com.music.bitchord.data.canvas
 
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import java.util.concurrent.TimeUnit
 import com.music.bitchord.data.providers.ArtworkProbePolicyGuard
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
@@ -24,6 +30,24 @@ import org.junit.rules.TemporaryFolder
 
 class VisualStillFileStoreTest {
     @get:Rule val temp = TemporaryFolder()
+
+    @Test fun cancellationClosesStreamingVisualStillHttpCall() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse()
+                .setHeadersDelay(30, TimeUnit.SECONDS)
+                .setBody("delayed image bytes"))
+            server.start()
+            val call = OkHttpClient().newCall(
+                Request.Builder().url(server.url("/still.jpg")).build())
+            val target = File(temp.root, "cancelled-still.part")
+            val pending = async(Dispatchers.IO) { downloadVisualStill(call, target) }
+            assertTrue(server.takeRequest(5, TimeUnit.SECONDS) != null)
+            pending.cancel()
+            withTimeout(5_000) { pending.join() }
+            assertTrue(call.isCanceled())
+            target.delete()
+        }
+    }
 
     @Test fun revokedArtistArtStopsPendingOfflineImageWithoutPublishingPartialFile() = runBlocking {
         val folder = temp.newFolder("revoked-art")
