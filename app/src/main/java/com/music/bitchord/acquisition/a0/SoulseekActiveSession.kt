@@ -5,6 +5,7 @@ import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderRequestTicket
+import com.music.bitchord.data.providers.ProviderRuntime
 
 /**
  * Process-local P2P socket generation. Saving or forgetting an account revokes
@@ -66,6 +67,20 @@ internal object SoulseekActiveSession {
         val gate = currentDownloadGate ?: return false
         val ticket = currentDownloadTicket ?: return false
         return gate.accept(ticket)
+    }
+
+    /** Credential lifecycle must invalidate the bound P2P ticket before
+     * refreshing readiness. Revoking sockets alone leaves the old ticket
+     * reusable by a late transport registration.
+     */
+    fun onCredentialsChanged(
+        configured: Boolean,
+        refreshReadiness: (Boolean) -> Boolean? = {
+            ProviderRuntime.refreshSoulseekAccountReadiness(it)
+        },
+    ): Boolean? {
+        bindDownloadPermission(null)
+        return refreshReadiness(configured)
     }
 
     @Synchronized fun generation(): Long = epoch
