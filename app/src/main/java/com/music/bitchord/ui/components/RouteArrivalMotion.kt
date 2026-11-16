@@ -100,6 +100,34 @@ internal fun rootTabContentTransform(reducedMotion: Boolean = false): ContentTra
     )
 }
 
+/**
+ * Search is a new active surface, and the playlist creator is a pushed
+ * full-page wizard. Both must replace the retiring composition atomically:
+ * even a brief 150ms root-tab crossfade showed old album covers/controls over
+ * Search, and the isolated 180ms builder arrival could retain Library rows.
+ *
+ * This is deliberately limited to these routes. Other root-tab transitions
+ * and pushed-page animations remain unchanged.
+ */
+internal fun mainPageMustReplaceImmediately(
+    previous: String,
+    next: String,
+    rootTabPrefix: String,
+    searchTabKey: String,
+): Boolean {
+    if (previous == next || !searchTabKey.startsWith(rootTabPrefix)) return false
+    return previous == searchTabKey || next == searchTabKey ||
+        previous == "smart_playlist_builder" || next == "smart_playlist_builder"
+}
+
+/** Both slots switch without a fade or size spring; no translucent overlap. */
+internal fun immediatePageContentTransform(reducedMotion: Boolean = false): ContentTransform =
+    ContentTransform(
+        targetContentEnter = EnterTransition.None,
+        initialContentExit = ExitTransition.None,
+        sizeTransform = null,
+    )
+
 /** Only two root tabs may crossfade each other's *current* content.
  * Pushed pages and nested destinations must not show the retiring route
  * during their own initial loading frame. */

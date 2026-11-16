@@ -3065,6 +3065,13 @@ private fun BitChordApp(
                             (initialState == "library_show_all" && targetState == libraryTabKey) ||
                                 (targetState == "library_show_all" && initialState == libraryTabKey)
                         when {
+                            // Search and playlist creation must never have
+                            // both the old and new page visible in one frame.
+                            // This takes precedence over the normal tab fade
+                            // and the isolated pushed-page arrival.
+                            com.music.bitchord.ui.components.mainPageMustReplaceImmediately(
+                                initialState, targetState, TAB_KEY, "$TAB_KEY$TAB_SEARCH",
+                            ) -> com.music.bitchord.ui.components.immediatePageContentTransform()
                             libraryShowAllSwap ->
                                 com.music.bitchord.ui.components.rootTabContentTransform(reducedMotion = true)
                             com.music.bitchord.ui.components.mainPageRequiresImmediateExit(
@@ -3103,6 +3110,17 @@ private fun BitChordApp(
                         ),
                     label = "content",
                 ) { key ->
+                    // AnimatedContent can retain an outgoing composable even
+                    // for an instant transition. Drop its pixels at composition
+                    // time when switching into/out of Search or the wizard:
+                    // otherwise its previous rows can still paint behind a
+                    // translucent destination during the first frame.
+                    if (key != pageRouteKey &&
+                        com.music.bitchord.ui.components.mainPageMustReplaceImmediately(
+                            key, pageRouteKey, TAB_KEY, "$TAB_KEY$TAB_SEARCH",
+                        )
+                    ) return@AnimatedContent
+
                     // Every branch below reads `key` rather than the state that
                     // produced it. The two are the same thing only for the page
                     // being entered: the one on its way out is still composed,
