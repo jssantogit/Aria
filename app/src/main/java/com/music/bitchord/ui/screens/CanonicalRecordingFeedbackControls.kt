@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -303,6 +304,9 @@ internal fun ratingDialogEntranceFrame(progress: Float, reducedMotion: Boolean):
 }
 
 /** Keep an anchored editor inside the window, even in Android multi-window. */
+/** Standalone editors also use a floating card, not a full-width modal sheet. */
+internal fun ratingEditorFloatingMaxWidthDp(): Int = 320
+
 internal fun anchoredRatingCardWidthDp(screenWidthDp: Int): Int =
     ((screenWidthDp.takeIf { it > 0 } ?: 320) - 32).coerceIn(1, 300)
 
@@ -370,8 +374,8 @@ internal fun CanonicalRecordingFeedbackPanel(
                     // Preserve five 56dp star targets on narrow phones.
                     start = 12.dp,
                     end = 12.dp,
-                    top = if (anchorBounds == null) 24.dp else 14.dp,
-                    bottom = if (anchorBounds == null) 18.dp else 14.dp,
+                    top = 14.dp,
+                    bottom = 14.dp,
                 )
                 .testTag(if (anchorBounds == null) "native-rating-bottom-sheet"
                     else "native-rating-anchored-content")
@@ -385,7 +389,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                     scaleY = entrance.scale
                     transformOrigin = TransformOrigin.Center
                 } else Modifier),
-            verticalArrangement = Arrangement.spacedBy(if (anchorBounds == null) 24.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
                 Row(
@@ -565,7 +569,8 @@ internal fun CanonicalRecordingFeedbackPanel(
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 NativeContextActionPlate(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                    modifier = Modifier.widthIn(max = ratingEditorFloatingMaxWidthDp().dp)
+                        .fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
                     artworkUrl = artworkUrl,
                 ) { ratingEditorContent() }
             }
