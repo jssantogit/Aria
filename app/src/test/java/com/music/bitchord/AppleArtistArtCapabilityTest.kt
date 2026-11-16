@@ -5,7 +5,7 @@ import com.music.bitchord.data.canvas.AppleArtistArt
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.canvas.VisualSurface
 import com.music.bitchord.data.canvas.visualMediaCacheKey
-import com.music.bitchord.data.providers.BuiltInProviderDescriptors
+import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
@@ -29,8 +29,8 @@ class AppleArtistArtCapabilityTest {
     private val key = BuiltInProviderKeys.APPLE_ARTIST_ART
 
     private fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
-        descriptors = listOf(BuiltInProviderDescriptors.appleArtistArt(
-            readiness = ProviderReadiness.READY,
+        descriptors = listOf(ProviderDescriptor(
+            key, setOf(ProviderCapability.ARTIST_ARTWORK), ProviderReadiness.READY,
         )),
         choices = mapOf(ProviderCapability.ARTIST_ARTWORK to listOf(
             ProviderChoice(key, enabled, 0),
