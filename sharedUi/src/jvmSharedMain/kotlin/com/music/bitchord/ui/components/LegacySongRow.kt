@@ -196,13 +196,14 @@ fun SongRow(
         onSwipeToQueue = onSwipeToQueue,
         rowBackground = rowBackground,
         modifier = modifier,
-    ) { rowModifier ->
+    ) { rowModifier, swipeCover ->
         SongRowContent(
             song = song,
             onClick = onClick,
             onLongPress = onLongPress,
             onMore = if (showMoreButton) onMore ?: onLongPress else null,
             modifier = rowModifier,
+            swipeCover = swipeCover,
             trackNumber = trackNumber,
             subtitleColor = subtitleColor,
             downloadedTint = downloadedTint,
@@ -224,6 +225,7 @@ private fun SongRowContent(
     onLongPress: (() -> Unit)?,
     onMore: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    swipeCover: Color = Color.Transparent,
     trackNumber: Int? = null,
     subtitleColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     downloadedTint: Color? = MaterialTheme.colorScheme.primary,
@@ -252,7 +254,7 @@ private fun SongRowContent(
         onMore = onMore,
         modifier = modifier,
         opacity = if (unavailable) 0.45f else 1f,
-        background = activeBackground,
+        background = nativeCapturedSwipeRowBackground(swipeCover, activeBackground),
         textGap = if (trackNumber == null) 14.dp else PAGE_GUTTER,
         leading = {
             if (trackNumber != null) {

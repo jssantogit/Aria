@@ -77,6 +77,7 @@ import com.music.bitchord.ui.components.ActionRow
 import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
 import com.music.bitchord.ui.components.SongRow
 import com.music.bitchord.ui.components.NativeDetailTrackSwipeContainer
+import com.music.bitchord.ui.components.nativeCapturedSwipeRowBackground
 import com.music.bitchord.ui.components.NativeDetailTrackArtwork
 import com.music.bitchord.ui.components.NativeDetailTrackRatingSlot
 import com.music.bitchord.ui.components.NativeTrackRowText
@@ -291,14 +292,17 @@ internal fun CanonicalPlaylistTrackRow(
         onSwipeToQueue = onSwipeToQueue,
         // The row must mask the queue reveal on an artwork-tinted page.
         rowBackground = rowBackground,
-    ) { rowModifier ->
+    ) { rowModifier, swipeCover ->
         NativeDetailTrackRowLayout(
             modifier = rowModifier.then(
                 if (isCurrent) Modifier.testTag("canonical-playlist-current-track")
                 else Modifier,
             ),
-            background = if (isCurrent) activeTint.copy(alpha = 0.14f)
+            background = nativeCapturedSwipeRowBackground(
+                swipeCover,
+                if (isCurrent) activeTint.copy(alpha = 0.14f)
                 else androidx.compose.ui.graphics.Color.Transparent,
+            ),
             onClick = if (available) ({ onPlay(track.id) }) else null,
             onLongPress = if (available) ({ menuExpanded = true }) else null,
             onMore = if (available) ({ menuExpanded = true }) else null,

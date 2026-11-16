@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -82,7 +83,9 @@ fun NativeDetailTrackSwipeContainer(
     onSwipeToQueue: (() -> Unit)?,
     rowBackground: Color,
     modifier: Modifier = Modifier,
-    content: @Composable (Modifier) -> Unit,
+    // Carry the swipe cover into the row's OWN drawing. Passing a Modifier.background
+    // to content painted outside the held capture, leaving a bright bar behind it.
+    content: @Composable (Modifier, Color) -> Unit,
 ) {
     val haptics = rememberHaptics()
     val swipeStateHolder = remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
@@ -106,7 +109,7 @@ fun NativeDetailTrackSwipeContainer(
     swipeStateHolder.value = swipeState
 
     if (onSwipeToQueue == null) {
-        content(modifier)
+        content(modifier, Color.Transparent)
         return
     }
 
@@ -132,7 +135,7 @@ fun NativeDetailTrackSwipeContainer(
         modifier = modifier.onSizeChanged { boxWidth = it.width.toFloat() },
         backgroundContent = { QueueSwipeBackground(swipeState) },
     ) {
-        content(Modifier.background(rowBackground))
+        content(Modifier, rowBackground)
     }
 }
 
@@ -183,6 +186,11 @@ private fun QueueSwipeLabel(playNext: Boolean) {
         )
     }
 }
+
+/** Render the swipe cover and current/selection tint in the same captured layer.
+ * This solid cover still hides the queue-reveal artwork while the row slides. */
+fun nativeCapturedSwipeRowBackground(swipeCover: Color, activeTint: Color): Color =
+    activeTint.compositeOver(swipeCover)
 
 /**
  * Native artwork frame for playable playlist/song rows across all providers.

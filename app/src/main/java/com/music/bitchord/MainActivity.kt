@@ -6152,6 +6152,7 @@ private fun BitChordApp(
                     FrostedMenuPanel(
                         hazeState = hazeState,
                         anchorBounds = catalogAlbumOverflowAnchor,
+                        menuWidth = 240.dp,
                         onDismiss = { browseActions = null },
                     ) {
                         browseMenuBody(target, SongActionsPresentation.Menu)
@@ -8306,6 +8307,7 @@ internal fun FrostedMenuPanel(
     hazeState: HazeState,
     onDismiss: () -> Unit,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
+    menuWidth: Dp = 280.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // The menu owns Back just like the Popup it replaces; otherwise Android
@@ -8368,10 +8370,10 @@ internal fun FrostedMenuPanel(
                 // A fixed, window-clamped card width avoids unsupported intrinsic
                 // measurement of nested scrollable legacy action rows.
                 .width(
-                    if (rootSize.width <= 0) 280.dp else
+                    if (rootSize.width <= 0) menuWidth else
                         with(androidx.compose.ui.platform.LocalDensity.current) {
                             (rootSize.width - 2 * margin).coerceAtLeast(1).toDp()
-                        }.coerceAtMost(280.dp)
+                        }.coerceAtMost(menuWidth)
                 )
                 .then(
                     Modifier.nativeCompactMenuLiftShadow(
@@ -8414,6 +8416,14 @@ internal fun FrostedMenuRow(
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Match native compact overflow: action glyph before its label,
+        // checkmark (when selected) remains a trailing state indicator.
+        if (icon != null) {
+            Icon(icon, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(14.dp))
+        }
         Text(
             label,
             style = MaterialTheme.typography.bodyLarge,
@@ -8424,14 +8434,6 @@ internal fun FrostedMenuRow(
                 Icons.Rounded.Check,
                 contentDescription = null,
                 tint = com.music.bitchord.ui.theme.appleMusicKeyColor(),
-            )
-        } else if (icon != null) {
-            Spacer(Modifier.width(16.dp))
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
             )
         }
     }
