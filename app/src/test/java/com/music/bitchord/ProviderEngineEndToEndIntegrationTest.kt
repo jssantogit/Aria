@@ -204,6 +204,39 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun soulseekMigratesIntoExistingAddonDownloadDocumentWithoutOverwritingChoices(): Unit = runBlocking {
+        val addon = SourceConfig(
+            id = "existing-addon", kind = SourceKind.ADDON,
+            baseUrl = "https://addon.example/manifest.json", enabled = true,
+        )
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(sources = listOf(addon), soulseekConfigured = true),
+        )
+        val session = ProviderCapabilitySession(ProviderPreferenceStore(prefs), descriptors)
+        val addonKey = com.music.bitchord.data.providers.ProviderKey("addon", addon.id)
+        val soulseekKey = com.music.bitchord.data.providers.ProviderKey("soulseek")
+        assertTrue(session.initialize(mapOf(
+            ProviderCapability.DOWNLOAD to listOf(ProviderChoice(addonKey, false, 0)),
+        )))
+        val authority = ProviderAuthorityCoordinator(session)
+        assertTrue(authority.migrateOnce(
+            emptyList(), emptySet(), listOf(addon), soulseekConfigured = true,
+        ))
+        assertNull(session.gate.open(ProviderCapability.DOWNLOAD, addonKey))
+        assertTrue(session.gate.open(ProviderCapability.DOWNLOAD, soulseekKey) != null)
+        assertTrue(session.update(
+            ProviderCapability.DOWNLOAD, listOf(
+                ProviderChoice(addonKey, false, 0),
+                ProviderChoice(soulseekKey, false, 1),
+            ),
+        ))
+        assertTrue(authority.migrateOnce(
+            emptyList(), emptySet(), listOf(addon), soulseekConfigured = true,
+        ))
+        assertNull(session.gate.open(ProviderCapability.DOWNLOAD, soulseekKey))
+    }
+
+    @Test
     fun soulseekCredentialReadinessAndDownloadOptOutRemainIndependentOfAddonDownloads(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
