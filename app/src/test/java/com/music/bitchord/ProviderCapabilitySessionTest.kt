@@ -60,6 +60,25 @@ class ProviderCapabilitySessionTest {
 
     @Before fun clear() { prefs.edit().clear().commit() }
 
+    @Test fun publicChartMigrationPreservesExistingOptOutAcrossRestart(): Unit = runBlocking {
+        val first = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(first).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false, includeDefaultArtworkBaseline = false,
+        ))
+        val provider = BuiltInProviderKeys.LISTENBRAINZ
+        assertTrue(first.gate.open(ProviderCapability.CHART_MOST_PLAYED, provider) != null)
+        assertTrue(first.update(ProviderCapability.CHART_MOST_PLAYED, emptyList()))
+        val second = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(second).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false, includeDefaultArtworkBaseline = false,
+        ))
+        assertTrue(second.gate.open(ProviderCapability.CHART_MOST_PLAYED, provider) == null)
+        assertEquals(emptyList<ProviderChoice>(),
+            second.state.value.configured[ProviderCapability.CHART_MOST_PLAYED])
+    }
+
     @Test fun anonymousPublicPlaylistMigrationPreservesExistingOptOutOnRestart(): Unit = runBlocking {
         val first = ProviderCapabilitySession(store, emptyList())
         val old = ProviderAuthorityCoordinator(first)
