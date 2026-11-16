@@ -371,9 +371,11 @@ internal fun CanonicalRecordingFeedbackPanel(
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val sheetForeground = if (darkTheme) Color.White else Color.Black
     val sheetTitle = title ?: stringResource(Res.string.recording_feedback_dialog_title)
-    val modalWidth = ratingEditorModalWidthDp(LocalConfiguration.current.screenWidthDp).dp
-    val modalGlyphSize = ((ratingEditorModalWidthDp(LocalConfiguration.current.screenWidthDp) - 24) / 5)
-        .coerceIn(18, 40).dp
+    val modalWidthDp = ratingEditorModalWidthDp(LocalConfiguration.current.screenWidthDp)
+    val modalWidth = modalWidthDp.dp
+    // Keep the familiar large stars wherever five slots safely fit. Only
+    // narrow multi-window layouts reduce their size.
+    val modalGlyphSize = ((modalWidthDp - 24) / 5).coerceIn(18, 56).dp
     val ratingEditorContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth()

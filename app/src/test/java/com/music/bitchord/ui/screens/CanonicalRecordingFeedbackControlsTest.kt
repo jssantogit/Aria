@@ -57,7 +57,7 @@ class CanonicalRecordingFeedbackControlsTest {
                 )
             }
         }
-        compose.onNodeWithTag("native-rating-bottom-sheet").assertExists()
+        compose.onNodeWithTag("native-rating-modal").assertExists()
         compose.onNodeWithText("User rating").assertDoesNotExist()
         compose.onNodeWithContentDescription("4 stars").performSemanticsAction(SemanticsActions.OnClick)
         compose.runOnIdle {
@@ -68,7 +68,7 @@ class CanonicalRecordingFeedbackControlsTest {
         compose.runOnIdle { assertEquals(listOf(4.0), values) }
     }
 
-    @Test fun ratingCompositionMatchesMinimalSolidBottomSheetConcept() {
+    @Test fun ratingCompositionUsesCenteredFrostedModalWithoutSheetArtifacts() {
         compose.setContent {
             MaterialTheme {
                 CanonicalRecordingFeedbackPanel(
@@ -79,7 +79,7 @@ class CanonicalRecordingFeedbackControlsTest {
                 )
             }
         }
-        compose.onNodeWithTag("native-rating-bottom-sheet").assertExists()
+        compose.onNodeWithTag("native-rating-modal").assertExists()
         compose.onNodeWithText("Rate playlist").assertDoesNotExist()
         compose.onNodeWithTag("rating-editor-sheet-handle").assertDoesNotExist()
         compose.onNodeWithTag("rating-editor-artwork-header").assertDoesNotExist()
@@ -92,9 +92,13 @@ class CanonicalRecordingFeedbackControlsTest {
         assertEquals(cancelBounds.right - cancelBounds.left, saveBounds.right - saveBounds.left)
     }
 
-    @Test fun ratingSheetBackgroundFollowsSolidPlayerThemeWithoutFrosting() {
-        assertEquals(Color.Black, ratingSheetSolidColor(true))
-        assertEquals(Color.White, ratingSheetSolidColor(false))
+    @Test fun neutralRatingModalDoesNotBorrowTheCurrentAlbumArtworkColor() {
+        assertEquals(Color(0xFF29292D),
+            com.music.bitchord.ui.components.nativeContextPlateColor(dark = true))
+        assertEquals(Color(0xFFF5F5F7),
+            com.music.bitchord.ui.components.nativeContextPlateColor(dark = false))
+        assertEquals(false, com.music.bitchord.ui.components.neutralRatingPlateUsesArtwork(
+            com.music.bitchord.ui.components.NativeActionCardTreatment.NEUTRAL_FROSTED))
     }
 
     @Test fun cancelCannotWriteAndDialogNeverExposesClear() {
