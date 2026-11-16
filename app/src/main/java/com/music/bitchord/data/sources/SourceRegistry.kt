@@ -6,6 +6,11 @@ import android.net.Uri
 import android.util.Log
 import com.music.bitchord.auth.EncryptedPrefs
 import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderSessionStatus
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.permits
 import com.music.bitchord.data.sources.addon.AddonClient
@@ -191,8 +196,32 @@ object SourceRegistry {
      * [active], minus the addons whose manifest said `allowDownloads: 0`. A
      * download walks this instead, so the next source in line serves it.
      */
-    fun activeForDownload(): List<MusicSource> =
-        active().filter { config(it.configId)?.allowDownloads != false }
+    fun activeForDownload(): List<MusicSource> {
+        val activeSources = active()
+        val eligibleIds = downloadEligibleConfigs(
+            activeSources.mapNotNull { config(it.configId) },
+            ProviderRuntime.gateOrNull(),
+        ).mapTo(HashSet()) { it.id }
+        return activeSources.filter { it.configId in eligibleIds }
+    }
+
+    /** DOWNLOAD and EXTENSION_PLAYBACK use independent per-instance tickets. */
+    internal fun downloadEligibleConfigs(
+        sources: List<SourceConfig>,
+        gate: ProviderPolicyGate?,
+    ): List<SourceConfig> = sources.filter { source ->
+        if (!source.allowDownloads) return@filter false
+        when (source.kind) {
+            SourceKind.ADDON, SourceKind.CUSTOM_MODULE -> {
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                gate?.open(ProviderCapability.DOWNLOAD, key) != null
+            }
+            else -> true
+        }
+    }
 
     /**
      * Records what an addon's manifest said about downloads and lossless
@@ -218,8 +247,21 @@ object SourceRegistry {
     }
 
     /** The common eligibility gate used by playback and download source walks. */
-    internal fun enabledConfigs(configs: List<SourceConfig>): List<SourceConfig> =
-        configs.filter { it.enabled && it.isComplete && it.kind != SourceKind.YOUTUBE }
+    internal fun enabledConfigs(configs: List<SourceConfig>): List<SourceConfig> {
+        val status = ProviderRuntime.state?.value?.status
+        val projected = if (status == ProviderSessionStatus.READY ||
+            status == ProviderSessionStatus.PERSISTING ||
+            status == ProviderSessionStatus.STORAGE_ERROR
+        ) {
+            val extensions = ProviderRuntime.authorityOrNull()?.currentExtensionsProjection(configs)
+            if (extensions == null) configs else extensions + configs.filterNot {
+                it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE
+            }
+        } else configs
+        return projected.filter {
+            it.enabled && it.isComplete && it.kind != SourceKind.YOUTUBE
+        }
+    }
 
     /** User-visible source selection is provider-neutral. Retired YouTube
      * settings stay decoded for migration but cannot appear as an option. */
@@ -303,8 +345,16 @@ object SourceRegistry {
 
     /** No retired source can be re-enabled through saved settings or callers. */
     fun setEnabled(configId: String, enabled: Boolean) {
-        if (config(configId)?.kind == SourceKind.YOUTUBE) return
-        publish(configs.value.map { if (it.id == configId) it.copy(enabled = enabled) else it })
+        val current = config(configId) ?: return
+        if (current.kind == SourceKind.YOUTUBE) return
+        if (current.kind == SourceKind.ADDON || current.kind == SourceKind.CUSTOM_MODULE) {
+            val committed = ProviderRuntime.updateExtensionFromLegacyUi(configId, enabled, configs.value)
+            if (committed == false) return
+            publish(configs.value.map { if (it.id == configId) it.copy(enabled = enabled) else it },
+                persist = committed != true)
+        } else {
+            publish(configs.value.map { if (it.id == configId) it.copy(enabled = enabled) else it })
+        }
     }
 
     /**
@@ -342,7 +392,24 @@ object SourceRegistry {
         val missed = addons.filterNot { config -> moved.any { it.id == config.id } }
         val reordered = moved + missed
         if (reordered.map { it.id } == addons.map { it.id }) return
-        publish(reordered + configs.value.filterNot { it.kind.isUserAdded })
+        val status = ProviderRuntime.state?.value?.status
+        val canonicalActive = status == ProviderSessionStatus.READY ||
+            status == ProviderSessionStatus.PERSISTING
+        if (canonicalActive) {
+            val committed = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                ProviderRuntime.authorityOrNull()?.reorderExtensions(
+                    reordered.map { it.id }, configs.value,
+                ) == true
+            }
+            if (!committed) return
+        }
+        publish(reordered + configs.value.filterNot { it.kind.isUserAdded },
+            persist = !canonicalActive)
+    }
+
+    /** Read-only projection: never writes a second preference authority. */
+    internal fun applyProviderProjection(next: List<SourceConfig>) {
+        publish(next, persist = false)
     }
 
     private fun publish(next: List<SourceConfig>, persist: Boolean = true) {
@@ -370,6 +437,11 @@ object SourceRegistry {
             prefs.edit()
                 .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), next))
                 .apply()
+        }
+        if (persist && ProviderRuntime.state?.value?.status == ProviderSessionStatus.READY) {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                ProviderRuntime.authorityOrNull()?.onSourcesChanged(next)
+            }
         }
     }
 
