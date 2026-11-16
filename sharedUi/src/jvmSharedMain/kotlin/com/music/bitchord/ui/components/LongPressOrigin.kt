@@ -133,8 +133,19 @@ fun Modifier.longPressMenuClickable(
     // Calling combinedClickable with a fake onClick would make it look
     // tappable to TalkBack and contradict the catalog capability boundary.
     val gesture = when {
+        onClick != null && longClick != null -> Modifier.combinedClickable(
+            // A pressed ripple is a transient rectangular draw effect. The
+            // held snapshot is captured *during* the press and can retain that
+            // highlight as an opaque patch behind the artwork or caption.
+            // The lifted card provides its own rounded selection outline.
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null,
+            enabled = enabled,
+            onClick = onClick,
+            onLongClick = longClick,
+        )
         onClick != null -> Modifier.combinedClickable(
-            enabled = enabled, onClick = onClick, onLongClick = longClick,
+            enabled = enabled, onClick = onClick, onLongClick = null,
         )
         longClick != null -> Modifier
             .pointerInput(enabled, longClick) {
