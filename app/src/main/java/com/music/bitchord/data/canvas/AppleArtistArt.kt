@@ -162,13 +162,19 @@ object AppleArtistArtRepository {
     private fun warmStills(key: String, art: AppleArtistArt) {
         if (!AppSettings.saveVisualStillImages.value || !artistArtPermitted()) return
         offlineScope.launch {
-            if (!artistArtPermitted()) return@launch
-            VisualStillMedia.save(VisualSurface.ARTIST, "apple-hero|$key", art.heroUrl)
-            if (!artistArtPermitted()) return@launch
-            art.logoUrl?.let { VisualStillMedia.save(
-                VisualSurface.ARTIST, "apple-logo|$key", it,
-            ) }
-            if (artistArtPermitted()) _updates.value++
+            // The independent offline warming scope outlives the portrait
+            // lookup. Give its image downloads their own revocable ticket.
+            ArtworkProbePolicyGuard(gateProvider).probe(
+                capability = ProviderCapability.ARTIST_ARTWORK,
+                provider = BuiltInProviderKeys.APPLE_ARTIST_ART,
+            ) {
+                VisualStillMedia.save(VisualSurface.ARTIST, "apple-hero|$key", art.heroUrl)
+                art.logoUrl?.let { VisualStillMedia.save(
+                    VisualSurface.ARTIST, "apple-logo|$key", it,
+                ) }
+                _updates.value++
+                Unit
+            }
         }
     }
 
