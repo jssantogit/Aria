@@ -41,7 +41,8 @@ internal object ProviderRuntime {
                     ProviderDescriptor(appleArt, setOf(ProviderCapability.ARTIST_ARTWORK), ProviderReadiness.READY),
                     BuiltInProviderDescriptors.itunes(ProviderReadiness.READY),
                     BuiltInProviderDescriptors.discogs(tokenConfigured = true, implemented = true),
-                    ProviderDescriptor(listenbrainz, setOf(ProviderCapability.PUBLIC_PLAYLISTS), ProviderReadiness.READY),
+                    ProviderDescriptor(listenbrainz, setOf(ProviderCapability.PUBLIC_PLAYLISTS,
+                        ProviderCapability.CHART_MOST_PLAYED), ProviderReadiness.READY),
                 ),
                 choices = mbCaps.associateWith { capability ->
                     listOf(ProviderChoice(mb, enabled = true, order = 0)) +
@@ -55,6 +56,7 @@ internal object ProviderRuntime {
                     ProviderCapability.ARTIST_ARTWORK to listOf(ProviderChoice(appleArt, enabled = true, order = 0)),
                     ProviderCapability.EDITION_METADATA to listOf(ProviderChoice(discogs, enabled = true, order = 0)),
                     ProviderCapability.PUBLIC_PLAYLISTS to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
+                    ProviderCapability.CHART_MOST_PLAYED to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
                 ),
             ),
         )
