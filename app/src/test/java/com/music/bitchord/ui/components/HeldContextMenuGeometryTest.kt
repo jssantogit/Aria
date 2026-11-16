@@ -7,6 +7,19 @@ import org.junit.Test
 
 /** A lifted menu must never disappear behind the Android navigation capsule. */
 class HeldContextMenuGeometryTest {
+    @Test fun liftedPreviewRetainsExactSourceOriginAndSize() {
+        val bounds = androidx.compose.ui.geometry.Rect(12f, 420f, 390f, 494f)
+        val origin = androidx.compose.ui.geometry.Offset(0f, 25f)
+        val padding = 8
+        val frame = heldPreviewFixedFrame(bounds, origin, padding)
+        assertEquals(4, frame.x)
+        assertEquals(387, frame.y)
+        assertEquals(394, frame.width)
+        assertEquals(90, frame.height)
+        // No progress-dependent scale or translation may change that frame.
+        assertEquals(1f, frame.scale)
+    }
+
     @Test fun menuNeverMovesSourceCardEvenWhenActionsDoNotFitBelow() {
         val placement = heldMenuAnchoredVerticalPlacement(
             sourceTop = 420f, sourceHeight = 110f, viewportTop = 40, viewportBottom = 780,
