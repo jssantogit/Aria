@@ -254,7 +254,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
         }
         when (state) {
             UiState.Loading -> item(key = "public-playlist-loading") {
-                NativeLoadingSpinner()
+                NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.62f))
             }
             is UiState.Error -> item(key = "public-playlist-error") {
                 Text(state.message, color = palette.onBackgroundVariant,
