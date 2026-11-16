@@ -1394,7 +1394,7 @@ class PlaybackService : MediaLibraryService() {
             // [SourceResolver.resolve]. Handled ahead of the YouTube path
             // because these carry no `v` parameter and would otherwise fall
             // straight through unresolved.
-            if (dataSpec.uri.authority == "source") {
+            if (isLogicalSourcePlaybackUri(dataSpec.uri)) {
                 // Retired YouTube fallback markers must never re-enter a source
                 // resolution path. Source-backed playback still resolves through
                 // the user's configured providers without this legacy override.
@@ -1449,7 +1449,7 @@ class PlaybackService : MediaLibraryService() {
             // longer authorize any resolution through Innertube or the
             // retired YouTube stream pipeline. MediaStore and canonical
             // OpenSubsonic assets are handled by their own datasource paths.
-            if (dataSpec.uri.getQueryParameter("v") != null) {
+            if (isRetiredWatchCacheRequest(dataSpec.uri)) {
                 throw HistoricalMediaAssetUnavailable(
                     "Historical video ID has no authorized audio asset",
                 )
