@@ -55,6 +55,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Settings
 import com.music.bitchord.ui.icons.PlaylistEditorIcons
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -565,7 +566,6 @@ private fun AppleSettingsPopup(
     NativeCompactOverflowMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("apple-root-settings-popup"),
         minMenuWidth = 192.dp,
         maxMenuWidth = 208.dp,
         homePlateStyle = true,
