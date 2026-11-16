@@ -230,9 +230,10 @@ object SourceRegistry {
             status == ProviderSessionStatus.PERSISTING ||
             status == ProviderSessionStatus.STORAGE_ERROR
         ) {
-            ProviderRuntime.authorityOrNull()?.currentExtensionsProjection(configs)
-                ?.associateBy(SourceConfig::id).orEmpty()
-                .let { replacements -> configs.map { replacements[it.id] ?: it } }
+            val extensions = ProviderRuntime.authorityOrNull()?.currentExtensionsProjection(configs)
+            if (extensions == null) configs else extensions + configs.filterNot {
+                it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE
+            }
         } else configs
         return projected.filter { it.enabled && it.isComplete }
     }
@@ -353,7 +354,19 @@ object SourceRegistry {
         val missed = addons.filterNot { config -> moved.any { it.id == config.id } }
         val reordered = moved + missed
         if (reordered.map { it.id } == addons.map { it.id }) return
-        publish(reordered + configs.value.filterNot { it.kind.isUserAdded })
+        val status = ProviderRuntime.state?.value?.status
+        val canonicalActive = status == ProviderSessionStatus.READY ||
+            status == ProviderSessionStatus.PERSISTING
+        if (canonicalActive) {
+            val committed = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                ProviderRuntime.authorityOrNull()?.reorderExtensions(
+                    reordered.map { it.id }, configs.value,
+                ) == true
+            }
+            if (!committed) return
+        }
+        publish(reordered + configs.value.filterNot { it.kind.isUserAdded },
+            persist = !canonicalActive)
     }
 
     /** Apply canonical opt-outs without writing a second preference document. */
