@@ -69,6 +69,18 @@ class ProviderSourceCacheAdmissionTest {
         assertTrue(!keyA.contains(urlA))
         assertTrue(keyA == providerAdaptiveSegmentCacheKey(addon, urlA))
         assertTrue(keyA != providerAdaptiveSegmentCacheKey(addon, urlA, "variant"))
+        // A provider may use the same static CDN URL for two accounts, with
+        // identity carried only by Authorization/Referer headers. Never return
+        // the previous account's cached audio after credential rotation.
+        val ownerOne = providerAdaptiveSegmentCacheKey(
+            addon, urlA, null, mapOf("Authorization" to "Bearer account-one"))
+        val ownerTwo = providerAdaptiveSegmentCacheKey(
+            addon, urlA, null, mapOf("Authorization" to "Bearer account-two"))
+        assertTrue(ownerOne != ownerTwo)
+        assertTrue(ownerOne != keyA)
+        assertTrue(!ownerOne.contains("account-one"))
+        assertTrue(ownerOne == providerAdaptiveSegmentCacheKey(
+            addon, urlA, null, mapOf("authorization" to "Bearer account-one")))
     }
 
     @Test fun adaptiveSegmentCacheHitRequiresCurrentMediaItemLease() {
