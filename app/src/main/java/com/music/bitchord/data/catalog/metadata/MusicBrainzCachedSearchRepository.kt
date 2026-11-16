@@ -2,10 +2,15 @@ package com.music.bitchord.data.catalog.metadata
 
 import androidx.room.withTransaction
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.providers.CatalogEntryProvenance
+import com.music.bitchord.data.providers.CatalogProvenanceFilter
+import com.music.bitchord.data.providers.ProvenanceScopedItem
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReactiveCache
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderSessionSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,9 +33,6 @@ internal data class MusicBrainzCachedSearchLimits(
  * A single, source-scoped Room snapshot. The presence of an indexed Recording
  * does not imply a playable file; local/authorized MediaAssets are queried
  * separately and their MBIDs remain evidence, not a playback instruction.
- *
- * This is data-layer preparation; existing REA screens and MainViewModel are
- * intentionally unchanged until their definitive UI contract is merged.
  */
 internal data class MusicBrainzCachedSearchSnapshot(
     val artists: List<MusicBrainzArtistHit> = emptyList(),
@@ -45,22 +47,22 @@ internal data class MusicBrainzCachedSearchSnapshot(
 }
 
 /**
- * ONE source policy admission wraps ALL indexed MusicBrainz search kinds.
- * If disabled, no SQL is executed and no cached MB-only result leaks out.
- * If revoked during Room work, the completed snapshot is suppressed.
+ * Provenance-aware Room search repository.
  *
- * Importantly, this never deletes canonical identities, user ratings,
- * personally owned MediaAssets or Room cache rows.
+ * - Editorial-only MusicBrainz rows are gated by [ProviderCapability.CATALOG_SEARCH]
+ *   and suppressed when MusicBrainz search is disabled or revoked mid-read.
+ * - Recordings backed by personally owned [MediaAssetEntity] rows
+ *   ([CatalogEntryProvenance.LocalOrPersonalAsset]) remain visible through
+ *   [CatalogProvenanceFilter] even when MusicBrainz editorial search is turned off,
+ *   never erasing or hiding user-owned media or canonical identities.
  */
 internal class MusicBrainzCachedSearchRepository(
     private val database: CanonicalCatalogDatabase,
     private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
+    private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateForCacheReadOrNull() },
 ) {
-    /**
-     * A future REA observer can subscribe without recreating this repository
-     * or forcing a Room refresh on unrelated provider setting changes.
-     * Switching a provider off immediately emits an empty source snapshot.
-     */
+    private val musicBrainz = ProviderKey("musicbrainz")
+
     fun observe(
         query: String,
         limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
@@ -68,22 +70,59 @@ internal class MusicBrainzCachedSearchRepository(
     ): Flow<MusicBrainzCachedSearchSnapshot> =
         ProviderReactiveCache(providerState).observe(
             ProviderCapability.CATALOG_SEARCH,
-            ProviderKey("musicbrainz"),
+            musicBrainz,
             MusicBrainzCachedSearchSnapshot(),
         ) { search(query, limits) }
 
     suspend fun search(
         query: String,
         limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
-    ): MusicBrainzCachedSearchSnapshot =
-        cacheRead.read(
+    ): MusicBrainzCachedSearchSnapshot {
+        val normalized = query.trim()
+        val gate = gateProvider()
+        val editorialPermitted = gate?.open(ProviderCapability.CATALOG_SEARCH, musicBrainz) != null
+
+        // When MusicBrainz editorial search is disabled, skip editorial-only artist/group/release
+        // queries completely, while still preserving recordings backed by personal MediaAssets.
+        if (!editorialPermitted) {
+            if (limits.recordings == 0) return MusicBrainzCachedSearchSnapshot()
+            return database.withTransaction {
+                val dao = database.catalogDao()
+                val candidateRecordings = dao.searchKnownMusicBrainzRecordings(normalized, limits.recordings)
+                if (candidateRecordings.isEmpty()) return@withTransaction MusicBrainzCachedSearchSnapshot()
+                val withAssets = dao.musicBrainzRecordingMbidsWithAssets(
+                    candidateRecordings.map { it.musicBrainzId },
+                ).toSet()
+                val scopedRecordings = candidateRecordings.map { hit ->
+                    val provenances = buildSet {
+                        add(CatalogEntryProvenance.ProviderEditorial(musicBrainz, ProviderCapability.CATALOG_SEARCH))
+                        if (hit.musicBrainzId in withAssets) {
+                            add(CatalogEntryProvenance.LocalOrPersonalAsset)
+                        }
+                    }
+                    ProvenanceScopedItem(
+                        value = hit,
+                        mbid = hit.musicBrainzId,
+                        provenances = provenances,
+                    )
+                }
+                val visibleRecordings = CatalogProvenanceFilter.filterVisible(scopedRecordings, gate)
+                val visibleAssetMbids = visibleRecordings.mapTo(LinkedHashSet()) { it.musicBrainzId }
+                    .intersect(withAssets)
+                MusicBrainzCachedSearchSnapshot(
+                    recordings = visibleRecordings,
+                    recordingMbidsWithAssets = visibleAssetMbids,
+                )
+            }
+        }
+
+        return cacheRead.read(
             capability = ProviderCapability.CATALOG_SEARCH,
-            provider = ProviderKey("musicbrainz"),
+            provider = musicBrainz,
             unavailable = MusicBrainzCachedSearchSnapshot(),
         ) {
             database.withTransaction {
                 val dao = database.catalogDao()
-                val normalized = query.trim()
                 val recordings = if (limits.recordings == 0) emptyList()
                     else dao.searchKnownMusicBrainzRecordings(normalized, limits.recordings)
                 val withAssets = if (recordings.isEmpty()) emptySet()
@@ -102,4 +141,5 @@ internal class MusicBrainzCachedSearchRepository(
                 )
             }
         }
+    }
 }
