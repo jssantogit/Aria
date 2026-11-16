@@ -260,6 +260,33 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun appleCapabilitiesAreEligibleAfterReconciliationWithoutEnablingDiscogs(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(
+                ProviderCapabilityRegistry.inventory(itunesImplemented = true),
+            ),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            itunesImplemented = true,
+            discogsImplemented = true,
+            discogsTokenConfigured = false,
+        ))
+        assertTrue(session.gate.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.ITUNES) != null)
+        assertTrue(session.gate.open(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.ITUNES) != null)
+        assertTrue(session.gate.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES) != null)
+        assertNull(session.gate.open(ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS))
+        assertTrue(session.update(
+            ProviderCapability.CATALOG_SEARCH,
+            listOf(ProviderChoice(BuiltInProviderKeys.ITUNES, false, 0)),
+        ))
+        assertNull(session.gate.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.ITUNES))
+        assertTrue(session.gate.open(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.ITUNES) != null)
+    }
+
+    @Test
     fun migratedScrobblingIsDenyByDefaultAndPreservesExplicitConfiguredOptIn(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
