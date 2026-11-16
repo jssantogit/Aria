@@ -258,8 +258,28 @@ object SourceRegistry {
                 it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE
             }
         } else configs
-        return projected.filter {
-            it.enabled && it.isComplete && it.kind != SourceKind.YOUTUBE
+        return extensionEligibleConfigs(
+            projected.filter { it.enabled && it.isComplete && it.kind != SourceKind.YOUTUBE },
+            ProviderRuntime.gateOrNull(),
+        )
+    }
+
+    /** A legacy enabled flag is never sufficient authorization to contact
+     * an addon. Enforce the exact instance's EXTENSION_PLAYBACK ticket at
+     * selection time, including during startup/storage failure. */
+    internal fun extensionEligibleConfigs(
+        sources: List<SourceConfig>,
+        gate: ProviderPolicyGate?,
+    ): List<SourceConfig> = sources.filter { source ->
+        when (source.kind) {
+            SourceKind.ADDON, SourceKind.CUSTOM_MODULE -> {
+                val key = ProviderKey(
+                    if (source.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    source.id,
+                )
+                gate?.open(ProviderCapability.EXTENSION_PLAYBACK, key) != null
+            }
+            else -> true
         }
     }
 
