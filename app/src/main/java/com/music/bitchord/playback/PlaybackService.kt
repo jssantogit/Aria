@@ -1481,7 +1481,11 @@ class PlaybackService : MediaLibraryService() {
                 // The same seam tells the cache whose file it is writing, which
                 // decides whether the entry outlives the track — see
                 // [AudioCache.Origin].
-                AudioCache.recordServed(dataSpec, resolved.uri.toString())
+                AudioCache.recordServed(
+                    dataSpec,
+                    resolved.uri.toString(),
+                    (resolved.customData as? ProviderPlaybackByteLease)?.providerKey,
+                )
             }
         }
         // Read-ahead resolves streams through the same chain the player does.
