@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -28,7 +29,7 @@ class NativeLibraryLoadingGeometryTest {
 
     @Test fun categoryLoadingReservesMostOfTheAvailableViewport() {
         compose.setContent {
-            LazyColumn(Modifier.size(360.dp, 700.dp)) {
+            LazyColumn(Modifier.size(360.dp, 700.dp).testTag("native-loading-test-viewport")) {
                 item {
                     NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
                 }
@@ -36,7 +37,16 @@ class NativeLibraryLoadingGeometryTest {
         }
         val bounds = compose.onNodeWithTag("native-library-loading")
             .getUnclippedBoundsInRoot()
-        assertTrue("Loader should occupy the remaining page, not the old 88dp row; bounds=$bounds", (bounds.bottom - bounds.top) >= 450.dp)
+        val viewport = compose.onNodeWithTag("native-loading-test-viewport")
+            .getUnclippedBoundsInRoot()
+        // The Robolectric host may constrain the requested 700dp surface.
+        // Compare against the real available viewport, not its ideal size.
+        val availableHeight = viewport.bottom - viewport.top
+        val loaderHeight = bounds.bottom - bounds.top
+        assertTrue(
+            "Loader must fill at least 68% of the viewport; viewport=$viewport loader=$bounds",
+            loaderHeight >= availableHeight * 0.68f - 1.dp,
+        )
         val spinner = compose.onNodeWithTag("native-library-loading-indicator")
             .getUnclippedBoundsInRoot()
         assertEquals(((bounds.left + bounds.right) / 2f).value, ((spinner.left + spinner.right) / 2f).value, 1f)
