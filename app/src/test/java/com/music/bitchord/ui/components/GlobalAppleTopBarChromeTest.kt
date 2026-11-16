@@ -137,6 +137,7 @@ class GlobalAppleTopBarChromeTest {
         // complete with Compose's normal auto-advancing clock. We control
         // time only while checking the subsequent *exit* transition.
         compose.onNodeWithTag("apple-root-settings-popup", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("native-root-settings-action", useUnmergedTree = true).assertExists()
         compose.mainClock.autoAdvance = false
         compose.onNodeWithText(res.getString(R.string.settings)).performClick()
         compose.runOnIdle { assertEquals(1, settingsOpened) }
