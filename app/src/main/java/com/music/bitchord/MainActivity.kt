@@ -8329,9 +8329,10 @@ internal fun FrostedMenuPanel(
                 // A fixed, window-clamped card width avoids unsupported intrinsic
                 // measurement of nested scrollable legacy action rows.
                 .width(
-                    with(androidx.compose.ui.platform.LocalDensity.current) {
-                        (rootSize.width - 2 * margin).coerceAtLeast(1).toDp()
-                    }.coerceAtMost(280.dp)
+                    if (rootSize.width <= 0) 280.dp else
+                        with(androidx.compose.ui.platform.LocalDensity.current) {
+                            (rootSize.width - 2 * margin).coerceAtLeast(1).toDp()
+                        }.coerceAtMost(280.dp)
                 )
                 .then(
                     Modifier.nativeCompactMenuLiftShadow(
