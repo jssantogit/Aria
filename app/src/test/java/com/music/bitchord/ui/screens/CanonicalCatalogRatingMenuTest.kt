@@ -2,6 +2,8 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.remember
+import dev.chrisbanes.haze.HazeState
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -32,10 +34,12 @@ class CanonicalCatalogRatingMenuTest {
                     browseId = "catalog:RELEASE:66dd7663-76a4-4e31-93ae-730ccd49d7d8",
                     title = "Test Album", subtitle = "Test Artist", cover = null,
                     expanded = true, onDismiss = {},
+                    hazeState = remember { HazeState() }, onSettings = {},
                 )
             }
         }
-        compose.onNodeWithTag("native-compact-overflow").assertExists()
+        compose.onNodeWithTag("native-frosted-overflow").assertExists()
+        compose.onNodeWithText("Configurações").assertExists()
     }
 
     @Test fun threeDotMenuOpensFirstNativeRatingEditorWithoutStarPlaceholder() {
