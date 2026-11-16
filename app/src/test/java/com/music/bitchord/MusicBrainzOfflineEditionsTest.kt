@@ -333,7 +333,31 @@ class MusicBrainzOfflineEditionsTest {
                 val expired = "33333333-3333-4333-8333-333333333333"
                 val invalid = "44444444-4444-4444-8444-444444444444"
                 val future = "55555555-5555-4555-8555-555555555555"
-                val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+                val gate = com.music.bitchord.data.providers.ProviderPolicyGate(
+                    com.music.bitchord.data.providers.ProviderCapabilityPolicy(
+                        descriptors = listOf(
+                            com.music.bitchord.data.providers.ProviderDescriptor(
+                                com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
+                                setOf(com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY),
+                                com.music.bitchord.data.providers.ProviderReadiness.READY,
+                            ),
+                            com.music.bitchord.data.providers.ProviderDescriptor(
+                                com.music.bitchord.data.providers.BuiltInProviderKeys.COVER_ART_ARCHIVE,
+                                setOf(com.music.bitchord.data.providers.ProviderCapability.RELEASE_ARTWORK),
+                                com.music.bitchord.data.providers.ProviderReadiness.READY,
+                            ),
+                        ),
+                        choices = mapOf(
+                            com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
+                                com.music.bitchord.data.providers.ProviderChoice(
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ, true, 0)),
+                            com.music.bitchord.data.providers.ProviderCapability.RELEASE_ARTWORK to listOf(
+                                com.music.bitchord.data.providers.ProviderChoice(
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.COVER_ART_ARCHIVE, true, 0)),
+                        ),
+                    ),
+                )
+                val index = MusicBrainzCatalogIndex(db, cacheRead = ProviderCachedReadAccess { gate })
                 index.persistArtists(listOf(MusicBrainzArtistHit(
                     artist, "ILLIT", null, "KR",
                 )))
