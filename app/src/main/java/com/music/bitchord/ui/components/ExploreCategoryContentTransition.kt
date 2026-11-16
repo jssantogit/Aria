@@ -10,12 +10,12 @@ import androidx.compose.runtime.Composable
  * own immutable category snapshot; never redraw the outgoing index using the
  * newly selected category, which caused a visual duplicate/flash.
  *
- * Match the approved 150ms linear root-tab fade. The global top bar, player
+ * Keep the outgoing genre out of the next genre's initial frame. The global top bar, player
  * and bottom navigation remain outside this content transition.
  */
-/** Keep Explore's internal navigation on the same policy as root peers. */
+/** Explore's nested destination changes use the isolated page policy. */
 internal fun exploreCategoryContentTransform(reduceMotion: Boolean): ContentTransform =
-    rootTabContentTransform(reduceMotion)
+    isolatedPageContentTransform(reduceMotion)
 
 @Composable
 internal fun <T> ExploreCategoryContentTransition(
