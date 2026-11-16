@@ -56,6 +56,17 @@ internal class ProviderPlaybackCallFactory(
         }
         pending?.cancel()
     }
+
+    /**
+     * Media3 reuses a DataSource object after close() (e.g. range reopen,
+     * seek and next item). A closed transfer is never allowed to poison a
+     * future, independently authorized open; re-arm the Call factory only
+     * for that new open. A stale ticket is checked separately by the lease.
+     */
+    fun beginOpen() = synchronized(lock) {
+        revoked = false
+        latest = null
+    }
 }
 
 /**
@@ -71,6 +82,7 @@ internal class ProviderPlaybackCallFactory(
 internal class ProviderPlaybackByteDataSource(
     private val upstream: DataSource,
     private val cancelNetwork: () -> Unit = {},
+    private val beginNetworkOpen: () -> Unit = {},
 ) : DataSource {
     @Volatile private var revoked = false
     private var lease: ProviderPlaybackByteLease? = null
@@ -82,6 +94,7 @@ internal class ProviderPlaybackByteDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         if (opened) throw IOException("Playback byte transport already open")
+        beginNetworkOpen()
         revoked = false
         val permission = dataSpec.customData as? ProviderPlaybackByteLease
         lease = permission
@@ -151,6 +164,7 @@ internal class ProviderPlaybackByteDataSource(
                     OkHttpDataSource.Factory(scopedCalls).createDataSource(), chunkBytes,
                 ),
                 cancelNetwork = scopedCalls::revoke,
+                beginNetworkOpen = scopedCalls::beginOpen,
             )
         }
     }
