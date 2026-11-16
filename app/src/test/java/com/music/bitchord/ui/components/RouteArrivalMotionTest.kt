@@ -98,4 +98,36 @@ class RouteArrivalMotionTest {
         assertEquals(0f, settled.translationDp, 0.0001f)
         assertEquals(settled, routeArrivalFrame(Float.NaN, forward = false))
     }
+    @Test fun pushedRoutesNeverCrossfadeTheRetiringPage() {
+        for (route in listOf(
+            "unified_library", "canonical_playlist_library", "settings",
+            "account_scrobbling", "replay", "history", "local_recent_additions",
+            "artist:123", "public_playlist:123", "rediscovery:123",
+            "smart_playlist_builder",
+        )) {
+            assertTrue("Opening $route", mainPageRequiresImmediateExit("tab:3", route, "tab:"))
+            assertTrue("Returning from $route", mainPageRequiresImmediateExit(route, "tab:3", "tab:"))
+        }
+    }
+
+    @Test fun rootPeersAloneRetainTheirApprovedCrossfade() {
+        assertFalse(mainPageRequiresImmediateExit("tab:0", "tab:3", "tab:"))
+        assertFalse(mainPageRequiresImmediateExit("tab:3", "tab:1", "tab:"))
+        assertTrue(mainPageRequiresImmediateExit("settings", "history", "tab:"))
+        assertTrue(mainPageRequiresImmediateExit("artist:one", "album:two", "tab:"))
+    }
+
+    @Test fun isolatedPageTransformNeverFadesTheOutgoingRoute() {
+        val transform = isolatedPageContentTransform(reducedMotion = false)
+        assertEquals(
+            androidx.compose.animation.ExitTransition.None,
+            transform.initialContentExit,
+        )
+        org.junit.Assert.assertNull(transform.sizeTransform)
+        assertEquals(
+            androidx.compose.animation.EnterTransition.None,
+            isolatedPageContentTransform(reducedMotion = true).targetContentEnter,
+        )
+    }
+
 }
