@@ -81,6 +81,90 @@ class ProviderPlaybackByteDataSourceTest {
         override fun close() { closes++ }
     }
 
+    @Test fun adaptiveSegmentInheritsRequiredHeadersOnlyOnManifestOrigin() {
+        val manifestHost = MockWebServer()
+        val externalCdn = MockWebServer()
+        manifestHost.enqueue(MockResponse().setBody("same"))
+        externalCdn.enqueue(MockResponse().setBody("other"))
+        manifestHost.start()
+        externalCdn.start()
+        val gate = ProviderPolicyGate(policy(true))
+        val session = ProviderPlaybackMediaSession()
+        session.bind(
+            ProviderPlaybackByteLease(gate, requireNotNull(
+                gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))),
+            manifestHost.url("/manifest.m3u8").toString(),
+            mapOf("X-Source-Token" to "not-for-other-hosts",
+                "User-Agent" to "ModulePlayer/1"),
+        )
+        val factory = ProviderPlaybackByteDataSource.Factory(
+            OkHttpClient.Builder().build(), 65536L,
+            fallbackLease = session::currentLease,
+            requireLease = true,
+        )
+        try {
+            factory.createDataSource().useSource { source ->
+                val spec = session.withSegmentHeaders(
+                    spec(null, manifestHost.url("/segment.ts").toString()))
+                assertEquals(4L, source.open(spec))
+                assertEquals(4, source.read(ByteArray(4), 0, 4))
+            }
+            factory.createDataSource().useSource { source ->
+                val spec = session.withSegmentHeaders(
+                    spec(null, externalCdn.url("/other.ts").toString()))
+                assertEquals(5L, source.open(spec))
+                assertEquals(5, source.read(ByteArray(5), 0, 5))
+            }
+            val sameOrigin = requireNotNull(manifestHost.takeRequest(5, TimeUnit.SECONDS))
+            val differentOrigin = requireNotNull(externalCdn.takeRequest(5, TimeUnit.SECONDS))
+            assertEquals("not-for-other-hosts", sameOrigin.getHeader("X-Source-Token"))
+            assertEquals("ModulePlayer/1", sameOrigin.getHeader("User-Agent"))
+            assertTrue("Credential escaped manifest origin",
+                differentOrigin.getHeader("X-Source-Token") == null)
+            assertTrue(differentOrigin.getHeader("User-Agent") != "ModulePlayer/1")
+        } finally {
+            manifestHost.shutdown()
+            externalCdn.shutdown()
+        }
+    }
+
+    @Test fun explicitSegmentHeadersOverrideInheritedHeaderWithoutDroppingOtherKeys() {
+        val gate = ProviderPolicyGate(policy(true))
+        val session = ProviderPlaybackMediaSession()
+        session.bind(
+            ProviderPlaybackByteLease(gate, requireNotNull(
+                gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))),
+            "https://assets.example/master.m3u8",
+            mapOf("X-Source-Token" to "manifest-token", "User-Agent" to "source"),
+        )
+        val spec = DataSpec.Builder().setUri("https://assets.example/seg.m4s")
+            .setHttpRequestHeaders(mapOf("X-Source-Token" to "segment-token"))
+            .build()
+        val resolved = session.withSegmentHeaders(spec)
+        assertEquals("segment-token", resolved.httpRequestHeaders["X-Source-Token"])
+        assertEquals("source", resolved.httpRequestHeaders["User-Agent"])
+        assertTrue(session.withSegmentHeaders(
+            DataSpec.Builder().setUri("https://assets.example:8443/seg.m4s").build()
+        ).httpRequestHeaders.isEmpty())
+    }
+
+    @Test fun revokedManifestTicketNeverSuppliesHeadersToLaterSegment() {
+        val gate = ProviderPolicyGate(policy(true))
+        val session = ProviderPlaybackMediaSession()
+        session.bind(
+            ProviderPlaybackByteLease(gate, requireNotNull(
+                gate.open(ProviderCapability.EXTENSION_PLAYBACK, addon))),
+            "https://assets.example/master.m3u8",
+            mapOf("Authorization" to "Bearer secret"),
+        )
+        gate.replace(policy(false))
+        try {
+            session.withSegmentHeaders(
+                DataSpec.Builder().setUri("https://assets.example/later.m4s").build())
+            fail("Stale provider would expose headers")
+        } catch (_: IOException) {}
+    }
+
     @Test fun segmentedStreamUsesSameSourceLeaseWithoutCustomDataOnEachSegment() {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("manifest"))
