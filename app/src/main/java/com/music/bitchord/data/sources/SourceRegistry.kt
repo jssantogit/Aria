@@ -188,14 +188,32 @@ object SourceRegistry {
      * [active], minus the addons whose manifest said `allowDownloads: 0`. A
      * download walks this instead, so the next source in line serves it.
      */
-    fun activeForDownload(): List<MusicSource> {
-        val activeSources = active()
-        val eligibleIds = downloadEligibleConfigs(
-            activeSources.mapNotNull { config(it.configId) },
-            ProviderRuntime.gateOrNull(),
-        ).mapTo(HashSet()) { it.id }
-        return activeSources.filter { it.configId in eligibleIds }
-    }
+    fun activeForDownload(): List<MusicSource> =
+        downloadCandidateConfigs(configs.value, ProviderRuntime.gateOrNull())
+            .sortedBy { it.kind.rank }
+            .mapNotNull { instances[it.id] }
+
+    /**
+     * Download consent is independent from playback consent. Do not start with
+     * active(), which already removes EXTENSION_PLAYBACK-disabled addons.
+     * Legacy enabled remains authoritative for ordinary (non-addon) sources,
+     * but only the canonical DOWNLOAD ticket admits addon/custom-module work.
+     */
+    internal fun downloadCandidateConfigs(
+        sources: List<SourceConfig>,
+        gate: ProviderPolicyGate?,
+    ): List<SourceConfig> = downloadEligibleConfigs(
+        sources.filter { source ->
+            source.isComplete && !source.awaitsLosslessOutput &&
+                source.kind != SourceKind.YOUTUBE &&
+                source.kind != SourceKind.JIOSAAVN &&
+                source.kind != SourceKind.MODULE &&
+                (source.enabled ||
+                    source.kind == SourceKind.ADDON ||
+                    source.kind == SourceKind.CUSTOM_MODULE)
+        },
+        gate,
+    )
 
     /** DOWNLOAD and EXTENSION_PLAYBACK use independent per-instance tickets. */
     internal fun downloadEligibleConfigs(
