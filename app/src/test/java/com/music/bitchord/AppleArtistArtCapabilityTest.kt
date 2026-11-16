@@ -13,6 +13,15 @@ import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.cancelAndJoin
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import java.util.concurrent.TimeUnit
+import com.music.bitchord.data.canvas.awaitAppleArtistPage
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.After
@@ -78,6 +87,22 @@ class AppleArtistArtCapabilityTest {
         ))
         gate.replace(policy(true))
         assertEquals(art.heroUrl, AppleArtistArtRepository.cached(name)?.heroUrl)
+    }
+
+    @Test fun cancelledArtistPageRequestPhysicallyCancelsOkHttpCall() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse.Builder()
+                .headersDelay(30, TimeUnit.SECONDS)
+                .body("late portrait")
+                .build())
+            server.start()
+            val call = OkHttpClient().newCall(
+                Request.Builder().url(server.url("/artist")).build())
+            val pending = async { awaitAppleArtistPage(call) }
+            withTimeout(5_000) { server.takeRequest() }
+            pending.cancelAndJoin()
+            assertEquals(true, call.isCanceled())
+        }
     }
 
     @Test fun disabledArtistArtCannotExposePreviouslyPersistedExactStorefrontPortrait() = runBlocking {
