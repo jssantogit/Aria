@@ -148,10 +148,9 @@ class NativeAlbumPlaylistToolbarTest {
         compose.onNodeWithContentDescription("Ordenar músicas").assertWidthIsEqualTo(40.dp)
         compose.onNodeWithContentDescription("Opções da playlist")
             .assertWidthIsEqualTo(40.dp).performClick()
-        compose.mainClock.advanceTimeBy(250L)
-        compose.waitForIdle()
-        compose.onNodeWithTag("native-compact-overflow").assertExists()
-        compose.onNodeWithText("Compartilhar playlist").assertExists()
+        // The public detail screen owns the frosted card outside this toolbar.
+        // The toolbar is responsible for its anchored launcher and callback.
+        compose.runOnIdle { assertEquals(true, optionsOpen.value) }
     }
 
     @Test fun nativeReleaseRatingButtonUsesExistingCanonicalEditorCallback() {
