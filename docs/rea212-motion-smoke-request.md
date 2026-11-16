@@ -152,3 +152,10 @@
 - O menu de cards comuns continua com sua origem e seu próprio comportamento. Não trocar operações de download/queue de origem local por operações de metadata-only.
 - Teste adicionado no `NativeAlbumPlaylistToolbarTest` para comprovar separação entre toolbar, card e hold.
 - Nova build do HEAD completo, sem aceitar o green anterior de outro SHA.
+
+
+### Finalização do escopo parcial de overflows (16/11/2026)
+
+- O painel frosted compartilhado agora intercepta Voltar enquanto aberto, antes da navegação do detalhe, preservando a semântica do antigo Popup/BottomSheet.
+- A nova rodada deve validar o HEAD exato com todas as alterações de album/playlist online e biblioteca, e apenas gerar APK universal se todos os gates forem verdes.
+- Não marcar REA #212 pronta para merge: o usuário está reportando os defeitos do smoke por partes; este checkpoint cobre apenas a primeira parte.
