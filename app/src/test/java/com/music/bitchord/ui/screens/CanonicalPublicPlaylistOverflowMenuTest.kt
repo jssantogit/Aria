@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -24,6 +25,13 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class CanonicalPublicPlaylistOverflowMenuTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun publicPlaylistTracksUseTheSameRoundedSleevesAsLibraryTracks() {
+        assertEquals(
+            androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            publicPlaylistTrackCoverShape(),
+        )
+    }
 
     @Test fun publicPlaylistOverflowUsesCompactPopupWithoutLosingShare() {
         compose.setContent {
