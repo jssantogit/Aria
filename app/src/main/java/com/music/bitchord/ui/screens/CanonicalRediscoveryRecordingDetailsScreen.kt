@@ -145,7 +145,7 @@ internal fun CanonicalRediscoveryRecordingContent(
                 )
             }
             when (state) {
-                CanonicalRediscoveryRecordingState.Loading -> NativeLoadingSpinner()
+                CanonicalRediscoveryRecordingState.Loading -> NativeLoadingSpinner(modifier = Modifier.weight(1f))
                 CanonicalRediscoveryRecordingState.Unavailable -> Text(
                     stringResource(Res.string.rediscovery_unavailable),
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
