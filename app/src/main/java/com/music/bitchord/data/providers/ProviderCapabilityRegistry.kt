@@ -224,13 +224,13 @@ internal object ProviderCapabilityRegistry {
         )
         add(
             ProviderInventoryEntry(
-                key = ProviderKey("charts"),
+                key = BuiltInProviderKeys.LISTENBRAINZ,
                 capability = ProviderCapability.CHART_MOST_PLAYED,
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
-                displayName = "Rankings de Reprodução",
-                readiness = ProviderReadiness.NOT_IMPLEMENTED,
+                displayName = "ListenBrainz (Rankings de Reprodução)",
+                readiness = ProviderReadiness.READY,
                 supportsReordering = false,
-                notes = "Planned capability; not implemented",
+                notes = "Public recording popularity, artist top and sitewide charts",
             ),
         )
         add(
