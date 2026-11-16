@@ -62,6 +62,12 @@ internal object SoulseekActiveSession {
         return true
     }
 
+    private fun downloadAuthorized(): Boolean {
+        val gate = currentDownloadGate ?: return false
+        val ticket = currentDownloadTicket ?: return false
+        return gate.accept(ticket)
+    }
+
     @Synchronized fun generation(): Long = epoch
 
     @Synchronized fun isCurrent(expected: Long): Boolean = epoch == expected
@@ -71,14 +77,15 @@ internal object SoulseekActiveSession {
      * A2 copying stays outside the lock and remains cancellable on logout.
      */
     @Synchronized fun commitIfCurrent(expected: Long, commit: () -> Unit) {
-        if (epoch != expected) throw java.io.IOException("Soulseek account revoked")
+        if (epoch != expected || !downloadAuthorized())
+            throw java.io.IOException("Soulseek account or download capability revoked")
         commit()
     }
 
     @Synchronized fun registerTransfer(
         transfer: A0ObservedCandidateHandoff, expected: Long
     ): Boolean {
-        if (epoch != expected) {
+        if (epoch != expected || !downloadAuthorized()) {
             transfer.cancel()
             return false
         }
@@ -91,7 +98,7 @@ internal object SoulseekActiveSession {
     }
 
     @Synchronized fun register(socket: Socket, expectedGeneration: Long): Boolean {
-        if (expectedGeneration != epoch) {
+        if (expectedGeneration != epoch || !downloadAuthorized()) {
             runCatching { socket.close() }
             return false
         }
@@ -107,9 +114,13 @@ internal object SoulseekActiveSession {
         epoch++
         // P/F transport can stay alive after the authenticated server socket
         // is no longer in use. Its own cancel closes both peer channels.
-        activeTransfers.forEach { runCatching { it.cancel() } }
+        val transfers = activeTransfers.toList()
+        val connections = sockets.toList()
         activeTransfers.clear()
-        sockets.forEach { runCatching { it.close() } }
         sockets.clear()
+        // Cancel outside the mutable-set iteration: closing a transfer may
+        // synchronously detach itself from the active session.
+        transfers.forEach { runCatching { it.cancel() } }
+        connections.forEach { runCatching { it.close() } }
     }
 }
