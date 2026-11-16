@@ -10,14 +10,34 @@ class HeldContextMenuGeometryTest {
     @Test fun liftedPreviewRetainsExactSourceOriginAndSize() {
         val bounds = androidx.compose.ui.geometry.Rect(12f, 420f, 390f, 494f)
         val origin = androidx.compose.ui.geometry.Offset(0f, 25f)
-        val padding = 8
-        val frame = heldPreviewFixedFrame(bounds, origin, padding)
-        assertEquals(4, frame.x)
-        assertEquals(387, frame.y)
-        assertEquals(394, frame.width)
-        assertEquals(90, frame.height)
+        val frame = heldPreviewFixedFrame(bounds, origin)
+        assertEquals(12, frame.x)
+        assertEquals(395, frame.y)
+        assertEquals(378, frame.width)
+        assertEquals(74, frame.height)
         // No progress-dependent scale or translation may change that frame.
         assertEquals(1f, frame.scale)
+    }
+
+    @Test fun fullWidthHeldRowNeverPushesItsSelectionEdgeOutsideTheViewport() {
+        val frame = heldPreviewFixedFrame(
+            androidx.compose.ui.geometry.Rect(0f, 520f, 430f, 592f),
+            androidx.compose.ui.geometry.Offset.Zero,
+        )
+        assertEquals(0, frame.x)
+        assertEquals(430, frame.width)
+    }
+
+    @Test fun selectedTrackDoesNotExtendItsOutlineOverTheNextRow() {
+        val first = heldPreviewFixedFrame(
+            androidx.compose.ui.geometry.Rect(16f, 500f, 400f, 572f),
+            androidx.compose.ui.geometry.Offset.Zero,
+        )
+        val next = heldPreviewFixedFrame(
+            androidx.compose.ui.geometry.Rect(16f, 572f, 400f, 644f),
+            androidx.compose.ui.geometry.Offset.Zero,
+        )
+        assertEquals(next.y, first.y + first.height)
     }
 
     @Test fun menuNeverMovesSourceCardEvenWhenActionsDoNotFitBelow() {
