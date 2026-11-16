@@ -3,6 +3,7 @@ package com.music.bitchord.data.providers
 import android.content.Context
 import android.os.Build
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
@@ -153,6 +154,42 @@ internal object ProviderRuntime {
         val authority = coordinator ?: return false
         return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
             authority.setExtensionEnabled(configId, enabled, sources)
+        }
+    }
+
+    fun updateListeningFromLegacyUi(
+        lastfmEnabled: Boolean,
+        lastfmScrobbleEnabled: Boolean,
+        listenBrainzEnabled: Boolean,
+    ): Boolean? = synchronizeListening(
+        lastfmEnabled && lastfmScrobbleEnabled, listenBrainzEnabled,
+        updateChoices = true,
+    )
+
+    /** Login/logout only changes readiness; it must not override user opt-outs. */
+    fun refreshListeningCredentialsFromLegacyUi(): Boolean? = synchronizeListening(
+        AppSettings.lastfmEnabled.value && AppSettings.lastfmScrobbleEnabled.value,
+        AppSettings.listenBrainzEnabled.value,
+        updateChoices = false,
+    )
+
+    private fun synchronizeListening(
+        lastfmEnabled: Boolean,
+        listenBrainzEnabled: Boolean,
+        updateChoices: Boolean,
+    ): Boolean? {
+        val current = session ?: return null
+        if (current.state.value.status == ProviderSessionStatus.BOOTING) return null
+        val authority = coordinator ?: return false
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            authority.updateListeningSettings(
+                lastfmConfigured = AppSettings.lastfmSessionKey.value.isNotBlank() &&
+                    AppSettings.lastfmApiKey.value.isNotBlank(),
+                listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                lastfmEnabled = lastfmEnabled,
+                listenBrainzEnabled = listenBrainzEnabled,
+                updateChoices = updateChoices,
+            )
         }
     }
 
