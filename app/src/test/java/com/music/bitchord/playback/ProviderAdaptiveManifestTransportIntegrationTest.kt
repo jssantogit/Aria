@@ -138,6 +138,7 @@ class ProviderAdaptiveManifestTransportIntegrationTest {
         server.start()
         val baseUrl = server.url("/dash/").toString()
         val manifestUrl = server.url("/dash/master.mpd").toString()
+        val mediaTemplate = "piece-" + '$' + "Number" + '$' + ".m4s?v=version"
         val mpd = """
             <?xml version="1.0"?>
             <MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
@@ -149,99 +150,7 @@ class ProviderAdaptiveManifestTransportIntegrationTest {
                   <Representation id="audio" bandwidth="128000" codecs="mp4a.40.2">
                     <BaseURL>$baseUrl</BaseURL>
                     <SegmentTemplate timescale="1" duration="4" startNumber="1"
-                        initialization="init.mp4" media="piece-${'"/>
-                  </Representation>
-                </AdaptationSet>
-              </Period>
-            </MPD>
-        """.trimIndent()
-        server.enqueue(MockResponse().setBody(mpd))
-        server.enqueue(MockResponse().setBody("dash-segment"))
-        val gate = ProviderPolicyGate(policy(true))
-        val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, key))
-        val lease = ProviderPlaybackByteLease(gate, ticket)
-        val session = ProviderPlaybackMediaSession()
-        session.bind(lease, manifestUrl)
-        val factory = ProviderPlaybackByteDataSource.Factory(
-            OkHttpClient.Builder().build(), 65536L,
-            fallbackLease = session::currentLease, requireLease = true,
-        )
-        try {
-            val manifestBody = bytes(factory.createDataSource(), spec(manifestUrl, lease))
-            val parsed = DashManifestParser().parse(
-                Uri.parse(manifestUrl), ByteArrayInputStream(manifestBody))
-            val representation = parsed.getPeriod(0).adaptationSets.first()
-                .representations.first()
-            val index = requireNotNull(representation.index)
-            val firstUrl = index.getSegmentUrl(index.firstSegmentNum)
-                .resolveUriString(representation.baseUrls.first().url)
-            assertEquals("dash-segment", String(bytes(factory.createDataSource(),
-                session.withSegmentHeaders(spec(firstUrl)))))
-            assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
-            assertEquals("/dash/piece-1.m4s?v=version",
-                server.takeRequest(5, TimeUnit.SECONDS)?.path)
-
-            gate.replace(policy(false))
-            val secondUrl = index.getSegmentUrl(index.firstSegmentNum + 1)
-                .resolveUriString(representation.baseUrls.first().url)
-            try {
-                bytes(factory.createDataSource(),
-                    session.withSegmentHeaders(spec(secondUrl)))
-                fail("The second DASH segment must not run after opt-out")
-            } catch (_: IOException) {}
-            assertNull(server.takeRequest(500, TimeUnit.MILLISECONDS))
-        } finally {
-            server.shutdown()
-        }
-    }
-}
-}Number${'"/>
-                  </Representation>
-                </AdaptationSet>
-              </Period>
-            </MPD>
-        """.trimIndent()
-        server.enqueue(MockResponse().setBody(mpd))
-        server.enqueue(MockResponse().setBody("dash-segment"))
-        val gate = ProviderPolicyGate(policy(true))
-        val ticket = requireNotNull(gate.open(ProviderCapability.EXTENSION_PLAYBACK, key))
-        val lease = ProviderPlaybackByteLease(gate, ticket)
-        val session = ProviderPlaybackMediaSession()
-        session.bind(lease, manifestUrl)
-        val factory = ProviderPlaybackByteDataSource.Factory(
-            OkHttpClient.Builder().build(), 65536L,
-            fallbackLease = session::currentLease, requireLease = true,
-        )
-        try {
-            val manifestBody = bytes(factory.createDataSource(), spec(manifestUrl, lease))
-            val parsed = DashManifestParser().parse(
-                Uri.parse(manifestUrl), ByteArrayInputStream(manifestBody))
-            val representation = parsed.getPeriod(0).adaptationSets.first()
-                .representations.first()
-            val index = requireNotNull(representation.index)
-            val firstUrl = index.getSegmentUrl(index.firstSegmentNum)
-                .resolveUriString(representation.baseUrls.first().url)
-            assertEquals("dash-segment", String(bytes(factory.createDataSource(),
-                session.withSegmentHeaders(spec(firstUrl)))))
-            assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
-            assertEquals("/dash/piece-1.m4s?v=version",
-                server.takeRequest(5, TimeUnit.SECONDS)?.path)
-
-            gate.replace(policy(false))
-            val secondUrl = index.getSegmentUrl(index.firstSegmentNum + 1)
-                .resolveUriString(representation.baseUrls.first().url)
-            try {
-                bytes(factory.createDataSource(),
-                    session.withSegmentHeaders(spec(secondUrl)))
-                fail("The second DASH segment must not run after opt-out")
-            } catch (_: IOException) {}
-            assertNull(server.takeRequest(500, TimeUnit.MILLISECONDS))
-        } finally {
-            server.shutdown()
-        }
-    }
-}
-}.m4s?v=version"/>
+                        initialization="init.mp4" media="$mediaTemplate"/>
                   </Representation>
                 </AdaptationSet>
               </Period>
