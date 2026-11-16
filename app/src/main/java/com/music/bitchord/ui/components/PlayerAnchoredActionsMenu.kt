@@ -44,10 +44,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.music.bitchord.ui.theme.rememberArtworkPalette
-import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
+import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
 
 /** Same drawable as the original Now Playing launcher; never substitute a generic More icon. */
-internal fun playerAnchoredMenuHighlightGlyph() = originalNowPlayingOverflowGlyph()
+internal fun playerAnchoredMenuHighlightGlyph() = originalPortraitNowPlayingOverflowGlyph()
 
 /**
  * Draw the visible selected ⋯ over the exact launcher, even though the menu
@@ -57,7 +57,7 @@ internal fun playerAnchoredMenuHighlightPosition(
     anchor: IntRect,
     overlayOrigin: IntOffset,
     overlaySize: IntSize,
-    highlightSizePx: Int = 44,
+    highlightSizePx: Int = 40,
 ): IntOffset {
     val diameter = highlightSizePx.coerceAtLeast(1)
     val x = ((anchor.left + anchor.right) / 2 - overlayOrigin.x - diameter / 2)
@@ -203,9 +203,11 @@ fun PlayerAnchoredActionsMenu(
             // with the player. A selected copy in the SAME screen-space bounds
             // makes the expanding menu visibly originate at its ⋯ launcher.
             if (highlightLauncher && anchorBounds != null) {
-                val highlightSize = 44.dp
+                val highlightSize = 40.dp
                 val highlightPx = with(density) { highlightSize.roundToPx() }
-                Surface(
+                // The AM-DECOMP portrait vector ALREADY paints the circular
+                // platter. No second Surface, grey fill, or alternative ⋯ icon.
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset {
@@ -217,22 +219,17 @@ fun PlayerAnchoredActionsMenu(
                             )
                         }
                         .size(highlightSize)
-                        .border(1.5.dp, heldContextSelectionOutline(), CircleShape)
+                        .border(0.75.dp, heldContextSelectionOutline(), CircleShape)
                         .testTag("player-overflow-highlight")
                         .clickable(onClick = onDismiss),
-                    color = plate,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    shape = CircleShape,
-                    shadowElevation = 8.dp,
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = playerAnchoredMenuHighlightGlyph(),
-                            contentDescription = "Fechar opções do player",
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
+                    Icon(
+                        imageVector = playerAnchoredMenuHighlightGlyph(),
+                        contentDescription = "Fechar opções do player",
+                        tint = Color.White,
+                        modifier = Modifier.size(34.dp),
+                    )
                 }
             }
         }
