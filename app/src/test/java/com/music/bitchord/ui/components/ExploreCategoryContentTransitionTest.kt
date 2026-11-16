@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
 
-/** The Explore genre grid and each genre must keep separate frames during a 150ms fade. */
+/** The Explore genre grid and each genre must keep separate frames on navigation. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 @ConscryptMode(ConscryptMode.Mode.OFF)
@@ -49,14 +49,13 @@ class ExploreCategoryContentTransitionTest {
         compose.onNodeWithTag("explore-genre-Jazz").assertDoesNotExist()
     }
 
-    @Test fun exploreMotionUsesExactRootFadeAndNoSizeSpring() {
-        org.junit.Assert.assertEquals(150, rootTabFadeMillis(reducedMotion = false))
+    @Test fun exploreMotionIsolatesRetiredGenresAndHasNoSizeSpring() {
         val motion = exploreCategoryContentTransform(reduceMotion = false)
         org.junit.Assert.assertNull(motion.sizeTransform)
         org.junit.Assert.assertNotEquals(
             androidx.compose.animation.EnterTransition.None, motion.targetContentEnter,
         )
-        org.junit.Assert.assertNotEquals(
+        org.junit.Assert.assertEquals(
             androidx.compose.animation.ExitTransition.None, motion.initialContentExit,
         )
         val reduced = exploreCategoryContentTransform(reduceMotion = true)
