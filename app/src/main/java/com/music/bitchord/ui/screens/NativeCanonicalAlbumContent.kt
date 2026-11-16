@@ -109,7 +109,7 @@ internal fun NativeCanonicalAlbumContent(
                 }
             }
             when {
-                loading -> item { NativeLoadingSpinner() }
+                loading -> item { NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.62f)) }
                 failed -> item {
                     RemoteBrowseMessage("Não foi possível aplicar o filtro.")
                 }
