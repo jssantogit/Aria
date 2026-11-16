@@ -346,7 +346,7 @@ internal class ItunesCatalogClient(
             val artTicket = artGate?.open(
                 ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES,
             )
-            val permittedArtwork = artTicket != null && artGate.accept(artTicket)
+            val permittedArtwork = artTicket != null && artGate?.accept(artTicket) == true
             ItunesCatalogResult.Success(
                 items = if (permittedArtwork) items else items.map {
                     it.copy(artworkUrl = null)
