@@ -62,8 +62,15 @@ internal class ProviderPlaybackMediaSession {
             return spec
         if (!current.allowed())
             throw IOException("Provider media session revoked before segment request")
+        // HTTP field names are case-insensitive. A segment's explicitly
+        // supplied header must win even if it spells the key differently;
+        // otherwise both values might be sent in one network request.
+        val explicit = spec.httpRequestHeaders
+        val inherited = headers.filterKeys { name ->
+            explicit.keys.none { it.equals(name, ignoreCase = true) }
+        }
         return spec.buildUpon()
-            .setHttpRequestHeaders(headers + spec.httpRequestHeaders)
+            .setHttpRequestHeaders(inherited + explicit)
             .build()
     }
 
