@@ -40,6 +40,21 @@ internal fun legacyProviderChoices(
                     order = index,
                 )
             }
+        // Download is a separate capability, not an implicit side effect of
+        // enabling an extension for playback. Import existing manifest
+        // permission once, while preserving every persisted download opt-out.
+        result[ProviderCapability.DOWNLOAD] = extensionSources
+            .filter(SourceConfig::allowDownloads)
+            .mapIndexed { index, config ->
+                ProviderChoice(
+                    key = ProviderKey(
+                        if (config.kind == SourceKind.ADDON) "addon" else "custom_module",
+                        config.id,
+                    ),
+                    enabled = config.enabled,
+                    order = index,
+                )
+            }
     }
     return result
 }
