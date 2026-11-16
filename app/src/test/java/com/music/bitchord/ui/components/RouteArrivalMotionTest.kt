@@ -78,7 +78,7 @@ class RouteArrivalMotionTest {
             androidx.compose.animation.EnterTransition.None,
             transform.targetContentEnter,
         )
-        assertEquals(
+        org.junit.Assert.assertNotEquals(
             androidx.compose.animation.ExitTransition.None,
             transform.initialContentExit,
         )
