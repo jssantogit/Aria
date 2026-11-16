@@ -334,12 +334,9 @@ internal fun CanonicalLocalRecentAdditions(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     } else {
-        Box(
-            Modifier.fillMaxWidth().height(96.dp).testTag("native-recent-shelf-loading"),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-        }
+        NativeLoadingSpinner(
+            modifier = Modifier.height(96.dp).testTag("native-recent-shelf-loading"),
+        )
     }
 }
 
@@ -467,12 +464,9 @@ internal fun CanonicalRecentAdditionsGrid(
         // Initial MediaStore projection can be expensive. The same native
         // spinner already used in playlists belongs in the center of the
         // content, not a text-only row at the upper-left corner.
-        Box(
+        NativeLoadingSpinner(
             modifier = Modifier.fillMaxSize().testTag("native-recent-loading"),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-        }
+        )
         return
     }
     LazyColumn(
