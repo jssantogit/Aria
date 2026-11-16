@@ -10,6 +10,13 @@ import com.music.bitchord.data.sources.StreamRequest
 import com.music.bitchord.data.sources.addon.AddonClient
 import com.music.bitchord.playback.StreamContainer
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import com.music.bitchord.data.sources.addon.awaitAddonHttp
+import java.util.concurrent.TimeUnit
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -65,6 +72,20 @@ class AddonSourceTest {
         server.shutdown()
         DeviceCodecs.forced = null
         AppSettings.dolbyAtmos.value = true
+    }
+
+    @Test
+    fun `cancelling a detached addon HTTP producer aborts the socket`() = runBlocking {
+        route("/cancelled", MockResponse()
+            .setHeadersDelay(30, TimeUnit.SECONDS)
+            .setBody("late manifest"))
+        val call = OkHttpClient().newCall(
+            Request.Builder().url(server.url("/cancelled")).build())
+        val pending = async(Dispatchers.IO) { awaitAddonHttp(call) }
+        assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+        pending.cancel()
+        withTimeout(5_000) { pending.join() }
+        assertTrue(call.isCanceled())
     }
 
     // ── URL handling ──────────────────────────────────────────────────────
