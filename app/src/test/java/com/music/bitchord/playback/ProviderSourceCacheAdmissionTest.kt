@@ -29,6 +29,21 @@ class ProviderSourceCacheAdmissionTest {
             )),
         ))
 
+    @Test fun adaptiveSegmentsUseProviderScopedHashedKeysInsteadOfSharedVideoQuery() {
+        val urlA = "https://cdn.example/track.ts?v=same&token=private-A"
+        val urlB = "https://cdn.example/other.ts?v=same&token=private-B"
+        val keyA = providerAdaptiveSegmentCacheKey(addon, urlA)
+        val keyB = providerAdaptiveSegmentCacheKey(addon, urlB)
+        val siblingKey = providerAdaptiveSegmentCacheKey(sibling, urlA)
+        assertTrue(keyA.startsWith("source-segment:"))
+        assertTrue(keyA != keyB)
+        assertTrue(keyA != siblingKey)
+        assertTrue(!keyA.contains("private-A"))
+        assertTrue(!keyA.contains(urlA))
+        assertTrue(keyA == providerAdaptiveSegmentCacheKey(addon, urlA))
+        assertTrue(keyA != providerAdaptiveSegmentCacheKey(addon, urlA, "variant"))
+    }
+
     @Test fun adaptiveSegmentCacheHitRequiresCurrentMediaItemLease() {
         val gate = gate(addonOn = true, siblingOn = true)
         val addonTicket = requireNotNull(gate.open(
