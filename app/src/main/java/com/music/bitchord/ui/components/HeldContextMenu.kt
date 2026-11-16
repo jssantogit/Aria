@@ -289,66 +289,44 @@ fun <T : Any> HeldContextMenu(
         val card = measurables[1].measure(Constraints.fixed(plateW, plateH))
         val menuWidth = (width - margin * 2).coerceAtMost(280.dp.roundToPx()).coerceAtLeast(0)
         val availableHeight = (bottom - top).coerceAtLeast(0)
-        // Measure a readable action viewport first. A tall artwork tile may
-        // shrink, but it must never steal the space needed for every command.
-        val menuMaxHeight = heldMenuMaxHeight(
-            availableHeight = availableHeight,
-            minPreview = 84.dp.roundToPx(),
-            gap = gap,
-        )
-        val menu = measurables[2].measure(
-            Constraints(minWidth = menuWidth, maxWidth = menuWidth, maxHeight = menuMaxHeight),
-        )
-        val liftScale = heldMenuPreviewScale(
-            plateWidth = plateW,
-            plateHeight = plateH,
-            viewportWidth = width,
-            margin = margin,
-            availableHeight = availableHeight,
-            menuHeight = menu.height,
-            gap = gap,
-        )
+        // Keep the source item fixed. The ACTIONS must adapt to the remaining
+        // space; lifting the item to make room caused the visible upward jump.
+        val liftScale = (width - 2 * margin).toFloat().div(plateW.coerceAtLeast(1))
+            .coerceIn(0.1f, 1f)
         val visualW = plateW * liftScale
         val visualH = plateH * liftScale
-
-        // Where the lifted item rests. It stays where it was held whenever the
-        // menu fits beside it; the menu goes below by preference and above
-        // when the item is low on screen, and only when neither fits does the
-        // item climb to make room.
-        val visualLeft = (itemBounds.center.x - visualW / 2f)
-            .coerceIn(margin.toFloat(), (width - margin - visualW).coerceAtLeast(margin.toFloat()))
-        var visualTop = (itemBounds.center.y - visualH / 2f)
-            .coerceIn(top.toFloat(), (bottom - visualH).coerceAtLeast(top.toFloat()))
-        val menuBelow: Boolean
-        when {
-            visualTop + visualH + gap + menu.height <= bottom -> menuBelow = true
-            visualTop - gap - menu.height >= top -> menuBelow = false
-            else -> {
-                menuBelow = true
-                visualTop = (bottom - menu.height - gap - visualH).coerceAtLeast(top.toFloat())
-            }
-        }
+        val visualLeft = itemBounds.center.x - visualW / 2f
+        val visualTop = itemBounds.center.y - visualH / 2f
+        val placement = heldMenuAnchoredVerticalPlacement(
+            sourceTop = visualTop,
+            sourceHeight = visualH,
+            viewportTop = top,
+            viewportBottom = bottom,
+            gap = gap,
+            requestedMenuHeight = heldMenuMaxHeight(
+                availableHeight = availableHeight, minPreview = 0, gap = gap,
+            ),
+        )
+        val menu = measurables[2].measure(
+            Constraints(
+                minWidth = menuWidth, maxWidth = menuWidth,
+                maxHeight = placement.menuMaxHeight,
+            ),
+        )
         val visualCenterX = visualLeft + visualW / 2f
         val visualCenterY = visualTop + visualH / 2f
-
-        // The menu hangs off the item's nearer edge: its start for an item on
-        // the left of the screen, its end for one on the right — a grid's
-        // right-hand column keeps its menu under itself.
         val alignEnd = visualCenterX > width / 2f
         val menuX = (if (alignEnd) visualLeft + visualW - menuWidth else visualLeft).roundToInt()
             .coerceIn(margin, (width - margin - menuWidth).coerceAtLeast(margin))
-        val menuY = if (menuBelow) {
+        val menuY = if (placement.menuBelow) {
             (visualTop + visualH + gap).roundToInt()
         } else {
             (visualTop - gap - menu.height).roundToInt()
-        }
-
-        // The card is placed at its natural size and scaled about its centre,
-        // so its centre is where the visual rectangle's is.
+        }.coerceIn(top, (bottom - menu.height).coerceAtLeast(top))
         val cardX = (visualCenterX - plateW / 2f).roundToInt()
         val cardY = (visualCenterY - plateH / 2f).roundToInt()
-        // How far the card travels back to sit over what was held. At rest
-        // in the list it is unscaled, so the picture lands exactly on the item.
+        // No positional animation: the captured frame already occupies its
+        // source coordinates. Only a subtle scale/shadow denotes elevation.
         val fromDx = itemBounds.center.x - visualCenterX
         val fromDy = itemBounds.center.y - visualCenterY
 
@@ -393,6 +371,38 @@ fun <T : Any> HeldContextMenu(
             }
         }
     }
+}
+
+/** Menu height is constrained to the available side; preview never moves. */
+internal data class HeldAnchoredVerticalPlacement(
+    val previewTop: Float,
+    val menuTop: Int,
+    val menuMaxHeight: Int,
+    val menuBelow: Boolean,
+)
+
+internal fun heldMenuAnchoredVerticalPlacement(
+    sourceTop: Float,
+    sourceHeight: Float,
+    viewportTop: Int,
+    viewportBottom: Int,
+    gap: Int,
+    requestedMenuHeight: Int,
+): HeldAnchoredVerticalPlacement {
+    val belowSpace = (viewportBottom - (sourceTop + sourceHeight + gap)).toInt().coerceAtLeast(0)
+    val aboveSpace = (sourceTop - gap - viewportTop).toInt().coerceAtLeast(0)
+    val below = belowSpace >= requestedMenuHeight ||
+        (belowSpace >= aboveSpace && belowSpace > 0)
+    val available = if (below) belowSpace else aboveSpace
+    val menuHeight = requestedMenuHeight.coerceAtLeast(1).coerceAtMost(available.coerceAtLeast(1))
+    val y = if (below) (sourceTop + sourceHeight + gap).roundToInt()
+        else (sourceTop - gap - menuHeight).roundToInt()
+    return HeldAnchoredVerticalPlacement(
+        previewTop = sourceTop,
+        menuTop = y.coerceIn(viewportTop, (viewportBottom - menuHeight).coerceAtLeast(viewportTop)),
+        menuMaxHeight = menuHeight,
+        menuBelow = below,
+    )
 }
 
 private suspend fun PointerInputScope.swallowAll() {
