@@ -818,9 +818,15 @@ object AudioCache {
      * through, and anything already there is served without a request.
      * Local file and content URIs bypass disk caching to prevent redundant writes.
      */
-    fun playbackFactory(
+    // Public compatibility API for other existing playback consumers.
+    fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory =
+        playbackFactory(upstream, null)
+
+    // Scoped adaptive playback uses a per-MediaItem ticket; this overload is
+    // intentionally internal so no public API exposes a private policy lease.
+    internal fun playbackFactory(
         upstream: DataSource.Factory,
-        onSourceCacheLease: ((ProviderPlaybackByteLease) -> Unit)? = null,
+        onSourceCacheLease: ((ProviderPlaybackByteLease) -> Unit)?,
     ): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
         val upstreamDs = upstream.createDataSource()
