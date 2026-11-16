@@ -59,6 +59,51 @@ class ListenBrainzPublicPlaylistTest {
          "extension":{"https://musicbrainz.org/doc/jspf#playlist":{"public":true}}}}
     ]}"""
 
+    @Test fun publicPlaylistDetailRetainsTracksWhenCaaReleaseArtworkIsDisabled() = runBlocking {
+        val listenbrainz = BuiltInProviderKeys.LISTENBRAINZ
+        val caa = BuiltInProviderKeys.COVER_ART_ARCHIVE
+        fun policy(caaOn: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(
+                ProviderDescriptor(listenbrainz,
+                    setOf(ProviderCapability.PUBLIC_PLAYLISTS), ProviderReadiness.READY),
+                ProviderDescriptor(caa,
+                    setOf(ProviderCapability.RELEASE_ARTWORK), ProviderReadiness.READY),
+            ),
+            choices = mapOf(
+                ProviderCapability.PUBLIC_PLAYLISTS to listOf(
+                    ProviderChoice(listenbrainz, true, 0)),
+                ProviderCapability.RELEASE_ARTWORK to listOf(
+                    ProviderChoice(caa, caaOn, 0)),
+            ),
+        )
+        val gate = ProviderPolicyGate(policy(false))
+        val selected = ListenBrainzPublicPlaylist(rock, "Rock", "Curator", null)
+        val jspf = """{"playlist":{
+            "identifier":"https://listenbrainz.org/playlist/$rock",
+            "track":[{"title":"One","creator":"Singer",
+                "identifier":"https://musicbrainz.org/recording/$song",
+                "extension":{"https://musicbrainz.org/doc/jspf#track":{
+                    "release_identifier":"https://musicbrainz.org/release/$pop"
+                }}
+            }]
+        }}"""
+        val client = ListenBrainzPublicPlaylistClient(
+            transport = object : ListenBrainzPublicPlaylistTransport {
+                override suspend fun search(query: String) = ListenBrainzPublicPlaylistHttp(404, "")
+                override suspend fun detail(mbid: String) = ListenBrainzPublicPlaylistHttp(200, jspf)
+            },
+            limiter = ListenBrainzRateLimiter(minimumIntervalMs = 0L),
+            cacheRead = ProviderCachedReadAccess { gate },
+        )
+        val without = client.detail(selected)!!
+        assertEquals(listOf("One"), without.tracks.map { it.title })
+        assertNull(without.tracks.single().artworkUrl)
+        gate.replace(policy(true))
+        val withArtwork = client.detail(selected)!!
+        assertEquals("https://coverartarchive.org/release/$pop/front-250.jpg",
+            withArtwork.tracks.single().artworkUrl)
+    }
+
     @Test fun canonicalPublicPlaylistOptOutHidesCachedResultsWithoutErasingThem() = runBlocking {
         val key = BuiltInProviderKeys.LISTENBRAINZ
         val descriptor = ProviderDescriptor(key, setOf(
