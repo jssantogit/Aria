@@ -41,6 +41,7 @@ import com.music.bitchord.data.AndroidDiagnosticsHooks
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.catalog.metadata.discogs.DiscogsSearchTokenVault
 import com.music.bitchord.acquisition.a0.SoulseekCredentialVault
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.SearchHistory
@@ -261,7 +262,7 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                     sources = SourceRegistry.configs.value,
                     itunesImplemented = true,
                     discogsImplemented = true,
-                    discogsTokenConfigured = false,
+                    discogsTokenConfigured = DiscogsSearchTokenVault(this@BitChordApplication).configured(),
                     lastfmConfigured = AppSettings.lastfmSessionKey.value.isNotBlank() &&
                         AppSettings.lastfmApiKey.value.isNotBlank(),
                     listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
