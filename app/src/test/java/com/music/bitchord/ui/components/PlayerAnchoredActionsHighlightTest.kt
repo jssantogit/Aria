@@ -18,7 +18,12 @@ class PlayerAnchoredActionsHighlightTest {
 
     @Test fun ratingUsesSharedFrostedPlateWhilePlayerActionsKeepTheirPlayerPlate() {
         assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = false))
-        assertEquals(false, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = true))
+        assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = true))
+    }
+
+    @Test fun playerOverflowAndRatingUseTheSameNeutralActionPlate() {
+        assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = false))
+        assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = true))
     }
 
     @Test fun highlightedMenuUsesExactlyTheOriginalPlayerVector() {
