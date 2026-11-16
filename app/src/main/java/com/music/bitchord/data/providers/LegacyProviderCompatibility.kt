@@ -108,13 +108,20 @@ internal object LegacyProviderCompatibility {
         // failure: unaffected addons stay authorized.
         val eligibleKeys = snapshot.eligible[ProviderCapability.EXTENSION_PLAYBACK]
             .orEmpty().toSet()
+        val savedOrder = configured.associate { it.key to it.order }
         return extensions.map { config ->
             val key = ProviderKey(
                 providerId = if (config.kind == SourceKind.ADDON) "addon" else "custom_module",
                 instanceId = config.id,
             )
             config.copy(enabled = key in eligibleKeys)
-        }
+        }.sortedWith(compareBy { config ->
+            val key = ProviderKey(
+                if (config.kind == SourceKind.ADDON) "addon" else "custom_module",
+                config.id,
+            )
+            savedOrder[key] ?: Int.MAX_VALUE
+        })
     }
 
     suspend fun writeExtensions(
