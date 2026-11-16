@@ -1477,6 +1477,9 @@ object AppSettings {
     }
 
     fun setLastfmEnabled(value: Boolean) {
+        if (ProviderRuntime.updateListeningFromLegacyUi(
+                value, lastfmScrobbleEnabled.value, listenBrainzEnabled.value,
+            ) == false) return
         lastfmEnabled.value = value
         prefs.edit().putBoolean(KEY_LASTFM_ENABLED, value).apply()
     }
@@ -1489,11 +1492,13 @@ object AppSettings {
     fun setLastfmSessionKey(value: String) {
         lastfmSessionKey.value = value
         prefs.edit().putString(KEY_LASTFM_SESSION_KEY, value).apply()
+        ProviderRuntime.refreshListeningCredentialsFromLegacyUi()
     }
 
     fun setLastfmApiKey(value: String) {
         lastfmApiKey.value = value
         prefs.edit().putString(KEY_LASTFM_API_KEY, value).apply()
+        ProviderRuntime.refreshListeningCredentialsFromLegacyUi()
     }
 
     fun setLastfmSecret(value: String) {
@@ -1513,6 +1518,9 @@ object AppSettings {
     }
 
     fun setLastfmScrobbleEnabled(value: Boolean) {
+        if (ProviderRuntime.updateListeningFromLegacyUi(
+                lastfmEnabled.value, value, listenBrainzEnabled.value,
+            ) == false) return
         lastfmScrobbleEnabled.value = value
         if (!value) lastfmNowPlaying.value = false
         prefs.edit()
@@ -1573,6 +1581,9 @@ object AppSettings {
     }
 
     fun setListenBrainzEnabled(value: Boolean) {
+        if (ProviderRuntime.updateListeningFromLegacyUi(
+                lastfmEnabled.value, lastfmScrobbleEnabled.value, value,
+            ) == false) return
         listenBrainzEnabled.value = value
         prefs.edit().putBoolean(KEY_LISTENBRAINZ_ENABLED, value).apply()
     }
@@ -1580,6 +1591,7 @@ object AppSettings {
     fun setListenBrainzToken(value: String) {
         listenBrainzToken.value = value
         prefs.edit().putString(KEY_LISTENBRAINZ_TOKEN, value).apply()
+        ProviderRuntime.refreshListeningCredentialsFromLegacyUi()
     }
 
     fun setListenBrainzPrimaryArtistOnly(value: Boolean) {
