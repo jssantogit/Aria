@@ -13,14 +13,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
 
-/** A star clicked directly on the player, artist, or album is a real
- * launcher: the editor belongs to its bounds, not an unrelated bottom sheet. */
+/** All star launchers now open the same centered, neutral rating modal. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class CanonicalRatingAnchorRoutesTest {
     @get:Rule val compose = createComposeRule()
-    @Test fun explicitRatingLauncherUsesCompactAnchoredPlate() {
+    @Test fun explicitRatingLauncherUsesCenteredModalRegardlessOfItsBounds() {
         compose.setContent {
             MaterialTheme {
                 CanonicalRecordingFeedbackPanel(
@@ -31,17 +30,25 @@ class CanonicalRatingAnchorRoutesTest {
                 )
             }
         }
-        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
+        compose.onNodeWithTag("native-rating-modal").assertExists()
+        compose.onNodeWithTag("native-rating-modal-content").assertExists()
+        compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
         compose.onNodeWithTag("native-rating-bottom-sheet").assertDoesNotExist()
     }
-    @Test fun nonAnchoredRatingUsesCompactFloatingPlateInsteadOfFullScreenWidth() {
+    @Test fun nonAnchoredRatingAlsoUsesTheSameCenteredModal() {
+        compose.setContent {
+            MaterialTheme {
+                CanonicalRecordingFeedbackPanel(rating = 3.5, onSave = {}, onDismiss = {})
+            }
+        }
+        compose.onNodeWithTag("native-rating-modal").assertExists()
         assertEquals(320, ratingEditorFloatingMaxWidthDp())
     }
 
-    @Test fun anchoredRatingWidthShrinksForMultiWindowInsteadOfOverflowing() {
-        assertEquals(300, anchoredRatingCardWidthDp(500))
-        assertEquals(288, anchoredRatingCardWidthDp(320))
-        assertEquals(208, anchoredRatingCardWidthDp(240))
-        assertEquals(168, anchoredRatingCardWidthDp(200))
+    @Test fun centeredModalRemainsWithinNarrowMultiWindowLayouts() {
+        assertEquals(320, ratingEditorModalWidthDp(500))
+        assertEquals(288, ratingEditorModalWidthDp(320))
+        assertEquals(208, ratingEditorModalWidthDp(240))
+        assertEquals(168, ratingEditorModalWidthDp(200))
     }
 }

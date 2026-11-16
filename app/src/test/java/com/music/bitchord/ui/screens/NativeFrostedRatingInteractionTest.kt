@@ -25,7 +25,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
 
-/** Rating popover is transient and must not steal the entire album toolbar. */
+/** Centered rating modal preserves player and album navigation on dismissal. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 @ConscryptMode(ConscryptMode.Mode.OFF)
@@ -48,9 +48,9 @@ class NativeFrostedRatingInteractionTest {
                 }
             }
         }
-        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
+        compose.onNodeWithTag("native-rating-modal").assertExists()
         compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
+        compose.onNodeWithTag("native-rating-modal").assertDoesNotExist()
         compose.onNodeWithText("Other album action").performClick()
         compose.runOnIdle { assertEquals(1, otherClicks) }
     }
@@ -79,14 +79,14 @@ class NativeFrostedRatingInteractionTest {
             }
         }
         compose.onNodeWithContentDescription("Avaliar álbum", substring = true).performClick()
-        compose.onNodeWithTag("native-rating-anchored-card").assertExists()
+        compose.onNodeWithTag("native-rating-modal").assertExists()
         compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
+        compose.onNodeWithTag("native-rating-modal").assertDoesNotExist()
         compose.onNodeWithText("Sort album").performClick()
         compose.runOnIdle { assertEquals(1, sortClicks) }
     }
 
-    @Test fun playerRatingEditorHighlightsItsActualStarLauncher() {
+    @Test fun playerRatingEditorUsesCenteredModalWithoutSelectedStarOverlay() {
         compose.setContent {
             MaterialTheme {
                 CanonicalRecordingFeedbackPanel(
@@ -98,7 +98,8 @@ class NativeFrostedRatingInteractionTest {
                 )
             }
         }
-        compose.onNodeWithTag("player-rating-launcher-highlight").assertExists()
+        compose.onNodeWithTag("native-rating-modal").assertExists()
+        compose.onNodeWithTag("player-rating-launcher-highlight").assertDoesNotExist()
         compose.onNodeWithTag("player-overflow-highlight").assertDoesNotExist()
     }
 

@@ -63,7 +63,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.music.bitchord.ui.components.NativeContextActionPlate
-import com.music.bitchord.ui.components.PlayerAnchoredActionsMenu
+import com.music.bitchord.ui.components.NativeActionCardTreatment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -307,10 +307,14 @@ internal fun ratingDialogEntranceFrame(progress: Float, reducedMotion: Boolean):
     return RatingDialogEntranceFrame(alpha = 0.96f + 0.04f * p, scale = 0.97f + 0.03f * p)
 }
 
-/** Keep an anchored editor inside the window, even in Android multi-window. */
-/** Standalone editors also use a floating card, not a full-width modal sheet. */
+/** Every rating entry shares one centered modal, including the player. */
 internal fun ratingEditorFloatingMaxWidthDp(): Int = 320
 
+internal fun ratingEditorModalWidthDp(screenWidthDp: Int): Int =
+    ((screenWidthDp.takeIf { it > 0 } ?: 320) - 32)
+        .coerceIn(1, ratingEditorFloatingMaxWidthDp())
+
+/** Legacy geometry helper remains for callers, but no modal is anchored. */
 internal fun anchoredRatingCardWidthDp(screenWidthDp: Int): Int =
     ((screenWidthDp.takeIf { it > 0 } ?: 320) - 32).coerceIn(1, 300)
 
@@ -328,11 +332,11 @@ internal fun CanonicalRecordingFeedbackPanel(
     saving: Boolean = false,
     denied: Boolean = false,
     title: String? = null,
-    /** Window-space bounds of a dedicated star control. Menu actions leave this null. */
+    /** Retained for existing callers; all rating entrypoints now use one centered modal. */
     anchorBounds: IntRect? = null,
-    /** Only the player needs its star repainted over the dialog scrim. */
+    /** No duplicated launcher highlight while the centered modal is open. */
     highlightPlayerLauncher: Boolean = false,
-    /** Actual artwork on the launcher surface; used by the shared frosted plate. */
+    /** Retained for existing callers; artwork cannot tint the neutral modal. */
     artworkUrl: String? = null,
 ) {
     var selected by remember { mutableDoubleStateOf(rating?.takeIf { it in 1.0..5.0 } ?: 0.0) }
@@ -362,20 +366,17 @@ internal fun CanonicalRecordingFeedbackPanel(
             tween(durationMillis = 180, easing = FastOutSlowInEasing),
         )
     }
-    // A dedicated star is a contextual launcher: the small card grows at
-    // its actual icon bounds. Overflow/menu actions keep the modal editor, but
-    // both variants share the lifted menu's opaque plate and confirmation flow.
+    // Player, artist, album, playlist and recording all share ONE centered
+    // modal. The launcher coordinates and artwork never influence its card.
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val sheetForeground = if (darkTheme) Color.White else Color.Black
     val sheetTitle = title ?: stringResource(Res.string.recording_feedback_dialog_title)
-    val anchoredWidthDp = anchoredRatingCardWidthDp(LocalConfiguration.current.screenWidthDp)
-    // Preserve the approved 40dp stars at normal widths; scale only if the
-    // window itself is narrower than the former fixed 248dp panel.
-    val anchoredGlyphSize = ((anchoredWidthDp - 24) / 5).coerceIn(18, 40).dp
+    val modalWidth = ratingEditorModalWidthDp(LocalConfiguration.current.screenWidthDp).dp
+    val modalGlyphSize = ((ratingEditorModalWidthDp(LocalConfiguration.current.screenWidthDp) - 24) / 5)
+        .coerceIn(18, 40).dp
     val ratingEditorContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth()
-                .then(if (anchorBounds == null) Modifier.navigationBarsPadding() else Modifier)
                 .padding(
                     // Preserve five 56dp star targets on narrow phones.
                     start = 12.dp,
@@ -383,18 +384,16 @@ internal fun CanonicalRecordingFeedbackPanel(
                     top = 14.dp,
                     bottom = 14.dp,
                 )
-                .testTag(if (anchorBounds == null) "native-rating-bottom-sheet"
-                    else "native-rating-anchored-content")
+                .testTag("native-rating-modal-content")
                 .semantics { paneTitle = sheetTitle }
-                // The lifted container owns its entrance. Animating the
-                // star row independently made it drift away from the button.
-                .then(if (anchorBounds == null) Modifier.graphicsLayer {
+                // Animation affects only the centered card, never star hit targets.
+                .graphicsLayer {
                     val entrance = ratingDialogEntranceFrame(dialogEntrance.value, reduceMotion)
                     alpha = entrance.alpha
                     scaleX = entrance.scale
                     scaleY = entrance.scale
                     transformOrigin = TransformOrigin.Center
-                } else Modifier),
+                },
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -441,7 +440,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                         val wholeDescription = stringResource(Res.string.recording_feedback_stars_value, (index + 1.0).toString().removeSuffix(".0"))
                         val starFill = appleRatingStarFill(selected, i)
                         Box(
-                            modifier = Modifier.weight(1f).height(if (anchorBounds == null) 56.dp else 44.dp),
+                            modifier = Modifier.weight(1f).height(56.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             // Retain the player's exact original star
@@ -450,7 +449,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                             // A 48dp glyph viewport keeps the visible star
                             // near 28dp while maintaining generous touch slots.
                             Box(
-                                modifier = Modifier.size(if (anchorBounds == null) 56.dp else anchoredGlyphSize)
+                                modifier = Modifier.size(modalGlyphSize)
                                     .testTag("rating-editor-star-$i-${starFill.name.lowercase()}")
                                     .graphicsLayer {
                                         scaleX = starPulse.value
@@ -464,7 +463,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                                 val slotStops = if (filled && !numericStars) colorStops else emptyList()
                                 val slotBrush = if (slotStops.map { it.second }.distinct().size > 1)
                                     Brush.linearGradient(*slotStops.toTypedArray()) else null
-                                val glyphSize = if (anchorBounds == null) 56.dp else anchoredGlyphSize
+                                val glyphSize = modalGlyphSize
                                 if (ratingEditorUsesNumericGlyph(starStyle, selected, i)) {
                                     // Only the last selected star is numbered.
                                     CompactRatingIndicator(
@@ -550,37 +549,21 @@ internal fun CanonicalRecordingFeedbackPanel(
             }
         }
     }
-    if (anchorBounds != null) {
-        // Same full-screen dialog and artwork blur as the ⋯ player menu.
-        // A nested Popup used another window's coordinate space and could
-        // appear detached or leave an invisible focus-stealing surface.
-        val cardWidth = anchoredWidthDp.dp
-        PlayerAnchoredActionsMenu(
-            anchorBounds = anchorBounds,
-            artworkUrl = artworkUrl,
-            onDismiss = requestDismiss,
-            highlightLauncher = false,
-            highlightRatingLauncher = highlightPlayerLauncher,
-            ratingLauncherScore = rating?.takeIf { it.isFinite() && it in 1.0..5.0 },
-            maxWidth = cardWidth,
-        ) {
-            Box(Modifier.width(cardWidth).testTag("native-rating-anchored-card")) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = requestDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            NativeContextActionPlate(
+                modifier = Modifier.width(modalWidth)
+                    .testTag("native-rating-modal"),
+                treatment = NativeActionCardTreatment.NEUTRAL_FROSTED,
+                // Never feed album art into the rating dialog's surface.
+                artworkUrl = null,
+            ) {
                 ratingEditorContent()
-            }
-        }
-    } else {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = requestDismiss,
-            properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false,
-            ),
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                NativeContextActionPlate(
-                    modifier = Modifier.widthIn(max = ratingEditorFloatingMaxWidthDp().dp)
-                        .fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
-                    artworkUrl = artworkUrl,
-                ) { ratingEditorContent() }
             }
         }
     }

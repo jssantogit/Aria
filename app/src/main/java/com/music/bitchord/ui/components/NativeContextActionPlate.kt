@@ -2,6 +2,8 @@ package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +31,11 @@ import dev.chrisbanes.haze.materials.HazeMaterials
 internal fun nativeContextPlateColor(dark: Boolean): Color =
     nativeCompactPlateColor(isDark = dark, artworkElevation = null)
 
-internal enum class NativeActionCardTreatment { FROSTED, SOLID }
+internal enum class NativeActionCardTreatment { FROSTED, SOLID, NEUTRAL_FROSTED }
+
+/** A centered rating panel uses a neutral, blurred surface; never album colors. */
+internal fun neutralRatingPlateUsesArtwork(treatment: NativeActionCardTreatment): Boolean =
+    treatment == NativeActionCardTreatment.FROSTED
 
 internal fun expandableActionCardUsesHaze(
     treatment: NativeActionCardTreatment,
@@ -55,8 +61,9 @@ internal fun NativeContextActionPlate(
     val useHaze = expandableActionCardUsesHaze(
         treatment = treatment, hazeAvailable = hazeState != null, reduceBlur = reduceBlur,
     )
-    val useArtwork = treatment == NativeActionCardTreatment.FROSTED &&
+    val useArtwork = neutralRatingPlateUsesArtwork(treatment) &&
         hazeState == null && artworkUrl != null && !reduceBlur
+    val neutralFrosted = treatment == NativeActionCardTreatment.NEUTRAL_FROSTED && !reduceBlur
     Surface(
         modifier = modifier.shadow(12.dp, shape, clip = false),
         shape = shape,
@@ -78,6 +85,20 @@ internal fun NativeContextActionPlate(
                     ) else Modifier,
                 ),
         ) {
+            if (neutralFrosted) {
+                // Dialogs use a separate window and cannot sample the host Haze
+                // layer. Blur a muted, neutral texture INSIDE the plate instead,
+                // preserving the frosted look without reintroducing album hues.
+                val neutralShades = if (dark) listOf(
+                    Color(0xFF414149), Color(0xFF303037), Color(0xFF46454B),
+                ) else listOf(
+                    Color(0xFFF2F2F4), Color(0xFFE5E5E9), Color(0xFFF4F4F6),
+                )
+                Box(Modifier.matchParentSize()
+                    .blur(24.dp)
+                    .background(Brush.linearGradient(neutralShades)))
+                Box(Modifier.matchParentSize().background(base.copy(alpha = 0.58f)))
+            }
             if (useArtwork) {
                 ArtworkBackdrop(
                     palette = palette,

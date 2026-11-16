@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.components
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -11,9 +12,11 @@ import org.junit.Test
 /** The expanded player menu's highlighted ⋯ sits on its real launcher,
  * even when a dialog window has a nonzero screen origin. */
 class PlayerAnchoredActionsHighlightTest {
-    @Test fun activeOverflowUsesSharedWhiteHighlightWhileInactiveHasNone() {
-        assertEquals(heldContextSelectionOutline(), com.music.bitchord.nativeCollectionOverflowOutline(true))
-        assertEquals(null, com.music.bitchord.nativeCollectionOverflowOutline(false))
+    @Test fun expandedCollectionOverflowUsesSoftFillAndNoDuplicatedWhiteBorder() {
+        assertEquals(Color.White.copy(alpha = 0.14f),
+            com.music.bitchord.nativeCollectionOverflowActiveFill(true, Color.White))
+        assertEquals(Color.Transparent,
+            com.music.bitchord.nativeCollectionOverflowActiveFill(false, Color.White))
     }
 
     @Test fun playerOverflowAndRatingUseTheSameNeutralActionPlate() {
