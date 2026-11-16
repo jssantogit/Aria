@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -163,8 +164,6 @@ fun HomeScreen(
     /** The page's heading, or null for none — the desktop's pages carry no heading. */
     title: String?,
     onBack: (() -> Unit)? = null,
-    /** Pushed Explore categories keep the full inset below the floating Back. */
-    reserveFloatingBackSpace: Boolean = false,
     headerActions: List<HomeHeaderAction> = emptyList(),
     signedIn: Boolean = true,
     onSignIn: (() -> Unit)? = null,
@@ -191,6 +190,8 @@ fun HomeScreen(
     headerTrailing: (@Composable () -> Unit)? = null,
     /** An honest empty/loading result, not a synthetic playlist card. */
     publicPlaylistNotice: String? = null,
+    /** Pushed Explore categories keep the full inset below the floating Back. */
+    reserveFloatingBackSpace: Boolean = false,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
