@@ -8,6 +8,8 @@ import com.music.bitchord.data.catalog.metadata.ListenBrainzPublicPlaylistTrack
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -60,6 +62,9 @@ import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** Match the rounded 52dp sleeves used by the canonical Library track rows. */
+internal fun publicPlaylistTrackCoverShape() = RoundedCornerShape(8.dp)
 
 /** Warm only the first visible public sleeves and the exact hero.
  * The shared Coil planner enforces the same trusted-URL policy everywhere. */
@@ -287,6 +292,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                             NativeDetailTrackArtwork(showPlayingBars = false) {
                                 Box(
                                     Modifier.fillMaxSize()
+                                        .clip(publicPlaylistTrackCoverShape())
                                         .background(MaterialTheme.colorScheme.surfaceVariant),
                                     contentAlignment = Alignment.Center,
                                 ) {
