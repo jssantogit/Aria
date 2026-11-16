@@ -127,9 +127,7 @@ fun SpotifyLibraryScreen(
         } else {
             if (loading) {
                 item {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.62f))
                 }
             }
             error?.let { message ->
