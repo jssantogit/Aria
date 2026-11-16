@@ -418,7 +418,33 @@ class MusicBrainzPublicMetadataIndexTest {
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
         try {
             var number = 0
-            val index = MusicBrainzCatalogIndex(db, idFactory = { "artist-card-${++number}" }, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+            val gate = com.music.bitchord.data.providers.ProviderPolicyGate(
+                com.music.bitchord.data.providers.ProviderCapabilityPolicy(
+                    descriptors = listOf(
+                        com.music.bitchord.data.providers.ProviderDescriptor(
+                            com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
+                            setOf(com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY),
+                            com.music.bitchord.data.providers.ProviderReadiness.READY,
+                        ),
+                        com.music.bitchord.data.providers.ProviderDescriptor(
+                            com.music.bitchord.data.providers.BuiltInProviderKeys.COVER_ART_ARCHIVE,
+                            setOf(com.music.bitchord.data.providers.ProviderCapability.RELEASE_ARTWORK),
+                            com.music.bitchord.data.providers.ProviderReadiness.READY,
+                        ),
+                    ),
+                    choices = mapOf(
+                        com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
+                            com.music.bitchord.data.providers.ProviderChoice(
+                                com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ, true, 0)),
+                        com.music.bitchord.data.providers.ProviderCapability.RELEASE_ARTWORK to listOf(
+                            com.music.bitchord.data.providers.ProviderChoice(
+                                com.music.bitchord.data.providers.BuiltInProviderKeys.COVER_ART_ARCHIVE, true, 0)),
+                    ),
+                ),
+            )
+            val index = MusicBrainzCatalogIndex(db,
+                idFactory = { "artist-card-${++number}" },
+                cacheRead = ProviderCachedReadAccess { gate })
             val artistMbid = "b51c672b-85e0-48fe-8648-470a2422229f"
             val groupMbid = "529f87a1-1081-48a4-8ee1-3c08de229858"
             val artistIds = index.persistArtists(listOf(MusicBrainzArtistHit(
