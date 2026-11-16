@@ -2,6 +2,7 @@ package com.music.bitchord.data.providers
 
 import android.content.Context
 import android.os.Build
+import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
@@ -122,6 +123,37 @@ internal object ProviderRuntime {
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
             ProviderCapability.IDENTITY,
         ).associateWith { listOf(ProviderChoice(mb, enabled = true, order = 0)) }
+    }
+
+    /**
+     * Legacy synchronous Settings UI bridges. Null means startup migration is
+     * not yet complete (the old preference store remains the input for import).
+     * False means a durable canonical write failed: never silently dual-write.
+     * Settings switches are infrequent; IO itself runs on Dispatchers.IO.
+     */
+    fun updateLyricsFromLegacyUi(
+        order: List<LyricsSource>,
+        enabled: Set<LyricsSource>,
+    ): Boolean? {
+        val current = session ?: return null
+        if (current.state.value.status == ProviderSessionStatus.BOOTING) return null
+        val authority = coordinator ?: return false
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            authority.setLyricsPreferences(order, enabled)
+        }
+    }
+
+    fun updateExtensionFromLegacyUi(
+        configId: String,
+        enabled: Boolean,
+        sources: List<SourceConfig>,
+    ): Boolean? {
+        val current = session ?: return null
+        if (current.state.value.status == ProviderSessionStatus.BOOTING) return null
+        val authority = coordinator ?: return false
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            authority.setExtensionEnabled(configId, enabled, sources)
+        }
     }
 
     suspend fun setChoices(
