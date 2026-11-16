@@ -8,6 +8,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import okhttp3.Call
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
@@ -41,10 +42,31 @@ internal class ProviderPlaybackCallFactory(
 ) : Call.Factory {
     private val lock = Any()
     private var revoked = false
+    private var restrictRedirects = false
     private var latest: Call? = null
 
     override fun newCall(request: Request): Call {
-        val call = upstream.newCall(request)
+        val guarded = synchronized(lock) { restrictRedirects }
+        val call = if (guarded) {
+            // A source may supply arbitrary HTTP headers. OkHttp strips the
+            // built-in Authorization header when a host changes, but custom
+            // tokens/cookies can otherwise cross redirect boundaries. Apply
+            // this check at every network hop, BEFORE sending the request.
+            // Preserve same-origin redirects; ordinary non-provider URLs keep
+            // their original OkHttp policy without a cloned client.
+            val client = upstream as? OkHttpClient
+                ?: throw IOException("Guarded playback requires a controlled HTTP transport")
+            val original = request.url
+            client.newBuilder().addNetworkInterceptor { chain ->
+                val next = chain.request().url
+                if (next.scheme != original.scheme ||
+                    next.host != original.host ||
+                    next.port != original.port) {
+                    throw IOException("Provider HTTP redirect outside authorized origin")
+                }
+                chain.proceed(chain.request())
+            }.build().newCall(request)
+        } else upstream.newCall(request)
         synchronized(lock) {
             if (revoked) call.cancel()
             else latest = call
@@ -66,8 +88,9 @@ internal class ProviderPlaybackCallFactory(
      * future, independently authorized open; re-arm the Call factory only
      * for that new open. A stale ticket is checked separately by the lease.
      */
-    fun beginOpen() = synchronized(lock) {
+    fun beginOpen(protectedProvider: Boolean) = synchronized(lock) {
         revoked = false
+        restrictRedirects = protectedProvider
         latest = null
     }
 }
@@ -85,7 +108,7 @@ internal class ProviderPlaybackCallFactory(
 internal class ProviderPlaybackByteDataSource(
     private val upstream: DataSource,
     private val cancelNetwork: () -> Unit = {},
-    private val beginNetworkOpen: () -> Unit = {},
+    private val beginNetworkOpen: (Boolean) -> Unit = {},
 ) : DataSource {
     @Volatile private var revoked = false
     private var lease: ProviderPlaybackByteLease? = null
@@ -97,9 +120,9 @@ internal class ProviderPlaybackByteDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         if (opened) throw IOException("Playback byte transport already open")
-        beginNetworkOpen()
-        revoked = false
         val permission = dataSpec.customData as? ProviderPlaybackByteLease
+        beginNetworkOpen(permission != null)
+        revoked = false
         lease = permission
         if (permission != null) {
             if (!permission.allowed()) {
