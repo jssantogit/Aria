@@ -1,8 +1,7 @@
 package com.music.bitchord.download
 
-import com.music.bitchord.data.providers.ProviderCapability
-import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.acquisition.a0.SoulseekActiveSession
 
 /**
  * A download tap is a request for a manual Soulseek file search, not authority to
@@ -20,9 +19,9 @@ internal object SoulseekDownloadRouting {
         title: String,
         count: Int,
         pilotAvailable: Boolean,
-        providerAuthorized: Boolean = ProviderRuntime.gateOrNull()?.open(
-            ProviderCapability.DOWNLOAD, ProviderKey("soulseek"),
-        ) != null,
+        providerAuthorized: Boolean = SoulseekActiveSession.bindDownloadPermission(
+            ProviderRuntime.gateOrNull(),
+        ),
     ): Decision {
         if (count != 1) return Decision.BulkNotSupported
         if (!pilotAvailable || !providerAuthorized) return Decision.Unavailable
