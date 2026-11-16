@@ -180,25 +180,54 @@ object SourceRegistry {
      * apply no connection-quality ceiling — see [SourceResolver.forDownload].
      */
     fun active(): List<MusicSource> =
-        audioCandidateConfigs(configs.value)
-            // Not in the walk at all while it would be refused anyway: an addon
-            // that asked for a lossless output costs nothing — not even a timed
-            // out search — while there isn't one. See [SourceConfig.checkValidLossless].
-            .filterNot { it.awaitsLosslessOutput }
-            .sortedBy { it.kind.rank }
-            .mapNotNull { instances[it.id] }
+        orderCandidatesByCapability(
+            audioCandidateConfigs(configs.value)
+                // Never probe a lossless-only addon without a capable output.
+                .filterNot { it.awaitsLosslessOutput },
+            ProviderRuntime.gateOrNull(),
+            ProviderCapability.EXTENSION_PLAYBACK,
+        ).mapNotNull { instances[it.id] }
 
     /**
      * [active], minus the addons whose manifest said `allowDownloads: 0`. A
      * download walks this instead, so the next source in line serves it.
      */
-    fun activeForDownload(): List<MusicSource> =
-        downloadCandidateConfigs(configs.value, ProviderRuntime.gateOrNull())
-            .sortedBy { it.kind.rank }
-            .mapNotNull { source ->
-                addonDownloadInstances[source.id] ?:
-                    moduleDownloadInstances[source.id] ?: instances[source.id]
-            }
+    fun activeForDownload(): List<MusicSource> {
+        val gate = ProviderRuntime.gateOrNull()
+        return orderCandidatesByCapability(
+            downloadCandidateConfigs(configs.value, gate), gate, ProviderCapability.DOWNLOAD,
+        ).mapNotNull { source ->
+            addonDownloadInstances[source.id] ?:
+                moduleDownloadInstances[source.id] ?: instances[source.id]
+        }
+    }
+
+    /**
+     * The canonical session owns priority independently for every capability.
+     * Never let the legacy SourceKind rank or stored playback order override a
+     * different (DOWNLOAD × instance) selection. Equal/unconfigured priorities
+     * preserve the existing stable kind + stored ordering.
+     */
+    internal fun orderCandidatesByCapability(
+        candidates: List<SourceConfig>,
+        gate: ProviderPolicyGate?,
+        capability: ProviderCapability,
+    ): List<SourceConfig> {
+        val priorities = gate?.ordered(capability)
+            ?.mapIndexed { index, descriptor -> descriptor.key to index }
+            ?.toMap().orEmpty()
+        return candidates.withIndex().sortedWith(
+            compareBy<IndexedValue<SourceConfig>> { indexed ->
+                val config = indexed.value
+                val key = ProviderKey(
+                    if (config.kind == SourceKind.ADDON) "addon" else "custom_module",
+                    config.id,
+                )
+                priorities[key] ?: Int.MAX_VALUE
+            }.thenBy { it.value.kind.rank }
+                .thenBy { it.index },
+        ).map { it.value }
+    }
 
     /**
      * Download consent is independent from playback consent. Do not start with
