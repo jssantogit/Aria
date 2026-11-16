@@ -16,6 +16,24 @@ class HeldItemLiftStateTest {
         assertFalse(held.isLifted)
     }
 
+    @Test fun aPendingHoldDrawsTheCapturedLayerInsteadOfDrawingTheSourceTwice() {
+        org.junit.Assert.assertEquals(HeldCaptureFrame.CAPTURED, heldCaptureFrame(
+            lifted = false, capturePending = true,
+        ))
+    }
+
+    @Test fun anActiveLiftHidesSourceAndAnOrdinaryFrameKeepsItsOriginalPaint() {
+        org.junit.Assert.assertEquals(HeldCaptureFrame.HIDDEN, heldCaptureFrame(
+            lifted = true, capturePending = false,
+        ))
+        org.junit.Assert.assertEquals(HeldCaptureFrame.HIDDEN, heldCaptureFrame(
+            lifted = true, capturePending = true,
+        ))
+        org.junit.Assert.assertEquals(HeldCaptureFrame.SOURCE, heldCaptureFrame(
+            lifted = false, capturePending = false,
+        ))
+    }
+
     @Test fun delayedBitmapCannotRehideSourceAfterEarlyDismiss() {
         val held = HeldItem(Rect(0f, 0f, 40f, 40f))
         held.releaseLift()
