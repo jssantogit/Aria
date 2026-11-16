@@ -153,7 +153,7 @@ internal class KtorItunesCatalogTransport(
             provider = BuiltInProviderKeys.ITUNES,
             scheduleLimited = { block -> limiter.run(block) },
             networkCall = {
-                testExchange?.let { return@execute it(path, parameters) }
+                testExchange?.invoke(path, parameters) ?: run {
             // Measure the real HTTP exchange, not the 3.1s global-budget
             // queue wait. Endpoint is strictly "search" or "lookup"; never
             // emit a query, UPC, artist, album, URL or personal identifier.
@@ -198,6 +198,7 @@ internal class KtorItunesCatalogTransport(
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(output.toByteArray())).toString()
+                }
             },
         )
     }
