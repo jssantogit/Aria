@@ -258,7 +258,8 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // lyrics as a replacement for a user's saved disabled/reordered sources.
         Diagnostics.span(DiagnosticCategory.STARTUP, "provider_capabilities_init") {
             kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                ProviderRuntime.authorityOrNull()?.migrateOnce(
+                val authority = ProviderRuntime.authorityOrNull()
+                val migrated = authority?.migrateOnce(
                     lyricsOrder = AppSettings.lyricsSourceOrder.value,
                     enabledLyrics = AppSettings.lyricsSources.value,
                     sources = SourceRegistry.configs.value,
@@ -268,7 +269,19 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                     lastfmEnabled = AppSettings.lastfmEnabled.value &&
                         AppSettings.lastfmScrobbleEnabled.value,
                     listenBrainzEnabled = AppSettings.listenBrainzEnabled.value,
-                )
+                ) == true
+                if (migrated && authority != null) {
+                    // A restarted process must project persisted canonical choices
+                    // into legacy UI/source flows, not resurrect stale legacy opt-ins.
+                    val lyrics = authority.currentLyricsProjection(
+                        AppSettings.lyricsSourceOrder.value, AppSettings.lyricsSources.value,
+                    )
+                    AppSettings.lyricsSourceOrder.value = lyrics.order
+                    AppSettings.lyricsSources.value = lyrics.enabled
+                    val raw = SourceRegistry.configs.value
+                    val extensions = authority.currentExtensionsProjection(raw).associateBy { it.id }
+                    SourceRegistry.applyProviderProjection(raw.map { extensions[it.id] ?: it })
+                }
             }
         }
         // Warming YouTube's account scope is a discovery request. Wait until
