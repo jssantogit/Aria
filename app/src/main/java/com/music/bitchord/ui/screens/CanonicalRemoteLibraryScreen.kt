@@ -349,6 +349,7 @@ internal fun CanonicalRemoteLibraryScreen(
     var libraryQuery by remember(unified) { mutableStateOf("") }
     LaunchedEffect(searchVisible) { if (!searchVisible) libraryQuery = "" }
     val selectedStars = if (unified) selectedStarsFilter else null
+    var localIndexReady by remember(unified) { mutableStateOf(!unified) }
     LaunchedEffect(unified) {
         if (unified) {
             try {
@@ -357,6 +358,10 @@ internal fun CanonicalRemoteLibraryScreen(
                 throw cancelled
             } catch (_: Exception) {
                 // Keep remote rows visible if local media scan is unavailable.
+            } finally {
+                // A failed optional local scan must not trap remote-only libraries
+                // behind an endless loader.
+                localIndexReady = true
             }
         }
     }
@@ -369,7 +374,20 @@ internal fun CanonicalRemoteLibraryScreen(
         if (unified) multiRepository.observe(sources.toSet())
         else repository.observe(providerKey)
     }
-    val library by libraryFlow.collectAsStateWithLifecycle(initialValue = CanonicalBrowseLibrary.EMPTY)
+    // EMPTY is valid after the first Room emission, but not before it. A
+    // placeholder empty list briefly rendered a false 'Nenhuma música' frame
+    // while the local index/database had not produced their initial results.
+    val librarySnapshot by produceState<CanonicalBrowseLibrary?>(
+        initialValue = null, key1 = libraryFlow,
+    ) {
+        libraryFlow.collectLatest { value = it }
+    }
+    val initialLibraryLoading = canonicalLibraryInitialLoading(
+        unified = unified,
+        firstEmissionReceived = librarySnapshot != null,
+        localIndexReady = localIndexReady,
+    )
+    val library = librarySnapshot ?: CanonicalBrowseLibrary.EMPTY
     // Album/artist scores belong to their own local table, not track ratings.
     // A single Room flow powers all visible rows and repaints after editing.
     val entityRatingDao = remember(context.applicationContext) {
@@ -1132,7 +1150,8 @@ internal fun CanonicalRemoteLibraryScreen(
             val shownTracks = if (detail != null) detailMatches else
                 if (selectedContext == CanonicalSmartFilterContext.SONGS)
                     displayedTracks else eligibleTracks
-            val shownState = if (detail == null) filteredState else when (detailState) {
+            val shownState = if (initialLibraryLoading) CanonicalSongFilterState.Loading
+                else if (detail == null) filteredState else when (detailState) {
                 CanonicalDetailBrowseState.Loading -> CanonicalSongFilterState.Loading
                 CanonicalDetailBrowseState.Failed -> CanonicalSongFilterState.Failed
                 is CanonicalDetailBrowseState.Ready -> CanonicalSongFilterState.Ready(detailMatches)
@@ -1287,7 +1306,8 @@ internal fun CanonicalRemoteLibraryScreen(
                     else CanonicalSmartFilterContext.SONGS,
                 tracks = sortCanonicalUnifiedTracks(shownTracks, unifiedSort),
                 filteredState = shownState,
-                entityState = entityState,
+                entityState = if (initialLibraryLoading) CanonicalEntityBrowseState.Loading
+                    else entityState,
                 artworkLoader = artworkLoader,
                 query = if (detail == null) libraryQuery else detailQuery,
                 onQueryChange = { if (detail == null) libraryQuery = it else detailQuery = it },
@@ -3021,3 +3041,10 @@ internal fun NativeLibraryEntityCard(
         }
     }
 }
+
+/** Do not mistake the pre-emission placeholder for a verified empty library. */
+internal fun canonicalLibraryInitialLoading(
+    unified: Boolean,
+    firstEmissionReceived: Boolean,
+    localIndexReady: Boolean,
+): Boolean = !firstEmissionReceived || (unified && !localIndexReady)
