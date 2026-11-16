@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.theme.ArtworkPalette
 
 /**
@@ -26,7 +25,6 @@ internal fun NativePlaylistDetailFrame(
     palette: ArtworkPalette,
     listState: LazyListState,
     bottomPadding: Dp,
-    topPadding: Dp = 0.dp,
     content: LazyListScope.() -> Unit,
 ) {
     LazyColumn(
@@ -35,7 +33,7 @@ internal fun NativePlaylistDetailFrame(
             .fillMaxSize()
             .background(palette.background)
             .testTag("native-playlist-detail-frame"),
-        contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
+        contentPadding = PaddingValues(bottom = bottomPadding),
         content = content,
     )
 }
