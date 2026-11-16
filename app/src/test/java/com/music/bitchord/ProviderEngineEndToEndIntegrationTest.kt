@@ -90,6 +90,48 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun lastFmRevocationCancelsInflightScrobbleWithoutReachingNetwork(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(
+                ProviderCapabilityRegistry.inventory(lastfmConfigured = true),
+            ),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            lastfmConfigured = true, lastfmEnabled = true,
+        ))
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val manager = ScrobbleManager(
+            scope = this,
+            scrobbleDelayPercent = 0f,
+            policyGate = { session.gate },
+            networkCall = {
+                started.complete(Unit)
+                try { kotlinx.coroutines.awaitCancellation() }
+                finally { cancelled.complete(Unit) }
+            },
+        )
+        manager.useNowPlaying = false
+        manager.onSongStart(
+            Song(videoId = "local", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null),
+            durationMs = 180_000L,
+        )
+        started.await()
+        assertTrue(session.update(
+            ProviderCapability.LISTENING_STATISTICS,
+            listOf(
+                ProviderChoice(BuiltInProviderKeys.LASTFM, false, 0),
+                ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, false, 1),
+            ),
+        ))
+        cancelled.await()
+        manager.destroy()
+    }
+
+    @Test
     fun listenBrainzRevocationCancelsInflightRequestAndSuppressesSuccess(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
