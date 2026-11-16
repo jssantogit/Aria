@@ -43,6 +43,41 @@ class ProviderCatalogSourceRegistryTest {
         assertTrue(SourceRegistry.extensionEligibleConfigs(listOf(entries.last()), gate).isEmpty())
     }
 
+    @Test fun canonicalPriorityIsIndependentForPlaybackAndDownload() {
+        val addon = SourceConfig(id = "addon-first", kind = SourceKind.ADDON,
+            baseUrl = "https://addon.example", enabled = true)
+        val module = SourceConfig(id = "module-second", kind = SourceKind.CUSTOM_MODULE,
+            baseUrl = "https://module.example/index.json", enabled = true)
+        val a = ProviderKey("addon", addon.id)
+        val m = ProviderKey("custom_module", module.id)
+        val descriptors = listOf(a, m).map { ProviderDescriptor(
+            it, setOf(ProviderCapability.EXTENSION_PLAYBACK, ProviderCapability.DOWNLOAD),
+            ProviderReadiness.READY,
+        ) }
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(descriptors, mapOf(
+            ProviderCapability.EXTENSION_PLAYBACK to listOf(
+                ProviderChoice(m, true, 0), ProviderChoice(a, true, 1)),
+            ProviderCapability.DOWNLOAD to listOf(
+                ProviderChoice(a, true, 0), ProviderChoice(m, true, 1)),
+        )))
+        val legacyOrder = listOf(addon, module)
+        assertEquals(listOf(module, addon), SourceRegistry.orderCandidatesByCapability(
+            legacyOrder, gate, ProviderCapability.EXTENSION_PLAYBACK))
+        assertEquals(listOf(addon, module), SourceRegistry.orderCandidatesByCapability(
+            legacyOrder, gate, ProviderCapability.DOWNLOAD))
+    }
+
+    @Test fun providerPriorityTiesPreserveLegacyOrder() {
+        val first = SourceConfig(id = "first", kind = SourceKind.ADDON,
+            baseUrl = "https://one.example")
+        val second = SourceConfig(id = "second", kind = SourceKind.ADDON,
+            baseUrl = "https://two.example")
+        // No ready provider ticket: eligibility is checked at selection time;
+        // this ordering helper must not reshuffle a stored legacy list.
+        assertEquals(listOf(second, first), SourceRegistry.orderCandidatesByCapability(
+            listOf(second, first), null, ProviderCapability.EXTENSION_PLAYBACK))
+    }
+
     @Test fun legacyProjectionCannotRebuildRetiredBackends() {
         val before = SourceRegistry.configs.value
         try {
