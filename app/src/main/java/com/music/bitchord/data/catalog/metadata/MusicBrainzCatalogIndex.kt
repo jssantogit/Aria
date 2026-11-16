@@ -335,20 +335,29 @@ internal class MusicBrainzCatalogIndex private constructor(
             // used by CoverArtArchive before any artwork reaches Compose.
             val rows = dao.verifiedArtistDiscographyRows(artistId)
             if (rows.isEmpty()) return@withTransaction rows
-            val now = System.currentTimeMillis()
-            val eligibleIds = rows.map { it.musicBrainzId }.toSet()
-            val verified = dao.verifiedGroupFronts(eligibleIds.toList())
-                .mapNotNull { record ->
-                    if (record.mbid !in eligibleIds) return@mapNotNull null
-                    val url = eligibleVerifiedGroupFrontUrl(
-                        MusicBrainzCoverArtCacheEntry(
-                            "verified-artist-group", record.mbid, record.artworkUri,
-                            record.fetchedAtEpochMs, record.thumbnailUri,
-                        ),
-                        now,
-                    ) ?: return@mapNotNull null
-                    record.mbid to url
-                }.toMap()
+            // MusicBrainz editorial permission does not grant CAA artwork
+            // permission. Preserve the group rows and persisted Front-v5
+            // evidence, but independently authorize the artwork projection.
+            val verified = cacheRead.read(
+                ProviderCapability.RELEASE_ARTWORK,
+                BuiltInProviderKeys.COVER_ART_ARCHIVE,
+                emptyMap<String, String>(),
+            ) {
+                val now = System.currentTimeMillis()
+                val eligibleIds = rows.map { it.musicBrainzId }.toSet()
+                dao.verifiedGroupFronts(eligibleIds.toList())
+                    .mapNotNull { record ->
+                        if (record.mbid !in eligibleIds) return@mapNotNull null
+                        val url = eligibleVerifiedGroupFrontUrl(
+                            MusicBrainzCoverArtCacheEntry(
+                                "verified-artist-group", record.mbid, record.artworkUri,
+                                record.fetchedAtEpochMs, record.thumbnailUri,
+                            ),
+                            now,
+                        ) ?: return@mapNotNull null
+                        record.mbid to url
+                    }.toMap()
+            }
             rows.map { it.copy(artworkUri = verified[it.musicBrainzId]) }
             }
         }
