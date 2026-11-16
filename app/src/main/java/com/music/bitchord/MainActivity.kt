@@ -372,6 +372,12 @@ import com.music.bitchord.ui.screens.explicitCoverUri
 import com.music.bitchord.ui.screens.SmartPlaylistBuilderScreen
 import com.music.bitchord.ui.screens.ExploreScreen
 import com.music.bitchord.ui.screens.SearchScreen
+import com.music.bitchord.ui.screens.AppleNativeDetailKind
+import com.music.bitchord.ui.screens.appleNativeDetailKind
+import com.music.bitchord.ui.screens.appleAlbumAsSharedDetail
+import com.music.bitchord.ui.screens.appleArtistAsSharedDetail
+import com.music.bitchord.ui.screens.AppleArtistCatalogExtras
+import com.music.bitchord.ui.screens.NativeCatalogDetailNotes
 import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.onboarding.OnboardingScreen
 import com.music.bitchord.ui.replay.ReplayScreen
@@ -788,9 +794,10 @@ private fun BitChordApp(
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
     val canonicalWorldwideReleases by viewModel.canonicalWorldwideReleases.collectAsStateWithLifecycle()
+    val appleHomeReleases by viewModel.appleHomeReleases.collectAsStateWithLifecycle()
     val canonicalWorldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
     val canonicalGenreResults by viewModel.canonicalGenreResults.collectAsStateWithLifecycle()
-    val canonicalExploreGenreCovers by viewModel.canonicalExploreGenreCovers.collectAsStateWithLifecycle()
+    val appleGenreReleases by viewModel.appleGenreReleases.collectAsStateWithLifecycle()
     var activeCanonicalGenre by remember {
         mutableStateOf<com.music.bitchord.ui.CanonicalExploreGenre?>(null)
     }
@@ -835,6 +842,12 @@ private fun BitChordApp(
     val libraryState by viewModel.library.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
+    val canonicalAppleArtworkPromotion by
+        viewModel.canonicalAppleArtworkPromotion.collectAsStateWithLifecycle()
+    val canonicalGroupCardApplePromotions by
+        viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
+    val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
+    val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
     val addonResults by viewModel.addonResults.collectAsStateWithLifecycle()
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
@@ -888,6 +901,19 @@ private fun BitChordApp(
     val detailStack by viewModel.detailStack.collectAsStateWithLifecycle()
     val releaseLibrary by viewModel.releaseLibrary.collectAsStateWithLifecycle()
     val detail = detailStack.lastOrNull()
+    // Storefront-scoped IDs render through the same first-party native detail
+    // building blocks. They never enter the MusicBrainz/YouTube detail stack.
+    val appleNativeKind = if (selectedTab == TAB_SEARCH && detail == null)
+        appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
+        else AppleNativeDetailKind.NONE
+    val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
+    val appleSharedVisual = when (appleNativeKind) {
+        AppleNativeDetailKind.ALBUM ->
+            (appleAlbumDetail as? UiState.Success)?.data?.let(::appleAlbumAsSharedDetail)
+        AppleNativeDetailKind.ARTIST ->
+            (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
+        AppleNativeDetailKind.NONE -> null
+    }
     // Local Music, Downloads and the other device folders draw as release
     // pages, but they have no artwork to wash the top inset in, so they keep
     // the plain bar; their top bar trades the overflow for a sort-and-view
@@ -906,7 +932,8 @@ private fun BitChordApp(
     // order never imposes itself on another, and every page keeps its own
     // across visits.
     val detailSongSorts by AppSettings.detailSongSorts.collectAsStateWithLifecycle()
-    val songSort = detail?.browseId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
+    val activeDetailSortId = detail?.browseId ?: appleSharedVisual?.page?.browseId
+    val songSort = activeDetailSortId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
     var songSortMenuOpen by remember { mutableStateOf(false) }
     var catalogAlbumOverflowOpen by remember(detail?.browseId) { mutableStateOf(false) }
     // A device folder's equivalents — its sort and whether it is a grid —
@@ -927,7 +954,7 @@ private fun BitChordApp(
     // Whether the open release page's filter box is up. Held out here with the
     // sort control because the button that opens it sits in the top bar beside
     // it, and reset with the page so a filter never follows you to the next one.
-    var detailSearching by rememberSaveable(detail?.browseId) { mutableStateOf(false) }
+    var detailSearching by rememberSaveable(activeDetailSortId) { mutableStateOf(false) }
     val likeStatuses by viewModel.likeStatuses.collectAsStateWithLifecycle()
     // Which tracks are being held on YouTube's own upload, so the player's menu
     // offers the way back out of a revert rather than the revert again.
@@ -945,7 +972,9 @@ private fun BitChordApp(
             viewModel.loadAccount()
         }
     }
-    LaunchedEffect(detail?.browseId) { detailActiveShelf = null }
+    LaunchedEffect(detail?.browseId, appleSharedVisual?.page?.browseId) {
+        detailActiveShelf = null
+    }
     LaunchedEffect(showSettings) {
         if (!showSettings) {
             settingsSection = null
@@ -1025,6 +1054,23 @@ private fun BitChordApp(
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
             .format(java.util.Date())
     }
+    // MusicBrainz ReleaseGroups are search *seeds* only; all displayed public
+    // album IDs are returned independently by Apple's exact storefront.
+    LaunchedEffect(selectedTab, canonicalWorldwideReleases) {
+        if (selectedTab == TAB_HOME && canonicalWorldwideReleases.isNotEmpty()) {
+            viewModel.loadAppleHomeEditorial(canonicalWorldwideReleases)
+        }
+    }
+
+    // Explore's MusicBrainz-tagged results only suggest candidate search
+    // terms. Apple independently verifies every displayed album and genre.
+    LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults) {
+        val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
+        val rows = (canonicalGenreResults as? UiState.Success)?.data
+            ?: return@LaunchedEffect
+        viewModel.loadAppleGenreEditorial(tag, rows)
+    }
+
     // Rendering Now Playing and the mini-player must not rehash and sort hundreds
     // of media URIs. Recompute the native Home shelves only when their input
     // snapshot, date, or the user's locale actually changes.
@@ -1127,34 +1173,36 @@ private fun BitChordApp(
     }
     val canonicalHomePublicPlaylists = publicPlaylistUi.homeShelf
     val canonicalHomePlaylistNotice = publicPlaylistUi.homeNotice
+    // Never substitute a MusicBrainz public release for an Apple storefront
+    // product on Home. Preserve local verified assets and independently linked
+    // public playlists; all editorial album tiles must be Apple IDs.
     val canonicalHomeDisplayShelves = remember(
-        canonicalHomeShelves, canonicalWorldwideReleases,
-        canonicalReleasesHeading, canonicalPicksHeading, canonicalTrendingHeading,
-        canonicalPublicAlbumsHeading, canonicalPublicSinglesHeading, canonicalPublicMoreHeading,
-        worldwideTrendingShelf, canonicalCommunityShelf, canonicalPersonalShelf,
-        canonicalHomePublicPlaylists, canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
+        canonicalHomeShelves, appleHomeReleases,
+        canonicalReleasesHeading, canonicalHomeGlobalDiscoveryHeading,
+        canonicalHomePublicPlaylists, canonicalFeedDate,
     ) {
-        com.music.bitchord.ui.canonicalHomeWithWorldwideEditorial(
-            localShelves = canonicalHomeShelves,
-            worldwideReleases = canonicalWorldwideReleases,
+        val apple = (appleHomeReleases as? UiState.Success)?.data.orEmpty()
+        val editorialAndLocal = com.music.bitchord.ui.appleFirstHomeShelves(
+            appleAlbums = apple,
+            existingLocalShelves = canonicalHomeShelves,
             releasesHeading = canonicalReleasesHeading,
-            picksHeading = canonicalPicksHeading,
-            trendingHeading = canonicalTrendingHeading,
-            worldwideTrending = worldwideTrendingShelf,
+            discoveryHeading = canonicalHomeGlobalDiscoveryHeading,
             todayIsoDate = canonicalFeedDate,
-            albumsHeading = canonicalPublicAlbumsHeading,
-            singlesHeading = canonicalPublicSinglesHeading,
-            moreHeading = canonicalPublicMoreHeading,
-            community = canonicalCommunityShelf,
-            personal = canonicalPersonalShelf,
-            publicPlaylists = canonicalHomePublicPlaylists,
-            globalDiscoveryHeading = canonicalHomeGlobalDiscoveryHeading,
+        )
+        editorialAndLocal + listOfNotNull(
+            canonicalHomePublicPlaylists?.takeIf { it.items.isNotEmpty() },
         )
     }
     val canonicalHomeState: UiState<List<HomeShelf>> = when {
         canonicalHomeDisplayShelves.isNotEmpty() -> UiState.Success(canonicalHomeDisplayShelves)
-        canonicalDiscoveryCatalog is UiState.Loading || canonicalWorldwideLoading -> UiState.Loading
-        else -> UiState.Error("Não foi possível carregar lançamentos públicos. Verifique a conexão e tente novamente.")
+        com.music.bitchord.ui.appleFirstHomeEditorialIsPending(
+            appleStillLoading = appleHomeReleases is UiState.Loading,
+            musicBrainzStillLoading = canonicalWorldwideLoading,
+            hasCandidateSeeds = canonicalWorldwideReleases.isNotEmpty(),
+        ) -> UiState.Loading
+        else -> UiState.Error(
+            "Nenhum lançamento Apple confirmado no momento. Atualize para tentar novamente.",
+        )
     }
     val canonicalGenrePlaylistNotice = publicPlaylistUi.genreNotice
     // The genre's public playlists are an independent ListenBrainz feed.
@@ -1162,11 +1210,32 @@ private fun BitChordApp(
     val activeGenrePlaylists = activeCanonicalGenre?.tag?.let { tag ->
         canonicalPublicPlaylists[tag].orEmpty()
     }.orEmpty()
-    val canonicalGenreState: UiState<List<HomeShelf>> =
-        com.music.bitchord.ui.canonicalGenreDisplayState(
-            activeCanonicalGenre, canonicalGenreResults, activeGenrePlaylists,
-            canonicalFeedDate,
+    val canonicalGenreState: UiState<List<HomeShelf>> = run {
+        val tag = activeCanonicalGenre?.tag
+        val appleGenre = tag?.let { appleGenreReleases[it] }
+        val playlistShelf = com.music.bitchord.ui.canonicalPublicPlaylistShelf(
+            stringResource(R.string.playlists), activeGenrePlaylists,
         )
+        when {
+            tag == null -> UiState.Success(emptyList())
+            appleGenre is UiState.Success -> {
+                val shelves = com.music.bitchord.ui.appleFirstGenreShelves(
+                    tag = tag, appleAlbums = appleGenre.data,
+                    publicPlaylists = playlistShelf,
+                    releaseHeading = canonicalReleasesHeading,
+                )
+                if (shelves.isNotEmpty()) UiState.Success(shelves)
+                else UiState.Error(
+                    "Nenhum lançamento confirmado pela Apple neste gênero.",
+                )
+            }
+            playlistShelf != null -> UiState.Success(listOf(playlistShelf))
+            appleGenre is UiState.Error -> appleGenre
+            canonicalGenreResults is UiState.Error ->
+                UiState.Error("Não foi possível obter candidatos para este gênero.")
+            else -> UiState.Loading
+        }
+    }
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
     // playlist's own page and its card both carry the id under the
@@ -1301,6 +1370,19 @@ private fun BitChordApp(
         }
     }
 
+    // Explore genre thumbnails must belong to an Apple product whose own
+    // primary genre is independently compatible with that category.
+    val appleExploreGenreCovers = remember(appleHomeReleases, appleGenreReleases) {
+        val homeProducts = (appleHomeReleases as? UiState.Success)?.data.orEmpty()
+        val genreProducts = appleGenreReleases.values.flatMap { state ->
+            (state as? UiState.Success)?.data.orEmpty()
+        }
+        com.music.bitchord.ui.appleExploreGenreCoverMap(
+            appleAlbums = homeProducts + genreProducts,
+            tags = com.music.bitchord.ui.canonicalExploreGenres.map { it.tag },
+        )
+    }
+
     val homeListState = rememberLazyListState()
     val exploreListState = rememberLazyListState()
     // Keep expensive coroutine/composition machinery outside BitChordApp's
@@ -1314,7 +1396,7 @@ private fun BitChordApp(
         showExplore = selectedTab == TAB_EXPLORE,
         showGenreDetail = activeCanonicalGenre != null,
         genreState = canonicalGenreState,
-        genreCovers = canonicalExploreGenreCovers,
+        genreCovers = appleExploreGenreCovers,
     )
     // Preserve the native genre-grid scroll when visiting an editorial detail.
     val genreListState = rememberLazyListState()
@@ -2059,6 +2141,19 @@ private fun BitChordApp(
     // Public recording metadata is a detail-only destination, not a local
     // RecordingId or a synthetic media item. Reuse the native recording shell.
     var communityMetadataRecording by remember { mutableStateOf<CanonicalCatalogSearchRow?>(null) }
+    // Home/Explore Apple cards use the existing Search-owned Apple detail.
+    // Track the original tab so album back restores its origin, not Search.
+    var appleShelfReturnTab by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != TAB_SEARCH) appleShelfReturnTab = null
+    }
+    val backAppleAlbum: () -> Unit = {
+        viewModel.backAppleEditorialAlbum()
+        appleShelfReturnTab?.let { origin ->
+            appleShelfReturnTab = null
+            selectedTab = origin
+        }
+    }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
         com.music.bitchord.data.catalog.metadata.publicPlaylistMbid(item.browseId)?.let { id ->
@@ -2073,6 +2168,19 @@ private fun BitChordApp(
         com.music.bitchord.ui.canonicalExploreGenreForBrowseId(item.browseId)?.let { genre ->
             activeCanonicalGenre = genre
             viewModel.loadCanonicalGenre(genre.tag)
+            return@click
+        }
+        // Storefront-scoped Apple cards cannot fall through to old MB browse
+        // or playback navigation. No title-to-MBID lookup is performed here.
+        if (item.browseId?.startsWith("itunes:") == true) {
+            if (viewModel.openAppleHomeAlbum(
+                item.browseId, item.title, item.subtitle, item.thumbnailUrl,
+            )) {
+                appleShelfReturnTab = selectedTab
+                selectedTab = TAB_SEARCH
+            }
+            // Even a malformed Apple ID must not fall through to the old
+            // album browse or playback path.
             return@click
         }
         val selectedLocal = canonicalHomeLocalPicks.firstOrNull {
@@ -2796,6 +2904,20 @@ private fun BitChordApp(
                 else showPlaylistLibrary = false
             }
             BackHandler(enabled = showSmartPlaylistBuilder) { showSmartPlaylistBuilder = false }
+            // Exact Apple storefront routes belong to the Search tab, not
+            // the legacy MusicBrainz/native detail stack. Nested album back
+            // returns to its Apple artist before Search, never to Home.
+            BackHandler(
+                enabled = selectedTab == TAB_SEARCH && detail == null &&
+                    !showSettings && !showReplay && !showSources &&
+                    !showSmartPlaylistBuilder && appleAlbumDetail != null,
+            ) { backAppleAlbum() }
+            BackHandler(
+                enabled = selectedTab == TAB_SEARCH && detail == null &&
+                    !showSettings && !showReplay && !showSources &&
+                    !showSmartPlaylistBuilder && appleAlbumDetail == null &&
+                    appleArtistDetail != null,
+            ) { viewModel.backAppleEditorialArtist() }
 
         }
         routeBackHandlers()
@@ -2844,6 +2966,8 @@ private fun BitChordApp(
                         communityMetadataRecording != null -> "community_recording:" + communityMetadataRecording!!.musicBrainzId
                         openedPublicPlaylist != null -> "public_playlist:" + openedPublicPlaylist!!.mbid
                         detail != null -> detail.browseId
+                        appleNativeDetailOpen -> if (appleNativeKind == AppleNativeDetailKind.ALBUM)
+                            "apple_native_album" else "apple_native_artist"
                         rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                         showCanonicalMyRatings -> "my_ratings"
                         unifiedLibraryCategory != null -> "unified_library"
@@ -3374,6 +3498,82 @@ private fun BitChordApp(
                             onEditSignatureApi = { editingSignatureApi = true },
                             contentPadding = listPadding,
                         )
+                    } else if (key == "apple_native_album" ||
+                        key == "apple_native_artist"
+                    ) {
+                        // The Apple ID changes only the data adapter, never the
+                        // whole-screen compositor. This is exactly the same
+                        // DetailScreen used for MusicBrainz, local, Library,
+                        // artist, album and playlist. No second Apple screen.
+                        val artistState = appleArtistDetail as? UiState.Success
+                        val unified = appleSharedVisual
+                        if (unified == null) {
+                            com.music.bitchord.ui.components.MessageState(
+                                if ((if (key == "apple_native_album") appleAlbumDetail
+                                    else appleArtistDetail) is UiState.Error
+                                ) "Não foi possível carregar os detalhes."
+                                else "Carregando…",
+                            )
+                        } else {
+                            val unifiedPage = unified.page
+                            val unifiedListState = detailListStates.getOrPut(
+                                "apple:${unifiedPage.browseId}"
+                            ) { LazyListState() }
+                            DetailScreen(
+                                page = unifiedPage,
+                                currentSong = null,
+                                isPlaying = false,
+                                listState = unifiedListState,
+                                activeShelf = detailActiveShelf,
+                                onActiveShelfChange = { detailActiveShelf = it },
+                                // No Apple commercial track becomes a Song,
+                                // media asset or synthetic MusicBrainz MBID.
+                                onSongClick = { _, _ -> },
+                                onSongLongPress = {},
+                                onSongSwipe = {},
+                                onShuffle = {},
+                                onArtistClick = { _, _ -> },
+                                onAddSuggested = {},
+                                onSectionItemClick = { item ->
+                                    val matched = artistState?.data?.albums
+                                        ?.singleOrNull { it.browseId == item.browseId }
+                                    if (matched != null) {
+                                        detailActiveShelf = null
+                                        viewModel.openAppleEditorialEntry(matched)
+                                    }
+                                },
+                                searching = detailSearching,
+                                onSearchingChange = { detailSearching = it },
+                                metadataTracks = unified.metadataTracks,
+                                artistHeroOverride = unified.artistHeroUrl,
+                                songSort = songSort,
+                                footerContent = { palette ->
+                                    if (key == "apple_native_artist") {
+                                        artistState?.data?.let { artistPage ->
+                                            item(key = "apple:source:paging") {
+                                                AppleArtistCatalogExtras(
+                                                    state = artistPage,
+                                                    palette = palette,
+                                                    onLoadMore = viewModel::loadMoreAppleEditorialArtist,
+                                                    onSearchMore = viewModel::searchMoreAppleEditorialArtist,
+                                                )
+                                            }
+                                        }
+                                    } else if (unified.notice != null ||
+                                        unified.attribution != null
+                                    ) {
+                                        item(key = "apple:source:notes") {
+                                            NativeCatalogDetailNotes(
+                                                notice = unified.notice,
+                                                attribution = unified.attribution,
+                                                palette = palette,
+                                            )
+                                        }
+                                    }
+                                },
+                                contentPadding = listPadding,
+                            )
+                        }
                     } else if (page != null) {
                         // Local Music, Downloads and the other device folders are
                         // this same release page: the header any playlist has, then
@@ -3511,6 +3711,9 @@ private fun BitChordApp(
                         )
                         DetailScreen(
                             page = page,
+                            appleGroupCardPromotions =
+                                if (page.browseId.startsWith("catalog:ARTIST:"))
+                                    canonicalGroupCardApplePromotions else emptyMap(),
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                             listState = pageDetailListState,
@@ -3632,9 +3835,17 @@ private fun BitChordApp(
                                 // A cold install has no local catalog to refill;
                                 // retry the public MusicBrainz release query too.
                                 viewModel.loadCanonicalWorldwideReleases(force = true)
+                                viewModel.loadAppleHomeEditorial(
+                                    canonicalWorldwideReleases, force = true,
+                                )
                             },
                             refreshing = MainViewModel.Feed.HOME in refreshing,
-                            onRefresh = { viewModel.refresh(MainViewModel.Feed.HOME) },
+                            onRefresh = {
+                                viewModel.refresh(MainViewModel.Feed.HOME)
+                                viewModel.loadAppleHomeEditorial(
+                                    canonicalWorldwideReleases, force = true,
+                                )
+                            },
                             pullState = homePull,
                             contentPadding = listPadding,
                             title = stringResource(R.string.home),
@@ -3658,7 +3869,7 @@ private fun BitChordApp(
                                 contentPadding = listPadding,
                                 canonicalGenres = com.music.bitchord.ui
                                     .canonicalExploreGenreShelf(
-                                        canonicalGenresHeading, canonicalExploreGenreCovers,
+                                        canonicalGenresHeading, appleExploreGenreCovers,
                                     ).items,
                                 onCanonicalGenreClick = { item ->
                                     onCanonicalShelfClick(
@@ -3677,10 +3888,18 @@ private fun BitChordApp(
                             },
                             onRetry = { activeCanonicalGenre?.let {
                                 viewModel.loadCanonicalGenre(it.tag)
+                                viewModel.loadAppleGenreEditorial(
+                                    it.tag, (canonicalGenreResults as? UiState.Success)
+                                        ?.data.orEmpty(), force = true,
+                                )
                             } },
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
                             onRefresh = { activeCanonicalGenre?.let {
                                 viewModel.loadCanonicalGenre(it.tag)
+                                viewModel.loadAppleGenreEditorial(
+                                    it.tag, (canonicalGenreResults as? UiState.Success)
+                                        ?.data.orEmpty(), force = true,
+                                )
                             } },
                             pullState = explorePull,
                             contentPadding = listPadding,
@@ -3885,6 +4104,13 @@ private fun BitChordApp(
                             searchingAddons = searchSource == SearchSource.ADDONS,
                             searchingCanonical = searchSource == SearchSource.CANONICAL,
                             canonicalResults = viewModel.canonicalResults.collectAsStateWithLifecycle().value,
+                            appleResults = viewModel.appleEditorialResults.collectAsStateWithLifecycle().value,
+                            appleArtistResults = viewModel.appleEditorialArtists.collectAsStateWithLifecycle().value,
+                            appleTrackResults = viewModel.appleEditorialTracks.collectAsStateWithLifecycle().value,
+                            onAppleOpen = viewModel::openAppleEditorialEntry,
+                            onAppleTrackOpen = viewModel::openAppleEditorialTrackAlbum,
+                            applePaging = viewModel.appleSearchPaging.collectAsStateWithLifecycle().value,
+                            onAppleLoadMore = viewModel::loadMoreApplePublicSearch,
                             canonicalPublicPlaylists = com.music.bitchord.ui.rememberCanonicalPublicPlaylistSearchUi(
                                 viewModel = viewModel,
                                 query = query,
@@ -4243,16 +4469,21 @@ private fun BitChordApp(
                 // The top-bar footprint is transparent on every page so the
                 // shared app-level gradient is continuous; its controls float
                 // as separate circles in both the glass and blur materials.
-                val isDetailVisible = detail != null &&
-                    (detail.type == BrowseType.ALBUM ||
-                        detail.type == BrowseType.PLAYLIST ||
-                        detail.type == BrowseType.ARTIST) &&
+                val visualDetail = detail ?: appleSharedVisual?.page
+                val isDetailVisible = visualDetail != null &&
+                    (visualDetail.type == BrowseType.ALBUM ||
+                        visualDetail.type == BrowseType.PLAYLIST ||
+                        visualDetail.type == BrowseType.ARTIST) &&
                     !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showWearOs && !showEqualizer && !showReplay
-                val chromePageColor = if (isDetailVisible) {
-                    detailPalette.background
-                } else {
-                    MaterialTheme.colorScheme.background
+                val appleDetailPalette = rememberArtworkPalette(
+                    imageUrl = appleSharedVisual?.artistHeroUrl
+                        ?: appleSharedVisual?.page?.thumbnailUrl,
+                )
+                val chromePageColor = when {
+                    !isDetailVisible -> MaterialTheme.colorScheme.background
+                    detail != null -> detailPalette.background
+                    else -> appleDetailPalette.background
                 }
                 // This is the bottom floor itself turned upside down, not a
                 // separately maintained approximation. Both edges therefore
@@ -4262,9 +4493,13 @@ private fun BitChordApp(
                 // bar, and a fade across them would only muddy them. It comes in as
                 // the page scrolls past that header, when content starts passing
                 // under the bar and needs the cover.
-                val artistListState = detail
+                val artistListState = visualDetail
                     ?.takeIf { isDetailVisible && it.type == BrowseType.ARTIST }
-                    ?.let { detailListStates.getOrPut(it.browseId) { LazyListState() } }
+                    ?.let {
+                        detailListStates.getOrPut(
+                            if (detail != null) it.browseId else "apple:${it.browseId}"
+                        ) { LazyListState() }
+                    }
                 val topFadeAlpha by remember(artistListState) {
                     derivedStateOf {
                         val list = artistListState ?: return@derivedStateOf 1f
@@ -4319,8 +4554,13 @@ private fun BitChordApp(
                             ?: stringResource(R.string.settings)
                         showReplay -> stringResource(R.string.replay)
                         openedPublicPlaylist != null -> openedPublicPlaylist?.title.orEmpty()
-                        detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()
+                        visualDetail != null && detailActiveShelf != null ->
+                            detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
+                        appleNativeKind == AppleNativeDetailKind.ALBUM ->
+                            (appleAlbumDetail as? UiState.Success)?.data?.album?.title.orEmpty()
+                        appleNativeKind == AppleNativeDetailKind.ARTIST ->
+                            (appleArtistDetail as? UiState.Success)?.data?.artist?.title.orEmpty()
 
                         selectedTab == TAB_HOME -> stringResource(R.string.home)
                         else -> tabs[selectedTab].label
@@ -4339,7 +4579,8 @@ private fun BitChordApp(
                     // the LazyColumn viewport.
                     showScrolledTitle = homeRootVisible && homeListState.firstVisibleItemIndex > 0,
                     backButtonHazeState = hazeState,
-                    trailingTitle = if (detail != null && detailActiveShelf != null) detail.title else null,
+                    trailingTitle = if (visualDetail != null && detailActiveShelf != null)
+                        visualDetail.title else null,
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
@@ -4349,7 +4590,7 @@ private fun BitChordApp(
                             (libraryShowAll != null && detail == null) ||
                             (showAllLocalRecentAdditions && detail == null) ||
                             (unifiedLibraryCategory != null) ||
-                            (detail != null && detailActiveShelf != null) -> true
+                            (visualDetail != null && detailActiveShelf != null) -> true
                         showPlaylistLibrary && !showSmartPlaylistBuilder && detail == null ->
                             // Always identify the Library's playlists collection.
                             // The in-list header can be scrolled off or restored
@@ -4367,6 +4608,11 @@ private fun BitChordApp(
                             (detailListStates["public_playlist:${openedPublicPlaylist!!.mbid}"]
                                 ?.firstVisibleItemIndex ?: 0) > 0
                         detail != null -> detailScrolled
+                        appleSharedVisual != null -> {
+                            val list = detailListStates["apple:${appleSharedVisual.page.browseId}"]
+                            (list?.firstVisibleItemIndex ?: 0) > 0 ||
+                                (list?.firstVisibleItemScrollOffset ?: 0) > detailTitleDrop
+                        }
                         else -> scrolled || selectedTab == TAB_SEARCH
                     },
                     refreshing = currentFeed != null && currentFeed in refreshing,
@@ -4419,6 +4665,10 @@ private fun BitChordApp(
                         openedPublicPlaylist != null -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
+                        appleNativeKind == AppleNativeDetailKind.ALBUM ->
+                            ({ backAppleAlbum(); Unit })
+                        appleNativeKind == AppleNativeDetailKind.ARTIST ->
+                            ({ viewModel.backAppleEditorialArtist(); Unit })
 
                         else -> null
                     },
@@ -4426,6 +4676,7 @@ private fun BitChordApp(
                     // Only on the Search tab itself, not on anything pushed over it.
                     accessory = if (
                         selectedTab == TAB_SEARCH && detail == null &&
+                        !appleNativeDetailOpen &&
                         libraryShowAll == null && unifiedLibraryCategory == null &&
                         !showSettings && !showAccountScrobbling &&
                         !showSources && !showListenTogether && !showWearOs && !showEqualizer && !showDiscord &&
@@ -4550,6 +4801,30 @@ private fun BitChordApp(
                                 }
                             }
                         }
+                        if (appleSharedVisual != null &&
+                            !showSettings && !showAccountScrobbling &&
+                            !showSources && !showReplay
+                        ) {
+                            if (appleNativeKind == AppleNativeDetailKind.ALBUM) {
+                                // Identical native search/sort controls used by
+                                // every album DetailScreen. Metadata-only
+                                // Apple tracks never expose a playback/menu ID.
+                                NativeCollectionSearchAction(
+                                    searching = detailSearching,
+                                    contentDescription = stringResource(
+                                        if (detailSearching) R.string.close_search
+                                        else R.string.search_this_list,
+                                    ),
+                                    onClick = { detailSearching = !detailSearching },
+                                )
+                                NativeCollectionSortAction(
+                                    contentDescription = stringResource(R.string.sort_songs),
+                                    onClick = { songSortMenuOpen = true },
+                                )
+                            } else if (appleNativeKind == AppleNativeDetailKind.ARTIST) {
+                                NativeArtistShareTopBarAction(appleSharedVisual.page.title)
+                            }
+                        }
                         if (!showSettings && !showAccountScrobbling && !showPlaylistLibrary) {
                             // Left of the account photo, and only on Library itself:
                             // a history is a record of what was played, which reads
@@ -4636,13 +4911,14 @@ private fun BitChordApp(
                             // there is a batch to report on — see
                             // [TopBarDownloadButton], which decides that for
                             // itself rather than being told.
-                            if (unifiedLibraryCategory == null) {
+                            if (unifiedLibraryCategory == null && !appleNativeDetailOpen) {
                                 TopBarDownloadButton(onClick = { showDownloadManager = true })
                             }
                             // Not on a release page, whose pill already carries
                             // three of its own controls — Apple Music leaves the
                             // profile off its album pages too.
-                            if (!isReleaseDetail && openedPublicPlaylist == null &&
+                            if (!isReleaseDetail && !appleNativeDetailOpen &&
+                                openedPublicPlaylist == null &&
                                 !shouldUseUnifiedAlbumDetailToolbar(
                                     unifiedLibraryCategory, unifiedLibraryDetailOpen,
                                     unifiedLibraryNestedAlbumOpen,
@@ -5411,7 +5687,7 @@ private fun BitChordApp(
                 hazeState = hazeState,
                 selected = songSort,
                 onSelect = { option ->
-                    detail?.browseId?.let { AppSettings.setDetailSongSort(it, option) }
+                    activeDetailSortId?.let { AppSettings.setDetailSongSort(it, option) }
                     songSortMenuOpen = false
                 },
                 // Flipping the date direction deliberately leaves the menu up:
@@ -5419,7 +5695,7 @@ private fun BitChordApp(
                 // before it played, and the open menu lets the direction flip
                 // read against the list reordering behind the frost.
                 onFlipDateDirection = {
-                    detail?.browseId?.let { browseId ->
+                    activeDetailSortId?.let { browseId ->
                         val next = when (songSort) {
                             SongSort.DATE_ADDED_DESC -> SongSort.DATE_ADDED_ASC
                             SongSort.DATE_ADDED_ASC -> SongSort.DATE_ADDED_DESC
