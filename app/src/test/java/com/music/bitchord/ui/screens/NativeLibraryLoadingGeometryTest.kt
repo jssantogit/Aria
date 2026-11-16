@@ -4,12 +4,12 @@ import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +36,10 @@ class NativeLibraryLoadingGeometryTest {
         val bounds = compose.onNodeWithTag("native-library-loading")
             .getUnclippedBoundsInRoot()
         assertTrue("Loader should occupy the remaining page, not the old 88dp row", bounds.height >= 450.dp)
+        val spinner = compose.onNodeWithTag("native-library-loading-indicator")
+            .getUnclippedBoundsInRoot()
+        assertEquals(bounds.center.x.value, spinner.center.x.value, 1f)
+        assertEquals(bounds.center.y.value, spinner.center.y.value, 1f)
     }
 
     @Test fun shortInlineLoaderStillPreservesMinimumReadableHeight() {
@@ -47,5 +51,9 @@ class NativeLibraryLoadingGeometryTest {
         val bounds = compose.onNodeWithTag("native-library-loading")
             .getUnclippedBoundsInRoot()
         assertTrue(bounds.height >= 88.dp)
+        val spinner = compose.onNodeWithTag("native-library-loading-indicator")
+            .getUnclippedBoundsInRoot()
+        assertEquals(bounds.center.x.value, spinner.center.x.value, 1f)
+        assertEquals(bounds.center.y.value, spinner.center.y.value, 1f)
     }
 }
