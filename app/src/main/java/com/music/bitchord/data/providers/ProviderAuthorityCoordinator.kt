@@ -170,6 +170,9 @@ internal class ProviderAuthorityCoordinator(
                 lastfmConfigured = lastfmReady,
                 listenBrainzConfigured = listenBrainzReady,
                 soulseekConfigured = soulseekReady,
+                itunesImplemented = itunesReady,
+                discogsImplemented = discogsReady,
+                discogsTokenConfigured = discogsTokenReady,
             ),
         ))
     }
@@ -183,6 +186,10 @@ internal class ProviderAuthorityCoordinator(
                 sources = cleanedSources,
                 lastfmConfigured = lastfmReady,
                 listenBrainzConfigured = listenBrainzReady,
+                soulseekConfigured = soulseekReady,
+                itunesImplemented = itunesReady,
+                discogsImplemented = discogsReady,
+                discogsTokenConfigured = discogsTokenReady,
             ),
         )
         session.refreshDescriptors(descriptors)
