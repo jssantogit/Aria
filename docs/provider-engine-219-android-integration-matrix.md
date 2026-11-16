@@ -75,3 +75,11 @@ The following changes are code-level cuts, **not** final integration/merge appro
 - **HTTP redirects:** `7886262` (MockWebServer regressions) → `b29d6ad` (implementation). Protected source HTTP calls enforce original scheme/host/port **on every actual network hop** via a network interceptor before sending redirect requests. Same-origin redirects continue; ordinary non-provider streams retain normal redirect handling. Custom source headers are not forwarded to a different HTTP origin.
 - **Verification gate:** new source/cache/Cast/redirect changes have not inherited the old green CI. Require Android unit tests, APK build, shared Automix and native presentation checks on the exact final documentation/code HEAD. Physical Soulseek and playback/caching acceptance and #212/#216 reconciliation remain independent blockers.
 
+
+## Retired watch-cache bypass — 2026-11-16
+
+- **Verified code boundary:** `PlaybackService` rejects archival `bitchord://watch?v=...` or other historical video-ID requests, but `AudioCache.playbackFactory` sits *outside* that resolver. Existing persisted spans could satisfy the logical request and play audio before the expected retired-route rejection.
+- **TDD cut:** `8b4a3b6` adds regression cases for historical vs local/canonical/source routes; `e94b10c` introduces a pure URI classification helper; `6799ac2` makes historical video-ID routes bypass cache and reach the existing denied resolver; `11b712b` and `8676874` guard opaque URIs against query parsing failures.
+- **Behavior:** historical video-ID bytes are not replayed solely from the old cache. Local MediaStore, `content://`, source-backed extensions and canonical remote media follow their existing cache/provider paths. This does not delete cache files as a side effect; separate cleanup remains a storage concern.
+- **CI:** require exact final HEAD Android unit/build and shared test SUCCESS before declaring this additional guard validated. No smoke was performed.
+
