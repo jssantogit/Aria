@@ -60,6 +60,32 @@ class ProviderCapabilitySessionTest {
 
     @Before fun clear() { prefs.edit().clear().commit() }
 
+    @Test fun scrobblingConsentNeverImplicitlyEnablesPersonalRecommendations(): Unit = runBlocking {
+        val provider = BuiltInProviderKeys.LISTENBRAINZ
+        val first = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(first).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false, includeDefaultArtworkBaseline = false,
+            listenBrainzConfigured = true, listenBrainzEnabled = true,
+        ))
+        assertTrue(first.gate.open(ProviderCapability.LISTENING_STATISTICS, provider) != null)
+        assertTrue(first.gate.open(ProviderCapability.PERSONAL_RECOMMENDATIONS, provider) == null)
+        assertTrue(first.update(ProviderCapability.PERSONAL_RECOMMENDATIONS, listOf(
+            ProviderChoice(provider, true, 0),
+        )))
+        val restored = ProviderCapabilitySession(store, emptyList())
+        assertTrue(ProviderAuthorityCoordinator(restored).migrateOnce(
+            lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
+            includeMusicBrainzBaseline = false, includeDefaultArtworkBaseline = false,
+            listenBrainzConfigured = true, listenBrainzEnabled = false,
+        ))
+        assertTrue(restored.gate.open(ProviderCapability.PERSONAL_RECOMMENDATIONS, provider) != null)
+        assertTrue(restored.gate.open(ProviderCapability.LISTENING_STATISTICS, provider) != null)
+        assertTrue(restored.update(ProviderCapability.LISTENING_STATISTICS, emptyList()))
+        assertTrue(restored.gate.open(ProviderCapability.PERSONAL_RECOMMENDATIONS, provider) != null)
+        assertTrue(restored.gate.open(ProviderCapability.LISTENING_STATISTICS, provider) == null)
+    }
+
     @Test fun publicChartMigrationPreservesExistingOptOutAcrossRestart(): Unit = runBlocking {
         val first = ProviderCapabilitySession(store, emptyList())
         assertTrue(ProviderAuthorityCoordinator(first).migrateOnce(
