@@ -85,6 +85,29 @@ class ProviderEngineEndToEndIntegrationTest {
     }
 
     @Test
+    fun migratedScrobblingIsDenyByDefaultAndPreservesExplicitConfiguredOptIn(): Unit = runBlocking {
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(ProviderCapabilityRegistry.inventory(
+                lastfmConfigured = true,
+                listenBrainzConfigured = true,
+            )),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session)
+        assertTrue(coordinator.migrateOnce(
+            lyricsOrder = emptyList(),
+            enabledLyrics = emptySet(),
+            sources = emptyList(),
+            lastfmConfigured = true,
+            listenBrainzConfigured = true,
+            lastfmEnabled = true,
+            listenBrainzEnabled = false,
+        ))
+        assertTrue(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LASTFM) != null)
+        assertNull(session.gate.open(ProviderCapability.LISTENING_STATISTICS, BuiltInProviderKeys.LISTENBRAINZ))
+    }
+
+    @Test
     fun endToEndSingleAuthorityMigrationPreservesOptOutsExcludesRetiredAndSurvivesRestart(): Unit = runBlocking {
         val store = ProviderPreferenceStore(prefs)
         val addonA = SourceConfig(
