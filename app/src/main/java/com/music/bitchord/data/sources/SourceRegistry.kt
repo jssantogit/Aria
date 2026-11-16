@@ -138,23 +138,15 @@ object SourceRegistry {
         stored: List<SourceConfig>,
         forceJioSaavnOff: Boolean,
     ): List<SourceConfig> {
-        // Existing YouTube rows are removed from stored source configuration.
-        // Musical history and persisted track identities live elsewhere and
-        // are not touched by this migration. JioSaavn remains opt-in.
-        val seeded = stored + listOf(SourceKind.JIOSAAVN)
-            .filter { kind -> stored.none { it.kind == kind } }
-            .map { SourceConfig(kind = it) }
-
-        // The retired built-in module is removed, while a custom module entered
-        // by the user is preserved.
-        return seeded
-            .filterNot { it.kind == SourceKind.MODULE || it.kind == SourceKind.YOUTUBE }
-            .map { config ->
-                when {
-                    config.kind == SourceKind.JIOSAAVN && forceJioSaavnOff -> config.copy(enabled = false)
-                    else -> config
-                }
-            }
+        // JioSaavn, YouTube and the obsolete built-in module are retired
+        // network backends. Keep historical track identities elsewhere, but
+        // never seed or restore these source configurations as runnable
+        // providers. User-defined addons and custom modules remain untouched.
+        return stored.filterNot {
+            it.kind == SourceKind.JIOSAAVN ||
+                it.kind == SourceKind.MODULE ||
+                it.kind == SourceKind.YOUTUBE
+        }
     }
 
     /**
@@ -259,7 +251,8 @@ object SourceRegistry {
             }
         } else configs
         return extensionEligibleConfigs(
-            projected.filter { it.enabled && it.isComplete && it.kind != SourceKind.YOUTUBE },
+            projected.filter { it.enabled && it.isComplete && it.kind != SourceKind.YOUTUBE &&
+                it.kind != SourceKind.JIOSAAVN },
             ProviderRuntime.gateOrNull(),
         )
     }
@@ -286,11 +279,13 @@ object SourceRegistry {
     /** User-visible source selection is provider-neutral. Retired YouTube
      * settings stay decoded for migration but cannot appear as an option. */
     internal fun displayConfigs(configs: List<SourceConfig>): List<SourceConfig> =
-        configs.filterNot { it.kind == SourceKind.YOUTUBE }
+        configs.filterNot { it.kind == SourceKind.YOUTUBE || it.kind == SourceKind.JIOSAAVN }
 
     /** An additional safety gate for legacy configs passed in by older callers. */
     internal fun audioCandidateConfigs(configs: List<SourceConfig>): List<SourceConfig> =
-        enabledConfigs(configs).filterNot { it.kind == SourceKind.YOUTUBE }
+        enabledConfigs(configs).filterNot {
+            it.kind == SourceKind.YOUTUBE || it.kind == SourceKind.JIOSAAVN
+        }
 
     /**
      * [active], minus the sources the ceiling on the connection in hand does
@@ -366,7 +361,7 @@ object SourceRegistry {
     /** No retired source can be re-enabled through saved settings or callers. */
     fun setEnabled(configId: String, enabled: Boolean) {
         val current = config(configId) ?: return
-        if (current.kind == SourceKind.YOUTUBE) return
+        if (current.kind == SourceKind.YOUTUBE || current.kind == SourceKind.JIOSAAVN) return
         if (current.kind == SourceKind.ADDON || current.kind == SourceKind.CUSTOM_MODULE) {
             val committed = ProviderRuntime.updateExtensionFromLegacyUi(configId, enabled, configs.value)
             if (committed == false) return
