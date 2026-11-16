@@ -54,8 +54,9 @@ internal fun providerAdaptiveSegmentCacheKey(
     owner: ProviderKey,
     url: String,
     requestKey: String? = null,
+    headers: Map<String, String> = emptyMap(),
 ): String {
-    return providerSegmentCacheKey(owner, url, requestKey)
+    return providerSegmentCacheKey(owner, url, requestKey, headers)
 }
 
 /**
