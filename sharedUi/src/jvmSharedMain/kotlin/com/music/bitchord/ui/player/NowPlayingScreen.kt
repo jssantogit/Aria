@@ -639,7 +639,10 @@ private fun SlidingPlayerDeck(
 }
 
 /** The portrait player draws the ORIGINAL AM-DECOMP More platter once. */
-internal fun nativePortraitAppleQueueOverflowGlyph() = AppleQueueVectors.More
+/** Original AM-DECOMP portrait platter is already part of this exact vector. */
+fun originalPortraitNowPlayingOverflowGlyph() = AppleQueueVectors.More
+
+internal fun nativePortraitAppleQueueOverflowGlyph() = originalPortraitNowPlayingOverflowGlyph()
 
 /**
  * Apple Music's Now Playing, closely: artwork that shrinks when paused, a
