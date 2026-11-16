@@ -428,13 +428,19 @@ object SourceRegistry {
     }
 
     private fun publish(next: List<SourceConfig>, persist: Boolean = true) {
-        configs.value = next
+        // The persisted migration is not the only entry point: a stale editor,
+        // legacy projection or restored snapshot can publish a source list.
+        // Never construct or persist a retired backend through this path.
+        val activeConfigs = next.filterNot {
+            it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE ||
+                it.kind == SourceKind.MODULE
+        }
+        configs.value = activeConfigs
         // Rebuilt against the previous map so that an untouched source keeps
         // the instance it already had, rather than being replaced by an
         // identical-but-cold one every time an unrelated row is toggled.
         val previous = instances
-        // Reject retired YouTube even if an old caller supplies a config.
-        instances = next.filterNot { it.kind == SourceKind.YOUTUBE }.associate { config ->
+        instances = activeConfigs.associate { config ->
             val existing = previous[config.id]?.takeIf { it.configuredBy(config) }
             config.id to (existing ?: build(config))
         }
@@ -450,12 +456,12 @@ object SourceRegistry {
             .forEach { it.release() }
         if (persist && ::prefs.isInitialized) {
             prefs.edit()
-                .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), next))
+                .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), activeConfigs))
                 .apply()
         }
         if (persist && ProviderRuntime.state?.value?.status == ProviderSessionStatus.READY) {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                ProviderRuntime.authorityOrNull()?.onSourcesChanged(next)
+                ProviderRuntime.authorityOrNull()?.onSourcesChanged(activeConfigs)
             }
         }
     }
