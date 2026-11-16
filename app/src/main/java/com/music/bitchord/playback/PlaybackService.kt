@@ -1647,6 +1647,10 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun resolveForCast(item: MediaItem): CastStream? = withContext(Dispatchers.IO) {
         if (item.isCanonicalRemotePlayback()) return@withContext null
         val uri = item.localConfiguration?.uri ?: return@withContext null
+        // A remote Cast receiver cannot cancel its own HTTP transfer when
+        // a source-backed addon/module is disabled in our canonical policy.
+        // Do not export any provider-owned logical URI as a naked CDN URL.
+        if (!canHandOffToCastReceiver(uri)) return@withContext null
         val resolver = streamResolver ?: return@withContext null
         val resolved = resolver.resolveDataSpec(DataSpec(uri)).uri
         if (resolved.scheme != "http" && resolved.scheme != "https") {
