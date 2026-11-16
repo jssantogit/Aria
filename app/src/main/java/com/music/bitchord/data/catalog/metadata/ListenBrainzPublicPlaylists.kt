@@ -748,7 +748,10 @@ internal class ListenBrainzPublicPlaylistClient(
     suspend fun artworkForRecordings(recordingMbids: List<String>): Map<String, String> =
         cacheRead.read(ProviderCapability.PUBLIC_PLAYLISTS,
             BuiltInProviderKeys.LISTENBRAINZ, emptyMap()) {
-            artworkForRecordingsUnchecked(recordingMbids)
+            cacheRead.read(ProviderCapability.RELEASE_ARTWORK,
+                BuiltInProviderKeys.COVER_ART_ARCHIVE, emptyMap()) {
+                artworkForRecordingsUnchecked(recordingMbids)
+            }
         }
 
     private suspend fun artworkForRecordingsUnchecked(recordingMbids: List<String>): Map<String, String> {
@@ -825,7 +828,16 @@ internal class ListenBrainzPublicPlaylistClient(
 
     suspend fun detail(selected: ListenBrainzPublicPlaylist): ListenBrainzPublicPlaylistDetail? =
         cacheRead.read(ProviderCapability.PUBLIC_PLAYLISTS,
-            BuiltInProviderKeys.LISTENBRAINZ, null) { detailUnchecked(selected) }
+            BuiltInProviderKeys.LISTENBRAINZ, null) {
+            val detail = detailUnchecked(selected) ?: return@read null
+            // CAA opt-out must not hide public JSPF track metadata: only
+            // strip release artwork URLs while keeping cached evidence.
+            val noArtwork = detail.copy(
+                tracks = detail.tracks.map { it.copy(artworkUrl = null) },
+            )
+            cacheRead.read(ProviderCapability.RELEASE_ARTWORK,
+                BuiltInProviderKeys.COVER_ART_ARCHIVE, noArtwork) { detail }
+        }
 
     private suspend fun detailUnchecked(selected: ListenBrainzPublicPlaylist): ListenBrainzPublicPlaylistDetail? {
         val id = checkedPlaylistId(selected.mbid) ?: return null
