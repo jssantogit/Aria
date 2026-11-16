@@ -9,6 +9,8 @@ import com.music.bitchord.data.catalog.allowedCanonicalLyricsSources
 import com.music.bitchord.data.catalog.metadata.CoverArtArchive
 import com.music.bitchord.data.catalog.metadata.CoverArtArchiveResponse
 import com.music.bitchord.data.catalog.metadata.CoverArtArchiveTransport
+import com.music.bitchord.data.catalog.metadata.MusicBrainzCoverArtStore
+import com.music.bitchord.data.catalog.metadata.MusicBrainzCoverArtCacheEntry
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchRepository
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
@@ -373,6 +375,26 @@ class ProviderEngineEndToEndIntegrationTest {
             ))
             assertNull(caa.findCover("271b31f8-8ab6-483c-97d9-8f0fabb2d4f4", null))
             assertEquals(0, caaCalls)
+
+            // Revocation also hides already verified CAA artwork from offline cache.
+            val cachedArtwork = CoverArtArchive(
+                transport = PolicyGuardedCoverArtArchiveTransport(
+                    delegate = object : CoverArtArchiveTransport {
+                        override suspend fun get(path: String) = CoverArtArchiveResponse(200, null)
+                    },
+                    gateProvider = { session.gate },
+                ),
+                store = object : MusicBrainzCoverArtStore {
+                    override suspend fun read(type: String, mbid: String) =
+                        MusicBrainzCoverArtCacheEntry(
+                            "verified-artist-group", groupMbid,
+                            "https://archive.org/verified.jpg",
+                            System.currentTimeMillis() - 1_000L,
+                        )
+                    override suspend fun write(value: MusicBrainzCoverArtCacheEntry) = Unit
+                },
+            )
+            assertNull(cachedArtwork.cachedVerifiedGroupCover(groupMbid))
 
             // AppleArtistArtRepository honors ARTIST_ARTWORK toggle without contacting HTTP when disabled.
             AppleArtistArtRepository.setPolicyGateForTests { session.gate }
