@@ -42,16 +42,22 @@ class CanonicalCatalogRatingMenuTest {
         compose.onNodeWithText("Configurações").assertExists()
     }
 
-    @Test fun threeDotMenuOpensFirstNativeRatingEditorWithoutStarPlaceholder() {
+    @Test fun heldMetadataRecordingOffersRatingWithoutAnySongEllipsis() {
         var edits = 0
         compose.setContent {
             MaterialTheme {
-                CanonicalCatalogRatingMenu(onEdit = { edits++ })
+                androidx.compose.foundation.layout.Column {
+                    CanonicalMetadataRecordingHeldActions(
+                        recordingId = "66dd7663-76a4-4e31-93ae-730ccd49d7d8",
+                        title = "Circles", artist = "ASTRO",
+                        onDismiss = {}, onRate = { edits++ },
+                        onAddToPlaylist = { _, _, _ -> },
+                    )
+                }
             }
         }
-        compose.onNodeWithText("Edit rating").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Song options").performClick()
-        compose.onNodeWithText("Edit rating").performClick()
+        compose.onNodeWithContentDescription("Song options").assertDoesNotExist()
+        compose.onNodeWithText("Avaliar faixa").performClick()
         compose.runOnIdle { assertEquals(1, edits) }
     }
 }
