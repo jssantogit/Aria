@@ -841,6 +841,7 @@ fun NowPlayingScreen(
     // Listening in a party whose host has taken the controls: the transport
     // keeps only play/pause, which from here moves this device alone.
     val controlsLocked = rememberControlsLocked()
+    val reduceMotion by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
     var showListenTogetherMembers by remember { mutableStateOf(false) }
     // Who's actually in the party is worth a look before the settings page —
     // see [ListenTogetherMembersSheet]. Only meaningful once there is a party
@@ -1134,7 +1135,7 @@ fun NowPlayingScreen(
     // [QUEUE_CARRY_FRACTION] has to fall back to 0 just as surely as one that
     // carried has to finish reaching 1.
     var queueReleased by remember { mutableIntStateOf(0) }
-    LaunchedEffect(queueOpen, queueDragging, queueReleased) {
+    LaunchedEffect(queueOpen, queueDragging, queueReleased, reduceMotion) {
         if (queueDragging) return@LaunchedEffect
         val target = if (queueOpen) 1f else 0f
         val from = queueSlide.floatValue
@@ -1143,7 +1144,9 @@ fun NowPlayingScreen(
             initialValue = from,
             targetValue = target,
             animationSpec = tween(
-                durationMillis = (QUEUE_TRAVEL_MS * abs(target - from)).roundToInt(),
+                durationMillis = playerPanelMotionMillis(
+                    (QUEUE_TRAVEL_MS * abs(target - from)).roundToInt(), reduceMotion,
+                ),
                 easing = FastOutSlowInEasing,
             ),
         ) { value, _ -> queueSlide.floatValue = value }
@@ -1210,7 +1213,8 @@ fun NowPlayingScreen(
     // ease for the queue and the lyrics both.
     val animatedCollapse = animateFloatAsState(
         targetValue = if (lyricsOpen || queueOpen) 1f else 0f,
-        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = playerPanelMotionMillis(420, reduceMotion),
+            easing = FastOutSlowInEasing),
         label = "sleeveCollapse",
     )
     // A queue tap/drag already owns a 420ms progress value. Reusing it avoids
@@ -1267,11 +1271,12 @@ fun NowPlayingScreen(
         // this replaces started at its first target.
         Animatable(if (Snapshot.withoutReadObservation { collapseDone }) 1f else 0f)
     }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reduceMotion) {
         snapshotFlow { collapseDone }.collectLatest { settled ->
             panelFade.animateTo(
                 if (settled) 1f else 0f,
-                tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                tween(durationMillis = playerPanelMotionMillis(200, reduceMotion),
+                    easing = FastOutSlowInEasing),
             )
         }
     }

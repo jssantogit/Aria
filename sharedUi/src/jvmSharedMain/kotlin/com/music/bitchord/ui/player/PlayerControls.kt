@@ -33,6 +33,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -108,6 +109,7 @@ import androidx.compose.ui.unit.sp
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import com.music.bitchord.ui.icons.BitChordIcons
+import com.music.bitchord.ui.components.GlobalMotionPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.listentogether.PartyMember
@@ -557,6 +559,31 @@ internal fun VolumeRow(
  * With the queue up the lyrics glyph steps aside and the capsule slides over
  * into its place, leaving the queue glyph — lit — as the way back.
  */
+/**
+ * Animate one actionable capsule at a time. The original overlapping
+ * AnimatedContent fade (old capsule out + new capsule in) double-exposed
+ * icons/labels during the queue transition. The exit is immediate; entry,
+ * motion and size use the original BitChord durations, not unverified Apple
+ * action-sheet timing. Reduce animations makes all four properties immediate.
+ */
+internal data class PlayerQueuePillMotion(
+    val slideMillis: Int,
+    val enterMillis: Int,
+    val exitMillis: Int,
+    val resizeMillis: Int,
+)
+internal fun playerQueuePillMotion(reduced: Boolean): PlayerQueuePillMotion =
+    PlayerQueuePillMotion(
+        slideMillis = GlobalMotionPolicy.duration(PILL_SLIDE_MS, reduced),
+        enterMillis = GlobalMotionPolicy.duration(180, reduced),
+        exitMillis = 0,
+        resizeMillis = GlobalMotionPolicy.duration(220, reduced),
+    )
+
+/** Shared panel/drawer durations are BitChord values, never Apple claims. */
+internal fun playerPanelMotionMillis(base: Int, reduced: Boolean): Int =
+    GlobalMotionPolicy.duration(base, reduced)
+
 @Composable
 internal fun PlayerActionRow(
     lyricsOpen: Boolean,
@@ -574,6 +601,8 @@ internal fun PlayerActionRow(
     /** Opens [ListenTogetherMembersSheet] rather than settings directly. */
     onOpenListenTogetherMembers: () -> Unit,
 ) {
+    val reduceMotion by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val motion = playerQueuePillMotion(reduceMotion)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         // Sized for the wider of the two capsules — the three-up one — in both
         // states. Computed for whichever was on screen it would change as they
@@ -585,7 +614,8 @@ internal fun PlayerActionRow(
         // slide relays out the row and recomposes nothing.
         val toStart = animateFloatAsState(
             targetValue = if (queueOpen) 1f else 0f,
-            animationSpec = tween(PILL_SLIDE_MS, easing = FastOutSlowInEasing),
+            animationSpec = if (reduceMotion) snap()
+                else tween(motion.slideMillis, easing = FastOutSlowInEasing),
             label = "playerBottomPillSlide",
         )
         Box(
@@ -596,8 +626,9 @@ internal fun PlayerActionRow(
             // the queue glyph, lit, is how you get back.
             AnimatedVisibility(
                 visible = !queueOpen,
-                enter = fadeIn(tween(180, delayMillis = 120)),
-                exit = fadeOut(tween(120)),
+                enter = fadeIn(tween(playerPanelMotionMillis(180, reduceMotion),
+                    delayMillis = playerPanelMotionMillis(120, reduceMotion))),
+                exit = fadeOut(tween(playerPanelMotionMillis(120, reduceMotion))),
                 modifier = Modifier.align(Alignment.CenterStart),
             ) {
                 BottomGlyph(
@@ -625,11 +656,15 @@ internal fun PlayerActionRow(
                 },
                 targetState = queueOpen,
                 transitionSpec = {
-                    (fadeIn(tween(180, delayMillis = 140)) togetherWith fadeOut(tween(140)))
-                        // Unclipped: the capsule's own rounded ends are what
-                        // the eye follows through the width change, and the
-                        // default clip cuts them square while it happens.
-                        .using(SizeTransform(clip = false) { _, _ -> tween(220) })
+                    (fadeIn(tween(motion.enterMillis)) togetherWith
+                        fadeOut(tween(motion.exitMillis)))
+                        // Retire the old clickable capsule immediately, then
+                        // animate only the incoming one. No double-exposure
+                        // of output / party beneath shuffle / repeat.
+                        // Unclipped: rounded capsule ends own their shape.
+                        .using(SizeTransform(clip = false) { _, _ ->
+                            tween(motion.resizeMillis)
+                        })
                 },
                 label = "playerBottomPill",
             ) { showQueueModes ->
