@@ -1060,10 +1060,15 @@ object AudioCache {
                 val provider = meta.get(META_SOURCE_PROVIDER, null as String?)
                 val instance = meta.get(META_SOURCE_INSTANCE, null as String?)
                 val scope = meta.get(META_SOURCE_SCOPE, null as String?)
-                val variantValid = !isScopedSourcePhysicalCacheKey(key) ||
-                    meta.get(META_SOURCE_PARTITION, null as String?) ==
-                        logicalSourceCachePartition(dataSpec.uri)
-                val matched = variantValid && provider != null && instance != null &&
+                // Revalidate the complete physical entry at OPEN, not just
+                // at deferred preflight. Another Media3 request, cache eviction
+                // or a changed account may have replaced its bytes/metadata.
+                val sourceIdentity = mediaIdIn(dataSpec.uri)
+                val partition = logicalSourceCachePartition(dataSpec.uri)
+                val physicalValid = !isScopedSourcePhysicalCacheKey(key) ||
+                    (sourceIdentity != null &&
+                        isVerifiedProgressiveSourceCache(key, meta, sourceIdentity, partition))
+                val matched = physicalValid && provider != null && instance != null &&
                     sourceCacheScopeMatches(
                         scope,
                         currentSourcePlaybackCacheScope(ProviderKey(provider, instance)),
