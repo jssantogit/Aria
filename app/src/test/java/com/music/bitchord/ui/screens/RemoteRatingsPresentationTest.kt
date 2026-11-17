@@ -52,16 +52,22 @@ class RemoteRatingsPresentationTest {
         starred = starred,
     )
 
-    @Test fun fallbackThreeDotRatingMenuUsesTheNativeCompactPopup() {
+    @Test fun firstLocalRatingRemainsAccessibleThroughMetadataHeldActions() {
         var edits = 0
         compose.setContent {
             MaterialTheme {
-                CanonicalCatalogRatingMenu(onEdit = { edits++ })
+                androidx.compose.foundation.layout.Column {
+                    CanonicalMetadataRecordingHeldActions(
+                        recordingId = "66dd7663-76a4-4e31-93ae-730ccd49d7d8",
+                        title = "Remote track", artist = "Remote artist",
+                        onDismiss = {}, onRate = { edits++ },
+                        onAddToPlaylist = { _, _, _ -> },
+                    )
+                }
             }
         }
-        compose.onNode(hasClickAction()).performClick()
-        compose.onNodeWithTag("native-compact-overflow").assertExists()
-        compose.onNodeWithTag("native-compact-menu-item").performClick()
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
+        compose.onNodeWithText("Avaliar faixa").performClick()
         compose.runOnIdle { assertEquals(1, edits) }
     }
 
