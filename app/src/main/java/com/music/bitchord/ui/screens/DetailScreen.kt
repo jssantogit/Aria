@@ -294,8 +294,6 @@ internal data class NativeDetailAttribution(
 @Composable
 fun DetailScreen(
     page: DetailPage,
-    /** Artist cards only: Group MBID -> exact promotional artwork and store URL. */
-    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
     currentSong: Song?,
     isPlaying: Boolean,
     onSongClick: (List<Song>, Int) -> Unit,
@@ -316,6 +314,8 @@ fun DetailScreen(
      * wherever it is seen rather than only from its own page.
      */
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
+    /** Artist cards only: Group MBID -> exact promotional artwork and store URL. */
+    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
     /**
      * Whether the filter box is open under the header. Owned by the caller
      * because the control that opens it sits in the top bar, beside the sort
