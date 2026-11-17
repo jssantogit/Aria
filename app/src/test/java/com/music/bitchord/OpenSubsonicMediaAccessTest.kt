@@ -1,6 +1,13 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.catalog.MediaAssetEntity
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityPolicy
+import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.ProviderDescriptor
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountDraft
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountPersistence
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountRecord
@@ -275,6 +282,14 @@ class OpenSubsonicMediaAccessTest {
             ),
         )
         credentials.readCalls = 0
+        val permitted = ProviderKey("opensubsonic", "home")
+        val capability = ProviderCapability.AUDIO_PLAYBACK
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(
+                permitted, setOf(capability), ProviderReadiness.READY,
+            )),
+            choices = mapOf(capability to listOf(ProviderChoice(permitted, true, 0))),
+        ))
         val asset = MediaAssetEntity(
             id = "asset-canonical",
             recordingId = "recording-canonical",
@@ -299,6 +314,7 @@ class OpenSubsonicMediaAccessTest {
                 assets = store,
                 accounts = repository,
                 saltFactory = { salt },
+                gateProvider = { gate },
             ),
         )
     }
