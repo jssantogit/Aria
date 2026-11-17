@@ -5,6 +5,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzRateLimiter
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraphResult
 import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
+import com.music.bitchord.data.catalog.metadata.BoundedMusicBrainzTransport
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchResult
 import com.music.bitchord.data.providers.ProviderCapability
@@ -272,4 +273,46 @@ class MusicBrainzTransportAdmissionTest {
         } catch (_: ProviderRequestDeniedException) { /* expected */ }
         assertFalse(contacted)
     }
+    @Test fun boundedProofCannotShareAnUnlimitedIdentityResponse(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(true, true, true))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var attempts = 0
+        val transport = object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            override suspend fun get(
+                path: String, parameters: Map<String, String>, userAgent: String,
+            ): String {
+                attempts++
+                entered.complete(Unit)
+                release.await()
+                return "full-body"
+            }
+            override suspend fun getLimited(
+                path: String, parameters: Map<String, String>, userAgent: String,
+                maxResponseBytes: Long,
+            ): String {
+                attempts++
+                assertEquals(256L, maxResponseBytes)
+                return "bounded-body"
+            }
+        }
+        val client = MusicBrainzClient(
+            transport = transport, admission = { gate },
+            singleFlight = ProviderSingleFlight(),
+            rateLimiter = MusicBrainzRateLimiter(delayMillis = {}),
+        )
+        val first = async {
+            client.get("recording/example", capability = ProviderCapability.IDENTITY)
+        }
+        entered.await()
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            client.getLimited("recording/example", mapOf("fmt" to "json"), 256,
+                capability = ProviderCapability.IDENTITY)
+        }
+        release.complete(Unit)
+        assertEquals("full-body", first.await())
+        assertEquals("bounded-body", second.await())
+        assertEquals(2, attempts)
+    }
+
 }

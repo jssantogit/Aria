@@ -527,6 +527,7 @@ internal class MusicBrainzCatalogIndex private constructor(
                     "release/$releaseMbid",
                     mapOf("inc" to "recordings", "fmt" to "xml"),
                     maxResponseBytes = MUSICBRAINZ_BOUNDED_RESPONSE_MAX_BYTES,
+                    capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                 )
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
