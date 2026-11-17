@@ -772,6 +772,18 @@ private fun BitChordApp(
     var heldCatalogSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
     var heldPublicPlaylistSearchRow by remember { mutableStateOf<CanonicalPublicPlaylistSearchRow?>(null) }
     var heldPublicPlaylistSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    // Remote search results retain provider/MediaAsset identity. They must not
+    // fall back to a search-row-owned solid popup or synthetic Song/videoId.
+    var heldServerSearchRow by remember {
+        mutableStateOf<com.music.bitchord.ui.screens.CanonicalServerSearchRow?>(null)
+    }
+    var heldServerSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != TAB_SEARCH) {
+            heldServerSearchRow = null
+            heldServerSearchOrigin = null
+        }
+    }
     // Catalog-only Recording IDs are valid playlist members without a playable
     // MediaAsset. The native picker never invents a Song or queues metadata.
     var searchMetadataPlaylistTarget by remember {
@@ -4276,6 +4288,8 @@ private fun BitChordApp(
                             ),
                             onCanonicalPlaylistOpen = openPublicSearchPlaylist,
                             onCanonicalPlaylistLongPress = { row ->
+                                heldServerSearchRow = null
+                                heldServerSearchOrigin = null
                                 heldCatalogSearchRow = null
                                 heldCatalogSearchOrigin = null
                                 heldPublicPlaylistSearchOrigin = LongPressOrigin.consume()
@@ -4284,6 +4298,8 @@ private fun BitChordApp(
                             canonicalDetail = viewModel.canonicalDetail.collectAsStateWithLifecycle().value,
                             onCanonicalOpen = viewModel::openCanonicalNativeDetail,
                             onCanonicalLongPress = { row ->
+                                heldServerSearchRow = null
+                                heldServerSearchOrigin = null
                                 heldPublicPlaylistSearchRow = null
                                 heldPublicPlaylistSearchOrigin = null
                                 heldCatalogSearchOrigin = LongPressOrigin.consume()
@@ -4318,6 +4334,17 @@ private fun BitChordApp(
                                         artistDisplay = row.artistDisplay,
                                     ),
                                 )
+                            },
+                            onServerLongPress = { row ->
+                                val source = LongPressOrigin.consume()
+                                if (source != null) {
+                                    heldCatalogSearchRow = null
+                                    heldCatalogSearchOrigin = null
+                                    heldPublicPlaylistSearchRow = null
+                                    heldPublicPlaylistSearchOrigin = null
+                                    heldServerSearchOrigin = source
+                                    heldServerSearchRow = row
+                                }
                             },
                             addonResults = addonResults,
                             addonHistory = viewModel.addonSearchHistory.collectAsStateWithLifecycle().value,
@@ -6327,6 +6354,42 @@ private fun BitChordApp(
                         Toast.LENGTH_LONG).show()
                 },
             )
+            // Indexed OpenSubsonic search results are real provider-owned
+            // MediaAssets, but not Songs. This native frosted menu preserves
+            // their exact source identity and never fabricates browse/video IDs.
+            val playHeldRemoteSearch: (com.music.bitchord.ui.screens.CanonicalServerSearchRow) -> Unit =
+                { row ->
+                    heldServerSearchRow = null
+                    heldServerSearchOrigin = null
+                    controller?.playCanonicalRemote(
+                        request = CanonicalRemotePlaybackRequest(
+                            recordingId = row.recordingId,
+                            mediaAssetId = row.mediaAssetId,
+                            providerKey = row.providerKey,
+                        ),
+                        metadata = CanonicalRemotePlaybackMetadata(
+                            title = row.title,
+                            artistDisplay = row.artistDisplay,
+                        ),
+                    )
+                }
+            HeldContextMenu(
+                item = heldServerSearchRow,
+                held = heldServerSearchOrigin,
+                hazeState = hazeState,
+                bottomChromeClearance = heldChromeClearance,
+                hostProvidesBlur = true,
+                onDismiss = {
+                    heldServerSearchRow = null
+                    heldServerSearchOrigin = null
+                },
+                onPreviewClick = playHeldRemoteSearch,
+            ) { row ->
+                com.music.bitchord.ui.components.NativeCompactMenuItem(
+                    label = "Reproduzir",
+                    onClick = { playHeldRemoteSearch(row) },
+                )
+            }
             searchMetadataPlaylistTarget?.let { target ->
                 com.music.bitchord.ui.screens.CanonicalSearchMetadataPlaylistPicker(
                     target = target,
