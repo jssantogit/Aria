@@ -2585,6 +2585,9 @@ private fun BitChordApp(
                 null
             }
         }
+        var artistTapResolving by remember(displayedSong.queueEntryId, displayedSong.videoId) {
+            mutableStateOf(false)
+        }
         var localRatingDialogOpen by remember(displayedSong.videoId) { mutableStateOf(false) }
         var playerRatingAnchor by remember(displayedSong.videoId) {
             mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
@@ -2731,33 +2734,77 @@ private fun BitChordApp(
                     BrowseType.ALBUM,
                 )
             },
-            // A credit with a channel id opens that channel straight away.
-            // YouTube does not give one to every credited artist - on a two-artist
-            // track it linked only the first, and neither the byline nor the
-            // album header had the second - so the rest go by name, through a
-            // lookup that opens a page only when the answer is that name
-            // exactly. Otherwise nothing opens, which beats opening a stranger.
-            //
-            // No artwork: this track's cover isn't the artist's
-            // picture, and the page fills its own in once loaded.
-            onOpenArtist = { id, name ->
-                dismissPlayer()
-                showReplay = false
-                settingsSubScreen = null
-                if (id != null) {
-                    viewModel.openDetail(
-                        id,
-                        name,
-                        context.getString(R.string.artist),
-                        null,
-                        BrowseType.ARTIST,
-                    )
-                } else {
-                    // Name-only artist navigation does not imply a YouTube
-                    // provider identity. Search the canonical catalog instead.
-                    selectedTab = TAB_SEARCH
-                    viewModel.setSearchSource(SearchSource.CANONICAL)
-                    viewModel.searchFor(name)
+            // Artist credits are not catalog search terms. The tap uses the
+            // same exact source-owned verification as the player ⋮ menu:
+            // MediaStore -> local Library, OpenSubsonic -> that server's
+            // Library, or an explicitly linked Apple/MusicBrainz artist ID.
+            // A tag contains an artist *name*, not a globally verified person.
+            onOpenArtist = artistTap@{ id, name ->
+                if (artistTapResolving) return@artistTap
+                artistTapResolving = true
+                playerSheetScope.launch {
+                    try {
+                        val evidence = com.music.bitchord.ui.components
+                            .verifiedPlayerSourceOwnedArtist(context, displayedSong)
+                        // A slow provider/Room read must not navigate away from
+                        // a different track that played while this tap awaited.
+                        if (player.song?.videoId != displayedSong.videoId ||
+                            (displayedSong.queueEntryId != null &&
+                                player.song?.queueEntryId != displayedSong.queueEntryId)
+                        ) return@launch
+                        when (val target = com.music.bitchord.ui.components.planPlayerArtistTapRoute(
+                            song = displayedSong,
+                            clickedId = id,
+                            clickedName = name,
+                            sourceOwned = evidence,
+                        )) {
+                            is com.music.bitchord.ui.components.PlayerArtistTapRoute.SourceOwned -> {
+                                val artist = target.artist
+                                dismissPlayer()
+                                viewModel.clearDetail()
+                                openedPublicPlaylist = null
+                                showAllLocalRecentAdditions = false
+                                libraryShowAll = null
+                                showReplay = false
+                                settingsSubScreen = null
+                                showSettings = false
+                                selectedTab = TAB_LIBRARY
+                                unifiedControls.sourceKey = artist.providerKey
+                                unifiedControls.stars = null
+                                pinnedLibraryRequest = com.music.bitchord.ui.screens.CanonicalLibraryPin(
+                                    com.music.bitchord.ui.screens.CanonicalLibrarySelection(
+                                        com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
+                                        artist.artistId,
+                                    ),
+                                    artist.artistName,
+                                    "",
+                                )
+                                unifiedLibrarySearching = false
+                                unifiedLibraryBackToken = 0
+                                unifiedLibraryCategory =
+                                    com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
+                            }
+                            is com.music.bitchord.ui.components.PlayerArtistTapRoute.Catalog -> {
+                                dismissPlayer()
+                                showReplay = false
+                                settingsSubScreen = null
+                                viewModel.openDetail(
+                                    target.browseId,
+                                    target.artistName,
+                                    context.getString(R.string.artist),
+                                    null,
+                                    BrowseType.ARTIST,
+                                )
+                            }
+                            null -> showQueueNotice("Artista não identificado nesta fonte")
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        showQueueNotice("Não foi possível abrir o artista desta fonte")
+                    } finally {
+                        artistTapResolving = false
+                    }
                 }
             },
             onOpenPlaybackSource = openSource@{
