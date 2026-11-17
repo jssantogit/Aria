@@ -233,6 +233,11 @@ internal class CanonicalLibraryAvailabilityRepository(
                 }
             }
         }
+        // A remote permission/account can change while Room is suspended.
+        // Never publish evidence from the older provider set.
+        if (providerConfiguration.configuredProviderKeys() != configured.toSet()) {
+            return ids.map { CanonicalAvailableRecordingTags(recordingId = it) }
+        }
         return ids.map { id ->
             val value = byRecording.getValue(id)
             CanonicalAvailableRecordingTags(
@@ -277,6 +282,9 @@ internal class CanonicalLibraryAvailabilityRepository(
                 if (kind == null) unclassifiedRecordings += id else kinds.add(kind)
             }
         }
+        if (providerConfiguration.configuredProviderKeys() != configured.toSet()) {
+            return emptyList()
+        }
         return evidence.map { (id, kinds) ->
             // Preserve verified positive copies even if a future provider is
             // unclassified; incomplete coverage cannot prove a negative.
@@ -297,7 +305,15 @@ internal class CanonicalLibraryAvailabilityRepository(
             .toList()
         if (providerKeys.isEmpty()) return emptyList()
 
-        return store.recordingIdsForProviders(providerKeys)
+        val rows = store.recordingIdsForProviders(providerKeys)
+        // Retain local music even if a remote capability was revoked while
+        // collecting remote rows. Never leak stale remote account IDs.
+        val permittedNow = providerConfiguration.configuredProviderKeys()
+        val safeRows = if (permittedNow == providerKeys.toSet()) rows
+            else store.recordingIdsForProviders(
+                listOf(CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER),
+            )
+        return safeRows
             .asSequence()
             .onEach { recordingId ->
                 require(recordingId.isNotBlank()) { "Canonical recordingId must not be blank" }
