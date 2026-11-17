@@ -528,4 +528,40 @@ class MusicBrainzCachedSearchRepositoryTest {
         }
 
 
+
+    @Test fun editorialCatalogRemainsButRemoteAssetBadgeDoesNotSurviveGrantRotation(): Unit =
+        runBlocking {
+            val db = Room.inMemoryDatabaseBuilder(
+                RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+            ).allowMainThreadQueries().build()
+            try {
+                val mbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+                val id = MusicBrainzCatalogIndex(
+                    db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(),
+                ).persistRecordings(listOf(
+                    MusicBrainzRecordingHit(mbid, "Magnetic", "ILLIT", 160000L),
+                )).getValue(mbid)
+                db.catalogDao().upsertMediaAsset(
+                    com.music.bitchord.data.catalog.MediaAssetEntity(
+                        "asset-remote", id, "opensubsonic:home", "track-1",
+                        "bitchord://canonical?recording=1",
+                        null, null, null, null,
+                    ),
+                )
+                val reads = AtomicInteger()
+                val repository = MusicBrainzCachedSearchRepository(
+                    db, cacheRead = ProviderCachedReadAccess { gate(search = true) },
+                    personalProviderKeys = {
+                        if (reads.getAndIncrement() == 0)
+                            setOf("local-mediastore", "opensubsonic:home")
+                        else setOf("local-mediastore")
+                    },
+                )
+                val result = repository.search("Magnetic")
+                assertEquals(listOf(mbid), result.recordings.map { it.musicBrainzId })
+                assertTrue(result.recordingMbidsWithAssets.isEmpty())
+                assertTrue(reads.get() >= 2)
+            } finally { db.close() }
+        }
+
 }
