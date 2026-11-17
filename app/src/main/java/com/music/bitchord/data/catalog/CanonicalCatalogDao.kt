@@ -1528,6 +1528,50 @@ internal interface CanonicalCatalogDao {
     suspend fun searchKnownMusicBrainzRecordings(
         query: String, limit: Int,
     ): List<com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit>
+    /**
+     * Filter to the listener's explicitly eligible personal providers BEFORE
+     * LIMIT. A shelf of editorial-only MBIDs cannot starve a valid local track
+     * from the cached fallback when MusicBrainz search is disabled.
+     */
+    @Query(
+        """
+        SELECT identity.externalId AS musicBrainzId,
+               COALESCE(NULLIF(TRIM(info.title), ''), recording.title) AS title,
+               COALESCE(NULLIF(TRIM(info.artistDisplay), ''), recording.artistDisplay) AS artistDisplay,
+               COALESCE(info.durationMs, recording.durationMs) AS durationMs,
+               info.hasOfficialAudioRelease AS hasOfficialAudioRelease,
+               info.isVideo AS isVideo
+        FROM catalog_external_identity AS identity
+        INNER JOIN catalog_recording AS recording ON recording.id = identity.entityId
+        LEFT JOIN musicbrainz_recording_enrichment info
+            ON info.recordingId = recording.id AND info.mbid = identity.externalId
+        WHERE identity.provider = 'musicbrainz'
+          AND identity.entityType = 'recording'
+          AND EXISTS (
+              SELECT 1 FROM catalog_media_asset owned
+              WHERE owned.recordingId = recording.id
+                AND owned.provider IN (:personalProviderKeys)
+          )
+          AND (
+            instr(lower(recording.title), lower(:query)) > 0
+            OR instr(lower(recording.artistDisplay), lower(:query)) > 0
+            OR instr(lower(info.title), lower(:query)) > 0
+            OR instr(lower(info.artistDisplay), lower(:query)) > 0
+          )
+        ORDER BY CASE WHEN EXISTS (
+                    SELECT 1 FROM catalog_media_asset playable
+                    WHERE playable.recordingId = recording.id
+                ) THEN 0 ELSE 1 END,
+                 COALESCE(NULLIF(TRIM(info.artistDisplay), ''), recording.artistDisplay)
+                    COLLATE NOCASE,
+                 COALESCE(NULLIF(TRIM(info.title), ''), recording.title)
+                    COLLATE NOCASE, identity.externalId
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchKnownMusicBrainzPersonalRecordings(
+        query: String, limit: Int, personalProviderKeys: List<String>,
+    ): List<com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit>
 
     /** Catalogued renditions are evidence, not a guarantee of account access. */
     @Query(

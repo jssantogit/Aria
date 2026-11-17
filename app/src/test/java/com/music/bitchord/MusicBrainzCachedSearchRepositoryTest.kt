@@ -336,4 +336,39 @@ class MusicBrainzCachedSearchRepositoryTest {
         } finally { db.close() }
     }
 
+    @Test fun personalMbidsCannotBeStarvedByEditorialResultsBeforeSqlLimit(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            val editorialHits = (1..30).map { number ->
+                MusicBrainzRecordingHit(
+                    "%08x-aaaa-4aaa-8aaa-%012x".format(number, number),
+                    "Magnetic Editorial %02d".format(number), "ILLIT", 161000L,
+                )
+            }
+            val owned = MusicBrainzRecordingHit(
+                "e614e432-ca77-41c1-82c1-4e3a24ebbb0c",
+                "Magnetic Local Last", "ILLIT", 160000L,
+            )
+            val ids = MusicBrainzCatalogIndex(db,
+                cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+                .persistRecordings(editorialHits + owned)
+            db.catalogDao().upsertMediaAsset(com.music.bitchord.data.catalog.MediaAssetEntity(
+                "local-only-last", ids.getValue(owned.musicBrainzId),
+                "local-mediastore", "local-track",
+                "content://media/external/audio/media/123", null, null, null, null,
+            ))
+            val repo = MusicBrainzCachedSearchRepository(
+                db, cacheRead = ProviderCachedReadAccess { gate(search = false) },
+            )
+            val snapshot = repo.search("Magnetic", MusicBrainzCachedSearchLimits(
+                artists = 0, groups = 0, releases = 0, recordings = 1,
+            ))
+            assertEquals(listOf(owned.musicBrainzId),
+                snapshot.recordings.map { it.musicBrainzId })
+            assertEquals(setOf(owned.musicBrainzId), snapshot.recordingMbidsWithAssets)
+        } finally { db.close() }
+    }
+
 }

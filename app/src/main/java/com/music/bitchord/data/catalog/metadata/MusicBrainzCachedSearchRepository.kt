@@ -103,16 +103,20 @@ internal class MusicBrainzCachedSearchRepository(
         // skip editorial-only artist/group/release queries while preserving recordings
         // backed by personally owned local/server MediaAssets.
         if (!editorialPermitted) {
-            if (limits.recordings == 0) return MusicBrainzCachedSearchSnapshot()
+            val eligible = eligiblePersonalProviders()
+            if (limits.recordings == 0 || eligible.isEmpty())
+                return MusicBrainzCachedSearchSnapshot()
             return database.withTransaction {
                 val dao = database.catalogDao()
-                val candidateRecordings = dao.searchKnownMusicBrainzRecordings(normalized, limits.recordings)
-                if (candidateRecordings.isEmpty()) return@withTransaction MusicBrainzCachedSearchSnapshot()
-                val eligible = eligiblePersonalProviders()
-                val withAssets = if (eligible.isEmpty()) emptySet() else
-                    dao.musicBrainzRecordingMbidsWithPersonalAssets(
-                        candidateRecordings.map { it.musicBrainzId }, eligible,
-                    ).toSet()
+                val candidateRecordings = dao.searchKnownMusicBrainzPersonalRecordings(
+                    normalized, limits.recordings, eligible,
+                )
+                if (candidateRecordings.isEmpty())
+                    return@withTransaction MusicBrainzCachedSearchSnapshot()
+                // The Room query has already verified ownership before LIMIT.
+                val withAssets = candidateRecordings.mapTo(LinkedHashSet()) {
+                    it.musicBrainzId
+                }
                 val scopedRecordings = candidateRecordings.map { hit ->
                     val provenances = buildSet {
                         add(CatalogEntryProvenance.ProviderEditorial(musicBrainz, ProviderCapability.CATALOG_SEARCH))
