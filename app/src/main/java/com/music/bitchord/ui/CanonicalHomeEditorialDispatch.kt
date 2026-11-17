@@ -1,6 +1,7 @@
 package com.music.bitchord.ui
 
 import com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
+import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderKey
@@ -10,6 +11,27 @@ import com.music.bitchord.data.providers.ProviderKey
  * Compose method so new provider conditions do not inflate JVM bytecode.
  * No provider ID or data is ever converted to another provider's identity.
  */
+/**
+ * Uses the same *visible* MB-native release shelf that Home projects.
+ * A raw query may contain only untyped/filtered rows, or personal rows may
+ * fill the feed without proving the MB catalog returned a usable release.
+ */
+internal fun shouldStartAppleHomeEditorial(
+    ordered: List<ProviderKey>,
+    mbLoading: Boolean,
+    visibleHomeShelves: List<HomeShelf>,
+    releasesHeading: String,
+): Boolean {
+    if (BuiltInProviderKeys.ITUNES !in ordered) return false
+    return when (ordered.firstOrNull()) {
+        BuiltInProviderKeys.ITUNES -> true
+        BuiltInProviderKeys.MUSICBRAINZ ->
+            !mbLoading &&
+                musicBrainzHomeEditorialShelves(visibleHomeShelves, releasesHeading).isEmpty()
+        else -> false
+    }
+}
+
 internal object CanonicalHomeEditorialDispatch {
     fun preferred(
         viewModel: MainViewModel,
@@ -28,14 +50,12 @@ internal object CanonicalHomeEditorialDispatch {
         viewModel: MainViewModel,
         ordered: List<ProviderKey>,
         mbLoading: Boolean,
-        mbHasProducts: Boolean,
+        visibleHomeShelves: List<HomeShelf>,
+        releasesHeading: String,
     ) {
-        if (BuiltInProviderKeys.ITUNES !in ordered) return
-        val first = ordered.firstOrNull()
-        if (first == BuiltInProviderKeys.ITUNES ||
-            (first == BuiltInProviderKeys.MUSICBRAINZ &&
-                !mbLoading && !mbHasProducts)
-        ) viewModel.loadAppleHomeEditorial()
+        if (shouldStartAppleHomeEditorial(
+            ordered, mbLoading, visibleHomeShelves, releasesHeading,
+        )) viewModel.loadAppleHomeEditorial()
     }
 
     fun maybeStartMusicBrainz(

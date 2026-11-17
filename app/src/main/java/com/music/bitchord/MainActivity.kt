@@ -1059,19 +1059,6 @@ private fun BitChordApp(
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
             .format(java.util.Date())
     }
-    // Apple Home samples exact Apple genre-indexed albums without MB seeds.
-    // An authorized second provider is used only when the primary has no
-    // recent discovery; provider-native IDs never cross the boundary.
-    LaunchedEffect(selectedTab, canonicalWorldwideLoading,
-        canonicalWorldwideReleases, catalogEditorialOrder,
-    ) {
-        if (selectedTab == TAB_HOME)
-            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartApple(
-                viewModel, catalogEditorialOrder,
-                canonicalWorldwideLoading, canonicalWorldwideReleases.isNotEmpty(),
-            )
-    }
-
     // Apple-first only queries its eligible secondary if the primary really
     // settled without a usable Apple product. Loading is never a miss.
     LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases) {
@@ -1137,6 +1124,18 @@ private fun BitChordApp(
             todayIsoDate = canonicalFeedDate,
         )
     }
+    // Apple native Home may start only when the actually renderable MB
+    // release shelf misses. Raw MB search hits alone are not that evidence.
+    LaunchedEffect(selectedTab, canonicalWorldwideLoading, canonicalHomeShelves,
+        catalogEditorialOrder,
+    ) {
+        if (selectedTab == TAB_HOME)
+            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartApple(
+                viewModel, catalogEditorialOrder, canonicalWorldwideLoading,
+                canonicalHomeShelves, canonicalReleasesHeading,
+            )
+    }
+
     // Explore reuses the native shelf UI, but not Home's entire curated feed.
     // Keep Home's three editorial shelves untouched and make Explore release-first.
     // The current community week chart leads only when its exact Recording
