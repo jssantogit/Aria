@@ -337,7 +337,6 @@ class OpenSubsonicMediaAccessTest {
                 secretReplacement = secret,
             ),
         )
-        credentials.readCalls = 0
         val permitted = ProviderKey("opensubsonic", "home")
         val capabilities = setOf(
             ProviderCapability.PERSONAL_LIBRARY, ProviderCapability.AUDIO_PLAYBACK,
@@ -364,6 +363,10 @@ class OpenSubsonicMediaAccessTest {
         val store = FakeMediaAssetStore(
             linkedMapOf(asset.id to asset),
         )
+        // Computing the opaque catalog providerKey for the fixture above
+        // reads the fake credential once; production resolve must still defer
+        // any subsequent credential access until the runtime request.
+        credentials.readCalls = 0
         return Fixture(
             persistence = persistence,
             credentials = credentials,
