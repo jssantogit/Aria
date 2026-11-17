@@ -60,13 +60,16 @@ class SourceRegistryCacheMigrationTest {
             """not valid json""", listOf(known())))
     }
 
-    @Test fun aFutureKindWithReusedIdIsPreservedRatherThanOverwritten() {
+    @Test fun futureKindWithReusedIdRefusesAmbiguousRuntimeWrite() {
         val raw = """[{"id":"known","kind":"FUTURE_SERVER","settings":"future"}]"""
-        val output = requireNotNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+        assertNull(SourceRegistry.sourcesDocumentPreservingUnknown(
             raw, listOf(known())))
-        val elements = json.parseToJsonElement(output).jsonArray
-        assertEquals(1, elements.size)
-        assertEquals("FUTURE_SERVER", elements[0].jsonObject["kind"]?.jsonPrimitive?.content)
+        // Unknown values survive intact when there is no conflicting active
+        // source: a later version can still decode the saved provider.
+        val unchanged = requireNotNull(
+            SourceRegistry.sourcesDocumentPreservingUnknown(raw, emptyList()))
+        assertEquals(json.parseToJsonElement(raw),
+            json.parseToJsonElement(unchanged))
     }
     @Test fun malformedFutureIdDoesNotCrashPreferenceMigration() {
         val raw = """[{"id":{"opaque":"future"},"kind":"FUTURE_SERVER",

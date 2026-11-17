@@ -233,6 +233,20 @@ object SourceRegistry {
                 (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull
             }.getOrNull()
         }.toSet()
+        // A future/unknown row may reserve the SAME id that this build is
+        // trying to publish as a known source. Silently skipping that active
+        // config after a successful commit would create a non-durable runtime
+        // identity. Refuse the ambiguous write and retain the original bytes.
+        val unknownIds = elements.mapNotNull { element ->
+            val known = runCatching {
+                json.decodeFromJsonElement(SourceConfig.serializer(), element)
+            }.getOrNull()
+            if (known != null) return@mapNotNull null
+            runCatching {
+                (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull
+            }.getOrNull()
+        }.toSet()
+        if (active.any { it.id in unknownIds }) return null
         val preserved = elements.mapNotNull { element ->
             val decoded = runCatching {
                 json.decodeFromJsonElement(SourceConfig.serializer(), element)
