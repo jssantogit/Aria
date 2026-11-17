@@ -3976,9 +3976,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             canonicalGenreEpoch.invalidateAndNext()
                             _canonicalGenreResults.value = UiState.Success(emptyList())
                         }
-                        if (BuiltInProviderKeys.ITUNES !in nextEditorial ||
-                            BuiltInProviderKeys.MUSICBRAINZ !in nextEditorial
-                        ) {
+                        // Apple Home now owns its native genre sample outright:
+                        // revoking MusicBrainz MUST NOT evict Apple cards or
+                        // cancel its independent editorial work.
+                        if (BuiltInProviderKeys.ITUNES !in nextEditorial) {
                             appleHomeJob?.cancel()
                             appleHomeEpoch.invalidateAndNext()
                             _appleHomeReleases.value = UiState.Success(emptyList())
