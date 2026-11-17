@@ -75,7 +75,7 @@ class OpenSubsonicMediaAccessSecurityTest {
         val asset = MediaAssetEntity(
             id = "asset-1",
             recordingId = "recording-1",
-            provider = "opensubsonic:home",
+            provider = com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey(accounts.savedConfig()!!),
             sourceKey = "server-track-1",
             uri = "opensubsonic://asset/home/server-track-1",
             path = null,
