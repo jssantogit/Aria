@@ -90,7 +90,7 @@ internal data class AppleMusicWebToken(val value: String, val expiresAtEpochSeco
  * signature validation or a claim that the API is guaranteed for third parties.
  */
 internal object AppleMusicWebTokenParser {
-    private val candidates = Regex("""eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}""")
+    private val candidates = Regex("""eyJ[A-Za-z0-9_-]{12,}\.eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{16,}""")
     fun pick(bundle: String, nowEpochSeconds: Long): AppleMusicWebToken? =
         candidates.findAll(bundle).mapNotNull { match ->
             val jwt = match.value
