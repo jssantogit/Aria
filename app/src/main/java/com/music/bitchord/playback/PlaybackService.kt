@@ -3,6 +3,8 @@ package com.music.bitchord.playback
 import com.music.bitchord.data.catalog.artistCreditFromSubtitle
 
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.configuredCanonicalPersonalProviderKeys
+import com.music.bitchord.data.catalog.isCanonicalPersonalProviderCurrentlyAuthorized
 import com.music.bitchord.data.catalog.RecordingEntity
 import com.music.bitchord.data.catalog.MediaAssetEntity
 import com.music.bitchord.data.catalog.OpenSubsonicLibraryProviderConfigurationReader
@@ -394,15 +396,13 @@ class PlaybackService : MediaLibraryService() {
         query: String,
         limit: Int,
     ): List<Song> {
-        val allowed = com.music.bitchord.data.catalog
-            .configuredCanonicalPersonalProviderKeys(this)
+        val allowed = configuredCanonicalPersonalProviderKeys(this)
             .filter { it.startsWith("opensubsonic:") || it.startsWith("jellyfin:") }
         if (allowed.isEmpty()) return emptyList()
         val rows = CanonicalCatalogDatabase.get(this).catalogDao()
             .searchCanonicalRemoteServerAssets(query, limit = limit, providerKeys = allowed)
             .filter {
-                com.music.bitchord.data.catalog
-                    .isCanonicalPersonalProviderCurrentlyAuthorized(this, it.providerKey)
+                isCanonicalPersonalProviderCurrentlyAuthorized(this, it.providerKey)
             }
         return canonicalAutoSongs(rows)
     }
