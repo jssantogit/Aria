@@ -370,6 +370,7 @@ fun DetailScreen(
     canonicalPublicTopTracks: List<CanonicalCatalogSearchRow> = emptyList(),
     canonicalPublicTopSampled: Boolean = false,
     onCanonicalPublicTopOpen: ((CanonicalCatalogSearchRow) -> Unit)? = null,
+    onCanonicalPublicTopHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
     /** Verified current MusicBrainz ReleaseGroup, never an inferred local Song. */
     canonicalFeaturedRelease: CanonicalCatalogSearchRow? = null,
     onCanonicalFeaturedReleaseOpen: ((CanonicalCatalogSearchRow) -> Unit)? = null,
@@ -1026,6 +1027,7 @@ fun DetailScreen(
                             palette = palette,
                             sampled = canonicalPublicTopSampled,
                             onRecordingOpen = onCanonicalPublicTopOpen,
+                            onRecordingHold = onCanonicalPublicTopHold,
                         )
                     }
                 } else if (isArtist && (

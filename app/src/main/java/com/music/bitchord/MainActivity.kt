@@ -3827,6 +3827,12 @@ private fun BitChordApp(
                                     CanonicalCollectionIntent.PLAY_NOW,
                                 )
                             },
+                            // Metadata-only recordings have no tap/play target.
+                            // Holding them opens their existing metadata route
+                            // instead of restoring a forbidden three-dot icon.
+                            onCanonicalPublicTopHold = { recording ->
+                                communityMetadataRecording = recording
+                            },
                             canonicalFeaturedRelease = artistFeaturedRelease,
                             onCanonicalFeaturedReleaseOpen = { release ->
                                 viewModel.openCanonicalNativeDetail(release)

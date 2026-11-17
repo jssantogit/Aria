@@ -250,10 +250,10 @@ fun NativeDetailTrackRowFrame(
             .fillMaxWidth()
             .alpha(opacity)
             .background(background)
-            .then(if (onClick != null) {
+            .then(if (onClick != null || onLongPress != null) {
                 Modifier.longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
                     .contextClick(onMore ?: onLongPress)
-            } else Modifier)
+            } else Modifier.contextClick(onMore))
             .padding(horizontal = horizontalInset, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

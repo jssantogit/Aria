@@ -2,6 +2,10 @@ package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onLongClick as semanticsOnLongClick
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -83,7 +87,7 @@ object LongPressOrigin {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.longPressMenuClickable(
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
     enabled: Boolean = true,
 ): Modifier {
@@ -101,9 +105,29 @@ fun Modifier.longPressMenuClickable(
             held()
         }
     }
+    // A metadata-only catalog row may offer a long-press action without a
+    // playable click. combinedClickable(onClick = {}) would falsely publish
+    // a Click semantic action and consume taps, so use a hold-only detector.
+    // Both paths still record the same LongPressOrigin for the host's card.
+    val gestureModifier = when {
+        onClick != null -> Modifier.combinedClickable(
+            enabled = enabled, onClick = onClick, onLongClick = longClick,
+        )
+        longClick != null -> Modifier
+            .pointerInput(longClick, enabled) {
+                if (enabled) detectTapGestures(onLongPress = { longClick() })
+            }
+            .then(if (enabled) Modifier.semantics {
+                semanticsOnLongClick {
+                    longClick()
+                    true
+                }
+            } else Modifier)
+        else -> Modifier
+    }
     return this
         .onPlaced { capture.coordinates = it }
-        .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = longClick)
+        .then(gestureModifier)
         .drawWithContent {
             drawContent()
             // Reading the counter is what subscribes this draw to a hold;
