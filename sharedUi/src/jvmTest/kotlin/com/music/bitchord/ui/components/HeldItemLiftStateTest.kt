@@ -1,43 +1,17 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.ui.geometry.Rect
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** A preview must hide its source only while a successful image copy is lifted. */
+/** Native content remains painted; holding a card cannot replace it with a bitmap. */
 class HeldItemLiftStateTest {
-    @Test fun liftingHidesSourceButDismissRestoresIt() {
-        val held = HeldItem(Rect(0f, 0f, 40f, 40f))
-        assertFalse(held.isLifted)
-        held.markLifted()
-        assertTrue(held.isLifted)
+    @Test fun aHoldOnlyRecordsTheOriginalBounds() {
+        val original = Rect(24f, 100f, 344f, 420f)
+        val held = HeldItem(original)
+        assertEquals(original, held.bounds)
+        // A dismissal cannot leave a hidden source or a duplicated snapshot.
         held.releaseLift()
-        assertFalse(held.isLifted)
-    }
-
-    @Test fun aPendingHoldDrawsTheCapturedLayerInsteadOfDrawingTheSourceTwice() {
-        org.junit.Assert.assertEquals(HeldCaptureFrame.CAPTURED, heldCaptureFrame(
-            lifted = false, capturePending = true,
-        ))
-    }
-
-    @Test fun anActiveLiftHidesSourceAndAnOrdinaryFrameKeepsItsOriginalPaint() {
-        org.junit.Assert.assertEquals(HeldCaptureFrame.HIDDEN, heldCaptureFrame(
-            lifted = true, capturePending = false,
-        ))
-        org.junit.Assert.assertEquals(HeldCaptureFrame.HIDDEN, heldCaptureFrame(
-            lifted = true, capturePending = true,
-        ))
-        org.junit.Assert.assertEquals(HeldCaptureFrame.SOURCE, heldCaptureFrame(
-            lifted = false, capturePending = false,
-        ))
-    }
-
-    @Test fun delayedBitmapCannotRehideSourceAfterEarlyDismiss() {
-        val held = HeldItem(Rect(0f, 0f, 40f, 40f))
-        held.releaseLift()
-        held.markLifted()
-        assertFalse(held.isLifted)
+        assertEquals(original, held.bounds)
     }
 }
