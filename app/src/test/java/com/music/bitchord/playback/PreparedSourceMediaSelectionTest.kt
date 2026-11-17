@@ -148,4 +148,78 @@ class PreparedSourceMediaSelectionTest {
         } catch (_: IOException) {}
     }
 
+    /**
+     * Media3 must open a provider-scoped physical cache bucket using only a
+     * logical source URI plus opaque customCacheKey. This is the critical
+     * offline bridge: no signed URL or previous HTTP headers are reconstructed.
+     */
+    @Test fun completePhysicalMedia3CacheReplaysThroughLogicalUriWithoutNetwork() {
+        val owner = ProviderKey("addon", "one")
+        val cap = ProviderCapability.EXTENSION_PLAYBACK
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(owner, setOf(cap), ProviderReadiness.READY)),
+            mapOf(cap to listOf(ProviderChoice(owner, true, 0))),
+        ))
+        val lease = requireNotNull(sourceCacheReadLease("addon", "one", true, gate))
+        val key = providerAdaptiveSegmentCacheKey(
+            owner, "https://cdn.example/song.flac?secret=ephemeral", null,
+            mapOf("Authorization" to "Bearer account-one"), "stable-cache-realm",
+        )
+        val prepared = prepareCachedProgressiveSourceMediaSelection(logical, lease, key)
+        val folder = java.io.File(
+            org.robolectric.RuntimeEnvironment.getApplication().cacheDir,
+            "source-offline-cache-test-" + java.util.UUID.randomUUID(),
+        )
+        val cache = androidx.media3.datasource.cache.SimpleCache(
+            folder, androidx.media3.datasource.cache.NoOpCacheEvictor(),
+            androidx.media3.database.StandaloneDatabaseProvider(
+                org.robolectric.RuntimeEnvironment.getApplication()),
+        )
+        val audio = "ID3---audio-payload-for-offline".toByteArray()
+        val keyFactory = androidx.media3.datasource.cache.CacheKeyFactory { spec ->
+            scopedOfflineSourceCacheKey(spec.uri.scheme, spec.uri.authority, spec.key)
+                ?: spec.key ?: spec.uri.toString()
+        }
+        fun readAll(source: androidx.media3.datasource.DataSource, spec: DataSpec): ByteArray {
+            val result = java.io.ByteArrayOutputStream()
+            try {
+                source.open(spec)
+                val bytes = ByteArray(64)
+                while (true) {
+                    val count = source.read(bytes, 0, bytes.size)
+                    if (count == -1) break
+                    result.write(bytes, 0, count)
+                }
+            } finally { source.close() }
+            return result.toByteArray()
+        }
+        try {
+            val writer = androidx.media3.datasource.cache.CacheDataSource.Factory()
+                .setCache(cache).setCacheKeyFactory(keyFactory)
+                .setUpstreamDataSourceFactory(androidx.media3.datasource.DataSource.Factory {
+                    androidx.media3.datasource.ByteArrayDataSource(audio)
+                }).createDataSource()
+            val physical = DataSpec.Builder().setUri(
+                "https://cdn.example/song.flac?secret=ephemeral").setKey(key).build()
+            assertTrue(readAll(writer, physical).contentEquals(audio))
+            assertTrue(cache.isCached(key, 0, audio.size.toLong()))
+
+            // The offline reader deliberately has no usable network factory.
+            val offline = androidx.media3.datasource.cache.CacheDataSource.Factory()
+                .setCache(cache).setCacheKeyFactory(keyFactory)
+                .setUpstreamDataSourceFactory(androidx.media3.datasource.DataSource.Factory {
+                    throw AssertionError("Unexpected provider/network resolution")
+                }).createDataSource()
+            val local = requireNotNull(prepared.item.localConfiguration)
+            val logicalSpec = DataSpec.Builder().setUri(local.uri)
+                .setKey(requireNotNull(local.customCacheKey)).build()
+            assertTrue(readAll(offline, logicalSpec).contentEquals(audio))
+            assertEquals(logical.localConfiguration?.uri, local.uri)
+            assertFalse(local.uri.toString().contains("ephemeral"))
+        } finally {
+            cache.release()
+            folder.deleteRecursively()
+        }
+    }
+
 }
