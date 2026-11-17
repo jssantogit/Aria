@@ -38,6 +38,13 @@ import java.nio.charset.CodingErrorAction
 
 internal const val MUSICBRAINZ_BOUNDED_RESPONSE_MAX_BYTES = 2_000_000L
 
+/**
+ * Non-retriable XML proof body failure. A deterministic size violation
+ * must not re-download the same oversized response in the retry loop.
+ * Transient transport IO still follows the standard retry policy.
+ */
+internal class MusicBrainzBoundedResponseException(message: String) : IOException(message)
+
 internal interface MusicBrainzTransport {
     suspend fun get(
         path: String,
@@ -121,7 +128,7 @@ internal class KtorMusicBrainzTransport(
     private suspend fun HttpResponse.readBodyLimited(maxBytes: Long): String {
         val declaredLength = headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (declaredLength != null && declaredLength > maxBytes) {
-            val tooLarge = IOException("MusicBrainz XML response exceeds limit")
+            val tooLarge = MusicBrainzBoundedResponseException("MusicBrainz XML response exceeds limit")
             bodyAsChannel().cancel(tooLarge)
             throw tooLarge
         }
@@ -140,7 +147,7 @@ internal class KtorMusicBrainzTransport(
                 continue
             }
             if (total + read > maxBytes) {
-                val tooLarge = IOException("MusicBrainz XML response exceeds limit")
+                val tooLarge = MusicBrainzBoundedResponseException("MusicBrainz XML response exceeds limit")
                 channel.cancel(tooLarge)
                 throw tooLarge
             }
@@ -148,7 +155,7 @@ internal class KtorMusicBrainzTransport(
             total += read
         }
         if (declaredLength != null && total != declaredLength) {
-            throw IOException("MusicBrainz XML Content-Length mismatch")
+            throw MusicBrainzBoundedResponseException("MusicBrainz XML Content-Length mismatch")
         }
         val decoder = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
@@ -314,6 +321,10 @@ internal class MusicBrainzClient(
                         else retryAfter.retryAfterMillisOrNull() ?: throw response
                     retryDelayMillis(wait)
                     attempt += 1
+                } catch (bounded: MusicBrainzBoundedResponseException) {
+                    // Size and declared-length violations are deterministic:
+                    // retrying downloads more untrusted XML for no benefit.
+                    throw bounded
                 } catch (io: IOException) {
                     if (attempt >= MAX_ATTEMPTS) throw io
                     retryDelayMillis(BACKOFF_MILLIS[attempt - 1])
