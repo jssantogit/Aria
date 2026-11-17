@@ -35,6 +35,10 @@ jobs:
           git fetch --no-tags origin '+refs/pull/212/head:refs/remotes/origin/rea-212'
           REA_SHA="$(git rev-parse refs/remotes/origin/rea-212)"
           PROVIDER_SHA="$(git rev-parse HEAD)"
+          # Git 2.56+ may require a local committer identity even for a
+          # no-commit merge. This stays inside the disposable runner only.
+          git config user.name "Provider Compatibility Preflight"
+          git config user.email "provider-preflight@users.noreply.github.com"
           {
             echo "### Provider/REA compatibility (temporary runner checkout)"
             echo "- Provider #219: \`$PROVIDER_SHA\`"
