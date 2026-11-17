@@ -79,11 +79,14 @@ internal class SharedPrefsOpenSubsonicAccountPersistence(
             .putNullableLong(KEY_LAST_SYNC_AT, record.lastSyncAtEpochSeconds)
             .putNullableBoolean(KEY_LAST_SYNC_SUCCEEDED, record.lastSyncSucceeded)
             .putNullableString(KEY_LAST_SYNC_SUMMARY, record.lastSyncSummary)
-            .apply()
+            .commit()
+            .also { if (!it) error("OpenSubsonic account metadata persistence unavailable") }
     }
 
     override fun clear() {
-        prefs.edit().clear().apply()
+        if (!prefs.edit().clear().commit()) {
+            error("OpenSubsonic account metadata removal unavailable")
+        }
     }
 
     private fun SharedPreferences.longOrNull(key: String): Long? =
@@ -167,10 +170,13 @@ internal class AndroidKeystoreOpenSubsonicCredentialStore(
     }
 
     override fun clear(accountId: String) {
-        prefs.edit()
-            .remove(ivKey(accountId))
-            .remove(ciphertextKey(accountId))
-            .apply()
+        if (!prefs.edit()
+                .remove(ivKey(accountId))
+                .remove(ciphertextKey(accountId))
+                .commit()
+        ) {
+            error("OpenSubsonic credential removal unavailable")
+        }
     }
 
     private fun encrypt(value: String): Pair<ByteArray, ByteArray> {
