@@ -258,6 +258,72 @@ class OpenSubsonicAccountControllerTest {
         assertNotEquals(first.accountId, second.accountId)
     }
 
+    @Test
+    fun `saved connection success after server rotation must not publish old health`() = runTest {
+        val repository = configuredRepository()
+        val operations = object : OpenSubsonicAccountOperations {
+            override suspend fun test(provider: OpenSubsonicProvider): OpenSubsonicConnectionReport {
+                repository.save(
+                    OpenSubsonicAccountDraft(
+                        serverUrl = "https://different.example.test",
+                        authMode = OpenSubsonicAuthMode.API_KEY,
+                        secretReplacement = "new-server-secret",
+                    ),
+                )
+                return OpenSubsonicConnectionReport(
+                    health = ProviderHealth(
+                        reachable = true,
+                        serverType = "navidrome",
+                        serverVersion = "1.0",
+                        protocolVersion = "1.16.1",
+                        openSubsonic = true,
+                    ),
+                    capabilities = null,
+                )
+            }
+
+            override suspend fun sync(provider: OpenSubsonicProvider): ProviderSyncResult =
+                error("Connection test must not sync")
+        }
+        val controller = OpenSubsonicAccountController(repository, operations) { 456L }
+
+        val result = controller.testSavedConnection()
+
+        assertTrue(result.isFailure)
+        assertEquals("https://different.example.test", repository.current()?.serverUrl)
+        assertNull(repository.current()?.lastHealthAtEpochSeconds)
+        assertNull(repository.current()?.lastHealthReachable)
+    }
+
+    @Test
+    fun `failed old connection after credential rotation must not mark new account offline`() = runTest {
+        val repository = configuredRepository()
+        val operations = object : OpenSubsonicAccountOperations {
+            override suspend fun test(provider: OpenSubsonicProvider): OpenSubsonicConnectionReport {
+                repository.save(
+                    OpenSubsonicAccountDraft(
+                        serverUrl = "https://music.example.test",
+                        authMode = OpenSubsonicAuthMode.API_KEY,
+                        secretReplacement = "rotated-secret",
+                    ),
+                )
+                error("https://music.example.test/rest/ping.view?apiKey=old-secret")
+            }
+
+            override suspend fun sync(provider: OpenSubsonicProvider): ProviderSyncResult =
+                error("Connection test must not sync")
+        }
+        val controller = OpenSubsonicAccountController(repository, operations) { 789L }
+
+        val result = controller.testSavedConnection()
+
+        assertTrue(result.isFailure)
+        assertEquals("OpenSubsonic connection failed", result.exceptionOrNull()?.message)
+        assertNull(repository.current()?.lastHealthAtEpochSeconds)
+        assertNull(repository.current()?.lastHealthReachable)
+        assertEquals("rotated-secret", (repository.savedConfig()?.auth as OpenSubsonicAuth.ApiKey).value)
+    }
+
     private fun configuredRepository(): OpenSubsonicAccountRepository =
         OpenSubsonicAccountRepository(
             FakeAccountPersistence(),
