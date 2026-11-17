@@ -4743,7 +4743,7 @@ private fun BitChordApp(
 
                 // Home reuses the shared account/profile pill, with no overflow menu.
                 // Never add separate Material 3 actions over its title.
-                val homeRootVisible = selectedTab == TAB_HOME &&
+                val homeRootVisible = pageRouteKey == "$TAB_KEY$TAB_HOME" &&
                     detail == null &&
                     libraryShowAll == null && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether &&
@@ -4764,7 +4764,7 @@ private fun BitChordApp(
                     ).dp
                 }
 
-                val appleLibraryLandingChrome = selectedTab == TAB_LIBRARY &&
+                val appleLibraryLandingChrome = pageRouteKey == "$TAB_KEY$TAB_LIBRARY" &&
                     detail == null && libraryShowAll == null &&
                     unifiedLibraryCategory == null && !showPlaylistLibrary &&
                     !showSettings && !showHistory && !showReplay &&
@@ -4780,7 +4780,7 @@ private fun BitChordApp(
                     detail == null && !showSettings
                 // Explore keeps its own genre-only page, not Apple's search field.
                 // Only its top overflow reuses the already-native Settings menu.
-                val appleExploreRootChrome = selectedTab == TAB_EXPLORE &&
+                val appleExploreRootChrome = pageRouteKey == "$TAB_KEY$TAB_EXPLORE" &&
                     activeCanonicalGenre == null && detail == null &&
                     libraryShowAll == null && unifiedLibraryCategory == null &&
                     !showPlaylistLibrary && !showSettings && !showHistory &&
@@ -4789,12 +4789,16 @@ private fun BitChordApp(
                     !showWearOs && !showEqualizer && !showSmartPlaylistBuilder &&
                     openedPublicPlaylist == null
                 val appleSearchRootChrome = pageRouteKey == "$TAB_KEY$TAB_SEARCH"
-                val appleDownloadsChrome = shouldUseAppleDownloadsChrome(
-                    detail?.browseId, settingsOpen = showSettings,
-                ) && !showHistory && !showReplay
-                val appleExploreGenreChrome = shouldShowExploreGenreTopBarBack(
-                    selectedTab, TAB_EXPLORE, activeCanonicalGenre != null, detail != null,
-                ) && !showSettings && !showHistory && !showReplay &&
+                val appleDownloadsChrome =
+                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                    shouldUseAppleDownloadsChrome(
+                        detail?.browseId, settingsOpen = showSettings,
+                    ) && !showHistory && !showReplay
+                val appleExploreGenreChrome =
+                    pageRouteKey == "$TAB_KEY$TAB_EXPLORE" &&
+                    shouldShowExploreGenreTopBarBack(
+                        selectedTab, TAB_EXPLORE, activeCanonicalGenre != null, detail != null,
+                    ) && !showSettings && !showHistory && !showReplay &&
                     !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showWearOs && !showEqualizer && !showSmartPlaylistBuilder &&
                     openedPublicPlaylist == null
