@@ -5,8 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HeldContextMenuPlateTest {
-    @Test fun liftedSelectionHasConsistentBrightEdgeOverArtwork() {
-        assertEquals(Color.White.copy(alpha = 0.36f), heldContextSelectionOutline())
+    @Test fun heldSelectionUsesTheOriginalArtworkWithoutDecorativePixelEffects() {
+        assertEquals(Color.Transparent, heldPreviewBackingColor())
     }
 
     @Test fun neutralPagesKeepReadableDarkAndLightPlates() {
@@ -14,25 +14,6 @@ class HeldContextMenuPlateTest {
             heldContextPlateColor(Color.Black, null))
         assertEquals(nativeCompactPlateColor(isDark = false, artworkElevation = null),
             heldContextPlateColor(Color.White, null))
-    }
-
-    @Test fun liftedItemNeverReplacesItsSourceWithAnUncapturedBlackPlate() {
-        assertEquals(false, heldPreviewCanPaint(hasImage = false, lifted = false))
-        assertEquals(false, heldPreviewCanPaint(hasImage = false, lifted = true))
-        assertEquals(false, heldPreviewCanPaint(hasImage = true, lifted = false))
-        assertEquals(true, heldPreviewCanPaint(hasImage = true, lifted = true))
-    }
-
-    /**
-     * The snapshot must not fade out while its originating row remains
-     * suppressed: doing so exposed a blank tinted card at the end of the
-     * physical long-press exit animation.
-     */
-    @Test fun readyHeldSnapshotStaysFullyOpaqueUntilSourcePaintIsRestored() {
-        assertEquals(0f, heldPreviewAlpha(hasImage = false, lifted = false))
-        assertEquals(0f, heldPreviewAlpha(hasImage = true, lifted = false))
-        assertEquals(0f, heldPreviewAlpha(hasImage = false, lifted = true))
-        assertEquals(1f, heldPreviewAlpha(hasImage = true, lifted = true))
     }
 
     @Test fun longPressActionsUseFrostedMaterialUnlessBlurIsDisabled() {
