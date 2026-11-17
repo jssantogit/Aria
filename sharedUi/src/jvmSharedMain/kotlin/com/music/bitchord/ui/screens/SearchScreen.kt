@@ -439,16 +439,6 @@ fun SearchScreen(
                                     row.hasCatalogedAsset -> ({ onCanonicalPlay(row.musicBrainzId) })
                                     else -> ({ onCanonicalRecordingInfo(row) })
                                 },
-                                onMoreActions = listOf(
-                                    NativeSearchRowAction(stringResource(Res.string.apple_search_view_details)) {
-                                        if (row.kind == CanonicalSearchKind.RECORDING)
-                                            onCanonicalRecordingInfo(row)
-                                        else onCanonicalOpen(row)
-                                    },
-                                ) + if (row.kind == CanonicalSearchKind.RECORDING && row.hasCatalogedAsset)
-                                    listOf(NativeSearchRowAction(stringResource(Res.string.smart_collection_batch_queue)) {
-                                        onCanonicalAddToQueue(row.musicBrainzId)
-                                    }) else emptyList(),
                             )
                         }
                     }
@@ -740,11 +730,6 @@ private fun LazyListScope.canonicalPublicPlaylistSearchResults(
                 ),
                 onClick = { onOpen(playlist) },
                 onLongPress = onLongPress?.let { held -> { held(playlist) } },
-                onMoreActions = listOf(
-                    NativeSearchRowAction(stringResource(Res.string.apple_search_view_details)) {
-                        onOpen(playlist)
-                    },
-                ),
             )
         }
     }
@@ -856,18 +841,6 @@ private fun LazyListScope.canonicalMusicBrainzResults(
                         row.hasCatalogedAsset -> ({ onPlay(row.musicBrainzId) })
                         else -> ({ onRecordingInfo(row) })
                     },
-                    onMoreActions = listOf(
-                        NativeSearchRowAction(stringResource(Res.string.apple_search_view_details)) {
-                            if (row.kind == CanonicalSearchKind.RECORDING) onRecordingInfo(row)
-                            else onOpen(row)
-                        },
-                    ) + if (row.kind == CanonicalSearchKind.RECORDING &&
-                        row.hasCatalogedAsset
-                    ) listOf(
-                        NativeSearchRowAction(stringResource(Res.string.smart_collection_batch_queue)) {
-                            onAddToQueue(row.musicBrainzId)
-                        },
-                    ) else emptyList(),
                 )
                 if (!appleStyle && index < section.second.lastIndex) {
                     HorizontalDivider(
@@ -1109,9 +1082,6 @@ private fun LazyListScope.canonicalServerSearchRows(
         NativeSearchResultRow(
             row = canonicalServerNativeSearchRowUi(row),
             onClick = { onPlay(row) },
-            onMoreActions = listOf(
-                NativeSearchRowAction(stringResource(Res.string.play)) { onPlay(row) },
-            ),
         )
         if (!appleStyle) HorizontalDivider(
             modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
