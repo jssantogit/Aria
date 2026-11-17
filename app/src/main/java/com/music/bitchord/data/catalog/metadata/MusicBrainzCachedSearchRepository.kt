@@ -92,7 +92,16 @@ internal class MusicBrainzCachedSearchRepository(
     ): Flow<MusicBrainzCachedSearchSnapshot> {
         requireSupportedRead(capability)
         return providerState.map { state ->
-            musicBrainz in state.eligible[capability].orEmpty()
+            // Account-scoped personal cached MBIDs must be reprojected when
+            // an OpenSubsonic account is authorized/revoked, even if the MB
+            // editorial switch itself stays unchanged.
+            val editorialAllowed = musicBrainz in state.eligible[capability].orEmpty()
+            val personalAccounts = state.eligible[ProviderCapability.PERSONAL_LIBRARY]
+                .orEmpty().filter { key ->
+                    key.providerId == "opensubsonic" ||
+                        (key.providerId == "local" && key.instanceId == "mediastore")
+                }.toSet()
+            editorialAllowed to personalAccounts
         }.distinctUntilChanged().mapLatest { search(query, limits, capability) }
     }
 
@@ -120,7 +129,7 @@ internal class MusicBrainzCachedSearchRepository(
             val eligible = eligiblePersonalProviders()
             if (limits.recordings == 0 || eligible.isEmpty())
                 return MusicBrainzCachedSearchSnapshot()
-            return database.withTransaction {
+            val snapshot = database.withTransaction {
                 val dao = database.catalogDao()
                 val candidateRecordings = dao.searchKnownMusicBrainzPersonalRecordings(
                     normalized, limits.recordings, eligible,
@@ -152,6 +161,11 @@ internal class MusicBrainzCachedSearchRepository(
                     recordingMbidsWithAssets = visibleAssetMbids,
                 )
             }
+            // A server/account may be disabled while Room is suspended. It
+            // must not authorize publication under a now-revoked personal
+            // source just because its provider key was valid at query start.
+            return if (eligiblePersonalProviders() == eligible) snapshot
+                else MusicBrainzCachedSearchSnapshot()
         }
 
         return cacheRead.read(
@@ -159,11 +173,11 @@ internal class MusicBrainzCachedSearchRepository(
             provider = musicBrainz,
             unavailable = MusicBrainzCachedSearchSnapshot(),
         ) {
-            database.withTransaction {
+            val eligible = eligiblePersonalProviders()
+            val snapshot = database.withTransaction {
                 val dao = database.catalogDao()
                 val recordings = if (limits.recordings == 0) emptyList()
                     else dao.searchKnownMusicBrainzRecordings(normalized, limits.recordings)
-                val eligible = eligiblePersonalProviders()
                 val withAssets = if (recordings.isEmpty() || eligible.isEmpty()) emptySet()
                     else dao.musicBrainzRecordingMbidsWithPersonalAssets(
                         recordings.map { it.musicBrainzId }, eligible,
@@ -179,6 +193,10 @@ internal class MusicBrainzCachedSearchRepository(
                     recordingMbidsWithAssets = withAssets,
                 )
             }
+            // Editorial MB rows remain authorized, but a changed server
+            // grant cannot leave a stale personal-asset badge attached.
+            if (eligiblePersonalProviders() == eligible) snapshot else
+                snapshot.copy(recordingMbidsWithAssets = emptySet())
         }
     }
 }
