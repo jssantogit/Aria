@@ -5,6 +5,10 @@ import com.music.bitchord.data.catalog.provider.opensubsonic.AndroidKeystoreOpen
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountRepository
 import com.music.bitchord.data.catalog.provider.opensubsonic.SharedPrefsOpenSubsonicAccountPersistence
 import com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey
+import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicCapabilityAdmission
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
 import kotlinx.serialization.json.Json
 
 /**
@@ -88,10 +92,17 @@ internal fun interface CanonicalLibraryProviderConfigurationReader {
  */
 internal class OpenSubsonicLibraryProviderConfigurationReader(
     private val accountRepository: OpenSubsonicAccountRepository,
+    private val gateProvider: () -> ProviderPolicyGate? = ProviderRuntime::gateOrNull,
 ) : CanonicalLibraryProviderConfigurationReader {
     override fun configuredProviderKeys(): Set<String> = buildSet {
+        // MediaStore is wholly independent of remote login and editorial gates.
         add(CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER)
-        accountRepository.savedConfig()?.let { config ->
+        val account = accountRepository.current() ?: return@buildSet
+        val admission = OpenSubsonicCapabilityAdmission.open(
+            ProviderCapability.PERSONAL_LIBRARY, account.accountId, gateProvider,
+        ) ?: return@buildSet
+        val config = accountRepository.savedConfig() ?: return@buildSet
+        if (config.accountId == account.accountId && admission.isCurrent()) {
             add(openSubsonicProviderKey(config))
         }
     }
