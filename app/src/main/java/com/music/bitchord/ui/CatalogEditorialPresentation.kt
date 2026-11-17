@@ -51,6 +51,18 @@ internal fun compositeEditorialReadState(
     else -> source
 }
 
+/**
+ * A primary provider may fall back only after an actual empty/error result.
+ * Loading and unqueried are NOT evidence of an empty catalog.
+ */
+internal fun <T> editorialPrimaryMiss(
+    state: UiState<List<T>>?,
+): Boolean = when (state) {
+    is UiState.Success -> state.data.isEmpty()
+    is UiState.Error -> true
+    UiState.Loading, null -> false
+}
+
 /** Personal files and authenticated server assets are independent of editorial ordering. */
 internal fun personalHomeShelves(shelves: List<HomeShelf>): List<HomeShelf> =
     shelves.mapNotNull { shelf ->

@@ -46,6 +46,20 @@ class CatalogEditorialPresentationTest {
         assertTrue((withheld as UiState.Success).data.isEmpty())
     }
 
+    @Test fun editorialFallbackWaitsForPrimaryToSettleAndRespectsEmptyOrError() {
+        assertFalse(com.music.bitchord.ui.editorialPrimaryMiss<String>(null))
+        assertFalse(com.music.bitchord.ui.editorialPrimaryMiss<String>(UiState.Loading))
+        assertFalse(com.music.bitchord.ui.editorialPrimaryMiss(
+            UiState.Success(listOf("itunes:br:album:1")),
+        ))
+        assertTrue(com.music.bitchord.ui.editorialPrimaryMiss(
+            UiState.Success(emptyList<String>()),
+        ))
+        assertTrue(com.music.bitchord.ui.editorialPrimaryMiss<String>(
+            UiState.Error("network unavailable"),
+        ))
+    }
+
     @Test fun priorityChoosesProviderNativeCardsAndRespectsReorder() {
         val states = mapOf<ProviderKey, UiState<List<HomeShelf>>>(
             mb to UiState.Success(shelf("catalog:RELEASE_GROUP:123")),

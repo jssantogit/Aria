@@ -1039,11 +1039,13 @@ private fun BitChordApp(
     // Explore is only the genre index. Public and opted-in discovery requests
     // feed Home, and never manufacture a playable MediaAsset.
     LaunchedEffect(
-        selectedTab, popularityCandidateIds,
+        selectedTab, popularityCandidateIds, catalogEditorialOrder,
         listenBrainzAccountEnabled, listenBrainzAccountToken,
     ) {
         if (selectedTab == TAB_HOME) {
-            viewModel.loadCanonicalWorldwideReleases()
+            if (catalogEditorialOrder.firstOrNull() ==
+                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+            ) viewModel.loadCanonicalWorldwideReleases()
             viewModel.loadCanonicalExploreSitewide()
             viewModel.loadCanonicalExplorePublicPopularity(cachedCanonicalRows)
             // Explore now contains only genre navigation. An opted-in user's
@@ -1069,6 +1071,18 @@ private fun BitChordApp(
                 first == mb && !canonicalWorldwideLoading &&
                     canonicalWorldwideReleases.isEmpty())
         ) viewModel.loadAppleHomeEditorial()
+    }
+
+    // Apple-first only queries its eligible secondary if the primary really
+    // settled without a usable Apple product. Loading is never a miss.
+    LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases) {
+        val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+        val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+        if (selectedTab == TAB_HOME &&
+            catalogEditorialOrder.firstOrNull() == apple &&
+            mb in catalogEditorialOrder &&
+            com.music.bitchord.ui.editorialPrimaryMiss(appleHomeReleases)
+        ) viewModel.loadCanonicalWorldwideReleases()
     }
 
     // Apple genre discovery is native: no MusicBrainz seed is required.
