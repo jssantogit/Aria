@@ -208,7 +208,18 @@ class PreparedSourceMediaSelectionTest {
             val offline = androidx.media3.datasource.cache.CacheDataSource.Factory()
                 .setCache(cache).setCacheKeyFactory(keyFactory)
                 .setUpstreamDataSourceFactory(androidx.media3.datasource.DataSource.Factory {
-                    throw AssertionError("Unexpected provider/network resolution")
+                    // CacheDataSource constructs upstream eagerly even when
+                    // every byte is cached. Only OPEN must remain unreachable.
+                    object : androidx.media3.datasource.DataSource {
+                        override fun addTransferListener(
+                            listener: androidx.media3.datasource.TransferListener,
+                        ) = Unit
+                        override fun open(dataSpec: DataSpec): Long =
+                            throw AssertionError("Unexpected provider/network resolution")
+                        override fun read(buffer: ByteArray, offset: Int, length: Int): Int = -1
+                        override fun getUri(): Uri? = null
+                        override fun close() = Unit
+                    }
                 }).createDataSource()
             val local = requireNotNull(prepared.item.localConfiguration)
             val logicalSpec = DataSpec.Builder().setUri(local.uri)
