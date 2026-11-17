@@ -45,6 +45,38 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OpenSubsonicArtworkAccessTest {
+    @Test
+    fun `revoking library while artwork cache opens cannot publish stale private bytes`() = runTest {
+        val fixture = fixture()
+        val key = ProviderKey("opensubsonic", "home")
+        val cache = object : OpenSubsonicArtworkCache {
+            override suspend fun read(cacheKey: String): ByteArray? {
+                fixture.gate.replace(ProviderCapabilityPolicy(
+                    listOf(ProviderDescriptor(key,
+                        setOf(ProviderCapability.PERSONAL_LIBRARY), ProviderReadiness.READY)),
+                    mapOf(ProviderCapability.PERSONAL_LIBRARY to listOf(
+                        ProviderChoice(key, false, 0))),
+                ))
+                return byteArrayOf(7, 8, 9)
+            }
+
+            override suspend fun write(cacheKey: String, bytes: ByteArray) {
+                error("Revoked cached artwork must never be promoted")
+            }
+        }
+        val loader = OpenSubsonicArtworkLoader(
+            fixture.access,
+            OpenSubsonicArtworkTransport { _, _ ->
+                error("Offline cached artwork must never perform HTTP")
+            },
+            cache,
+        )
+        val result = loader.load("asset-canonical", "recording-canonical",
+            fixture.asset.provider) as OpenSubsonicArtworkLoadResult.Placeholder
+        assertEquals("ACCOUNT_MISMATCH", result.reason)
+        assertTrue(fixture.store.assets.containsKey("asset-canonical"))
+    }
+
 
     @Test
     fun `known artwork resolves from canonical media asset through correct account without reading credential`() = runTest {
@@ -576,6 +608,7 @@ class OpenSubsonicArtworkAccessTest {
             repository = repository,
             asset = asset,
             store = store,
+            gate = gate,
             access = OpenSubsonicArtworkAccess(
                 assets = store,
                 accounts = repository,
@@ -598,6 +631,7 @@ class OpenSubsonicArtworkAccessTest {
         val repository: OpenSubsonicAccountRepository,
         val asset: MediaAssetEntity,
         val store: FakeArtworkAssetStore,
+        val gate: ProviderPolicyGate,
         val access: OpenSubsonicArtworkAccess,
     )
 
