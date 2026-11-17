@@ -30,6 +30,7 @@ import com.music.bitchord.data.providers.ListeningSubmissionGate
 import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.providers.PolicyGuardedCoverArtArchiveTransport
 import com.music.bitchord.data.providers.ProviderAuthorityCoordinator
+import com.music.bitchord.data.providers.OpenSubsonicProviderAccountState
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
@@ -87,6 +88,53 @@ class ProviderEngineEndToEndIntegrationTest {
     fun restoreTestHooks() {
         AppleArtistArtRepository.setPolicyGateForTests(null)
         AppleArtistArtRepository.clearOfflineMetadata()
+    }
+
+    @Test
+    fun navidromePerCapabilityOptOutSurvivesRestartAndAccountReplacement(): Unit = runBlocking {
+        var account: OpenSubsonicProviderAccountState? =
+            OpenSubsonicProviderAccountState("home", credentialAvailable = true)
+        val session = ProviderCapabilitySession(
+            ProviderPreferenceStore(prefs),
+            ProviderCapabilityRegistry.descriptorsFrom(
+                ProviderCapabilityRegistry.inventory(
+                    openSubsonicAccountId = "home", openSubsonicConfigured = true,
+                ),
+            ),
+        )
+        val coordinator = ProviderAuthorityCoordinator(session) { account }
+        val home = com.music.bitchord.data.providers.ProviderKey("opensubsonic", "home")
+        assertTrue(coordinator.migrateOnce(emptyList(), emptySet(), emptyList()))
+        assertTrue(session.gate.open(ProviderCapability.PERSONAL_LIBRARY, home) != null)
+        assertTrue(session.gate.open(ProviderCapability.AUDIO_PLAYBACK, home) != null)
+        val playing = session.gate.open(ProviderCapability.AUDIO_PLAYBACK, home)!!
+        assertTrue(session.update(ProviderCapability.PERSONAL_LIBRARY,
+            listOf(ProviderChoice(home, false, 0))))
+        assertNull(session.gate.open(ProviderCapability.PERSONAL_LIBRARY, home))
+        assertTrue(session.gate.accept(playing))
+
+        // Real SharedPreferences, not a mock migration: reboot preserves opt-out.
+        assertTrue(coordinator.migrateOnce(emptyList(), emptySet(), emptyList()))
+        assertNull(session.gate.open(ProviderCapability.PERSONAL_LIBRARY, home))
+        assertTrue(session.gate.open(ProviderCapability.AUDIO_PLAYBACK, home) != null)
+
+        account = null
+        assertTrue(coordinator.onOpenSubsonicAccountChanged())
+        assertNull(session.gate.open(ProviderCapability.AUDIO_PLAYBACK, home))
+        assertFalse(session.gate.accept(playing))
+
+        account = OpenSubsonicProviderAccountState("replacement", credentialAvailable = true)
+        assertTrue(coordinator.onOpenSubsonicAccountChanged())
+        val replacement = com.music.bitchord.data.providers.ProviderKey(
+            "opensubsonic", "replacement",
+        )
+        // An old explicit library opt-out is not resurrected by a new account.
+        assertNull(session.gate.open(ProviderCapability.PERSONAL_LIBRARY, replacement))
+        assertTrue(session.gate.open(ProviderCapability.AUDIO_PLAYBACK, replacement) != null)
+        assertTrue(session.update(ProviderCapability.PERSONAL_LIBRARY,
+            listOf(ProviderChoice(replacement, true, 0))))
+        assertTrue(session.gate.open(ProviderCapability.PERSONAL_LIBRARY, replacement) != null)
+        assertNull(session.gate.open(ProviderCapability.PERSONAL_LIBRARY, home))
     }
 
     @Test
