@@ -21,6 +21,9 @@ import com.music.bitchord.data.catalog.provider.CanonicalReleaseTrackEdge
 import com.music.bitchord.data.catalog.provider.CanonicalRemoteCatalogSync
 import com.music.bitchord.data.catalog.provider.ProviderSyncResult
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCallResult
+import com.music.bitchord.data.providers.ProviderQueryExecutor
+import com.music.bitchord.data.providers.ProviderRuntime
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -53,8 +56,36 @@ internal object OpenSubsonicCatalogSync {
         provider: OpenSubsonicProvider,
         idFactory: () -> String = { UUID.randomUUID().toString() },
         accountIsCurrent: () -> Boolean = { true },
-    ): ProviderSyncResult = syncInternal(provider, idFactory, accountIsCurrent) {
-        CanonicalCatalogDatabase.get(context)
+    ): ProviderSyncResult {
+        val app = context.applicationContext
+        val accounts = OpenSubsonicAccountRepository(
+            SharedPrefsOpenSubsonicAccountPersistence(app),
+            AndroidKeystoreOpenSubsonicCredentialStore(app),
+        )
+        val current = accounts.savedConfig()
+            ?: return ProviderSyncResult.Failure("OpenSubsonic account unavailable")
+        if (!provider.matchesSavedConfig(current)) {
+            return ProviderSyncResult.Failure("OpenSubsonic account changed")
+        }
+        val gate = ProviderRuntime.gateOrNull()
+            ?: return ProviderSyncResult.Failure("OpenSubsonic library not authorized")
+        return when (val result = ProviderQueryExecutor(gate).execute(
+            ProviderCapability.PERSONAL_LIBRARY, openSubsonicCapabilityKey(current.accountId),
+        ) {
+            syncInternal(
+                provider, idFactory,
+                accountIsCurrent = {
+                    accountIsCurrent() &&
+                        provider.matchesSavedConfig(accounts.savedConfig())
+                },
+            ) { CanonicalCatalogDatabase.get(app) }
+        }) {
+            is ProviderCallResult.Success -> result.value
+            is ProviderCallResult.Failed ->
+                ProviderSyncResult.Failure("OpenSubsonic catalog sync failed")
+            ProviderCallResult.Denied, ProviderCallResult.Stale ->
+                ProviderSyncResult.Failure("OpenSubsonic library not authorized")
+        }
     }
 
     /**
