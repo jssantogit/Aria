@@ -8,6 +8,9 @@ import com.music.bitchord.diagnostics.DiagnosticRecoveryOutcome
 import com.music.bitchord.data.Http
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.MediaAssetEntity
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderRuntime
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URI
@@ -32,6 +35,7 @@ internal enum class OpenSubsonicArtworkAccessFailure {
     UNSUPPORTED_PROVIDER,
     ACCOUNT_NOT_CONFIGURED,
     ACCOUNT_MISMATCH,
+    NOT_AUTHORIZED,
 }
 
 internal sealed interface OpenSubsonicArtworkAccessResult {
@@ -47,6 +51,7 @@ internal class OpenSubsonicArtworkAccess(
     private val assets: OpenSubsonicArtworkAssetStore,
     private val accounts: OpenSubsonicAccountRepository,
     private val saltFactory: () -> String = ::defaultOpenSubsonicSalt,
+    private val gateProvider: () -> ProviderPolicyGate? = ProviderRuntime::gateOrNull,
 ) {
     suspend fun resolve(mediaAssetId: String): OpenSubsonicArtworkAccessResult {
         val asset = assets.mediaAsset(mediaAssetId)
@@ -84,6 +89,11 @@ internal class OpenSubsonicArtworkAccess(
             )
         }
 
+        val admission = OpenSubsonicCapabilityAdmission.open(
+            ProviderCapability.PERSONAL_LIBRARY, account.accountId, gateProvider,
+        ) ?: return OpenSubsonicArtworkAccessResult.Failure(
+            OpenSubsonicArtworkAccessFailure.NOT_AUTHORIZED,
+        )
         return OpenSubsonicArtworkAccessResult.Ready(
             OpenSubsonicArtworkRequest(
                 recordingId = asset.recordingId,
@@ -94,6 +104,7 @@ internal class OpenSubsonicArtworkAccess(
                 coverArtId = locator.coverArtId,
                 accounts = accounts,
                 saltFactory = saltFactory,
+                capabilityAdmission = admission,
             ),
         )
     }
@@ -118,15 +129,20 @@ internal class OpenSubsonicArtworkRequest internal constructor(
     private val coverArtId: String,
     private val accounts: OpenSubsonicAccountRepository,
     private val saltFactory: () -> String,
+    private val capabilityAdmission: OpenSubsonicCapabilityAdmission? = null,
 ) {
     suspend fun fetch(transport: OpenSubsonicArtworkTransport): OpenSubsonicArtworkFetchResult {
         // Revoke results even when a credential is rotated while HTTP is in flight.
         val revision = OpenSubsonicAccountRevisionClock.current()
+        if (capabilityAdmission != null && !capabilityAdmission.isCurrent()) {
+            return OpenSubsonicArtworkFetchResult.AccountMismatch
+        }
         // First and only secure-store read in the artwork flow.
         val config = accounts.savedConfig()
             ?: return OpenSubsonicArtworkFetchResult.CredentialUnavailable
         if (config.accountId != accountId || openSubsonicProviderKey(config) != providerKey ||
-            OpenSubsonicAccountRevisionClock.current() != revision
+            OpenSubsonicAccountRevisionClock.current() != revision ||
+            (capabilityAdmission != null && !capabilityAdmission.isCurrent())
         ) {
             return OpenSubsonicArtworkFetchResult.AccountMismatch
         }
@@ -143,7 +159,9 @@ internal class OpenSubsonicArtworkRequest internal constructor(
 
         return try {
             val result = transport.fetch(endpointUrl, parameters)
-            if (OpenSubsonicAccountRevisionClock.current() != revision) {
+            if (OpenSubsonicAccountRevisionClock.current() != revision ||
+                (capabilityAdmission != null && !capabilityAdmission.isCurrent())
+            ) {
                 return OpenSubsonicArtworkFetchResult.AccountMismatch
             }
             when (result) {
