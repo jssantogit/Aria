@@ -24,6 +24,16 @@ class PlayerAnchoredActionsHighlightTest {
         assertEquals(true, playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher = true))
     }
 
+    @Test fun animatedMenuPlateNeverMixesItsLabelsWithPlayerControls() {
+        // Previously alpha followed an entrance tween 0..1, revealing player
+        // controls through menu rows and creating overlapping text/icon ghosts.
+        assertEquals(0f, playerAnchoredMenuPlateAlpha(measured = false), 0f)
+        assertEquals(1f, playerAnchoredMenuPlateAlpha(measured = true), 0f)
+        assertEquals(0.975f, playerAnchoredMenuPlateScale(0f), 0.0001f)
+        assertEquals(0.9875f, playerAnchoredMenuPlateScale(0.5f), 0.0001f)
+        assertEquals(1f, playerAnchoredMenuPlateScale(1f), 0.0001f)
+    }
+
     @Test fun highlightedMenuUsesExactlyTheOriginalPlayerVector() {
         assertSame(originalPortraitNowPlayingOverflowGlyph(), playerAnchoredMenuHighlightGlyph())
     }

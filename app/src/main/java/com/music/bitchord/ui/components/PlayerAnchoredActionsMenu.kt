@@ -50,6 +50,18 @@ import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
 /** Same drawable as the original Now Playing launcher; never substitute a generic More icon. */
 internal fun playerAnchoredMenuHighlightGlyph() = originalPortraitNowPlayingOverflowGlyph()
 
+/**
+ * The player controls occupy the space directly behind the menu. Fading the
+ * whole plate (including text) from 0 to 1 reveals those controls THROUGH its
+ * rows, creating a transient double-exposure. Wait for measurement, then draw
+ * an opaque plate and animate only its subtle anchored scale.
+ */
+internal fun playerAnchoredMenuPlateAlpha(measured: Boolean): Float =
+    if (measured) 1f else 0f
+
+internal fun playerAnchoredMenuPlateScale(progress: Float): Float =
+    0.975f + 0.025f * progress.coerceIn(0f, 1f)
+
 /** Both player overflow and rating use the shared contextual action plate. */
 @Suppress("UNUSED_PARAMETER")
 internal fun playerAnchoredMenuUsesSharedRatingPlate(highlightLauncher: Boolean): Boolean = true
@@ -78,9 +90,9 @@ internal fun playerAnchoredMenuHighlightPosition(
  * A fresh, full-width dialog stays above Now Playing and aligns its native
  * plate to the actual overflow button bounds captured in that player window.
  *
- * Both layers use the existing artwork palette. The plate's background
- * contains the same wide, artwork-derived blur used in the old player sheet;
- * the player itself is separately blurred by its host while this dialog is up.
+ * The panel reuses the neutral contextual action plate. The player remains
+ * visible only outside it, beneath the separate dialog's dimming scrim.
+ * Its opaque panel prevents double-exposure during entrance scaling.
  */
 @Composable
 fun PlayerAnchoredActionsMenu(
@@ -168,8 +180,11 @@ fun PlayerAnchoredActionsMenu(
                     // dialog gets its own coordinate system and the old motion
                     // visibly jumped when the plate acquired its real size.
                     .graphicsLayer {
-                        alpha = if (measured) entrance.value else 0f
-                        scaleX = 0.975f + 0.025f * entrance.value
+                        // The card is fully opaque whenever visible. Only its
+                        // small scale transition animates; no player glyphs,
+                        // seek bars or lyrics may show through action rows.
+                        alpha = playerAnchoredMenuPlateAlpha(measured)
+                        scaleX = playerAnchoredMenuPlateScale(entrance.value)
                         scaleY = scaleX
                         transformOrigin = TransformOrigin(1f, 0f)
                     }
