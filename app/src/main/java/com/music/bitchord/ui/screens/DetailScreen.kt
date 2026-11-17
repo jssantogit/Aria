@@ -562,11 +562,6 @@ fun DetailScreen(
             recordingId = recording, onDismiss = { editingMetadataRecording = null },
         )
     }
-    val metadataVisibleTrackIndices = remember(metadataTracks, query, songSort) {
-        canonicalMetadataAlbumVisibleIndices(
-            metadataTracks.map { it.title to it.credit }, query, songSort,
-        )
-    }
     val canonicalVisibleTrackIndices = remember(canonicalTracks, query, songSort) {
         canonicalMetadataAlbumVisibleIndices(
             canonicalTracks.map { it.title to it.subtitle }, query, songSort,
@@ -586,6 +581,11 @@ fun DetailScreen(
     // an album's track numbers stay the album's rather than becoming positions
     // in the filtered list.
     val matches = remember(songs, query) { songs.matching(query) }
+    val metadataVisibleTrackIndices = remember(metadataTracks, query, songSort) {
+        canonicalMetadataAlbumVisibleIndices(
+            metadataTracks.map { it.title to it.credit }, query, songSort,
+        )
+    }
     // What a tap plays: the filtered set of tracks currently standing in the
     // list. When no filter is active, matches contains the full running order
     // and plays the complete release/playlist from the tapped position.
