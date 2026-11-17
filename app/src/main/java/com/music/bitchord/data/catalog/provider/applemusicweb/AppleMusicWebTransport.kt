@@ -12,6 +12,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
@@ -27,7 +28,11 @@ internal enum class AppleMusicWebHost(val baseUrl: String) {
     API("https://amp-api.music.apple.com"),
 }
 
-internal data class AppleMusicWebHttpResponse(val status: Int, val body: String)
+internal data class AppleMusicWebHttpResponse(
+    val status: Int,
+    val body: String,
+    val headers: Map<String, String> = emptyMap(),
+)
 
 /** HTTP exchange is injected so tests run with no network or captured secrets. */
 internal fun interface AppleMusicWebExchange {
@@ -86,6 +91,9 @@ internal class KtorAppleMusicWebExchange(
         }
         return AppleMusicWebHttpResponse(
             response.status.value, out.toString(Charsets.UTF_8.name()),
+            response.headers[HttpHeaders.RetryAfter]?.let {
+                mapOf("Retry-After" to it.take(64))
+            } ?: emptyMap(),
         )
     }
 }
@@ -141,6 +149,9 @@ internal class AppleMusicWebPolicyTransport(
     private val exchange: AppleMusicWebExchange = KtorAppleMusicWebExchange(),
     private val tokens: AppleMusicWebTokenSource = AppleMusicWebBundleTokenSource(exchange),
     private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
+    private val limiter: AppleMusicWebRateLimiter = AppleMusicWebRequestBudget.limiter,
+    private val retryPolicy: AppleMusicWebRetryPolicy = AppleMusicWebRetryPolicy(),
+    private val retrySleep: suspend (Long) -> Unit = { delay(it) },
 ) : AppleMusicWebTransport {
 
     override suspend fun get(
@@ -164,24 +175,31 @@ internal class AppleMusicWebPolicyTransport(
             scheduleLimited = { operation -> operation() },
             networkCall = {
                 suspend fun request(token: AppleMusicWebToken): AppleMusicWebHttpResponse =
-                    exchange.get(
-                        AppleMusicWebHost.API, path, params,
-                        mapOf(
-                            "Accept" to "application/json",
-                            "Accept-Language" to "en-US,en;q=0.9",
-                            "Origin" to "https://music.apple.com",
-                            "Referer" to "https://music.apple.com/",
-                            "Authorization" to "Bearer ${token.value}",
-                        ), 2_000_000,
-                    )
+                    limiter.run {
+                        exchange.get(
+                            AppleMusicWebHost.API, path, params,
+                            mapOf(
+                                "Accept" to "application/json",
+                                "Accept-Language" to "en-US,en;q=0.9",
+                                "Origin" to "https://music.apple.com",
+                                "Referer" to "https://music.apple.com/",
+                                "Authorization" to "Bearer ${token.value}",
+                            ), 2_000_000,
+                        )
+                    }
                 var response = request(tokens.token(forceRefresh = false))
                 if (response.status == 401) {
+                    // One refresh maximum for expired anonymous credentials.
                     response = request(tokens.token(forceRefresh = true))
                 }
-                if (response.status != 200) {
-                    // No transparent 403/429 retry and no upstream response body
-                    // or token in the exception path.
-                    throw AppleMusicWebHttpException(response.status)
+                var attempt = 1
+                while (response.status != 200) {
+                    val retryAfter = response.headers["Retry-After"]?.toLongOrNull()
+                    val waitMs = retryPolicy.delayFor(response.status, attempt, retryAfter)
+                        ?: throw AppleMusicWebHttpException(response.status)
+                    if (waitMs > 0) retrySleep(waitMs)
+                    attempt++
+                    response = request(tokens.token(forceRefresh = false))
                 }
                 response.body
             },
