@@ -169,3 +169,13 @@ Android CI on `1de0ea9` executed 3,889 unit tests, with two failed bounded XML r
 4. Changes entirely inside an addon or remote server without observable local configuration revisions remain unprovable offline until the provider/account-revision contract supplies trustworthy evidence.
 
 No Compose/UI, REA #212 presentation, public interface or merge is changed. Device validation and Settings → Fontes remain after REA #212 merge; exact-HEAD Android CI and unresolved authorization/provenance review remain pre-merge gates.
+
+## Canonical lyrics divergence against #217 — 2026-11-17
+
+A full-tree comparison found three files changed in #217 but not included in #219's PR patch: CanonicalLyricsSourcePolicy.kt, ScrobbleManager.kt and MusicBrainzCatalogIndexTest.kt. A changed-file list alone cannot determine whether a behavior was preserved; each was compared at both live HEADs.
+
+The canonical lyrics selector had indeed lost #217's per-source policy filtering. It now consults the ProviderRuntime snapshot when installed and admits only the exact eligible LYRICS_LOOKUP provider instances not quarantined, including explicit empty selection and STORAGE_ERROR/BOOTING denial. Old YouTube lyric choices remain **unconditionally retired**. Regressions cover enabled source, last source disabled, quarantine, corrupted startup and missing canonical choices. Pure non-Android test calls with no installed runtime retain explicit requested non-YouTube sources.
+
+ScrobbleManager.kt diverges from #217, but production LastFM.postAndRead on this branch already admits both track.scrobble and track.updateNowPlaying through ListeningSubmissionGate / ProviderQueryExecutor before HTTP. Do not blindly transplant the older manager's logging and HTTP wrapper; any manager-level UX/timer changes require separate tests. MusicBrainzCatalogIndexTest.kt is larger in #219; it cannot be classified as missing solely from PR changed-file intersection.
+
+REA #212 currently shares **four** changed files with #219, not three: CanonicalCatalogDao.kt, MusicBrainzCatalogGraph.kt, AppSettings.kt and CanonicalReleaseDetailFallbackTest.kt. Patch hunks are primarily distinct (including the REA discography retry helper and IDM's explicit MusicBrainz capability dispatch), but import/fixture and cross-branch build compatibility still require a combined-tree compile after orchestration. No merge was made and no Compose UI was edited.
