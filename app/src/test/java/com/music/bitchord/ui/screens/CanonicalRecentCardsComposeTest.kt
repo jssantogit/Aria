@@ -28,26 +28,32 @@ import org.robolectric.annotation.ConscryptMode
 class CanonicalRecentCardsComposeTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun recentLocalCardLongPressOpensItsRealCanonicalActions() {
-        var result: Pair<String, CanonicalCollectionIntent>? = null
+    @Test fun recentLocalCardLongPressUsesOnlyGlobalHeldActionsWithoutLegacyPopup() {
+        var heldId: String? = null
+        var queued: Pair<String, CanonicalCollectionIntent>? = null
         compose.setContent {
             MaterialTheme {
                 CanonicalRecentAdditionsShelf(
                     recent = listOf(V2DisplayRow(id = "recording-id", title = "Recent", artist = "Artist")),
                     onPlayTrack = {},
-                    onTrackAction = { id, action -> result = id to action },
+                    onTrackAction = { id, action -> queued = id to action },
+                    onTrackHold = { heldId = it.id },
                 )
             }
         }
         compose.onNodeWithTag("canonical-recent-card", useUnmergedTree = true)
             .performTouchInput { longClick() }
-        compose.onNodeWithText("Tocar a seguir").performClick()
         compose.runOnIdle {
-            assertEquals("recording-id" to CanonicalCollectionIntent.ADD_NEXT, result)
+            assertEquals("recording-id", heldId)
+            assertEquals(null, queued)
         }
+        // Source-specific Popup was removed; the Haze host owns all queue actions.
+        compose.onNodeWithText("Tocar a seguir").assertDoesNotExist()
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
     }
 
-    @Test fun recentLocalFullListUsesTheRowLongPressAndKeepsTapPlaybackSeparate() {
+    @Test fun recentLocalFullListSeparatesHeldActionsFromTapPlayback() {
+        var heldId: String? = null
         var queued: Pair<String, CanonicalCollectionIntent>? = null
         var played = 0
         compose.setContent {
@@ -57,15 +63,19 @@ class CanonicalRecentCardsComposeTest {
                     onPlayTrack = { played++ },
                     viewType = com.music.bitchord.data.settings.LibraryViewType.LIST,
                     onTrackAction = { id, action -> queued = id to action },
+                    onTrackHold = { heldId = it.id },
                 )
             }
         }
         compose.onNodeWithText("Recent song").performTouchInput { longClick() }
-        compose.onNodeWithText("Adicionar à fila").performClick()
         compose.runOnIdle {
-            assertEquals("local-recording" to CanonicalCollectionIntent.ADD_TO_QUEUE, queued)
+            assertEquals("local-recording", heldId)
+            assertEquals(null, queued)
             assertEquals(0, played)
         }
+        compose.onNodeWithText("Adicionar à fila").assertDoesNotExist()
+        compose.onNodeWithText("Recent song").performClick()
+        compose.runOnIdle { assertEquals(1, played) }
     }
 
     @Test fun recentRecordingCardSharesShelfWidthInsteadOfLegacy142Dp() {
