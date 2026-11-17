@@ -111,6 +111,57 @@ internal fun verifiedLegacyPlayerArtistBrowseId(value: String?): String? =
             Regex("^catalog:ARTIST:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$").matches(it)
         }
 
+
+/**
+ * The tappable credit on Now Playing is a navigation request, not a search.
+ * Either open the exact artist that owns the current recording in the current
+ * source, or a typed catalog link that was actually attached to that credit.
+ * A free-text artist name is never enough to cross the source boundary.
+ */
+internal sealed interface PlayerArtistTapRoute {
+    data class SourceOwned(val artist: SourceOwnedArtistEvidence) : PlayerArtistTapRoute
+    data class Catalog(val browseId: String, val artistName: String) : PlayerArtistTapRoute
+}
+
+internal fun planPlayerArtistTapRoute(
+    song: Song,
+    clickedId: String?,
+    clickedName: String,
+    sourceOwned: SourceOwnedArtistEvidence?,
+): PlayerArtistTapRoute? {
+    val name = clickedName.trim()
+    if (name.isBlank()) return null
+
+    // The provider's verified recording + artist relation takes precedence over
+    // any stale Song.artistId. Do not send a second credit to the lead artist.
+    if (sourceOwned != null) {
+        return sourceOwned.takeIf {
+            it.artistName.equals(name, ignoreCase = true) &&
+                it.artistId.isNotBlank() && it.providerKey.isNotBlank()
+        }?.let(PlayerArtistTapRoute::SourceOwned)
+    }
+
+    // An unindexed local/remote queue entry cannot be turned into an online
+    // artist just because the parser retained an Apple/catalog identifier.
+    val nativeLocator = song.localUri != null || song.localPath != null ||
+        song.videoId.startsWith("content://", ignoreCase = true) ||
+        song.videoId.startsWith("file://", ignoreCase = true) ||
+        song.videoId.startsWith("bitchord://", ignoreCase = true)
+    if (nativeLocator) return null
+
+    val route = verifiedAppleArtistBrowseRoute(clickedId)
+        ?: verifiedLegacyPlayerArtistBrowseId(clickedId)
+            ?.takeIf { it.startsWith("catalog:ARTIST:") }
+        ?: return null
+    val creditAttachedToSong =
+        (clickedId == song.artistId && song.artist.equals(name, ignoreCase = true)) ||
+            song.artists.any { credit ->
+                credit.browseId == route && credit.name.equals(name, ignoreCase = true)
+            }
+    return PlayerArtistTapRoute.Catalog(route, name)
+        .takeIf { creditAttachedToSong }
+}
+
 /**
  * Only a queue identity that resolves to one current MediaAsset may open an
  * artist inside the same provider. Avoid crossing local files and Navidrome.
