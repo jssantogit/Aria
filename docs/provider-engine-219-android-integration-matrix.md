@@ -23,6 +23,7 @@ Date: 2026-11-16. Scope: Android only. GitHub issue [#218](https://github.com/js
 | Custom module (QuickJS) | EXTENSION_PLAYBACK and optional DOWNLOAD | Isolated playback/download ModuleSource managers; ProviderQueryExecutor cancellation, shared producer cancellation and cancellable JS/index/host fetch HTTP | Connected at source dispatch; Media3 HTTP byte/call gate wired; source-cache complete-hit provenance and Cast handoff admission now guarded; exact-HEAD CI and device acceptance outstanding | ModuleSourcePolicyTest, ModuleNetworkCancellationTest |
 | Soulseek | DOWNLOAD | Native manual search now denies without canonical DOWNLOAD ticket as well as legacy pilot readiness; active socket/transfer revocation still requires separate audit | DevDebug manual entrypoint admitted with canonical DOWNLOAD ticket; tracked search listeners/peer sockets revocable. Partial pending device/entrypoint acceptance | ProviderCapabilitySessionTest |
 | Local MediaStore | PERSONAL_LIBRARY | Local personal data never depends on remote editorials | Connected locally; not subject to external network gate | provider provenance tests |
+| OpenSubsonic / Navidrome account | PERSONAL_LIBRARY / AUDIO_PLAYBACK | Provider-owned revision and authenticated Media3 lease exist, but account has no per-instance ProviderCapabilitySession descriptor and is not admitted at every remote query/cache boundary | PARTIAL — do not mark READY | OpenSubsonicAccountControllerTest, OpenSubsonicSyncRecoveryRoomTest, OpenSubsonicMediaAccessSecurityTest |
 | AcoustID | ACOUSTIC_IDENTIFICATION | No implemented adapter | NOT_IMPLEMENTED | Inventory only |
 | Store sales | CHART_SALES | No implemented adapter | NOT_IMPLEMENTED | Inventory only |
 
@@ -151,3 +152,20 @@ Room regressions verify a real local file stays visible after MusicBrainz is dis
 ## MusicBrainz bounded XML retry safety — 2026-11-17
 
 Android CI on `1de0ea9` executed 3,889 unit tests, with two failed bounded XML response tests: oversized declared-body and chunked-stream responses reached the shared HTTP retry policy as generic `IOException`, resulting in unnecessary extra network requests. Deterministic size/declared-length failures now throw `MusicBrainzBoundedResponseException` and are propagated immediately; transient IO and 429/503 retry behavior remain unchanged. Three bounded HTTP fixtures require a specific non-retriable exception and exactly one request. New exact-HEAD CI required; do not project the old green result.
+
+## OpenSubsonic account identity and stale state audit — 2026-11-17
+
+**Implemented in #219 (focused regression, pending exact-HEAD Android CI):**
+
+- A saved connection test captures the account revision before reading credentials. A successful result is discarded if server, credential or account changes during the suspended probe, and a failed obsolete probe cannot overwrite new-account health. Tests cover both success-after-server-edit and error-after-credential-rotation; probe exceptions remain redacted.
+- The account repository retains connection health and sync timestamps only when the same authenticated realm is reused without credential replacement. New server/rotated credential clears stale diagnostics, not canonical recordings or personal MediaAssets.
+- OpenSubsonicCatalogSync now rechecks generation and account validity after applying snapshot assets and remote rating evidence, before Room transaction commit. A deterministic in-memory Room regression changes the account during canonical ID allocation and asserts full rollback.
+
+**Still blocking provider-engine closure (#218):**
+
+1. The ProviderCapabilityRegistry inventory has no OpenSubsonic/Navidrome instance for PERSONAL_LIBRARY or AUDIO_PLAYBACK. The library provider configuration currently trusts a saved credential; canonical availability, cached browse, sync enumeration and Media3 require complete capability admission, independent opt-out and reactivation tests. Provider-owned revision leases do not replace ProviderCapabilitySession.
+2. The account repository intentionally preserves account ID when changing server. Existing MediaAsset.provider = opensubsonic:<accountId> does not carry a persisted authenticated-realm claim. Old server rows must not be attributed to a new server sharing that ID, even offline. Resolve with durable realm binding, conservative migration/quarantine of unproven rows, and tests for A→B→A and process restart. Do NOT delete personal records or rotate IDs blindly.
+3. Canonical provider opt-outs must not disable local MediaStore or erase user ratings, playlists and MBIDs; a remote provider slot must be independently revocable for personal browse, sync and audio. Prove cache refusal and real HTTP cancellation with and without network, not only inventory tests.
+4. Changes entirely inside an addon or remote server without observable local configuration revisions remain unprovable offline until the provider/account-revision contract supplies trustworthy evidence.
+
+No Compose/UI, REA #212 presentation, public interface or merge is changed. Device validation and Settings → Fontes remain after REA #212 merge; exact-HEAD Android CI and unresolved authorization/provenance review remain pre-merge gates.
