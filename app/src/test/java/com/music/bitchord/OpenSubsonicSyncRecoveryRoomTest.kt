@@ -27,8 +27,12 @@ class OpenSubsonicSyncRecoveryRoomTest {
         title: String,
         gate: CompletableDeferred<Unit>? = null,
         entered: CompletableDeferred<Unit>? = null,
+        realm: String = "",
     ): OpenSubsonicProvider = OpenSubsonicProvider(
-        config = OpenSubsonicAccountConfig("home", "https://music.example.test", OpenSubsonicAuth.ApiKey("secret")),
+        config = OpenSubsonicAccountConfig(
+            "home", "https://music.example.test", OpenSubsonicAuth.ApiKey("secret"),
+            catalogRealmId = realm,
+        ),
         transport = object : OpenSubsonicTransport {
             override suspend fun get(endpoint: String, parameters: Map<String, String>): String =
                 when (endpoint) {
@@ -47,6 +51,31 @@ class OpenSubsonicSyncRecoveryRoomTest {
     )
     private fun ids() = AtomicInteger().let { counter ->
         { "canonical-${counter.incrementAndGet()}" }
+    }
+
+    @Test fun searchAndSpotifyNeverMixOldAndCurrentAuthenticatedServerRealms() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
+            CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            assertTrue(OpenSubsonicCatalogSync.sync(
+                db, provider("OLD", realm = "legacy"), idFactory = ids(),
+            ) is ProviderSyncResult.Success)
+            assertTrue(OpenSubsonicCatalogSync.sync(
+                db, provider("NEW", realm = "current"), idFactory = ids(),
+            ) is ProviderSyncResult.Success)
+            val key = "opensubsonic:home:current"
+            val rows = db.catalogDao().searchCanonicalRemoteServerAssets(
+                query = "", limit = 250, providerKeys = listOf(key),
+            )
+            assertEquals(listOf(key), rows.map { it.providerKey }.distinct())
+            assertEquals(listOf("NEW"), rows.map { it.title }.distinct())
+            assertTrue(db.catalogDao().spotifyCanonicalAssetCandidates(
+                "OLD", providerKeys = listOf(key),
+            ).isEmpty())
+            assertTrue(db.catalogDao().searchCanonicalRemoteServerAssets(
+                query = "", limit = 250, providerKeys = emptyList(),
+            ).isEmpty())
+        } finally { db.close() }
     }
 
     @Test fun lateOldResponseCannotRewindNewerSuccessfulSnapshotOrPruneAssets() = runBlocking {
