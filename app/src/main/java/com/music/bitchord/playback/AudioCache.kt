@@ -255,7 +255,7 @@ object AudioCache {
             instance.isNullOrBlank() || instance.length > 128 ||
             meta.get(META_MEDIA_ID, null as String?) != mediaId) return false
         val base = cacheKeyBaseOf(mediaId)
-        if (key != base && !key.startsWith("$"+"base#")) return false
+        if (key != base && !key.startsWith("${base}#")) return false
         val total = ContentMetadata.getContentLength(meta)
         if (total <= 0L || !cache.isCached(key, 0L, total)) return false
         val firstBytes = runCatching {
