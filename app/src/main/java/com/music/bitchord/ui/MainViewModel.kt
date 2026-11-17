@@ -683,6 +683,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val musicBrainzSearch by lazy { MusicBrainzCatalogSearch() }
+    /** Discovery/release listings have independent EDITORIAL_DISCOGRAPHY authorization. */
+    private val musicBrainzEditorialSearch by lazy {
+        MusicBrainzCatalogSearch(capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
+    }
     private val musicBrainzGraph by lazy { MusicBrainzCatalogGraph() }
     // Verified iTunes covers are now the target catalog source, regardless
     // of whether the group already has a CAA sleeve.
@@ -3160,6 +3164,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * Keep the most recent verified snapshot when the network is unavailable.
      */
     fun loadCanonicalWorldwideReleases(force: Boolean = false) {
+        val gate = ProviderRuntime.gateOrNull()
+        val ticket = gate?.open(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
+        )
+        if (ticket == null) {
+            worldwideReleaseJob?.cancel()
+            worldwideReleaseEpoch.invalidateAndNext()
+            _canonicalWorldwideReleases.value = emptyList()
+            _canonicalWorldwideLoading.value = false
+            return
+        }
         if (worldwideReleaseJob?.isActive == true) return
         val now = System.currentTimeMillis()
         if (!force && (now < worldwideReleaseRetryAtMs ||
@@ -3175,7 +3190,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val rows = try {
                 val narrowFrom = today.minusDays(30).toString()
                 val wideFrom = today.minusDays(90).toString()
-                val recent = musicBrainzSearch.searchRecentReleaseGroups(
+                val recent = musicBrainzEditorialSearch.searchRecentReleaseGroups(
                     narrowFrom, until, limit = 100,
                 )
                 val recentHits =
@@ -3186,7 +3201,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // only typed, dated releases with genuine MusicBrainz IDs.
                 val expandedRows = if (canonicalPublicNeedsMoreEditorialRows(recentRows)) {
                     try {
-                        val expanded = musicBrainzSearch.searchRecentReleaseGroups(
+                        val expanded = musicBrainzEditorialSearch.searchRecentReleaseGroups(
                             wideFrom, until, limit = 100,
                         )
                         val hits = (expanded as? MusicBrainzCatalogSearchResult.Success)
@@ -3200,7 +3215,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val historicalFrom = today.minusDays(365).toString()
                     val historicalThrough = today.minusDays(91).toString()
                     val older = try {
-                        val historical = musicBrainzSearch.searchRecentReleaseGroups(
+                        val historical = musicBrainzEditorialSearch.searchRecentReleaseGroups(
                             historicalFrom, historicalThrough, limit = 100,
                         )
                         val hits = (historical as? MusicBrainzCatalogSearchResult.Success)
@@ -3214,7 +3229,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else combined
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { emptyList() }
-            if (!worldwideReleaseEpoch.isCurrent(generation)) return@launch
+            if (!gate.accept(ticket) || !worldwideReleaseEpoch.isCurrent(generation)) return@launch
             if (rows.isEmpty()) {
                 worldwideReleaseRetryAtMs = System.currentTimeMillis() + 15L * 60_000L
                 _canonicalWorldwideLoading.value = false
@@ -3233,7 +3248,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // secondary-cover source without benefiting any displayed card.
             // Do not start a Cover Art Archive warmup from this path.
         }.also { job ->
+            val unregister = gate.onRevoke(ticket) { job.cancel() }
             job.invokeOnCompletion {
+                unregister()
                 if (worldwideReleaseEpoch.isCurrent(generation)) {
                     _canonicalWorldwideLoading.value = false
                 }
@@ -3482,6 +3499,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Explore genre requests use actual MusicBrainz tags, not YouTube pages. */
     fun loadCanonicalGenre(tag: String) {
         val selected = canonicalExploreGenres.firstOrNull { it.tag == tag } ?: return
+        val gate = ProviderRuntime.gateOrNull()
+        val ticket = gate?.open(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
+        )
+        if (ticket == null) {
+            canonicalGenreJob?.cancel()
+            canonicalGenreEpoch.invalidateAndNext()
+            _canonicalGenreResults.value = UiState.Success(emptyList())
+            return
+        }
         appleGenreJob?.cancel()
         appleGenreEpoch.invalidateAndNext()
         appleGenreActiveTag = tag
@@ -3491,24 +3518,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         canonicalGenreJob = viewModelScope.launch(Dispatchers.IO) {
             val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
             val todayIso = today.toString()
-            val historical = try { musicBrainzSearch.searchReleaseGroupsForTag(selected.tag, 60) }
+            val historical = try { musicBrainzEditorialSearch.searchReleaseGroupsForTag(selected.tag, 60) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { null }
-            if (!canonicalGenreEpoch.isCurrent(generation)) return@launch
+            if (!gate.accept(ticket) || !canonicalGenreEpoch.isCurrent(generation)) return@launch
             // The tag-only page can be entirely historical; query the same
             // verified tag over the recent window so 'Lançamentos' isn't
             // accidentally hidden by MusicBrainz relevance ordering.
             val recent = try {
-                musicBrainzSearch.searchRecentReleaseGroupsForTag(
+                musicBrainzEditorialSearch.searchRecentReleaseGroupsForTag(
                     selected.tag, today.minusDays(180).toString(), todayIso, limit = 40,
                 )
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { null }
-            if (!canonicalGenreEpoch.isCurrent(generation)) return@launch
+            if (!gate.accept(ticket) || !canonicalGenreEpoch.isCurrent(generation)) return@launch
             val historicalHits = (historical as? MusicBrainzCatalogSearchResult.Success)
                 ?.page?.items
             val recentHits = (recent as? MusicBrainzCatalogSearchResult.Success)
                 ?.page?.items
+            if (!gate.accept(ticket)) return@launch
             if (historicalHits == null && recentHits == null) {
                 _canonicalGenreResults.value = UiState.Error(
                     "Não foi possível carregar o gênero. Tente novamente.",
@@ -3518,16 +3546,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val hits = (historicalHits.orEmpty() + recentHits.orEmpty())
                 .distinctBy { it.musicBrainzId }
             var rows = canonicalPublicGenreRows(hits, todayIso)
+            if (!gate.accept(ticket)) return@launch
             _canonicalGenreResults.value = UiState.Success(rows)
             // A relevance-ranked MusicBrainz tag result can be all EPs/singles.
             // Publish those immediately, then fetch Album-typed tag evidence
             // separately instead of making the Album shelf disappear.
             if (rows.none { canonicalEditorialReleaseType(it) == "Album" }) {
                 val additional = try {
-                    musicBrainzSearch.searchAlbumReleaseGroupsForTag(selected.tag, 24)
+                    musicBrainzEditorialSearch.searchAlbumReleaseGroupsForTag(selected.tag, 24)
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) { null }
-                if (!canonicalGenreEpoch.isCurrent(generation)) return@launch
+                if (!gate.accept(ticket) || !canonicalGenreEpoch.isCurrent(generation)) return@launch
                 val albumHits = (additional as? MusicBrainzCatalogSearchResult.Success)
                     ?.page?.items.orEmpty()
                 if (albumHits.isNotEmpty()) {
@@ -3536,6 +3565,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     if (enriched.any { canonicalEditorialReleaseType(it) == "Album" }) {
                         rows = enriched
+                        if (!gate.accept(ticket)) return@launch
                         _canonicalGenreResults.value = UiState.Success(rows)
                     }
                 }
@@ -3545,6 +3575,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // populated from Apple products and their primaryGenreName.
             // Their artwork does not come from MusicBrainz/CAA. Avoid a
             // duplicate, unused archive-image enrichment pass here.
+        }.also { job ->
+            val unregister = gate.onRevoke(ticket) { job.cancel() }
+            job.invokeOnCompletion { unregister() }
         }
     }
 
