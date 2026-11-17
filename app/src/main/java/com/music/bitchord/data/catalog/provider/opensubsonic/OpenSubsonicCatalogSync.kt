@@ -125,6 +125,13 @@ internal object OpenSubsonicCatalogSync {
                         generation = generation,
                         snapshot = snapshot,
                     )
+                    // Account configuration can rotate while a large Room
+                    // snapshot is being applied. The admission checks above
+                    // are not sufficient: recheck before COMMIT so Room rolls
+                    // back all canonical assets, identities and remote ratings.
+                    if (generation != gate.latestGeneration.get() || !accountIsCurrent()) {
+                        error("OpenSubsonic snapshot superseded during Room apply")
+                    }
                     result
                 }
             }
