@@ -2218,52 +2218,11 @@ internal fun CanonicalTrackRow(
                     label = if (selected) "Desmarcar faixa" else "Selecionar faixa",
                     onToggle = onToggleSelection,
                 )
-            } else {
-                if (showInlineOptions) {
-                    CanonicalCatalogRatingMenu(onEdit = onEditRating, onOpenMenu = onOptions)
-                }
             }
+            // Track options live in HeldContextMenu; never place a fallback
+            // ellipsis or rating-only popup at the edge of a music row.
         },
     )
-}
-
-/**
- * Preserve main-branch rating menu alongside the canonical filter tabs.
- */
-@Composable
-internal fun CanonicalCatalogRatingMenu(
-    onEdit: () -> Unit,
-    onOpenMenu: (() -> Unit)? = null,
-) {
-    if (onOpenMenu != null) {
-        // This is already the native canonical BrowseActionsSheet route.
-        // Do not compose a second (dormant) rating-only dropdown beneath it.
-        RowMoreButton(
-            onClick = onOpenMenu,
-            contentDescription = sharedStringResource(Res.string.canonical_rating_song_options),
-        )
-        return
-    }
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        RowMoreButton(
-            onClick = { expanded = true },
-            contentDescription = sharedStringResource(Res.string.canonical_rating_song_options),
-        )
-        com.music.bitchord.ui.components.NativeCompactOverflowMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            com.music.bitchord.ui.components.NativeCompactMenuItem(
-                label = sharedStringResource(Res.string.recording_feedback_edit),
-                icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.RatingPlain,
-                onClick = {
-                    expanded = false
-                    onEdit()
-                },
-            )
-        }
-    }
 }
 
 @Composable
