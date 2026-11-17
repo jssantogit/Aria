@@ -73,7 +73,7 @@ class PreparedSourceMediaSelectionTest {
         }
         val factory = SourceScopedMediaSourceFactory(
             defaultFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(unused),
-            createSourceFactory = { _ ->
+            createSourceFactory = {
                 calls++
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(unused)
             },
