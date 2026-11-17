@@ -54,6 +54,16 @@ jobs:
                 echo "**Conflicting paths (must reconcile without changing REA visuals):**"
                 sed 's/^/- \`/; s/$/\`/' /tmp/rea-conflicts.txt
               } >> "$GITHUB_STEP_SUMMARY"
+              # Record exact Git conflict hunks, without selecting either side
+              # or treating a provisional auto-resolution as merge approval.
+              mapfile -t conflicts < /tmp/rea-conflicts.txt
+              git diff --cc -- "${conflicts[@]}" > /tmp/rea-conflict-hunks.txt
+              {
+                echo "=== Unmerged stages: 1=base, 2=provider, 3=frozen REA ==="
+                git ls-files -u
+                echo "=== Actual conflict hunks (first 320 lines; artifact has full text) ==="
+                sed -n '1,320p' /tmp/rea-conflict-hunks.txt
+              }
               echo "::error::Provider #219 and frozen REA #212 do not yet form a conflict-free tree."
             else
               echo "::error::Temporary merge failed; see the Git merge diagnostics above."
@@ -64,6 +74,15 @@ jobs:
             echo ""
             echo "Temporary combined tree is conflict-free; running Android and shared-native verification."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve unresolved conflict hunks for review
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-219-rea-212-conflict-hunks
+          path: /tmp/rea-conflict-hunks.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
