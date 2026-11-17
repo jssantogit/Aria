@@ -413,6 +413,46 @@ class OpenSubsonicAccountControllerTest {
         assertEquals(first.accountId, accounts.current()!!.accountId)
     }
 
+    @Test
+    fun `failed realm metadata commit must not leave old catalog authorized with new credential`() {
+        var stored: OpenSubsonicAccountRecord? = null
+        var denyNext = false
+        val persistence = object : OpenSubsonicAccountPersistence {
+            override fun read(): OpenSubsonicAccountRecord? = stored
+            override fun write(record: OpenSubsonicAccountRecord) {
+                if (denyNext) error("encrypted preference disk unavailable")
+                stored = record
+            }
+            override fun clear() { stored = null }
+        }
+        val credentials = FakeCredentialStore()
+        val repository = OpenSubsonicAccountRepository(persistence, credentials) { "home" }
+        repository.save(OpenSubsonicAccountDraft(
+            "https://music.example.test", OpenSubsonicAuthMode.API_KEY,
+            secretReplacement = "old-secret",
+        ))
+        val oldProvider = openSubsonicProviderKey(repository.savedConfig()!!)
+        denyNext = true
+        val failed = runCatching {
+            repository.save(OpenSubsonicAccountDraft(
+                "https://another.example.test", OpenSubsonicAuthMode.API_KEY,
+                secretReplacement = "new-secret",
+            ))
+        }
+        assertTrue(failed.isFailure)
+        assertEquals("https://music.example.test", stored?.serverUrl)
+        assertEquals(oldProvider, openSubsonicProviderKey(
+            com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountConfig(
+                "home", "https://music.example.test",
+                OpenSubsonicAuth.ApiKey("old-secret"),
+                catalogRealmId = stored?.catalogRealmId.orEmpty(),
+            )))
+        // If the old metadata survives, its credential must not become the new
+        // server's credential; require explicit reauthentication instead.
+        assertNull(repository.savedConfig())
+        assertNull(credentials.read("home"))
+    }
+
     private fun configuredRepository(): OpenSubsonicAccountRepository =
         OpenSubsonicAccountRepository(
             FakeAccountPersistence(),
