@@ -5,6 +5,8 @@ import com.music.bitchord.data.catalog.provider.opensubsonic.AndroidKeystoreOpen
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountRepository
 import com.music.bitchord.data.catalog.provider.opensubsonic.SharedPrefsOpenSubsonicAccountPersistence
 import com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey
+import com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicCatalogProviderKey
+import com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicCapabilityKey
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicCapabilityAdmission
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderPolicyGate
@@ -106,6 +108,36 @@ internal class OpenSubsonicLibraryProviderConfigurationReader(
             add(openSubsonicProviderKey(config))
         }
     }
+}
+
+/**
+ * One canonical provider allowlist for local, remote search, Spotify matching
+ * and Library Mode. Old server realms are never searched by broad SQL prefix.
+ */
+internal fun configuredCanonicalPersonalProviderKeys(context: Context): Set<String> {
+    val app = context.applicationContext
+    val accounts = OpenSubsonicAccountRepository(
+        SharedPrefsOpenSubsonicAccountPersistence(app),
+        AndroidKeystoreOpenSubsonicCredentialStore(app),
+    )
+    return OpenSubsonicLibraryProviderConfigurationReader(accounts).configuredProviderKeys()
+}
+
+/** Cheap post-query revalidation, without reading secret-bearing credentials. */
+internal fun isCanonicalPersonalProviderCurrentlyAuthorized(
+    context: Context,
+    providerKey: String,
+): Boolean {
+    if (providerKey == CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER) return true
+    val account = SharedPrefsOpenSubsonicAccountPersistence(context.applicationContext)
+        .read() ?: return false
+    if (providerKey != openSubsonicCatalogProviderKey(
+            account.accountId, account.catalogRealmId,
+        )
+    ) return false
+    return ProviderRuntime.gateOrNull()?.open(
+        ProviderCapability.PERSONAL_LIBRARY, openSubsonicCapabilityKey(account.accountId),
+    ) != null
 }
 
 /**
