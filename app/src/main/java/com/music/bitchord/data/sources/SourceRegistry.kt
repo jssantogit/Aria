@@ -215,10 +215,24 @@ object SourceRegistry {
             return json.encodeToString(ListSerializer(SourceConfig.serializer()), active)
         val elements = runCatching { json.parseToJsonElement(raw).jsonArray }
             .getOrNull() ?: return null
+        // Duplicate decodable IDs cannot be losslessly merged: do not
+        // silently collapse distinct user rows under one shared ID.
+        val decodedIds = elements.mapNotNull { element ->
+            runCatching {
+                json.decodeFromJsonElement(SourceConfig.serializer(), element).id
+            }.getOrNull()
+        }
+        if (decodedIds.size != decodedIds.toSet().size ||
+            active.map(SourceConfig::id).distinct().size != active.size) return null
         val activeById = active.associateBy(SourceConfig::id)
         val serializedIds = mutableSetOf<String>()
-        val reservedIds = elements.mapNotNull { (it as? JsonObject)?.get("id")
-            ?.jsonPrimitive?.contentOrNull }.toSet()
+        // Future schema fields may use a non-primitive id. Those malformed
+        // rows must remain inert and preserved, not crash application start.
+        val reservedIds = elements.mapNotNull { element ->
+            runCatching {
+                (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull
+            }.getOrNull()
+        }.toSet()
         val preserved = elements.mapNotNull { element ->
             val decoded = runCatching {
                 json.decodeFromJsonElement(SourceConfig.serializer(), element)

@@ -68,4 +68,22 @@ class SourceRegistryCacheMigrationTest {
         assertEquals(1, elements.size)
         assertEquals("FUTURE_SERVER", elements[0].jsonObject["kind"]?.jsonPrimitive?.content)
     }
+    @Test fun malformedFutureIdDoesNotCrashPreferenceMigration() {
+        val raw = """[{"id":{"opaque":"future"},"kind":"FUTURE_SERVER",
+          "settings":{"keep":"all"}}]"""
+        val output = requireNotNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            raw, listOf(known())))
+        val entries = json.parseToJsonElement(output).jsonArray
+        assertEquals(2, entries.size)
+        assertEquals(json.parseToJsonElement(raw).jsonArray[0], entries[0])
+    }
+
+    @Test fun duplicateKnownIdsRequireManualRepairInsteadOfSilentCollapse() {
+        val raw = """[
+          {"id":"duplicate","kind":"ADDON","baseUrl":"https://a.example"},
+          {"id":"duplicate","kind":"ADDON","baseUrl":"https://b.example"}
+        ]"""
+        assertNull(SourceRegistry.sourcesDocumentPreservingUnknown(raw, emptyList()))
+    }
+
 }
