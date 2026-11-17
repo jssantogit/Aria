@@ -1045,7 +1045,9 @@ private fun BitChordApp(
         if (selectedTab == TAB_HOME) {
             if (catalogEditorialOrder.firstOrNull() ==
                     com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
-            ) viewModel.loadCanonicalWorldwideReleases()
+            ) com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
+                viewModel, catalogEditorialOrder,
+            )
             viewModel.loadCanonicalExploreSitewide()
             viewModel.loadCanonicalExplorePublicPopularity(cachedCanonicalRows)
             // Explore now contains only genre navigation. An opted-in user's
@@ -1063,26 +1065,20 @@ private fun BitChordApp(
     LaunchedEffect(selectedTab, canonicalWorldwideLoading,
         canonicalWorldwideReleases, catalogEditorialOrder,
     ) {
-        val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
-        val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
-        val first = catalogEditorialOrder.firstOrNull()
-        if (selectedTab == TAB_HOME && apple in catalogEditorialOrder &&
-            (first == apple ||
-                first == mb && !canonicalWorldwideLoading &&
-                    canonicalWorldwideReleases.isEmpty())
-        ) viewModel.loadAppleHomeEditorial()
+        if (selectedTab == TAB_HOME)
+            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartApple(
+                viewModel, catalogEditorialOrder,
+                canonicalWorldwideLoading, canonicalWorldwideReleases.isNotEmpty(),
+            )
     }
 
     // Apple-first only queries its eligible secondary if the primary really
     // settled without a usable Apple product. Loading is never a miss.
     LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases) {
-        val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
-        val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
-        if (selectedTab == TAB_HOME &&
-            catalogEditorialOrder.firstOrNull() == apple &&
-            mb in catalogEditorialOrder &&
-            com.music.bitchord.ui.editorialPrimaryMiss(appleHomeReleases)
-        ) viewModel.loadCanonicalWorldwideReleases()
+        if (selectedTab == TAB_HOME)
+            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartMusicBrainz(
+                viewModel, catalogEditorialOrder, appleHomeReleases,
+            )
     }
 
     // Apple genre discovery is native: no MusicBrainz seed is required.
@@ -3912,22 +3908,16 @@ private fun BitChordApp(
                             },
                             onRetry = {
                                 viewModel.loadCanonicalDiscoveryCatalog()
-                                when (catalogEditorialOrder.firstOrNull()) {
-                                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ ->
-                                        viewModel.loadCanonicalWorldwideReleases(force = true)
-                                    com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES ->
-                                        viewModel.loadAppleHomeEditorial(force = true)
-                                }
+                                com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
+                                    viewModel, catalogEditorialOrder, force = true,
+                                )
                             },
                             refreshing = MainViewModel.Feed.HOME in refreshing,
                             onRefresh = {
                                 viewModel.refresh(MainViewModel.Feed.HOME)
-                                when (catalogEditorialOrder.firstOrNull()) {
-                                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ ->
-                                        viewModel.loadCanonicalWorldwideReleases(force = true)
-                                    com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES ->
-                                        viewModel.loadAppleHomeEditorial(force = true)
-                                }
+                                com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
+                                    viewModel, catalogEditorialOrder, force = true,
+                                )
                             },
                             pullState = homePull,
                             contentPadding = listPadding,
