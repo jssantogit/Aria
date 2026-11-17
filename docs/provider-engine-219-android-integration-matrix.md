@@ -141,3 +141,9 @@ The reconciled client restores a capability+instance ticket before dispatch, che
 All public MusicBrainz searches pass `CATALOG_SEARCH`; release/recording/release-group graph, artist appearances and bounded release XML proof pass `EDITORIAL_DISCOGRAPHY`; standalone canonical identity enrichments and artist URL lookup use `IDENTITY`. Restored #217 admission/single-flight/cancellation tests and new bounded-vs-unlimited flight isolation regression cover these boundaries.
 
 No UI paths change. Device acceptance is deferred until after REA #212 merge, but capability bypass and Android CI remain mandatory before motor merge.
+
+## Strict personal-asset provenance in cached MusicBrainz searches — 2026-11-17
+
+A MusicBrainz MBID with **any** MediaAsset was incorrectly treated as a personally owned recording. A CDN preview or unauthorized remote provider asset cannot grant that proof. The new `musicBrainzRecordingMbidsWithPersonalAssets` DAO method requires exact current personally authorized provider identities. The headless repository defaults to MediaStore only and accepts an explicitly configured, re-evaluated allowlist of `opensubsonic:<account>` instances; unknown/editorial provider IDs are discarded even when supplied. The adapter must be constructed with a live authorized account-key reader to expose personal server assets after editorial opt-out. The old unscoped DAO query remains for non-authorization contexts, but is never used to assert personal ownership in the new repository.
+
+Room regressions verify a real local file stays visible after MusicBrainz is disabled while an iTunes CDN preview does not, and a remote personal asset becomes visible only when its own configured OpenSubsonic account key is present. This is presentation/provenance logic without any Compose UI change, and tests do not treat an MBID as proof of playback.

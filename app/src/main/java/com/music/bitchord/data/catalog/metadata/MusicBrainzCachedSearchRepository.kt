@@ -2,6 +2,7 @@ package com.music.bitchord.data.catalog.metadata
 
 import androidx.room.withTransaction
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.CanonicalLocalLibrary
 import com.music.bitchord.data.providers.CatalogEntryProvenance
 import com.music.bitchord.data.providers.CatalogProvenanceFilter
 import com.music.bitchord.data.providers.ProvenanceScopedItem
@@ -60,8 +61,20 @@ internal data class MusicBrainzCachedSearchSnapshot(
 internal class MusicBrainzCachedSearchRepository(
     private val database: CanonicalCatalogDatabase,
     private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
+    /** Current verified local/server account keys, never a blanket asset grant. */
+    private val personalProviderKeys: () -> Set<String> = {
+        setOf(CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER)
+    },
 ) {
     private val musicBrainz = ProviderKey("musicbrainz")
+
+    /** Fail closed for unknown services even if a caller supplies their key. */
+    private fun eligiblePersonalProviders(): List<String> = personalProviderKeys()
+        .filter { provider ->
+            provider == CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER ||
+                (provider.startsWith("opensubsonic:") &&
+                    provider.substringAfter(':').isNotBlank())
+        }.distinct().sorted()
 
     /**
      * Re-read cached personal recordings on editorial opt-out. An empty
@@ -95,9 +108,11 @@ internal class MusicBrainzCachedSearchRepository(
                 val dao = database.catalogDao()
                 val candidateRecordings = dao.searchKnownMusicBrainzRecordings(normalized, limits.recordings)
                 if (candidateRecordings.isEmpty()) return@withTransaction MusicBrainzCachedSearchSnapshot()
-                val withAssets = dao.musicBrainzRecordingMbidsWithAssets(
-                    candidateRecordings.map { it.musicBrainzId },
-                ).toSet()
+                val eligible = eligiblePersonalProviders()
+                val withAssets = if (eligible.isEmpty()) emptySet() else
+                    dao.musicBrainzRecordingMbidsWithPersonalAssets(
+                        candidateRecordings.map { it.musicBrainzId }, eligible,
+                    ).toSet()
                 val scopedRecordings = candidateRecordings.map { hit ->
                     val provenances = buildSet {
                         add(CatalogEntryProvenance.ProviderEditorial(musicBrainz, ProviderCapability.CATALOG_SEARCH))
@@ -130,9 +145,10 @@ internal class MusicBrainzCachedSearchRepository(
                 val dao = database.catalogDao()
                 val recordings = if (limits.recordings == 0) emptyList()
                     else dao.searchKnownMusicBrainzRecordings(normalized, limits.recordings)
-                val withAssets = if (recordings.isEmpty()) emptySet()
-                    else dao.musicBrainzRecordingMbidsWithAssets(
-                        recordings.map { it.musicBrainzId },
+                val eligible = eligiblePersonalProviders()
+                val withAssets = if (recordings.isEmpty() || eligible.isEmpty()) emptySet()
+                    else dao.musicBrainzRecordingMbidsWithPersonalAssets(
+                        recordings.map { it.musicBrainzId }, eligible,
                     ).toSet()
                 MusicBrainzCachedSearchSnapshot(
                     artists = if (limits.artists == 0) emptyList()

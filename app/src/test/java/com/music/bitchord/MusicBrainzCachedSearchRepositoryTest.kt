@@ -273,4 +273,67 @@ class MusicBrainzCachedSearchRepositoryTest {
         } finally { db.close() }
     }
 
+    @Test fun cdnAssetCannotClaimPersonalOwnershipAfterMusicBrainzOptOut(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            val localId = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+            val editorialId = "3e619ba2-34f0-4649-83d8-05483e2fabe5"
+            val ids = MusicBrainzCatalogIndex(db,
+                cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+                .persistRecordings(listOf(
+                    MusicBrainzRecordingHit(localId, "Magnetic", "ILLIT", 160000L),
+                    MusicBrainzRecordingHit(editorialId, "Magnetic Cover", "ILLIT", 160500L),
+                ))
+            db.catalogDao().upsertMediaAsset(com.music.bitchord.data.catalog.MediaAssetEntity(
+                "asset-owned", ids.getValue(localId), "local-mediastore", "local-1",
+                "content://media/external/audio/media/1", null, null, null, null,
+            ))
+            db.catalogDao().upsertMediaAsset(com.music.bitchord.data.catalog.MediaAssetEntity(
+                "asset-cdn", ids.getValue(editorialId), "itunes", "store-preview",
+                "https://cdn.example/audio-preview", null, null, null, null,
+            ))
+            val repo = MusicBrainzCachedSearchRepository(
+                db, cacheRead = ProviderCachedReadAccess { gate(search = false) },
+                personalProviderKeys = { setOf("local-mediastore", "itunes") },
+            )
+            val visible = repo.search("Magnetic")
+            assertEquals(listOf(localId), visible.recordings.map { it.musicBrainzId })
+            assertEquals(setOf(localId), visible.recordingMbidsWithAssets)
+            val direct = db.catalogDao().musicBrainzRecordingMbidsWithAssets(
+                listOf(localId, editorialId),
+            )
+            assertEquals(setOf(localId, editorialId), direct.toSet())
+        } finally { db.close() }
+    }
+
+    @Test fun onlyConfiguredOpenSubsonicAccountIsPersonalEvidence(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            val id = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+            val rid = MusicBrainzCatalogIndex(db,
+                cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
+                .persistRecordings(listOf(
+                    MusicBrainzRecordingHit(id, "Magnetic", "ILLIT", 160000L),
+                )).getValue(id)
+            db.catalogDao().upsertMediaAsset(com.music.bitchord.data.catalog.MediaAssetEntity(
+                "asset-remote", rid, "opensubsonic:home", "server-track-1",
+                "bitchord://canonical?recording=1", null, null, null, null,
+            ))
+            val grant = mutableSetOf("local-mediastore")
+            val repo = MusicBrainzCachedSearchRepository(
+                db, cacheRead = ProviderCachedReadAccess { gate(search = false) },
+                personalProviderKeys = { grant.toSet() },
+            )
+            assertTrue(repo.search("Magnetic").recordings.isEmpty())
+            grant += "opensubsonic:home"
+            assertEquals(listOf(id), repo.search("Magnetic").recordings.map { it.musicBrainzId })
+            grant -= "opensubsonic:home"
+            assertTrue(repo.search("Magnetic").recordings.isEmpty())
+        } finally { db.close() }
+    }
+
 }

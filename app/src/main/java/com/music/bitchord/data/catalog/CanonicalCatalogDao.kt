@@ -1543,6 +1543,28 @@ internal interface CanonicalCatalogDao {
     suspend fun musicBrainzRecordingMbidsWithAssets(mbids: List<String>): List<String>
 
     /**
+     * A MusicBrainz identity may have CDN/editorial candidate assets without
+     * being a personally owned recording. Require an explicit live allowlist
+     * of PERSONAL providers; never treat every catalog_media_asset row as
+     * proof of user ownership when editorial search is switched off.
+     */
+    @Query(
+        """
+        SELECT DISTINCT identity.externalId
+        FROM catalog_external_identity AS identity
+        INNER JOIN catalog_media_asset AS asset ON asset.recordingId = identity.entityId
+        WHERE identity.provider = 'musicbrainz'
+          AND identity.entityType = 'recording'
+          AND identity.externalId IN (:mbids)
+          AND asset.provider IN (:personalProviderKeys)
+        """,
+    )
+    suspend fun musicBrainzRecordingMbidsWithPersonalAssets(
+        mbids: List<String>,
+        personalProviderKeys: List<String>,
+    ): List<String>
+
+    /**
      * Read-only evidence for a downloaded icon. Identity must be the *same*
      * canonical Recording; MediaStore ownership is not inferred by title.
      * Consumers must additionally verify that the URI is still readable.
