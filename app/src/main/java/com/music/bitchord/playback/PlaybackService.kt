@@ -1591,6 +1591,16 @@ class PlaybackService : MediaLibraryService() {
                         onSourceCacheLease = { lease -> mediaSession.bind(lease) },
                         adaptiveSegmentLease = mediaSession::currentLease,
                         adaptiveSegmentRequest = mediaSession::withSegmentHeaders,
+                        progressiveRoot = selected?.takeIf {
+                            !it.cachedOffline &&
+                                it.item.localConfiguration?.mimeType == null &&
+                                it.logicalMediaId != null
+                        }?.let { chosen ->
+                            AudioCache.SourcePhysicalProgressiveCacheRoot(
+                                requireNotNull(chosen.logicalMediaId),
+                                chosen.resolved.uri.toString(),
+                            )
+                        },
                     ),
                     DsdExtractorsFactory(),
                 )

@@ -255,7 +255,10 @@ object AudioCache {
             instance.isNullOrBlank() || instance.length > 128 ||
             meta.get(META_MEDIA_ID, null as String?) != mediaId) return false
         val base = cacheKeyBaseOf(mediaId)
-        if (key != base && !key.startsWith("${base}#")) return false
+        val legacyLogical = key == base || key.startsWith("${base}#")
+        val modernPhysical = isScopedSourcePhysicalCacheKey(key) &&
+            meta.get(META_SOURCE_ROOT, null as String?) == "1"
+        if (!legacyLogical && !modernPhysical) return false
         val total = ContentMetadata.getContentLength(meta)
         if (total <= 0L || !cache.isCached(key, 0L, total)) return false
         val firstBytes = runCatching {
@@ -301,17 +304,27 @@ object AudioCache {
         val uri = item.localConfiguration?.uri ?: return null
         if (!isLogicalSourcePlaybackUri(uri)) return null
         val mediaId = mediaIdIn(uri) ?: return null
-        val key = keyFactory.buildCacheKey(DataSpec(uri))
-        val meta = runCatching { cache.getContentMetadata(key) }.getOrNull() ?: return null
-        if (!isVerifiedProgressiveSourceCache(key, meta, mediaId)) return null
-        val lease = sourceCacheReadLease(
-            meta.get(META_SOURCE_PROVIDER, null as String?),
-            meta.get(META_SOURCE_INSTANCE, null as String?),
-            completelyCached = true,
-            gate = ProviderRuntime.gateOrNull(),
-        ) ?: return null
-        if (!lease.allowed()) return null
-        return prepareCachedProgressiveSourceMediaSelection(item, lease)
+        // Self-indexed resource metadata: a durable logical recording
+        // pointer lives on the physical cache bucket itself. Cache eviction
+        // removes the index and bytes atomically. Opaque keys hold no URLs.
+        val logical = keyFactory.buildCacheKey(DataSpec(uri))
+        val candidates = sequenceOf(logical) +
+            cache.keys.asSequence().filter(::isScopedSourcePhysicalCacheKey)
+        for (key in candidates) {
+            val meta = runCatching { cache.getContentMetadata(key) }.getOrNull() ?: continue
+            if (!isVerifiedProgressiveSourceCache(key, meta, mediaId)) continue
+            val lease = sourceCacheReadLease(
+                meta.get(META_SOURCE_PROVIDER, null as String?),
+                meta.get(META_SOURCE_INSTANCE, null as String?),
+                completelyCached = true,
+                gate = ProviderRuntime.gateOrNull(),
+            ) ?: continue
+            if (!lease.allowed()) continue
+            return prepareCachedProgressiveSourceMediaSelection(
+                item, lease, if (isScopedSourcePhysicalCacheKey(key)) key else null,
+            )
+        }
+        return null
     }
 
     /** Drops everything on disk. The listener asked; no grace period. */
@@ -459,6 +472,11 @@ object AudioCache {
         // same cache span; use the scoped key when supplied, else exact URL.
         if (spec.uri.scheme == "http" || spec.uri.scheme == "https")
             return spec.key ?: spec.uri.toString()
+        // The verified offline physical byte cache is opened through the
+        // logical MediaItem using its opaque customCacheKey. Never restore a
+        // signed physical URL or any persisted HTTP authorization header.
+        if (spec.uri.scheme == "bitchord" && spec.uri.authority == "source" &&
+            isScopedSourcePhysicalCacheKey(spec.key)) return requireNotNull(spec.key)
         return spec.uri.getQueryParameter("v")
             // A YouTube id can name several different recordings on disk: the
             // Opus rendition YouTube serves, whatever a source ranked above it
@@ -891,6 +909,7 @@ object AudioCache {
     private const val META_SOURCE_PROVIDER = "bc_source_provider"
     private const val META_SOURCE_INSTANCE = "bc_source_instance"
     private const val META_SOURCE_SCOPE = "bc_source_scope_v2"
+    private const val META_SOURCE_ROOT = "bc_source_physical_progressive_root_v1"
     private const val META_TITLE = "bc_title"
     private const val META_ARTIST = "bc_artist"
     private const val META_ALBUM = "bc_album"
@@ -921,6 +940,20 @@ object AudioCache {
     fun playbackFactory(upstream: DataSource.Factory): DataSource.Factory =
         playbackFactory(upstream, null, null, null)
 
+    /**
+     * The deferred factory captures the root audio request and original
+     * logical media ID. Multiple range opens within one prepared media item
+     * may reuse their own incomplete spans; a new media-item preparation
+     * cannot splice partial bytes from an earlier request.
+     */
+    internal class SourcePhysicalProgressiveCacheRoot(
+        val mediaId: String,
+        val physicalUrl: String,
+    ) {
+        val admittedKeys: MutableSet<String> =
+            java.util.concurrent.ConcurrentHashMap.newKeySet()
+    }
+
     // Scoped adaptive playback uses a per-MediaItem ticket; this overload is
     // intentionally internal so no public API exposes a private policy lease.
     internal fun playbackFactory(
@@ -928,6 +961,7 @@ object AudioCache {
         onSourceCacheLease: ((ProviderPlaybackByteLease) -> Unit)?,
         adaptiveSegmentLease: (() -> ProviderPlaybackByteLease?)?,
         adaptiveSegmentRequest: ((DataSpec) -> DataSpec)?,
+        progressiveRoot: SourcePhysicalProgressiveCacheRoot? = null,
     ): DataSource.Factory = DataSource.Factory {
         val cacheDs = cacheFactory(upstream).createDataSource()
         val upstreamDs = upstream.createDataSource()
@@ -953,6 +987,54 @@ object AudioCache {
              * providers. Remove those spans before falling back to a new
              * authorized resolve, or fail closed if another reader holds them.
              */
+            /**
+             * Attach the canonical recording ID to a newly admitted physical
+             * HTTP cache key. Existing unknown spans are discarded rather than
+             * attributed to a new owner after stream resolution.
+             */
+            private fun indexPhysicalProgressiveRoot(
+                key: String,
+                root: SourcePhysicalProgressiveCacheRoot,
+                lease: ProviderPlaybackByteLease,
+                scope: String,
+            ) {
+                if (!isScopedSourcePhysicalCacheKey(key) || !lease.allowed())
+                    throw IOException("Source root requires active scoped provider")
+                val oldSpans = cache.getCachedSpans(key)
+                if (oldSpans.isNotEmpty()) {
+                    val meta = cache.getContentMetadata(key)
+                    val same = meta.get(META_MEDIA_ID, null as String?) == root.mediaId &&
+                        meta.get(META_SOURCE_PROVIDER, null as String?) == lease.providerKey.providerId &&
+                        meta.get(META_SOURCE_INSTANCE, null as String?) == lease.providerKey.instanceId &&
+                        sourceCacheScopeMatches(meta.get(META_SOURCE_SCOPE, null as String?), scope) &&
+                        meta.get(META_SOURCE_ROOT, null as String?) == "1"
+                    val sameMediaItem = same && key in root.admittedKeys
+                    val complete = same && isCompleteRecognizedProgressiveCache(
+                        key, meta, root.mediaId,
+                    )
+                    if (!sameMediaItem && !complete) {
+                        // An incomplete earlier HTTP response may have
+                        // changed since the last provider preflight.
+                        cache.removeResource(key)
+                        if (cache.getCachedSpans(key).isNotEmpty())
+                            throw IOException("Old source bytes are still in use")
+                    }
+                }
+                if (!sourceCacheScopeMatches(
+                    scope, currentSourcePlaybackCacheScope(lease.providerKey),
+                )) throw IOException("Source account changed during preparation")
+                cache.applyContentMetadataMutations(key, ContentMetadataMutations().also {
+                    it.set(META_ORIGIN, Origin.OTHER.name)
+                    it.set(META_MEDIA_ID, root.mediaId)
+                    it.set(META_SOURCE_PROVIDER, lease.providerKey.providerId)
+                    it.set(META_SOURCE_INSTANCE, lease.providerKey.instanceId)
+                    it.set(META_SOURCE_SCOPE, scope)
+                    it.set(META_SOURCE_ROOT, "1")
+                    it.set(META_PLAYBACK, "1")
+                })
+                root.admittedKeys.add(key)
+            }
+
             private fun checkSourceCache(dataSpec: DataSpec) {
                 if (dataSpec.uri.scheme != "bitchord" ||
                     dataSpec.uri.authority != "source") return
@@ -1061,8 +1143,22 @@ object AudioCache {
                                 providerAdaptiveSegmentCacheKey(
                                     lease.providerKey, request.uri.toString(), request.key,
                                     request.httpRequestHeaders,
+                                    currentSourcePlaybackCacheScope(lease.providerKey),
                                 ),
                             ).build()
+                            // Only the winning progressive root creates a
+                            // logical recording index. Adaptive manifests and
+                            // segments never masquerade as offline audio files.
+                            val root = progressiveRoot
+                            if (root != null && dataSpec.uri.toString() == root.physicalUrl) {
+                                val scope = currentSourcePlaybackCacheScope(lease.providerKey)
+                                    ?: throw IOException("Provider source scope unavailable")
+                                indexPhysicalProgressiveRoot(
+                                    openingSpec.key
+                                        ?: throw IOException("Physical source key missing"),
+                                    root, lease, scope,
+                                )
+                            }
                             cachedSourceLease = lease
                             unsubscribeCachedSource = lease.onRevoke {
                                 cachedSourceRevoked = true
