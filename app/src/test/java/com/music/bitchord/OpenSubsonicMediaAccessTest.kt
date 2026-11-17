@@ -33,7 +33,7 @@ class OpenSubsonicMediaAccessTest {
         val ready = result as OpenSubsonicMediaAccessResult.Ready
         assertEquals("recording-canonical", ready.request.recordingId)
         assertEquals("asset-canonical", ready.request.mediaAssetId)
-        assertEquals("opensubsonic:home", ready.request.providerKey)
+        assertEquals(fixture.asset.provider, ready.request.providerKey)
         assertEquals("https://music.example.test/rest/stream.view", ready.request.endpointUrl)
         assertTrue(ready.request.directOriginal)
     }
@@ -275,7 +275,7 @@ class OpenSubsonicMediaAccessTest {
         val asset = MediaAssetEntity(
             id = "asset-canonical",
             recordingId = "recording-canonical",
-            provider = "opensubsonic:home",
+            provider = com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey(repository.savedConfig()!!),
             sourceKey = "server-track-native",
             uri = "opensubsonic://asset/home/server-track-native",
             path = null,
