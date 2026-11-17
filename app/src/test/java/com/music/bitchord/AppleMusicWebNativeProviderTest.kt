@@ -143,6 +143,23 @@ class AppleMusicWebNativeProviderTest {
             ),
         )
         empty.replace(withChoice)
+        assertNull(empty.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.APPLE_MUSIC_WEB))
+        // A standalone explicitly READY descriptor models a future validated
+        // opt-in, without unblocking the production inventory prematurely.
+        val ready = descriptors.map { descriptor ->
+            if (descriptor.key == BuiltInProviderKeys.APPLE_MUSIC_WEB) {
+                descriptor.copy(
+                    capabilityReadiness = descriptor.capabilityReadiness.mapValues {
+                        com.music.bitchord.data.providers.ProviderReadiness.READY
+                    },
+                )
+            } else descriptor
+        }
+        empty.replace(ProviderCapabilityPolicy(ready, choices = mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(
+                ProviderChoice(BuiltInProviderKeys.APPLE_MUSIC_WEB, enabled = true, order = 0),
+            ),
+        )))
         assertNotNull(empty.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.APPLE_MUSIC_WEB))
         assertNull(empty.open(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.APPLE_MUSIC_WEB))
     }
