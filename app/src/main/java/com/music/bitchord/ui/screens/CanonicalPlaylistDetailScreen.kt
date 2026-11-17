@@ -358,7 +358,7 @@ internal fun canonicalPlaylistSwipeIntent(playNext: Boolean): CanonicalCollectio
  * solid Popup anchored to a now-retired row ellipsis.
  */
 @Composable
-private fun CanonicalPlaylistHeldTrackActions(
+internal fun CanonicalPlaylistHeldTrackActions(
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onPlayNext: (() -> Unit)?,
