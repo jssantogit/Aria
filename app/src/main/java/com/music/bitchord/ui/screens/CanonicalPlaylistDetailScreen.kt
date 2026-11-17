@@ -404,7 +404,6 @@ private fun CanonicalPlaylistHeldTrackActions(
             )
         }
 }
-}
 
 /**
  * A playlist is a native Library detail page, not a separate full-screen Dialog.
