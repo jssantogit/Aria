@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -14,41 +15,49 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
 
-/** The ⋯ route must remain native, and Opening Album must call the verified link. */
+/** A playlist track has no ⋮. The held plate exposes only verified actions. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class CanonicalPlaylistTrackMenuComposeTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun moreActionsExposesVerifiedOpenAlbumWithoutGuessingIt() {
+    @Test fun heldActionsExposeVerifiedAlbumWithoutGuessingTheLink() {
         var opened = 0
         compose.setContent {
             MaterialTheme {
-                CanonicalPlaylistTrackRow(
-                    track = V2DisplayRow("row-1", "A song", "Artist"),
-                    onPlay = {},
-                    onQueue = { _, _ -> },
-                    onOpenAlbum = { opened++ },
-                )
+                Column {
+                    CanonicalPlaylistHeldTrackActions(
+                        onDismiss = {},
+                        onPlay = {},
+                        onPlayNext = {},
+                        onAddToQueue = {},
+                        onOpenAlbum = { opened++ },
+                    )
+                }
             }
         }
-        compose.onNodeWithContentDescription("Ações da música").performClick()
+        compose.onNodeWithContentDescription("Ações da música").assertDoesNotExist()
         compose.onNodeWithText("Abrir álbum").performClick()
         compose.runOnIdle { assertEquals(1, opened) }
     }
 
-    @Test fun noCanonicalAlbumEvidenceMeansNoOpenAlbumAction() {
+    @Test fun absentCanonicalAlbumEvidenceHidesOnlyTheAlbumAction() {
         compose.setContent {
             MaterialTheme {
-                CanonicalPlaylistTrackRow(
-                    track = V2DisplayRow("row-2", "Another song", "Artist"),
-                    onPlay = {},
-                    onQueue = { _, _ -> },
-                )
+                Column {
+                    CanonicalPlaylistHeldTrackActions(
+                        onDismiss = {},
+                        onPlay = {},
+                        onPlayNext = {},
+                        onAddToQueue = {},
+                        onOpenAlbum = null,
+                    )
+                }
             }
         }
-        compose.onNodeWithContentDescription("Ações da música").performClick()
+        compose.onNodeWithText("Reproduzir a seguir").assertExists()
+        compose.onNodeWithText("Adicionar à fila").assertExists()
         compose.onNodeWithText("Abrir álbum").assertDoesNotExist()
     }
 }
