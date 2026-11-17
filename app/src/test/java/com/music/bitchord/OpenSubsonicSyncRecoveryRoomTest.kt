@@ -109,6 +109,30 @@ class OpenSubsonicSyncRecoveryRoomTest {
         } finally { db.close() }
     }
 
+    @Test fun accountRevokedDuringRoomApplyRollsBackEveryRemoteAsset() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
+            CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            var accountIsCurrent = true
+            var allocated = 0
+            // The first new canonical ID is allocated INSIDE applySnapshot,
+            // after the initial account guard. Simulate an account revocation
+            // during that transaction, not just during the network read.
+            val result = OpenSubsonicCatalogSync.sync(
+                database = db,
+                provider = provider("REVOKED"),
+                idFactory = {
+                    accountIsCurrent = false
+                    "revoked-${++allocated}"
+                },
+                accountIsCurrent = { accountIsCurrent },
+            )
+            assertTrue("Revoked apply must fail closed: $result", result is ProviderSyncResult.Failure)
+            assertTrue("Fixture must enter the Room apply", allocated > 0)
+            assertEquals(null, db.catalogDao().mediaAsset("opensubsonic:home", "song"))
+        } finally { db.close() }
+    }
+
     @Test fun replayOfUnchangedAccountRetainsStableCanonicalIdsAfterRestart() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val name = "c8-replay-" + System.nanoTime() + ".db"
