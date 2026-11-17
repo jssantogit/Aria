@@ -233,4 +233,32 @@ class PlayerArtistEvidenceTest {
             "UC12345678901234567890", "BTS", null))
     }
 
+    @Test fun collaborationMayOpenOnlyAnExplicitlyLinkedCatalogCredit() {
+        val song = com.music.bitchord.data.model.Song(
+            videoId = "catalog-track", title = "Dueto", artist = "BTS",
+            thumbnailUrl = null, artistId = "itunes:br:artist:111",
+            artists = listOf(
+                com.music.bitchord.data.model.ArtistRef("BTS", "itunes:br:artist:111"),
+                com.music.bitchord.data.model.ArtistRef("Convidada", "itunes:br:artist:222"),
+            ),
+        )
+        assertEquals(
+            PlayerArtistTapRoute.Catalog("itunes:br:artist:222", "Convidada"),
+            planPlayerArtistTapRoute(song, "itunes:br:artist:222", "Convidada", null),
+        )
+        assertNull(planPlayerArtistTapRoute(song, null, "Convidada", null))
+        assertNull(planPlayerArtistTapRoute(song, "itunes:br:artist:111", "Convidada", null))
+    }
+
+    @Test fun verifiedLeadCannotSilentlyStealAnotherCreditTap() {
+        val song = com.music.bitchord.data.model.Song(
+            videoId = "bitchord://remote/song-1", title = "Dueto",
+            artist = "BTS, Convidada", thumbnailUrl = null,
+        )
+        val lead = SourceOwnedArtistEvidence("id-lead", "BTS", "opensubsonic:server")
+        assertNull(planPlayerArtistTapRoute(
+            song, "itunes:br:artist:222", "Convidada", lead,
+        ))
+    }
+
 }
