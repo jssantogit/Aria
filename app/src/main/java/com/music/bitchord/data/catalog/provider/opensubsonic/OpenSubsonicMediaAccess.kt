@@ -70,7 +70,9 @@ internal class OpenSubsonicMediaAccess(
             ?: return OpenSubsonicMediaAccessResult.Failure(
                 OpenSubsonicMediaAccessFailure.CREDENTIAL_UNAVAILABLE,
             )
-        if (config.accountId != accountId) {
+        // Stable accountId does not authorize assets indexed under an older
+        // server or credential realm. Require the exact persisted partition.
+        if (config.accountId != accountId || openSubsonicProviderKey(config) != asset.provider) {
             return OpenSubsonicMediaAccessResult.Failure(
                 OpenSubsonicMediaAccessFailure.ACCOUNT_MISMATCH,
             )
@@ -109,7 +111,7 @@ internal class OpenSubsonicMediaAccess(
 
     private fun accountIdFromProvider(providerKey: String): String? {
         if (!providerKey.startsWith(PROVIDER_PREFIX)) return null
-        return providerKey.removePrefix(PROVIDER_PREFIX).takeIf(String::isNotBlank)
+        return providerKey.removePrefix(PROVIDER_PREFIX).substringBefore(':').takeIf(String::isNotBlank)
     }
 
     private companion object {
