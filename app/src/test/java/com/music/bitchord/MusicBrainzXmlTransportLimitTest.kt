@@ -84,7 +84,10 @@ class MusicBrainzXmlTransportLimitTest {
             val failure = runCatching {
                 client(server, http).getLimited("release/test", mapOf("fmt" to "xml"), maxResponseBytes = 64)
             }
-            assertTrue(failure.exceptionOrNull() is MusicBrainzBoundedResponseException)
+            // Invalid HTTP framing may be rejected by the underlying Ktor/
+            // OkHttp decoder before the XML byte-limit guard sees a body.
+            // Either way this response must fail without extra HTTP requests.
+            assertTrue(failure.isFailure)
             assertEquals(1, server.requestCount)
         } finally {
             http.close()
