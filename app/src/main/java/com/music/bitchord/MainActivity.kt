@@ -1216,47 +1216,22 @@ private fun BitChordApp(
         canonicalWorldwideLoading, canonicalWorldwideReleases,
         canonicalReleasesHeading, canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
     ) {
-        val musicBrainzShelves = com.music.bitchord.ui.musicBrainzHomeEditorialShelves(
-            canonicalHomeShelves, canonicalReleasesHeading,
-        )
-        val nativeAppleState: UiState<List<HomeShelf>> = when (val source = appleHomeReleases) {
-            is UiState.Success -> UiState.Success(
-                com.music.bitchord.ui.appleFirstHomeShelves(
-                    appleAlbums = source.data,
-                    existingLocalShelves = emptyList(),
-                    releasesHeading = canonicalReleasesHeading,
-                    discoveryHeading = canonicalHomeGlobalDiscoveryHeading,
-                    todayIsoDate = canonicalFeedDate,
-                ),
-            )
-            UiState.Loading -> UiState.Loading
-            is UiState.Error -> source
-        }
-        val appleState = com.music.bitchord.ui.compositeEditorialReadState(
-            nativeAppleState,
-            requestCanStart = catalogEditorialOrder.firstOrNull() == catalogApple,
-            evidenceAuthorized = catalogApple in catalogEditorialOrder,
-        )
-        com.music.bitchord.ui.selectCatalogEditorial(
-            catalogEditorialOrder, mapOf(
-                catalogMb to if (canonicalWorldwideLoading && musicBrainzShelves.isEmpty())
-                    UiState.Loading else UiState.Success(musicBrainzShelves),
-                catalogApple to appleState,
-            ),
+        com.music.bitchord.ui.projectCanonicalHomeEditorial(
+            canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
+            canonicalWorldwideLoading, canonicalReleasesHeading,
+            canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
         )
     }
     val canonicalHomeDisplayShelves = remember(
         canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
     ) {
-        (canonicalHomeEditorialSelection.state as? UiState.Success)?.data.orEmpty() +
-            com.music.bitchord.ui.personalHomeShelves(canonicalHomeShelves) +
-            listOfNotNull(canonicalHomePublicPlaylists?.takeIf { it.items.isNotEmpty() })
+        com.music.bitchord.ui.projectCanonicalHomeDisplay(
+            canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
+        )
     }
-    val canonicalHomeState: UiState<List<HomeShelf>> = when {
-        canonicalHomeDisplayShelves.isNotEmpty() -> UiState.Success(canonicalHomeDisplayShelves)
-        canonicalHomeEditorialSelection.state is UiState.Loading -> UiState.Loading
-        else -> UiState.Error("Nenhum lançamento disponível nas fontes editoriais habilitadas.")
-    }
+    val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
+        canonicalHomeDisplayShelves, canonicalHomeEditorialSelection,
+    )
     /** Refresh only the preferred authorized editorial provider; retry
      * fallback is decided by the same ordered policy after an empty result. */
     val refreshCanonicalGenreEditorial: (String, Boolean) -> Unit = { tag, force ->
@@ -1270,46 +1245,15 @@ private fun BitChordApp(
     val activeGenrePlaylists = activeCanonicalGenre?.tag?.let { tag ->
         canonicalPublicPlaylists[tag].orEmpty()
     }.orEmpty()
-    val canonicalGenreState: UiState<List<HomeShelf>> = run {
-        val tag = activeCanonicalGenre?.tag
-        val playlistShelf = com.music.bitchord.ui.canonicalPublicPlaylistShelf(
-            stringResource(R.string.playlists), activeGenrePlaylists,
-        )
-        if (tag == null) UiState.Success(emptyList()) else {
-            val appleState: UiState<List<HomeShelf>> = when (
-                val source = appleGenreReleases[tag] ?: UiState.Loading
-            ) {
-                is UiState.Success -> UiState.Success(
-                    com.music.bitchord.ui.appleFirstGenreShelves(
-                        tag, source.data, publicPlaylists = null,
-                        releaseHeading = canonicalReleasesHeading,
-                    ),
-                )
-                UiState.Loading -> UiState.Loading
-                is UiState.Error -> source
-            }
-            val mbState: UiState<List<HomeShelf>> = when (val source = canonicalGenreResults) {
-                is UiState.Success -> UiState.Success(
-                    com.music.bitchord.ui.musicBrainzGenreEditorialShelves(
-                        source.data, canonicalReleasesHeading,
-                    ),
-                )
-                UiState.Loading -> UiState.Loading
-                is UiState.Error -> source
-            }
-            val chosen = com.music.bitchord.ui.selectCatalogEditorial(
-                catalogEditorialOrder, mapOf(catalogMb to mbState, catalogApple to appleState),
-            )
-            val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
-            val all = releases + listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
-            when {
-                all.isNotEmpty() -> UiState.Success(all)
-                chosen.state is UiState.Loading -> UiState.Loading
-                chosen.state is UiState.Error -> chosen.state
-                else -> UiState.Error("Nenhum lançamento disponível nas fontes editoriais habilitadas.")
-            }
-        }
-    }
+    val canonicalGenreState = com.music.bitchord.ui.projectCanonicalGenreState(
+        tag = activeCanonicalGenre?.tag,
+        genrePlaylists = activeGenrePlaylists,
+        playlistHeading = stringResource(R.string.playlists),
+        appleByTag = appleGenreReleases,
+        musicBrainzRows = canonicalGenreResults,
+        ordered = catalogEditorialOrder,
+        releasesHeading = canonicalReleasesHeading,
+    )
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
     // playlist's own page and its card both carry the id under the
