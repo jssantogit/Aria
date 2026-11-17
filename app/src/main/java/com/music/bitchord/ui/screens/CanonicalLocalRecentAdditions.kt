@@ -10,8 +10,6 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.compose.foundation.clickable
 import com.music.bitchord.ui.components.longPressMenuClickable
-import com.music.bitchord.ui.components.NativeCompactOverflowMenu
-import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.NativeInlineTextAction
 import com.music.bitchord.playback.CanonicalCollectionIntent
 import androidx.compose.foundation.layout.Arrangement
@@ -397,17 +395,12 @@ private fun CanonicalRecentAdditionCard(
     /** Consumed by the owning full-window lifted preview, when available. */
     onTrackHold: ((V2DisplayRow) -> Unit)? = null,
 ) {
-    var actionsOpen by remember(track.id) { mutableStateOf(false) }
     Column(
         modifier = modifier
             .testTag("canonical-recent-card")
             .longPressMenuClickable(
                 onClick = onClick,
-                onLongClick = when {
-                    onTrackHold != null -> ({ onTrackHold(track) })
-                    onTrackAction != null -> ({ actionsOpen = true })
-                    else -> null
-                },
+                onLongClick = onTrackHold?.let { hold -> { hold(track) } },
             ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -415,12 +408,6 @@ private fun CanonicalRecentAdditionCard(
             modifier = Modifier.fillMaxWidth().aspectRatio(1f),
         ) {
             SmartPlaylistPreviewArtwork(track, Modifier.fillMaxSize())
-            if (onTrackHold == null) RecentTrackActionsPopup(
-                expanded = actionsOpen,
-                onDismissRequest = { actionsOpen = false },
-                track = track,
-                onTrackAction = onTrackAction,
-            )
         }
         Text(
             track.title.takeIf { it.isNotBlank() } ?: "Título indisponível",
@@ -512,8 +499,6 @@ internal fun CanonicalRecentAdditionsGrid(
         }
         if (viewType == LibraryViewType.LIST) {
             items(recent, key = { it.id }) { track ->
-                var actionsOpen by remember(track.id) { mutableStateOf(false) }
-                Box(Modifier.fillMaxWidth()) {
                 LibraryRow(
                     title = track.title,
                     subtitle = track.artist,
@@ -522,21 +507,10 @@ internal fun CanonicalRecentAdditionsGrid(
                         SmartPlaylistPreviewArtwork(track, Modifier.fillMaxSize())
                     },
                     onClick = { onPlayTrack(track.id) },
-                    onLongPress = when {
-                        onTrackHold != null -> ({ onTrackHold(track) })
-                        onTrackAction != null -> ({ actionsOpen = true })
-                        else -> null
-                    },
+                    onLongPress = onTrackHold?.let { hold -> { hold(track) } },
                     horizontalPadding = PAGE_GUTTER,
                     artworkSize = 52.dp,
                 )
-                if (onTrackHold == null) RecentTrackActionsPopup(
-                    expanded = actionsOpen,
-                    onDismissRequest = { actionsOpen = false },
-                    track = track,
-                    onTrackAction = onTrackAction,
-                )
-                }
             }
         } else {
             gridRows(recent, columns = 2, key = { it.id }) { track ->
@@ -548,38 +522,5 @@ internal fun CanonicalRecentAdditionsGrid(
                 )
             }
         }
-    }
-}
-
-/** Recent recordings have canonical RecordingIds, not guessed Song/videoIds.
- * Both queue actions reuse the same validation and playback gate as the rest
- * of the native Library. Dismiss the menu before dispatching either action.
- */
-@Composable
-private fun RecentTrackActionsPopup(
-    expanded: Boolean,
-    onDismissRequest: () -> Unit,
-    track: V2DisplayRow,
-    onTrackAction: ((String, CanonicalCollectionIntent) -> Unit)?,
-) {
-    if (onTrackAction == null) return
-    NativeCompactOverflowMenu(
-        expanded = expanded,
-        onDismissRequest = onDismissRequest,
-    ) {
-        NativeCompactMenuItem(
-            label = "Tocar a seguir",
-            onClick = {
-                onDismissRequest()
-                onTrackAction(track.id, CanonicalCollectionIntent.ADD_NEXT)
-            },
-        )
-        NativeCompactMenuItem(
-            label = "Adicionar à fila",
-            onClick = {
-                onDismissRequest()
-                onTrackAction(track.id, CanonicalCollectionIntent.ADD_TO_QUEUE)
-            },
-        )
     }
 }
