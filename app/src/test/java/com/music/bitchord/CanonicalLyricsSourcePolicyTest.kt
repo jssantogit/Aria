@@ -24,21 +24,21 @@ class CanonicalLyricsSourcePolicyTest {
     private val nonYoutube = setOf(LyricsSource.LRCLIB, LyricsSource.LRC_RED)
 
     @Test fun explicitOptOutExcludesBothDirectYoutubeLyricsProviders() {
-        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, false, disabled))
+        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, false, disabled, snapshot = null))
     }
 
     @Test fun canonicalDiscoveryOptInExcludesYoutubeEvenIfAudioSourceRemainsEnabled() {
-        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, true, enabled))
+        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, true, enabled, snapshot = null))
     }
 
     @Test fun historicalPreferencesCannotReenableRetiredProviders() {
-        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, false, enabled))
-        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, false, emptyList()))
+        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, false, enabled, snapshot = null))
+        assertEquals(nonYoutube, allowedCanonicalLyricsSources(all, false, emptyList(), snapshot = null))
     }
 
     @Test fun nonYoutubeProvidersAndExplicitEmptySetRemainUnchanged() {
-        assertEquals(nonYoutube, allowedCanonicalLyricsSources(nonYoutube, true, disabled))
-        assertEquals(emptySet<LyricsSource>(), allowedCanonicalLyricsSources(emptySet(), true, disabled))
+        assertEquals(nonYoutube, allowedCanonicalLyricsSources(nonYoutube, true, disabled, snapshot = null))
+        assertEquals(emptySet<LyricsSource>(), allowedCanonicalLyricsSources(emptySet(), true, disabled, snapshot = null))
     }
     @Test fun canonicalReadyPolicyHonorsEnabledLyricsAndExplicitLastSourceOptOut() {
         val lrclib = BuiltInProviderKeys.lyrics(LyricsSource.LRCLIB)
