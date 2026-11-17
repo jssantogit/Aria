@@ -194,7 +194,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                 held = heldMetadataOrigin,
                 hazeState = hazeState,
                 hostProvidesBlur = true,
-                bottomChromeClearance = 112.dp,
+                bottomChromeClearance = maxOf(154.dp, contentPadding.calculateBottomPadding()),
                 plateTint = palette.elevated,
                 onDismiss = dismissHeldMetadata,
                 onPreviewClick = if (heldMetadataTrack?.first in availableIds) {
