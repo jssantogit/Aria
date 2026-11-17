@@ -83,3 +83,10 @@ The following changes are code-level cuts, **not** final integration/merge appro
 - **Behavior:** historical video-ID bytes are not replayed solely from the old cache. Local MediaStore, `content://`, source-backed extensions and canonical remote media follow their existing cache/provider paths. This does not delete cache files as a side effect; separate cleanup remains a storage concern.
 - **CI:** require exact final HEAD Android unit/build and shared test SUCCESS before declaring this additional guard validated. No smoke was performed.
 
+
+## Verified old progressive cache — 2026-11-17 (new code awaiting exact-HEAD CI)
+
+- Typed source preflight now probes a complete, provider/instance-stamped old-style *progressive* file before network selection. Requires exact media identity, content-length-backed full spans, recognized audio container header, and current EXTENSION_PLAYBACK ticket. No URL or credential is reconstructed from cache metadata.
+- Such entries are retained through the legacy foreign-cache cleanup, but retention does NOT grant playback permission. At playback, each cache hit is independently reauthorized; if bytes disappear between preflight and open, it fails without a second provider decision or network call.
+- Unknown provenance, incomplete spans, unrecognized containers and HLS/DASH manifests cannot use this offline compatibility route. Older untagged entries are deliberately not trusted and need a fresh online resolution.
+- The normal HLS/DASH physical-URL selection is unchanged, as is the frozen #212 UI. The new HEAD still requires CI and device-level offline acceptance; no merge/smoke is implied.

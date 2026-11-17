@@ -150,4 +150,24 @@ class ProviderSourceCacheAdmissionTest {
         assertNull(sourceCacheReadLease("addon", "missing", true, gate))
         assertNull(sourceCacheReadLease("custom_module", "one", true, gate))
     }
+    @Test fun legacyProgressiveContainerSignaturesRejectAdaptiveManifestsAndUnknownBytes() {
+        fun ascii(value: String) = value.toByteArray(Charsets.US_ASCII)
+        assertTrue(hasProgressiveAudioSignature(ascii("ID3---audio data")))
+        assertTrue(hasProgressiveAudioSignature(ascii("fLaC--audio data")))
+        assertTrue(hasProgressiveAudioSignature(ascii("OggS--audio data")))
+        assertTrue(hasProgressiveAudioSignature(ascii("RIFF0000WAVEdata")))
+        assertTrue(hasProgressiveAudioSignature(ascii("0000ftypM4A audio")))
+        assertTrue(hasProgressiveAudioSignature(byteArrayOf(
+            0x1a, 0x45, 0xdf.toByte(), 0xa3.toByte(),
+        )))
+        assertTrue(hasProgressiveAudioSignature(byteArrayOf(
+            0xff.toByte(), 0xfb.toByte(), 0x90.toByte(), 0x64,
+        )))
+        assertFalse(hasProgressiveAudioSignature(ascii("#EXTM3U\\n#EXTINF:1")))
+        assertFalse(hasProgressiveAudioSignature(ascii("<?xml version='1.0'?><MPD")))
+        assertFalse(hasProgressiveAudioSignature(ascii("<MPD type='static'>")))
+        assertFalse(hasProgressiveAudioSignature(ascii("unknown streamed data")))
+        assertFalse(hasProgressiveAudioSignature(byteArrayOf(0x12, 0x34)))
+    }
+
 }

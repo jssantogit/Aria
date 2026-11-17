@@ -1530,11 +1530,16 @@ class PlaybackService : MediaLibraryService() {
                 val mediaSession = ProviderPlaybackMediaSession()
                 val selectedLease = selected?.playbackLease
                 if (selected != null && selectedLease != null) {
-                    mediaSession.bind(
-                        selectedLease,
-                        selected.resolved.uri.toString(),
-                        selected.resolved.httpRequestHeaders,
-                    )
+                    if (selected.cachedOffline) {
+                        // Offline provenance is not a URL or a credential.
+                        mediaSession.bind(selectedLease)
+                    } else {
+                        mediaSession.bind(
+                            selectedLease,
+                            selected.resolved.uri.toString(),
+                            selected.resolved.httpRequestHeaders,
+                        )
+                    }
                 }
                 val scopedResolving = ResolvingDataSource.Factory(
                     ProviderPlaybackByteDataSource.Factory(
@@ -1544,6 +1549,11 @@ class PlaybackService : MediaLibraryService() {
                     ),
                 ) { spec ->
                     if (selected != null) {
+                        // If a legacy cache hit disappears after preflight,
+                        // fail closed rather than choose another source or
+                        // send a logical URI to a provider HTTP transport.
+                        if (selected.cachedOffline)
+                            throw java.io.IOException("Verified offline source cache no longer available")
                         // No second provider decision: the physical manifest
                         // and its segments belong to the preflight winner.
                         // A source cannot silently change during a crossfade.
@@ -1598,17 +1608,17 @@ class PlaybackService : MediaLibraryService() {
                 // resolveDataSpec encapsulates the configured provider ladder,
                 // bounded source query and winning EXTENSION_PLAYBACK ticket.
                 // DeferredResolvedSourceMediaSource invokes this on IO.
-                val physical = streamResolver.resolveDataSpec(request)
-                val selected = prepareSourceMediaSelection(item, physical)
-                // Track diagnostics can record the selected transport, but
-                // source cache provenance must NOT be mutated here. Preflight
-                // has selected a URL, not written any bytes to the logical
-                // source cache. Relabeling old cached bytes with the new
-                // winner could authorize another provider's stale content.
-                // The prepared transport caches physical HTTP spans under
-                // its per-instance URL+headers digest instead.
-                mediaIdIn(logical)?.let { StreamContainer.served(it, physical.uri.toString()) }
-                selected
+                val offline = AudioCache.cachedProgressiveSourceSelection(item)
+                if (offline != null) {
+                    offline
+                } else {
+                    val physical = streamResolver.resolveDataSpec(request)
+                    val selected = prepareSourceMediaSelection(item, physical)
+                    // Physical preflight selects a URL, NOT an owner for old
+                    // logical cached bytes. Never relabel those bytes.
+                    mediaIdIn(logical)?.let { StreamContainer.served(it, physical.uri.toString()) }
+                    selected
+                }
             },
             createPreparedFactory = buildSourceTransport,
         ).setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())

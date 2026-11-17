@@ -4,6 +4,13 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSpec
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityPolicy
+import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.ProviderDescriptor
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderReadiness
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -106,4 +113,28 @@ class PreparedSourceMediaSelectionTest {
         assertTrue(lazyMediaSource is DeferredResolvedSourceMediaSource)
         assertEquals(0, calls)
     }
+    @Test fun verifiedOfflineSelectionKeepsLogicalIdentityAndRevocableLease() {
+        val owner = ProviderKey("addon", "one")
+        val cap = ProviderCapability.EXTENSION_PLAYBACK
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(owner, setOf(cap), ProviderReadiness.READY)),
+            mapOf(cap to listOf(ProviderChoice(owner, enabled, 0))),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        val lease = requireNotNull(sourceCacheReadLease("addon", "one", true, gate))
+        val cached = prepareCachedProgressiveSourceMediaSelection(logical, lease)
+        assertTrue(cached.cachedOffline)
+        assertEquals(logical.mediaId, cached.item.mediaId)
+        assertEquals(logical.localConfiguration?.uri, cached.item.localConfiguration?.uri)
+        assertNull(cached.item.localConfiguration?.mimeType)
+        assertEquals(logical.localConfiguration?.uri, cached.resolved.uri)
+        assertTrue(cached.playbackLease === lease)
+        assertTrue(cached.resolved.httpRequestHeaders.isEmpty())
+        gate.replace(policy(false))
+        try {
+            prepareCachedProgressiveSourceMediaSelection(logical, lease)
+            org.junit.Assert.fail("Revoked offline ticket was reused")
+        } catch (_: IOException) {}
+    }
+
 }

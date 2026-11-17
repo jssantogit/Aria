@@ -7,6 +7,7 @@ import android.os.SystemClock
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.playback.smart.AutomixAnalysisSource
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
@@ -235,6 +236,65 @@ object AudioCache {
                 evictor.applyNow(cache)
             }
         }
+    }
+
+    /**
+     * True only for a complete old-style logical source cache entry whose
+     * metadata proves its owner and whose first bytes are progressive audio.
+     * Never assign a new winner to existing bytes or accept unknown spans.
+     * No network operation occurs here.
+     */
+    private fun isVerifiedProgressiveSourceCache(
+        key: String,
+        meta: ContentMetadata,
+        mediaId: String,
+    ): Boolean {
+        val owner = meta.get(META_SOURCE_PROVIDER, null as String?)
+        val instance = meta.get(META_SOURCE_INSTANCE, null as String?)
+        if ((owner != "addon" && owner != "custom_module") ||
+            instance.isNullOrBlank() || instance.length > 128 ||
+            meta.get(META_MEDIA_ID, null as String?) != mediaId) return false
+        val base = cacheKeyBaseOf(mediaId)
+        if (key != base && !key.startsWith("$"+"base#")) return false
+        val total = ContentMetadata.getContentLength(meta)
+        if (total <= 0L || !cache.isCached(key, 0L, total)) return false
+        val firstBytes = runCatching {
+            val file = cache.getCachedSpans(key)
+                .firstOrNull { it.isCached && it.position == 0L && it.length >= 16L }
+                ?.file ?: return@runCatching null
+            file.inputStream().use { input ->
+                val header = ByteArray(16)
+                val count = input.read(header)
+                if (count > 0) header.copyOf(count) else null
+            }
+        }.getOrNull() ?: return false
+        return hasProgressiveAudioSignature(firstBytes)
+    }
+
+    /**
+     * Called only on the deferred MediaSource's IO dispatcher. Restore a
+     * trusted complete progressive file without any source/network preflight.
+     * Open/read rechecks current admission, so a revoked provider cannot
+     * retain access across a queue change or an offline replay.
+     */
+    internal fun cachedProgressiveSourceSelection(
+        item: MediaItem,
+    ): PreparedSourceMediaSelection? {
+        if (!::cache.isInitialized) return null
+        val uri = item.localConfiguration?.uri ?: return null
+        if (!isLogicalSourcePlaybackUri(uri)) return null
+        val mediaId = mediaIdIn(uri) ?: return null
+        val key = keyFactory.buildCacheKey(DataSpec(uri))
+        val meta = runCatching { cache.getContentMetadata(key) }.getOrNull() ?: return null
+        if (!isVerifiedProgressiveSourceCache(key, meta, mediaId)) return null
+        val lease = sourceCacheReadLease(
+            meta.get(META_SOURCE_PROVIDER, null as String?),
+            meta.get(META_SOURCE_INSTANCE, null as String?),
+            completelyCached = true,
+            gate = ProviderRuntime.gateOrNull(),
+        ) ?: return null
+        if (!lease.allowed()) return null
+        return prepareCachedProgressiveSourceMediaSelection(item, lease)
     }
 
     /** Drops everything on disk. The listener asked; no grace period. */
@@ -763,6 +823,11 @@ object AudioCache {
                 if (!foreign && !analysisOnly) return@forEach
                 val mediaId = meta.get(META_MEDIA_ID, null as String?)
                 if (mediaId != null && mediaId in keep) return@forEach
+                // Preserve only proven, complete progressive source bytes.
+                // Cache retention grants NO playback permission: every later
+                // open still needs a fresh per-instance canonical ticket.
+                if (!analysisOnly && mediaId != null &&
+                    isVerifiedProgressiveSourceCache(key, meta, mediaId)) return@forEach
                 runCatching { cache.removeResource(key) }
                     .onSuccess {
                         dropped++

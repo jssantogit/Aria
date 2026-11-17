@@ -16,6 +16,7 @@ import java.io.IOException
 internal data class PreparedSourceMediaSelection(
     val item: MediaItem,
     val resolved: DataSpec,
+    val cachedOffline: Boolean = false,
 ) {
     val playbackLease: ProviderPlaybackByteLease?
         get() = resolved.customData as? ProviderPlaybackByteLease
@@ -44,4 +45,23 @@ internal fun prepareSourceMediaSelection(
         .setMimeType(mime)
         .build()
     return PreparedSourceMediaSelection(child, resolved)
+}
+
+/**
+ * Only the legacy fully cached progressive path may keep a logical child URI.
+ * No resolved URL or headers are reconstructed from stored metadata.
+ */
+internal fun prepareCachedProgressiveSourceMediaSelection(
+    original: MediaItem,
+    lease: ProviderPlaybackByteLease,
+): PreparedSourceMediaSelection {
+    val uri = original.localConfiguration?.uri
+        ?: throw IOException("Cached source lacks logical URI")
+    if (!isLogicalSourcePlaybackUri(uri) || !lease.allowed())
+        throw IOException("Cached progressive source requires current authorization")
+    return PreparedSourceMediaSelection(
+        item = original.buildUpon().setMimeType(null).build(),
+        resolved = DataSpec.Builder().setUri(uri).setCustomData(lease).build(),
+        cachedOffline = true,
+    )
 }
