@@ -46,7 +46,7 @@ class AppleMusicWebFoundationTest {
         val search = ProviderCapability.CATALOG_SEARCH
         val key = AppleMusicWebCacheContract.key(search, "br", "pt-BR", path, args)
         assertNotNull(key)
-        assertEquals(key, AppleMusicWebCacheContract.key(search, "br", "pt-BR", path, args.reversed()))
+        assertEquals(key, AppleMusicWebCacheContract.key(search, "br", "pt-BR", path, args.entries.reversed().associate { it.key to it.value }))
         assertNotEquals(key, AppleMusicWebCacheContract.key(search, "br", "en-US", path, args))
         assertNotEquals(key, AppleMusicWebCacheContract.key(ProviderCapability.EDITORIAL_DISCOGRAPHY, "br", "pt-BR", path, args))
         assertNotEquals(key, AppleMusicWebCacheContract.key(search, "us", "pt-BR", "/v1/catalog/us/search", args))
@@ -67,8 +67,9 @@ class AppleMusicWebFoundationTest {
         }
         val result = AppleMusicWebCatalog(transport).albumOutcome("10", "br")
         assertTrue(result is AppleMusicWebOutcome.Partial)
-        assertEquals(AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED, (result as AppleMusicWebOutcome.Partial).reason)
-        assertEquals(listOf("1"), result.value.tracks.map { it.id })
+        val partial = result as AppleMusicWebOutcome.Partial
+        assertEquals(AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED, partial.reason)
+        assertEquals(listOf("1"), partial.value.tracks.map { it.id })
     }
 
     @Test fun blockedAlbumPageDoesNotConvertToSilentPartial() = runBlocking {
