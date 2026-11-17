@@ -76,7 +76,9 @@ internal class OpenSubsonicArtworkAccess(
             ?: return OpenSubsonicArtworkAccessResult.Failure(
                 OpenSubsonicArtworkAccessFailure.ACCOUNT_NOT_CONFIGURED,
             )
-        if (account.accountId != providerAccountId) {
+        if (account.accountId != providerAccountId ||
+            asset.provider != openSubsonicCatalogProviderKey(account.accountId, account.catalogRealmId)
+        ) {
             return OpenSubsonicArtworkAccessResult.Failure(
                 OpenSubsonicArtworkAccessFailure.ACCOUNT_MISMATCH,
             )
@@ -98,7 +100,7 @@ internal class OpenSubsonicArtworkAccess(
 
     private fun accountIdFromProvider(providerKey: String): String? {
         if (!providerKey.startsWith(PROVIDER_PREFIX)) return null
-        return providerKey.removePrefix(PROVIDER_PREFIX).takeIf(String::isNotBlank)
+        return providerKey.removePrefix(PROVIDER_PREFIX).substringBefore(':').takeIf(String::isNotBlank)
     }
 
     private companion object {
@@ -118,10 +120,14 @@ internal class OpenSubsonicArtworkRequest internal constructor(
     private val saltFactory: () -> String,
 ) {
     suspend fun fetch(transport: OpenSubsonicArtworkTransport): OpenSubsonicArtworkFetchResult {
+        // Revoke results even when a credential is rotated while HTTP is in flight.
+        val revision = OpenSubsonicAccountRevisionClock.current()
         // First and only secure-store read in the artwork flow.
         val config = accounts.savedConfig()
             ?: return OpenSubsonicArtworkFetchResult.CredentialUnavailable
-        if (config.accountId != accountId) {
+        if (config.accountId != accountId || openSubsonicProviderKey(config) != providerKey ||
+            OpenSubsonicAccountRevisionClock.current() != revision
+        ) {
             return OpenSubsonicArtworkFetchResult.AccountMismatch
         }
 
@@ -136,7 +142,11 @@ internal class OpenSubsonicArtworkRequest internal constructor(
         }
 
         return try {
-            when (val result = transport.fetch(endpointUrl, parameters)) {
+            val result = transport.fetch(endpointUrl, parameters)
+            if (OpenSubsonicAccountRevisionClock.current() != revision) {
+                return OpenSubsonicArtworkFetchResult.AccountMismatch
+            }
+            when (result) {
                 is OpenSubsonicArtworkTransportResult.Success ->
                     OpenSubsonicArtworkFetchResult.Ready(
                         bytes = result.bytes,
