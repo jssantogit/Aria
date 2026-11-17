@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.ProviderCapability
+
 /**
  * Android catalog reader. iTunes controls commercial product existence and
  * storefront identity; MBIDs/playback are deliberately absent here.
@@ -103,8 +105,10 @@ internal class AppleEditorialCatalogRepository(
         query: String,
         storefront: String = "br",
         limit: Int = 50,
+        capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
     ): AppleEditorialLoad = when (val source = itunes.search(
         query, ItunesCatalogEntity.ALBUM, country = storefront, limit = limit,
+        capability = capability,
     )) {
         is ItunesCatalogResult.Failure -> AppleEditorialLoad.Failure(source.reason)
         is ItunesCatalogResult.Success -> AppleEditorialLoad.Success(

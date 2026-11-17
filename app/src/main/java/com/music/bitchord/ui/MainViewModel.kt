@@ -3404,7 +3404,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun loadAppleGenreEditorial(
         tag: String,
-        rows: List<CanonicalCatalogSearchRow>,
+        @Suppress("UNUSED_PARAMETER") rows: List<CanonicalCatalogSearchRow>,
         force: Boolean = false,
     ) {
         if (!com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)) {
@@ -3412,10 +3412,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val lease = ProviderReadLease.acquire(
             ProviderRuntime.gateOrNull(),
-            listOf(
-                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.MUSICBRAINZ,
-                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES,
-            ),
+            listOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES),
         )
         if (lease == null) {
             appleGenreJob?.cancel()
@@ -3423,27 +3420,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _appleGenreReleases.update { it + (tag to UiState.Success(emptyList())) }
             return
         }
-        val seeds = rows.asSequence()
-            .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP }
-            .mapNotNull { row ->
-                val artist = row.subtitle?.trim().orEmpty()
-                if (row.title.isBlank() || artist.isBlank()) null else
-                    com.music.bitchord.data.catalog.metadata.AppleHomeEditorialSeed(
-                        row.title, artist,
-                    )
-            }
-            .distinctBy { it.title.lowercase(Locale.ROOT) to
-                it.artist.lowercase(Locale.ROOT) }
-.take(48).toList()
-        if (seeds.isEmpty()) {
-            appleGenreJob?.cancel()
-            appleGenreEpoch.invalidateAndNext()
-            _appleGenreReleases.update { it + (tag to UiState.Success(emptyList())) }
-            return
-        }
-        val fingerprint = tag + "|" + seeds.joinToString("|") {
-            "${it.title.lowercase(Locale.ROOT)}:${it.artist.lowercase(Locale.ROOT)}"
-        }
+        // Apple native Explore must never depend on MusicBrainz query seeds.
+        val fingerprint = "apple-native:$tag"
         val now = System.currentTimeMillis()
         if (!force && appleGenreActiveTag == tag &&
             appleGenreFingerprint == fingerprint &&
@@ -3461,8 +3439,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleGenreJob = viewModelScope.launch(Dispatchers.IO) {
             val result = try {
                 com.music.bitchord.data.catalog.metadata
-                    .AppleExploreGenreDiscovery().discover(
-                        tag, seeds, "br",
+                    .AppleExploreGenreDiscovery().discoverNative(
+                        tag, "br",
                         onProgress = { releases ->
                             if (releases.isNotEmpty() && lease.isCurrent() &&
                                 lease.isCurrent() && appleGenreEpoch.isCurrent(generation) &&

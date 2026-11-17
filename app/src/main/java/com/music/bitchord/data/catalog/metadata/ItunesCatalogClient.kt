@@ -103,6 +103,13 @@ internal sealed interface ItunesCatalogResult {
 /** Injected boundary: fake transport tests never send requests or consume rate budget. */
 internal interface ItunesCatalogTransport {
     suspend fun get(path: String, parameters: Map<String, String>): String
+
+    /** An editorial Search API request is not automatically a General search. */
+    suspend fun get(
+        path: String,
+        parameters: Map<String, String>,
+        capability: ProviderCapability,
+    ): String = get(path, parameters)
 }
 
 /**
@@ -145,11 +152,20 @@ internal class KtorItunesCatalogTransport(
     private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
     private val testExchange: (suspend (String, Map<String, String>) -> String)? = null,
 ) : ItunesCatalogTransport {
-    override suspend fun get(path: String, parameters: Map<String, String>): String {
+    override suspend fun get(path: String, parameters: Map<String, String>): String =
+        get(path, parameters, if (path == "search") ProviderCapability.CATALOG_SEARCH
+            else ProviderCapability.EDITORIAL_DISCOGRAPHY)
+
+    override suspend fun get(
+        path: String,
+        parameters: Map<String, String>,
+        capability: ProviderCapability,
+    ): String {
         require(path == "search" || path == "lookup")
+        require(capability == ProviderCapability.CATALOG_SEARCH ||
+            capability == ProviderCapability.EDITORIAL_DISCOGRAPHY)
         return admission.execute(
-            capability = if (path == "search") ProviderCapability.CATALOG_SEARCH
-                else ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            capability = capability,
             provider = BuiltInProviderKeys.ITUNES,
             scheduleLimited = { block -> limiter.run(block) },
             networkCall = {
@@ -234,7 +250,11 @@ internal class ItunesCatalogClient(
         country: String = "br",
         limit: Int = 20,
         attribute: ItunesCatalogSearchAttribute? = null,
+        capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
     ): ItunesCatalogResult {
+        if (capability != ProviderCapability.CATALOG_SEARCH &&
+            capability != ProviderCapability.EDITORIAL_DISCOGRAPHY
+        ) return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
         val query = term.trim()
         val storefront = normalizedStorefront(country)
         if (query.isEmpty() || query.length > 120 || query.any(Char::isISOControl) ||
@@ -249,7 +269,7 @@ internal class ItunesCatalogClient(
             ItunesCatalogEntity.ARTIST -> ItunesCatalogItemType.ARTIST
             ItunesCatalogEntity.ALBUM -> ItunesCatalogItemType.ALBUM
             ItunesCatalogEntity.SONG -> ItunesCatalogItemType.TRACK
-        })
+        }, capability = capability)
     }
 
     suspend fun lookupAlbum(
@@ -299,9 +319,11 @@ internal class ItunesCatalogClient(
         expectedType: ItunesCatalogItemType? = null,
         collectionId: Long? = null,
         artistId: Long? = null,
+        capability: ProviderCapability = if (path == "search")
+            ProviderCapability.CATALOG_SEARCH else ProviderCapability.EDITORIAL_DISCOGRAPHY,
     ): ItunesCatalogResult {
         val json = try {
-            transport.get(path, params)
+            transport.get(path, params, capability)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
