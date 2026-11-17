@@ -1700,15 +1700,14 @@ internal interface CanonicalCatalogDao {
         INNER JOIN catalog_media_asset asset
             ON asset.recordingId = recording.id
         WHERE lower(trim(recording.title)) = lower(trim(:title))
-          AND (asset.provider = 'local-mediastore'
-            OR asset.provider LIKE 'opensubsonic:%'
-            OR asset.provider LIKE 'jellyfin:%')
+          AND asset.provider IN (:providerKeys)
         ORDER BY recording.id, asset.provider, asset.id
         LIMIT 50
         """,
     )
     suspend fun spotifyCanonicalAssetCandidates(
         title: String,
+        providerKeys: List<String>,
     ): List<SpotifyCanonicalAssetCandidate>
 
     /**
@@ -1788,7 +1787,7 @@ internal interface CanonicalCatalogDao {
             asset.artworkUri AS artworkUri
         FROM catalog_media_asset AS asset
         INNER JOIN catalog_recording AS recording ON recording.id = asset.recordingId
-        WHERE (asset.provider LIKE 'opensubsonic:%' OR asset.provider LIKE 'jellyfin:%')
+        WHERE asset.provider IN (:providerKeys)
           AND (instr(lower(recording.title), lower(:query)) > 0
                OR instr(lower(recording.artistDisplay), lower(:query)) > 0)
         ORDER BY recording.artistDisplay COLLATE NOCASE,
@@ -1800,6 +1799,7 @@ internal interface CanonicalCatalogDao {
     suspend fun searchCanonicalRemoteServerAssets(
         query: String,
         limit: Int,
+        providerKeys: List<String>,
     ): List<CanonicalBrowseAssetRow>
 
     /**
