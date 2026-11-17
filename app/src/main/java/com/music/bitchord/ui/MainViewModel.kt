@@ -3093,16 +3093,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Only Apple-verified public albums enter the native Home editorial feed. */
-    fun loadAppleHomeEditorial(
-        candidates: List<CanonicalCatalogSearchRow>,
-        force: Boolean = false,
-    ) {
+    /**
+     * The Apple-first Home samples Apple-native album genres under ONE
+     * iTunes editorial ticket; it no longer needs MusicBrainz seed searches.
+     * Only Apple release dates determine the "recent" shelf and actual
+     * storefront IDs determine navigation. Coverage is explicitly bounded.
+     */
+    fun loadAppleHomeEditorial(force: Boolean = false) {
         if (!isCanonicalDiscoverySelected()) return
         val lease = ProviderReadLease.acquire(
             ProviderRuntime.gateOrNull(),
             listOf(
-                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.MUSICBRAINZ,
                 ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES,
             ),
         )
@@ -3112,27 +3113,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _appleHomeReleases.value = UiState.Success(emptyList())
             return
         }
-        val seeds = candidates.asSequence()
-            .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP }
-            .mapNotNull { row ->
-                val artist = row.subtitle?.trim().orEmpty()
-                if (artist.isBlank() || row.title.isBlank()) null
-                else com.music.bitchord.data.catalog.metadata.AppleHomeEditorialSeed(
-                    row.title, artist,
-                )
-            }
-            .distinctBy { it.title.lowercase(Locale.ROOT) to
-                it.artist.lowercase(Locale.ROOT) }
-.take(64).toList()
-        if (seeds.isEmpty()) {
-            appleHomeJob?.cancel()
-            appleHomeEpoch.invalidateAndNext()
-            _appleHomeReleases.value = UiState.Success(emptyList())
-            return
-        }
-        val fingerprint = seeds.joinToString(separator = "|") {
-            "${it.title.lowercase(Locale.ROOT)}:${it.artist.lowercase(Locale.ROOT)}"
-        }
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+        val fingerprint = "itunes-native:br:$today:genre-v1"
         val now = System.currentTimeMillis()
         if (!force && fingerprint == appleHomeFingerprint &&
             (appleHomeJob?.isActive == true ||
@@ -3142,16 +3124,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val generation = appleHomeEpoch.next()
         appleHomeFingerprint = fingerprint
         appleHomeLastAttemptAtMs = now
-        // A prior empty success is not proof that a *new* Apple attempt has
-        // completed; keep the primary pending until its actual request ends.
         if ((_appleHomeReleases.value as? UiState.Success)?.data.isNullOrEmpty()) {
             _appleHomeReleases.value = UiState.Loading
         }
         appleHomeJob = viewModelScope.launch(Dispatchers.IO) {
             val result = try {
                 com.music.bitchord.data.catalog.metadata
-                    .AppleHomeEditorialDiscovery().discover(
-                        seeds, "br", maxProbes = 8,
+                    .AppleNativeHomeDiscovery().discover(
+                        storefront = "br", todayIsoDate = today, maxGenres = 3,
                         onProgress = { releases ->
                             if (lease.isCurrent() && appleHomeEpoch.isCurrent(generation) &&
                                 isCanonicalDiscoverySelected()
@@ -3185,22 +3165,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _appleHomeProbeReport.value = result.probeReport
                     com.music.bitchord.data.catalog.metadata
                         .recordAppleEditorialProbeReport("home", result.probeReport)
-                    // Keep the last Apple-confirmed cards through a transient
-                    // outage, but never fall back to MB-only ReleaseGroups.
                     (_appleHomeReleases.value as? UiState.Success)
                         ?: UiState.Error("Não foi possível consultar o catálogo Apple.")
                 }
             }
-            // First paint retains Apple's published thumbnail. Upgrade only
-            // visible Apple product cards after verifying CDN response bounds;
-            // two probes at a time, without blocking Home or the iTunes API.
             if (result is AppleEditorialLoad.Success) {
                 val permits = Semaphore(2)
                 result.releases.take(12).forEachIndexed { index, album ->
                     launch {
                         permits.withPermit {
-                            // Only the first four featured Home cards use
-                            // 1024px; the remaining compact tiles use 600px.
                             val target = appleArtworkTargetPxForShelf(index, 4)
                             val upgraded = appleHighResolutionArtwork.upgrade(
                                 album.artworkUrl, target,

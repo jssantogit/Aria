@@ -1055,15 +1055,20 @@ private fun BitChordApp(
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
             .format(java.util.Date())
     }
-    // A provider-first editorial feed uses the native provider browse identity.
-    // Apple Home still needs authorized MB seed evidence until its own Home
-    // discovery adapter is independent; never query Apple in MB-first mode.
-    LaunchedEffect(selectedTab, canonicalWorldwideReleases, catalogEditorialOrder) {
-        if (selectedTab == TAB_HOME &&
-            catalogEditorialOrder.firstOrNull() ==
-                com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES &&
-            canonicalWorldwideReleases.isNotEmpty()
-        ) viewModel.loadAppleHomeEditorial(canonicalWorldwideReleases)
+    // Apple Home samples exact Apple genre-indexed albums without MB seeds.
+    // An authorized second provider is used only when the primary has no
+    // recent discovery; provider-native IDs never cross the boundary.
+    LaunchedEffect(selectedTab, canonicalWorldwideLoading,
+        canonicalWorldwideReleases, catalogEditorialOrder,
+    ) {
+        val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+        val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+        val first = catalogEditorialOrder.firstOrNull()
+        if (selectedTab == TAB_HOME && apple in catalogEditorialOrder &&
+            (first == apple ||
+                first == mb && !canonicalWorldwideLoading &&
+                    canonicalWorldwideReleases.isEmpty())
+        ) viewModel.loadAppleHomeEditorial()
     }
 
     // Apple genre discovery is native: no MusicBrainz seed is required.
@@ -1219,10 +1224,8 @@ private fun BitChordApp(
         }
         val appleState = com.music.bitchord.ui.compositeEditorialReadState(
             nativeAppleState,
-            requestCanStart = catalogEditorialOrder.firstOrNull() == catalogApple &&
-                (canonicalWorldwideLoading || canonicalWorldwideReleases.isNotEmpty()),
-            evidenceAuthorized = catalogMb in catalogEditorialOrder &&
-                catalogApple in catalogEditorialOrder,
+            requestCanStart = catalogEditorialOrder.firstOrNull() == catalogApple,
+            evidenceAuthorized = catalogApple in catalogEditorialOrder,
         )
         com.music.bitchord.ui.selectCatalogEditorial(
             catalogEditorialOrder, mapOf(
