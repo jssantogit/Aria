@@ -5616,8 +5616,9 @@ private fun BitChordApp(
             // Menus must live at the window's top layer rather than inside a
             // 40dp toolbar Box. The same Haze source then samples the real page.
             detail?.takeIf {
-                it.browseId.startsWith("catalog:RELEASE:") ||
-                    it.browseId.startsWith("catalog:RELEASE_GROUP:")
+                toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                    (it.browseId.startsWith("catalog:RELEASE:") ||
+                    it.browseId.startsWith("catalog:RELEASE_GROUP:"))
             }?.let { catalogDetail ->
                 com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
                     browseId = catalogDetail.browseId,
@@ -5634,7 +5635,9 @@ private fun BitChordApp(
                     },
                 )
             }
-            openedPublicPlaylist?.let { publicPlaylist ->
+            openedPublicPlaylist?.takeIf {
+                toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST
+            }?.let { publicPlaylist ->
                 com.music.bitchord.ui.screens.CanonicalPublicPlaylistOverflowMenu(
                     playlist = publicPlaylist,
                     expanded = publicPlaylistOptionsOpen,
@@ -6516,7 +6519,7 @@ private fun BitChordApp(
             )
         }
 
-        if (showPlaylistLibrary && !showSmartPlaylistBuilder && detail == null) {
+        if (toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY) {
             CanonicalPlaylistMenus(
                 hazeState = hazeState,
                 sortOrFilterAnchor = playlistSortOrFilterAnchor,
@@ -6576,7 +6579,8 @@ private fun BitChordApp(
             )
         }
 
-        if (songSortMenuOpen) {
+        if (songSortMenuOpen &&
+            toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL) {
             BackHandler { songSortMenuOpen = false }
             FrostedSortMenu(
                 hazeState = hazeState,
@@ -6605,27 +6609,29 @@ private fun BitChordApp(
         }
 
         UnifiedAlbumDetailSortMenu(
-            visible = shouldUseUnifiedAlbumDetailToolbar(
-                unifiedLibraryCategory, unifiedLibraryDetailOpen, unifiedLibraryNestedAlbumOpen,
+            visible = toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
+                shouldUseUnifiedAlbumDetailToolbar(
+                    unifiedLibraryCategory, unifiedLibraryDetailOpen, unifiedLibraryNestedAlbumOpen,
             ),
             state = unifiedAlbumUi,
             hazeState = hazeState,
         )
 
         UnifiedLibraryMenus(
-            visible = unifiedLibraryCategory != null && !showAllLocalRecentAdditions &&
+            visible = toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
                 shouldShowUnifiedLibraryBrowseFilters(unifiedLibraryDetailOpen),
             hazeState = hazeState,
             controls = unifiedControls,
         )
         UnifiedLibraryMenus(
-            visible = showAllLocalRecentAdditions,
+            visible = toolbarOwner == NativeTopBarRouteOwner.RECENT_ADDITIONS,
             hazeState = hazeState,
             controls = recentControls,
         )
 
         val menuFolder = detail?.browseId?.takeIf { it.isDeviceFolder() }
-        if (folderMenuOpen && menuFolder != null) {
+        if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+            folderMenuOpen && menuFolder != null) {
             BackHandler { folderMenuOpen = false }
             val downloadsFolder = menuFolder == "local:downloads"
             val folderState = localFolderStates.getOrPut(menuFolder) { LocalFolderState() }
