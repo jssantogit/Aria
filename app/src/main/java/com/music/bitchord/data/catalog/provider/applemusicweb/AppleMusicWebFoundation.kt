@@ -18,6 +18,8 @@ import kotlinx.coroutines.sync.withPermit
 internal enum class AppleMusicWebCompleteness {
     PAGE_LIMIT,
     UPSTREAM_INTERRUPTED,
+    MISSING_TRACKLIST,
+    TRACK_COUNT_MISMATCH,
 }
 
 internal sealed interface AppleMusicWebOutcome<out T> {
