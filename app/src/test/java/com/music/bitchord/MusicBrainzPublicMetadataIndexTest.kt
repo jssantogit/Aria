@@ -496,7 +496,7 @@ class MusicBrainzPublicMetadataIndexTest {
             // The search API can omit both fields, unlike a previous exact
             // lookup. The DTO must carry null/unknown through to Room.
             val search = com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch(
-                com.music.bitchord.data.catalog.metadata.authorizedMusicBrainzClient(
+                authorizedMusicBrainzClient(
                     transport = object :
                         com.music.bitchord.data.catalog.metadata.MusicBrainzTransport {
                         override suspend fun get(
