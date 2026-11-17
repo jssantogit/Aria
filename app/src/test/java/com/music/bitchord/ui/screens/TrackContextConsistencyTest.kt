@@ -62,6 +62,16 @@ class TrackContextConsistencyTest {
             server.contains("onMoreActions ="))
     }
 
+    @Test fun sourceVerifiedServerSearchHoldUsesGlobalFrostedMenu() {
+        val search = read("sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/SearchScreen.kt")
+        val host = read("app/src/main/java/com/music/bitchord/MainActivity.kt")
+        assertTrue(search.contains("onServerLongPress:"))
+        assertTrue(search.contains("onLongPress = onHold?.let"))
+        assertTrue(host.contains("heldServerSearchRow"))
+        assertTrue(host.contains("item = heldServerSearchRow"))
+        assertTrue(host.contains("CanonicalRemotePlaybackRequest("))
+    }
+
     @Test fun onlineArtistTrackRowsDoNotRetainSolidMetadataPopup() {
         val artist = read("app/src/main/java/com/music/bitchord/ui/screens/NativeArtistPublicTopSection.kt")
         val detail = read("app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt")
