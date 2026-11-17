@@ -21,6 +21,8 @@ import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 internal class SourceScopedMediaSourceFactory(
     private val defaultFactory: MediaSource.Factory,
     private val createSourceFactory: () -> MediaSource.Factory,
+    private val preflightSource: (suspend (MediaItem) -> PreparedSourceMediaSelection)? = null,
+    private val createPreparedFactory: ((PreparedSourceMediaSelection) -> MediaSource.Factory)? = null,
 ) : MediaSource.Factory {
     private var loadErrorPolicy: LoadErrorHandlingPolicy? = null
     private var drmProvider: DrmSessionManagerProvider? = null
@@ -31,6 +33,25 @@ internal class SourceScopedMediaSourceFactory(
         val uri = mediaItem.localConfiguration?.uri
         val isSource = uri?.scheme.equals("bitchord", ignoreCase = true) &&
             uri?.authority == "source"
+        if (isSource && preflightSource != null) {
+            // Selecting a source can require network/module I/O. Do not start
+            // that work from createMediaSource: Media3 invokes it on its
+            // playback looper. The deferred child selects the winning stream
+            // on IO, then constructs the right HLS/DASH/progressive factory.
+            return DeferredResolvedSourceMediaSource(mediaItem) {
+                val selected = preflightSource.invoke(mediaItem)
+                val factory = if (selected.playbackLease == null) {
+                    // SMB and other non-extension sources retain the existing
+                    // local/default DataSource and caching behaviour.
+                    defaultFactory
+                } else {
+                    createPreparedFactory?.invoke(selected) ?: createSourceFactory()
+                }
+                loadErrorPolicy?.let(factory::setLoadErrorHandlingPolicy)
+                drmProvider?.let(factory::setDrmSessionManagerProvider)
+                factory.createMediaSource(selected.item)
+            }
+        }
         val factory = if (isSource) createSourceFactory() else defaultFactory
         loadErrorPolicy?.let(factory::setLoadErrorHandlingPolicy)
         drmProvider?.let(factory::setDrmSessionManagerProvider)
