@@ -3912,19 +3912,22 @@ private fun BitChordApp(
                             },
                             onRetry = {
                                 viewModel.loadCanonicalDiscoveryCatalog()
-                                // A cold install has no local catalog to refill;
-                                // retry the public MusicBrainz release query too.
-                                viewModel.loadCanonicalWorldwideReleases(force = true)
-                                viewModel.loadAppleHomeEditorial(
-                                    canonicalWorldwideReleases, force = true,
-                                )
+                                when (catalogEditorialOrder.firstOrNull()) {
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ ->
+                                        viewModel.loadCanonicalWorldwideReleases(force = true)
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES ->
+                                        viewModel.loadAppleHomeEditorial(force = true)
+                                }
                             },
                             refreshing = MainViewModel.Feed.HOME in refreshing,
                             onRefresh = {
                                 viewModel.refresh(MainViewModel.Feed.HOME)
-                                viewModel.loadAppleHomeEditorial(
-                                    canonicalWorldwideReleases, force = true,
-                                )
+                                when (catalogEditorialOrder.firstOrNull()) {
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ ->
+                                        viewModel.loadCanonicalWorldwideReleases(force = true)
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES ->
+                                        viewModel.loadAppleHomeEditorial(force = true)
+                                }
                             },
                             pullState = homePull,
                             contentPadding = listPadding,
