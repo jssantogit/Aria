@@ -294,6 +294,8 @@ internal data class NativeDetailAttribution(
 @Composable
 fun DetailScreen(
     page: DetailPage,
+    /** Artist cards only: Group MBID -> exact promotional artwork and store URL. */
+    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
     currentSong: Song?,
     isPlaying: Boolean,
     onSongClick: (List<Song>, Int) -> Unit,
@@ -336,8 +338,6 @@ fun DetailScreen(
      * page whose header never offered the button.
      */
     onToggleSubscription: (() -> Unit)? = null,
-    /** Artist cards only: Group MBID -> exact promotional artwork and store URL. */
-    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
     /** Library state of releases shown as cards on this page, by browse id. */
     releaseLibrary: Map<String, LibraryState> = emptyMap(),
     onLoadReleaseLibrary: ((String) -> Unit)? = null,
