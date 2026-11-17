@@ -3,11 +3,6 @@ name: Apple Music Web — Live Canary
 # Only becomes scheduled once this workflow is present on the default branch.
 # Never runs public API scraping in the hermetic PR/merge test suite.
 on:
-  # Temporary PR-scoped live validation of the native transport; remove
-  # before merging to keep normal PR gates fully hermetic.
-  pull_request:
-    paths:
-      - '.github/workflows/apple-music-web-canary.yml'
   schedule:
     - cron: '29 5 * * *'
   workflow_dispatch:
