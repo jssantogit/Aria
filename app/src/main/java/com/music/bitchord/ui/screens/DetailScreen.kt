@@ -523,21 +523,6 @@ fun DetailScreen(
     // on an album that was closed and reopened would be a page that appears to
     // have lost most of its tracks.
     var query by rememberSaveable(page.browseId) { mutableStateOf("") }
-    var editingMetadataRecording by remember(page.browseId) { mutableStateOf<String?>(null) }
-    var addingMetadataRecording by remember(page.browseId) {
-        mutableStateOf<Triple<String, String, String>?>(null)
-    }
-    addingMetadataRecording?.let { (recording, title, artist) ->
-        CanonicalMetadataRecordingPlaylistPicker(
-            recordingId = recording, title = title, artist = artist,
-            onDismiss = { addingMetadataRecording = null },
-        )
-    }
-    editingMetadataRecording?.let { recording ->
-        CanonicalMetadataRecordingRatingDialog(
-            recordingId = recording, onDismiss = { editingMetadataRecording = null },
-        )
-    }
     val canonicalVisibleTrackIndices = remember(canonicalTracks, query, songSort) {
         canonicalMetadataAlbumVisibleIndices(
             canonicalTracks.map { it.title to it.subtitle }, query, songSort,
@@ -876,17 +861,12 @@ fun DetailScreen(
                         val row = canonicalTracks[originalIndex]
                         val canPlay = row.hasCatalogedAsset && onCanonicalTrackPlay != null
                         val hasMetadataActions = isVerifiedCatalogRecordingId(row.musicBrainzId)
-                        var menuExpanded by remember(page.browseId, originalIndex) {
-                            mutableStateOf(false)
-                        }
                         NativeDetailTrackRowLayout(
                             onClick = if (canPlay) ({
                                 onCanonicalTrackPlay?.invoke(row.musicBrainzId)
                             }) else null,
-                            onLongPress = if (hasMetadataActions) ({
-                                if (onCanonicalTrackHold != null) onCanonicalTrackHold(row)
-                                else menuExpanded = true
-                            }) else null,
+                            onLongPress = if (hasMetadataActions)
+                                onCanonicalTrackHold?.let { hold -> { hold(row) } } else null,
                             onMore = null,
                             textGap = PAGE_GUTTER,
                             leading = {
@@ -917,23 +897,8 @@ fun DetailScreen(
                             },
                             rating = {},
                             showRatingSlot = false,
-                            actions = {
-                                CanonicalMetadataTrackMore(
-                                    recordingId = row.musicBrainzId,
-                                    title = row.title,
-                                    artist = row.subtitle.orEmpty().ifBlank { page.title },
-                                    palette = palette,
-                                    expanded = menuExpanded,
-                                    onOpen = { menuExpanded = true },
-                                    onDismiss = { menuExpanded = false },
-                                    onRate = { editingMetadataRecording = it },
-                                    onAddToPlaylist = { id, title, artist ->
-                                        addingMetadataRecording = Triple(id, title, artist)
-                                    },
-                                    tag = "canonical-album-track-more-$originalIndex",
-                                    showButton = false,
-                                )
-                            },
+                            actions = {},
+
                         )
                         if (index < canonicalVisibleTrackIndices.lastIndex) {
                             HorizontalDivider(
