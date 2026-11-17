@@ -4104,6 +4104,8 @@ private fun BitChordApp(
                             searchingAddons = searchSource == SearchSource.ADDONS,
                             searchingCanonical = searchSource == SearchSource.CANONICAL,
                             canonicalResults = viewModel.canonicalResults.collectAsStateWithLifecycle().value,
+                            catalogSearchMusicBrainzVisible =
+                                viewModel.catalogSearchMusicBrainzVisible.collectAsStateWithLifecycle().value,
                             appleResults = viewModel.appleEditorialResults.collectAsStateWithLifecycle().value,
                             appleArtistResults = viewModel.appleEditorialArtists.collectAsStateWithLifecycle().value,
                             appleTrackResults = viewModel.appleEditorialTracks.collectAsStateWithLifecycle().value,
