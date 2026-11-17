@@ -17,6 +17,7 @@ internal data class PreparedSourceMediaSelection(
     val item: MediaItem,
     val resolved: DataSpec,
     val cachedOffline: Boolean = false,
+    val logicalMediaId: String? = null,
 ) {
     val playbackLease: ProviderPlaybackByteLease?
         get() = resolved.customData as? ProviderPlaybackByteLease
@@ -44,7 +45,9 @@ internal fun prepareSourceMediaSelection(
         .setUri(resolved.uri)
         .setMimeType(mime)
         .build()
-    return PreparedSourceMediaSelection(child, resolved)
+    return PreparedSourceMediaSelection(
+        child, resolved, logicalMediaId = mediaIdIn(virtualUri),
+    )
 }
 
 /**
@@ -54,14 +57,20 @@ internal fun prepareSourceMediaSelection(
 internal fun prepareCachedProgressiveSourceMediaSelection(
     original: MediaItem,
     lease: ProviderPlaybackByteLease,
+    cacheKey: String? = null,
 ): PreparedSourceMediaSelection {
     val uri = original.localConfiguration?.uri
         ?: throw IOException("Cached source lacks logical URI")
     if (!isLogicalSourcePlaybackUri(uri) || !lease.allowed())
         throw IOException("Cached progressive source requires current authorization")
+    if (cacheKey != null && !isScopedSourcePhysicalCacheKey(cacheKey))
+        throw IOException("Offline physical key is not source-scoped")
     return PreparedSourceMediaSelection(
-        item = original.buildUpon().setMimeType(null).build(),
-        resolved = DataSpec.Builder().setUri(uri).setCustomData(lease).build(),
+        item = original.buildUpon().setMimeType(null)
+            .apply { if (cacheKey != null) setCustomCacheKey(cacheKey) }.build(),
+        resolved = DataSpec.Builder().setUri(uri).setCustomData(lease)
+            .apply { if (cacheKey != null) setKey(cacheKey) }.build(),
         cachedOffline = true,
+        logicalMediaId = mediaIdIn(uri),
     )
 }

@@ -8,7 +8,7 @@ import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
-import java.security.MessageDigest
+import com.music.bitchord.data.providers.sourcePlaybackCacheFingerprint
 
 /**
  * Cache hits skip both SourceResolver and the provider HTTP byte DataSource.
@@ -67,28 +67,19 @@ internal fun hasProgressiveAudioSignature(bytes: ByteArray): Boolean {
  * Store a digest of the locally controlled configuration and an opaque source
  * generation instead. Existing cache bytes are never stamped retroactively.
  */
-internal fun sourcePlaybackCacheScope(config: SourceConfig?, owner: ProviderKey): String? {
-    if (config == null || config.id != owner.instanceId ||
-        config.playbackCacheEpoch.isBlank() || config.baseUrl.isBlank()) return null
-    if (!when (config.kind) {
-        SourceKind.ADDON -> owner.providerId == "addon"
-        SourceKind.CUSTOM_MODULE -> owner.providerId == "custom_module"
-        else -> false
-    }) return null
-    val input = listOf(
-        "source-cache-v2", owner.providerId, owner.instanceId,
-        config.kind.name, config.baseUrl, config.playbackCacheEpoch,
-    ).joinToString("\u0000").toByteArray(Charsets.UTF_8)
-    return try {
-        MessageDigest.getInstance("SHA-256").digest(input)
-            .joinToString("") { "%02x".format(it.toInt() and 255) }
-    } finally { input.fill(0) }
-}
+internal fun sourcePlaybackCacheScope(config: SourceConfig?, owner: ProviderKey): String? =
+    sourcePlaybackCacheFingerprint(config, owner)
+
 internal fun currentSourcePlaybackCacheScope(owner: ProviderKey): String? =
     sourcePlaybackCacheScope(SourceRegistry.config(owner.instanceId), owner)
 
 internal fun sourceCacheScopeMatches(stored: String?, current: String?): Boolean =
     !stored.isNullOrBlank() && stored == current
+
+/** Recognize an opaque, provider-scoped HTTP byte cache key, never a URL. */
+internal fun isScopedSourcePhysicalCacheKey(key: String?): Boolean =
+    key != null && Regex("^source-segment:(addon|custom_module):[^:]{1,128}:[0-9a-f]{64}$")
+        .matches(key)
 
 /**
  * Media3 bypasses the HTTP datasource entirely on an HLS/DASH segment cache
@@ -115,8 +106,13 @@ internal fun providerAdaptiveSegmentCacheKey(
     url: String,
     requestKey: String? = null,
     headers: Map<String, String> = emptyMap(),
+    sourceScope: String? = null,
 ): String {
-    return providerSegmentCacheKey(owner, url, requestKey, headers)
+    // Partition even identical URLs/Authorization headers across local source
+    // endpoint/account generations, without writing credentials to the disk.
+    val scopedRequest = sourceScope?.let { "source-realm:$it:" + requestKey.orEmpty() }
+        ?: requestKey
+    return providerSegmentCacheKey(owner, url, scopedRequest, headers)
 }
 
 /**

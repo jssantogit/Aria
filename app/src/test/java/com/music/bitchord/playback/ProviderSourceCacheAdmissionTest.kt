@@ -194,6 +194,18 @@ class ProviderSourceCacheAdmissionTest {
             config.copy(label = "Cosmetic name"), owner)))
         assertNull(sourcePlaybackCacheScope(config, ProviderKey("custom_module", "one")))
         assertNull(sourcePlaybackCacheScope(config, ProviderKey("addon", "other")))
+        val scopedOne = providerAdaptiveSegmentCacheKey(
+            owner, "https://cdn.example/a.flac", null,
+            mapOf("authorization" to "Bearer shared"), "realm-one")
+        val scopedTwo = providerAdaptiveSegmentCacheKey(
+            owner, "https://cdn.example/a.flac", null,
+            mapOf("authorization" to "Bearer shared"), "realm-two")
+        assertTrue(scopedOne != scopedTwo)
+        assertTrue(isScopedSourcePhysicalCacheKey(scopedOne))
+        assertFalse(isScopedSourcePhysicalCacheKey("https://cdn.example/a.flac"))
+        assertFalse(isScopedSourcePhysicalCacheKey("source-segment:addon:one:bad-hash"))
+        assertFalse(scopedOne.contains("realm-one"))
+        assertFalse(scopedOne.contains("shared"))
     }
 
     @Test fun cacheGenerationRotatesOnServerEditsEvenWhenRestoredToTheOriginalUrl() {

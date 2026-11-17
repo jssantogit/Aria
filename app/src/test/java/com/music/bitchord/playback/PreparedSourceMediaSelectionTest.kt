@@ -130,6 +130,17 @@ class PreparedSourceMediaSelectionTest {
         assertEquals(logical.localConfiguration?.uri, cached.resolved.uri)
         assertTrue(cached.playbackLease === lease)
         assertTrue(cached.resolved.httpRequestHeaders.isEmpty())
+        val key = "source-segment:addon:one:" + "a".repeat(64)
+        val indexed = prepareCachedProgressiveSourceMediaSelection(logical, lease, key)
+        assertEquals(key, indexed.item.localConfiguration?.customCacheKey)
+        assertEquals(key, indexed.resolved.key)
+        assertEquals(logical.localConfiguration?.uri, indexed.item.localConfiguration?.uri)
+        assertTrue(indexed.resolved.httpRequestHeaders.isEmpty())
+        try {
+            prepareCachedProgressiveSourceMediaSelection(logical, lease,
+                "https://cdn.example/song.flac?token=secret")
+            org.junit.Assert.fail("Unscoped offline key was accepted")
+        } catch (_: IOException) {}
         gate.replace(policy(false))
         try {
             prepareCachedProgressiveSourceMediaSelection(logical, lease)
