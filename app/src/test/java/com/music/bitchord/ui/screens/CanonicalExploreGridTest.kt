@@ -39,7 +39,8 @@ import org.robolectric.annotation.ConscryptMode
 class CanonicalExploreGridTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun searchResultsKeepHoldActionsButNoMoreButtonOrDurationText() {
+    @Test fun searchResultsDelegateHoldWithoutMoreButtonOrDurationText() {
+        var held = 0
         compose.setContent {
             MaterialTheme {
                 NativeSearchResultRow(
@@ -51,7 +52,7 @@ class CanonicalExploreGridTest {
                         durationLabel = "3:20",
                     ),
                     onClick = {},
-                    onMoreActions = listOf(NativeSearchRowAction("Ver detalhes") {}),
+                    onLongPress = { held++ },
                 )
             }
         }
@@ -60,7 +61,8 @@ class CanonicalExploreGridTest {
         compose.onNodeWithTag("search-row-more-actions").assertDoesNotExist()
         compose.onNodeWithTag("native-search-result-row")
             .performTouchInput { longClick() }
-        compose.onNodeWithText("Ver detalhes").assertExists()
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(1, held) }
     }
 
     @Test fun libraryCategoryBackIsIndependentlyCompactAndKeepsItsAction() {
