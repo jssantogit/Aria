@@ -19,6 +19,20 @@ class CanonicalLibraryInitialLoadingTest {
         ))
     }
 
+    @Test fun existingRoomTracksAppearWithoutWaitingForRescan() {
+        assertFalse(canonicalLibraryInitialLoading(
+            unified = true, firstEmissionReceived = true, localIndexReady = false,
+            persistedRowsPresent = true,
+        ))
+    }
+
+    @Test fun firstScanStillWaitsRatherThanShowingFalseEmptyLibrary() {
+        assertTrue(canonicalLibraryInitialLoading(
+            unified = true, firstEmissionReceived = true, localIndexReady = false,
+            persistedRowsPresent = false,
+        ))
+    }
+
     @Test fun realEmptyDatabaseIsNotAnInfiniteLoader() {
         assertFalse(canonicalLibraryInitialLoading(
             unified = true, firstEmissionReceived = true, localIndexReady = true,

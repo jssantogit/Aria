@@ -388,6 +388,9 @@ internal fun CanonicalRemoteLibraryScreen(
         unified = unified,
         firstEmissionReceived = librarySnapshot != null,
         localIndexReady = localIndexReady,
+        // Display verified Room rows immediately: only a genuinely empty
+        // initial projection must wait for the in-flight MediaStore scan.
+        persistedRowsPresent = librarySnapshot?.tracks?.isNotEmpty() == true,
     )
     val library = librarySnapshot ?: CanonicalBrowseLibrary.EMPTY
     // Album/artist scores belong to their own local table, not track ratings.
@@ -3016,4 +3019,6 @@ internal fun canonicalLibraryInitialLoading(
     unified: Boolean,
     firstEmissionReceived: Boolean,
     localIndexReady: Boolean,
-): Boolean = !firstEmissionReceived || (unified && !localIndexReady)
+    persistedRowsPresent: Boolean = false,
+): Boolean = !firstEmissionReceived ||
+    (unified && !localIndexReady && !persistedRowsPresent)
