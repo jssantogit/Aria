@@ -610,6 +610,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var appleEditorialSearchJob: Job? = null
     private var appleEditorialDetailJob: Job? = null
     private var activeAppleAlbumId: String? = null
+    /** Immutable Apple-only snapshot; external proofs never overwrite this. */
+    private var appleAlbumNativeBaseline: AppleEditorialAlbumDetailPage? = null
     private val _appleEditorialArtists =
         MutableStateFlow<UiState<List<AppleEditorialSearchRow>>?>(null)
     val appleEditorialArtists: StateFlow<UiState<List<AppleEditorialSearchRow>>?> =
@@ -3893,8 +3895,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope.launch {
                 var previous = eligibleCatalogSearchProviders()
                 var previousEditorial = eligibleEditorialProviders()
+                var previousDiscogs = ProviderRuntime.gateOrNull()?.open(
+                    ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
+                ) != null
                 snapshots.collect {
                     val nextEditorial = eligibleEditorialProviders()
+                    val nextDiscogs = ProviderRuntime.gateOrNull()?.open(
+                        ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
+                    ) != null
+                    val externalProofRevoked =
+                        (BuiltInProviderKeys.MUSICBRAINZ in previousEditorial &&
+                            BuiltInProviderKeys.MUSICBRAINZ !in nextEditorial) ||
+                        (previousDiscogs && !nextDiscogs)
+                    previousDiscogs = nextDiscogs
+                    if (externalProofRevoked) {
+                        val baseline = appleAlbumNativeBaseline
+                        _appleEditorialDetail.update { state ->
+                            if (state is UiState.Success) UiState.Success(
+                                appleEditionDetailWithoutExternalEvidence(state.data, baseline),
+                            ) else state
+                        }
+                    }
+                    if (BuiltInProviderKeys.ITUNES in previousEditorial &&
+                        BuiltInProviderKeys.ITUNES !in nextEditorial
+                    ) backAppleEditorialAlbum()
                     if (nextEditorial != previousEditorial) {
                         previousEditorial = nextEditorial
                         _catalogEditorialOrder.value = nextEditorial
@@ -5008,6 +5032,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         clearCanonicalCatalogNavigation()
         appleEditorialDetailJob?.cancel()
         activeAppleAlbumId = row.browseId
+        appleAlbumNativeBaseline = null
         _appleEditorialDetail.value = UiState.Loading
         appleEditorialDetailJob = viewModelScope.launch(Dispatchers.IO) {
             val response = try {
@@ -5023,6 +5048,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _appleEditorialDetail.value = when (response) {
                 is AppleEditorialLoad.Success -> {
                     val detail = appleNativeAlbumDetail(response, row.browseId)
+                    appleAlbumNativeBaseline = detail
                     if (detail != null) UiState.Success(detail)
                     else UiState.Error("apple_album_not_in_storefront")
                 }
@@ -5098,6 +5124,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun backAppleEditorialAlbum() {
         activeAppleAlbumId = null
+        appleAlbumNativeBaseline = null
         appleEditorialDetailJob?.cancel()
         _appleEditorialDetail.value = null
     }
