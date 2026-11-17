@@ -93,8 +93,12 @@ class SourceRegistryCacheMigrationTest {
             written == "valid"
         })
         assertEquals(1, writeCalled)
-        assertTrue(!SourceRegistry.sourceDocumentCommitAllowed("valid") { false })
         assertTrue(!SourceRegistry.sourceDocumentCommitAllowed("valid") {
+            writeCalled++
+            false
+        })
+        assertTrue(!SourceRegistry.sourceDocumentCommitAllowed("valid") {
+            writeCalled++
             throw IllegalStateException("disk full")
         })
         assertTrue(!SourceRegistry.sourceDocumentCommitAllowed(null) {
