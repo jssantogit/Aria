@@ -37,6 +37,15 @@ class CatalogEditorialPresentationTest {
         ) is UiState.Success)
     }
 
+    @Test fun revokingCompositeEvidenceHidesPreviouslyVerifiedCardsImmediately() {
+        val previouslyVerified = UiState.Success(shelf("itunes:br:album:100"))
+        val withheld = compositeEditorialReadState(
+            previouslyVerified, requestCanStart = false, evidenceAuthorized = false,
+        )
+        assertTrue(withheld is UiState.Success)
+        assertTrue((withheld as UiState.Success).data.isEmpty())
+    }
+
     @Test fun priorityChoosesProviderNativeCardsAndRespectsReorder() {
         val states = mapOf<ProviderKey, UiState<List<HomeShelf>>>(
             mb to UiState.Success(shelf("catalog:RELEASE_GROUP:123")),

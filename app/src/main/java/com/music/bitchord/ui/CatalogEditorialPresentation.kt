@@ -43,7 +43,9 @@ internal fun selectCatalogEditorial(
 internal fun compositeEditorialReadState(
     source: UiState<List<HomeShelf>>,
     requestCanStart: Boolean,
+    evidenceAuthorized: Boolean = true,
 ): UiState<List<HomeShelf>> = when {
+    !evidenceAuthorized -> UiState.Success(emptyList())
     source is UiState.Success && source.data.isNotEmpty() -> source
     !requestCanStart -> UiState.Success(emptyList())
     else -> source

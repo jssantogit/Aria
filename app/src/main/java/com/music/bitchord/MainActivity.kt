@@ -1220,8 +1220,9 @@ private fun BitChordApp(
         val appleState = com.music.bitchord.ui.compositeEditorialReadState(
             nativeAppleState,
             requestCanStart = catalogEditorialOrder.firstOrNull() == catalogApple &&
-                catalogMb in catalogEditorialOrder &&
                 (canonicalWorldwideLoading || canonicalWorldwideReleases.isNotEmpty()),
+            evidenceAuthorized = catalogMb in catalogEditorialOrder &&
+                catalogApple in catalogEditorialOrder,
         )
         com.music.bitchord.ui.selectCatalogEditorial(
             catalogEditorialOrder, mapOf(
