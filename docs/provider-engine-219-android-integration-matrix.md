@@ -119,3 +119,7 @@ A cache-epoch migration may not rewrite a stored source list using only the type
 ## SourceRegistry durable mutation gate (2026-11-17)
 
 The source connection registry now commits preference changes synchronously **before** publishing a modified in-memory source list or rebuilding per-source clients. A failed/throwing commit keeps the old runtime configuration and avoids advertising a new endpoint/cache epoch that would disappear on process restart. First-run migration durably commits the source list and legacy retired-source migration marker together before constructing sources; failed migration is closed instead of activating uncommitted providers. This is independent of the canonical per-capability ProviderPreferenceStore, which already uses durable commits. Focused tests cover false/throwing writes, null/unknown documents and stable opt-out+epoch migration.
+
+## Instance-level quarantine reporting (2026-11-17)
+
+`ProviderCapabilitySession.publishSnapshot()` now reports `quarantinedProviders` (capability, provider instance), not only a coarse capability set. When an opt-out commit fails, the revoked provider is visible as quarantined and its sibling remains authorized. A subsequent successful save clears quarantine without reviving the disabled provider. This is headless state only; it does not change the frozen #212 interface.

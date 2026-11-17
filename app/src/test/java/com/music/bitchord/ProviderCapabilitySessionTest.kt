@@ -580,4 +580,37 @@ class ProviderCapabilitySessionTest {
             session.gate.ordered(ProviderCapability.CATALOG_SEARCH).map { it.key },
         )
     }
+    @Test fun failedWriteSnapshotListsOnlyRevokedProviderInstance(): Unit = runBlocking {
+        val session = session()
+        val capability = ProviderCapability.RELEASE_ARTWORK
+        assertTrue(session.initialize(mapOf(capability to listOf(
+            ProviderChoice(apple, true, 0), ProviderChoice(covers, true, 1),
+        ))))
+        val sibling = requireNotNull(session.gate.open(capability, apple))
+        val revoked = requireNotNull(session.gate.open(capability, covers))
+
+        // A failed durable opt-out must revoke only the changed instance;
+        // reporting an empty per-instance quarantine hides this fact from the
+        // future headless Sources diagnostics and settings integration.
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{corrupt").commit()
+        assertFalse(session.update(capability, listOf(
+            ProviderChoice(apple, true, 0), ProviderChoice(covers, false, 1),
+        )))
+        assertTrue(session.gate.accept(sibling))
+        assertFalse(session.gate.accept(revoked))
+        assertEquals(setOf(capability to covers),
+            session.state.value.quarantinedProviders)
+        assertEquals(setOf(capability), session.state.value.quarantined)
+        assertEquals(ProviderSessionStatus.STORAGE_ERROR, session.state.value.status)
+
+        // Recovering a valid persistence document clears only this capability's
+        // quarantine and must not grant the user's explicit opt-out.
+        prefs.edit().clear().commit()
+        assertTrue(session.update(capability, listOf(
+            ProviderChoice(apple, true, 0), ProviderChoice(covers, false, 1),
+        )))
+        assertTrue(session.state.value.quarantinedProviders.isEmpty())
+        assertTrue(session.gate.ordered(capability).map { it.key } == listOf(apple))
+    }
+
 }

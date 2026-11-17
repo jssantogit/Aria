@@ -49,6 +49,7 @@ class ProviderCapabilitySession(
             configured = choices.mapValues { (_, selections) -> selections.toList() },
             eligible = eligible,
             quarantined = quarantinedSlots.map { it.first }.toSet(),
+            quarantinedProviders = quarantinedSlots.toSet(),
             health = health.toMap(),
         )
     }
