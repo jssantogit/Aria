@@ -154,4 +154,83 @@ class PlayerArtistEvidenceTest {
         assertNull(verifiedLegacyPlayerArtistBrowseId("itunes:br:artist:123"))
     }
 
+    @Test fun tappingLocalArtistGoesToVerifiedLibraryGroupNotCatalogSearch() {
+        val song = com.music.bitchord.data.model.Song(
+            videoId = "content://media/external/audio/media/45",
+            title = "Faixa local", artist = "BTS", thumbnailUrl = null,
+            localUri = "content://media/external/audio/media/45",
+        )
+        val evidence = SourceOwnedArtistEvidence(
+            "browse-display-artist:BTS", "BTS", "local-mediastore",
+        )
+        assertEquals(
+            PlayerArtistTapRoute.SourceOwned(evidence),
+            planPlayerArtistTapRoute(song, clickedId = null, clickedName = "BTS", sourceOwned = evidence),
+        )
+        assertNull(planPlayerArtistTapRoute(
+            song, clickedId = null, clickedName = "BTS", sourceOwned = null,
+        ))
+        // A catalog artist ID attached to old Song metadata must not override
+        // the actual local recording's provider provenance.
+        assertNull(planPlayerArtistTapRoute(
+            song.copy(artistId = "itunes:br:artist:123"),
+            clickedId = "itunes:br:artist:123", clickedName = "BTS", sourceOwned = null,
+        ))
+    }
+
+    @Test fun aSourceOwnedRemoteArtistStaysInsideItsServer() {
+        val song = com.music.bitchord.data.model.Song(
+            videoId = "bitchord://remote/song-5", title = "Faixa",
+            artist = "BTS", thumbnailUrl = null,
+        )
+        val evidence = SourceOwnedArtistEvidence(
+            "navidrome-artist-6", "BTS", "opensubsonic:account-1",
+        )
+        assertEquals(
+            PlayerArtistTapRoute.SourceOwned(evidence),
+            planPlayerArtistTapRoute(song, clickedId = null, clickedName = "BTS", sourceOwned = evidence),
+        )
+        // A different credited person must not be redirected to the lead artist.
+        assertNull(planPlayerArtistTapRoute(
+            song.copy(artist = "BTS, feat. Guest"),
+            clickedId = null, clickedName = "Guest", sourceOwned = evidence,
+        ))
+    }
+
+    @Test fun namedArtistWithoutVerifiedIdentityNeverSilentlyOpensOnlineSearch() {
+        val localWithoutLocalUri = com.music.bitchord.data.model.Song(
+            videoId = "content://media/external/audio/media/45",
+            title = "Faixa", artist = "BTS", thumbnailUrl = null,
+        )
+        assertNull(planPlayerArtistTapRoute(
+            localWithoutLocalUri, clickedId = null, clickedName = "BTS", sourceOwned = null,
+        ))
+        assertNull(planPlayerArtistTapRoute(
+            localWithoutLocalUri, clickedId = "itunes:br:artist:123",
+            clickedName = "BTS", sourceOwned = null,
+        ))
+        assertNull(planPlayerArtistTapRoute(
+            com.music.bitchord.data.model.Song(
+                videoId = "unknown", title = "Faixa", artist = "BTS", thumbnailUrl = null,
+            ),
+            clickedId = null, clickedName = "BTS", sourceOwned = null,
+        ))
+    }
+
+    @Test fun exactCatalogArtistIdOpensOnlyMatchingCreditedArtist() {
+        val apple = com.music.bitchord.data.model.Song(
+            videoId = "catalog-track", title = "Faixa", artist = "BTS",
+            thumbnailUrl = null, artistId = "itunes:br:artist:123",
+        )
+        assertEquals(
+            PlayerArtistTapRoute.Catalog("itunes:br:artist:123", "BTS"),
+            planPlayerArtistTapRoute(apple, "itunes:br:artist:123", "BTS", null),
+        )
+        assertNull(planPlayerArtistTapRoute(apple, "itunes:br:artist:789", "BTS", null))
+        assertNull(planPlayerArtistTapRoute(apple, "itunes:br:artist:123", "Outro", null))
+        assertNull(planPlayerArtistTapRoute(apple, null, "BTS", null))
+        assertNull(planPlayerArtistTapRoute(apple.copy(artistId = "UC12345678901234567890"),
+            "UC12345678901234567890", "BTS", null))
+    }
+
 }
