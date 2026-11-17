@@ -131,14 +131,8 @@ fun SongRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongPress: (() -> Unit)? = null,
-    /**
-     * What the trailing ⋮ does, when it should differ from [onLongPress].
-     *
-     * Defaults to the long-press, since on most pages the two are the same
-     * menu. Downloads is the exception: holding a row there starts a
-     * multi-selection, and the ⋮ has to stay the actions sheet rather than
-     * silently tick a checkbox.
-     */
+    /** Optional desktop/accessibility secondary-click callback. No song row
+     * renders an inline ⋮; Android uses its long-press action instead. */
     onMore: (() -> Unit)? = null,
     onSwipeToQueue: (() -> Unit)? = null,
     /**
@@ -181,9 +175,8 @@ fun SongRow(
     activeTint: Color = MaterialTheme.colorScheme.primary,
     /** Search results use artwork bars instead of the usual current-song icon. */
     searchPlayingStyle: Boolean = false,
-    /** Track actions belong to long press; no trailing ⋮ in any music source.
-     * Kept as an explicit compatibility opt-in while remaining disabled across
-     * Library, Downloads, History, Search and album details. */
+    /** Legacy parameter for source adapters; never draws a trailing ⋮.
+     * Its only possible effect is a secondary-click callback. */
     showMoreButton: Boolean = false,
     /** True while a Downloads row belongs to the current multi-selection. */
     selected: Boolean = false,
@@ -331,11 +324,6 @@ private fun SongRowContent(
                     strokeWidth = 2.dp,
                     color = subtitleColor,
                 )
-            }
-        },
-        actions = {
-            if (onMore != null && !matching && !unavailable) {
-                RowMoreButton(onClick = onMore, tint = subtitleColor)
             }
         },
     )
