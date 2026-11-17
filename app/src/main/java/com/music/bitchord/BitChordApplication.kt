@@ -231,13 +231,12 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // increase was forcing re-downloads of unchanged 500px album sleeves
         // on the Galaxy A54. Keep the bounded disk LRU across updates:
         // Front-v5 verification is in versioned Room keys and different
-        // validated CAA URLs remain distinct Coil keys. Only AudioCache still
-        // requires its historical version-sensitive format invalidation.
+        // validated CAA URLs remain distinct Coil keys. Audio-cache entries
+        // are now subject to their own source/provenance/retired-backend gates.
+        // A blanket wipe on every APK version change destroyed offline files
+        // even when their bytes were complete and still compatible.
         if (AppSettings.consumeVersionUpdate(BuildConfig.VERSION_CODE)) {
             CatalogCoverTelemetry.process.recordImageDiskCachePreservedOnUpgrade()
-            Diagnostics.span(DiagnosticCategory.STARTUP, "version_update_audio_cache_clear") {
-                AudioCache.clear()
-            }
         }
         // Initialize LastFM with saved settings if available
         Diagnostics.span(DiagnosticCategory.STARTUP, "lastfm_init") {
