@@ -16,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.IOException
 
@@ -33,7 +35,7 @@ internal class DeferredResolvedSourceMediaSource(
     private val logicalItem: MediaItem,
     private val resolveAndBuild: suspend () -> MediaSource,
 ) : CompositeMediaSource<Int>() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var scope: CoroutineScope? = null
     private var task: Job? = null
     private var child: MediaSource? = null
     private var released = false
@@ -47,11 +49,17 @@ internal class DeferredResolvedSourceMediaSource(
         val playerLooper = Looper.myLooper()
             ?: throw IllegalStateException("MediaSource must prepare on its player looper")
         val playerHandler = Handler(playerLooper)
-        task = scope.launch {
+        val preparationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope = preparationScope
+        task = preparationScope.launch {
             val result = try {
                 Result.success(resolveAndBuild())
             } catch (cancelled: CancellationException) {
-                return@launch
+                // A per-provider query timeout is a *preparation failure*,
+                // not permission to leave the player stuck waiting forever.
+                // Only actual parent/job cancellation abandons the callback.
+                if (!currentCoroutineContext().isActive) return@launch
+                Result.failure(IOException("Provider stream selection timed out", cancelled))
             } catch (failure: Exception) {
                 Result.failure(failure)
             }
@@ -103,6 +111,7 @@ internal class DeferredResolvedSourceMediaSource(
         task = null
         super.releaseSourceInternal()
         child = null
-        scope.cancel()
+        scope?.cancel()
+        scope = null
     }
 }
