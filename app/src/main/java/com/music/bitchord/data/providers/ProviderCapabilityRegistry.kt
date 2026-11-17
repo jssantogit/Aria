@@ -133,9 +133,9 @@ internal object ProviderCapabilityRegistry {
                     tab = ProviderSettingsTab.CATALOG,
                     displayName = if (capability == ProviderCapability.CATALOG_SEARCH)
                         "Apple Music Web (Busca)" else "Apple Music Web (Discografia)",
-                    readiness = ProviderReadiness.READY,
+                    readiness = ProviderReadiness.BLOCKED,
                     supportsReordering = true,
-                    notes = "Native Kotlin; opt-in per capability; catalog-only and no playback",
+                    notes = "Native Kotlin pilot blocked until authenticated live validation and catalog adapter wiring",
                 ),
             )
         }
