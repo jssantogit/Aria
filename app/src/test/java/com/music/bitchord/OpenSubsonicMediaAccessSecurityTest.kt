@@ -1,6 +1,13 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.catalog.MediaAssetEntity
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityPolicy
+import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.ProviderDescriptor
+import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountDraft
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountPersistence
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountRecord
@@ -72,6 +79,14 @@ class OpenSubsonicMediaAccessSecurityTest {
                 secretReplacement = secret,
             ),
         )
+        val permitted = ProviderKey("opensubsonic", "home")
+        val capability = ProviderCapability.AUDIO_PLAYBACK
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(
+                permitted, setOf(capability), ProviderReadiness.READY,
+            )),
+            choices = mapOf(capability to listOf(ProviderChoice(permitted, true, 0))),
+        ))
         val asset = MediaAssetEntity(
             id = "asset-1",
             recordingId = "recording-1",
@@ -89,7 +104,8 @@ class OpenSubsonicMediaAccessSecurityTest {
             credentials = credentials,
             assets = assets,
             assetStore = assetStore,
-            access = OpenSubsonicMediaAccess(assetStore, accounts) { "abcdef123456" },
+            access = OpenSubsonicMediaAccess(assetStore, accounts,
+                saltFactory = { "abcdef123456" }, gateProvider = { gate }),
         )
     }
 
