@@ -1600,12 +1600,14 @@ class PlaybackService : MediaLibraryService() {
                 // DeferredResolvedSourceMediaSource invokes this on IO.
                 val physical = streamResolver.resolveDataSpec(request)
                 val selected = prepareSourceMediaSelection(item, physical)
-                // Recording provenance occurs once for this logical track.
+                // Track diagnostics can record the selected transport, but
+                // source cache provenance must NOT be mutated here. Preflight
+                // has selected a URL, not written any bytes to the logical
+                // source cache. Relabeling old cached bytes with the new
+                // winner could authorize another provider's stale content.
+                // The prepared transport caches physical HTTP spans under
+                // its per-instance URL+headers digest instead.
                 mediaIdIn(logical)?.let { StreamContainer.served(it, physical.uri.toString()) }
-                AudioCache.recordServed(
-                    request, physical.uri.toString(),
-                    selected.playbackLease?.providerKey,
-                )
                 selected
             },
             createPreparedFactory = buildSourceTransport,
