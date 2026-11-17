@@ -45,6 +45,22 @@ class CanonicalHomeEditorialDispatchTest {
         ))
     }
 
+    @Test fun loadingPrimaryHoldsFallbackEvenWhenPriorCompositionSawIdleState() {
+        val mb = BuiltInProviderKeys.MUSICBRAINZ
+        val apple = BuiltInProviderKeys.ITUNES
+        // The dispatcher reevaluates the current loading flow after
+        // initiating the MB request; a stale Idle=false snapshot cannot
+        // substitute for this still-loading state.
+        assertFalse(shouldStartAppleHomeEditorial(
+            listOf(mb, apple), mbLoading = true,
+            visibleHomeShelves = emptyList(), releasesHeading = "Releases",
+        ))
+        assertTrue(shouldStartAppleHomeEditorial(
+            listOf(mb, apple), mbLoading = false,
+            visibleHomeShelves = emptyList(), releasesHeading = "Releases",
+        ))
+    }
+
     @Test fun secondaryAllowedAfterRealEmptyOrUnavailablePrimary() {
         assertTrue(editorialPrimaryMiss(UiState.Success(emptyList<String>())))
         assertTrue(editorialPrimaryMiss<String>(UiState.Error("unavailable")))

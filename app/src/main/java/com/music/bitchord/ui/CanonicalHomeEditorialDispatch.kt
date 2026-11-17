@@ -49,12 +49,22 @@ internal object CanonicalHomeEditorialDispatch {
     fun maybeStartApple(
         viewModel: MainViewModel,
         ordered: List<ProviderKey>,
-        mbLoading: Boolean,
+        @Suppress("UNUSED_PARAMETER") mbLoading: Boolean,
         visibleHomeShelves: List<HomeShelf>,
         releasesHeading: String,
     ) {
+        // Compose may have captured the old Loading=false before the
+        // primary provider's LaunchedEffect starts its IO request. Always
+        // dispatch the preferred MB adapter FIRST and read its current flow
+        // after that synchronous admission/loading transition. This is
+        // idempotent while active or in the existing positive/negative TTL.
+        if (ordered.firstOrNull() == BuiltInProviderKeys.MUSICBRAINZ) {
+            viewModel.loadCanonicalWorldwideReleases()
+        }
         if (shouldStartAppleHomeEditorial(
-            ordered, mbLoading, visibleHomeShelves, releasesHeading,
+            ordered,
+            viewModel.canonicalWorldwideLoading.value,
+            visibleHomeShelves, releasesHeading,
         )) viewModel.loadAppleHomeEditorial()
     }
 
