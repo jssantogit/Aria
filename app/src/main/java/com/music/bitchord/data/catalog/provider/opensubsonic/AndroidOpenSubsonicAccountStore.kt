@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.music.bitchord.data.catalog.provider.ProviderSyncResult
+import com.music.bitchord.data.providers.ProviderRuntime
 import java.security.KeyStore
 import java.util.Base64
 import javax.crypto.Cipher
@@ -231,11 +232,24 @@ internal class AndroidOpenSubsonicAccountSession(
     val hasCredential: StateFlow<Boolean> = mutableHasCredential
 
     fun save(draft: OpenSubsonicAccountDraft): Result<OpenSubsonicAccountRecord> =
-        runCatching { repository.save(draft) }.also { refresh() }
+        runCatching {
+            val saved = repository.save(draft)
+            // ProviderRuntime is installed before the Android settings host.
+            // If durable canonical admission fails, do not advertise success.
+            if (ProviderRuntime.refreshOpenSubsonicAccountReadiness() == false) {
+                error("OpenSubsonic provider authorization persistence unavailable")
+            }
+            saved
+        }.also { refresh() }
 
     fun forget() {
-        repository.forget()
-        refresh()
+        try {
+            repository.forget()
+        } finally {
+            // No account/credential remains, so all remote descriptors close.
+            ProviderRuntime.refreshOpenSubsonicAccountReadiness()
+            refresh()
+        }
     }
 
     suspend fun testConnection(draft: OpenSubsonicAccountDraft): Result<OpenSubsonicConnectionReport> =
