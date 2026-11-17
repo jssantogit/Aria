@@ -106,9 +106,10 @@ internal class AppleEditorialCatalogRepository(
         storefront: String = "br",
         limit: Int = 50,
         capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
+        attribute: ItunesCatalogSearchAttribute? = null,
     ): AppleEditorialLoad = when (val source = itunes.search(
         query, ItunesCatalogEntity.ALBUM, country = storefront, limit = limit,
-        capability = capability,
+        attribute = attribute, capability = capability,
     )) {
         is ItunesCatalogResult.Failure -> AppleEditorialLoad.Failure(source.reason)
         is ItunesCatalogResult.Success -> AppleEditorialLoad.Success(

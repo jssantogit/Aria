@@ -45,6 +45,8 @@ internal enum class ItunesCatalogEntity(val apiValue: String) {
 
 /** Documented PUBLIC Search API attributes, not invented offset pagination. */
 internal enum class ItunesCatalogSearchAttribute(val apiValue: String) {
+    /** Apple-documented genre field; not a free-text album-title search. */
+    GENRE_INDEX("genreIndex"),
     ARTIST_TERM("artistTerm"),
     ALBUM_TERM("albumTerm"),
     SONG_TERM("songTerm"),

@@ -60,6 +60,7 @@ internal class AppleExploreGenreDiscovery(
             AppleEditorialCatalogRepository().searchAlbums(
                 query = term, storefront = storefront, limit = 100,
                 capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
             )
         },
 ) {
