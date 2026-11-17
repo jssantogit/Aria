@@ -1163,9 +1163,21 @@ object AudioCache {
                             // filenames, cache keys or cache metadata.
                             val scope = currentSourcePlaybackCacheScope(lease.providerKey)
                                 ?: throw IOException("Source account scope not configured")
+                            // Reserve a distinct physical cache entry for
+                            // each logical recording + mix/rendition variant.
+                            // Otherwise two tracks served through a shared
+                            // server endpoint could evict each other's bytes.
+                            val root = progressiveRoot?.takeIf {
+                                dataSpec.uri.toString() == it.physicalUrl
+                            }
+                            val rootRequestKey = root?.let {
+                                scopedProgressiveRootRequestKey(
+                                    request.key, it.logicalPartition,
+                                )
+                            } ?: request.key
                             openingSpec = request.buildUpon().setKey(
                                 providerAdaptiveSegmentCacheKey(
-                                    lease.providerKey, request.uri.toString(), request.key,
+                                    lease.providerKey, request.uri.toString(), rootRequestKey,
                                     request.httpRequestHeaders, scope,
                                 ),
                             ).build()
@@ -1173,8 +1185,7 @@ object AudioCache {
                             // Only the winning progressive root creates a
                             // logical recording index. Adaptive manifests and
                             // segments never masquerade as offline audio files.
-                            val root = progressiveRoot
-                            if (root != null && dataSpec.uri.toString() == root.physicalUrl) {
+                            if (root != null) {
                                 indexPhysicalProgressiveRoot(
                                     openingSpec.key
                                         ?: throw IOException("Physical source key missing"),

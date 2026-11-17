@@ -97,6 +97,20 @@ internal fun scopedOfflineSourceCacheKey(
 }
 
 /**
+ * A progressive root is never allowed to share a cache bucket with another
+ * logical recording or variant, even when the resolved URL and headers happen
+ * to be identical. This identity is hashed by providerSegmentCacheKey.
+ */
+internal fun scopedProgressiveRootRequestKey(
+    requestKey: String?,
+    logicalPartition: String,
+): String {
+    require(logicalPartition.isNotBlank()) { "Source logical recording key is missing" }
+    return "progressive-root:" + logicalPartition.length + ":" + logicalPartition +
+        ":" + requestKey.orEmpty()
+}
+
+/**
  * Media3 bypasses the HTTP datasource entirely on an HLS/DASH segment cache
  * hit. The per-media-item ticket is mandatory even when every byte is local.
  * One provider's revocation must not affect an authorized sibling session.

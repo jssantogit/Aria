@@ -208,6 +208,19 @@ class ProviderSourceCacheAdmissionTest {
         assertFalse(isScopedSourcePhysicalCacheKey("source-segment:addon:one:bad-hash"))
         assertFalse(scopedOne.contains("realm-one"))
         assertFalse(scopedOne.contains("shared"))
+        val rootKeyOne = providerAdaptiveSegmentCacheKey(
+            owner, "https://cdn.example/same-stream", scopedProgressiveRootRequestKey(
+                null, "source-one|track-1"), emptyMap(), "same-realm")
+        val rootKeyTwo = providerAdaptiveSegmentCacheKey(
+            owner, "https://cdn.example/same-stream", scopedProgressiveRootRequestKey(
+                null, "source-one|track-2"), emptyMap(), "same-realm")
+        val variantKey = providerAdaptiveSegmentCacheKey(
+            owner, "https://cdn.example/same-stream", scopedProgressiveRootRequestKey(
+                null, "source-one|track-1#stereo"), emptyMap(), "same-realm")
+        assertTrue(rootKeyOne != rootKeyTwo)
+        assertTrue(rootKeyOne != variantKey)
+        assertFalse(rootKeyOne.contains("track-1"))
+        assertTrue(isScopedSourcePhysicalCacheKey(rootKeyOne))
         assertTrue(scopedPhysicalKeyBelongsTo(scopedOne, owner))
         assertFalse(scopedPhysicalKeyBelongsTo(scopedOne,
             ProviderKey("addon", "different")))
