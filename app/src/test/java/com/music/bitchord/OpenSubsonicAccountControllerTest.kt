@@ -324,6 +324,59 @@ class OpenSubsonicAccountControllerTest {
         assertEquals("rotated-secret", (repository.savedConfig()?.auth as OpenSubsonicAuth.ApiKey).value)
     }
 
+    @Test
+    fun `server or credential change clears stale account health and sync status`() {
+        val repository = configuredRepository()
+        repository.recordHealth(
+            ProviderHealth(
+                reachable = true,
+                serverType = "navidrome",
+                serverVersion = "1.0",
+                protocolVersion = "1.16.1",
+                openSubsonic = true,
+            ),
+            123L,
+        )
+        repository.recordSync(ProviderSyncResult.Success(42, 0, 0), 124L)
+
+        val rotated = repository.save(
+            OpenSubsonicAccountDraft(
+                serverUrl = "https://different.example.test",
+                authMode = OpenSubsonicAuthMode.API_KEY,
+                secretReplacement = "different-secret",
+            ),
+        )
+
+        assertEquals("home", rotated.accountId)
+        assertNull(rotated.lastHealthAtEpochSeconds)
+        assertNull(rotated.lastHealthReachable)
+        assertNull(rotated.lastServerType)
+        assertNull(rotated.lastServerVersion)
+        assertNull(rotated.lastSyncAtEpochSeconds)
+        assertNull(rotated.lastSyncSucceeded)
+        assertNull(rotated.lastSyncSummary)
+
+        repository.recordHealth(
+            ProviderHealth(
+                reachable = true,
+                serverType = "navidrome",
+                serverVersion = "2.0",
+                protocolVersion = "1.16.1",
+                openSubsonic = true,
+            ),
+            200L,
+        )
+        val credentialRotated = repository.save(
+            OpenSubsonicAccountDraft(
+                serverUrl = "https://different.example.test",
+                authMode = OpenSubsonicAuthMode.API_KEY,
+                secretReplacement = "third-secret",
+            ),
+        )
+        assertNull(credentialRotated.lastHealthAtEpochSeconds)
+        assertNull(credentialRotated.lastHealthReachable)
+    }
+
     private fun configuredRepository(): OpenSubsonicAccountRepository =
         OpenSubsonicAccountRepository(
             FakeAccountPersistence(),
