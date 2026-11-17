@@ -254,7 +254,7 @@ class OpenSubsonicArtworkAccessTest {
             loader.load(
                 mediaAssetId = "asset-canonical",
                 expectedRecordingId = "recording-canonical",
-                expectedProviderKey = "opensubsonic:home",
+                expectedProviderKey = fixture.asset.provider,
             )
         }
 
@@ -381,7 +381,7 @@ class OpenSubsonicArtworkAccessTest {
             loader.load(
                 mediaAssetId = "asset-canonical",
                 expectedRecordingId = "recording-canonical",
-                expectedProviderKey = "opensubsonic:home",
+                expectedProviderKey = fixture.asset.provider,
             )
         }.exceptionOrNull()
 
@@ -413,7 +413,7 @@ class OpenSubsonicArtworkAccessTest {
             loader.load(
                 mediaAssetId = "asset-canonical",
                 expectedRecordingId = "recording-canonical",
-                expectedProviderKey = "opensubsonic:home",
+                expectedProviderKey = fixture.asset.provider,
             )
         }.exceptionOrNull()
 
@@ -442,7 +442,7 @@ class OpenSubsonicArtworkAccessTest {
         val result = loader.load(
             mediaAssetId = "asset-canonical",
             expectedRecordingId = "recording-canonical",
-            expectedProviderKey = "opensubsonic:home",
+            expectedProviderKey = fixture.asset.provider,
         ) as OpenSubsonicArtworkLoadResult.Ready
 
         assertArrayEquals(byteArrayOf(12, 13), result.bytes)
@@ -470,7 +470,7 @@ class OpenSubsonicArtworkAccessTest {
             )
             val delays = mutableListOf<Long>()
             val loadSelected: suspend () -> OpenSubsonicArtworkLoadResult = {
-                loader.load("asset-canonical", "recording-canonical", "opensubsonic:home")
+                loader.load("asset-canonical", "recording-canonical", fixture.asset.provider)
             }
 
             val recovered = awaitRecoverableCanonicalArtwork(
@@ -504,7 +504,7 @@ class OpenSubsonicArtworkAccessTest {
                 FakeArtworkCache(),
             )
             val selected: suspend () -> OpenSubsonicArtworkLoadResult = {
-                loader.load("asset-canonical", "recording-canonical", "opensubsonic:home")
+                loader.load("asset-canonical", "recording-canonical", fixture.asset.provider)
             }
             val noRetry: suspend (Long) -> Unit = { error("Permanent HTTP response cannot retry") }
 
