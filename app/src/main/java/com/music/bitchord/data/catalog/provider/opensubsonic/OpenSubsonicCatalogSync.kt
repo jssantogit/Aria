@@ -20,6 +20,7 @@ import com.music.bitchord.data.catalog.provider.CanonicalCatalogSyncStore
 import com.music.bitchord.data.catalog.provider.CanonicalReleaseTrackEdge
 import com.music.bitchord.data.catalog.provider.CanonicalRemoteCatalogSync
 import com.music.bitchord.data.catalog.provider.ProviderSyncResult
+import com.music.bitchord.data.providers.ProviderCapability
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -148,10 +149,23 @@ internal object OpenSubsonicCatalogSync {
     suspend fun cachedTracks(
         context: Context,
         provider: OpenSubsonicProvider,
-    ): List<CanonicalProviderRow> = CanonicalCatalogDatabase
-        .get(context)
-        .catalogDao()
-        .providerRows(provider.providerKey)
+    ): List<CanonicalProviderRow> {
+        val appContext = context.applicationContext
+        val accounts = OpenSubsonicAccountRepository(
+            SharedPrefsOpenSubsonicAccountPersistence(appContext),
+            AndroidKeystoreOpenSubsonicCredentialStore(appContext),
+        )
+        val config = accounts.savedConfig() ?: return emptyList()
+        if (!provider.matchesSavedConfig(config)) return emptyList()
+        val ticket = OpenSubsonicCapabilityAdmission.open(
+            ProviderCapability.PERSONAL_LIBRARY, config.accountId,
+        ) ?: return emptyList()
+        val rows = CanonicalCatalogDatabase.get(appContext)
+            .catalogDao().providerRows(provider.providerKey)
+        return if (ticket.isCurrent() && provider.matchesSavedConfig(accounts.savedConfig())) {
+            rows
+        } else emptyList()
+    }
 }
 
 private class RoomCanonicalCatalogSyncStore(
