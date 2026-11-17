@@ -111,17 +111,12 @@ internal fun NativeArtistPublicTopSection(
         horizontalPadding = PAGE_GUTTER,
         itemKey = { it.musicBrainzId },
     ) { recording ->
-        val context = LocalContext.current
-        var menuExpanded by remember(recording.musicBrainzId) { mutableStateOf(false) }
         NativeDetailTrackRowLayout(
             // A public Recording MBID is not a playable RecordingId. Unlike
             // the old metadata-only navigation there is no tap destination.
             onClick = if (recording.hasCatalogedAsset || recording.hasVerifiedLocalAsset)
                 ({ onRecordingOpen(recording) }) else null,
-            onLongPress = {
-                if (onRecordingHold != null) onRecordingHold(recording)
-                else menuExpanded = true
-            },
+            onLongPress = onRecordingHold?.let { hold -> { hold(recording) } },
             onMore = null,
             modifier = Modifier.testTag("artist-top-row-${recording.musicBrainzId}"),
             horizontalInset = 0.dp,
@@ -163,30 +158,8 @@ internal fun NativeArtistPublicTopSection(
             },
             rating = {},
             showRatingSlot = false,
-            actions = {
-                Box {
-                    // Only clients without a global lifted-menu host keep
-                    // this legacy-compatible metadata fallback.
-                    if (onRecordingHold == null) NativeCompactOverflowMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                        plateTint = palette.elevated,
-                    ) {
-                        NativeCompactMenuItem(
-                            label = "Ver no MusicBrainz",
-                            icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Link,
-                            onClick = {
-                                menuExpanded = false
-                                val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("https://musicbrainz.org/recording/${recording.musicBrainzId}"),
-                                )
-                                runCatching { context.startActivity(intent) }
-                            },
-                        )
-                    }
-                }
-            },
+            actions = {},
+
         )
     }
 }
