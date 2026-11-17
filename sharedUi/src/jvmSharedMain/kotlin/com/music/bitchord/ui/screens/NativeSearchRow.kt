@@ -18,10 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,8 +30,6 @@ import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.sharedui.resources.*
 import com.music.bitchord.ui.components.PAGE_GUTTER
-import com.music.bitchord.ui.components.NativeCompactOverflowMenu
-import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.contextClick
 import com.music.bitchord.ui.components.longPressMenuClickable
 import com.music.bitchord.ui.components.thumbnailBorder
@@ -55,12 +49,6 @@ data class NativeSearchRowUi(
     val durationLabel: String? = null,
 )
 
-/** User actions are supplied by the source adapter, never inferred from an MBID. */
-data class NativeSearchRowAction(
-    val label: String,
-    val onClick: () -> Unit,
-)
-
 /**
  * Original 52dp native search row, now shared by legacy Search, MusicBrainz
  * public metadata search and server/local search. The caller decides whether
@@ -73,24 +61,17 @@ fun NativeSearchResultRow(
     onClick: (() -> Unit)?,
     onLongPress: (() -> Unit)? = null,
     horizontalPadding: androidx.compose.ui.unit.Dp = PAGE_GUTTER,
-    onMoreActions: List<NativeSearchRowAction> = emptyList(),
 ) {
-    var moreExpanded by remember { mutableStateOf(false) }
-    // A held search result opens exactly the actions shown by its ⋯ button.
-    // Metadata-only hits retain this menu without inventing a play action.
-    val rowHold: (() -> Unit)? = onLongPress ?: if (onMoreActions.isNotEmpty())
-        ({ moreExpanded = true }) else null
-    // A metadata result with its own lifted hold must not open an obsolete
-    // compact menu when tapped. Only rows without a hold use the fallback.
-    val rowClick: (() -> Unit)? = onClick ?: if (onLongPress == null && onMoreActions.isNotEmpty())
-        ({ moreExpanded = true }) else null
+    // Search metadata is deliberately presentation-only. Long-press actions
+    // require a source-owned host callback; never invent an opaque per-row
+    // menu or turn a hold on a remote asset into "Play".
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("native-search-result-row")
-            .then(if (rowClick != null || rowHold != null) {
-                Modifier.longPressMenuClickable(onClick = rowClick ?: {}, onLongClick = rowHold)
-                    .contextClick(rowHold)
+            .then(if (onClick != null || onLongPress != null) {
+                Modifier.longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
+                    .contextClick(onLongPress)
             } else Modifier)
             .padding(horizontal = horizontalPadding, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -141,27 +122,7 @@ fun NativeSearchResultRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        // Apple-style search places contextual actions here, never a duration.
-        // An action only appears when the owning source supplies a real callback.
-        // The anchor is invisible. Long press owns the contextual menu;
-        // no ⋯ consumes width or shifts titles in Search lists.
-        if (onMoreActions.isNotEmpty()) {
-            Box {
-                NativeCompactOverflowMenu(
-                    expanded = moreExpanded,
-                    onDismissRequest = { moreExpanded = false },
-                ) {
-                    onMoreActions.forEach { action ->
-                        NativeCompactMenuItem(
-                            label = action.label,
-                            onClick = {
-                                moreExpanded = false
-                                action.onClick()
-                            },
-                        )
-                    }
-                }
-            }
-        }
+        // No trailing track ⋮ and no hidden solid menu. Catalog and Library
+        // adapters provide their verified actions through the held host.
     }
 }
