@@ -116,6 +116,9 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import java.util.UUID
 
+/** Only the Library-embedded creator needs an enlarged floating dialog radius. */
+internal val playlistLibraryCreatorModalShape = RoundedCornerShape(32.dp)
+
 private fun newRule(): SmartPlaylistRule = SmartPlaylistRule.Comparison(
     SmartPlaylistRuleField.AUDIBLE_COMPLETIONS,
     SmartPlaylistRuleOperator.GREATER_OR_EQUAL,
@@ -884,7 +887,7 @@ internal fun SmartPlaylistV2BuilderScreen(
         Box(
             modifier = if (embeddedInLibrary) Modifier
                 .fillMaxWidth(0.95f).fillMaxHeight(0.90f)
-                .clip(GroupShape)
+                .clip(playlistLibraryCreatorModalShape)
                 .background(MaterialTheme.colorScheme.background)
                 .graphicsLayer { alpha = dialogEntrance.value }
             else Modifier.fillMaxSize().graphicsLayer { alpha = dialogEntrance.value },

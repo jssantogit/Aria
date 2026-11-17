@@ -379,6 +379,31 @@ class SmartPlaylistV2WizardComposeTest {
         compose.onNodeWithTag("native-detail-search-field").assertExists()
     }
 
+    @Test fun normalOnlyCreationDisplaysTheFullWidthNormalTypeCardInsteadOfBareText() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Nova playlist", rule = rule, hasConfiguredRules = false,
+                normalMode = true, normalOnlyCreation = true,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithTag("playlist-kind-normal").assertExists().assertIsSelected()
+        compose.onNodeWithTag("playlist-kind-smart").assertDoesNotExist()
+        compose.onNodeWithText("Escolha suas músicas").assertExists()
+    }
+
     @Test fun reviewDisplaysOnlyReturnedCanonicalPreviewMetadata() {
         val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
             SmartPlaylistRule.Comparison(

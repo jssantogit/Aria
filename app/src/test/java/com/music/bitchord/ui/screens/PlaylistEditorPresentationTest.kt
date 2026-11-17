@@ -2,8 +2,15 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import org.junit.Assert.assertFalse
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -29,6 +36,73 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class PlaylistEditorPresentationTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun libraryPlaylistCreatorUsesMoreRoundedModalThanSharedGroupCards() {
+        assertEquals(RoundedCornerShape(32.dp), playlistLibraryCreatorModalShape)
+    }
+
+    @Test fun lockedNormalTypeReusesOriginalCardAtFullWidthWithoutClickAction() {
+        var normalClicks = 0
+        var smartClicks = 0
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(320.dp)) {
+                    PlaylistWizardKindCards(
+                        normalSelected = true,
+                        onNormal = { normalClicks++ },
+                        onSmart = { smartClicks++ },
+                        locked = true,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("playlist-kind-normal")
+            .assertIsSelected()
+            .assertWidthIsEqualTo(320.dp)
+        compose.onNodeWithTag("playlist-kind-smart").assertDoesNotExist()
+        compose.onNodeWithText("Escolha suas músicas").assertExists()
+        val card = compose.onNodeWithTag("playlist-kind-normal").fetchSemanticsNode()
+        assertFalse(card.config.contains(SemanticsActions.OnClick))
+        compose.runOnIdle {
+            assertEquals(0, normalClicks)
+            assertEquals(0, smartClicks)
+        }
+    }
+
+    @Test fun lockedSmartTypeAlsoFillsBothCardColumns() {
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(320.dp)) {
+                    PlaylistWizardKindCards(
+                        normalSelected = false, onNormal = {}, onSmart = {}, locked = true,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("playlist-kind-smart")
+            .assertIsSelected()
+            .assertWidthIsEqualTo(320.dp)
+        compose.onNodeWithTag("playlist-kind-normal").assertDoesNotExist()
+        compose.onNodeWithText("Organize por regras").assertExists()
+    }
+
+    @Test fun unlockedTypeStillOffersTwoInteractiveCards() {
+        var picked = ""
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(320.dp)) {
+                    PlaylistWizardKindCards(
+                        normalSelected = true,
+                        onNormal = { picked = "normal" },
+                        onSmart = { picked = "smart" },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("playlist-kind-normal").assertIsSelected()
+        compose.onNodeWithTag("playlist-kind-smart").assertExists().performClick()
+        compose.runOnIdle { assertEquals("smart", picked) }
+    }
 
     @Test fun creatorAndGlobalMenuCanShareCompactAnimatedPopupRows() {
         var opened = 0

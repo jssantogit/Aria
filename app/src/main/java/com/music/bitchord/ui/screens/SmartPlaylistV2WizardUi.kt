@@ -888,17 +888,13 @@ internal fun SmartPlaylistV2WizardUi(
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onBackground,
                                 )
-                                if (normalOnlyCreation || editingId != null || filterMode ||
-                                    editingNormalId != null) {
-                                    Text(if (normalMode) "Normal" else "Inteligente",
-                                        style = MaterialTheme.typography.bodyMedium)
-                                } else {
-                                    PlaylistWizardKindCards(
-                                        normalSelected = normalMode,
-                                        onNormal = { onNormalModeChange(true) },
-                                        onSmart = { onNormalModeChange(false) },
-                                    )
-                                }
+                                PlaylistWizardKindCards(
+                                    normalSelected = normalMode,
+                                    onNormal = { onNormalModeChange(true) },
+                                    onSmart = { onNormalModeChange(false) },
+                                    locked = normalOnlyCreation || editingId != null ||
+                                        filterMode || editingNormalId != null,
+                                )
                             }
                         }
                         item {

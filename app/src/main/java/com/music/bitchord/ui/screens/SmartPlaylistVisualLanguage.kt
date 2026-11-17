@@ -430,7 +430,23 @@ internal fun PlaylistWizardKindCards(
     normalSelected: Boolean,
     onNormal: () -> Unit,
     onSmart: () -> Unit,
+    locked: Boolean = false,
 ) {
+    if (locked) {
+        // A source-triggered creation flow can produce only one kind. Reuse
+        // the original selected card as a read-only, full-width tile rather
+        // than leaving a half-width gap or implying a changeable type.
+        PlaylistWizardKindCard(
+            title = if (normalSelected) "Normal" else "Inteligente",
+            detail = if (normalSelected) "Escolha suas músicas" else "Organize por regras",
+            icon = if (normalSelected) PlaylistEditorIcons.Music else PlaylistEditorIcons.Filters,
+            selected = true,
+            onClick = null,
+            tag = if (normalSelected) "playlist-kind-normal" else "playlist-kind-smart",
+            modifier = Modifier.fillMaxWidth(),
+        )
+        return
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -460,7 +476,7 @@ private fun PlaylistWizardKindCard(
     detail: String,
     icon: ImageVector,
     selected: Boolean,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     tag: String,
     modifier: Modifier = Modifier,
 ) {
@@ -478,7 +494,10 @@ private fun PlaylistWizardKindCard(
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
                 shape = shape,
             )
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .then(
+                if (onClick == null) Modifier
+                else Modifier.clickable(role = Role.RadioButton, onClick = onClick)
+            )
             .semantics { this.selected = selected }
             .testTag(tag)
             .padding(14.dp),
