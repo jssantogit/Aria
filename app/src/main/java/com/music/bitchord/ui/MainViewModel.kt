@@ -3538,8 +3538,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Explore genre requests use actual MusicBrainz tags, not YouTube pages. */
+    /** Provenance of the last MB genre snapshot; not an Apple storefront claim. */
+    var canonicalGenreResultTag: String? = null
+        private set
+
     fun loadCanonicalGenre(tag: String) {
         val selected = canonicalExploreGenres.firstOrNull { it.tag == tag } ?: return
+        canonicalGenreResultTag = tag
         val gate = ProviderRuntime.gateOrNull()
         val ticket = gate?.open(
             ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
@@ -3975,6 +3980,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             canonicalGenreJob?.cancel()
                             canonicalGenreEpoch.invalidateAndNext()
                             _canonicalGenreResults.value = UiState.Success(emptyList())
+                            canonicalGenreResultTag = null
                         }
                         // Apple Home now owns its native genre sample outright:
                         // revoking MusicBrainz MUST NOT evict Apple cards or

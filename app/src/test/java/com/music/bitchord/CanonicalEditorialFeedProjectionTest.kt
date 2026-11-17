@@ -9,6 +9,8 @@ import com.music.bitchord.ui.projectCanonicalHomeDisplay
 import com.music.bitchord.ui.projectCanonicalHomeEditorial
 import com.music.bitchord.ui.projectCanonicalHomeState
 import com.music.bitchord.ui.projectCanonicalGenreState
+import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import com.music.bitchord.ui.screens.CanonicalSearchKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,6 +57,54 @@ class CanonicalEditorialFeedProjectionTest {
         )
         assertEquals(null, state.provider)
         assertTrue((state.state as UiState.Success).data.isEmpty())
+    }
+
+    @Test fun musicBrainzPrimaryMissKeepsAppleFallbackLoadingWhileItIsRequested() {
+        val selection = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = emptyList(),
+            appleHomeReleases = UiState.Loading,
+            catalogEditorialOrder = listOf(mb, apple),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Releases",
+            discoveryHeading = "Discovery",
+            todayIsoDate = "2026-11-17",
+        )
+        assertEquals(apple, selection.provider)
+        assertEquals(UiState.Loading, selection.state)
+    }
+
+    @Test fun pendingMusicBrainzPrimaryCannotBeBypassedByAppleFallback() {
+        val selection = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = emptyList(),
+            appleHomeReleases = UiState.Loading,
+            catalogEditorialOrder = listOf(mb, apple),
+            canonicalWorldwideLoading = true,
+            releasesHeading = "Releases",
+            discoveryHeading = "Discovery",
+            todayIsoDate = "2026-11-17",
+        )
+        assertEquals(mb, selection.provider)
+        assertEquals(UiState.Loading, selection.state)
+    }
+
+    @Test fun switchingGenreNeverDisplaysPreviousMusicBrainzTagResults() {
+        val previousRows = UiState.Success(listOf(CanonicalCatalogSearchRow(
+            musicBrainzId = "11111111-1111-4111-8111-111111111111",
+            kind = CanonicalSearchKind.RELEASE_GROUP,
+            title = "Old rock release", subtitle = "Previous artist",
+            releaseKind = "Album",
+        )))
+        val state = projectCanonicalGenreState(
+            tag = "jazz",
+            genrePlaylists = emptyList(),
+            playlistHeading = "Playlists",
+            appleByTag = emptyMap(),
+            musicBrainzRows = previousRows,
+            ordered = listOf(mb),
+            releasesHeading = "Releases",
+            musicBrainzResultTag = "rock",
+        )
+        assertEquals(UiState.Loading, state)
     }
 
     @Test fun missingGenreKeepsOldEmptyPageAndPendingWinnerKeepsLoading() {

@@ -1253,6 +1253,7 @@ private fun BitChordApp(
         musicBrainzRows = canonicalGenreResults,
         ordered = catalogEditorialOrder,
         releasesHeading = canonicalReleasesHeading,
+        musicBrainzResultTag = viewModel.canonicalGenreResultTag,
     )
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded

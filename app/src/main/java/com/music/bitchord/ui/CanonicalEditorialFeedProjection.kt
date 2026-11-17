@@ -43,7 +43,12 @@ internal fun projectCanonicalHomeEditorial(
     }
     val appleState = compositeEditorialReadState(
         nativeAppleState,
-        requestCanStart = catalogEditorialOrder.firstOrNull() == apple,
+        // An empty completed MB primary makes Apple an actively scheduled
+        // fallback, not an unstarted/empty source. Preserve Loading until
+        // the Apple request settles; never promote Apple before MB finishes.
+        requestCanStart = catalogEditorialOrder.firstOrNull() == apple ||
+            (catalogEditorialOrder.firstOrNull() == mb &&
+                !canonicalWorldwideLoading && musicBrainzShelves.isEmpty()),
         evidenceAuthorized = apple in catalogEditorialOrder,
     )
     return selectCatalogEditorial(
@@ -83,6 +88,8 @@ internal fun projectCanonicalGenreState(
     musicBrainzRows: UiState<List<CanonicalCatalogSearchRow>>,
     ordered: List<ProviderKey>,
     releasesHeading: String,
+    /** The exact requested tag, never inferred from an old MBID row. */
+    musicBrainzResultTag: String? = tag,
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -98,7 +105,9 @@ internal fun projectCanonicalGenreState(
         UiState.Loading -> UiState.Loading
         is UiState.Error -> source
     }
-    val mbState: UiState<List<HomeShelf>> = when (val source = musicBrainzRows) {
+    val mbState: UiState<List<HomeShelf>> = when (
+        val source = if (musicBrainzResultTag == tag) musicBrainzRows else UiState.Loading
+    ) {
         is UiState.Success -> UiState.Success(
             musicBrainzGenreEditorialShelves(source.data, releasesHeading),
         )
