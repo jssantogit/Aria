@@ -175,7 +175,6 @@ import com.music.bitchord.ui.LocalReduceAnimations
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
 import com.music.bitchord.ui.components.AccountProfileSelector
-import com.music.bitchord.ui.components.SpotifyImportAlert
 import com.music.bitchord.ui.rememberCanonicalPublicArtistFeaturedRelease
 import com.music.bitchord.ui.screens.WearOsScreen
 import com.music.bitchord.ui.screens.AccountAndScrobblingScreen
@@ -761,7 +760,6 @@ private fun BitChordApp(
     // The picker opened from the Library tab, where there is no track and
     // creating the playlist is the whole errand.
     var creatingPlaylist by remember { mutableStateOf(false) }
-    var showSpotifyImportDialog by remember { mutableStateOf(false) }
     // Which album or playlist the collection menu is open on, or null when it
     // is shut. One slot for every surface that can open it — the shelves on
     // three tabs, the search rows, the artist page's carousels, the release
@@ -4302,7 +4300,6 @@ private fun BitChordApp(
                                 editingNormalPlaylistId = null
                                 showSmartPlaylistBuilder = true
                             },
-                            onImportSpotifyPlaylist = { showSpotifyImportDialog = true },
                             onShowAll = { shelf -> libraryShowAll = shelf },
                             replay = {},
 
@@ -6045,16 +6042,6 @@ private fun BitChordApp(
             if (creatingPlaylist) {
                 com.music.bitchord.ui.screens.SmartPlaylistBuilderScreen(
                     onBack = { creatingPlaylist = false },
-                )
-            }
-
-            if (showSpotifyImportDialog) {
-                BackHandler { showSpotifyImportDialog = false }
-                SpotifyImportAlert(
-                    hazeState = hazeState,
-                    // Spotify embed data has no verified Recording MBIDs.
-                    // The preview must never create another legacy playlist.
-                    onDismiss = { showSpotifyImportDialog = false },
                 )
             }
 
