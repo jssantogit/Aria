@@ -188,7 +188,11 @@ internal class OpenSubsonicRuntimeAudioRequest internal constructor(
     ).apply { putAll(openSubsonicAuthenticationParameters(auth, saltFactory)) }
 
     suspend fun probe(transport: OpenSubsonicRuntimeProbeTransport): OpenSubsonicRuntimeProbeResult = try {
-        transport.probe(endpointUrl, materializeParameters())
+        if (!accountIsCurrent()) OpenSubsonicRuntimeProbeResult.REQUEST_REJECTED
+        else {
+            val result = transport.probe(endpointUrl, materializeParameters())
+            if (accountIsCurrent()) result else OpenSubsonicRuntimeProbeResult.REQUEST_REJECTED
+        }
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: Throwable) {
