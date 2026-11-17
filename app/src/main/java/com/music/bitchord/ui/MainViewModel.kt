@@ -572,6 +572,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val canonicalResults: StateFlow<UiState<List<CanonicalCatalogSearchRow>>?> = _canonicalResults.asStateFlow()
     private var canonicalSearchJob: Job? = null
     /** Selects the existing native result renderer for the winning source. */
+    /** Source search snapshots are only reusable for the exact submitted query. */
+    private var catalogAppleQuery: String? = null
+    private var catalogMusicBrainzQuery: String? = null
+    private var canonicalSearchJobProvider: ProviderKey? = null
+
     private val _catalogSearchMusicBrainzVisible = MutableStateFlow(false)
     val catalogSearchMusicBrainzVisible: StateFlow<Boolean> =
         _catalogSearchMusicBrainzVisible.asStateFlow()
@@ -3916,6 +3921,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val next = eligibleCatalogSearchProviders()
                     if (next != previous) {
                         previous = next
+                        // Never reuse rows fetched under an earlier permission/order epoch.
+                        catalogAppleQuery = null
+                        catalogMusicBrainzQuery = null
                         if (searchSubmitted && _searchSource.value == SearchSource.CANONICAL &&
                             _query.value.isNotBlank()
                         ) runCanonicalCatalogSearch(_query.value.trim())
@@ -4639,6 +4647,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Artist names remain independently scoped in Apple's storefront. */
     private fun runAppleEditorialArtistSearch(query: String) {
+        catalogAppleQuery = query
         appleArtistSearchJob?.cancel()
         backAppleEditorialArtist()
         _appleEditorialArtists.value = UiState.Loading
@@ -5106,6 +5115,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             BuiltInProviderKeys.ITUNES -> {
+                canonicalSearchJobProvider = BuiltInProviderKeys.ITUNES
                 canonicalSearchJob?.cancel()
                 canonicalTypeaheadJob?.cancel()
                 resetCanonicalSearchPagination()
@@ -5180,6 +5190,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         clearCanonicalCatalogNavigation()
         _searchScrollReset.value += 1
         _canonicalResults.value = UiState.Loading
+        catalogMusicBrainzQuery = query
+        canonicalSearchJobProvider = BuiltInProviderKeys.MUSICBRAINZ
         val permissionGate = ProviderRuntime.gateOrNull()
         val permissionTicket = permissionGate?.open(
             ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.MUSICBRAINZ,
@@ -5780,16 +5792,111 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Reassess the provider for a newly selected tab without blindly
+     * resubmitting every already-complete HTTP search.
+     *
+     * Previous Apple and MB responses are admissible only for the same query.
+     * A provider returning artists must not conceal eligible album/songs
+     * returned by another provider when the user changes the tab.
+     */
+    private fun routeCatalogFilterFromExistingSearch(query: String) {
+        val order = eligibleCatalogSearchProviders()
+        val selected = _filter.value
+        if (selected !in setOf(
+                SearchFilter.ALL, SearchFilter.ARTISTS,
+                SearchFilter.ALBUMS, SearchFilter.SONGS,
+            )
+        ) return
+
+        val mbCoverage = when {
+            catalogMusicBrainzQuery != query -> CatalogFilterCoverage.NOT_QUERIED
+            canonicalSearchJobProvider == BuiltInProviderKeys.MUSICBRAINZ &&
+                canonicalSearchJob?.isActive == true -> CatalogFilterCoverage.LOADING
+            else -> {
+                val rows = (_canonicalResults.value as? UiState.Success)?.data.orEmpty()
+                if (catalogSearchHasUsableRows(
+                    selected,
+                    artists = rows.any { it.kind == CanonicalSearchKind.ARTIST },
+                    albums = rows.any {
+                        it.kind == CanonicalSearchKind.RELEASE ||
+                            it.kind == CanonicalSearchKind.RELEASE_GROUP
+                    },
+                    songs = rows.any { it.kind == CanonicalSearchKind.RECORDING },
+                )) CatalogFilterCoverage.MATCHING else CatalogFilterCoverage.EMPTY
+            }
+        }
+
+        val applePending = when (selected) {
+            SearchFilter.ARTISTS -> appleArtistSearchJob?.isActive == true
+            SearchFilter.ALBUMS -> appleEditorialSearchJob?.isActive == true
+            SearchFilter.SONGS -> appleTrackSearchJob?.isActive == true
+            SearchFilter.ALL -> listOfNotNull(
+                appleArtistSearchJob, appleEditorialSearchJob, appleTrackSearchJob,
+            ).any { it.isActive }
+            else -> false
+        }
+        val appleCoverage = when {
+            catalogAppleQuery != query -> CatalogFilterCoverage.NOT_QUERIED
+            applePending -> CatalogFilterCoverage.LOADING
+            else -> if (catalogSearchHasUsableRows(
+                selected,
+                artists = (_appleEditorialArtists.value as? UiState.Success)
+                    ?.data?.isNotEmpty() == true,
+                albums = (_appleEditorialResults.value as? UiState.Success)
+                    ?.data?.isNotEmpty() == true,
+                songs = (_appleEditorialTracks.value as? UiState.Success)
+                    ?.data?.isNotEmpty() == true,
+            )) CatalogFilterCoverage.MATCHING else CatalogFilterCoverage.EMPTY
+        }
+        val choice = catalogSearchFilterRoute(order, mapOf(
+            BuiltInProviderKeys.MUSICBRAINZ to mbCoverage,
+            BuiltInProviderKeys.ITUNES to appleCoverage,
+        ))
+        when (choice.provider) {
+            BuiltInProviderKeys.MUSICBRAINZ -> {
+                _catalogSearchMusicBrainzVisible.value = true
+                if (choice.shouldFetch) {
+                    runMusicBrainzCatalogSearch(
+                        query,
+                        allowAppleFallback = order.firstOrNull() ==
+                            BuiltInProviderKeys.MUSICBRAINZ &&
+                            BuiltInProviderKeys.ITUNES in order,
+                    )
+                }
+            }
+            BuiltInProviderKeys.ITUNES -> {
+                _catalogSearchMusicBrainzVisible.value = false
+                if (choice.shouldFetch) {
+                    runAppleEditorialArtistSearch(query)
+                    runAppleEditorialTrackSearch(query)
+                    runAppleEditorialAlbumSearch(query)
+                    val jobs = listOfNotNull(
+                        appleArtistSearchJob, appleTrackSearchJob, appleEditorialSearchJob,
+                    )
+                    viewModelScope.launch {
+                        jobs.forEach { it.join() }
+                        if (_searchSource.value == SearchSource.CANONICAL &&
+                            _query.value.trim() == query &&
+                            searchSubmitted
+                        ) routeCatalogFilterFromExistingSearch(query)
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+
     fun onFilterChange(value: SearchFilter) {
         val source = _searchSource.value
         if (source != SearchSource.YOUTUBE && source != SearchSource.CANONICAL) return
         if (_filter.value == value) return
         _filter.value = value
         if (source == SearchSource.CANONICAL) {
-            // All four entity types are already queried with independent MB
-            // cursors. Changing presentation must not spend another public
-            // API request or accidentally reinterpret an MBID as videoId.
             _searchScrollReset.value += 1
+            if (searchSubmitted && _query.value.isNotBlank()) {
+                routeCatalogFilterFromExistingSearch(_query.value.trim())
+            }
             return
         }
         searchSubmitted = true
