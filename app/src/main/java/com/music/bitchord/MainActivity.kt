@@ -3122,6 +3122,9 @@ private fun BitChordApp(
                         playlistRoute != null -> playlistRoute
                         else -> "$TAB_KEY$selectedTab"
                     }
+                // AnimatedContent is the route authority. Remembered Library
+                // and Playlist navigation states cannot both draw controls.
+                val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, detail?.browseId)
                 // Root peers use one 150ms content fade, not the previous
                 // 160ms host arrival layered over a second animation. Player,
                 // mini-player and bottom chrome stay outside this content host.
@@ -4696,7 +4699,8 @@ private fun BitChordApp(
                 // The top-bar footprint is transparent on every page so the
                 // shared app-level gradient is continuous; its controls float
                 // as separate circles in both the glass and blur materials.
-                val isDetailVisible = detail != null &&
+                val isDetailVisible =
+                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL && detail != null &&
                     (detail.type == BrowseType.ALBUM ||
                         detail.type == BrowseType.PLAYLIST ||
                         detail.type == BrowseType.ARTIST) &&
@@ -4767,9 +4771,11 @@ private fun BitChordApp(
                     !showAllLocalRecentAdditions && !showSmartPlaylistBuilder &&
                     openedPublicPlaylist == null && !showAccountScrobbling &&
                     !showDiscord && !showSpotify
-                val appleLibraryCategoryChrome = unifiedLibraryCategory != null &&
+                val appleLibraryCategoryChrome =
+                    toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
                     !unifiedLibraryDetailOpen && detail == null && !showSettings
-                val applePlaylistCategoryChrome = showPlaylistLibrary &&
+                val applePlaylistCategoryChrome =
+                    toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&
                     openedCanonicalPlaylist == null && !showSmartPlaylistBuilder &&
                     detail == null && !showSettings
                 // Explore keeps its own genre-only page, not Apple's search field.
@@ -4782,12 +4788,7 @@ private fun BitChordApp(
                     !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showWearOs && !showEqualizer && !showSmartPlaylistBuilder &&
                     openedPublicPlaylist == null
-                val appleSearchRootChrome = selectedTab == TAB_SEARCH &&
-                    detail == null && libraryShowAll == null &&
-                    unifiedLibraryCategory == null && !showSettings &&
-                    !showAccountScrobbling && !showSources && !showListenTogether &&
-                    !showWearOs && !showEqualizer && !showDiscord &&
-                    !showHistory && !showReplay
+                val appleSearchRootChrome = pageRouteKey == "$TAB_KEY$TAB_SEARCH"
                 val appleDownloadsChrome = shouldUseAppleDownloadsChrome(
                     detail?.browseId, settingsOpen = showSettings,
                 ) && !showHistory && !showReplay
@@ -4808,13 +4809,13 @@ private fun BitChordApp(
                         showHistory -> stringResource(R.string.history)
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
                         showAllLocalRecentAdditions && detail == null -> "Adições recentes"
-                        unifiedLibraryCategory != null -> when (unifiedLibraryCategory) {
+                        toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY -> when (unifiedLibraryCategory) {
                             com.music.bitchord.data.listening.CanonicalSmartFilterContext.ALBUMS -> "Álbuns"
                             com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS -> "Artistas"
                             else -> "Músicas"
                         }
                         showSmartPlaylistBuilder && detail == null -> "Nova playlist"
-                        showPlaylistLibrary && detail == null ->
+                        toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY ->
                             openedCanonicalPlaylist?.title ?: "Playlists"
                         showAccountScrobbling -> stringResource(R.string.account_scrobbling)
                         showSources -> stringResource(R.string.sources)
@@ -4825,7 +4826,8 @@ private fun BitChordApp(
                         showSettings -> settingsSection?.let { stringResource(it.titleRes) }
                             ?: stringResource(R.string.settings)
                         showReplay -> stringResource(R.string.replay)
-                        openedPublicPlaylist != null -> openedPublicPlaylist?.title.orEmpty()
+                        toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST ->
+                            openedPublicPlaylist?.title.orEmpty()
                         detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
 
@@ -4869,9 +4871,10 @@ private fun BitChordApp(
                             showDiscord || showHistory ||
                             (libraryShowAll != null && detail == null) ||
                             (showAllLocalRecentAdditions && detail == null) ||
-                            (unifiedLibraryCategory != null) ||
-                            (detail != null && detailActiveShelf != null) -> true
-                        showPlaylistLibrary && !showSmartPlaylistBuilder && detail == null ->
+                            toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY ||
+                            (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                                detail != null && detailActiveShelf != null) -> true
+                        toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY ->
                             // Always identify the Library's playlists collection.
                             // The in-list header can be scrolled off or restored
                             // at an old position; the native top bar must not be blank.
@@ -4881,7 +4884,7 @@ private fun BitChordApp(
                         // The page leads with its own large "Replay", so the bar
                         // stays out of the way until that has been scrolled off.
                         showReplay -> replayScrolled
-                        openedPublicPlaylist != null ->
+                        toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST ->
                             // Reuse the same key-owned LazyListState as the
                             // AnimatedContent public playlist slot. A slot-local
                             // variable is not visible to the outer top bar.
@@ -4898,7 +4901,7 @@ private fun BitChordApp(
                         showHistory -> ({ showHistory = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
                         showAllLocalRecentAdditions && detail == null -> ({ showAllLocalRecentAdditions = false })
-                        unifiedLibraryCategory != null -> ({
+                        toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY -> ({
                             if (unifiedLibraryDetailOpen) unifiedLibraryBackToken++
                             else unifiedLibraryCategory = null
                         })
@@ -4907,7 +4910,7 @@ private fun BitChordApp(
                             editingSmartPlaylistId = null
                             editingNormalPlaylistId = null
                         })
-                        showPlaylistLibrary && detail == null -> ({
+                        toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY -> ({
                             if (openedCanonicalPlaylist != null) openedCanonicalPlaylist = null
                             else showPlaylistLibrary = false
                         })
@@ -4937,7 +4940,7 @@ private fun BitChordApp(
                             else showSettings = false
                         })
                         showReplay -> ({ showReplay = false })
-                        openedPublicPlaylist != null -> ({ openedPublicPlaylist = null })
+                        toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
                         appleExploreGenreChrome -> ({ activeCanonicalGenre = null })
@@ -5066,13 +5069,15 @@ private fun BitChordApp(
                             }
                         } else {
                         UnifiedLibraryRouteToolbar(
-                            recentPage = showAllLocalRecentAdditions,
+                            recentPage = toolbarOwner == NativeTopBarRouteOwner.RECENT_ADDITIONS,
                             settingsOpen = showSettings,
                             otherDetailOpen = detail != null,
                             recentSearching = recentSearching,
                             onRecentSearch = { recentSearching = !recentSearching },
                             recentControls = recentControls,
-                            category = unifiedLibraryCategory,
+                            category = unifiedLibraryCategory.takeIf {
+                                toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY
+                            },
                             detailOpen = unifiedLibraryDetailOpen,
                             nestedAlbumOpen = unifiedLibraryNestedAlbumOpen,
                             unifiedSearching = unifiedLibrarySearching,
@@ -5085,7 +5090,8 @@ private fun BitChordApp(
                             onDetailOverflowAnchor = { unifiedDetailOverflowAnchor = it },
                             albumRatingSelection = unifiedAlbumRatingSelection,
                         )
-                        if (openedPublicPlaylist != null && !showSettings && !showAccountScrobbling) {
+                        if (toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST &&
+                            openedPublicPlaylist != null && !showSettings && !showAccountScrobbling) {
                             NativePublicPlaylistTopBarActions(
                                 playlist = openedPublicPlaylist!!,
                                 searching = publicPlaylistSearching,
@@ -5104,9 +5110,8 @@ private fun BitChordApp(
                                 onOptionsDismiss = { publicPlaylistOptionsOpen = false },
                             )
                         }
-                        if (showPlaylistLibrary && !showSmartPlaylistBuilder && detail == null &&
-                            openedPublicPlaylist == null &&
-                            !showSettings && !showAccountScrobbling) {
+                        if (toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&
+                            !showSmartPlaylistBuilder && !showSettings && !showAccountScrobbling) {
                             CanonicalPlaylistToolbarActions(
                                 hasDetail = openedCanonicalPlaylist != null,
                                 ratingTarget = openedCanonicalPlaylist?.id?.let {
@@ -5165,7 +5170,9 @@ private fun BitChordApp(
                                 }
                             }
                         }
-                        if (!showSettings && !showAccountScrobbling && !showPlaylistLibrary) {
+                        if (!showSettings && !showAccountScrobbling &&
+                            toolbarOwner != NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&
+                            toolbarOwner != NativeTopBarRouteOwner.PUBLIC_PLAYLIST) {
                             // Left of the account photo, and only on a Library
                             // "Show all" grid — the same control the Downloads
                             // folder offers (see `LocalSearchField`), adapted to
@@ -5192,7 +5199,8 @@ private fun BitChordApp(
                             // "…" pair do on Apple Music's album page: the header
                             // below is left with just the sleeve, the title and
                             // Shuffle / Play / Add.
-                            if ((isReleaseDetail || isLocalDetail) && detail != null) {
+                            if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                                (isReleaseDetail || isLocalDetail) && detail != null) {
                                 val releaseSongs = (detail.songs as? UiState.Success)?.data.orEmpty()
                                 NativeDetailAlbumTopBarActions(
                                     isReleaseDetail = isReleaseDetail,
@@ -5241,7 +5249,8 @@ private fun BitChordApp(
                             // Artist details share the album/playlist frosted overflow.
                             // Preserve their existing BrowseActionsSheet commands instead
                             // of showing the legacy full-screen action sheet.
-                            if (detail != null && detail.type == BrowseType.ARTIST &&
+                            if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                                detail != null && detail.type == BrowseType.ARTIST &&
                                 detailActiveShelf == null) {
                                 Box(Modifier.onGloballyPositioned {
                                     catalogAlbumOverflowAnchor = nativeMenuAnchorBounds(it)
