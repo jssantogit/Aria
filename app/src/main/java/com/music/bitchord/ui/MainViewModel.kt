@@ -4117,7 +4117,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SearchSource.CANONICAL -> {
                 SearchHistory.recordCanonicalQuery(term)
                 runCanonicalCatalogSearch(term.trim())
-                runAddonSearch(term.trim(), recordHistory = false)
             }
             SearchSource.ADDONS -> runAddonSearch(term.trim())
             SearchSource.LIBRARY -> loadLibrarySongs()
@@ -4215,7 +4214,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_searchSource.value == SearchSource.CANONICAL) {
             SearchHistory.recordCanonicalQuery(q)
             runCanonicalCatalogSearch(q)
-            runAddonSearch(q, recordHistory = false)
             return
         }
         runSearch(anonymous = false)
@@ -4233,11 +4231,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun canonicalCachedSearchRows(
         query: String,
     ): List<CanonicalCatalogSearchRow> {
-            if (ProviderRuntime.gateOrNull()?.open(
-                    ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.MUSICBRAINZ,
-                ) == null) return emptyList()
+            val policy = ProviderRuntime.gateOrNull()
+            val ticket = policy?.open(
+                ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.MUSICBRAINZ,
+            ) ?: return emptyList()
             return try {
-                withContext(Dispatchers.IO) {
+                val cached = withContext(Dispatchers.IO) {
                     val dao = CanonicalCatalogDatabase.get(getApplication<Application>()).catalogDao()
                     val recordings = dao.searchKnownMusicBrainzRecordings(query, 8)
                     val available = dao.musicBrainzRecordingMbidsWithAssets(
@@ -4283,6 +4282,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }.distinctBy { it.kind to it.musicBrainzId }
                 }
+                if (policy.accept(ticket)) cached else emptyList()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) { emptyList() }
@@ -4306,7 +4306,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ) {
                 val verified = withVerifiedLocalBadges(cached)
                 if (!searchSubmitted && _searchSource.value == SearchSource.CANONICAL &&
-                    _query.value.trim() == query
+                    _query.value.trim() == query &&
+                    eligibleCatalogSearchProviders().firstOrNull() == BuiltInProviderKeys.MUSICBRAINZ
                 ) _canonicalResults.value = UiState.Success(verified)
             }
         }
@@ -5029,10 +5030,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     for (job in listOfNotNull(
                         appleArtistSearchJob, appleTrackSearchJob, appleEditorialSearchJob,
                     )) job.join()
-                    val appleFound =
-                        (_appleEditorialArtists.value as? UiState.Success)?.data?.isNotEmpty() == true ||
-                        (_appleEditorialTracks.value as? UiState.Success)?.data?.isNotEmpty() == true ||
-                        (_appleEditorialResults.value as? UiState.Success)?.data?.isNotEmpty() == true
+                    val appleFound = catalogSearchHasUsableRows(
+                        filter = _filter.value,
+                        artists = (_appleEditorialArtists.value as? UiState.Success)
+                            ?.data?.isNotEmpty() == true,
+                        albums = (_appleEditorialResults.value as? UiState.Success)
+                            ?.data?.isNotEmpty() == true,
+                        songs = (_appleEditorialTracks.value as? UiState.Success)
+                            ?.data?.isNotEmpty() == true,
+                    )
                     val current = eligibleCatalogSearchProviders()
                     if (!appleFound && _searchSource.value == SearchSource.CANONICAL &&
                         _query.value.trim() == query &&
@@ -5406,7 +5412,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else UiState.Success(combined)
             if (combined.isNotEmpty()) reportFirstPaint("search_complete_first", combined.size)
             recordCanonicalLoadTiming("search_complete", startedNanos, combined.size)
-            if (allowAppleFallback && combined.isEmpty() &&
+            val matchedFilter = catalogSearchHasUsableRows(
+                filter = _filter.value,
+                artists = combined.any { it.kind == CanonicalSearchKind.ARTIST },
+                albums = combined.any {
+                    it.kind == CanonicalSearchKind.RELEASE ||
+                        it.kind == CanonicalSearchKind.RELEASE_GROUP
+                },
+                songs = combined.any { it.kind == CanonicalSearchKind.RECORDING },
+            )
+            if (allowAppleFallback && !matchedFilter &&
                 eligibleCatalogSearchProviders().firstOrNull() == BuiltInProviderKeys.MUSICBRAINZ &&
                 BuiltInProviderKeys.ITUNES in eligibleCatalogSearchProviders()
             ) {
