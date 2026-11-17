@@ -32,6 +32,22 @@ import org.junit.Test
 class OpenSubsonicMediaAccessTest {
 
     @Test
+    fun `audio opt-out revokes existing runtime request without removing personal media`() = runTest {
+        val fixture = fixture()
+        val active = fixture.access.resolve("asset-canonical") as OpenSubsonicMediaAccessResult.Ready
+        val key = ProviderKey("opensubsonic", "home")
+        fixture.gate.replace(ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(key,
+                setOf(ProviderCapability.AUDIO_PLAYBACK), ProviderReadiness.READY)),
+            mapOf(ProviderCapability.AUDIO_PLAYBACK to listOf(ProviderChoice(key, false, 0))),
+        ))
+        assertFalse(active.request.accountRevisionIsCurrent())
+        val denied = fixture.access.resolve("asset-canonical") as OpenSubsonicMediaAccessResult.Failure
+        assertEquals(OpenSubsonicMediaAccessFailure.NOT_AUTHORIZED, denied.reason)
+        assertTrue(fixture.store.assets.containsKey("asset-canonical"))
+    }
+
+    @Test
     fun `known OpenSubsonic media asset resolves to ephemeral direct request`() = runTest {
         val fixture = fixture()
 
@@ -310,6 +326,7 @@ class OpenSubsonicMediaAccessTest {
             repository = repository,
             asset = asset,
             store = store,
+            gate = gate,
             access = OpenSubsonicMediaAccess(
                 assets = store,
                 accounts = repository,
@@ -325,6 +342,7 @@ class OpenSubsonicMediaAccessTest {
         val repository: OpenSubsonicAccountRepository,
         val asset: MediaAssetEntity,
         val store: FakeMediaAssetStore,
+        val gate: ProviderPolicyGate,
         val access: OpenSubsonicMediaAccess,
     )
 
