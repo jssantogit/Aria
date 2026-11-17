@@ -4,6 +4,10 @@ import android.content.Context
 import com.music.bitchord.data.catalog.provider.ProviderCapabilities
 import com.music.bitchord.data.catalog.provider.ProviderHealth
 import com.music.bitchord.data.catalog.provider.ProviderSyncResult
+import com.music.bitchord.data.providers.ProviderCallResult
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderQueryExecutor
+import com.music.bitchord.data.providers.ProviderRuntime
 import kotlinx.coroutines.CancellationException
 
 internal data class OpenSubsonicConnectionReport(
@@ -40,11 +44,30 @@ internal class AndroidOpenSubsonicAccountOperations(
         return OpenSubsonicConnectionReport(health, capabilities)
     }
 
-    override suspend fun sync(provider: OpenSubsonicProvider): ProviderSyncResult =
-        OpenSubsonicCatalogSync.sync(
-            appContext, provider,
-            accountIsCurrent = { provider.matchesSavedConfig(savedAccount.savedConfig()) },
-        )
+    override suspend fun sync(provider: OpenSubsonicProvider): ProviderSyncResult {
+        val account = savedAccount.current()
+            ?: return ProviderSyncResult.Failure("OpenSubsonic account unavailable")
+        val gate = ProviderRuntime.gateOrNull()
+            ?: return ProviderSyncResult.Failure("OpenSubsonic library not authorized")
+        val key = openSubsonicCapabilityKey(account.accountId)
+        return when (val result = ProviderQueryExecutor(gate).execute(
+            ProviderCapability.PERSONAL_LIBRARY, key,
+        ) {
+            OpenSubsonicCatalogSync.sync(
+                appContext, provider,
+                accountIsCurrent = {
+                    provider.matchesSavedConfig(savedAccount.savedConfig()) &&
+                        gate.open(ProviderCapability.PERSONAL_LIBRARY, key) != null
+                },
+            )
+        }) {
+            is ProviderCallResult.Success -> result.value
+            is ProviderCallResult.Failed ->
+                ProviderSyncResult.Failure("OpenSubsonic library sync failed")
+            ProviderCallResult.Denied, ProviderCallResult.Stale ->
+                ProviderSyncResult.Failure("OpenSubsonic library not authorized")
+        }
+    }
 }
 
 /** Coordinates UI actions without exposing transport/request exception text. */
