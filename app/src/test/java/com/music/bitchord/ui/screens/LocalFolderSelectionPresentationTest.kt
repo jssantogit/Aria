@@ -65,4 +65,21 @@ class LocalFolderSelectionPresentationTest {
         compose.onNodeWithTag("local-folder-inline-action").assertIsNotEnabled()
         compose.runOnIdle { assertEquals(0, deletes) }
     }
+    @Test fun downloadsSelectionHasExplicitModeWithoutStealingTrackLongPress() {
+        val state = LocalFolderState()
+        assertEquals(false, state.selecting)
+        state.beginSelectionMode()
+        assertEquals(true, state.selecting)
+        assertEquals(emptySet<String>(), state.selectedIds)
+        val song = com.music.bitchord.data.model.Song(
+            videoId = "content://media/external/audio/media/1",
+            title = "Downloaded", artist = "Artist", thumbnailUrl = null,
+        )
+        state.toggle(song)
+        assertEquals(setOf(song.videoId), state.selectedIds)
+        state.clear()
+        assertEquals(false, state.selecting)
+        assertEquals(emptySet<String>(), state.selectedIds)
+    }
+
 }
