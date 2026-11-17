@@ -45,6 +45,21 @@ internal data class AppleMusicWebPage(
     val items: List<AppleMusicWebItem>, val page: Int, val limit: Int, val hasMore: Boolean,
 )
 
+internal enum class AppleMusicWebArtistShelf(val endpoint: String) {
+    ALL_ALBUMS("albums"),
+    STUDIO_ALBUMS("view/full-albums"),
+    SINGLES_AND_EPS("view/singles"),
+    LIVE_ALBUMS("view/live-albums"),
+    COMPILATIONS("view/compilation-albums"),
+    APPEARS_ON("view/appears-on-albums"),
+    ESSENTIAL_ALBUMS("view/featured-albums"),
+    TOP_SONGS("view/top-songs"),
+    MUSIC_VIDEOS("view/music-videos"),
+    ARTIST_PLAYLISTS("view/playlists"),
+    FEATURED_PLAYLISTS("view/featured-playlists"),
+    SIMILAR_ARTISTS("view/similar-artists"),
+}
+
 internal data class AppleMusicWebArtist(
     val identity: AppleMusicWebItem,
     val topSongs: List<AppleMusicWebItem>,
@@ -236,6 +251,32 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         )
     }
 
+    /**
+     * Direct Apple artist relationship/view pagination (including Singles/EPs).
+     * Reusing the search offset would be incorrect: follow the upstream cursor.
+     */
+    suspend fun artistCollection(
+        id: String, country: String, shelf: AppleMusicWebArtistShelf,
+        page: Int = 1, limit: Int = 20,
+    ): AppleMusicWebPage {
+        require(page in 1..20 && limit in 1..100)
+        val sf = storefront(country)
+        val artistId = resourceId(id, AppleMusicWebKind.ARTIST)
+        val path = "/v1/catalog/$sf/artists/$artistId/${shelf.endpoint}"
+        val firstParams = mapOf("limit" to limit.toString())
+        var block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            path, firstParams))
+        val visited = mutableSetOf<String>()
+        for (index in 1 until page) {
+            val cursor = block.str("next")
+                ?: return AppleMusicWebPage(emptyList(), page, limit, false)
+            if (!visited.add(cursor)) throw AppleMusicWebProtocolException("Cyclic artist cursor")
+            val params = follow(cursor, path) + firstParams
+            block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path, params))
+        }
+        return AppleMusicWebPage(items(block, sf), page, limit, block.str("next") != null)
+    }
+
     suspend fun album(id: String, country: String): AppleMusicWebAlbum {
         val sf = storefront(country)
         val albumId = resourceId(id, AppleMusicWebKind.ALBUM)
@@ -247,11 +288,18 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val rel = raw.obj("relationships")
         val first = rel?.obj("tracks")
         val tracks = ArrayList(items(first, sf))
-        val path = "/v1/catalog/$sf/albums/$albumId/tracks"
+        val allowedTrackPaths = setOf(
+            "/v1/catalog/$sf/albums/$albumId/tracks",
+            "/v1/catalog/$sf/albums/$albumId/relationships/tracks",
+        )
         val seen = mutableSetOf<String>()
         var cursor = first?.str("next")
         while (cursor != null && tracks.size < 500) {
             if (!seen.add(cursor)) throw AppleMusicWebProtocolException("Cyclic album cursor")
+            val path = runCatching { URI(cursor).path }.getOrNull()
+                ?: throw AppleMusicWebProtocolException("Malformed album cursor")
+            if (path !in allowedTrackPaths)
+                throw AppleMusicWebProtocolException("Cross-album track cursor")
             val args = follow(cursor, path) +
                 ("limit" to minOf(100, 500 - tracks.size).toString())
             val block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path, args))
