@@ -74,6 +74,7 @@ import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.ROW_DIVIDER_INSET
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.SongRow
+import com.music.bitchord.ui.components.LongPressOrigin
 import com.music.bitchord.ui.components.longPressMenuClickable
 import com.music.bitchord.ui.components.rememberRemoteArtworkUrl
 import com.music.bitchord.ui.components.thumbnailBorder
@@ -313,14 +314,21 @@ internal fun LazyListScope.localFolderItems(
         if (state.selecting) state.toggle(songs[index]) else onSongClick(songs, index)
     }
     val songHold: (Song) -> Unit = { song ->
-        if (folder.selectable && state.selecting) state.toggle(song)
-        else onSongLongPress(song)
+        if (folder.selectable && state.selecting) {
+            // Selection consumes the hold's provenance. Do not let the next
+            // unrelated toolbar/menu tap inherit this stale source rectangle.
+            LongPressOrigin.consume()
+            state.toggle(song)
+        } else onSongLongPress(song)
     }
     val groupClick: (LocalGroup) -> Unit = { group ->
         if (state.selecting && group.type != BrowseType.ARTIST) state.toggle(group) else folder.onOpenGroup(group)
     }
     val groupHold: (LocalGroup) -> Unit = { group ->
-        if (folder.selectable && group.type != BrowseType.ARTIST) state.select(group) else folder.onGroupLongPress(group)
+        if (folder.selectable && group.type != BrowseType.ARTIST) {
+            LongPressOrigin.consume()
+            state.select(group)
+        } else folder.onGroupLongPress(group)
     }
 
     val isCurrentRow = playingRowMatcher(songs, currentSong)
