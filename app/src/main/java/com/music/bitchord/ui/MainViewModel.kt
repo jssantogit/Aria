@@ -3598,8 +3598,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // instead of serially holding back the first Home shelves.
             val remoteDeferred = async(Dispatchers.IO) {
                 try {
+                    val eligibleRemote = com.music.bitchord.data.catalog
+                        .configuredCanonicalPersonalProviderKeys(app)
+                        .filter { it.startsWith("opensubsonic:") || it.startsWith("jellyfin:") }
                     CanonicalCatalogDatabase.get(app).catalogDao()
-                        .searchCanonicalRemoteServerAssets("", limit = 400)
+                        .searchCanonicalRemoteServerAssets(
+                            "", limit = 400, providerKeys = eligibleRemote,
+                        )
+                        .filter {
+                            com.music.bitchord.data.catalog
+                                .isCanonicalPersonalProviderCurrentlyAuthorized(app, it.providerKey)
+                        }
                         .distinctBy { it.providerKey to it.mediaAssetId }
                         .map { row ->
                             CanonicalServerSearchRow(
@@ -5466,8 +5475,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         serverSearchJob = viewModelScope.launch {
             val result: UiState<List<CanonicalServerSearchRow>> = try {
                 val rows = withContext(Dispatchers.IO) {
-                    CanonicalCatalogDatabase.get(getApplication<Application>())
-                        .catalogDao().searchCanonicalRemoteServerAssets(query, limit = 250)
+                    val app = getApplication<Application>()
+                    val eligibleRemote = com.music.bitchord.data.catalog
+                        .configuredCanonicalPersonalProviderKeys(app)
+                        .filter { it.startsWith("opensubsonic:") || it.startsWith("jellyfin:") }
+                    CanonicalCatalogDatabase.get(app).catalogDao()
+                        .searchCanonicalRemoteServerAssets(
+                            query, limit = 250, providerKeys = eligibleRemote,
+                        ).filter {
+                            com.music.bitchord.data.catalog
+                                .isCanonicalPersonalProviderCurrentlyAuthorized(app, it.providerKey)
+                        }
                 }
                 UiState.Success(rows.distinctBy { it.recordingId to it.providerKey }.map { row ->
                     CanonicalServerSearchRow(
@@ -5959,6 +5977,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Resolve only from the user's canonical MediaStore/server assets.
             // A Spotify track ID is never a RecordingId and never falls back
             // to the first YouTube result. Ambiguity remains metadata-only.
+            val allowedSpotifyProviders = withContext(Dispatchers.IO) {
+                com.music.bitchord.data.catalog
+                    .configuredCanonicalPersonalProviderKeys(getApplication<Application>()).toList()
+            }
             val gate = Semaphore(SPOTIFY_MATCH_PARALLELISM)
             coroutineScope {
                 tracks.forEachIndexed { index, track ->
@@ -5967,10 +5989,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             if (!open()) return@withPermit
                             val match = try {
                                 withContext(Dispatchers.IO) {
-                                    val candidates = CanonicalCatalogDatabase
-                                        .get(getApplication<Application>())
+                                    val app = getApplication<Application>()
+                                    val candidates = CanonicalCatalogDatabase.get(app)
                                         .catalogDao()
-                                        .spotifyCanonicalAssetCandidates(track.title)
+                                        .spotifyCanonicalAssetCandidates(
+                                            track.title, allowedSpotifyProviders,
+                                        ).filter {
+                                            com.music.bitchord.data.catalog
+                                                .isCanonicalPersonalProviderCurrentlyAuthorized(
+                                                    app, it.providerKey,
+                                                )
+                                        }
                                     selectSpotifyCanonicalAsset(track, candidates)?.let { asset ->
                                         spotifyCanonicalAssetAsSong(track, asset)
                                     }
