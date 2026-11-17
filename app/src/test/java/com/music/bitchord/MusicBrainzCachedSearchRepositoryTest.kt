@@ -426,7 +426,7 @@ class MusicBrainzCachedSearchRepositoryTest {
         }
 
     @Test(expected = IllegalArgumentException::class)
-    fun personalLibraryPermissionCannotBePassedAsMusicBrainzSearchCacheAuthority() = runBlocking {
+    fun personalLibraryPermissionCannotBePassedAsMusicBrainzSearchCacheAuthority(): Unit = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(
             RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
         ).allowMainThreadQueries().build()
