@@ -3,6 +3,9 @@ package com.music.bitchord.data.providers
 import android.content.Context
 import android.os.Build
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.catalog.provider.opensubsonic.AndroidKeystoreOpenSubsonicCredentialStore
+import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAccountRepository
+import com.music.bitchord.data.catalog.provider.opensubsonic.SharedPrefsOpenSubsonicAccountPersistence
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
@@ -107,7 +110,19 @@ internal object ProviderRuntime {
                 initialDescriptors = installedDescriptors(emptyList()),
             )
             session = created
-            coordinator = ProviderAuthorityCoordinator(created)
+            val appContext = context.applicationContext
+            val accounts = OpenSubsonicAccountRepository(
+                persistence = SharedPrefsOpenSubsonicAccountPersistence(appContext),
+                credentials = AndroidKeystoreOpenSubsonicCredentialStore(appContext),
+            )
+            coordinator = ProviderAuthorityCoordinator(created) {
+                accounts.current()?.let { record ->
+                    OpenSubsonicProviderAccountState(
+                        accountId = record.accountId,
+                        credentialAvailable = accounts.hasCredential(),
+                    )
+                }
+            }
         }
     }
 
@@ -174,6 +189,16 @@ internal object ProviderRuntime {
         val authority = coordinator ?: return false
         return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
             authority.setExtensionEnabled(configId, enabled, sources)
+        }
+    }
+
+    /** Persisted OpenSubsonic account state only; never override canonical opt-outs. */
+    fun refreshOpenSubsonicAccountReadiness(): Boolean? {
+        val current = session ?: return null
+        if (current.state.value.status == ProviderSessionStatus.BOOTING) return null
+        val authority = coordinator ?: return false
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            authority.onOpenSubsonicAccountChanged()
         }
     }
 
