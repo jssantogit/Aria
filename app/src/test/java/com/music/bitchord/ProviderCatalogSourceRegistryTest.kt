@@ -2,12 +2,14 @@ package com.music.bitchord
 
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCapabilityRegistry
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
 import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderDescriptor
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
+import com.music.bitchord.data.providers.ProviderSettingsTab
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
@@ -18,6 +20,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProviderCatalogSourceRegistryTest {
+    @Test fun navidromeAccountRegistersIndependentLibraryAndPlaybackCapabilities() {
+        val key = ProviderKey("opensubsonic", "home")
+        val entries = ProviderCapabilityRegistry.inventory(
+            openSubsonicAccountId = "home",
+            openSubsonicConfigured = true,
+        ).filter { it.key == key }
+        assertEquals(
+            setOf(ProviderCapability.PERSONAL_LIBRARY, ProviderCapability.AUDIO_PLAYBACK),
+            entries.map { it.capability }.toSet(),
+        )
+        assertTrue(entries.all { it.tab == ProviderSettingsTab.AUDIO_AND_EXTENSIONS })
+        assertTrue(entries.all { it.readiness == ProviderReadiness.READY })
+        assertTrue(ProviderCapabilityRegistry.inventory().none { it.key.providerId == "opensubsonic" })
+        assertTrue(ProviderCapabilityRegistry.inventory(
+            openSubsonicAccountId = "home", openSubsonicConfigured = false,
+        ).filter { it.key == key }.all {
+            it.readiness == ProviderReadiness.NEEDS_CONFIGURATION
+        })
+
+        val descriptors = ProviderCapabilityRegistry.descriptorsFrom(entries)
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(descriptors, mapOf(
+            ProviderCapability.PERSONAL_LIBRARY to listOf(ProviderChoice(key, true, 0)),
+            ProviderCapability.AUDIO_PLAYBACK to listOf(ProviderChoice(key, false, 0)),
+        )))
+        assertTrue(gate.open(ProviderCapability.PERSONAL_LIBRARY, key) != null)
+        assertTrue(gate.open(ProviderCapability.AUDIO_PLAYBACK, key) == null)
+    }
+
     @Test fun playbackSelectionRequiresExactExtensionInstanceTicket() {
         val a = ProviderKey("addon", "addon-one")
         val b = ProviderKey("addon", "addon-two")
