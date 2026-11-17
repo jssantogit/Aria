@@ -58,6 +58,25 @@ class PreparedSourceMediaSelectionTest {
         assertNull(audio.item.localConfiguration?.mimeType)
     }
 
+    @Test fun typedPhysicalManifestIsNeverExposedThroughPlayerTimeline() {
+        val physical = MediaItem.Builder()
+            .setMediaId(logical.mediaId)
+            .setUri("https://cdn.example/master.mpd?secret=hidden-in-url")
+            .setMimeType(MimeTypes.APPLICATION_MPD)
+            .build()
+        val underlying = androidx.media3.exoplayer.source.SinglePeriodTimeline(
+            1_000_000L, true, false, false, null, physical,
+        )
+        val timeline = sourceMediaTimeline(underlying, logical)
+        val window = timeline.getWindow(0, androidx.media3.common.Timeline.Window())
+        assertEquals(logical.mediaId, window.mediaItem.mediaId)
+        assertEquals(logical.localConfiguration?.uri,
+            window.mediaItem.localConfiguration?.uri)
+        assertTrue(window.mediaItem.localConfiguration?.uri.toString()
+            .indexOf("secret=hidden") == -1)
+        assertEquals(1_000_000L, window.durationUs)
+    }
+
     @Test fun invalidLogicalSourceCannotBecomeASourceSelection() {
         try {
             prepareSourceMediaSelection(MediaItem.fromUri("file:///music/a.flac"),
