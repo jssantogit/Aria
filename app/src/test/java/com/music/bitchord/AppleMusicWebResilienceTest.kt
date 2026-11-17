@@ -89,6 +89,31 @@ class AppleMusicWebResilienceTest {
         assertEquals(2, attempts)
     }
 
+    @Test fun malformedRetryAfterHeaderNeverEnablesUnexpectedRetry() = runBlocking {
+        for (value in listOf("soon", "Wed, 18 Nov 2026 01:00:00 GMT")) {
+            var attempts = 0
+            val exchange = AppleMusicWebExchange { _, _, _, _, _ ->
+                attempts++
+                AppleMusicWebHttpResponse(503, "private-upstream", mapOf("Retry-After" to value))
+            }
+            val client = AppleMusicWebPolicyTransport(
+                exchange = exchange, tokens = token, admission = admitted(),
+                limiter = AppleMusicWebRateLimiter(minimumIntervalMs = 0),
+                retryPolicy = AppleMusicWebRetryPolicy(
+                    maxAttempts = 3, baseDelayMs = 0, maxDelayMs = 1000,
+                ),
+            )
+            try {
+                client.get(capability, "/v1/catalog/br/search", mapOf("term" to "Jazz"))
+                fail("Unparsed Retry-After must not be silently ignored")
+            } catch (error: AppleMusicWebHttpException) {
+                assertEquals(503, error.status)
+                assertEquals(1, attempts)
+                assertFalse(error.toString().contains("private-upstream"))
+            }
+        }
+    }
+
     @Test fun retryAfterOutsideSafetyBudgetFailsWithoutSecondRequest() = runBlocking {
         var attempts = 0
         val fake = AppleMusicWebExchange { _, _, _, _, _ ->
