@@ -56,12 +56,13 @@ class OpenSubsonicSyncRecoveryRoomTest {
     @Test fun searchAndSpotifyNeverMixOldAndCurrentAuthenticatedServerRealms() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),
             CanonicalCatalogDatabase::class.java).allowMainThreadQueries().build()
+        val freshIds = ids()
         try {
             assertTrue(OpenSubsonicCatalogSync.sync(
-                db, provider("OLD", realm = "legacy"), idFactory = ids(),
+                db, provider("OLD", realm = "legacy"), idFactory = freshIds,
             ) is ProviderSyncResult.Success)
             assertTrue(OpenSubsonicCatalogSync.sync(
-                db, provider("NEW", realm = "current"), idFactory = ids(),
+                db, provider("NEW", realm = "current"), idFactory = freshIds,
             ) is ProviderSyncResult.Success)
             val key = "opensubsonic:home:current"
             val rows = db.catalogDao().searchCanonicalRemoteServerAssets(
