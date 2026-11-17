@@ -2520,6 +2520,11 @@ private fun BitChordApp(
         links = null
         linksLoading = false
     }
+    // The latest queue identity must be read after an asynchronous artist
+    // lookup, not from the stale PlayerState captured when the tap began.
+    val currentPlayerArtistTapKey by androidx.compose.runtime.rememberUpdatedState(
+        player.song?.queueEntryId to player.song?.videoId,
+    )
     val playerSong = player.song?.let { current ->
         val extra = links?.takeIf { it.videoId == current.videoId } ?: return@let current
         current.copy(
@@ -2748,9 +2753,8 @@ private fun BitChordApp(
                             .verifiedPlayerSourceOwnedArtist(context, displayedSong)
                         // A slow provider/Room read must not navigate away from
                         // a different track that played while this tap awaited.
-                        if (player.song?.videoId != displayedSong.videoId ||
-                            (displayedSong.queueEntryId != null &&
-                                player.song?.queueEntryId != displayedSong.queueEntryId)
+                        if (currentPlayerArtistTapKey !=
+                            (displayedSong.queueEntryId to displayedSong.videoId)
                         ) return@launch
                         when (val target = com.music.bitchord.ui.components.planPlayerArtistTapRoute(
                             song = displayedSong,
