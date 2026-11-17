@@ -39,7 +39,8 @@ jobs:
             --tests 'com.music.bitchord.AppleMusicWebFoundationTest' \
             --tests 'com.music.bitchord.AppleMusicWebCacheBridgeTest' \
             --tests 'com.music.bitchord.AppleMusicWebResilienceTest' \
-            --tests 'com.music.bitchord.AppleMusicWebOperationsTest'
+            --tests 'com.music.bitchord.AppleMusicWebOperationsTest' \
+            --tests 'com.music.bitchord.AppleMusicWebEditorialGatewayTest'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
