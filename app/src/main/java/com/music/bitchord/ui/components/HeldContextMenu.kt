@@ -7,6 +7,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -82,8 +83,8 @@ internal fun heldSpotlightCutout(
 internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
 
 /**
- * The menu a *held* item lifts into, in the shape Apple Music uses: the item
- * itself remains stationary in its list, the page behind it dims, and actions hang
+ * The context menu anchored to an item held in place. The item stays in its
+ * original list, the page behind it dims, and actions hang
  * off it.
  *
  * Nothing is copied or physically lifted. The source keeps drawing normally
@@ -163,15 +164,11 @@ fun <T : Any> HeldContextMenu(
     BackHandler(enabled = open, onBack = onDismiss)
 
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    // The copied card and its actions must NEVER show the old row underneath.
-    // A translucent 0.50 plate was duplicating track text and album art across
-    // the actual row and its lifted preview. Match the solid catalog source menu.
+    // Keep the actions neutral and legible regardless of cover colors.
     val plate = heldContextPlateColor(MaterialTheme.colorScheme.background, plateTint)
     val hairline = if (plate.luminance() < 0.5f)
         Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.07f)
-    // Do not put an opaque black plate above the already blurred content.
-    // A gentle translucent lift keeps the real page legible behind the item
-    // (and exposes the diffused artwork when one exists).
+    // Preserve the existing dimming strength; only exclude the source item.
     val scrimColor = if (dark) Color.Black.copy(alpha = 0.30f)
         else Color.Black.copy(alpha = 0.18f)
     val menuShape = RoundedCornerShape(16.dp)
@@ -234,7 +231,12 @@ fun <T : Any> HeldContextMenu(
                 Modifier
                     .then(
                         if (onPreviewClick != null) {
-                            Modifier.clickable(enabled = open) { onPreviewClick(menuItem) }
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                enabled = open,
+                                onClick = { onPreviewClick(menuItem) },
+                            )
                         } else Modifier
                     )
                     .testTag("held-context-preview"),
@@ -342,9 +344,7 @@ fun <T : Any> HeldContextMenu(
     }
 }
 
-/** The preview bitmap preserves exactly the source frame; any decorative
- * ring is drawn independently in the canvas without changing bitmap layout.
- * No animation progress or viewport-fitting scale participates in placement. */
+/** Transparent click-target geometry; never scale or copy the actual source item. */
 internal data class HeldPreviewFixedFrame(
     val x: Int, val y: Int, val width: Int, val height: Int,
     val scale: Float = 1f,
