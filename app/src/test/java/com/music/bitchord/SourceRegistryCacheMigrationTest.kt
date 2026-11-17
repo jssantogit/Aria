@@ -86,4 +86,39 @@ class SourceRegistryCacheMigrationTest {
         assertNull(SourceRegistry.sourcesDocumentPreservingUnknown(raw, emptyList()))
     }
 
+    @Test fun sourceDocumentMustCommitBeforeAnyRuntimePublication() {
+        var writeCalled = 0
+        assertTrue(SourceRegistry.sourceDocumentCommitAllowed("valid") { written ->
+            writeCalled++
+            written == "valid"
+        })
+        assertEquals(1, writeCalled)
+        assertTrue(!SourceRegistry.sourceDocumentCommitAllowed("valid") { false })
+        assertTrue(!SourceRegistry.sourceDocumentCommitAllowed("valid") {
+            throw IllegalStateException("disk full")
+        })
+        assertTrue(!SourceRegistry.sourceDocumentCommitAllowed(null) {
+            writeCalled++
+            true
+        })
+        assertEquals(3, writeCalled)
+    }
+
+    @Test fun migratedSourceDocumentKeepsExplicitOptOutAcrossRestart() {
+        val disabled = known().copy(enabled = false)
+        val before = """[{"id":"known","kind":"ADDON",
+            "baseUrl":"https://source.example","enabled":false}]"""
+        val next = requireNotNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            before, listOf(disabled),
+        ))
+        val first = json.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(SourceConfig.serializer()), next)
+        assertEquals(false, first.single().enabled)
+        assertEquals(disabled.playbackCacheEpoch, first.single().playbackCacheEpoch)
+        val second = requireNotNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            next, first,
+        ))
+        assertEquals(json.parseToJsonElement(next), json.parseToJsonElement(second))
+    }
+
 }

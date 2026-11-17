@@ -136,25 +136,25 @@ object SourceRegistry {
         val jioOptInMigrationDone = prefs.getBoolean(KEY_JIOSAAVN_OPT_IN_V1, false)
         val after = sourcesForInit(stored, forceJioSaavnOff = !jioOptInMigrationDone)
 
-        // Publish state and the migration marker in one preferences edit. If a
-        // process dies after recording the marker but before recording the
-        // disabled source, the next launch would otherwise believe the forced
-        // opt-out had already happened and silently restore the old on state.
-        publish(after, persist = false)
+        // Commit source migration and the retired-source opt-out marker as
+        // ONE durable transaction before constructing runtime sources.
+        // Failed writes cannot advertise a configuration/epoch that will be
+        // different after the next process start.
         if (after != stored || !jioOptInMigrationDone || missingEpoch) {
-            // A stored kind introduced by a newer build cannot be decoded by
-            // this version. Retain it verbatim through migration instead of
-            // silently destroying it when adding the cache epoch field.
             val preserved = sourcesDocumentPreservingUnknown(rawSources, after)
-            if (preserved != null) {
+            val committed = sourceDocumentCommitAllowed(preserved) { document ->
                 prefs.edit()
-                    .putString(KEY_SOURCES, preserved)
+                    .putString(KEY_SOURCES, document)
                     .putBoolean(KEY_JIOSAAVN_OPT_IN_V1, true)
-                    .apply()
-            } else {
-                TrackLog.w(TAG, "keeping unreadable source preferences intact")
+                    .commit()
+            }
+            if (!committed) {
+                TrackLog.w(TAG, "source migration not durable; keeping sources closed")
+                publish(emptyList(), persist = false)
+                return
             }
         }
+        publish(after, persist = false)
     }
 
     /**
@@ -251,6 +251,17 @@ object SourceRegistry {
             }
         return JsonArray(preserved).toString()
     }
+
+    /**
+     * A failed disk write must never permit publication of a new source
+     * endpoint or cache generation. This runs before the state/instance swap.
+     * Unknown documents and exceptions are fail-closed; their bytes are
+     * preserved for a later version or recovery.
+     */
+    internal fun sourceDocumentCommitAllowed(
+        document: String?,
+        write: (String) -> Boolean,
+    ): Boolean = document != null && runCatching { write(document) }.getOrDefault(false)
 
     /**
      * The enabled sources, module first and YouTube last, however they're stored.
@@ -588,8 +599,12 @@ object SourceRegistry {
                 prefs.getString(KEY_SOURCES, null), activeConfigs,
             )
         else null
-        if (persist && ::prefs.isInitialized && storedDocument == null) {
-            TrackLog.w(TAG, "source update refused: persisted document unreadable")
+        if (persist && ::prefs.isInitialized &&
+            !sourceDocumentCommitAllowed(storedDocument) { document ->
+                prefs.edit().putString(KEY_SOURCES, document).commit()
+            }
+        ) {
+            TrackLog.w(TAG, "source update refused: preferences not durably committed")
             return
         }
         configs.value = activeConfigs
@@ -638,11 +653,6 @@ object SourceRegistry {
             }
         previousModules.values.filterNot { it in moduleDownloadInstances.values }
             .forEach { it.release() }
-        if (persist && ::prefs.isInitialized) {
-            prefs.edit()
-                .putString(KEY_SOURCES, requireNotNull(storedDocument))
-                .apply()
-        }
         if (persist && ProviderRuntime.state?.value?.status == ProviderSessionStatus.READY) {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                 ProviderRuntime.authorityOrNull()?.onSourcesChanged(activeConfigs)
