@@ -105,12 +105,16 @@ internal class OpenSubsonicAccountRepository(
             lastSyncSummary = retainedStatus?.lastSyncSummary,
         )
 
-        // Validate everything before either store changes. Invalidate active
-        // stream leases *before* overwriting credentials, even if persistence
-        // subsequently fails. Cached catalog rows are intentionally untouched.
+        // No cross-store transaction exists between Keystore-backed secrets
+        // and plain account metadata. Fail CLOSED at every crash/commit point:
+        // revoke leases -> remove the old secret -> commit the new realm ->
+        // publish the new secret. If either durable write fails, no old
+        // MediaAsset can be used with a new credential by accident.
+        // Canonical recordings, old provider rows and user history remain.
         OpenSubsonicAccountRevisionClock.revoke()
-        credentials.write(accountId, normalizedCredential)
+        credentials.clear(accountId)
         persistence.write(record)
+        credentials.write(accountId, normalizedCredential)
         return record
     }
 
