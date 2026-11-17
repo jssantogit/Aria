@@ -1,6 +1,8 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.catalog.MediaAssetEntity
+import com.music.bitchord.data.catalog.CanonicalLocalLibrary
+import com.music.bitchord.data.catalog.OpenSubsonicLibraryProviderConfigurationReader
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
 import com.music.bitchord.data.providers.ProviderChoice
@@ -30,6 +32,44 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OpenSubsonicMediaAccessTest {
+
+    @Test
+    fun `disabling Navidrome library does not disable its separately permitted audio`() = runTest {
+        val fixture = fixture()
+        val key = ProviderKey("opensubsonic", "home")
+        val reader = OpenSubsonicLibraryProviderConfigurationReader(
+            fixture.repository, gateProvider = { fixture.gate },
+        )
+        assertTrue(fixture.asset.provider in reader.configuredProviderKeys())
+        fixture.gate.replace(ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(key, setOf(
+                ProviderCapability.PERSONAL_LIBRARY,
+                ProviderCapability.AUDIO_PLAYBACK,
+            ), ProviderReadiness.READY)),
+            mapOf(
+                ProviderCapability.PERSONAL_LIBRARY to listOf(ProviderChoice(key, false, 0)),
+                ProviderCapability.AUDIO_PLAYBACK to listOf(ProviderChoice(key, true, 0)),
+            ),
+        ))
+        assertEquals(setOf(CanonicalLocalLibrary.LOCAL_MEDIASTORE_PROVIDER),
+            reader.configuredProviderKeys())
+        assertTrue(fixture.access.resolve("asset-canonical") is OpenSubsonicMediaAccessResult.Ready)
+
+        fixture.gate.replace(ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(key, setOf(
+                ProviderCapability.PERSONAL_LIBRARY,
+                ProviderCapability.AUDIO_PLAYBACK,
+            ), ProviderReadiness.READY)),
+            mapOf(
+                ProviderCapability.PERSONAL_LIBRARY to listOf(ProviderChoice(key, true, 0)),
+                ProviderCapability.AUDIO_PLAYBACK to listOf(ProviderChoice(key, false, 0)),
+            ),
+        ))
+        assertTrue(fixture.asset.provider in reader.configuredProviderKeys())
+        assertEquals(OpenSubsonicMediaAccessFailure.NOT_AUTHORIZED,
+            (fixture.access.resolve("asset-canonical")
+                as OpenSubsonicMediaAccessResult.Failure).reason)
+    }
 
     @Test
     fun `audio opt-out revokes existing runtime request without removing personal media`() = runTest {
@@ -299,12 +339,16 @@ class OpenSubsonicMediaAccessTest {
         )
         credentials.readCalls = 0
         val permitted = ProviderKey("opensubsonic", "home")
-        val capability = ProviderCapability.AUDIO_PLAYBACK
+        val capabilities = setOf(
+            ProviderCapability.PERSONAL_LIBRARY, ProviderCapability.AUDIO_PLAYBACK,
+        )
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(
-                permitted, setOf(capability), ProviderReadiness.READY,
+                permitted, capabilities, ProviderReadiness.READY,
             )),
-            choices = mapOf(capability to listOf(ProviderChoice(permitted, true, 0))),
+            choices = capabilities.associateWith {
+                listOf(ProviderChoice(permitted, true, 0))
+            },
         ))
         val asset = MediaAssetEntity(
             id = "asset-canonical",
