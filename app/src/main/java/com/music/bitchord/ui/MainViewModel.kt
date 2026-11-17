@@ -749,6 +749,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * its 500-track response cap. Never assume offset += 25.
      */
     fun loadMoreCanonicalDetail() {
+        val lease = canonicalMusicBrainzDetailLease(ProviderRuntime.gateOrNull()) ?: return
         val entry = canonicalPath.lastOrNull() ?: return
         val current = (_canonicalDetail.value as? UiState.Success)?.data ?: return
         val offset = current.nextOffset ?: return
@@ -756,7 +757,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             (entry.kind != CanonicalSearchKind.ARTIST && entry.kind != CanonicalSearchKind.RELEASE_GROUP)) return
         _canonicalLoadingMore.value = true
         canonicalPagingJob?.cancel()
-        canonicalPagingJob = viewModelScope.launch {
+        val pageJob = viewModelScope.launch {
             try {
                 val page = when (entry.kind) {
                     CanonicalSearchKind.ARTIST -> when (
@@ -810,7 +811,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else -> null
                 }
                 val stillCurrent = (_canonicalDetail.value as? UiState.Success)?.data
-                if (page != null && _searchSource.value == SearchSource.CANONICAL &&
+                if (page != null && lease.isCurrent() &&
+                    _searchSource.value == SearchSource.CANONICAL &&
                     canonicalPath.lastOrNull() == entry && stillCurrent != null &&
                     stillCurrent.nextOffset == offset
                 ) {
@@ -851,6 +853,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _canonicalLoadingMore.value = false
             }
         }
+        val unregister = lease.cancelJobOnRevoke(pageJob)
+        pageJob.invokeOnCompletion { unregister() }
+        canonicalPagingJob = pageJob
     }
     private val canonicalPath = mutableListOf<CanonicalCatalogSearchRow>()
     private var canonicalDetailCoverJob: Job? = null
@@ -1097,6 +1102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * BitChord. A public MBID remains a browse key, NEVER a Song.videoId.
      */
     fun openCanonicalNativeDetail(row: CanonicalCatalogSearchRow) {
+        if (canonicalMusicBrainzDetailLease(ProviderRuntime.gateOrNull()) == null) return
         backAppleEditorialAlbum()
         backAppleEditorialArtist()
         val nativeType = canonicalNativePageType(row.kind) ?: return
@@ -1141,7 +1147,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openCanonicalCatalogEntry(row: CanonicalCatalogSearchRow) {
         if (_searchSource.value != SearchSource.CANONICAL ||
-            row.kind == CanonicalSearchKind.RECORDING) return
+            row.kind == CanonicalSearchKind.RECORDING ||
+            canonicalMusicBrainzDetailLease(ProviderRuntime.gateOrNull()) == null
+        ) return
         val publicRow = row.copy(
             artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(row.artworkUri),
         )
@@ -1335,6 +1343,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun showCanonicalCatalogEntry(entry: CanonicalCatalogSearchRow) {
+        val lease = canonicalMusicBrainzDetailLease(ProviderRuntime.gateOrNull())
+        if (lease == null) {
+            clearCanonicalCatalogNavigation()
+            _detailStack.update { pages ->
+                pages.filterNot { it.browseId.startsWith("catalog:") }
+            }
+            return
+        }
         val startedNanos = System.nanoTime()
         canonicalGroupCardArtworkJob?.cancel()
         _canonicalGroupCardApplePromotions.value = emptyMap()
@@ -1346,7 +1362,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _canonicalLoadingMore.value = false
         _canonicalDetail.value = UiState.Loading
         _searchScrollReset.value += 1
-        canonicalBrowseJob = viewModelScope.launch {
+        val browseJob = viewModelScope.launch {
             // CAA cache entries belong to the retired artwork authority.
             // A previously persisted Front must not re-enter the public
             // Album/EP/Single header while Apple proof is still loading.
@@ -1366,7 +1382,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) { emptyList() }
-                if (saved.isNotEmpty() &&
+                if (saved.isNotEmpty() && lease.isCurrent() &&
                     _searchSource.value == SearchSource.CANONICAL &&
                     canonicalPath.lastOrNull() == entry
                 ) {
@@ -1449,7 +1465,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) { null }
-                if (cachedReleasePreview != null &&
+                if (cachedReleasePreview != null && lease.isCurrent() &&
                     _searchSource.value == SearchSource.CANONICAL &&
                     canonicalPath.lastOrNull() == entry
                 ) {
@@ -1594,7 +1610,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) { null }
-                    if (cachedPreview != null &&
+                    if (cachedPreview != null && lease.isCurrent() &&
                         _searchSource.value == SearchSource.CANONICAL &&
                         canonicalPath.lastOrNull() == entry
                     ) {
@@ -1775,7 +1791,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 CanonicalSearchKind.RECORDING -> return@launch
             }
-            if (_searchSource.value == SearchSource.CANONICAL && canonicalPath.lastOrNull() == entry) {
+            if (lease.isCurrent() &&
+                _searchSource.value == SearchSource.CANONICAL &&
+                canonicalPath.lastOrNull() == entry
+            ) {
                 _canonicalDetail.value = output
                 if (output is UiState.Success) {
                     recordCanonicalLoadTiming(
@@ -1829,7 +1848,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // "more" action for unusually large discographies.
             val first = artistFirstPage
             if (entry.kind == CanonicalSearchKind.ARTIST && first?.nextOffset != null &&
-                _searchSource.value == SearchSource.CANONICAL &&
+                lease.isCurrent() && _searchSource.value == SearchSource.CANONICAL &&
                 canonicalPath.lastOrNull() == entry
             ) {
                 _canonicalLoadingMore.value = true
@@ -1852,7 +1871,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) { emptyMap() }
-                        if (_searchSource.value == SearchSource.CANONICAL &&
+                        if (lease.isCurrent() &&
+                            _searchSource.value == SearchSource.CANONICAL &&
                             canonicalPath.lastOrNull() == entry
                         ) {
                             val current = (_canonicalDetail.value as? UiState.Success)?.data
@@ -1905,7 +1925,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // obsolete memberships once, after a complete contiguous
                 // source snapshot, never after a partial page or HTTP 503.
                 if (completedArtistBrowse.reconciliationEligible &&
-                    _searchSource.value == SearchSource.CANONICAL &&
+                    lease.isCurrent() && _searchSource.value == SearchSource.CANONICAL &&
                     canonicalPath.lastOrNull() == entry
                 ) {
                     try {
@@ -1921,7 +1941,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // Preserve prior membership on any storage failure.
                     }
                 }
-                if (_searchSource.value == SearchSource.CANONICAL &&
+                if (lease.isCurrent() &&
+                    _searchSource.value == SearchSource.CANONICAL &&
                     canonicalPath.lastOrNull() == entry
                 ) enrichCanonicalNativeDetailCovers(entry)
                 } finally {
@@ -1929,6 +1950,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        val unregister = lease.cancelJobOnRevoke(browseJob)
+        browseJob.invokeOnCompletion { unregister() }
+        canonicalBrowseJob = browseJob
     }
 
     /** The words typed into the Addons search before, newest first. */
@@ -3923,6 +3947,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         previousEditorial = nextEditorial
                         _catalogEditorialOrder.value = nextEditorial
                         if (BuiltInProviderKeys.MUSICBRAINZ !in nextEditorial) {
+                            // These pages contain source-owned MB discography,
+                            // never the personal MediaAssets that share MBIDs.
+                            clearCanonicalCatalogNavigation()
+                            _detailStack.update { pages ->
+                                pages.filterNot { it.browseId.startsWith("catalog:") }
+                            }
                             worldwideReleaseJob?.cancel()
                             worldwideReleaseEpoch.invalidateAndNext()
                             _canonicalWorldwideReleases.value = emptyList()
