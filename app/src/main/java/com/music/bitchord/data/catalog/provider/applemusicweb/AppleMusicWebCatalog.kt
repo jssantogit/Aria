@@ -280,7 +280,8 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
     suspend fun album(id: String, country: String): AppleMusicWebAlbum =
         when (val outcome = albumOutcome(id, country)) {
             is AppleMusicWebOutcome.Complete -> outcome.value
-            is AppleMusicWebOutcome.Partial -> outcome.value
+            is AppleMusicWebOutcome.Partial ->
+                throw AppleMusicWebProtocolException("Incomplete Apple album relationship")
             is AppleMusicWebOutcome.Unavailable ->
                 throw AppleMusicWebProtocolException("Album unavailable")
         }
