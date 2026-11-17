@@ -17,5 +17,8 @@ class NeutralRatingActionPlateTest {
         assertEquals(Color(0xFF29292D), nativeContextPlateColor(dark = true))
         assertEquals(Color(0xFFF5F5F7), nativeContextPlateColor(dark = false))
         assertEquals(1f, nativeContextPlateColor(dark = true).alpha)
+        assertEquals(30, nativeContextPlateCornerRadiusDp(NativeActionCardTreatment.NEUTRAL_FROSTED))
+        assertEquals(18, nativeContextPlateCornerRadiusDp(NativeActionCardTreatment.FROSTED))
+        assertEquals(18, nativeContextPlateCornerRadiusDp(NativeActionCardTreatment.SOLID))
     }
 }

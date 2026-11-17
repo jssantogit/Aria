@@ -46,6 +46,7 @@ import com.music.bitchord.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.music.bitchord.ui.components.AppleRatingStarGlyph
 import com.music.bitchord.ui.components.appleRatingStarFill
@@ -69,6 +70,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.CanonicalLibraryAvailabilityReaders
 import com.music.bitchord.data.listening.CanonicalRecordingFeedbackEditor
@@ -315,7 +317,7 @@ internal fun ratingEditorModalWidthDp(screenWidthDp: Int): Int =
         .coerceIn(1, ratingEditorFloatingMaxWidthDp())
 
 internal fun ratingEditorModalGlyphSizeDp(screenWidthDp: Int): Int =
-    ((ratingEditorModalWidthDp(screenWidthDp) - 24) / 5).coerceIn(18, 56)
+    ((ratingEditorModalWidthDp(screenWidthDp) - 24) / 5).coerceIn(18, 32)
 
 /** Legacy geometry helper remains for callers, but no modal is anchored. */
 internal fun anchoredRatingCardWidthDp(screenWidthDp: Int): Int =
@@ -383,11 +385,11 @@ internal fun CanonicalRecordingFeedbackPanel(
         Column(
             modifier = Modifier.fillMaxWidth()
                 .padding(
-                    // Preserve five 56dp star targets on narrow phones.
-                    start = 12.dp,
-                    end = 12.dp,
-                    top = 14.dp,
-                    bottom = 14.dp,
+                    // Wide touch cells; smaller visible star vectors.
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = 24.dp,
+                    bottom = 18.dp,
                 )
                 .testTag("native-rating-modal-content")
                 .semantics { paneTitle = sheetTitle }
@@ -402,7 +404,18 @@ internal fun CanonicalRecordingFeedbackPanel(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-                Row(
+            Text(
+                text = stringResource(Res.string.recording_feedback_dialog_title),
+                modifier = Modifier.fillMaxWidth().testTag("native-rating-modal-title"),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 22.sp,
+                    lineHeight = 27.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = sheetForeground,
+                textAlign = TextAlign.Center,
+            )
+            Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("native-rating-editor-star-row")
@@ -451,8 +464,8 @@ internal fun CanonicalRecordingFeedbackPanel(
                             // Retain the player's exact original star
                             // contours but drop the circular *button* platter.
                             // Five repeated platters looked like generic chips.
-                            // A 48dp glyph viewport keeps the visible star
-                            // near 28dp while maintaining generous touch slots.
+                            // A 32dp vector viewport matches the reference and
+                            // preserves full-height, accessible touch slots.
                             Box(
                                 modifier = Modifier.size(modalGlyphSize)
                                     .testTag("rating-editor-star-$i-${starFill.name.lowercase()}")
@@ -528,7 +541,7 @@ internal fun CanonicalRecordingFeedbackPanel(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 NativeRatingEditorAction(

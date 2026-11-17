@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.IntRect
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -32,6 +33,8 @@ class CanonicalRatingAnchorRoutesTest {
         }
         compose.onNodeWithTag("native-rating-modal").assertExists()
         compose.onNodeWithTag("native-rating-modal-content").assertExists()
+        compose.onNodeWithTag("native-rating-modal-title").assertExists()
+        compose.onNodeWithText("Your rating").assertExists()
         compose.onNodeWithTag("native-rating-anchored-card").assertDoesNotExist()
         compose.onNodeWithTag("native-rating-bottom-sheet").assertDoesNotExist()
     }
@@ -46,9 +49,9 @@ class CanonicalRatingAnchorRoutesTest {
     }
 
     @Test fun starGlyphsKeepTheirOriginalSizeOnNormalScreensAndShrinkForMultiWindow() {
-        assertEquals(56, ratingEditorModalGlyphSizeDp(400))
-        assertEquals(52, ratingEditorModalGlyphSizeDp(320))
-        assertEquals(36, ratingEditorModalGlyphSizeDp(240))
+        assertEquals(32, ratingEditorModalGlyphSizeDp(400))
+        assertEquals(32, ratingEditorModalGlyphSizeDp(320))
+        assertEquals(32, ratingEditorModalGlyphSizeDp(240))
         assertEquals(28, ratingEditorModalGlyphSizeDp(200))
     }
 

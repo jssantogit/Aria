@@ -37,6 +37,10 @@ internal enum class NativeActionCardTreatment { FROSTED, SOLID, NEUTRAL_FROSTED 
 internal fun neutralRatingPlateUsesArtwork(treatment: NativeActionCardTreatment): Boolean =
     treatment == NativeActionCardTreatment.FROSTED
 
+/** The rating modal is rounder; existing library/held cards stay unchanged. */
+internal fun nativeContextPlateCornerRadiusDp(treatment: NativeActionCardTreatment): Int =
+    if (treatment == NativeActionCardTreatment.NEUTRAL_FROSTED) 30 else 18
+
 internal fun expandableActionCardUsesHaze(
     treatment: NativeActionCardTreatment,
     hazeAvailable: Boolean,
@@ -55,7 +59,8 @@ internal fun NativeContextActionPlate(
 ) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val reduceBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(nativeContextPlateCornerRadiusDp(treatment).dp)
+    val isRating = treatment == NativeActionCardTreatment.NEUTRAL_FROSTED
     val base = nativeContextPlateColor(dark)
     val palette = rememberArtworkPalette(artworkUrl)
     val useHaze = expandableActionCardUsesHaze(
@@ -70,8 +75,11 @@ internal fun NativeContextActionPlate(
         color = Color.Transparent,
         contentColor = if (dark) Color.White else Color.Black,
         border = BorderStroke(
-            0.5.dp, (if (dark) Color.White else Color.Black)
-                .copy(alpha = if (dark) 0.13f else 0.08f),
+            if (isRating) 0.8.dp else 0.5.dp,
+            (if (dark) Color.White else Color.Black).copy(
+                alpha = if (isRating) (if (dark) 0.30f else 0.18f)
+                    else (if (dark) 0.13f else 0.08f),
+            ),
         ),
     ) {
         Box(

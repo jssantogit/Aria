@@ -207,7 +207,7 @@
     <string name="rediscovery_reason_behavior">Ouvida várias vezes</string>
     <string name="rediscovery_close">Fechar</string>
     <string name="rediscovery_unavailable">Gravação indisponível</string>
-    <string name="recording_feedback_dialog_title">Avaliação do usuário</string>
+    <string name="recording_feedback_dialog_title">Sua avaliação</string>
     <string name="recording_feedback_dialog_save">Salvar avaliação</string>
     <string name="recording_feedback_stars_selected">%1$s estrelas selecionadas</string>
     <string name="recording_feedback_stars_value">%1$s estrelas</string>

@@ -18,14 +18,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.theme.appleMusicKeyColor
 
-/** The rating editor shares compact menu controls, not opaque dialog pills. */
+/** The rating editor uses filled, rounded cancel/confirm capsules. */
 internal data class RatingEditorActionColors(val background: Color, val ink: Color)
 
-internal fun ratingEditorActionHeightDp(): Int = 48
-internal fun ratingEditorActionCornerRadiusDp(): Int = 12
+internal fun ratingEditorActionHeightDp(): Int = 44
+internal fun ratingEditorActionCornerRadiusDp(): Int = 999
 
 internal fun ratingEditorActionColors(
     darkTheme: Boolean,
@@ -33,18 +34,18 @@ internal fun ratingEditorActionColors(
     enabled: Boolean,
     loading: Boolean,
 ): RatingEditorActionColors {
-    val ink = if (darkTheme) Color.White else Color.Black
-    val surface = if (darkTheme) Color(0xFF36363B) else Color(0xFFE5E5E8)
+    val neutralSurface = if (darkTheme) Color(0xFF36363B) else Color(0xFFE5E5E8)
+    val background = if (emphasized) appleMusicKeyColor(darkTheme) else neutralSurface
+    val ink = if (emphasized || darkTheme) Color.White else Color.Black
     return RatingEditorActionColors(
-        background = if (emphasized) surface else Color.Transparent,
-        ink = ink.copy(alpha = if (enabled && !loading) 1f else 0.40f),
+        background = background.copy(alpha = if (enabled || loading) 1f else 0.46f),
+        ink = ink.copy(alpha = if (enabled || loading) 1f else 0.55f),
     )
 }
 
 /**
- * Compact, readable commands on the same frosted neutral plate as Library
- * filters and overflow. The confirm action is gently surfaced rather than a
- * bright white pill that visually detaches from the expandable card.
+ * Screenshot-matched neutral cancel and blue affirmative action.
+ * The background remains the same frosted neutral plate as the library cards.
  */
 @Composable
 internal fun NativeRatingEditorAction(
@@ -77,7 +78,7 @@ internal fun NativeRatingEditorAction(
             Text(
                 text = label,
                 color = colors.ink,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 10.dp),
