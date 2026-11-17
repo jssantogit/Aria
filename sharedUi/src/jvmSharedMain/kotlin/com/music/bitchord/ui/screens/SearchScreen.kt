@@ -254,6 +254,8 @@ fun SearchScreen(
     /** Canonical remote assets, not source-owned stream URLs. */
     serverResults: UiState<List<CanonicalServerSearchRow>>? = null,
     onServerPlay: (CanonicalServerSearchRow) -> Unit = {},
+    /** Verified server assets have their own long-press route in the host. */
+    onServerLongPress: ((CanonicalServerSearchRow) -> Unit)? = null,
     /** The Addons source's tracks for the submitted query; null until one is submitted. */
     addonResults: UiState<List<Song>>? = null,
     /** Words searched in the Addons tab before, newest first; shown while the field is empty. */
@@ -671,10 +673,13 @@ fun SearchScreen(
                 // General contains both public metadata and authorized server
                 // renditions. A server result uses the same canonical queue
                 // contract, never a videoId derived from an MBID.
-                canonicalServerSearchRows(serverResults, onServerPlay)
+                canonicalServerSearchRows(serverResults, onServerPlay, onServerLongPress)
             }
             if (searchingAddons && query.isNotBlank()) {
-                canonicalServerSearchRows(serverResults, onServerPlay, appleStyle = appleResultTabs)
+                canonicalServerSearchRows(
+                    serverResults, onServerPlay, onServerLongPress,
+                    appleStyle = appleResultTabs,
+                )
             }
             if (!appleResultTabs && searchingCanonical && canonicalDetail == null &&
                 (filter == SearchFilter.ALL || filter == SearchFilter.SONGS) &&
@@ -1064,6 +1069,7 @@ fun canonicalDisplaySubtitle(row: CanonicalCatalogSearchRow, kindLabel: String):
 private fun LazyListScope.canonicalServerSearchRows(
     rows: UiState<List<CanonicalServerSearchRow>>?,
     onPlay: (CanonicalServerSearchRow) -> Unit,
+    onHold: ((CanonicalServerSearchRow) -> Unit)? = null,
     appleStyle: Boolean = false,
 ) {
     val results = (rows as? UiState.Success)?.data.orEmpty()
@@ -1082,6 +1088,7 @@ private fun LazyListScope.canonicalServerSearchRows(
         NativeSearchResultRow(
             row = canonicalServerNativeSearchRowUi(row),
             onClick = { onPlay(row) },
+            onLongPress = onHold?.let { held -> { held(row) } },
         )
         if (!appleStyle) HorizontalDivider(
             modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
