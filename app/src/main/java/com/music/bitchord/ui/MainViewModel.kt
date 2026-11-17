@@ -14,8 +14,8 @@ import com.music.bitchord.auth.adjacentProfile
 import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
-import configuredCanonicalPersonalProviderKeys
-import isCanonicalPersonalProviderCurrentlyAuthorized
+import com.music.bitchord.data.catalog.configuredCanonicalPersonalProviderKeys
+import com.music.bitchord.data.catalog.isCanonicalPersonalProviderCurrentlyAuthorized
 import com.music.bitchord.data.listening.ListeningEventDatabase
 import com.music.bitchord.data.catalog.allowedCanonicalLyricsSources
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
