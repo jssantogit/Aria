@@ -1519,17 +1519,23 @@ class PlaybackService : MediaLibraryService() {
         AudioCache.setUpstream(defaultDataSourceFactory)
         // DsdExtractorsFactory: the stock extractors plus DSF/DFF, which Media3
         // cannot open at all. A DSD file leaves the extractor as float PCM.
-        mediaSourceFactory = SourceScopedMediaSourceFactory(
-            defaultFactory = DefaultMediaSourceFactory(
-                AudioCache.playbackFactory(defaultDataSourceFactory),
-                DsdExtractorsFactory(),
-            ),
-            createSourceFactory = {
-                // The manifest and every HLS/DASH segment for this *one*
-                // MediaItem share an authority ticket. A different item (or
-                // crossfade deck) creates its own session and HTTP factory.
-                // No global CDN URL maps or shared provider identity.
+        // Each logical source must be resolved BEFORE Media3 selects its
+        // progressive/HLS/DASH parser. The preflight runs on an IO coroutine
+        // owned by a single deferred media source, never on ExoPlayer's
+        // playback looper. The winning ticket is then pinned for the complete
+        // manifest/segment lifetime. Relative segment URLs use the real
+        // manifest's HTTP base, not bitchord://source.
+        val buildSourceTransport: (PreparedSourceMediaSelection?) -> MediaSource.Factory =
+            { selected ->
                 val mediaSession = ProviderPlaybackMediaSession()
+                val selectedLease = selected?.playbackLease
+                if (selected != null && selectedLease != null) {
+                    mediaSession.bind(
+                        selectedLease,
+                        selected.resolved.uri.toString(),
+                        selected.resolved.httpRequestHeaders,
+                    )
+                }
                 val scopedResolving = ResolvingDataSource.Factory(
                     ProviderPlaybackByteDataSource.Factory(
                         Http.client, STREAM_CHUNK_BYTES,
@@ -1537,33 +1543,36 @@ class PlaybackService : MediaLibraryService() {
                         requireLease = true,
                     ),
                 ) { spec ->
-                    val resolved = streamResolver.resolveDataSpec(spec)
-                    val authorized = when {
-                        isLogicalSourcePlaybackUri(spec.uri) -> {
+                    if (selected != null) {
+                        // No second provider decision: the physical manifest
+                        // and its segments belong to the preflight winner.
+                        // A source cannot silently change during a crossfade.
+                        mediaSession.withSegmentHeaders(spec)
+                    } else {
+                        // Compatibility fallback for older direct callers:
+                        // normal queue items take the typed preflight path.
+                        val resolved = streamResolver.resolveDataSpec(spec)
+                        if (isLogicalSourcePlaybackUri(spec.uri)) {
                             val lease = resolved.customData as? ProviderPlaybackByteLease
                                 ?: throw java.io.IOException(
                                     "Resolved source lacks a revocable media ticket",
                                 )
-                            // Headers returned with the *winning* manifest
-                            // are inherited only by segments on that exact
-                            // HTTP origin; never leak tokens to a sibling CDN.
                             mediaSession.bind(
-                                lease, resolved.uri.toString(), resolved.httpRequestHeaders,
+                                lease, resolved.uri.toString(),
+                                resolved.httpRequestHeaders,
                             )
-                            resolved
                         }
-                        spec.uri.scheme == "http" || spec.uri.scheme == "https" ->
+                        mediaIdIn(spec.uri)?.let {
+                            StreamContainer.served(it, resolved.uri.toString())
+                        }
+                        AudioCache.recordServed(
+                            spec, resolved.uri.toString(),
+                            (resolved.customData as? ProviderPlaybackByteLease)?.providerKey,
+                        )
+                        if (spec.uri.scheme == "http" || spec.uri.scheme == "https")
                             mediaSession.withSegmentHeaders(resolved)
-                        else -> resolved
+                        else resolved
                     }
-                    mediaIdIn(spec.uri)?.let {
-                        StreamContainer.served(it, authorized.uri.toString())
-                    }
-                    AudioCache.recordServed(
-                        spec, authorized.uri.toString(),
-                        (authorized.customData as? ProviderPlaybackByteLease)?.providerKey,
-                    )
-                    authorized
                 }
                 val sourceDataFactory = DefaultDataSource.Factory(this, scopedResolving)
                 DefaultMediaSourceFactory(
@@ -1575,7 +1584,31 @@ class PlaybackService : MediaLibraryService() {
                     ),
                     DsdExtractorsFactory(),
                 )
+            }
+        mediaSourceFactory = SourceScopedMediaSourceFactory(
+            defaultFactory = DefaultMediaSourceFactory(
+                AudioCache.playbackFactory(defaultDataSourceFactory),
+                DsdExtractorsFactory(),
+            ),
+            createSourceFactory = { buildSourceTransport(null) },
+            preflightSource = { item ->
+                val logical = item.localConfiguration?.uri
+                    ?: throw java.io.IOException("Source item lacks logical URI")
+                val request = DataSpec.Builder().setUri(logical).build()
+                // resolveDataSpec encapsulates the configured provider ladder,
+                // bounded source query and winning EXTENSION_PLAYBACK ticket.
+                // DeferredResolvedSourceMediaSource invokes this on IO.
+                val physical = streamResolver.resolveDataSpec(request)
+                val selected = prepareSourceMediaSelection(item, physical)
+                // Recording provenance occurs once for this logical track.
+                mediaIdIn(logical)?.let { StreamContainer.served(it, physical.uri.toString()) }
+                AudioCache.recordServed(
+                    request, physical.uri.toString(),
+                    selected.playbackLease?.providerKey,
+                )
+                selected
             },
+            createPreparedFactory = buildSourceTransport,
         ).setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())
         // The watch, when it is the speaker, reads tracks through this same chain.
         WearBridge.attachStreams(AudioCache.playbackFactory(defaultDataSourceFactory))
