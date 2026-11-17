@@ -68,7 +68,7 @@ class TrackContextConsistencyTest {
         val recent = read("app/src/main/java/com/music/bitchord/ui/screens/CanonicalLocalRecentAdditions.kt")
         assertFalse(recent.contains("RecentTrackActionsPopup("))
         assertFalse(recent.contains("NativeCompactOverflowMenu("))
-        assertTrue(recent.contains("onTrackHold != null"))
+        assertTrue(recent.contains("onLongClick = onTrackHold?.let"))
     }
 
     @Test fun sourceVerifiedServerSearchHoldUsesGlobalFrostedMenu() {
