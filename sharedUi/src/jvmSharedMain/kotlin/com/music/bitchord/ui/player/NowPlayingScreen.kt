@@ -759,9 +759,9 @@ fun NowPlayingScreen(
     onOverflowAnchorChange: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
     onOpenAlbum: (String) -> Unit,
     /**
-     * Opens an artist's page. [browseId] is null for anyone but the lead credit:
-     * a track carries a channel id for its main artist and nothing for the rest,
-     * so the host resolves those by [name].
+     * Requests navigation to the tapped credit. The Android host verifies
+     * recording ownership in the active source before opening its artist;
+     * a name without a verified ID must never trigger cross-source search.
      */
     onOpenArtist: (browseId: String?, name: String) -> Unit,
     /** Return to the queue-level page named by the caption above the player. */
