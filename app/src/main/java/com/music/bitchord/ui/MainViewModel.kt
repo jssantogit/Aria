@@ -16,6 +16,7 @@ import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderRuntime
+import com.music.bitchord.data.providers.ProviderReadLease
 import com.music.bitchord.data.providers.orderedCatalogProviders
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.configuredCanonicalPersonalProviderKeys
@@ -3054,6 +3055,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         force: Boolean = false,
     ) {
         if (!isCanonicalDiscoverySelected()) return
+        val lease = ProviderReadLease.acquire(
+            ProviderRuntime.gateOrNull(),
+            listOf(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.MUSICBRAINZ,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES,
+            ),
+        )
+        if (lease == null) {
+            appleHomeJob?.cancel()
+            appleHomeEpoch.invalidateAndNext()
+            _appleHomeReleases.value = UiState.Success(emptyList())
+            return
+        }
         val seeds = candidates.asSequence()
             .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP }
             .mapNotNull { row ->
@@ -3066,7 +3080,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .distinctBy { it.title.lowercase(Locale.ROOT) to
                 it.artist.lowercase(Locale.ROOT) }
 .take(64).toList()
-        if (seeds.isEmpty()) return
+        if (seeds.isEmpty()) {
+            appleHomeJob?.cancel()
+            appleHomeEpoch.invalidateAndNext()
+            _appleHomeReleases.value = UiState.Success(emptyList())
+            return
+        }
         val fingerprint = seeds.joinToString(separator = "|") {
             "${it.title.lowercase(Locale.ROOT)}:${it.artist.lowercase(Locale.ROOT)}"
         }
@@ -3088,7 +3107,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     .AppleHomeEditorialDiscovery().discover(
                         seeds, "br", maxProbes = 8,
                         onProgress = { releases ->
-                            if (appleHomeEpoch.isCurrent(generation) &&
+                            if (lease.isCurrent() && appleHomeEpoch.isCurrent(generation) &&
                                 isCanonicalDiscoverySelected()
                             ) _appleHomeReleases.update { state ->
                                 UiState.Success(appleReleasesPreservingVerifiedArtwork(
@@ -3103,7 +3122,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
-            if (!appleHomeEpoch.isCurrent(generation) ||
+            if (!lease.isCurrent() || !appleHomeEpoch.isCurrent(generation) ||
                 !isCanonicalDiscoverySelected()
             ) return@launch
             _appleHomeReleases.value = when (result) {
@@ -3141,7 +3160,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 album.artworkUrl, target,
                             )
                             if (upgraded != null && upgraded != album.artworkUrl &&
-                                appleHomeEpoch.isCurrent(generation) &&
+                                lease.isCurrent() && appleHomeEpoch.isCurrent(generation) &&
                                 isCanonicalDiscoverySelected()
                             ) _appleHomeReleases.update { state ->
                                 if (state !is UiState.Success) state else UiState.Success(
@@ -3155,6 +3174,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+        }.also { job ->
+            val unregister = lease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
     }
 
@@ -3388,6 +3410,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)) {
             return
         }
+        val lease = ProviderReadLease.acquire(
+            ProviderRuntime.gateOrNull(),
+            listOf(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.MUSICBRAINZ,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES,
+            ),
+        )
+        if (lease == null) {
+            appleGenreJob?.cancel()
+            appleGenreEpoch.invalidateAndNext()
+            _appleGenreReleases.update { it + (tag to UiState.Success(emptyList())) }
+            return
+        }
         val seeds = rows.asSequence()
             .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP }
             .mapNotNull { row ->
@@ -3400,6 +3435,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .distinctBy { it.title.lowercase(Locale.ROOT) to
                 it.artist.lowercase(Locale.ROOT) }
 .take(48).toList()
+        if (seeds.isEmpty()) {
+            appleGenreJob?.cancel()
+            appleGenreEpoch.invalidateAndNext()
+            _appleGenreReleases.update { it + (tag to UiState.Success(emptyList())) }
+            return
+        }
         val fingerprint = tag + "|" + seeds.joinToString("|") {
             "${it.title.lowercase(Locale.ROOT)}:${it.artist.lowercase(Locale.ROOT)}"
         }
@@ -3423,8 +3464,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     .AppleExploreGenreDiscovery().discover(
                         tag, seeds, "br",
                         onProgress = { releases ->
-                            if (releases.isNotEmpty() &&
-                                appleGenreEpoch.isCurrent(generation) &&
+                            if (releases.isNotEmpty() && lease.isCurrent() &&
+                                lease.isCurrent() && appleGenreEpoch.isCurrent(generation) &&
                                 appleGenreActiveTag == tag
                             ) _appleGenreReleases.update { state ->
                                 val old = (state[tag] as? UiState.Success)?.data.orEmpty()
@@ -3439,7 +3480,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
-            if (!appleGenreEpoch.isCurrent(generation) ||
+            if (!lease.isCurrent() || !appleGenreEpoch.isCurrent(generation) ||
                 appleGenreActiveTag != tag
             ) return@launch
             _appleGenreReleases.update { old ->
@@ -3478,7 +3519,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 album.artworkUrl, target,
                             )
                             if (upgraded != null && upgraded != album.artworkUrl &&
-                                appleGenreEpoch.isCurrent(generation) &&
+                                lease.isCurrent() && appleGenreEpoch.isCurrent(generation) &&
                                 appleGenreActiveTag == tag
                             ) _appleGenreReleases.update { old ->
                                 val current = old[tag] as? UiState.Success ?: return@update old
@@ -3493,6 +3534,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+        }.also { job ->
+            val unregister = lease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
     }
 
