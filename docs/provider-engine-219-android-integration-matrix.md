@@ -111,3 +111,7 @@ The following changes are code-level cuts, **not** final integration/merge appro
 - Follow-up audit: every HTTP range/segment open now carries the current source configuration scope into its revocable read guard, and the opaque key's embedded provider/instance must match cache provenance. Tests cover scoped logical cache key override, wrong provider identity, and epoch serialization round-trip.
 
 - Playback-variant hardening: the physical root self-index also stores the existing logical source cache partition (mix/stereo and rendition suffix). Offline preflight and open refuse a physical root attributed to the same recording but a different logical playback variant. This preserves the historical Atmos-versus-stereo cache separation.
+
+## Encrypted source preference forward compatibility — 2026-11-17 (exact-HEAD CI required)
+
+A cache-epoch migration may not rewrite a stored source list using only the types that this build can decode. A future SourceKind, extra future fields on a supported source, and corrupted JSON must be preserved without loss. `SourceRegistry.sourcesDocumentPreservingUnknown()` updates decoded source entries, retains unknown JSON entries and fields, discards only recognized retired/removed entries, and refuses to replace a malformed top-level document. All normal registry persistence uses the same lossless merge. Regressions cover future kinds, unknown fields, retired known kinds, malformed JSON and future kinds with colliding IDs. Runtime does **not** enable unknown providers.

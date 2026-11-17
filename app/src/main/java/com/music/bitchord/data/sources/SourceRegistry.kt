@@ -24,7 +24,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import java.util.UUID
 
@@ -122,10 +126,12 @@ object SourceRegistry {
         // a historical preference without this field is migrated once.
         val missingEpoch = rawSources?.let { raw ->
             runCatching {
-                json.parseToJsonElement(raw).jsonArray.any {
-                    !it.jsonObject.containsKey("playbackCacheEpoch")
+                json.parseToJsonElement(raw).jsonArray.any { element ->
+                    (element as? JsonObject)?.let { known ->
+                        !known.containsKey("playbackCacheEpoch")
+                    } ?: false
                 }
-            }.getOrDefault(true)
+            }.getOrDefault(false)
         } ?: false
         val jioOptInMigrationDone = prefs.getBoolean(KEY_JIOSAAVN_OPT_IN_V1, false)
         val after = sourcesForInit(stored, forceJioSaavnOff = !jioOptInMigrationDone)
@@ -136,10 +142,18 @@ object SourceRegistry {
         // opt-out had already happened and silently restore the old on state.
         publish(after, persist = false)
         if (after != stored || !jioOptInMigrationDone || missingEpoch) {
-            prefs.edit()
-                .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), after))
-                .putBoolean(KEY_JIOSAAVN_OPT_IN_V1, true)
-                .apply()
+            // A stored kind introduced by a newer build cannot be decoded by
+            // this version. Retain it verbatim through migration instead of
+            // silently destroying it when adding the cache epoch field.
+            val preserved = sourcesDocumentPreservingUnknown(rawSources, after)
+            if (preserved != null) {
+                prefs.edit()
+                    .putString(KEY_SOURCES, preserved)
+                    .putBoolean(KEY_JIOSAAVN_OPT_IN_V1, true)
+                    .apply()
+            } else {
+                TrackLog.w(TAG, "keeping unreadable source preferences intact")
+            }
         }
     }
 
@@ -182,6 +196,46 @@ object SourceRegistry {
                 .onFailure { TrackLog.w(TAG, "dropping unreadable stored source: ${it.message}") }
                 .getOrNull()
         }
+    }
+
+    /**
+     * Return a lossless persisted source list with updated known entries and
+     * verbatim unknown/future source types. Unknown fields on known entries
+     * survive too. A corrupt top-level document is left untouched (null);
+     * we cannot safely repair it by replacing it with an empty list.
+     *
+     * A returned document never activates unknown kinds: runtime projection
+     * still decodes only supported [SourceConfig] entries.
+     */
+    internal fun sourcesDocumentPreservingUnknown(
+        raw: String?,
+        active: List<SourceConfig>,
+    ): String? {
+        if (raw == null)
+            return json.encodeToString(ListSerializer(SourceConfig.serializer()), active)
+        val elements = runCatching { json.parseToJsonElement(raw).jsonArray }
+            .getOrNull() ?: return null
+        val activeById = active.associateBy(SourceConfig::id)
+        val serializedIds = mutableSetOf<String>()
+        val reservedIds = elements.mapNotNull { (it as? JsonObject)?.get("id")
+            ?.jsonPrimitive?.contentOrNull }.toSet()
+        val preserved = elements.mapNotNull { element ->
+            val decoded = runCatching {
+                json.decodeFromJsonElement(SourceConfig.serializer(), element)
+            }.getOrNull() ?: return@mapNotNull element // Never discard future types.
+            val replacement = activeById[decoded.id] ?: return@mapNotNull null
+            if (!serializedIds.add(decoded.id)) return@mapNotNull null
+            val serialized = json.encodeToJsonElement(
+                SourceConfig.serializer(), replacement,
+            ).jsonObject
+            // Keep additional fields a future release may have introduced.
+            JsonObject((element as? JsonObject).orEmpty() + serialized)
+        }.toMutableList()
+        active.filterNot { it.id in serializedIds || it.id in reservedIds }
+            .forEach { config ->
+                preserved += json.encodeToJsonElement(SourceConfig.serializer(), config)
+            }
+        return JsonArray(preserved).toString()
     }
 
     /**
@@ -512,6 +566,18 @@ object SourceRegistry {
             it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE ||
                 it.kind == SourceKind.MODULE
         }.map { item -> scopeAfterSourceUpdate(previousConfigs[item.id], item) }
+        // Do not erase a corrupt preference document while trying to
+        // persist an unrelated edit. Avoid publishing an in-memory state
+        // that cannot be persisted across process death.
+        val storedDocument = if (persist && ::prefs.isInitialized)
+            sourcesDocumentPreservingUnknown(
+                prefs.getString(KEY_SOURCES, null), activeConfigs,
+            )
+        else null
+        if (persist && ::prefs.isInitialized && storedDocument == null) {
+            TrackLog.w(TAG, "source update refused: persisted document unreadable")
+            return
+        }
         configs.value = activeConfigs
         // Rebuilt against the previous map so that an untouched source keeps
         // the instance it already had, rather than being replaced by an
@@ -560,7 +626,7 @@ object SourceRegistry {
             .forEach { it.release() }
         if (persist && ::prefs.isInitialized) {
             prefs.edit()
-                .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), activeConfigs))
+                .putString(KEY_SOURCES, requireNotNull(storedDocument))
                 .apply()
         }
         if (persist && ProviderRuntime.state?.value?.status == ProviderSessionStatus.READY) {

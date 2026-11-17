@@ -1,0 +1,71 @@
+package com.music.bitchord
+
+import com.music.bitchord.data.sources.SourceConfig
+import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.sources.SourceRegistry
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class SourceRegistryCacheMigrationTest {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private fun known() = SourceConfig(
+        id = "known", kind = SourceKind.ADDON,
+        baseUrl = "https://source.example", enabled = false,
+        playbackCacheEpoch = "persisted-epoch",
+    )
+
+    @Test fun anUnknownFutureSourceSurvivesCacheEpochMigrationVerbatim() {
+        val raw = """[
+          {"id":"known","kind":"ADDON","baseUrl":"https://source.example",
+           "enabled":false,"futurePolicy":{"optOut":true}},
+          {"id":"future","kind":"FUTURE_SERVER","baseUrl":"https://future.example",
+           "futureOptions":{"privateConfig":"preserve-me"}}
+        ]""".trimIndent()
+        val output = requireNotNull(
+            SourceRegistry.sourcesDocumentPreservingUnknown(raw, listOf(known())))
+        val entries = json.parseToJsonElement(output).jsonArray
+        assertEquals(2, entries.size)
+        assertEquals("persisted-epoch",
+            entries[0].jsonObject["playbackCacheEpoch"]?.jsonPrimitive?.content)
+        assertTrue(entries[0].jsonObject.containsKey("futurePolicy"))
+        assertEquals(json.parseToJsonElement(raw).jsonArray[1], entries[1])
+        assertEquals("FUTURE_SERVER", entries[1].jsonObject["kind"]?.jsonPrimitive?.content)
+    }
+
+    @Test fun laterSourceChangesPreserveUnknownEntriesAndRetiredKnownSourcesAreRemoved() {
+        val raw = """[
+          {"id":"old","kind":"YOUTUBE","enabled":true},
+          {"id":"future","kind":"NEXTGEN_SOURCE","opaque":"retain"}
+        ]""".trimIndent()
+        val output = requireNotNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            raw, listOf(known())))
+        val entries = json.parseToJsonElement(output).jsonArray
+        assertEquals(2, entries.size)
+        assertEquals("future", entries[0].jsonObject["id"]?.jsonPrimitive?.content)
+        assertEquals("known", entries[1].jsonObject["id"]?.jsonPrimitive?.content)
+        assertEquals(json.parseToJsonElement(raw).jsonArray[1], entries[0])
+    }
+
+    @Test fun malformedSourceDocumentIsNeverReplacedWithEmptyConfig() {
+        assertNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            """{"not":"an array"}""", emptyList()))
+        assertNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            """not valid json""", listOf(known())))
+    }
+
+    @Test fun aFutureKindWithReusedIdIsPreservedRatherThanOverwritten() {
+        val raw = """[{"id":"known","kind":"FUTURE_SERVER","settings":"future"}]"""
+        val output = requireNotNull(SourceRegistry.sourcesDocumentPreservingUnknown(
+            raw, listOf(known())))
+        val elements = json.parseToJsonElement(output).jsonArray
+        assertEquals(1, elements.size)
+        assertEquals("FUTURE_SERVER", elements[0].jsonObject["kind"]?.jsonPrimitive?.content)
+    }
+}
