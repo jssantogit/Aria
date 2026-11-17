@@ -19,6 +19,8 @@ internal data class OpenSubsonicAccountRecord(
     val authMode: OpenSubsonicAuthMode,
     val username: String = "",
     val ratingScopeId: String = "",
+    /** Opaque catalog identity, not the login secret. Legacy records use blank. */
+    val catalogRealmId: String = "",
     val lastHealthAtEpochSeconds: Long? = null,
     val lastHealthReachable: Boolean? = null,
     val lastServerType: String? = null,
@@ -91,6 +93,9 @@ internal class OpenSubsonicAccountRepository(
             authMode = draft.authMode,
             username = username,
             ratingScopeId = UUID.randomUUID().toString(),
+            // A server, principal or credential edit cannot inherit the old
+            // MediaAsset.provider namespace. Keep accountId and historical rows.
+            catalogRealmId = retainedStatus?.catalogRealmId ?: UUID.randomUUID().toString(),
             lastHealthAtEpochSeconds = retainedStatus?.lastHealthAtEpochSeconds,
             lastHealthReachable = retainedStatus?.lastHealthReachable,
             lastServerType = retainedStatus?.lastServerType,
@@ -129,7 +134,10 @@ internal class OpenSubsonicAccountRepository(
                 secretReplacement = credential,
             ),
             credential = credential,
-        ).copy(ratingScopeId = account.ratingScopeId)
+        ).copy(
+            ratingScopeId = account.ratingScopeId,
+            catalogRealmId = account.catalogRealmId,
+        )
     }
 
     fun savedProvider(): OpenSubsonicProvider? = savedConfig()?.let(::OpenSubsonicProvider)
@@ -194,7 +202,9 @@ internal class OpenSubsonicAccountRepository(
     ): String {
         val changedMode = existing != null && existing.authMode != draft.authMode
         val changedServer = existing != null && existing.serverUrl != normalizedServerUrl(draft.serverUrl)
-        val credentialContextChanged = changedMode || changedServer
+        val changedPrincipal = existing != null && existing.username !=
+            if (draft.authMode == OpenSubsonicAuthMode.PASSWORD) draft.username.trim() else ""
+        val credentialContextChanged = changedMode || changedServer || changedPrincipal
         if (credentialContextChanged && draft.secretReplacement == null) {
             throw IllegalArgumentException(
                 "Enter a new credential when changing the server or authentication mode",
