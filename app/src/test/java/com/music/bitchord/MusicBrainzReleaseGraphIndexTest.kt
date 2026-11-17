@@ -49,7 +49,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val trackZeroRecording = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
             val positiveTrack = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
             val positiveRecording = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-            val graph = MusicBrainzCatalogGraph(MusicBrainzClient(transport = object : MusicBrainzTransport {
+            val graph = MusicBrainzCatalogGraph(authorizedMusicBrainzClient(transport = object : MusicBrainzTransport {
                 override suspend fun get(
                     path: String, parameters: Map<String, String>, userAgent: String,
                 ): String = """{"id":"$release","title":"Synthetic zero-position edition","media":[
@@ -100,7 +100,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val b = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
             val ra = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
             val rb = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
-            val index = MusicBrainzCatalogIndex(db, proofClient = MusicBrainzClient(
+            val index = MusicBrainzCatalogIndex(db, proofClient = authorizedMusicBrainzClient(
                 transport = KtorMusicBrainzTransport(server.url("/ws/2").toString(), http),
                 rateLimiter = MusicBrainzRateLimiter(delayMillis = {}),
             ), cacheRead = ProviderCachedReadAccess.permissiveForUnitTests())
@@ -137,7 +137,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 <recording id="$ra"/></track></track-list></medium></medium-list></release></metadata>
             """.trimIndent()
             var xmlRequests = 0
-            val client = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val client = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     xmlRequests++
                     assertEquals("release/$release", path)
@@ -195,7 +195,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val recordingB = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
             val xml = """<metadata xmlns="http://musicbrainz.org/ns/mmd-2.0#"><release id="$release"><medium-list count="1"><medium><position>1</position><track-list count="1"><track id="$trackA"><position>1</position><recording id="$recordingA"/></track></track-list></medium></medium-list></release></metadata>"""
             var proofRequests = 0
-            val proof = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val proof = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     proofRequests++
                     return xml
@@ -242,7 +242,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val trackB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
             val recording = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
             val xml = """<metadata xmlns="http://musicbrainz.org/ns/mmd-2.0#"><release id="$release"><medium-list count="1"><medium><position>1</position><track-list count="1"><track id="$trackA"><position>1</position><recording id="$recording"/></track></track-list></medium></medium-list></release></metadata>"""
-            val proof = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val proof = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String) = xml
                 override suspend fun getLimited(path: String, parameters: Map<String, String>,
                     userAgent: String, maxResponseBytes: Long) = xml
@@ -277,7 +277,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val ra = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
             val rb = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
             var xmlCalls = 0
-            val client = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val client = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     xmlCalls++
                     error("offline")
@@ -315,7 +315,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val rb = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
             lateinit var index: MusicBrainzCatalogIndex
             val xml = """<metadata xmlns="http://musicbrainz.org/ns/mmd-2.0#"><release id="$release"><medium-list count="1"><medium><position>1</position><track-list count="1"><track id="$a"><position>1</position><recording id="$ra"/></track></track-list></medium></medium-list></release></metadata>"""
-            val client = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val client = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     val dao = db.catalogDao()
                     val row = dao.catalogMusicBrainzTrack(b)!!
@@ -355,7 +355,7 @@ class MusicBrainzReleaseGraphIndexTest {
             // change: this Track still points at the original Recording.
             val xml = """<metadata xmlns="http://musicbrainz.org/ns/mmd-2.0#"><release id="$release"><medium-list count="1"><medium><position>1</position><track-list count="1"><track id="$track"><position>1</position><recording id="$original"/></track></track-list></medium></medium-list></release></metadata>"""
             var xmlRequests = 0
-            val client = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val client = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     xmlRequests++
                     return xml
@@ -397,7 +397,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val original = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
             val replacement = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
             var requests = 0
-            val client = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val client = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     requests++
                     error("XML proof should not be requested")
@@ -430,7 +430,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val recording2 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
             val xml = """<metadata xmlns="http://musicbrainz.org/ns/mmd-2.0#"><release id="$release"><medium-list count="1"><medium><position>1</position><track-list count="1"><track id="$track"><position>1</position><recording id="$recording2"/></track></track-list></medium></medium-list></release></metadata>"""
             var xmlRequests = 0
-            val client = MusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
+            val client = authorizedMusicBrainzClient(object : MusicBrainzTransport, BoundedMusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     xmlRequests++
                     return xml
@@ -600,7 +600,7 @@ class MusicBrainzReleaseGraphIndexTest {
                 )),
             ))
             val cachedBefore = index.cachedRelease(release)!!.tracks
-            val graph = MusicBrainzCatalogGraph(MusicBrainzClient(transport = object : MusicBrainzTransport {
+            val graph = MusicBrainzCatalogGraph(authorizedMusicBrainzClient(transport = object : MusicBrainzTransport {
                 override suspend fun get(
                     path: String, parameters: Map<String, String>, userAgent: String,
                 ): String = """{"id":"$release","title":"Synthetic incomplete refresh","media":[
@@ -634,7 +634,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val explicitLaterRecording = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
             val trackFallback = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
             val trackFallbackRecording = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-            val graph = MusicBrainzCatalogGraph(MusicBrainzClient(transport = object : MusicBrainzTransport {
+            val graph = MusicBrainzCatalogGraph(authorizedMusicBrainzClient(transport = object : MusicBrainzTransport {
                 override suspend fun get(
                     path: String, parameters: Map<String, String>, userAgent: String,
                 ): String = """{"id":"$release","title":"Reordered edition","media":[
@@ -670,7 +670,7 @@ class MusicBrainzReleaseGraphIndexTest {
             val release = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
             val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
             val track = "14f273b6-813b-4239-b0f8-c4b839b902c6"
-            val graph = MusicBrainzCatalogGraph(MusicBrainzClient(transport = object : MusicBrainzTransport {
+            val graph = MusicBrainzCatalogGraph(authorizedMusicBrainzClient(transport = object : MusicBrainzTransport {
                 override suspend fun get(
                     path: String,
                     parameters: Map<String, String>,
