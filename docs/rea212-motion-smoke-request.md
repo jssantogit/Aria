@@ -165,3 +165,10 @@
 
 - O painel ancorado não deve renderizar largura de 1px enquanto `rootSize` ainda está zerado na primeira composição. Usar largura inicial estável de 280dp e só limitar à janela após a medição.
 - Reexecutar os mesmos gates no HEAD que inclui esse ajuste; não reaproveitar o resultado de builds canceladas.
+
+## Solicitação explícita de APK — player / identidade de artista (17/11/2026)
+
+- **Autorização direta do usuário:** “Dispare apk.” Preparar artefato Android universal para instalar e testar a correção de clique no nome do artista (música local → artista local; OpenSubsonic → servidor; catálogo → ID específico) na PR #212.
+- **HEAD de código antes do documento:** `5f9a3288642a45e631beb250b919dfdcd4aae203`. [Android CI #44010894838](https://github.com/jssantogit/BitChord/actions/runs/44010894838) SUCCESS; Desktop #44010894800 e TV/Wear #44010894790 SUCCESS para esse SHA. O novo commit altera **somente este documento** para disparar o workflow branch-scoped.
+- **Execução autorizada:** `Apple Music Bottom Bar · Smoke APK` disparado via push com mudança em `docs/rea212-motion-smoke-request.md`. O workflow deve executar testes focais de avaliação, a suíte Android completa, Automix e sharedUi antes de `assembleDevDebug`; falha em qualquer gate bloqueia o APK. Registrar SHA-256 do universal.
+- **Restrições:** não alterar fontes, não mesclar a PR #212, não publicar release assinada e não declarar smoke físico concluído. A importação de playlists Spotify permanece desativada.
