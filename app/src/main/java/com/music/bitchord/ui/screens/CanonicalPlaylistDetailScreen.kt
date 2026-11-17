@@ -70,9 +70,10 @@ import com.music.bitchord.data.catalog.CanonicalRecordingReleaseGroupLinkRow
 import com.music.bitchord.data.catalog.CatalogReleaseGroupEntity
 import com.music.bitchord.playback.CanonicalCollectionIntentPlanner
 import com.music.bitchord.ui.components.PAGE_GUTTER
-import com.music.bitchord.ui.components.RowMoreButton
-import com.music.bitchord.ui.components.NativeCompactOverflowMenu
 import com.music.bitchord.ui.components.NativeCompactMenuItem
+import com.music.bitchord.ui.components.HeldContextMenu
+import com.music.bitchord.ui.components.HeldItem
+import com.music.bitchord.ui.components.LongPressOrigin
 import com.music.bitchord.ui.components.ActionRow
 import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
 import com.music.bitchord.ui.components.SongRow
@@ -268,7 +269,7 @@ internal fun CanonicalPlaylistTrackRow(
     track: V2DisplayRow,
     onPlay: (String) -> Unit,
     onQueue: ((String, CanonicalCollectionIntent) -> Unit)? = null,
-    onOpenAlbum: (() -> Unit)? = null,
+    onHeldActions: (() -> Unit)? = null,
     titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
     subtitleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
     rowBackground: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.background,
@@ -276,7 +277,6 @@ internal fun CanonicalPlaylistTrackRow(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
-    var menuExpanded by remember(track.id) { mutableStateOf(false) }
     val available = track.isAvailablePlaylistMember()
     val swipeSetting = com.music.bitchord.ui.AppUi.hostOrNull?.swipeToPlayNext
     val playNext = swipeSetting?.collectAsStateWithLifecycle()?.value ?: false
@@ -304,8 +304,8 @@ internal fun CanonicalPlaylistTrackRow(
                 else androidx.compose.ui.graphics.Color.Transparent,
             ),
             onClick = if (available) ({ onPlay(track.id) }) else null,
-            onLongPress = if (available) ({ menuExpanded = true }) else null,
-            onMore = if (available) ({ menuExpanded = true }) else null,
+            onLongPress = if (available) onHeldActions else null,
+            onMore = null,
             opacity = if (available) 1f else 0.45f,
             leading = {
                 NativeDetailTrackArtwork(showPlayingBars = isCurrent && isPlaying) {
@@ -334,28 +334,8 @@ internal fun CanonicalPlaylistTrackRow(
                     color = titleColor,
                 )
             },
-            actions = {
-                if (available) {
-                    Box {
-                        RowMoreButton(
-                            onClick = { menuExpanded = true }, tint = subtitleColor,
-                            contentDescription = "Ações da música",
-                        )
-                        CanonicalTrackActionSheet(
-                            expanded = menuExpanded,
-                            onDismiss = { menuExpanded = false },
-                            onPlay = { onPlay(track.id) },
-                            onPlayNext = onQueue?.let { queue ->
-                                { queue(track.id, CanonicalCollectionIntent.ADD_NEXT) }
-                            },
-                            onAddToQueue = onQueue?.let { queue ->
-                                { queue(track.id, CanonicalCollectionIntent.ADD_TO_QUEUE) }
-                            },
-                            onOpenAlbum = onOpenAlbum,
-                        )
-                    }
-                }
-            },
+            actions = {},
+
         )
     }
 }
@@ -373,22 +353,18 @@ internal fun canonicalPlaylistSwipeIntent(playNext: Boolean): CanonicalCollectio
     else CanonicalCollectionIntent.ADD_TO_QUEUE
 
 /**
- * Track overflow is anchored to its own ⋯, not a full-width Material 3 sheet.
- * The caller provides the real RecordingId-backed actions, never guessed links.
+ * Provider-independent playlist track actions. They are composed inside the
+ * same frosted HeldContextMenu used by local and Navidrome rows, not in a
+ * solid Popup anchored to a now-retired row ellipsis.
  */
 @Composable
-private fun CanonicalTrackActionSheet(
-    expanded: Boolean,
+private fun CanonicalPlaylistHeldTrackActions(
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onPlayNext: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenAlbum: (() -> Unit)?,
 ) {
-    NativeCompactOverflowMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-    ) {
         NativeCompactMenuItem(
             label = "Reproduzir daqui",
             icon = Icons.Rounded.PlayArrow,
@@ -427,7 +403,7 @@ private fun CanonicalTrackActionSheet(
                 },
             )
         }
-    }
+}
 }
 
 /**
@@ -638,10 +614,51 @@ internal fun CanonicalPlaylistDetailScreen(
         (rows?.size ?: 0) <= CanonicalCollectionIntentPlanner.MAX_INPUT_SIZE &&
         rows.orEmpty().all { it.isAvailablePlaylistMember() }
 
+    var heldTrack by remember(card.id) { mutableStateOf<V2DisplayRow?>(null) }
+    var heldTrackOrigin by remember(card.id) { mutableStateOf<HeldItem?>(null) }
+    val dismissHeldTrack: () -> Unit = {
+        heldTrack = null
+        heldTrackOrigin = null
+    }
     NativePlaylistDetailFrame(
         palette = palette,
         listState = listState ?: rememberLazyListState(),
         bottomPadding = contentPadding.calculateBottomPadding(),
+        heldActions = { hazeState ->
+            HeldContextMenu(
+                item = heldTrack,
+                held = heldTrackOrigin,
+                hazeState = hazeState,
+                hostProvidesBlur = true,
+                bottomChromeClearance = 112.dp,
+                plateTint = palette.elevated,
+                onDismiss = dismissHeldTrack,
+                onPreviewClick = { chosen ->
+                    dismissHeldTrack()
+                    onTrackClick(chosen.id)
+                },
+            ) { chosen ->
+                CanonicalPlaylistHeldTrackActions(
+                    onDismiss = dismissHeldTrack,
+                    onPlay = { onTrackClick(chosen.id) },
+                    onPlayNext = {
+                        onTrackQueue(chosen.id, CanonicalCollectionIntent.ADD_NEXT)
+                    },
+                    onAddToQueue = {
+                        onTrackQueue(chosen.id, CanonicalCollectionIntent.ADD_TO_QUEUE)
+                    },
+                    onOpenAlbum = albumByRecording[chosen.id]?.let { group ->
+                        {
+                            onOpenAlbum(
+                                "catalog:RELEASE_GROUP:${group.id}",
+                                group.title,
+                                group.artistDisplay.orEmpty(),
+                            )
+                        }
+                    },
+                )
+            }
+        },
     ) {
         item(key = "playlist-detail-cover") {
             // The same hero frame used by DetailScreen.ReleaseHeader; the
@@ -853,13 +870,12 @@ internal fun CanonicalPlaylistDetailScreen(
                 track = track,
                 onPlay = onTrackClick,
                 onQueue = onTrackQueue,
-                onOpenAlbum = albumByRecording[track.id]?.let { group ->
-                    {
-                        onOpenAlbum(
-                            "catalog:RELEASE_GROUP:${group.id}",
-                            group.title,
-                            group.artistDisplay.orEmpty(),
-                        )
+                onHeldActions = {
+                    // The row's long press records exact native coordinates.
+                    // Without these, never replace a track with a floating popup.
+                    LongPressOrigin.consume()?.let { origin ->
+                        heldTrackOrigin = origin
+                        heldTrack = track
                     }
                 },
                 titleColor = palette.onBackground,
