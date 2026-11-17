@@ -49,4 +49,24 @@ class TrackContextConsistencyTest {
         assertTrue(compact.contains(".longPressMenuClickable("))
         assertFalse(compact.contains("RowMoreButton("))
     }
+    @Test fun searchTrackRowsDoNotMountHiddenLegacyCompactPopup() {
+        val row = read("sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/NativeSearchRow.kt")
+        val results = read("sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/SearchScreen.kt")
+        assertFalse("A search row cannot own a solid popup hidden behind its text",
+            row.contains("NativeCompactOverflowMenu("))
+        assertFalse("Do not open a menu without a source-verified host callback",
+            row.contains("moreExpanded = true"))
+        val server = results.substringAfter("private fun LazyListScope.canonicalServerSearchRows(")
+            .substringBefore("private data class SearchSection")
+        assertFalse("Server results must not open an unrelated play-only popup on hold",
+            server.contains("onMoreActions ="))
+    }
+
+    @Test fun onlineArtistTrackRowsDoNotRetainSolidMetadataPopup() {
+        val artist = read("app/src/main/java/com/music/bitchord/ui/screens/NativeArtistPublicTopSection.kt")
+        val detail = read("app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt")
+        assertFalse(artist.contains("NativeCompactOverflowMenu("))
+        assertFalse(detail.contains("CanonicalMetadataTrackMore("))
+    }
+
 }
