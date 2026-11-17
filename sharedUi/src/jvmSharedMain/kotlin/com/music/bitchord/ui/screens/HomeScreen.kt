@@ -581,9 +581,7 @@ fun CompactTrackRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (onLongPress != null) {
-            RowMoreButton(onClick = onLongPress)
-        }
+        // Song actions are available on hold; collection toolbar ⋮ remains.
     }
 }
 
