@@ -5200,20 +5200,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _canonicalResults.value = UiState.Success(emptyList())
             return
         }
+        fun mayPublish() = catalogPublicationAllowed(
+            permissionGate, permissionTicket,
+            correctSource = _searchSource.value == SearchSource.CANONICAL,
+            correctQuery = _query.value.trim() == query,
+            visibleProvider = _catalogSearchMusicBrainzVisible.value,
+        )
         val searchJob = viewModelScope.launch {
             // Do not wait for the first public HTTP response to paint a previously
             // indexed catalog. A sibling IO task also avoids putting Room work
             // in front of the rate-limited MusicBrainz request.
             launch(Dispatchers.IO) {
                 val cached = canonicalCachedSearchRows(query)
-                if (cached.isNotEmpty() && _searchSource.value == SearchSource.CANONICAL &&
-                    _query.value.trim() == query && _canonicalResults.value is UiState.Loading
+                if (cached.isNotEmpty() && mayPublish() &&
+                    _canonicalResults.value is UiState.Loading
                 ) {
                     val verified = withVerifiedLocalBadges(cached)
-                    if (_searchSource.value == SearchSource.CANONICAL &&
-                        _query.value.trim() == query &&
-                        _canonicalResults.value is UiState.Loading
-                    ) {
+                    if (mayPublish() && _canonicalResults.value is UiState.Loading) {
                         _canonicalResults.value = UiState.Success(verified)
                         reportFirstPaint("search_cache", verified.size)
                     }
@@ -5232,9 +5235,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // three rate-limited requests are still pending. Final results
             // replace this preview after all entity types have been queried.
             if (artists is MusicBrainzCatalogSearchResult.Success &&
-                _searchSource.value == SearchSource.CANONICAL &&
-                _query.value.trim() == query &&
-                artists.page.items.isNotEmpty()
+                mayPublish() && artists.page.items.isNotEmpty()
             ) {
                 val current = (_canonicalResults.value as? UiState.Success)?.data.orEmpty()
                 val fresh = artists.page.items.map { hit ->
@@ -5257,8 +5258,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // to see the verified recording results. These are metadata-only
             // until the final local MediaAsset claim query has completed.
             if (recordings is MusicBrainzCatalogSearchResult.Success &&
-                _searchSource.value == SearchSource.CANONICAL &&
-                _query.value.trim() == query
+                mayPublish()
             ) {
                 val fresh = recordings.page.items
                     .filter(::isCuratedMusicBrainzRecording)
@@ -5284,8 +5284,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 musicBrainzSearch.searchReleaseGroupsForArtistMbid(artistScopeMbid, limit = 15)
             } else musicBrainzSearch.searchReleaseGroups(query, limit = 15)
             if (groups is MusicBrainzCatalogSearchResult.Success &&
-                _searchSource.value == SearchSource.CANONICAL &&
-                _query.value.trim() == query
+                mayPublish()
             ) {
                 val fresh = groups.page.items.filter(::isCuratedMusicBrainzReleaseGroup)
                     .map { hit -> CanonicalCatalogSearchRow(
@@ -5310,11 +5309,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val editions = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchReleasesForArtistMbid(artistScopeMbid, limit = 15)
             } else musicBrainzSearch.searchReleases(query, limit = 15)
-            if (!permissionGate.accept(permissionTicket) ||
-                _searchSource.value != SearchSource.CANONICAL || _query.value.trim() != query
-            ) {
-                return@launch
-            }
+            if (!mayPublish()) return@launch
             if (groups is MusicBrainzCatalogSearchResult.Success) {
                 try {
                     withContext(Dispatchers.IO) {
@@ -5492,9 +5487,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 emptyList()
             }
-            if (_searchSource.value != SearchSource.CANONICAL || _query.value.trim() != query) {
-                return@launch
-            }
+            if (!mayPublish()) return@launch
             val mergedSearchRows = mergeCanonicalSearchRows(rows, cached, failedKinds)
             val editionLabelRows = canonicalSearchRowsWithOfficialEditionTitles(
                 mergedSearchRows,
@@ -5506,11 +5499,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     row.kind != CanonicalSearchKind.RECORDING || canonicalStreamingTitleIsSafe(row.title)
                 }),
             )
-            if (!permissionGate.accept(permissionTicket) ||
-                _searchSource.value != SearchSource.CANONICAL ||
-                _query.value.trim() != query ||
-                !_catalogSearchMusicBrainzVisible.value
-            ) return@launch
+            if (!mayPublish()) return@launch
             _canonicalResults.value =
                 if (failedKinds.size == CanonicalSearchKind.entries.size && combined.isEmpty()) {
                     UiState.Error("MusicBrainz unavailable and no local matches")

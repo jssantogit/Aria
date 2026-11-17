@@ -1237,6 +1237,15 @@ private fun BitChordApp(
         canonicalHomeEditorialSelection.state is UiState.Loading -> UiState.Loading
         else -> UiState.Error("Nenhum lançamento disponível nas fontes editoriais habilitadas.")
     }
+    /** Refresh only the preferred authorized editorial provider; retry
+     * fallback is decided by the same ordered policy after an empty result. */
+    val refreshCanonicalGenreEditorial: (String, Boolean) -> Unit = { tag, force ->
+        when (catalogEditorialOrder.firstOrNull()) {
+            catalogMb -> viewModel.loadCanonicalGenre(tag)
+            catalogApple -> viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
+            else -> Unit
+        }
+    }
     val canonicalGenrePlaylistNotice = publicPlaylistUi.genreNotice
     val activeGenrePlaylists = activeCanonicalGenre?.tag?.let { tag ->
         canonicalPublicPlaylists[tag].orEmpty()
@@ -3934,19 +3943,11 @@ private fun BitChordApp(
                                 )
                             },
                             onRetry = { activeCanonicalGenre?.let {
-                                viewModel.loadCanonicalGenre(it.tag)
-                                viewModel.loadAppleGenreEditorial(
-                                    it.tag, (canonicalGenreResults as? UiState.Success)
-                                        ?.data.orEmpty(), force = true,
-                                )
+                                refreshCanonicalGenreEditorial(it.tag, true)
                             } },
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
                             onRefresh = { activeCanonicalGenre?.let {
-                                viewModel.loadCanonicalGenre(it.tag)
-                                viewModel.loadAppleGenreEditorial(
-                                    it.tag, (canonicalGenreResults as? UiState.Success)
-                                        ?.data.orEmpty(), force = true,
-                                )
+                                refreshCanonicalGenreEditorial(it.tag, true)
                             } },
                             pullState = explorePull,
                             contentPadding = listPadding,
