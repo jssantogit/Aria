@@ -178,11 +178,14 @@ class OpenSubsonicMediaAccessTest {
                 secretReplacement = "new-api-key",
             ),
         )
-        val moved = fixture.access.resolve("asset-canonical") as OpenSubsonicMediaAccessResult.Ready
-        val movedParameters = moved.request.materializeParameters()
-        assertEquals("https://new.example.test/rest/stream.view", moved.request.endpointUrl)
-        assertEquals("new-api-key", movedParameters["apiKey"])
-        assertFalse(movedParameters.values.contains("old-api-key"))
+        // The old MediaAsset is preserved in Room but cannot be played from
+        // the new server just because the local accountId stayed "home".
+        val stale = fixture.access.resolve("asset-canonical") as OpenSubsonicMediaAccessResult.Failure
+        assertEquals(OpenSubsonicMediaAccessFailure.ACCOUNT_MISMATCH, stale.reason)
+        assertTrue(fixture.store.assets.containsKey("asset-canonical"))
+        assertNotEquals(fixture.asset.provider,
+            com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey(
+                fixture.repository.savedConfig()!!))
     }
 
     @Test
