@@ -115,7 +115,7 @@ internal class MusicBrainzDiscogsAppleTitleHintSource(
                 DiscogsSourceOnlyDiscovery.store.activeForArtist(id, nowMillis())
             } else emptyList()
         }.orEmpty().takeIf {
-            discogsTicket != null && gate.accept(discogsTicket)
+            discogsTicket != null && gate?.accept(discogsTicket) == true
         }.orEmpty()
         return AppleArtistTitleHintPolicy.select(
             artistName, groups, discogs, emptyList(),
