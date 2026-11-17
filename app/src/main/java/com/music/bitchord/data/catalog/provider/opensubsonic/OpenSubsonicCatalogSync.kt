@@ -188,14 +188,16 @@ internal object OpenSubsonicCatalogSync {
         )
         val config = accounts.savedConfig() ?: return emptyList()
         if (!provider.matchesSavedConfig(config)) return emptyList()
-        val ticket = OpenSubsonicCapabilityAdmission.open(
-            ProviderCapability.PERSONAL_LIBRARY, config.accountId,
-        ) ?: return emptyList()
-        val rows = CanonicalCatalogDatabase.get(appContext)
-            .catalogDao().providerRows(provider.providerKey)
-        return if (ticket.isCurrent() && provider.matchesSavedConfig(accounts.savedConfig())) {
-            rows
-        } else emptyList()
+        return openSubsonicOwnedCacheRead(
+            accountId = config.accountId,
+            unavailable = emptyList<CanonicalProviderRow>(),
+            realmIsCurrent = {
+                provider.matchesSavedConfig(accounts.savedConfig())
+            },
+        ) {
+            CanonicalCatalogDatabase.get(appContext)
+                .catalogDao().providerRows(provider.providerKey)
+        }
     }
 }
 
