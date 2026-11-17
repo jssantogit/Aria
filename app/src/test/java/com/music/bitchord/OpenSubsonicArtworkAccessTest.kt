@@ -48,7 +48,7 @@ class OpenSubsonicArtworkAccessTest {
         val ready = result as OpenSubsonicArtworkAccessResult.Ready
         assertEquals("recording-canonical", ready.request.recordingId)
         assertEquals("asset-canonical", ready.request.mediaAssetId)
-        assertEquals("opensubsonic:home", ready.request.providerKey)
+        assertEquals(fixture.asset.provider, ready.request.providerKey)
         assertTrue(ready.request.cacheKey.startsWith("opensubsonic-artwork:v1:asset-canonical:"))
         assertEquals(0, fixture.credentials.readCalls)
         assertFalse(ready.request.toString().contains("cover-native"))
@@ -546,7 +546,7 @@ class OpenSubsonicArtworkAccessTest {
         val asset = MediaAssetEntity(
             id = "asset-canonical",
             recordingId = "recording-canonical",
-            provider = "opensubsonic:home",
+            provider = com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey(repository.savedConfig()!!),
             sourceKey = "server-track-native",
             uri = "opensubsonic://asset/home/server-track-native",
             path = null,
