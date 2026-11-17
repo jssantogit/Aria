@@ -6052,14 +6052,8 @@ private fun BitChordApp(
                 BackHandler { showSpotifyImportDialog = false }
                 SpotifyImportAlert(
                     hazeState = hazeState,
-                    // Imported public playlists are device-owned.
-                    onImported = { title, songs ->
-                        val saved = com.music.bitchord.data.spotify.LocalPlaylistStore
-                            .savePlaylist(title, songs)
-                        showQueueNotice(
-                            context.getString(R.string.spotify_import_done, saved.title),
-                        )
-                    },
+                    // Spotify embed data has no verified Recording MBIDs.
+                    // The preview must never create another legacy playlist.
                     onDismiss = { showSpotifyImportDialog = false },
                 )
             }
