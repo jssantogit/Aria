@@ -161,9 +161,8 @@ internal class AppleMusicWebPolicyTransport(
             capability == ProviderCapability.EDITORIAL_DISCOGRAPHY) {
             "Unsupported Apple web provider capability"
         }
-        require(Regex("^/v1/(catalog|editorial)/[a-z]{2}/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$").matches(path) &&
-            !path.contains("..") && !path.contains("//") && path.length <= 1024) {
-            "Unsafe Apple catalog path"
+        require(AppleMusicWebOperationRegistry.allows(capability, path)) {
+            "Apple Web operation is not authorized for capability"
         }
         require(params.size <= 30 && params.all { (name, value) ->
             name.length in 1..100 && value.length <= 4096 &&
@@ -194,7 +193,12 @@ internal class AppleMusicWebPolicyTransport(
                 }
                 var attempt = 1
                 while (response.status != 200) {
-                    val retryAfter = response.headers["Retry-After"]?.toLongOrNull()
+                    val rawRetryAfter = response.headers["Retry-After"]
+                    // Invalid or HTTP-date backoff is not permission to retry
+                    // immediately; fail closed instead of ignoring it.
+                    val retryAfter = rawRetryAfter?.toLongOrNull()
+                    if (rawRetryAfter != null && retryAfter == null)
+                        throw AppleMusicWebHttpException(response.status)
                     val waitMs = retryPolicy.delayFor(response.status, attempt, retryAfter)
                         ?: throw AppleMusicWebHttpException(response.status)
                     if (waitMs > 0) retrySleep(waitMs)
