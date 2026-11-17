@@ -181,8 +181,10 @@ fun SongRow(
     activeTint: Color = MaterialTheme.colorScheme.primary,
     /** Search results use artwork bars instead of the usual current-song icon. */
     searchPlayingStyle: Boolean = false,
-    /** Search hides the trailing ⋯ but still supports long-press actions. */
-    showMoreButton: Boolean = true,
+    /** Track actions belong to long press; no trailing ⋮ in any music source.
+     * Kept as an explicit compatibility opt-in while remaining disabled across
+     * Library, Downloads, History, Search and album details. */
+    showMoreButton: Boolean = false,
     /** True while a Downloads row belongs to the current multi-selection. */
     selected: Boolean = false,
     /**
