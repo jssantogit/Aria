@@ -248,12 +248,15 @@ fun NativeDetailTrackRowFrame(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .alpha(opacity)
-            .background(background)
+            // The capture must own the WHOLE painted row, including its
+            // playback/selection background. Painting that background outside
+            // drawWithContent left a bright strip beneath the held bitmap.
             .then(if (onClick != null || onLongPress != null) {
                 Modifier.longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
                     .contextClick(onMore ?: onLongPress)
-            } else Modifier.contextClick(onMore))
+            } else Modifier)
+            .alpha(opacity)
+            .background(background)
             .padding(horizontal = horizontalInset, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

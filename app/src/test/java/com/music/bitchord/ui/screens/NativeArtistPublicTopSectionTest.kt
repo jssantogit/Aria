@@ -7,8 +7,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import com.music.bitchord.ui.theme.themeArtworkPalette
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -24,7 +24,7 @@ import org.robolectric.annotation.ConscryptMode
 class NativeArtistPublicTopSectionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun metadataOnlyArtistRecordingHasLongPressWithoutPlaybackOrThreeDotMenu() {
+    @Test fun metadataOnlyArtistRecordingIsNotClickableAndOffersMetadataMenu() {
         val artist = "b7ffd2af-418f-4be2-bdd1-22f8b48613da"
         val correct = CanonicalCatalogSearchRow(
             musicBrainzId = "13dd61c7-ce73-4e97-9f0c-9f0e53144411",
@@ -57,10 +57,13 @@ class NativeArtistPublicTopSectionTest {
         compose.onNodeWithText("Canonical recording").assertHasNoClickAction()
         compose.onNodeWithTag("artist-top-more-${correct.musicBrainzId}").assertDoesNotExist()
         compose.onNodeWithTag("artist-top-row-${correct.musicBrainzId}")
-            .performSemanticsAction(SemanticsActions.OnLongClick)
+            .performTouchInput { longClick() }
+        // No metadata-only playback or per-row Popup. The global host owns it.
+        compose.onNodeWithText("Ver no MusicBrainz").assertDoesNotExist()
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
         compose.runOnIdle {
-            assertEquals(emptyList<String>(), opened)
             assertEquals(listOf(correct.musicBrainzId), held)
+            assertEquals(emptyList<String>(), opened)
         }
     }
 

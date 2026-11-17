@@ -3812,6 +3812,11 @@ private fun BitChordApp(
                             onCanonicalTrackPlay = { mbid ->
                                 executeMusicBrainzCatalog(mbid, CanonicalCollectionIntent.PLAY_NOW)
                             },
+                            // The metadata-only hold route has no playback admission.
+                            // REA's unified lifted menu owns final visuals on merge.
+                            onCanonicalTrackHold = { recording ->
+                                communityMetadataRecording = recording
+                            },
                             canonicalPublicTopTracks = if (publicArtistMbid != null &&
                                 artistPublicTop.artistMbid?.equals(publicArtistMbid, ignoreCase = true) == true
                             ) artistPublicTop.rows else emptyList(),
@@ -3826,12 +3831,6 @@ private fun BitChordApp(
                                     recording.musicBrainzId,
                                     CanonicalCollectionIntent.PLAY_NOW,
                                 )
-                            },
-                            // Metadata-only recordings have no tap/play target.
-                            // Holding them opens their existing metadata route
-                            // instead of restoring a forbidden three-dot icon.
-                            onCanonicalPublicTopHold = { recording ->
-                                communityMetadataRecording = recording
                             },
                             canonicalFeaturedRelease = artistFeaturedRelease,
                             onCanonicalFeaturedReleaseOpen = { release ->

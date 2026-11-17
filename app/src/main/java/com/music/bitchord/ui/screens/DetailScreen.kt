@@ -366,11 +366,12 @@ fun DetailScreen(
     /** Source-specific supplemental content inside this single native list. */
     footerContent: LazyListScope.(ArtworkPalette) -> Unit = {},
     onCanonicalTrackPlay: ((String) -> Unit)? = null,
+    /** Same shared lifted metadata action as canonical album recordings. */
+    onCanonicalTrackHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
     /** Verified ListenBrainz order plus independent MusicBrainz recording credits. */
     canonicalPublicTopTracks: List<CanonicalCatalogSearchRow> = emptyList(),
     canonicalPublicTopSampled: Boolean = false,
     onCanonicalPublicTopOpen: ((CanonicalCatalogSearchRow) -> Unit)? = null,
-    onCanonicalPublicTopHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
     /** Verified current MusicBrainz ReleaseGroup, never an inferred local Song. */
     canonicalFeaturedRelease: CanonicalCatalogSearchRow? = null,
     onCanonicalFeaturedReleaseOpen: ((CanonicalCatalogSearchRow) -> Unit)? = null,
@@ -1027,7 +1028,7 @@ fun DetailScreen(
                             palette = palette,
                             sampled = canonicalPublicTopSampled,
                             onRecordingOpen = onCanonicalPublicTopOpen,
-                            onRecordingHold = onCanonicalPublicTopHold,
+                            onRecordingHold = onCanonicalTrackHold,
                         )
                     }
                 } else if (isArtist && (
