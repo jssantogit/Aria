@@ -30,7 +30,8 @@ internal fun selectCatalogEditorial(
     }
     return CatalogEditorialSelection(
         provider = null,
-        state = lastError?.let(UiState::Error) ?: UiState.Success(emptyList()),
+        state = if (lastError != null) UiState.Error(lastError)
+            else UiState.Success(emptyList()),
     )
 }
 
