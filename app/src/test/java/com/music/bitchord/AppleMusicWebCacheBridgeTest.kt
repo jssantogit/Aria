@@ -85,7 +85,7 @@ class AppleMusicWebCacheBridgeTest {
         )) })
         assertNull(tryCache { record(it, outcome = AppleMusicWebOutcome.Unavailable("denied")) })
         assertNull(tryCache { record("other-cache-key") })
-        assertNull(bridge.read(capability, "br", "pt-BR",
+        assertNull(bridge.read<String>(capability, "br", "pt-BR",
             "/us/404", params) { fail("Non-catalog path must never read a cache"); null })
     }
 
