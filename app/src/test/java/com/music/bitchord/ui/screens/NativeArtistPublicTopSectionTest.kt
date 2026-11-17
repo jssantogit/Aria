@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import com.music.bitchord.ui.theme.themeArtworkPalette
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -22,7 +24,7 @@ import org.robolectric.annotation.ConscryptMode
 class NativeArtistPublicTopSectionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun metadataOnlyArtistRecordingIsNotClickableAndOffersMetadataMenu() {
+    @Test fun metadataOnlyArtistRecordingHasLongPressWithoutPlaybackOrThreeDotMenu() {
         val artist = "b7ffd2af-418f-4be2-bdd1-22f8b48613da"
         val correct = CanonicalCatalogSearchRow(
             musicBrainzId = "13dd61c7-ce73-4e97-9f0c-9f0e53144411",
@@ -36,6 +38,7 @@ class NativeArtistPublicTopSectionTest {
             artistScopeMbid = "b7ffd2af-418f-4be2-bdd1-22f8b48613db",
         )
         val opened = mutableListOf<String>()
+        val held = mutableListOf<String>()
         compose.setContent {
             MaterialTheme {
                 NativeArtistPublicTopSection(
@@ -45,15 +48,20 @@ class NativeArtistPublicTopSectionTest {
                     rows = listOf(correct, unrelated),
                     palette = themeArtworkPalette(),
                     onRecordingOpen = { opened += it.musicBrainzId },
+                    onRecordingHold = { held += it.musicBrainzId },
                 )
             }
         }
         compose.onNodeWithText("Canonical recording").assertExists()
         compose.onNodeWithText("Other identity").assertDoesNotExist()
         compose.onNodeWithText("Canonical recording").assertHasNoClickAction()
-        compose.onNodeWithTag("artist-top-more-${correct.musicBrainzId}").performClick()
-        compose.onNodeWithText("Ver no MusicBrainz").assertExists()
-        compose.runOnIdle { assertEquals(emptyList<String>(), opened) }
+        compose.onNodeWithTag("artist-top-more-${correct.musicBrainzId}").assertDoesNotExist()
+        compose.onNodeWithTag("artist-top-row-${correct.musicBrainzId}")
+            .performSemanticsAction(SemanticsActions.OnLongClick)
+        compose.runOnIdle {
+            assertEquals(emptyList<String>(), opened)
+            assertEquals(listOf(correct.musicBrainzId), held)
+        }
     }
 
     @Test fun sampledPopularityUsesTopTracksTitleWithoutTechnicalCaption() {
