@@ -35,6 +35,20 @@ internal fun selectCatalogEditorial(
     )
 }
 
+/**
+ * An unstarted secondary source is EMPTY, never LOADING. For a composite
+ * read the required evidence can itself still be loading. Preserve an
+ * already-attributed success if authorized, but never invent a new request.
+ */
+internal fun compositeEditorialReadState(
+    source: UiState<List<HomeShelf>>,
+    requestCanStart: Boolean,
+): UiState<List<HomeShelf>> = when {
+    source is UiState.Success && source.data.isNotEmpty() -> source
+    !requestCanStart -> UiState.Success(emptyList())
+    else -> source
+}
+
 /** Personal files and authenticated server assets are independent of editorial ordering. */
 internal fun personalHomeShelves(shelves: List<HomeShelf>): List<HomeShelf> =
     shelves.mapNotNull { shelf ->

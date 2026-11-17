@@ -1198,13 +1198,13 @@ private fun BitChordApp(
     val catalogApple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
     val canonicalHomeEditorialSelection = remember(
         canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
-        canonicalWorldwideLoading, canonicalReleasesHeading,
-        canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
+        canonicalWorldwideLoading, canonicalWorldwideReleases,
+        canonicalReleasesHeading, canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
     ) {
         val musicBrainzShelves = com.music.bitchord.ui.musicBrainzHomeEditorialShelves(
             canonicalHomeShelves, canonicalReleasesHeading,
         )
-        val appleState: UiState<List<HomeShelf>> = when (val source = appleHomeReleases) {
+        val nativeAppleState: UiState<List<HomeShelf>> = when (val source = appleHomeReleases) {
             is UiState.Success -> UiState.Success(
                 com.music.bitchord.ui.appleFirstHomeShelves(
                     appleAlbums = source.data,
@@ -1217,6 +1217,12 @@ private fun BitChordApp(
             UiState.Loading -> UiState.Loading
             is UiState.Error -> source
         }
+        val appleState = com.music.bitchord.ui.compositeEditorialReadState(
+            nativeAppleState,
+            requestCanStart = catalogEditorialOrder.firstOrNull() == catalogApple &&
+                catalogMb in catalogEditorialOrder &&
+                (canonicalWorldwideLoading || canonicalWorldwideReleases.isNotEmpty()),
+        )
         com.music.bitchord.ui.selectCatalogEditorial(
             catalogEditorialOrder, mapOf(
                 catalogMb to if (canonicalWorldwideLoading && musicBrainzShelves.isEmpty())

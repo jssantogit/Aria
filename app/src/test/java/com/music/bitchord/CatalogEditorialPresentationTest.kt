@@ -4,6 +4,7 @@ import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.ProviderKey
+import com.music.bitchord.ui.compositeEditorialReadState
 import com.music.bitchord.ui.musicBrainzHomeEditorialShelves
 import com.music.bitchord.ui.personalHomeShelves
 import com.music.bitchord.ui.selectCatalogEditorial
@@ -20,6 +21,21 @@ class CatalogEditorialPresentationTest {
             title = "Album", subtitle = "Artist", thumbnailUrl = null,
             videoId = null, browseId = id,
         ))))
+
+    @Test fun unstartedCompositeSourceIsNotAnInfiniteLoadingFallback() {
+        val notScheduled = compositeEditorialReadState(UiState.Loading, false)
+        assertTrue(notScheduled is UiState.Success)
+        assertTrue((notScheduled as UiState.Success).data.isEmpty())
+        assertEquals(UiState.Loading, compositeEditorialReadState(UiState.Loading, true))
+    }
+
+    @Test fun alreadyVerifiedCompositeResultMayRemainARealSecondaryFallback() {
+        val apple = UiState.Success(shelf("itunes:br:album:100"))
+        assertEquals(apple, compositeEditorialReadState(apple, false))
+        assertTrue(compositeEditorialReadState(
+            UiState.Error("missing prerequisite"), false,
+        ) is UiState.Success)
+    }
 
     @Test fun priorityChoosesProviderNativeCardsAndRespectsReorder() {
         val states = mapOf<ProviderKey, UiState<List<HomeShelf>>>(

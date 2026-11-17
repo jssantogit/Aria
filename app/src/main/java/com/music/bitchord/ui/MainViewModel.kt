@@ -3114,7 +3114,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val generation = appleHomeEpoch.next()
         appleHomeFingerprint = fingerprint
         appleHomeLastAttemptAtMs = now
-        if (_appleHomeReleases.value !is UiState.Success) {
+        // A prior empty success is not proof that a *new* Apple attempt has
+        // completed; keep the primary pending until its actual request ends.
+        if ((_appleHomeReleases.value as? UiState.Success)?.data.isNullOrEmpty()) {
             _appleHomeReleases.value = UiState.Loading
         }
         appleHomeJob = viewModelScope.launch(Dispatchers.IO) {
