@@ -54,6 +54,7 @@ internal class OpenSubsonicArtworkAccess(
     private val gateProvider: () -> ProviderPolicyGate? = ProviderRuntime::gateOrNull,
 ) {
     suspend fun resolve(mediaAssetId: String): OpenSubsonicArtworkAccessResult {
+        val accountRevision = OpenSubsonicAccountRevisionClock.current()
         val asset = assets.mediaAsset(mediaAssetId)
             ?: return OpenSubsonicArtworkAccessResult.Failure(
                 OpenSubsonicArtworkAccessFailure.MEDIA_ASSET_NOT_FOUND,
@@ -94,6 +95,11 @@ internal class OpenSubsonicArtworkAccess(
         ) ?: return OpenSubsonicArtworkAccessResult.Failure(
             OpenSubsonicArtworkAccessFailure.NOT_AUTHORIZED,
         )
+        if (OpenSubsonicAccountRevisionClock.current() != accountRevision ||
+            !admission.isCurrent()
+        ) return OpenSubsonicArtworkAccessResult.Failure(
+            OpenSubsonicArtworkAccessFailure.ACCOUNT_MISMATCH,
+        )
         return OpenSubsonicArtworkAccessResult.Ready(
             OpenSubsonicArtworkRequest(
                 recordingId = asset.recordingId,
@@ -105,6 +111,7 @@ internal class OpenSubsonicArtworkAccess(
                 accounts = accounts,
                 saltFactory = saltFactory,
                 capabilityAdmission = admission,
+                initialRevision = accountRevision,
             ),
         )
     }
@@ -130,11 +137,16 @@ internal class OpenSubsonicArtworkRequest internal constructor(
     private val accounts: OpenSubsonicAccountRepository,
     private val saltFactory: () -> String,
     private val capabilityAdmission: OpenSubsonicCapabilityAdmission? = null,
+    private val initialRevision: Long = OpenSubsonicAccountRevisionClock.current(),
 ) {
+    internal fun isCurrent(): Boolean =
+        OpenSubsonicAccountRevisionClock.current() == initialRevision &&
+            (capabilityAdmission?.isCurrent() ?: true)
+
     suspend fun fetch(transport: OpenSubsonicArtworkTransport): OpenSubsonicArtworkFetchResult {
         // Revoke results even when a credential is rotated while HTTP is in flight.
-        val revision = OpenSubsonicAccountRevisionClock.current()
-        if (capabilityAdmission != null && !capabilityAdmission.isCurrent()) {
+        val revision = initialRevision
+        if (!isCurrent()) {
             return OpenSubsonicArtworkFetchResult.AccountMismatch
         }
         // First and only secure-store read in the artwork flow.
@@ -281,12 +293,16 @@ internal class OpenSubsonicArtworkLoader(
             null
         }
         cached?.takeIf { it.isNotEmpty() }?.let {
-            return OpenSubsonicArtworkLoadResult.Ready(it, fromCache = true)
+            return if (request.isCurrent()) OpenSubsonicArtworkLoadResult.Ready(
+                it, fromCache = true,
+            ) else OpenSubsonicArtworkLoadResult.Placeholder("ACCOUNT_MISMATCH")
         }
 
         return when (val fetched = request.fetch(transport)) {
             is OpenSubsonicArtworkFetchResult.Ready -> {
-                if (fetched.bytes.isEmpty()) {
+                if (!request.isCurrent()) {
+                    OpenSubsonicArtworkLoadResult.Placeholder("ACCOUNT_MISMATCH")
+                } else if (fetched.bytes.isEmpty()) {
                     OpenSubsonicArtworkLoadResult.Placeholder("EMPTY_ARTWORK")
                 } else {
                     // Do not publish a stale image when composition/selection
@@ -303,7 +319,9 @@ internal class OpenSubsonicArtworkLoader(
                         )
                         // A valid fetched image must still display on ordinary disk failure.
                     }
-                    OpenSubsonicArtworkLoadResult.Ready(fetched.bytes, fromCache = false)
+                    if (request.isCurrent()) {
+                        OpenSubsonicArtworkLoadResult.Ready(fetched.bytes, fromCache = false)
+                    } else OpenSubsonicArtworkLoadResult.Placeholder("ACCOUNT_MISMATCH")
                 }
             }
             OpenSubsonicArtworkFetchResult.CredentialUnavailable ->
