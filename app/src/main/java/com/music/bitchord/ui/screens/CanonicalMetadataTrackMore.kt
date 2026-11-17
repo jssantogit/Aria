@@ -30,7 +30,6 @@ internal fun CanonicalMetadataTrackMore(
     showButton: Boolean = true,
 ) {
     if (recordingId == null || !isVerifiedCatalogRecordingId(recordingId)) return
-    val context = LocalContext.current.applicationContext
     Box {
         if (showButton) RowMoreButton(
             onClick = onOpen,
@@ -43,6 +42,32 @@ internal fun CanonicalMetadataTrackMore(
             onDismissRequest = onDismiss,
             plateTint = palette.elevated,
         ) {
+            CanonicalMetadataRecordingHeldActions(
+                recordingId = recordingId,
+                title = title,
+                artist = artist,
+                onDismiss = onDismiss,
+                onRate = onRate,
+                onAddToPlaylist = onAddToPlaylist,
+            )
+        }
+    }
+}
+
+/** Actions for a verified catalog RecordingId. May be hosted in the shared
+ * frosted HeldContextMenu, including metadata-only tracks without MediaAsset.
+ * No provider availability or playback is inferred from the MBID. */
+@Composable
+internal fun CanonicalMetadataRecordingHeldActions(
+    recordingId: String,
+    title: String,
+    artist: String,
+    onDismiss: () -> Unit,
+    onRate: (String) -> Unit,
+    onAddToPlaylist: (String, String, String) -> Unit,
+) {
+    if (!isVerifiedCatalogRecordingId(recordingId)) return
+    val context = LocalContext.current.applicationContext
             com.music.bitchord.ui.components.NativeCompactMenuItem(
                 label = "Avaliar faixa",
                 icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.RatingPlain,
@@ -71,6 +96,5 @@ internal fun CanonicalMetadataTrackMore(
                     }
                 },
             )
-        }
-    }
+
 }
