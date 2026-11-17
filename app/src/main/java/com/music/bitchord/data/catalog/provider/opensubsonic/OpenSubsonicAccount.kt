@@ -76,19 +76,28 @@ internal class OpenSubsonicAccountRepository(
         val config = configFor(accountId, draft, credential)
         val normalizedCredential = credentialFrom(config.auth)
         val username = (config.auth as? OpenSubsonicAuth.Password)?.username.orEmpty()
+        // Health/sync describe a specific authenticated server realm. The
+        // account ID is stable for catalog history, but it does not make a
+        // different server or credential's previous diagnostics true.
+        val retainedStatus = existing?.takeIf {
+            it.serverUrl == config.normalizedServerUrl &&
+                it.authMode == draft.authMode &&
+                it.username == username &&
+                draft.secretReplacement == null
+        }
         val record = OpenSubsonicAccountRecord(
             accountId = accountId,
             serverUrl = config.normalizedServerUrl,
             authMode = draft.authMode,
             username = username,
             ratingScopeId = UUID.randomUUID().toString(),
-            lastHealthAtEpochSeconds = existing?.lastHealthAtEpochSeconds,
-            lastHealthReachable = existing?.lastHealthReachable,
-            lastServerType = existing?.lastServerType,
-            lastServerVersion = existing?.lastServerVersion,
-            lastSyncAtEpochSeconds = existing?.lastSyncAtEpochSeconds,
-            lastSyncSucceeded = existing?.lastSyncSucceeded,
-            lastSyncSummary = existing?.lastSyncSummary,
+            lastHealthAtEpochSeconds = retainedStatus?.lastHealthAtEpochSeconds,
+            lastHealthReachable = retainedStatus?.lastHealthReachable,
+            lastServerType = retainedStatus?.lastServerType,
+            lastServerVersion = retainedStatus?.lastServerVersion,
+            lastSyncAtEpochSeconds = retainedStatus?.lastSyncAtEpochSeconds,
+            lastSyncSucceeded = retainedStatus?.lastSyncSucceeded,
+            lastSyncSummary = retainedStatus?.lastSyncSummary,
         )
 
         // Validate everything before either store changes. Invalidate active
