@@ -110,8 +110,9 @@ class LocalFolder(
     /** Downloads only: the releases those files were asked for as — see [LocalGroups.albumsOf]. */
     val collections: List<DownloadedCollection> = emptyList(),
     /**
-     * Downloads only: holding a song or an album selects it, for [onDelete] and
-     * [onUpload] to act on, and the row's ⋮ carries the actions sheet instead.
+     * Downloads only: an explicit selection action enters multiselect for
+     * [onDelete]/[onUpload]. Music-track holds always open normal context actions;
+     * collection holds may continue selecting their grouped tracks.
      */
     val selectable: Boolean = false,
     val onOpenGroup: (LocalGroup) -> Unit,
@@ -150,13 +151,19 @@ class LocalFolderState {
         private set
     var selectedGroups by mutableStateOf<Set<String>>(emptySet())
         private set
-    val selecting: Boolean get() = selectedIds.isNotEmpty()
+    private var selectionMode by mutableStateOf(false)
+    val selecting: Boolean get() = selectionMode || selectedIds.isNotEmpty()
+
+    /** Explicit Downloads selection replaces the old per-song hold gesture. */
+    fun beginSelectionMode() { selectionMode = true }
 
     fun select(song: Song) {
+        selectionMode = true
         selectedIds = selectedIds + song.videoId
     }
 
     fun toggle(song: Song) {
+        selectionMode = true
         selectedIds = if (song.videoId in selectedIds) selectedIds - song.videoId else selectedIds + song.videoId
     }
 
@@ -175,12 +182,14 @@ class LocalFolderState {
     }
 
     fun selectAll(songs: List<Song>) {
+        selectionMode = true
         selectedIds = songs.mapTo(linkedSetOf()) { it.videoId }
     }
 
     fun clear() {
         selectedIds = emptySet()
         selectedGroups = emptySet()
+        selectionMode = false
     }
 }
 
@@ -260,6 +269,24 @@ internal fun LazyListScope.localFolderItems(
         )
     }
 
+    // Downloads retains bulk delete/upload without claiming the music-track
+    // long press. This is a selection control, not a second track-action menu.
+    if (folder.selectable && state.tab == LocalFolderTab.SONGS && songs.isNotEmpty()) {
+        item(key = "folder-track-selection-entry") {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                NativeInlineTextAction(
+                    label = if (state.selecting) "Cancelar seleção" else "Selecionar faixas",
+                    onClick = {
+                        if (state.selecting) state.clear() else state.beginSelectionMode()
+                    },
+                )
+            }
+        }
+    }
+
     val grid = folder.viewType == LibraryViewType.GRID
     val empty = when (state.tab) {
         LocalFolderTab.SONGS -> songs.isEmpty()
@@ -280,13 +307,14 @@ internal fun LazyListScope.localFolderItems(
         return
     }
 
-    // Downloads redefines the hold as "select", so the ⋮ has to carry the
-    // actions sheet itself or the page loses it.
+    // A per-song hold always opens its contextual actions. Downloads selection
+    // is an explicit mode, so removing the trailing ellipsis loses no actions.
     val songClick: (Int) -> Unit = { index ->
         if (state.selecting) state.toggle(songs[index]) else onSongClick(songs, index)
     }
     val songHold: (Song) -> Unit = { song ->
-        if (folder.selectable) state.select(song) else onSongLongPress(song)
+        if (folder.selectable && state.selecting) state.toggle(song)
+        else onSongLongPress(song)
     }
     val groupClick: (LocalGroup) -> Unit = { group ->
         if (state.selecting && group.type != BrowseType.ARTIST) state.toggle(group) else folder.onOpenGroup(group)
@@ -325,7 +353,6 @@ internal fun LazyListScope.localFolderItems(
                     downloadedTint = null,
                     onClick = { songClick(index) },
                     onLongPress = { songHold(song) },
-                    onMore = { onSongLongPress(song) },
                     onSwipeToQueue = { onSongSwipe(song) },
                 )
                 if (index < songs.lastIndex) FolderDivider(palette)
