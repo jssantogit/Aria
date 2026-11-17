@@ -629,7 +629,7 @@ internal fun CanonicalPlaylistDetailScreen(
                 held = heldTrackOrigin,
                 hazeState = hazeState,
                 hostProvidesBlur = true,
-                bottomChromeClearance = 112.dp,
+                bottomChromeClearance = maxOf(154.dp, contentPadding.calculateBottomPadding()),
                 plateTint = palette.elevated,
                 onDismiss = dismissHeldTrack,
                 onPreviewClick = { chosen ->
