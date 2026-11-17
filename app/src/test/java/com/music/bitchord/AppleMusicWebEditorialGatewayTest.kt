@@ -149,4 +149,34 @@ class AppleMusicWebEditorialGatewayTest {
         assertTrue(partial.value.possiblyTruncated)
         assertEquals(listOf("1"), partial.value.tracks.map { it.id })
     }
+
+    @Test fun absentTracksRelationshipCannotBePublishedAsACompleteAlbum() = runBlocking {
+        val gateway = AppleMusicWebEditorialGateway(
+            AppleMusicWebCatalog(AppleMusicWebTransport { _, _, _ ->
+                """{"data":[{"id":"10","type":"albums",
+                    "attributes":{"name":"Pre-release"}}]}"""
+            }), gate(discography),
+        )
+        val result = gateway.album("10", "br")
+        assertTrue(result is ProviderCallResult.Success)
+        val album = (result as ProviderCallResult.Success).value.outcome
+        assertTrue(album is AppleMusicWebOutcome.Partial)
+        val partial = album as AppleMusicWebOutcome.Partial
+        assertTrue(partial.value.possiblyTruncated)
+    }
+
+    @Test fun declaredTrackCountCannotBeSilentlyIgnored() = runBlocking {
+        val gateway = AppleMusicWebEditorialGateway(
+            AppleMusicWebCatalog(AppleMusicWebTransport { _, _, _ ->
+                """{"data":[{"id":"10","type":"albums",
+                    "attributes":{"name":"Two tracks","trackCount":2},
+                    "relationships":{"tracks":{"data":[{"id":"1","type":"songs",
+                        "attributes":{"name":"Only one returned"}}]}}}]}"""
+            }), gate(discography),
+        )
+        val result = gateway.album("10", "br")
+        assertTrue(result is ProviderCallResult.Success)
+        val outcome = (result as ProviderCallResult.Success).value.outcome
+        assertTrue("Observed 1 of 2 tracks must stay partial", outcome is AppleMusicWebOutcome.Partial)
+    }
 }
