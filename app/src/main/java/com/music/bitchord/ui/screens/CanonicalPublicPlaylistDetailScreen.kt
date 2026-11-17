@@ -197,7 +197,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                 bottomChromeClearance = maxOf(154.dp, contentPadding.calculateBottomPadding()),
                 plateTint = palette.elevated,
                 onDismiss = dismissHeldMetadata,
-                onPreviewClick = if (heldMetadataTrack?.first in availableIds) {
+                onPreviewClick = if (heldMetadataTrack?.first?.let { it in availableIds } == true) {
                     { chosen ->
                         dismissHeldMetadata()
                         onVerifiedRecordingPlay(chosen.first)
