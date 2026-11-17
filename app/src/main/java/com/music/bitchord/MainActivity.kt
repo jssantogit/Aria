@@ -3074,57 +3074,60 @@ private fun BitChordApp(
             (heldPublicPlaylistSearchRow != null && heldPublicPlaylistSearchOrigin != null)
         // Keep the page stable while the held bitmap lifts and returns.
         // Re-blurring the whole Activity each frame flashed its content.
+        // This owner is shared by the visible top bar AND its separately
+        // hosted Haze popups. Keep it outside the nested page Box so no
+        // stale page can mount a second row of controls in either layer.
+        val playlistRoute = canonicalPlaylistRoute(
+            showBuilder = showSmartPlaylistBuilder,
+            showLibrary = showPlaylistLibrary,
+        )
+        // Preserve the existing page route and its Back stack. Only
+        // the composited arrival changes for tab-to-tab navigation.
+        val pageRouteKey = when {
+                showSpotify && detail == null -> "spotify"
+                showDiscord -> "discord"
+                showHistory -> "history"
+                // `&& detail == null`: a card opened from the grid
+                // stacks a detail page over it exactly as one opened
+                // from the Library tab does — see
+                // [onLibraryItemClick] — so with both set this must
+                // give way to the `detail != null` branch below it
+                // rather than keep showing the grid underneath.
+                libraryShowAll != null && detail == null -> "library_show_all"
+                showAllLocalRecentAdditions && detail == null -> "local_recent_additions"
+                // When a sub-screen overlay is active, keep SettingsSheet
+                // mounted so its scroll position survives.  The overlay is
+                // rendered below the AnimatedContent block.
+                settingsSubScreen != null -> "settings"
+                showAccountScrobbling -> "account_scrobbling"
+                showSources -> "sources"
+                showListenTogether -> "listen_together"
+                showWearOs -> "wear_os"
+                showEqualizer -> "equalizer"
+                // Above Replay, not below it. The top bar's account
+                // button sets `showSettings` from every page including
+                // this one, so with Replay winning the tie the button
+                // was live, hit, and changed nothing on screen.
+                showSettings -> "settings"
+                showReplay -> "replay"
+                // A metadata-only recording opened from an artist
+                // overlays that detail; Back restores the artist intact.
+                communityMetadataRecording != null -> "community_recording:" + communityMetadataRecording!!.musicBrainzId
+                openedPublicPlaylist != null -> "public_playlist:" + openedPublicPlaylist!!.mbid
+                detail != null -> detail.browseId
+                rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
+                showCanonicalMyRatings -> "my_ratings"
+                unifiedLibraryCategory != null -> "unified_library"
+                // The wizard is pushed FROM the playlist category. It must win
+                // over that category while editing or creating a playlist.
+                playlistRoute != null -> playlistRoute
+                else -> "$TAB_KEY$selectedTab"
+            }
+        // AnimatedContent is the route authority. Remembered Library
+        // and Playlist navigation states cannot both draw controls.
+        val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, detail?.browseId)
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                val playlistRoute = canonicalPlaylistRoute(
-                    showBuilder = showSmartPlaylistBuilder,
-                    showLibrary = showPlaylistLibrary,
-                )
-                // Preserve the existing page route and its Back stack. Only
-                // the composited arrival changes for tab-to-tab navigation.
-                val pageRouteKey = when {
-                        showSpotify && detail == null -> "spotify"
-                        showDiscord -> "discord"
-                        showHistory -> "history"
-                        // `&& detail == null`: a card opened from the grid
-                        // stacks a detail page over it exactly as one opened
-                        // from the Library tab does — see
-                        // [onLibraryItemClick] — so with both set this must
-                        // give way to the `detail != null` branch below it
-                        // rather than keep showing the grid underneath.
-                        libraryShowAll != null && detail == null -> "library_show_all"
-                        showAllLocalRecentAdditions && detail == null -> "local_recent_additions"
-                        // When a sub-screen overlay is active, keep SettingsSheet
-                        // mounted so its scroll position survives.  The overlay is
-                        // rendered below the AnimatedContent block.
-                        settingsSubScreen != null -> "settings"
-                        showAccountScrobbling -> "account_scrobbling"
-                        showSources -> "sources"
-                        showListenTogether -> "listen_together"
-                        showWearOs -> "wear_os"
-                        showEqualizer -> "equalizer"
-                        // Above Replay, not below it. The top bar's account
-                        // button sets `showSettings` from every page including
-                        // this one, so with Replay winning the tie the button
-                        // was live, hit, and changed nothing on screen.
-                        showSettings -> "settings"
-                        showReplay -> "replay"
-                        // A metadata-only recording opened from an artist
-                        // overlays that detail; Back restores the artist intact.
-                        communityMetadataRecording != null -> "community_recording:" + communityMetadataRecording!!.musicBrainzId
-                        openedPublicPlaylist != null -> "public_playlist:" + openedPublicPlaylist!!.mbid
-                        detail != null -> detail.browseId
-                        rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
-                        showCanonicalMyRatings -> "my_ratings"
-                        unifiedLibraryCategory != null -> "unified_library"
-                        // The wizard is pushed FROM the playlist category. It must win
-                        // over that category while editing or creating a playlist.
-                        playlistRoute != null -> playlistRoute
-                        else -> "$TAB_KEY$selectedTab"
-                    }
-                // AnimatedContent is the route authority. Remembered Library
-                // and Playlist navigation states cannot both draw controls.
-                val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, detail?.browseId)
                 // Root peers use one 150ms content fade, not the previous
                 // 160ms host arrival layered over a second animation. Player,
                 // mini-player and bottom chrome stay outside this content host.
