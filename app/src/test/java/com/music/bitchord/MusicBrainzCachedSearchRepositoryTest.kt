@@ -371,4 +371,70 @@ class MusicBrainzCachedSearchRepositoryTest {
         } finally { db.close() }
     }
 
+    @Test fun offlineHomeEditorialUsesDiscographyNotGeneralSearchAndKeepsOwnedRecordings() =
+        runBlocking {
+            val db = Room.inMemoryDatabaseBuilder(
+                RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+            ).allowMainThreadQueries().build()
+            try {
+                val artistMbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
+                val localMbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+                val editorialOnlyMbid = "3e619ba2-34f0-4649-83d8-05483e2fabe5"
+                val index = MusicBrainzCatalogIndex(
+                    db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(),
+                )
+                index.persistArtists(listOf(
+                    MusicBrainzArtistHit(artistMbid, "ILLIT", null, "KR"),
+                ))
+                val ids = index.persistRecordings(listOf(
+                    MusicBrainzRecordingHit(localMbid, "Magnetic Local", "ILLIT", 160_000L),
+                    MusicBrainzRecordingHit(editorialOnlyMbid, "Magnetic Catalog", "ILLIT", 162_000L),
+                ))
+                db.catalogDao().upsertMediaAsset(
+                    com.music.bitchord.data.catalog.MediaAssetEntity(
+                        "local-home-1", ids.getValue(localMbid),
+                        "local-mediastore", "local-key",
+                        "content://media/external/audio/media/29",
+                        null, null, null, null,
+                    ),
+                )
+                val authority = gate(search = false, discography = true)
+                val cache = MusicBrainzCachedSearchRepository(
+                    db, cacheRead = ProviderCachedReadAccess { authority },
+                )
+                val before = cache.search("", capability =
+                    ProviderCapability.EDITORIAL_DISCOGRAPHY)
+                assertEquals(listOf(artistMbid),
+                    before.artists.map { it.musicBrainzId })
+                assertEquals(setOf(localMbid, editorialOnlyMbid),
+                    before.recordings.map { it.musicBrainzId }.toSet())
+
+                authority.replace(policy(search = true, discography = false))
+                val after = cache.search("", capability =
+                    ProviderCapability.EDITORIAL_DISCOGRAPHY)
+                assertTrue(after.artists.isEmpty())
+                assertTrue(after.groups.isEmpty())
+                assertTrue(after.releases.isEmpty())
+                assertEquals(listOf(localMbid),
+                    after.recordings.map { it.musicBrainzId })
+                assertEquals(setOf(localMbid), after.recordingMbidsWithAssets)
+                // The reverse capability toggle cannot reauthorize Home.
+                assertEquals(listOf(artistMbid),
+                    cache.search("", capability = ProviderCapability.CATALOG_SEARCH)
+                        .artists.map { it.musicBrainzId })
+            } finally { db.close() }
+        }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun personalLibraryPermissionCannotBePassedAsMusicBrainzSearchCacheAuthority() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            MusicBrainzCachedSearchRepository(db).search(
+                "", capability = ProviderCapability.PERSONAL_LIBRARY,
+            )
+        } finally { db.close() }
+    }
+
 }

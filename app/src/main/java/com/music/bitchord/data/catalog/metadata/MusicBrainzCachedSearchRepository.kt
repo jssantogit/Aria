@@ -51,8 +51,10 @@ internal data class MusicBrainzCachedSearchSnapshot(
 /**
  * Provenance-aware Room search repository.
  *
- * - Editorial-only MusicBrainz rows are gated by [ProviderCapability.CATALOG_SEARCH]
- *   and suppressed when MusicBrainz search is disabled or revoked mid-read.
+ * - Editorial-only MusicBrainz rows are gated by the CALLER'S capability:
+ *   [ProviderCapability.CATALOG_SEARCH] for search, or
+ *   [ProviderCapability.EDITORIAL_DISCOGRAPHY] for native Home/discography.
+ *   Neither capability silently inherits the other's permission.
  * - Recordings backed by personally owned [MediaAssetEntity] rows
  *   ([CatalogEntryProvenance.LocalOrPersonalAsset]) remain visible through
  *   [CatalogProvenanceFilter] even when MusicBrainz editorial search is turned off,
@@ -86,18 +88,30 @@ internal class MusicBrainzCachedSearchRepository(
         query: String,
         limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
         providerState: StateFlow<ProviderSessionSnapshot>,
-    ): Flow<MusicBrainzCachedSearchSnapshot> =
-        providerState.map { state ->
-            musicBrainz in state.eligible[ProviderCapability.CATALOG_SEARCH].orEmpty()
-        }.distinctUntilChanged().mapLatest { search(query, limits) }
+        capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
+    ): Flow<MusicBrainzCachedSearchSnapshot> {
+        requireSupportedRead(capability)
+        return providerState.map { state ->
+            musicBrainz in state.eligible[capability].orEmpty()
+        }.distinctUntilChanged().mapLatest { search(query, limits, capability) }
+    }
+
+    private fun requireSupportedRead(capability: ProviderCapability) {
+        require(
+            capability == ProviderCapability.CATALOG_SEARCH ||
+                capability == ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        ) { "MusicBrainz cache is search/editorial only" }
+    }
 
     suspend fun search(
         query: String,
         limits: MusicBrainzCachedSearchLimits = MusicBrainzCachedSearchLimits(),
+        capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
     ): MusicBrainzCachedSearchSnapshot {
+        requireSupportedRead(capability)
         val normalized = query.trim()
         val gate = cacheRead.currentGateOrNull()
-        val editorialPermitted = gate?.open(ProviderCapability.CATALOG_SEARCH, musicBrainz) != null
+        val editorialPermitted = gate?.open(capability, musicBrainz) != null
 
         // When MusicBrainz editorial search is disabled (or gate is missing/fail-closed),
         // skip editorial-only artist/group/release queries while preserving recordings
@@ -119,7 +133,7 @@ internal class MusicBrainzCachedSearchRepository(
                 }
                 val scopedRecordings = candidateRecordings.map { hit ->
                     val provenances = buildSet {
-                        add(CatalogEntryProvenance.ProviderEditorial(musicBrainz, ProviderCapability.CATALOG_SEARCH))
+                        add(CatalogEntryProvenance.ProviderEditorial(musicBrainz, capability))
                         if (hit.musicBrainzId in withAssets) {
                             add(CatalogEntryProvenance.LocalOrPersonalAsset)
                         }
@@ -141,7 +155,7 @@ internal class MusicBrainzCachedSearchRepository(
         }
 
         return cacheRead.read(
-            capability = ProviderCapability.CATALOG_SEARCH,
+            capability = capability,
             provider = musicBrainz,
             unavailable = MusicBrainzCachedSearchSnapshot(),
         ) {
