@@ -14,6 +14,7 @@ import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicAuthMod
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicConnectionReport
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicCredentialStore
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicProvider
+import com.music.bitchord.data.catalog.provider.opensubsonic.openSubsonicProviderKey
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -375,6 +376,41 @@ class OpenSubsonicAccountControllerTest {
         )
         assertNull(credentialRotated.lastHealthAtEpochSeconds)
         assertNull(credentialRotated.lastHealthReachable)
+    }
+
+    @Test
+    fun `authenticated catalog realm survives no-op edits but rotates on credential and server edits`() {
+        val accounts = configuredRepository()
+        val first = accounts.current()!!
+        val keyA = openSubsonicProviderKey(accounts.savedConfig()!!)
+        assertTrue(keyA.startsWith("opensubsonic:home"))
+        accounts.save(OpenSubsonicAccountDraft(
+            serverUrl = "https://music.example.test",
+            authMode = OpenSubsonicAuthMode.API_KEY,
+        ))
+        assertEquals(keyA, openSubsonicProviderKey(accounts.savedConfig()!!))
+
+        accounts.save(OpenSubsonicAccountDraft(
+            serverUrl = "https://music.example.test",
+            authMode = OpenSubsonicAuthMode.API_KEY,
+            secretReplacement = "new-auth-realm",
+        ))
+        val keyB = openSubsonicProviderKey(accounts.savedConfig()!!)
+        assertNotEquals(keyA, keyB)
+        accounts.save(OpenSubsonicAccountDraft(
+            serverUrl = "https://elsewhere.example.test",
+            authMode = OpenSubsonicAuthMode.API_KEY,
+            secretReplacement = "elsewhere",
+        ))
+        assertNotEquals(keyB, openSubsonicProviderKey(accounts.savedConfig()!!))
+        accounts.save(OpenSubsonicAccountDraft(
+            serverUrl = "https://music.example.test",
+            authMode = OpenSubsonicAuthMode.API_KEY,
+            secretReplacement = "new-auth-realm",
+        ))
+        // A -> B -> A cannot make stale remote assets from A current.
+        assertNotEquals(keyB, openSubsonicProviderKey(accounts.savedConfig()!!))
+        assertEquals(first.accountId, accounts.current()!!.accountId)
     }
 
     private fun configuredRepository(): OpenSubsonicAccountRepository =
