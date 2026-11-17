@@ -107,3 +107,5 @@ The following changes are code-level cuts, **not** final integration/merge appro
 - A new preparation discards incomplete old HTTP root spans; seeks/range opens of the *same prepared item* may resume that item's own partial spans. Cache LRU removes the resource and its index together. The historical logical cache has a separate non-retroactive account-proof gate.
 - SHA-256 fingerprint calculation moved out of playback into `data.providers` to honor `CanonicalRemotePlaybackTest` / OpenSubsonic separation.
 - Acceptance remains dependent on exact-HEAD CI, real Media3 playback/offline test, detecting remote account rotation outside local configuration (requires provider account revision), and #212/#216 reconciliation. No UI/merge/smoke.
+
+- Follow-up audit: every HTTP range/segment open now carries the current source configuration scope into its revocable read guard, and the opaque key's embedded provider/instance must match cache provenance. Tests cover scoped logical cache key override, wrong provider identity, and epoch serialization round-trip.

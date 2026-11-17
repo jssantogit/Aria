@@ -14,6 +14,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProviderSourceCacheAdmissionTest {
+    private fun assertEqualsCompat(expected: String, actual: String?) =
+        org.junit.Assert.assertEquals(expected, actual)
     private val addon = ProviderKey("addon", "one")
     private val sibling = ProviderKey("custom_module", "two")
 
@@ -206,6 +208,17 @@ class ProviderSourceCacheAdmissionTest {
         assertFalse(isScopedSourcePhysicalCacheKey("source-segment:addon:one:bad-hash"))
         assertFalse(scopedOne.contains("realm-one"))
         assertFalse(scopedOne.contains("shared"))
+        assertTrue(scopedPhysicalKeyBelongsTo(scopedOne, owner))
+        assertFalse(scopedPhysicalKeyBelongsTo(scopedOne,
+            ProviderKey("addon", "different")))
+        assertFalse(scopedPhysicalKeyBelongsTo(scopedOne,
+            ProviderKey("custom_module", "one")))
+        assertEqualsCompat(scopedOne, scopedOfflineSourceCacheKey(
+            "bitchord", "source", scopedOne))
+        assertNull(scopedOfflineSourceCacheKey("https", "cdn.example", scopedOne))
+        assertNull(scopedOfflineSourceCacheKey("bitchord", "watch", scopedOne))
+        assertNull(scopedOfflineSourceCacheKey("bitchord", "source",
+            "https://cdn.example/private-stream"))
     }
 
     @Test fun cacheGenerationRotatesOnServerEditsEvenWhenRestoredToTheOriginalUrl() {
@@ -225,6 +238,15 @@ class ProviderSourceCacheAdmissionTest {
             updated, updated.copy(baseUrl = original.baseUrl))
         assertFalse(restored.playbackCacheEpoch == original.playbackCacheEpoch)
         assertFalse(restored.playbackCacheEpoch == updated.playbackCacheEpoch)
+
+        // Cache ownership must survive a process restart. The registry's
+        // persistence format writes the epoch rather than minting a new one.
+        val json = kotlinx.serialization.json.Json { encodeDefaults = true }
+        val serialized = json.encodeToString(
+            com.music.bitchord.data.sources.SourceConfig.serializer(), original)
+        val persisted = json.decodeFromString(
+            com.music.bitchord.data.sources.SourceConfig.serializer(), serialized)
+        assertEqualsCompat(original.playbackCacheEpoch, persisted.playbackCacheEpoch)
     }
 
 }

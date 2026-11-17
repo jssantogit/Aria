@@ -81,6 +81,21 @@ internal fun isScopedSourcePhysicalCacheKey(key: String?): Boolean =
     key != null && Regex("^source-segment:(addon|custom_module):[^:]{1,128}:[0-9a-f]{64}$")
         .matches(key)
 
+/** Cache key must match the exact owner as well as its persisted metadata. */
+internal fun scopedPhysicalKeyBelongsTo(key: String, owner: ProviderKey): Boolean =
+    isScopedSourcePhysicalCacheKey(key) &&
+        key.startsWith("source-segment:" + owner.providerId + ":" + owner.instanceId + ":")
+
+/** A logical MediaItem can address a verified HTTP cache bucket by opaque key only. */
+internal fun scopedOfflineSourceCacheKey(
+    scheme: String?,
+    authority: String?,
+    requestKey: String?,
+): String? = requestKey?.takeIf {
+    scheme == "bitchord" && authority == "source" &&
+        isScopedSourcePhysicalCacheKey(it)
+}
+
 /**
  * Media3 bypasses the HTTP datasource entirely on an HLS/DASH segment cache
  * hit. The per-media-item ticket is mandatory even when every byte is local.

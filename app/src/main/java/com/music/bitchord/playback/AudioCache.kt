@@ -256,8 +256,9 @@ object AudioCache {
             meta.get(META_MEDIA_ID, null as String?) != mediaId) return false
         val base = cacheKeyBaseOf(mediaId)
         val legacyLogical = key == base || key.startsWith("${base}#")
-        val modernPhysical = isScopedSourcePhysicalCacheKey(key) &&
-            meta.get(META_SOURCE_ROOT, null as String?) == "1"
+        val modernPhysical = scopedPhysicalKeyBelongsTo(
+            key, ProviderKey(owner, instance),
+        ) && meta.get(META_SOURCE_ROOT, null as String?) == "1"
         if (!legacyLogical && !modernPhysical) return false
         val total = ContentMetadata.getContentLength(meta)
         if (total <= 0L || !cache.isCached(key, 0L, total)) return false
@@ -475,8 +476,9 @@ object AudioCache {
         // The verified offline physical byte cache is opened through the
         // logical MediaItem using its opaque customCacheKey. Never restore a
         // signed physical URL or any persisted HTTP authorization header.
-        if (spec.uri.scheme == "bitchord" && spec.uri.authority == "source" &&
-            isScopedSourcePhysicalCacheKey(spec.key)) return requireNotNull(spec.key)
+        scopedOfflineSourceCacheKey(
+            spec.uri.scheme, spec.uri.authority, spec.key,
+        )?.let { return it }
         return spec.uri.getQueryParameter("v")
             // A YouTube id can name several different recordings on disk: the
             // Opus rendition YouTube serves, whatever a source ranked above it
@@ -998,7 +1000,7 @@ object AudioCache {
                 lease: ProviderPlaybackByteLease,
                 scope: String,
             ) {
-                if (!isScopedSourcePhysicalCacheKey(key) || !lease.allowed())
+                if (!scopedPhysicalKeyBelongsTo(key, lease.providerKey) || !lease.allowed())
                     throw IOException("Source root requires active scoped provider")
                 val oldSpans = cache.getCachedSpans(key)
                 if (oldSpans.isNotEmpty()) {
@@ -1139,20 +1141,20 @@ object AudioCache {
                             // Hash both the signed URL and effective headers.
                             // Neither tokens nor secrets appear in plaintext
                             // filenames, cache keys or cache metadata.
+                            val scope = currentSourcePlaybackCacheScope(lease.providerKey)
+                                ?: throw IOException("Source account scope not configured")
                             openingSpec = request.buildUpon().setKey(
                                 providerAdaptiveSegmentCacheKey(
                                     lease.providerKey, request.uri.toString(), request.key,
-                                    request.httpRequestHeaders,
-                                    currentSourcePlaybackCacheScope(lease.providerKey),
+                                    request.httpRequestHeaders, scope,
                                 ),
                             ).build()
+                            cachedSourceScope = scope
                             // Only the winning progressive root creates a
                             // logical recording index. Adaptive manifests and
                             // segments never masquerade as offline audio files.
                             val root = progressiveRoot
                             if (root != null && dataSpec.uri.toString() == root.physicalUrl) {
-                                val scope = currentSourcePlaybackCacheScope(lease.providerKey)
-                                    ?: throw IOException("Provider source scope unavailable")
                                 indexPhysicalProgressiveRoot(
                                     openingSpec.key
                                         ?: throw IOException("Physical source key missing"),
