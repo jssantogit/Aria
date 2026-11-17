@@ -620,7 +620,8 @@ class PlaylistLibraryVisualReuseTest {
         compose.runOnIdle { assertEquals("recording:exact-27", clicked) }
     }
 
-    @Test fun longPressOnCanonicalPlaylistTrackOpensSameMenuAsThreeDots() {
+    @Test fun longPressOnCanonicalPlaylistTrackDelegatesToHeldMenuWithoutDots() {
+        var holds = 0
         compose.setContent {
             CanonicalPlaylistTrackRow(
                 track = V2DisplayRow(
@@ -630,33 +631,42 @@ class PlaylistLibraryVisualReuseTest {
                 ),
                 onPlay = {},
                 onQueue = { _, _ -> },
+                onHeldActions = { holds++ },
             )
         }
         compose.onNodeWithText("Long Press Track").performTouchInput { longClick() }
-        compose.onNodeWithText("Reproduzir daqui").assertExists()
-        compose.onNodeWithText("Adicionar à fila").assertExists()
+        compose.runOnIdle { assertEquals(1, holds) }
+        compose.onNodeWithContentDescription("Ações da música").assertDoesNotExist()
+        compose.onNodeWithText("Reproduzir daqui").assertDoesNotExist()
+        compose.onNodeWithText("Adicionar à fila").assertDoesNotExist()
     }
 
-    @Test fun playlistTrackMenuQueuesOnlyExplicitSelectedCanonicalRecording() {
+    @Test fun heldPlaylistTrackQueueUsesOnlyExplicitSelectedCanonicalRecording() {
         var queued: Pair<String, com.music.bitchord.playback.CanonicalCollectionIntent>? = null
+        val selectedRecordingId = "recording:verified-28"
         compose.setContent {
-            CanonicalPlaylistTrackRow(
-                track = V2DisplayRow(
-                    id = "recording:verified-28", title = "Bubble Gum", artist = "NewJeans",
-                ),
-                onPlay = {},
-                onQueue = { id, intent -> queued = id to intent },
-            )
+            androidx.compose.foundation.layout.Column {
+                CanonicalPlaylistHeldTrackActions(
+                    onDismiss = {},
+                    onPlay = {},
+                    onPlayNext = {
+                        queued = selectedRecordingId to
+                            com.music.bitchord.playback.CanonicalCollectionIntent.ADD_NEXT
+                    },
+                    onAddToQueue = {
+                        queued = selectedRecordingId to
+                            com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE
+                    },
+                    onOpenAlbum = null,
+                )
+            }
         }
-        compose.onNodeWithContentDescription("Ações da música").performClick()
-        compose.waitForIdle()
-        // The native popup is anchored at ⋯ (no Material3 bottom sheet).
-        // Its selected action is the exact queue intent for this RecordingId.
+        compose.onNodeWithContentDescription("Ações da música").assertDoesNotExist()
         compose.onNodeWithText("Adicionar à fila")
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.runOnIdle {
             assertEquals(
-                "recording:verified-28" to
+                selectedRecordingId to
                     com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE,
                 queued,
             )
