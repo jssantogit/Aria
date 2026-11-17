@@ -184,8 +184,20 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
               MetadataCollectionLoad.Error("Não foi possível consultar esta coleção.")
           }
     }
+    var creatingLabels by remember(target) {
+        mutableStateOf<List<CatalogMetadataRecordingLabel>?>(null)
+    }
     var saving by remember(target) { mutableStateOf(false) }
     var error by remember(target) { mutableStateOf<String?>(null) }
+    val pendingCreation = creatingLabels
+    if (pendingCreation != null) {
+        CanonicalMetadataNewPlaylistEditor(
+            labels = pendingCreation,
+            onDismiss = { creatingLabels = null },
+            onSaved = onDismiss,
+        )
+        return
+    }
     PlaylistWizardSheetChrome(
         title = "Adicionar à playlist",
         onClose = onDismiss,
@@ -226,6 +238,11 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
                     if (state.skipped > 0) Text(
                         "${state.skipped} faixas sem Recording MBID não serão importadas.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SettingsRow(
+                        title = "Nova playlist",
+                        subtitle = "Criar uma playlist normal",
+                        onClick = { creatingLabels = state.labels },
                     )
                     if (playlists == null) NativeLoadingSpinner()
                     else if (playlists.orEmpty().isEmpty()) Text(
