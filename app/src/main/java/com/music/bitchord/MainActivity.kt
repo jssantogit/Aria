@@ -2525,6 +2525,9 @@ private fun BitChordApp(
     val currentPlayerArtistTapKey by androidx.compose.runtime.rememberUpdatedState(
         player.song?.queueEntryId to player.song?.videoId,
     )
+    val currentPlayerSheetVisible by androidx.compose.runtime.rememberUpdatedState(
+        showNowPlaying,
+    )
     val playerSong = player.song?.let { current ->
         val extra = links?.takeIf { it.videoId == current.videoId } ?: return@let current
         current.copy(
@@ -2784,8 +2787,9 @@ private fun BitChordApp(
                             .verifiedPlayerSourceOwnedArtist(context, displayedSong)
                         // A slow provider/Room read must not navigate away from
                         // a different track that played while this tap awaited.
-                        if (currentPlayerArtistTapKey !=
-                            (displayedSong.queueEntryId to displayedSong.videoId)
+                        if (!currentPlayerSheetVisible ||
+                            currentPlayerArtistTapKey !=
+                                (displayedSong.queueEntryId to displayedSong.videoId)
                         ) return@launch
                         when (val target = com.music.bitchord.ui.components.planPlayerArtistTapRoute(
                             song = displayedSong,
