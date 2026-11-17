@@ -64,6 +64,13 @@ class TrackContextConsistencyTest {
             server.contains("onMoreActions ="))
     }
 
+    @Test fun recentMusicShelfCannotFallBackToOpaqueTrackActionPopup() {
+        val recent = read("app/src/main/java/com/music/bitchord/ui/screens/CanonicalLocalRecentAdditions.kt")
+        assertFalse(recent.contains("RecentTrackActionsPopup("))
+        assertFalse(recent.contains("NativeCompactOverflowMenu("))
+        assertTrue(recent.contains("onTrackHold != null"))
+    }
+
     @Test fun sourceVerifiedServerSearchHoldUsesGlobalFrostedMenu() {
         val search = read("sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/SearchScreen.kt")
         val host = read("app/src/main/java/com/music/bitchord/MainActivity.kt")
