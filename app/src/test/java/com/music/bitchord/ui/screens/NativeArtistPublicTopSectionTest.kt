@@ -38,6 +38,7 @@ class NativeArtistPublicTopSectionTest {
             artistScopeMbid = "b7ffd2af-418f-4be2-bdd1-22f8b48613db",
         )
         val opened = mutableListOf<String>()
+        val held = mutableListOf<String>()
         compose.setContent {
             MaterialTheme {
                 NativeArtistPublicTopSection(
@@ -47,6 +48,7 @@ class NativeArtistPublicTopSectionTest {
                     rows = listOf(correct, unrelated),
                     palette = themeArtworkPalette(),
                     onRecordingOpen = { opened += it.musicBrainzId },
+                    onRecordingHold = { held += it.musicBrainzId },
                 )
             }
         }
@@ -56,8 +58,13 @@ class NativeArtistPublicTopSectionTest {
         compose.onNodeWithTag("artist-top-more-${correct.musicBrainzId}").assertDoesNotExist()
         compose.onNodeWithTag("artist-top-row-${correct.musicBrainzId}")
             .performTouchInput { longClick() }
-        compose.onNodeWithText("Ver no MusicBrainz").assertExists()
-        compose.runOnIdle { assertEquals(emptyList<String>(), opened) }
+        // No metadata-only playback or per-row Popup. The global host owns it.
+        compose.onNodeWithText("Ver no MusicBrainz").assertDoesNotExist()
+        compose.onNodeWithTag("native-compact-overflow").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(listOf(correct.musicBrainzId), held)
+            assertEquals(emptyList<String>(), opened)
+        }
     }
 
     @Test fun sampledPopularityUsesTopTracksTitleWithoutTechnicalCaption() {
