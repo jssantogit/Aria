@@ -2543,6 +2543,37 @@ private fun BitChordApp(
         }
     }
 
+    // One provider-scoped destination shared by both the Now Playing credit
+    // and the player's ⋮ "Open artist" action. Never convert a local artist
+    // into a public-catalog query, even if its display name is identical.
+    val openVerifiedPlayerArtistInLibrary:
+        (com.music.bitchord.ui.components.SourceOwnedArtistEvidence) -> Unit = { artist ->
+        songActions = null
+        dismissPlayer()
+        viewModel.clearDetail()
+        openedPublicPlaylist = null
+        showAllLocalRecentAdditions = false
+        libraryShowAll = null
+        showReplay = false
+        settingsSubScreen = null
+        showSettings = false
+        selectedTab = TAB_LIBRARY
+        unifiedControls.sourceKey = artist.providerKey
+        unifiedControls.stars = null
+        pinnedLibraryRequest = com.music.bitchord.ui.screens.CanonicalLibraryPin(
+            com.music.bitchord.ui.screens.CanonicalLibrarySelection(
+                com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
+                artist.artistId,
+            ),
+            artist.artistName,
+            "",
+        )
+        unifiedLibrarySearching = false
+        unifiedLibraryBackToken = 0
+        unifiedLibraryCategory =
+            com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
+    }
+
     // The player's whole parameter list, kept apart from the sheet that
     // mounts it so the sheet's own setup reads on its own.
     val nowPlaying: @Composable (Song) -> Unit = { song ->
@@ -2763,30 +2794,7 @@ private fun BitChordApp(
                             sourceOwned = evidence,
                         )) {
                             is com.music.bitchord.ui.components.PlayerArtistTapRoute.SourceOwned -> {
-                                val artist = target.artist
-                                dismissPlayer()
-                                viewModel.clearDetail()
-                                openedPublicPlaylist = null
-                                showAllLocalRecentAdditions = false
-                                libraryShowAll = null
-                                showReplay = false
-                                settingsSubScreen = null
-                                showSettings = false
-                                selectedTab = TAB_LIBRARY
-                                unifiedControls.sourceKey = artist.providerKey
-                                unifiedControls.stars = null
-                                pinnedLibraryRequest = com.music.bitchord.ui.screens.CanonicalLibraryPin(
-                                    com.music.bitchord.ui.screens.CanonicalLibrarySelection(
-                                        com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
-                                        artist.artistId,
-                                    ),
-                                    artist.artistName,
-                                    "",
-                                )
-                                unifiedLibrarySearching = false
-                                unifiedLibraryBackToken = 0
-                                unifiedLibraryCategory =
-                                    com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
+                                openVerifiedPlayerArtistInLibrary(target.artist)
                             }
                             is com.music.bitchord.ui.components.PlayerArtistTapRoute.Catalog -> {
                                 dismissPlayer()
@@ -5746,33 +5754,7 @@ private fun BitChordApp(
                         }
                     },
                     onOpenSourceOwnedArtist = sourceOwnedArtist?.let { artist ->
-                        {
-                            songActions = null
-                            dismissPlayer()
-                            viewModel.clearDetail()
-                            openedPublicPlaylist = null
-                            showAllLocalRecentAdditions = false
-                            libraryShowAll = null
-                            showReplay = false
-                            settingsSubScreen = null
-                            showSettings = false
-                            selectedTab = TAB_LIBRARY
-                            unifiedControls.sourceKey = artist.providerKey
-                            unifiedControls.stars = null
-                            pinnedLibraryRequest =
-                                com.music.bitchord.ui.screens.CanonicalLibraryPin(
-                                    com.music.bitchord.ui.screens.CanonicalLibrarySelection(
-                                        com.music.bitchord.ui.screens.CanonicalLibraryEntityType.ARTIST,
-                                        artist.artistId,
-                                    ),
-                                    artist.artistName,
-                                    "",
-                                )
-                            unifiedLibrarySearching = false
-                            unifiedLibraryBackToken = 0
-                            unifiedLibraryCategory =
-                                com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS
-                        }
+                        { openVerifiedPlayerArtistInLibrary(artist) }
                     },
                     onOpenCanonicalAlbum = { route ->
                         // A verified album need not be visible in the current
