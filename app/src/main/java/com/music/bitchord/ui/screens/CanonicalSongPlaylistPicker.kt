@@ -14,7 +14,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.playback.androidCanonicalQueueResolver
-import com.music.bitchord.ui.components.LocalCanonicalRatingDisplay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,12 +38,13 @@ private sealed interface PlaylistSongProof {
 @Composable
 internal fun CanonicalSongPlaylistPicker(song: Song, onDismiss: () -> Unit) {
     val app = LocalContext.current.applicationContext
-    val cachedRecordingId = LocalCanonicalRatingDisplay.current.recordingIdForSong(song)
     val proof by produceState<PlaylistSongProof>(
         initialValue = PlaylistSongProof.Resolving,
-        key1 = app, key2 = song, key3 = cachedRecordingId,
+        key1 = app, key2 = song,
     ) {
-        val id = if (cachedRecordingId != null) cachedRecordingId else try {
+        // A cached rating/display mapping is not authoritative playlist proof.
+        // Always resolve the exact Recording/MediaAsset/provider tuple afresh.
+        val id = try {
             withContext(Dispatchers.IO) {
                 CanonicalSongFeedbackTarget(androidCanonicalQueueResolver(app)).recordingId(song)
             }
