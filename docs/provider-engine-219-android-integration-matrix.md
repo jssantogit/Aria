@@ -123,3 +123,11 @@ The source connection registry now commits preference changes synchronously **be
 ## Instance-level quarantine reporting (2026-11-17)
 
 `ProviderCapabilitySession.publishSnapshot()` now reports `quarantinedProviders` (capability, provider instance), not only a coarse capability set. When an opt-out commit fails, the revoked provider is visible as quarantined and its sibling remains authorized. A subsequent successful save clears quarantine without reviving the disabled provider. This is headless state only; it does not change the frozen #212 interface.
+
+## Reconciliation of PR #217's previously missing artifacts — 2026-11-17
+
+Compared complete trees and the 55 changed files of the independent draft PR #217 against the present #219. Seven PR #217-only files were missing from #219, including the `MusicBrainzCachedSearchRepository` domain adapter, its Room/provenance tests, HTTP admission tests and the original implementation plan. These files were restored in a reviewed integration, not a blind merge, with new coverage for personally owned MBID recordings in the **reactive** cached search flow.
+
+The restored MusicBrainz cached search repository uses the provider-gated Room boundary for editorial artists, groups, releases and recordings. Once MusicBrainz `CATALOG_SEARCH` is disabled, it instead returns ONLY recordings with actual canonical `MediaAsset` ownership evidence, without erasing their MBIDs or locally owned data. Its reactive observer re-queries the local-only projection after opt-out; defaulting to an empty snapshot would incorrectly hide local audio and is forbidden. A real Room + StateFlow test asserts initial editorial + personal results, opt-out personal-only, reactivation without reimporting the content.
+
+PR #217's end-to-end capability/session, shared MusicBrainz transport cancellation, client admission, provenance unit tests and architecture plan are restored. This does **not** imply that independently diverging implementations are identical: the remaining overlapping files need code-level comparison and the exact final #219 HEAD needs a full new Android CI. Physical device acceptance is explicitly deferred to **after the REA #212 merge**; no UI changes here.
