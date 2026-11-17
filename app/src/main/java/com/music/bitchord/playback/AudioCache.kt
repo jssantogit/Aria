@@ -244,7 +244,7 @@ object AudioCache {
      * Never assign a new winner to existing bytes or accept unknown spans.
      * No network operation occurs here.
      */
-    private fun isVerifiedProgressiveSourceCache(
+    private fun isCompleteRecognizedProgressiveCache(
         key: String,
         meta: ContentMetadata,
         mediaId: String,
@@ -269,6 +269,23 @@ object AudioCache {
             }
         }.getOrNull() ?: return false
         return hasProgressiveAudioSignature(firstBytes)
+    }
+
+    /** Require additional account/endpoint scope beyond legacy instance ID. */
+    private fun isVerifiedProgressiveSourceCache(
+        key: String,
+        meta: ContentMetadata,
+        mediaId: String,
+    ): Boolean {
+        if (!isCompleteRecognizedProgressiveCache(key, meta, mediaId)) return false
+        val owner = ProviderKey(
+            meta.get(META_SOURCE_PROVIDER, null as String?) ?: return false,
+            meta.get(META_SOURCE_INSTANCE, null as String?) ?: return false,
+        )
+        return sourceCacheScopeMatches(
+            meta.get(META_SOURCE_SCOPE, null as String?),
+            currentSourcePlaybackCacheScope(owner),
+        )
     }
 
     /**
@@ -664,14 +681,22 @@ object AudioCache {
             val usedByPlayback = has(META_PLAYBACK) || !analysis
             val played = has(META_PLAYED) || (!analysis && mediaId in playedIds)
             val sourceBacked = spec.uri.authority == "source"
+            val currentScope = sourceOwner?.let(::currentSourcePlaybackCacheScope)
+            // Unknown old spans or a previous account must never acquire
+            // a new winning-provider stamp merely because resolution ran.
+            val safeScope = currentScope?.takeIf { candidate ->
+                cache.getCachedSpans(key).isEmpty() ||
+                    meta.get(META_SOURCE_SCOPE, null as String?) == candidate
+            }
             val tagged = meta.get(META_ORIGIN, null as String?) == origin.name &&
                 meta.get(META_MEDIA_ID, null as String?) == mediaId &&
                 has(META_PLAYBACK) == usedByPlayback &&
                 (usedByPlayback || has(META_ANALYSIS)) &&
                 has(META_PLAYED) == played &&
-                (!sourceBacked || (sourceOwner != null &&
+                (!sourceBacked || (sourceOwner != null && safeScope != null &&
                     meta.get(META_SOURCE_PROVIDER, null as String?) == sourceOwner.providerId &&
-                    meta.get(META_SOURCE_INSTANCE, null as String?) == sourceOwner.instanceId))
+                    meta.get(META_SOURCE_INSTANCE, null as String?) == sourceOwner.instanceId &&
+                    meta.get(META_SOURCE_SCOPE, null as String?) == safeScope))
             // Every re-open — a seek, a continuation fetch — passes through
             // here. Only write when something would actually change.
             if (tagged && (song == null || has(META_TITLE))) return
@@ -684,12 +709,14 @@ object AudioCache {
                         // The logical source id names the queued row, not
                         // necessarily the instance whose bytes actually won.
                         // Persist only that verified winning provider identity.
-                        if (sourceOwner != null) {
+                        if (sourceOwner != null && safeScope != null) {
                             mutations.set(META_SOURCE_PROVIDER, sourceOwner.providerId)
                             mutations.set(META_SOURCE_INSTANCE, sourceOwner.instanceId)
+                            mutations.set(META_SOURCE_SCOPE, safeScope)
                         } else {
                             mutations.remove(META_SOURCE_PROVIDER)
                             mutations.remove(META_SOURCE_INSTANCE)
+                            mutations.remove(META_SOURCE_SCOPE)
                         }
                     }
                     if (usedByPlayback) mutations.set(META_PLAYBACK, "1") else mutations.set(META_ANALYSIS, "1")
@@ -827,7 +854,7 @@ object AudioCache {
                 // Cache retention grants NO playback permission: every later
                 // open still needs a fresh per-instance canonical ticket.
                 if (!analysisOnly && mediaId != null &&
-                    isVerifiedProgressiveSourceCache(key, meta, mediaId)) return@forEach
+                    isCompleteRecognizedProgressiveCache(key, meta, mediaId)) return@forEach
                 runCatching { cache.removeResource(key) }
                     .onSuccess {
                         dropped++
@@ -863,6 +890,7 @@ object AudioCache {
     private const val META_MEDIA_ID = "bc_media_id"
     private const val META_SOURCE_PROVIDER = "bc_source_provider"
     private const val META_SOURCE_INSTANCE = "bc_source_instance"
+    private const val META_SOURCE_SCOPE = "bc_source_scope_v2"
     private const val META_TITLE = "bc_title"
     private const val META_ARTIST = "bc_artist"
     private const val META_ALBUM = "bc_album"
@@ -906,6 +934,7 @@ object AudioCache {
         object : DataSource {
             private var activeDs: DataSource = cacheDs
             private var cachedSourceLease: ProviderPlaybackByteLease? = null
+            private var cachedSourceScope: String? = null
             private var unsubscribeCachedSource: (() -> Unit)? = null
             @Volatile private var cachedSourceRevoked = false
 
@@ -932,12 +961,17 @@ object AudioCache {
                 val meta = cache.getContentMetadata(key)
                 val length = ContentMetadata.getContentLength(meta)
                 val complete = length > 0L && cache.isCached(key, 0L, length)
-                val lease = sourceCacheReadLease(
-                    meta.get(META_SOURCE_PROVIDER, null as String?),
-                    meta.get(META_SOURCE_INSTANCE, null as String?),
-                    complete,
-                    ProviderRuntime.gateOrNull(),
-                )
+                val provider = meta.get(META_SOURCE_PROVIDER, null as String?)
+                val instance = meta.get(META_SOURCE_INSTANCE, null as String?)
+                val scope = meta.get(META_SOURCE_SCOPE, null as String?)
+                val matched = provider != null && instance != null &&
+                    sourceCacheScopeMatches(
+                        scope,
+                        currentSourcePlaybackCacheScope(ProviderKey(provider, instance)),
+                    )
+                val lease = if (matched) sourceCacheReadLease(
+                    provider, instance, complete, ProviderRuntime.gateOrNull(),
+                ) else null
                 if (lease == null) {
                     try {
                         cache.removeResource(key)
@@ -954,6 +988,7 @@ object AudioCache {
                 // MediaSource before Media3 opens any HLS/DASH segment.
                 onSourceCacheLease?.invoke(lease)
                 cachedSourceLease = lease
+                cachedSourceScope = scope
                 unsubscribeCachedSource = lease.onRevoke {
                     cachedSourceRevoked = true
                     runCatching { cacheDs.close() }
@@ -964,12 +999,19 @@ object AudioCache {
             private fun checkCachedSourcePermission() {
                 if (cachedSourceRevoked || cachedSourceLease?.allowed() == false)
                     throw IOException("Cached source playback capability revoked")
+                val leased = cachedSourceLease
+                val stamp = cachedSourceScope
+                if (leased != null && stamp != null &&
+                    !sourceCacheScopeMatches(
+                        stamp, currentSourcePlaybackCacheScope(leased.providerKey),
+                    )) throw IOException("Cached source endpoint or account changed")
             }
 
             private fun releaseCachedLease() {
                 unsubscribeCachedSource?.invoke()
                 unsubscribeCachedSource = null
                 cachedSourceLease = null
+                cachedSourceScope = null
             }
 
             override fun open(dataSpec: DataSpec): Long {

@@ -170,4 +170,49 @@ class ProviderSourceCacheAdmissionTest {
         assertFalse(hasProgressiveAudioSignature(byteArrayOf(0x12, 0x34)))
     }
 
+    @Test fun scopedAudioCacheRejectsUnknownAndRepointedAccounts() {
+        val config = com.music.bitchord.data.sources.SourceConfig(
+            id = "one",
+            kind = com.music.bitchord.data.sources.SourceKind.ADDON,
+            baseUrl = "https://account-one.example",
+            playbackCacheEpoch = "epoch-one",
+        )
+        val owner = ProviderKey("addon", "one")
+        val scope = requireNotNull(sourcePlaybackCacheScope(config, owner))
+        assertTrue(scope.matches(Regex("[0-9a-f]{64}")))
+        assertFalse(scope.contains("account-one"))
+        assertFalse(scope.contains("epoch-one"))
+        assertTrue(sourceCacheScopeMatches(scope, sourcePlaybackCacheScope(config, owner)))
+        assertFalse(sourceCacheScopeMatches(null, scope))
+        assertFalse(sourceCacheScopeMatches("", scope))
+        assertFalse(sourceCacheScopeMatches(scope, null))
+        assertFalse(sourceCacheScopeMatches(scope, sourcePlaybackCacheScope(
+            config.copy(baseUrl = "https://account-two.example"), owner)))
+        assertFalse(sourceCacheScopeMatches(scope, sourcePlaybackCacheScope(
+            config.copy(playbackCacheEpoch = "epoch-two"), owner)))
+        assertTrue(sourceCacheScopeMatches(scope, sourcePlaybackCacheScope(
+            config.copy(label = "Cosmetic name"), owner)))
+        assertNull(sourcePlaybackCacheScope(config, ProviderKey("custom_module", "one")))
+        assertNull(sourcePlaybackCacheScope(config, ProviderKey("addon", "other")))
+    }
+
+    @Test fun cacheGenerationRotatesOnServerEditsEvenWhenRestoredToTheOriginalUrl() {
+        val original = com.music.bitchord.data.sources.SourceConfig(
+            id = "one",
+            kind = com.music.bitchord.data.sources.SourceKind.ADDON,
+            baseUrl = "https://account-one.example",
+            playbackCacheEpoch = "epoch-one",
+        )
+        val cosmetic = com.music.bitchord.data.sources.SourceRegistry.scopeAfterSourceUpdate(
+            original, original.copy(label = "Favorite", enabled = false))
+        assertTrue(cosmetic.playbackCacheEpoch == "epoch-one")
+        val updated = com.music.bitchord.data.sources.SourceRegistry.scopeAfterSourceUpdate(
+            cosmetic, cosmetic.copy(baseUrl = "https://account-two.example"))
+        assertFalse(updated.playbackCacheEpoch == "epoch-one")
+        val restored = com.music.bitchord.data.sources.SourceRegistry.scopeAfterSourceUpdate(
+            updated, updated.copy(baseUrl = original.baseUrl))
+        assertFalse(restored.playbackCacheEpoch == original.playbackCacheEpoch)
+        assertFalse(restored.playbackCacheEpoch == updated.playbackCacheEpoch)
+    }
+
 }

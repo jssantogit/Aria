@@ -90,3 +90,11 @@ The following changes are code-level cuts, **not** final integration/merge appro
 - Such entries are retained through the legacy foreign-cache cleanup, but retention does NOT grant playback permission. At playback, each cache hit is independently reauthorized; if bytes disappear between preflight and open, it fails without a second provider decision or network call.
 - Unknown provenance, incomplete spans, unrecognized containers and HLS/DASH manifests cannot use this offline compatibility route. Older untagged entries are deliberately not trusted and need a fresh online resolution.
 - The normal HLS/DASH physical-URL selection is unchanged, as is the frozen #212 UI. The new HEAD still requires CI and device-level offline acceptance; no merge/smoke is implied.
+
+## Cache ownership and APK version retention — 2026-11-17 (pending CI)
+
+- SourceRegistry now stores an opaque `playbackCacheEpoch` generation in encrypted preferences, migrating missing historical fields. Endpoint/source-kind edits rotate the generation even when the original URL is later restored. Cosmetic edits, reordering, opt-out and canonical projections preserve it.
+- New logical progressive source-cache metadata stores `bc_source_scope_v2`: SHA-256 of provider, instance, kind, base URL and persisted generation. Preflight and cache opens require exact matching stamp; each cached read rechecks scope. An unverified old cache entry cannot be retroactively assigned new provenance after source resolution.
+- Complete old progressive entries with a recorded owner but no scope are *quarantined*, not authorized for offline playback. Their bytes cannot be retroactively proven to belong to the current account. Reauthentication/migration requires trustworthy external evidence.
+- APK version updates no longer wipe the complete AudioCache indiscriminately. Existing retired-watch gate and selective matching invalidation remain.
+- **Still open**: credentials/accounts changed wholly inside an addon/module server with unchanged local config cannot be detected offline; complete isolation requires a provider account-revision/realm contract or fresh authorization. New exact-HEAD CI, Media3/device acceptance and #212/#216 reconciliation remain blockers. No UI changes, smoke or merge.

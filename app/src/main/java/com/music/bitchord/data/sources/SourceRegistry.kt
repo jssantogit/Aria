@@ -25,6 +25,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import java.util.UUID
 
 /**
@@ -56,6 +57,8 @@ data class SourceConfig(
      * already break that. Refreshed whenever the manifest is next read.
      */
     val checkValidLossless: Boolean = false,
+    /** Stored cache generation; rotate when source endpoint/identity changes. */
+    val playbackCacheEpoch: String = UUID.randomUUID().toString(),
 ) {
     /** Whether this source is shut out right now because it needs an output that isn't connected. */
     val awaitsLosslessOutput: Boolean
@@ -113,7 +116,17 @@ object SourceRegistry {
         // Same repair and degradation as AuthStore; see EncryptedPrefs.
         prefs = EncryptedPrefs.open(context, "bitchord_sources", "bitchord_sources_plain")
 
-        val stored = prefs.getString(KEY_SOURCES, null)?.let(::decodeStored) ?: emptyList()
+        val rawSources = prefs.getString(KEY_SOURCES, null)
+        val stored = rawSources?.let(::decodeStored) ?: emptyList()
+        // Default constructor values cannot persist across restarts unless
+        // a historical preference without this field is migrated once.
+        val missingEpoch = rawSources?.let { raw ->
+            runCatching {
+                json.parseToJsonElement(raw).jsonArray.any {
+                    !it.jsonObject.containsKey("playbackCacheEpoch")
+                }
+            }.getOrDefault(true)
+        } ?: false
         val jioOptInMigrationDone = prefs.getBoolean(KEY_JIOSAAVN_OPT_IN_V1, false)
         val after = sourcesForInit(stored, forceJioSaavnOff = !jioOptInMigrationDone)
 
@@ -122,7 +135,7 @@ object SourceRegistry {
         // disabled source, the next launch would otherwise believe the forced
         // opt-out had already happened and silently restore the old on state.
         publish(after, persist = false)
-        if (after != stored || !jioOptInMigrationDone) {
+        if (after != stored || !jioOptInMigrationDone || missingEpoch) {
             prefs.edit()
                 .putString(KEY_SOURCES, json.encodeToString(ListSerializer(SourceConfig.serializer()), after))
                 .putBoolean(KEY_JIOSAAVN_OPT_IN_V1, true)
@@ -481,14 +494,24 @@ object SourceRegistry {
         publish(next, persist = false)
     }
 
+    /** Preserve across projections/toggles; rotate for endpoint edits, even edit-back. */
+    internal fun scopeAfterSourceUpdate(old: SourceConfig?, next: SourceConfig): SourceConfig =
+        when {
+            old == null -> next
+            old.kind == next.kind && old.baseUrl == next.baseUrl ->
+                next.copy(playbackCacheEpoch = old.playbackCacheEpoch)
+            else -> next.copy(playbackCacheEpoch = UUID.randomUUID().toString())
+        }
+
     private fun publish(next: List<SourceConfig>, persist: Boolean = true) {
         // The persisted migration is not the only entry point: a stale editor,
         // legacy projection or restored snapshot can publish a source list.
         // Never construct or persist a retired backend through this path.
+        val previousConfigs = configs.value.associateBy(SourceConfig::id)
         val activeConfigs = next.filterNot {
             it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE ||
                 it.kind == SourceKind.MODULE
-        }
+        }.map { item -> scopeAfterSourceUpdate(previousConfigs[item.id], item) }
         configs.value = activeConfigs
         // Rebuilt against the previous map so that an untouched source keeps
         // the instance it already had, rather than being replaced by an
