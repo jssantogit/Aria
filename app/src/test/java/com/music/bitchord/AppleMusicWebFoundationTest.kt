@@ -72,6 +72,24 @@ class AppleMusicWebFoundationTest {
         assertEquals(listOf("1"), partial.value.tracks.map { it.id })
     }
 
+    @Test fun legacyAlbumValueDoesNotSilentlyDiscardPartialStatus() = runBlocking {
+        val transport = AppleMusicWebTransport { _, path, _ ->
+            if (path.endsWith("/relationships/tracks")) {
+                """{"data":[],"next":"/v1/catalog/br/albums/10/relationships/tracks?offset=4"}"""
+            } else {
+                """{"data":[{"id":"10","type":"albums","attributes":{"name":"Record"},
+                  "relationships":{"tracks":{"data":[{"id":"1","type":"songs","attributes":{"name":"One"}}],
+                  "next":"/v1/catalog/br/albums/10/relationships/tracks?offset=2"}}}]}"""
+            }
+        }
+        try {
+            AppleMusicWebCatalog(transport).album("10", "br")
+            fail("Callers of the non-typed API must not mistake an incomplete album for complete")
+        } catch (_: com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebProtocolException) {
+            // albumOutcome is the opt-in API for the partial tracks.
+        }
+    }
+
     @Test fun blockedAlbumPageDoesNotConvertToSilentPartial() = runBlocking {
         val transport = AppleMusicWebTransport { _, path, _ ->
             if (path.endsWith("/relationships/tracks")) throw AppleMusicWebHttpException(403)
