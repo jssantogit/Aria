@@ -14,6 +14,8 @@ import com.music.bitchord.auth.adjacentProfile
 import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import configuredCanonicalPersonalProviderKeys
+import isCanonicalPersonalProviderCurrentlyAuthorized
 import com.music.bitchord.data.listening.ListeningEventDatabase
 import com.music.bitchord.data.catalog.allowedCanonicalLyricsSources
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogGraph
@@ -3598,16 +3600,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // instead of serially holding back the first Home shelves.
             val remoteDeferred = async(Dispatchers.IO) {
                 try {
-                    val eligibleRemote = com.music.bitchord.data.catalog
-                        .configuredCanonicalPersonalProviderKeys(app)
+                    val eligibleRemote = configuredCanonicalPersonalProviderKeys(app)
                         .filter { it.startsWith("opensubsonic:") || it.startsWith("jellyfin:") }
                     CanonicalCatalogDatabase.get(app).catalogDao()
                         .searchCanonicalRemoteServerAssets(
                             "", limit = 400, providerKeys = eligibleRemote,
                         )
                         .filter {
-                            com.music.bitchord.data.catalog
-                                .isCanonicalPersonalProviderCurrentlyAuthorized(app, it.providerKey)
+                            isCanonicalPersonalProviderCurrentlyAuthorized(app, it.providerKey)
                         }
                         .distinctBy { it.providerKey to it.mediaAssetId }
                         .map { row ->
@@ -5476,15 +5476,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val result: UiState<List<CanonicalServerSearchRow>> = try {
                 val rows = withContext(Dispatchers.IO) {
                     val app = getApplication<Application>()
-                    val eligibleRemote = com.music.bitchord.data.catalog
-                        .configuredCanonicalPersonalProviderKeys(app)
+                    val eligibleRemote = configuredCanonicalPersonalProviderKeys(app)
                         .filter { it.startsWith("opensubsonic:") || it.startsWith("jellyfin:") }
                     CanonicalCatalogDatabase.get(app).catalogDao()
                         .searchCanonicalRemoteServerAssets(
                             query, limit = 250, providerKeys = eligibleRemote,
                         ).filter {
-                            com.music.bitchord.data.catalog
-                                .isCanonicalPersonalProviderCurrentlyAuthorized(app, it.providerKey)
+                            isCanonicalPersonalProviderCurrentlyAuthorized(app, it.providerKey)
                         }
                 }
                 UiState.Success(rows.distinctBy { it.recordingId to it.providerKey }.map { row ->
@@ -5978,8 +5976,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // A Spotify track ID is never a RecordingId and never falls back
             // to the first YouTube result. Ambiguity remains metadata-only.
             val allowedSpotifyProviders = withContext(Dispatchers.IO) {
-                com.music.bitchord.data.catalog
-                    .configuredCanonicalPersonalProviderKeys(getApplication<Application>()).toList()
+                configuredCanonicalPersonalProviderKeys(getApplication<Application>()).toList()
             }
             val gate = Semaphore(SPOTIFY_MATCH_PARALLELISM)
             coroutineScope {
@@ -5995,8 +5992,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                         .spotifyCanonicalAssetCandidates(
                                             track.title, allowedSpotifyProviders,
                                         ).filter {
-                                            com.music.bitchord.data.catalog
-                                                .isCanonicalPersonalProviderCurrentlyAuthorized(
+                                            isCanonicalPersonalProviderCurrentlyAuthorized(
                                                     app, it.providerKey,
                                                 )
                                         }
