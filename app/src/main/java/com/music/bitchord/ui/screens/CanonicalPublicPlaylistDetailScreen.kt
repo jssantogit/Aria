@@ -58,6 +58,9 @@ import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
 import com.music.bitchord.ui.components.NativeDetailTrackArtwork
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.NativeInlineTextAction
+import com.music.bitchord.ui.components.HeldContextMenu
+import com.music.bitchord.ui.components.HeldItem
+import com.music.bitchord.ui.components.LongPressOrigin
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -171,10 +174,48 @@ internal fun CanonicalPublicPlaylistDetailScreen(
     }
     val availableIds = catalogRows.mapTo(HashSet()) { it.id }
     val palette = rememberArtworkPalette(imageUrl = playlist.artworkUrl)
+    var heldMetadataTrack by remember(playlist.mbid) {
+        mutableStateOf<Triple<String, String, String>?>(null)
+    }
+    var heldMetadataOrigin by remember(playlist.mbid) {
+        mutableStateOf<HeldItem?>(null)
+    }
+    val dismissHeldMetadata: () -> Unit = {
+        heldMetadataTrack = null
+        heldMetadataOrigin = null
+    }
     NativePlaylistDetailFrame(
         palette = palette,
         listState = listState,
         bottomPadding = contentPadding.calculateBottomPadding(),
+        heldActions = { hazeState ->
+            HeldContextMenu(
+                item = heldMetadataTrack,
+                held = heldMetadataOrigin,
+                hazeState = hazeState,
+                hostProvidesBlur = true,
+                bottomChromeClearance = 112.dp,
+                plateTint = palette.elevated,
+                onDismiss = dismissHeldMetadata,
+                onPreviewClick = if (heldMetadataTrack?.first in availableIds) {
+                    { chosen ->
+                        dismissHeldMetadata()
+                        onVerifiedRecordingPlay(chosen.first)
+                    }
+                } else null,
+            ) { (recording, title, artist) ->
+                CanonicalMetadataRecordingHeldActions(
+                    recordingId = recording,
+                    title = title,
+                    artist = artist,
+                    onDismiss = dismissHeldMetadata,
+                    onRate = { editingRecording = it },
+                    onAddToPlaylist = { id, label, credit ->
+                        addingRecording = Triple(id, label, credit)
+                    },
+                )
+            }
+        },
     ) {
         item(key = "public-playlist-cover") {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -279,16 +320,19 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                     val playable = recordingId != null && recordingId in availableIds
                     val coverUri = entry.artworkUrl
                         ?: catalogRows.firstOrNull { it.id == recordingId }?.localArtworkUri
-                    var menuExpanded by remember(playlist.mbid, originalIndex) {
-                        mutableStateOf(false)
-                    }
                     NativeDetailTrackRowLayout(
                         onClick = if (playable && recordingId != null)
                             ({ onVerifiedRecordingPlay(recordingId) }) else null,
                         onLongPress = if (recordingId?.let(::isVerifiedCatalogRecordingId) == true)
-                            ({ menuExpanded = true }) else null,
-                        onMore = if (recordingId?.let(::isVerifiedCatalogRecordingId) == true)
-                            ({ menuExpanded = true }) else null,
+                            ({
+                                LongPressOrigin.consume()?.let { origin ->
+                                    heldMetadataOrigin = origin
+                                    heldMetadataTrack = Triple(
+                                        recordingId!!, entry.title, entry.artist,
+                                    )
+                                }
+                            }) else null,
+                        onMore = null,
                         opacity = 1f,
                         leading = {
                             NativeDetailTrackArtwork(showPlayingBars = false) {
@@ -328,22 +372,8 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                         },
                         rating = {},
                         showRatingSlot = false,
-                        actions = {
-                            CanonicalMetadataTrackMore(
-                                recordingId = recordingId,
-                                title = entry.title,
-                                artist = entry.artist,
-                                palette = palette,
-                                expanded = menuExpanded,
-                                onOpen = { menuExpanded = true },
-                                onDismiss = { menuExpanded = false },
-                                onRate = { editingRecording = it },
-                                onAddToPlaylist = { id, title, artist ->
-                                    addingRecording = Triple(id, title, artist)
-                                },
-                                tag = "public-playlist-track-more-$originalIndex",
-                            )
-                        },
+                        actions = {},
+
                     )
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 80.dp),
