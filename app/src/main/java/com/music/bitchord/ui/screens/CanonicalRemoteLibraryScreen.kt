@@ -1367,7 +1367,9 @@ internal fun CanonicalRemoteLibraryScreen(
                         TrackList(
                             tracks = scopedDetailTracks,
                             artworkLoader = artworkLoader,
-                            onTrackPlay = playTrack,                            onTrackEditRating = editRating,
+                            onTrackPlay = playTrack,
+                            onTrackEditRating = editRating,
+                            onTrackOptions = openTrackMenu,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1417,7 +1419,9 @@ internal fun CanonicalRemoteLibraryScreen(
                                 TrackList(
                                     tracks = displayedTracks,
                                     artworkLoader = artworkLoader,
-                                    onTrackPlay = playTrack,                                    onTrackEditRating = editRating,
+                                    onTrackPlay = playTrack,
+                            onTrackEditRating = editRating,
+                            onTrackOptions = openTrackMenu,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
@@ -2103,6 +2107,7 @@ private fun TrackList(
     artworkLoader: OpenSubsonicArtworkLoader,
     onTrackPlay: (CanonicalBrowseTrack) -> Unit,
     onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
+    onTrackOptions: (CanonicalBrowseTrack) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (tracks.isEmpty()) {
@@ -2122,6 +2127,9 @@ private fun TrackList(
                 artworkLoader = artworkLoader,
                 onClick = { onTrackPlay(track) },
                 onEditRating = { onTrackEditRating(track) },
+                onOptions = { onTrackOptions(track) },
+                onLongPress = { onTrackOptions(track) },
+                showInlineOptions = false,
             )
             HorizontalDivider(
                 modifier = Modifier.padding(start = 84.dp),
@@ -2145,7 +2153,7 @@ internal fun CanonicalTrackRow(
     // Only a category's row enters selection on long press; detail pages don't.
     onLongPress: (() -> Unit)? = null,
     compactForArtist: Boolean = false,
-    showInlineOptions: Boolean = true,
+    showInlineOptions: Boolean = false,
     palette: ArtworkPalette? = null,
     albumTrackNumber: Int? = null,
 ) {
@@ -2155,8 +2163,8 @@ internal fun CanonicalTrackRow(
             if (selectionMode && onToggleSelection != null) onToggleSelection()
             else onClick()
         },
-        onLongPress = onLongPress,
-        onMore = onOptions.takeIf { showInlineOptions },
+        onLongPress = if (selectionMode) null else onLongPress ?: onOptions,
+        onMore = null,
         horizontalInset = if (compactForArtist) 0.dp else PAGE_GUTTER,
         modifier = if (compactForArtist) Modifier else Modifier.heightIn(min = 68.dp),
         textGap = if (albumTrackNumber != null) PAGE_GUTTER
