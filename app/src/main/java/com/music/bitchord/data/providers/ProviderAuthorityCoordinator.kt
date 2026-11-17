@@ -17,7 +17,11 @@ import java.util.Locale
  */
 internal class ProviderAuthorityCoordinator(
     private val session: ProviderCapabilitySession,
+    private val openSubsonicAccount: () -> OpenSubsonicProviderAccountState? = { null },
 ) {
+    private fun currentOpenSubsonicAccount(): OpenSubsonicProviderAccountState? =
+        runCatching { openSubsonicAccount() }.getOrNull()
+
     private var lastfmReady = false
     private var listenBrainzReady = false
     private var soulseekReady = false
@@ -42,6 +46,7 @@ internal class ProviderAuthorityCoordinator(
         val cleanedSources = sources.filterNot {
             it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
         }
+        val remoteAccount = currentOpenSubsonicAccount()
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
             ProviderCapabilityRegistry.inventory(
                 sources = cleanedSources,
@@ -51,6 +56,8 @@ internal class ProviderAuthorityCoordinator(
                 itunesImplemented = itunesImplemented,
                 discogsImplemented = discogsImplemented,
                 discogsTokenConfigured = discogsTokenConfigured,
+                openSubsonicAccountId = remoteAccount?.accountId,
+                openSubsonicConfigured = remoteAccount?.credentialAvailable == true,
             ),
         )
         session.refreshDescriptors(descriptors)
@@ -119,6 +126,17 @@ internal class ProviderAuthorityCoordinator(
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = listenBrainzEnabled, order = 1),
         )
         imported.putAll(legacyProviderChoices(lyricsOrder, enabledLyrics, cleanedSources))
+        // Existing configured accounts had a functioning Library and Playback
+        // before this capability was introduced. Import once; later explicit
+        // disabled/empty choices always win over these compatibility defaults.
+        remoteAccount?.let { account ->
+            val key = ProviderKey("opensubsonic", account.accountId)
+            for (capability in listOf(
+                ProviderCapability.PERSONAL_LIBRARY, ProviderCapability.AUDIO_PLAYBACK,
+            )) {
+                imported[capability] = listOf(ProviderChoice(key, enabled = true, order = 0))
+            }
+        }
         // Existing manually configured Soulseek pilot is a separate DOWNLOAD
         // instance. It is initially opt-in, but remains ineligible without a
         // credential and all future explicit opt-outs win over this baseline.
@@ -148,6 +166,7 @@ internal class ProviderAuthorityCoordinator(
     ): Boolean {
         lastfmReady = lastfmConfigured
         listenBrainzReady = listenBrainzConfigured
+        val remoteAccount = currentOpenSubsonicAccount()
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
             ProviderCapabilityRegistry.inventory(
                 sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
@@ -157,6 +176,8 @@ internal class ProviderAuthorityCoordinator(
                 itunesImplemented = itunesReady,
                 discogsImplemented = discogsReady,
                 discogsTokenConfigured = discogsTokenReady,
+                openSubsonicAccountId = remoteAccount?.accountId,
+                openSubsonicConfigured = remoteAccount?.credentialAvailable == true,
             ),
         )
         session.refreshDescriptors(descriptors)
@@ -170,9 +191,13 @@ internal class ProviderAuthorityCoordinator(
         )
     }
 
-    /** Credential changes refresh readiness, never overwrite a saved opt-out. */
-    suspend fun updateSoulseekReadiness(configured: Boolean) {
-        soulseekReady = configured
+    /**
+     * Refresh after account save/forget. Never re-enable a persisted opt-out.
+     * A user explicitly adding the FIRST account can acquire its initial
+     * capability slots; an all-disabled category remains all-disabled.
+     */
+    suspend fun onOpenSubsonicAccountChanged(): Boolean {
+        val remoteAccount = currentOpenSubsonicAccount()
         session.refreshDescriptors(ProviderCapabilityRegistry.descriptorsFrom(
             ProviderCapabilityRegistry.inventory(
                 sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
@@ -182,6 +207,43 @@ internal class ProviderAuthorityCoordinator(
                 itunesImplemented = itunesReady,
                 discogsImplemented = discogsReady,
                 discogsTokenConfigured = discogsTokenReady,
+                openSubsonicAccountId = remoteAccount?.accountId,
+                openSubsonicConfigured = remoteAccount?.credentialAvailable == true,
+            ),
+        ))
+        val account = remoteAccount ?: return true
+        val key = ProviderKey("opensubsonic", account.accountId)
+        for (capability in listOf(
+            ProviderCapability.PERSONAL_LIBRARY, ProviderCapability.AUDIO_PLAYBACK,
+        )) {
+            val saved = session.state.value.configured
+            val current = saved[capability].orEmpty()
+            if (current.any { it.key == key }) continue
+            // Empty persisted list or all-disabled source slots mean an
+            // explicit opt-out, not permission to enable a newly discovered ID.
+            if (capability in saved && current.none { it.enabled }) continue
+            if (!session.update(capability, current + ProviderChoice(
+                key, enabled = true, order = current.size,
+            ))) return false
+        }
+        return true
+    }
+
+    /** Credential changes refresh readiness, never overwrite a saved opt-out. */
+    suspend fun updateSoulseekReadiness(configured: Boolean) {
+        soulseekReady = configured
+        val remoteAccount = currentOpenSubsonicAccount()
+        session.refreshDescriptors(ProviderCapabilityRegistry.descriptorsFrom(
+            ProviderCapabilityRegistry.inventory(
+                sources = com.music.bitchord.data.sources.SourceRegistry.configs.value,
+                lastfmConfigured = lastfmReady,
+                listenBrainzConfigured = listenBrainzReady,
+                soulseekConfigured = soulseekReady,
+                itunesImplemented = itunesReady,
+                discogsImplemented = discogsReady,
+                discogsTokenConfigured = discogsTokenReady,
+                openSubsonicAccountId = remoteAccount?.accountId,
+                openSubsonicConfigured = remoteAccount?.credentialAvailable == true,
             ),
         ))
     }
@@ -190,6 +252,7 @@ internal class ProviderAuthorityCoordinator(
         val cleanedSources = rawSources.filterNot {
             it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
         }
+        val remoteAccount = currentOpenSubsonicAccount()
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(
             ProviderCapabilityRegistry.inventory(
                 sources = cleanedSources,
@@ -199,6 +262,8 @@ internal class ProviderAuthorityCoordinator(
                 itunesImplemented = itunesReady,
                 discogsImplemented = discogsReady,
                 discogsTokenConfigured = discogsTokenReady,
+                openSubsonicAccountId = remoteAccount?.accountId,
+                openSubsonicConfigured = remoteAccount?.credentialAvailable == true,
             ),
         )
         session.refreshDescriptors(descriptors)
