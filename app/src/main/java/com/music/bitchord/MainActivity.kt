@@ -793,6 +793,7 @@ private fun BitChordApp(
     val canonicalTrendingLocalSongs by viewModel.canonicalTrendingLocalSongs.collectAsStateWithLifecycle()
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
+    val catalogEditorialOrder by viewModel.catalogEditorialOrder.collectAsStateWithLifecycle()
     val canonicalWorldwideReleases by viewModel.canonicalWorldwideReleases.collectAsStateWithLifecycle()
     val appleHomeReleases by viewModel.appleHomeReleases.collectAsStateWithLifecycle()
     val canonicalWorldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
@@ -1054,21 +1055,39 @@ private fun BitChordApp(
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
             .format(java.util.Date())
     }
-    // MusicBrainz ReleaseGroups are search *seeds* only; all displayed public
-    // album IDs are returned independently by Apple's exact storefront.
-    LaunchedEffect(selectedTab, canonicalWorldwideReleases) {
-        if (selectedTab == TAB_HOME && canonicalWorldwideReleases.isNotEmpty()) {
-            viewModel.loadAppleHomeEditorial(canonicalWorldwideReleases)
-        }
+    // A provider-first editorial feed uses the native provider browse identity.
+    // Apple Home still needs authorized MB seed evidence until its own Home
+    // discovery adapter is independent; never query Apple in MB-first mode.
+    LaunchedEffect(selectedTab, canonicalWorldwideReleases, catalogEditorialOrder) {
+        if (selectedTab == TAB_HOME &&
+            catalogEditorialOrder.firstOrNull() ==
+                com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES &&
+            canonicalWorldwideReleases.isNotEmpty()
+        ) viewModel.loadAppleHomeEditorial(canonicalWorldwideReleases)
     }
 
-    // Explore's MusicBrainz-tagged results only suggest candidate search
-    // terms. Apple independently verifies every displayed album and genre.
-    LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults) {
+    // Apple genre discovery is native: no MusicBrainz seed is required.
+    LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults,
+        appleGenreReleases, catalogEditorialOrder,
+    ) {
         val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
-        val rows = (canonicalGenreResults as? UiState.Success)?.data
-            ?: return@LaunchedEffect
-        viewModel.loadAppleGenreEditorial(tag, rows)
+        val first = catalogEditorialOrder.firstOrNull()
+        val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+        val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+        if (first == apple) {
+            viewModel.loadAppleGenreEditorial(tag, emptyList())
+            val result = appleGenreReleases[tag]
+            if (mb in catalogEditorialOrder &&
+                (result is UiState.Error ||
+                    result is UiState.Success && result.data.isEmpty())
+            ) viewModel.loadCanonicalGenre(tag)
+        } else if (first == mb) {
+            if (apple in catalogEditorialOrder &&
+                (canonicalGenreResults is UiState.Error ||
+                    canonicalGenreResults is UiState.Success &&
+                    (canonicalGenreResults as UiState.Success).data.isEmpty())
+            ) viewModel.loadAppleGenreEditorial(tag, emptyList())
+        }
     }
 
     // Rendering Now Playing and the mini-player must not rehash and sort hundreds
@@ -1173,67 +1192,93 @@ private fun BitChordApp(
     }
     val canonicalHomePublicPlaylists = publicPlaylistUi.homeShelf
     val canonicalHomePlaylistNotice = publicPlaylistUi.homeNotice
-    // Never substitute a MusicBrainz public release for an Apple storefront
-    // product on Home. Preserve local verified assets and independently linked
-    // public playlists; all editorial album tiles must be Apple IDs.
-    val canonicalHomeDisplayShelves = remember(
-        canonicalHomeShelves, appleHomeReleases,
-        canonicalReleasesHeading, canonicalHomeGlobalDiscoveryHeading,
-        canonicalHomePublicPlaylists, canonicalFeedDate,
+    // Provider-neutral selection owns editorial precedence. Native source
+    // adapters own their own cards and IDs; local/server media stays separate.
+    val catalogMb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+    val catalogApple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+    val canonicalHomeEditorialSelection = remember(
+        canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
+        canonicalWorldwideLoading, canonicalReleasesHeading,
+        canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
     ) {
-        val apple = (appleHomeReleases as? UiState.Success)?.data.orEmpty()
-        val editorialAndLocal = com.music.bitchord.ui.appleFirstHomeShelves(
-            appleAlbums = apple,
-            existingLocalShelves = canonicalHomeShelves,
-            releasesHeading = canonicalReleasesHeading,
-            discoveryHeading = canonicalHomeGlobalDiscoveryHeading,
-            todayIsoDate = canonicalFeedDate,
+        val musicBrainzShelves = com.music.bitchord.ui.musicBrainzHomeEditorialShelves(
+            canonicalHomeShelves, canonicalReleasesHeading,
         )
-        editorialAndLocal + listOfNotNull(
-            canonicalHomePublicPlaylists?.takeIf { it.items.isNotEmpty() },
+        val appleState: UiState<List<HomeShelf>> = when (val source = appleHomeReleases) {
+            is UiState.Success -> UiState.Success(
+                com.music.bitchord.ui.appleFirstHomeShelves(
+                    appleAlbums = source.data,
+                    existingLocalShelves = emptyList(),
+                    releasesHeading = canonicalReleasesHeading,
+                    discoveryHeading = canonicalHomeGlobalDiscoveryHeading,
+                    todayIsoDate = canonicalFeedDate,
+                ),
+            )
+            UiState.Loading -> UiState.Loading
+            is UiState.Error -> source
+        }
+        com.music.bitchord.ui.selectCatalogEditorial(
+            catalogEditorialOrder, mapOf(
+                catalogMb to if (canonicalWorldwideLoading && musicBrainzShelves.isEmpty())
+                    UiState.Loading else UiState.Success(musicBrainzShelves),
+                catalogApple to appleState,
+            ),
         )
+    }
+    val canonicalHomeDisplayShelves = remember(
+        canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
+    ) {
+        (canonicalHomeEditorialSelection.state as? UiState.Success)?.data.orEmpty() +
+            com.music.bitchord.ui.personalHomeShelves(canonicalHomeShelves) +
+            listOfNotNull(canonicalHomePublicPlaylists?.takeIf { it.items.isNotEmpty() })
     }
     val canonicalHomeState: UiState<List<HomeShelf>> = when {
         canonicalHomeDisplayShelves.isNotEmpty() -> UiState.Success(canonicalHomeDisplayShelves)
-        com.music.bitchord.ui.appleFirstHomeEditorialIsPending(
-            appleStillLoading = appleHomeReleases is UiState.Loading,
-            musicBrainzStillLoading = canonicalWorldwideLoading,
-            hasCandidateSeeds = canonicalWorldwideReleases.isNotEmpty(),
-        ) -> UiState.Loading
-        else -> UiState.Error(
-            "Nenhum lançamento Apple confirmado no momento. Atualize para tentar novamente.",
-        )
+        canonicalHomeEditorialSelection.state is UiState.Loading -> UiState.Loading
+        else -> UiState.Error("Nenhum lançamento disponível nas fontes editoriais habilitadas.")
     }
     val canonicalGenrePlaylistNotice = publicPlaylistUi.genreNotice
-    // The genre's public playlists are an independent ListenBrainz feed.
-    // MusicBrainz failure must not hide a real playlist that has already loaded.
     val activeGenrePlaylists = activeCanonicalGenre?.tag?.let { tag ->
         canonicalPublicPlaylists[tag].orEmpty()
     }.orEmpty()
     val canonicalGenreState: UiState<List<HomeShelf>> = run {
         val tag = activeCanonicalGenre?.tag
-        val appleGenre = tag?.let { appleGenreReleases[it] }
         val playlistShelf = com.music.bitchord.ui.canonicalPublicPlaylistShelf(
             stringResource(R.string.playlists), activeGenrePlaylists,
         )
-        when {
-            tag == null -> UiState.Success(emptyList())
-            appleGenre is UiState.Success -> {
-                val shelves = com.music.bitchord.ui.appleFirstGenreShelves(
-                    tag = tag, appleAlbums = appleGenre.data,
-                    publicPlaylists = playlistShelf,
-                    releaseHeading = canonicalReleasesHeading,
+        if (tag == null) UiState.Success(emptyList()) else {
+            val appleState: UiState<List<HomeShelf>> = when (
+                val source = appleGenreReleases[tag] ?: UiState.Loading
+            ) {
+                is UiState.Success -> UiState.Success(
+                    com.music.bitchord.ui.appleFirstGenreShelves(
+                        tag, source.data, publicPlaylists = null,
+                        releaseHeading = canonicalReleasesHeading,
+                    ),
                 )
-                if (shelves.isNotEmpty()) UiState.Success(shelves)
-                else UiState.Error(
-                    "Nenhum lançamento confirmado pela Apple neste gênero.",
-                )
+                UiState.Loading -> UiState.Loading
+                is UiState.Error -> source
             }
-            playlistShelf != null -> UiState.Success(listOf(playlistShelf))
-            appleGenre is UiState.Error -> appleGenre
-            canonicalGenreResults is UiState.Error ->
-                UiState.Error("Não foi possível obter candidatos para este gênero.")
-            else -> UiState.Loading
+            val mbState: UiState<List<HomeShelf>> = when (val source = canonicalGenreResults) {
+                is UiState.Success -> UiState.Success(
+                    com.music.bitchord.ui.musicBrainzGenreEditorialShelves(
+                        source.data, canonicalReleasesHeading,
+                    ),
+                )
+                UiState.Loading -> UiState.Loading
+                is UiState.Error -> source
+            }
+            val chosen = com.music.bitchord.ui.selectCatalogEditorial(
+                catalogEditorialOrder, mapOf(catalogMb to mbState, catalogApple to appleState),
+            )
+            val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
+            val all = releases + listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
+            when {
+                all.isNotEmpty() -> UiState.Success(all)
+                chosen.state is UiState.Loading -> UiState.Loading
+                chosen.state is UiState.Error -> chosen.state
+                else -> UiState.Error("Nenhum lançamento disponível nas fontes editoriais habilitadas.")
+            }
         }
     }
     // What a browse id is recorded under in Downloads.collections, when it names
@@ -2167,7 +2212,9 @@ private fun BitChordApp(
         }
         com.music.bitchord.ui.canonicalExploreGenreForBrowseId(item.browseId)?.let { genre ->
             activeCanonicalGenre = genre
-            viewModel.loadCanonicalGenre(genre.tag)
+            if (catalogEditorialOrder.firstOrNull() == catalogMb) {
+                viewModel.loadCanonicalGenre(genre.tag)
+            }
             return@click
         }
         // Storefront-scoped Apple cards cannot fall through to old MB browse

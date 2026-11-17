@@ -15,6 +15,7 @@ import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderReadLease
 import com.music.bitchord.data.providers.orderedCatalogProviders
@@ -580,6 +581,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ProviderCapability.CATALOG_SEARCH,
         setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES),
     )
+
+    private fun eligibleEditorialProviders() = orderedCatalogProviders(
+        ProviderRuntime.gateOrNull(),
+        ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES),
+    )
+
+    private val _catalogEditorialOrder = MutableStateFlow(eligibleEditorialProviders())
+    val catalogEditorialOrder: StateFlow<List<ProviderKey>> =
+        _catalogEditorialOrder.asStateFlow()
 
     /** The Apple commercial shelf is independent of MB artist/recording search. */
     private val appleEditorialRepository by lazy { AppleEditorialCatalogRepository() }
@@ -3874,7 +3885,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ProviderRuntime.state?.let { snapshots ->
             viewModelScope.launch {
                 var previous = eligibleCatalogSearchProviders()
+                var previousEditorial = eligibleEditorialProviders()
                 snapshots.collect {
+                    val nextEditorial = eligibleEditorialProviders()
+                    if (nextEditorial != previousEditorial) {
+                        previousEditorial = nextEditorial
+                        _catalogEditorialOrder.value = nextEditorial
+                        if (BuiltInProviderKeys.MUSICBRAINZ !in nextEditorial) {
+                            worldwideReleaseJob?.cancel()
+                            worldwideReleaseEpoch.invalidateAndNext()
+                            _canonicalWorldwideReleases.value = emptyList()
+                            _canonicalWorldwideLoading.value = false
+                            canonicalGenreJob?.cancel()
+                            canonicalGenreEpoch.invalidateAndNext()
+                            _canonicalGenreResults.value = UiState.Success(emptyList())
+                        }
+                        if (BuiltInProviderKeys.ITUNES !in nextEditorial ||
+                            BuiltInProviderKeys.MUSICBRAINZ !in nextEditorial
+                        ) {
+                            appleHomeJob?.cancel()
+                            appleHomeEpoch.invalidateAndNext()
+                            _appleHomeReleases.value = UiState.Success(emptyList())
+                        }
+                        if (BuiltInProviderKeys.ITUNES !in nextEditorial) {
+                            appleGenreJob?.cancel()
+                            appleGenreEpoch.invalidateAndNext()
+                            _appleGenreReleases.value = emptyMap()
+                        }
+                    }
                     val next = eligibleCatalogSearchProviders()
                     if (next != previous) {
                         previous = next
