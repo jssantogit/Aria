@@ -35,6 +35,13 @@ data class ProviderTabRowState(
     val order: Int,
 )
 
+/** Readiness contains no secrets and is refreshed when the configured account changes. */
+internal data class OpenSubsonicProviderAccountState(
+    val accountId: String,
+    val credentialAvailable: Boolean,
+)
+
+
 /**
  * Authoritative inventory of every provider and capability in BitChord Android.
  *
@@ -52,6 +59,8 @@ internal object ProviderCapabilityRegistry {
         itunesImplemented: Boolean = false,
         discogsImplemented: Boolean = false,
         discogsTokenConfigured: Boolean = false,
+        openSubsonicAccountId: String? = null,
+        openSubsonicConfigured: Boolean = false,
     ): List<ProviderInventoryEntry> = buildList {
         // 1. Catalog, Identity & Discography
         add(
@@ -269,6 +278,28 @@ internal object ProviderCapabilityRegistry {
                 notes = "On-device audio files and acquired media",
             ),
         )
+        // Remote account is a real installed adapter, but its library and
+        // audio privileges are independent. Readiness is NOT authorization.
+        openSubsonicAccountId?.takeIf(String::isNotBlank)?.let { accountId ->
+            val key = ProviderKey("opensubsonic", accountId)
+            for (capability in listOf(
+                ProviderCapability.PERSONAL_LIBRARY,
+                ProviderCapability.AUDIO_PLAYBACK,
+            )) {
+                add(ProviderInventoryEntry(
+                    key = key,
+                    capability = capability,
+                    tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+                    displayName = if (capability == ProviderCapability.PERSONAL_LIBRARY)
+                        "Navidrome / OpenSubsonic (Biblioteca)"
+                    else "Navidrome / OpenSubsonic (Reprodução)",
+                    readiness = if (openSubsonicConfigured) ProviderReadiness.READY
+                        else ProviderReadiness.NEEDS_CONFIGURATION,
+                    supportsReordering = false,
+                    notes = "Account-scoped local catalog and authenticated stream; exact instance admission",
+                ))
+            }
+        }
         sources.asSequence()
             .filter { it.kind == SourceKind.ADDON || it.kind == SourceKind.CUSTOM_MODULE }
             .distinctBy(SourceConfig::id)
