@@ -7,6 +7,7 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.source.CompositeMediaSource
+import androidx.media3.exoplayer.source.ForwardingTimeline
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.Allocator
@@ -84,7 +85,10 @@ internal class DeferredResolvedSourceMediaSource(
         mediaSource: MediaSource,
         newTimeline: Timeline,
     ) {
-        refreshSourceInfo(newTimeline)
+        // The child needs a physical manifest URI to resolve its relative
+        // segments, but media sessions and the UI must retain only the
+        // original logical track and must never expose signed CDN tokens.
+        refreshSourceInfo(sourceMediaTimeline(newTimeline, logicalItem))
     }
 
     override fun maybeThrowSourceInfoRefreshError() {
@@ -113,5 +117,26 @@ internal class DeferredResolvedSourceMediaSource(
         child = null
         scope?.cancel()
         scope = null
+    }
+}
+
+/**
+ * Child HLS/DASH timelines contain the physical MediaItem, whose URL may
+ * carry a signed query or request-specific secret. Never disclose it through
+ * Player.currentMediaItem, MediaController, Bluetooth or the lock screen.
+ */
+@UnstableApi
+internal fun sourceMediaTimeline(
+    physicalTimeline: Timeline,
+    logicalItem: MediaItem,
+): Timeline = object : ForwardingTimeline(physicalTimeline) {
+    override fun getWindow(
+        windowIndex: Int,
+        window: Timeline.Window,
+        defaultPositionProjectionUs: Long,
+    ): Timeline.Window = super.getWindow(
+        windowIndex, window, defaultPositionProjectionUs,
+    ).apply {
+        mediaItem = logicalItem
     }
 }
