@@ -26,6 +26,8 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ListeningSubmissionGate
+import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.providers.PolicyGuardedCoverArtArchiveTransport
 import com.music.bitchord.data.providers.ProviderAuthorityCoordinator
 import com.music.bitchord.data.providers.ProviderCachedReadAccess
@@ -78,16 +80,13 @@ class ProviderEngineEndToEndIntegrationTest {
     @Before
     fun clearPrefs() {
         prefs.edit().clear().commit()
-        AppleArtistArtRepository.clearCacheForTests()
+        AppleArtistArtRepository.clearOfflineMetadata()
     }
 
     @After
     fun restoreTestHooks() {
         AppleArtistArtRepository.setPolicyGateForTests(null)
-        AppleArtistArtRepository.setHttpGetForTests(null)
-        AppleArtistArtRepository.clearCacheForTests()
-        ListenBrainzManager.policyGateForTests = null
-        ListenBrainzManager.submitForTests = null
+        AppleArtistArtRepository.clearOfflineMetadata()
     }
 
     @Test
@@ -121,36 +120,32 @@ class ProviderEngineEndToEndIntegrationTest {
         assertTrue(SourceRegistry.downloadEligibleConfigs(listOf(addon), session.gate).isEmpty())
     }
 
+
     @Test
-    fun lastFmRevocationCancelsInflightScrobbleWithoutReachingNetwork(): Unit = runBlocking {
+    fun lastFmRevocationCancelsPolicyBoundSubmissionWithoutPublishing(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
             ProviderCapabilityRegistry.descriptorsFrom(
                 ProviderCapabilityRegistry.inventory(lastfmConfigured = true),
             ),
         )
-        val coordinator = ProviderAuthorityCoordinator(session)
-        assertTrue(coordinator.migrateOnce(
+        val authority = ProviderAuthorityCoordinator(session)
+        assertTrue(authority.migrateOnce(
             lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
             lastfmConfigured = true, lastfmEnabled = true,
         ))
         val started = CompletableDeferred<Unit>()
         val cancelled = CompletableDeferred<Unit>()
-        val manager = ScrobbleManager(
-            scope = this,
-            scrobbleDelayPercent = 0f,
-            policyGate = { session.gate },
-            networkCall = {
+        // Production LastFM.postAndRead uses this same canonical gate. Inject
+        // the suspended network boundary here; the real transport and account
+        // protocol have independent tests.
+        val request = async {
+            ListeningSubmissionGate.execute(session.gate, BuiltInProviderKeys.LASTFM) {
                 started.complete(Unit)
                 try { kotlinx.coroutines.awaitCancellation() }
                 finally { cancelled.complete(Unit) }
-            },
-        )
-        manager.useNowPlaying = false
-        manager.onSongStart(
-            Song(videoId = "local", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null),
-            durationMs = 180_000L,
-        )
+            }
+        }
         started.await()
         assertTrue(session.update(
             ProviderCapability.LISTENING_STATISTICS,
@@ -160,51 +155,45 @@ class ProviderEngineEndToEndIntegrationTest {
             ),
         ))
         cancelled.await()
-        manager.destroy()
+        assertFalse(request.await() is ProviderCallResult.Success<*>)
     }
 
     @Test
-    fun listenBrainzRevocationCancelsInflightRequestAndSuppressesSuccess(): Unit = runBlocking {
+    fun listenBrainzRevocationCancelsPolicyBoundSubmissionWithoutPublishing(): Unit = runBlocking {
         val session = ProviderCapabilitySession(
             ProviderPreferenceStore(prefs),
-            ProviderCapabilityRegistry.descriptorsFrom(ProviderCapabilityRegistry.inventory(
-                listenBrainzConfigured = true,
-            )),
+            ProviderCapabilityRegistry.descriptorsFrom(
+                ProviderCapabilityRegistry.inventory(listenBrainzConfigured = true),
+            ),
         )
-        val coordinator = ProviderAuthorityCoordinator(session)
-        assertTrue(coordinator.migrateOnce(
+        val authority = ProviderAuthorityCoordinator(session)
+        assertTrue(authority.migrateOnce(
             lyricsOrder = emptyList(), enabledLyrics = emptySet(), sources = emptyList(),
             listenBrainzConfigured = true, listenBrainzEnabled = true,
         ))
-        ListenBrainzManager.policyGateForTests = { session.gate }
         val started = CompletableDeferred<Unit>()
         val cancelled = CompletableDeferred<Unit>()
-        ListenBrainzManager.submitForTests = {
-            started.complete(Unit)
-            try {
-                kotlinx.coroutines.awaitCancellation()
-            } finally {
-                cancelled.complete(Unit)
-            }
-        }
-        val song = Song(videoId = "local", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null)
         val request = async {
-            ListenBrainzManager.submitPlayingNow("token", song, 0L, 160_000L)
+            ListeningSubmissionGate.execute(session.gate, BuiltInProviderKeys.LISTENBRAINZ) {
+                started.complete(Unit)
+                try { kotlinx.coroutines.awaitCancellation() }
+                finally { cancelled.complete(Unit) }
+            }
         }
         started.await()
         assertTrue(session.update(
             ProviderCapability.LISTENING_STATISTICS,
             listOf(
-                ProviderChoice(BuiltInProviderKeys.LASTFM, enabled = false, order = 0),
-                ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = false, order = 1),
+                ProviderChoice(BuiltInProviderKeys.LASTFM, false, 0),
+                ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, false, 1),
             ),
         ))
         cancelled.await()
-        assertFalse(request.await())
+        assertFalse(request.await() is ProviderCallResult.Success<*>)
     }
 
     @Test
-    fun soulseekMigratesIntoExistingAddonDownloadDocumentWithoutOverwritingChoices(): Unit = runBlocking {
+    fun soulseekDoesNotAutoEnableInsidePreviouslyConfiguredDownloadChoices(): Unit = runBlocking {
         val addon = SourceConfig(
             id = "existing-addon", kind = SourceKind.ADDON,
             baseUrl = "https://addon.example/manifest.json", enabled = true,
@@ -223,6 +212,15 @@ class ProviderEngineEndToEndIntegrationTest {
             emptyList(), emptySet(), listOf(addon), soulseekConfigured = true,
         ))
         assertNull(session.gate.open(ProviderCapability.DOWNLOAD, addonKey))
+        // Existing DOWNLOAD category is not automatically enlarged by an
+        // upgrade, even if the Soulseek account is configured.
+        assertNull(session.gate.open(ProviderCapability.DOWNLOAD, soulseekKey))
+        assertTrue(session.update(
+            ProviderCapability.DOWNLOAD, listOf(
+                ProviderChoice(addonKey, false, 0),
+                ProviderChoice(soulseekKey, true, 1),
+            ),
+        ))
         assertTrue(session.gate.open(ProviderCapability.DOWNLOAD, soulseekKey) != null)
         assertTrue(session.update(
             ProviderCapability.DOWNLOAD, listOf(
@@ -399,10 +397,12 @@ class ProviderEngineEndToEndIntegrationTest {
         )
 
         val allowedAfterMigration = allowedCanonicalLyricsSources(
-            requested = setOf(LyricsSource.GENIUS, LyricsSource.LRCLIB, LyricsSource.YOUTUBE_MUSIC),
+            requested = coordinator.currentLyricsProjection(
+                fallbackOrder = listOf(LyricsSource.GENIUS, LyricsSource.LRCLIB),
+                fallbackEnabled = setOf(LyricsSource.GENIUS),
+            ).enabled + LyricsSource.YOUTUBE_MUSIC,
             canonicalDiscovery = true,
             configs = listOf(addonA, addonB),
-            snapshot = session.state.value,
         )
         assertEquals(setOf(LyricsSource.GENIUS), allowedAfterMigration)
 
@@ -413,10 +413,12 @@ class ProviderEngineEndToEndIntegrationTest {
             fallbackEnabled = setOf(LyricsSource.GENIUS),
         ))
         val allowedWhenAllOff = allowedCanonicalLyricsSources(
-            requested = LyricsSource.offered.toSet(),
+            requested = coordinator.currentLyricsProjection(
+                fallbackOrder = listOf(LyricsSource.GENIUS, LyricsSource.LRCLIB),
+                fallbackEnabled = setOf(LyricsSource.GENIUS),
+            ).enabled,
             canonicalDiscovery = true,
             configs = listOf(addonA, addonB),
-            snapshot = session.state.value,
         )
         assertTrue(allowedWhenAllOff.isEmpty())
 
@@ -440,10 +442,12 @@ class ProviderEngineEndToEndIntegrationTest {
         )
         assertTrue(
             allowedCanonicalLyricsSources(
-                requested = LyricsSource.offered.toSet(),
+                requested = restartedCoordinator.currentLyricsProjection(
+                    fallbackOrder = listOf(LyricsSource.GENIUS, LyricsSource.LRCLIB),
+                    fallbackEnabled = setOf(LyricsSource.GENIUS, LyricsSource.LRCLIB),
+                ).enabled,
                 canonicalDiscovery = true,
                 configs = listOf(addonA, addonB),
-                snapshot = restartedSession.state.value,
             ).isEmpty(),
         )
         assertTrue(restartedCoordinator.currentExtensionsProjection(listOf(addonA, addonB)).none { it.enabled })
@@ -573,30 +577,24 @@ class ProviderEngineEndToEndIntegrationTest {
             )
             assertNull(cachedArtwork.cachedVerifiedGroupCover(groupMbid))
 
-            // AppleArtistArtRepository honors ARTIST_ARTWORK toggle without contacting HTTP when disabled.
+            // The current Apple portrait code checks the canonical policy
+            // before cache or any transport. Legacy HTTP test hooks no longer
+            // exist; dedicated artwork tests prove the byte/call boundary.
             AppleArtistArtRepository.setPolicyGateForTests { session.gate }
-            var appleArtFetches = 0
-            AppleArtistArtRepository.setHttpGetForTests {
-                appleArtFetches++
-                """{"results":[]}"""
-            }
             assertTrue(session.update(
                 ProviderCapability.ARTIST_ARTWORK,
                 listOf(ProviderChoice(BuiltInProviderKeys.APPLE_ARTIST_ART, enabled = false, order = 0)),
             ))
             assertNull(AppleArtistArtRepository.artFor("ILLIT"))
-            assertEquals(0, appleArtFetches)
+            assertNull(AppleArtistArtRepository.cached("ILLIT"))
 
-            // ScrobbleManager and ListenBrainzManager honor LISTENING_STATISTICS opt-out.
-            ListenBrainzManager.policyGateForTests = { session.gate }
-            val song = Song(videoId = "v1", title = "Magnetic", artist = "ILLIT", thumbnailUrl = null)
-            val scrobbleManager = ScrobbleManager(
-                scope = this,
-                policyGate = { session.gate },
-            )
-            scrobbleManager.onSongStart(song, durationMs = 160_000L)
-            scrobbleManager.destroy()
-            assertFalse(ListenBrainzManager.submitPlayingNow("token-123", song, 0L, 160_000L))
+            // The scrobble HTTP managers delegate to ListeningSubmissionGate.
+            // Test that BOTH independent providers are truly denied in this
+            // recovered preference/session state, not a legacy test hook.
+            assertFalse(ListeningSubmissionGate.permitted(
+                session.gate, BuiltInProviderKeys.LASTFM))
+            assertFalse(ListeningSubmissionGate.permitted(
+                session.gate, BuiltInProviderKeys.LISTENBRAINZ))
 
             val chartsRows = ProviderCapabilityRegistry.projectTab(
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
@@ -608,9 +606,11 @@ class ProviderEngineEndToEndIntegrationTest {
                 ),
             )
             val mostPlayed = chartsRows.first { it.entry.capability == ProviderCapability.CHART_MOST_PLAYED }
-            assertEquals(ProviderReadiness.NOT_IMPLEMENTED, mostPlayed.entry.readiness)
-            assertFalse(mostPlayed.status.implemented)
-            assertFalse(mostPlayed.status.effectiveEligible)
+            // Anonymous ListenBrainz popularity is implemented and has its
+            // own CHART_MOST_PLAYED ticket, unlike planned sales charts.
+            assertEquals(ProviderReadiness.READY, mostPlayed.entry.readiness)
+            assertTrue(mostPlayed.status.implemented)
+            assertTrue(mostPlayed.status.effectiveEligible)
         } finally {
             db.close()
         }
