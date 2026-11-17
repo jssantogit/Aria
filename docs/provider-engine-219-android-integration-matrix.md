@@ -109,3 +109,5 @@ The following changes are code-level cuts, **not** final integration/merge appro
 - Acceptance remains dependent on exact-HEAD CI, real Media3 playback/offline test, detecting remote account rotation outside local configuration (requires provider account revision), and #212/#216 reconciliation. No UI/merge/smoke.
 
 - Follow-up audit: every HTTP range/segment open now carries the current source configuration scope into its revocable read guard, and the opaque key's embedded provider/instance must match cache provenance. Tests cover scoped logical cache key override, wrong provider identity, and epoch serialization round-trip.
+
+- Playback-variant hardening: the physical root self-index also stores the existing logical source cache partition (mix/stereo and rendition suffix). Offline preflight and open refuse a physical root attributed to the same recording but a different logical playback variant. This preserves the historical Atmos-versus-stereo cache separation.

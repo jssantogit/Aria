@@ -1599,6 +1599,9 @@ class PlaybackService : MediaLibraryService() {
                             AudioCache.SourcePhysicalProgressiveCacheRoot(
                                 requireNotNull(chosen.logicalMediaId),
                                 chosen.resolved.uri.toString(),
+                                AudioCache.logicalSourceCachePartition(
+                                    requireNotNull(chosen.logicalSourceUri),
+                                ),
                             )
                         },
                     ),

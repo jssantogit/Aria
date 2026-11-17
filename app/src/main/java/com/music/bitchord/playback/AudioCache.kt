@@ -258,7 +258,8 @@ object AudioCache {
         val legacyLogical = key == base || key.startsWith("${base}#")
         val modernPhysical = scopedPhysicalKeyBelongsTo(
             key, ProviderKey(owner, instance),
-        ) && meta.get(META_SOURCE_ROOT, null as String?) == "1"
+        ) && meta.get(META_SOURCE_ROOT, null as String?) == "1" &&
+            !meta.get(META_SOURCE_PARTITION, null as String?).isNullOrBlank()
         if (!legacyLogical && !modernPhysical) return false
         val total = ContentMetadata.getContentLength(meta)
         if (total <= 0L || !cache.isCached(key, 0L, total)) return false
@@ -280,8 +281,11 @@ object AudioCache {
         key: String,
         meta: ContentMetadata,
         mediaId: String,
+        logicalPartition: String,
     ): Boolean {
         if (!isCompleteRecognizedProgressiveCache(key, meta, mediaId)) return false
+        if (isScopedSourcePhysicalCacheKey(key) &&
+            meta.get(META_SOURCE_PARTITION, null as String?) != logicalPartition) return false
         val owner = ProviderKey(
             meta.get(META_SOURCE_PROVIDER, null as String?) ?: return false,
             meta.get(META_SOURCE_INSTANCE, null as String?) ?: return false,
@@ -313,7 +317,7 @@ object AudioCache {
             cache.keys.asSequence().filter(::isScopedSourcePhysicalCacheKey)
         for (key in candidates) {
             val meta = runCatching { cache.getContentMetadata(key) }.getOrNull() ?: continue
-            if (!isVerifiedProgressiveSourceCache(key, meta, mediaId)) continue
+            if (!isVerifiedProgressiveSourceCache(key, meta, mediaId, logical)) continue
             val lease = sourceCacheReadLease(
                 meta.get(META_SOURCE_PROVIDER, null as String?),
                 meta.get(META_SOURCE_INSTANCE, null as String?),
@@ -461,6 +465,10 @@ object AudioCache {
      * what the watch is handed, and the other way round.
      */
     const val WATCH_READ_PARAM = "watch_read"
+
+    /** Identifies the complete logical playback variant, including mix and rendition. */
+    internal fun logicalSourceCachePartition(uri: Uri): String =
+        keyFactory.buildCacheKey(DataSpec(uri))
 
     private val keyFactory = CacheKeyFactory { spec ->
         val key = phoneKey(spec)
@@ -912,6 +920,7 @@ object AudioCache {
     private const val META_SOURCE_INSTANCE = "bc_source_instance"
     private const val META_SOURCE_SCOPE = "bc_source_scope_v2"
     private const val META_SOURCE_ROOT = "bc_source_physical_progressive_root_v1"
+    private const val META_SOURCE_PARTITION = "bc_source_logical_variant_v1"
     private const val META_TITLE = "bc_title"
     private const val META_ARTIST = "bc_artist"
     private const val META_ALBUM = "bc_album"
@@ -951,6 +960,7 @@ object AudioCache {
     internal class SourcePhysicalProgressiveCacheRoot(
         val mediaId: String,
         val physicalUrl: String,
+        val logicalPartition: String,
     ) {
         val admittedKeys: MutableSet<String> =
             java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -1009,7 +1019,8 @@ object AudioCache {
                         meta.get(META_SOURCE_PROVIDER, null as String?) == lease.providerKey.providerId &&
                         meta.get(META_SOURCE_INSTANCE, null as String?) == lease.providerKey.instanceId &&
                         sourceCacheScopeMatches(meta.get(META_SOURCE_SCOPE, null as String?), scope) &&
-                        meta.get(META_SOURCE_ROOT, null as String?) == "1"
+                        meta.get(META_SOURCE_ROOT, null as String?) == "1" &&
+                        meta.get(META_SOURCE_PARTITION, null as String?) == root.logicalPartition
                     val sameMediaItem = same && key in root.admittedKeys
                     val complete = same && isCompleteRecognizedProgressiveCache(
                         key, meta, root.mediaId,
@@ -1032,6 +1043,7 @@ object AudioCache {
                     it.set(META_SOURCE_INSTANCE, lease.providerKey.instanceId)
                     it.set(META_SOURCE_SCOPE, scope)
                     it.set(META_SOURCE_ROOT, "1")
+                    it.set(META_SOURCE_PARTITION, root.logicalPartition)
                     it.set(META_PLAYBACK, "1")
                 })
                 root.admittedKeys.add(key)
@@ -1048,7 +1060,10 @@ object AudioCache {
                 val provider = meta.get(META_SOURCE_PROVIDER, null as String?)
                 val instance = meta.get(META_SOURCE_INSTANCE, null as String?)
                 val scope = meta.get(META_SOURCE_SCOPE, null as String?)
-                val matched = provider != null && instance != null &&
+                val variantValid = !isScopedSourcePhysicalCacheKey(key) ||
+                    meta.get(META_SOURCE_PARTITION, null as String?) ==
+                        logicalSourceCachePartition(dataSpec.uri)
+                val matched = variantValid && provider != null && instance != null &&
                     sourceCacheScopeMatches(
                         scope,
                         currentSourcePlaybackCacheScope(ProviderKey(provider, instance)),

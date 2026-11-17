@@ -46,6 +46,7 @@ class PreparedSourceMediaSelectionTest {
         assertEquals(Uri.parse("https://cdn.example/master.m3u8?sig=a"),
             prepared.item.localConfiguration?.uri)
         assertEquals("source:track-42", prepared.item.mediaId)
+        assertEquals(logical.localConfiguration?.uri, prepared.logicalSourceUri)
         assertEquals("Audio selection", prepared.item.mediaMetadata.title.toString())
         assertEquals("private", prepared.resolved.httpRequestHeaders["X-Token"])
     }
@@ -231,6 +232,19 @@ class PreparedSourceMediaSelectionTest {
             cache.release()
             folder.deleteRecursively()
         }
+    }
+
+    @Test fun physicalOfflineIndexKeepsStereoAndAtmosIntentsSeparate() {
+        val normal = Uri.parse("bitchord://source?s=source42&t=track42")
+        val stereo = normal.buildUpon()
+            .appendQueryParameter(
+                com.music.bitchord.data.sources.SourceResolver.MIX_PARAM,
+                com.music.bitchord.data.sources.SourceResolver.MIX_STEREO,
+            ).build()
+        val normalKey = AudioCache.logicalSourceCachePartition(normal)
+        val stereoKey = AudioCache.logicalSourceCachePartition(stereo)
+        assertTrue(normalKey != stereoKey)
+        assertTrue(stereoKey.contains("stereo"))
     }
 
 }

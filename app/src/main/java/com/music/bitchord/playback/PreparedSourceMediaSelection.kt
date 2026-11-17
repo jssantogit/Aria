@@ -18,6 +18,7 @@ internal data class PreparedSourceMediaSelection(
     val resolved: DataSpec,
     val cachedOffline: Boolean = false,
     val logicalMediaId: String? = null,
+    val logicalSourceUri: android.net.Uri? = null,
 ) {
     val playbackLease: ProviderPlaybackByteLease?
         get() = resolved.customData as? ProviderPlaybackByteLease
@@ -47,6 +48,7 @@ internal fun prepareSourceMediaSelection(
         .build()
     return PreparedSourceMediaSelection(
         child, resolved, logicalMediaId = mediaIdIn(virtualUri),
+        logicalSourceUri = virtualUri,
     )
 }
 
@@ -72,5 +74,6 @@ internal fun prepareCachedProgressiveSourceMediaSelection(
             .apply { if (cacheKey != null) setKey(cacheKey) }.build(),
         cachedOffline = true,
         logicalMediaId = mediaIdIn(uri),
+        logicalSourceUri = uri,
     )
 }
