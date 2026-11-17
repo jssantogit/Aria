@@ -64,6 +64,10 @@ import kotlin.math.roundToInt
  */
 internal fun heldPreviewBackingColor(): Color = Color.Transparent
 
+/** Kept for independent overflow/header controls; the held spotlight no
+ * longer paints this outline, shadow or any other extra pixels. */
+internal fun heldContextSelectionOutline(): Color = Color.White.copy(alpha = 0.36f)
+
 internal fun heldSpotlightCutout(
     sourceBounds: androidx.compose.ui.geometry.Rect,
     overlayOrigin: Offset,
