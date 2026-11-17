@@ -277,7 +277,19 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         return AppleMusicWebPage(items(block, sf), page, limit, block.str("next") != null)
     }
 
-    suspend fun album(id: String, country: String): AppleMusicWebAlbum {
+    suspend fun album(id: String, country: String): AppleMusicWebAlbum =
+        when (val outcome = albumOutcome(id, country)) {
+            is AppleMusicWebOutcome.Complete -> outcome.value
+            is AppleMusicWebOutcome.Partial -> outcome.value
+            is AppleMusicWebOutcome.Unavailable ->
+                throw AppleMusicWebProtocolException("Album unavailable")
+        }
+
+    /** Exposes truncated/partial albums explicitly to future canonical adapters. */
+    suspend fun albumOutcome(
+        id: String,
+        country: String,
+    ): AppleMusicWebOutcome<AppleMusicWebAlbum> {
         val sf = storefront(country)
         val albumId = resourceId(id, AppleMusicWebKind.ALBUM)
         val raw = detail(sf, AppleMusicWebKind.ALBUM, albumId, mapOf(
@@ -294,6 +306,8 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         )
         val seen = mutableSetOf<String>()
         var cursor = first?.str("next")
+        var interrupted = false
+        val itemIds = tracks.mapTo(mutableSetOf()) { it.scopedId }
         while (cursor != null && tracks.size < 500) {
             if (!seen.add(cursor)) throw AppleMusicWebProtocolException("Cyclic album cursor")
             val path = runCatching { URI(cursor).path }.getOrNull()
@@ -302,13 +316,42 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
                 throw AppleMusicWebProtocolException("Cross-album track cursor")
             val args = follow(cursor, path) +
                 ("limit" to minOf(100, 500 - tracks.size).toString())
-            val block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path, args))
+            val block = try {
+                parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path, args))
+            } catch (blocked: AppleMusicWebHttpException) {
+                // A denied or throttled capability must not publish cached
+                // metadata as if the request succeeded.
+                if (blocked.status in listOf(401, 403, 429)) throw blocked
+                interrupted = true
+                break
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: java.io.IOException) {
+                interrupted = true
+                break
+            }
             val additional = items(block, sf)
-            if (additional.isEmpty()) throw AppleMusicWebProtocolException("Empty album cursor")
+            if (additional.isEmpty()) {
+                interrupted = true
+                break
+            }
+            if (additional.any { !itemIds.add(it.scopedId) }) {
+                throw AppleMusicWebProtocolException("Duplicate Apple album track across pages")
+            }
             tracks.addAll(additional)
             cursor = block.str("next")
         }
-        return AppleMusicWebAlbum(identity, tracks.take(500), items(rel?.obj("artists"), sf),
-            possiblyTruncated = cursor != null)
+        val truncated = cursor != null || interrupted
+        val result = AppleMusicWebAlbum(
+            identity, tracks.take(500), items(rel?.obj("artists"), sf),
+            possiblyTruncated = truncated,
+        )
+        return when {
+            !truncated -> AppleMusicWebOutcome.Complete(result)
+            interrupted -> AppleMusicWebOutcome.Partial(
+                result, AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED,
+            )
+            else -> AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.PAGE_LIMIT)
+        }
     }
 }
