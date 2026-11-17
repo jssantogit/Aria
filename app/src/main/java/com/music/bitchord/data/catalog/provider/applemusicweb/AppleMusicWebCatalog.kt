@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Base64
@@ -300,6 +301,11 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val identity = convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid album")
         val rel = raw.obj("relationships")
         val first = rel?.obj("tracks")
+        // A missing or unexpanded relationship is not a proven empty album.
+        val missingTracklist = first == null ||
+            first["data"] == null || first["data"].toString() == "null"
+        val expectedTracks = (raw.obj("attributes")?.get("trackCount")
+            as? JsonPrimitive)?.intOrNull?.takeIf { it >= 0 }
         val tracks = ArrayList(items(first, sf))
         val allowedTrackPaths = setOf(
             "/v1/catalog/$sf/albums/$albumId/tracks",
@@ -342,17 +348,26 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             tracks.addAll(additional)
             cursor = block.str("next")
         }
-        val truncated = cursor != null || interrupted
+        val countMismatch = expectedTracks != null && tracks.size != expectedTracks
+        val truncated = cursor != null || interrupted || missingTracklist || countMismatch
         val result = AppleMusicWebAlbum(
             identity, tracks.take(500), items(rel?.obj("artists"), sf),
             possiblyTruncated = truncated,
         )
         return when {
-            !truncated -> AppleMusicWebOutcome.Complete(result)
+            missingTracklist -> AppleMusicWebOutcome.Partial(
+                result, AppleMusicWebCompleteness.MISSING_TRACKLIST,
+            )
             interrupted -> AppleMusicWebOutcome.Partial(
                 result, AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED,
             )
-            else -> AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.PAGE_LIMIT)
+            countMismatch -> AppleMusicWebOutcome.Partial(
+                result, AppleMusicWebCompleteness.TRACK_COUNT_MISMATCH,
+            )
+            cursor != null -> AppleMusicWebOutcome.Partial(
+                result, AppleMusicWebCompleteness.PAGE_LIMIT,
+            )
+            else -> AppleMusicWebOutcome.Complete(result)
         }
     }
 }
