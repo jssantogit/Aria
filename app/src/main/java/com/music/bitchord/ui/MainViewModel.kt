@@ -4441,13 +4441,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ) ?: return emptyList()
             return try {
                 val cached = withContext(Dispatchers.IO) {
-                    val dao = CanonicalCatalogDatabase.get(getApplication<Application>()).catalogDao()
-                    val recordings = dao.searchKnownMusicBrainzRecordings(query, 8)
-                    val available = dao.musicBrainzRecordingMbidsWithAssets(
-                        recordings.map { it.musicBrainzId },
-                    ).toSet()
+                    val app = getApplication<Application>()
+                    val snapshot = MusicBrainzCachedSearchRepository(
+                        CanonicalCatalogDatabase.get(app),
+                        personalProviderKeys = {
+                            (setOf("local-mediastore") +
+                                configuredCanonicalPersonalProviderKeys(app).filter { key ->
+                                    isCanonicalPersonalProviderCurrentlyAuthorized(app, key)
+                                }).toSet()
+                        },
+                    ).search(query, MusicBrainzCachedSearchLimits(
+                        artists = 6, groups = 6, releases = 6, recordings = 8,
+                    ), capability = ProviderCapability.CATALOG_SEARCH)
                     buildList {
-                        dao.searchKnownMusicBrainzArtists(query, 6).forEach { artist ->
+                        snapshot.artists.forEach { artist ->
                             add(CanonicalCatalogSearchRow(
                                 artist.musicBrainzId, CanonicalSearchKind.ARTIST,
                                 artist.name, artist.disambiguation ?: artist.country,
@@ -4455,7 +4462,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             ))
                         }
                         canonicalCuratedCachedMusicBrainzGroups(
-                            dao.searchKnownMusicBrainzGroups(query, 6),
+                            snapshot.groups,
                         ).forEach { group ->
                             add(CanonicalCatalogSearchRow(
                                 group.musicBrainzId, CanonicalSearchKind.RELEASE_GROUP,
@@ -4465,8 +4472,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 fromOfflineCache = true,
                             ))
                         }
-                        dao.searchKnownMusicBrainzReleases(query, 6)
-                            .filter(::isCuratedMusicBrainzRelease).forEach { release ->
+                        snapshot.releases.filter(::isCuratedMusicBrainzRelease).forEach { release ->
                             add(CanonicalCatalogSearchRow(
                                 release.musicBrainzId, CanonicalSearchKind.RELEASE,
                                 release.title,
@@ -4475,11 +4481,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 fromOfflineCache = true,
                             ))
                         }
-                        recordings.filter(::isCuratedMusicBrainzRecording).forEach { recording ->
+                        snapshot.recordings.filter(::isCuratedMusicBrainzRecording).forEach { recording ->
                             add(CanonicalCatalogSearchRow(
                                 recording.musicBrainzId, CanonicalSearchKind.RECORDING,
                                 recording.title, recording.artistDisplay,
-                                hasCatalogedAsset = recording.musicBrainzId in available,
+                                hasCatalogedAsset = recording.musicBrainzId in
+                                    snapshot.recordingMbidsWithAssets,
                                 fromOfflineCache = true,
                                 durationMs = recording.durationMs,
                             ))
@@ -5457,8 +5464,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     withContext(Dispatchers.IO) {
                         val db = CanonicalCatalogDatabase.get(getApplication<Application>())
                         MusicBrainzCatalogIndex(db).persistRecordings(recordings.page.items)
-                        db.catalogDao().musicBrainzRecordingMbidsWithAssets(
+                        db.catalogDao().musicBrainzRecordingMbidsWithPersonalAssets(
                             recordings.page.items.map { it.musicBrainzId },
+                            (setOf("local-mediastore") +
+                            configuredCanonicalPersonalProviderKeys(getApplication<Application>())
+                                .filter { key ->
+                                    isCanonicalPersonalProviderCurrentlyAuthorized(
+                                        getApplication<Application>(), key,
+                                    )
+                                }).toList(),
                         ).toSet()
                     }
                 } catch (cancelled: CancellationException) {
@@ -5546,8 +5560,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     buildList {
                         if (CanonicalSearchKind.RECORDING in failedKinds) {
                             val known = dao.searchKnownMusicBrainzRecordings(query, 25)
-                            val available = dao.musicBrainzRecordingMbidsWithAssets(
+                            val available = dao.musicBrainzRecordingMbidsWithPersonalAssets(
                                 known.map { it.musicBrainzId },
+                                (setOf("local-mediastore") +
+                            configuredCanonicalPersonalProviderKeys(getApplication<Application>())
+                                .filter { key ->
+                                    isCanonicalPersonalProviderCurrentlyAuthorized(
+                                        getApplication<Application>(), key,
+                                    )
+                                }).toList(),
                             ).toSet()
                             known.filter(::isCuratedMusicBrainzRecording).forEach { hit -> add(CanonicalCatalogSearchRow(
                                 hit.musicBrainzId, CanonicalSearchKind.RECORDING,
@@ -5640,6 +5661,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Each entity type continues independently; failures retain its raw offset for retry. */
     fun loadMoreCanonicalSearchResults() {
+        val lease = canonicalCatalogSearchPagingLease(ProviderRuntime.gateOrNull()) ?: return
+        if (!_catalogSearchMusicBrainzVisible.value) return
         val cursor = canonicalSearchPageCursors ?: return
         if (_searchSource.value != SearchSource.CANONICAL ||
             _query.value.trim() != cursor.query ||
@@ -5650,7 +5673,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ) return
         _canonicalSearchLoadingMore.value = true
         canonicalSearchPagingJob?.cancel()
-        canonicalSearchPagingJob = viewModelScope.launch {
+        val pagingJob = viewModelScope.launch {
             try {
                 val recordings = cursor.recordings?.let { offset ->
                     cursor.artistScopeMbid?.let {
@@ -5670,7 +5693,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val artists = cursor.artists?.let {
                     musicBrainzSearch.searchArtists(cursor.query, limit = 15, offset = it)
                 }
-                if (_searchSource.value != SearchSource.CANONICAL ||
+                if (!lease.isCurrent() ||
+                    !_catalogSearchMusicBrainzVisible.value ||
+                    _searchSource.value != SearchSource.CANONICAL ||
                     _query.value.trim() != cursor.query ||
                     canonicalSearchPageCursors !== cursor || _canonicalDetail.value != null
                 ) return@launch
@@ -5690,8 +5715,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (recordings is MusicBrainzCatalogSearchResult.Success) {
                             index.persistRecordings(recordings.page.items)
-                            db.catalogDao().musicBrainzRecordingMbidsWithAssets(
+                            db.catalogDao().musicBrainzRecordingMbidsWithPersonalAssets(
                                 recordings.page.items.map { it.musicBrainzId },
+                                (setOf("local-mediastore") +
+                            configuredCanonicalPersonalProviderKeys(getApplication<Application>())
+                                .filter { key ->
+                                    isCanonicalPersonalProviderCurrentlyAuthorized(
+                                        getApplication<Application>(), key,
+                                    )
+                                }).toList(),
                             ).toSet()
                         } else emptySet()
                     }
@@ -5700,7 +5732,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {
                     emptySet()
                 }
-                if (_searchSource.value != SearchSource.CANONICAL ||
+                if (!lease.isCurrent() ||
+                    !_catalogSearchMusicBrainzVisible.value ||
+                    _searchSource.value != SearchSource.CANONICAL ||
                     _query.value.trim() != cursor.query || canonicalSearchPageCursors !== cursor ||
                     _canonicalDetail.value != null
                 ) return@launch
@@ -5760,7 +5794,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val verified = withVerifiedLocalBadges(
                     canonicalSearchRowsWithoutRedundantEditions(named),
                 )
-                if (_searchSource.value != SearchSource.CANONICAL ||
+                if (!lease.isCurrent() ||
+                    !_catalogSearchMusicBrainzVisible.value ||
+                    _searchSource.value != SearchSource.CANONICAL ||
                     _query.value.trim() != cursor.query ||
                     canonicalSearchPageCursors !== cursor || _canonicalDetail.value != null
                 ) return@launch
@@ -5776,6 +5812,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ) _canonicalSearchLoadingMore.value = false
             }
         }
+        val unregister = lease.cancelJobOnRevoke(pagingJob)
+        pagingJob.invokeOnCompletion { unregister() }
+        canonicalSearchPagingJob = pagingJob
     }
 
     /**
