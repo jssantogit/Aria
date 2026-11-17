@@ -40,6 +40,8 @@ class TrackContextConsistencyTest {
         val remote = read("app/src/main/java/com/music/bitchord/ui/screens/CanonicalRemoteLibraryScreen.kt")
         assertTrue(song.contains("showMoreButton: Boolean = false"))
         assertTrue(remote.contains("showInlineOptions: Boolean = false"))
+        assertFalse("Rating controls must be reached from the verified hold, not a hidden ⋮",
+            remote.contains("internal fun CanonicalCatalogRatingMenu("))
     }
 
     @Test fun homeCompactTrackUsesHoldInsteadOfInlineOverflow() {
