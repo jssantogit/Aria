@@ -130,12 +130,17 @@ fun NativeDetailTrackSwipeContainer(
             }
     }
 
+    // The queue reveal must be hidden while dragging, but at rest the source
+    // row is part of the page, not an opaque rectangular tile. Always painting
+    // rowBackground made long-held songs (and album track lists) show a pale
+    // full-width backing through HeldContextMenu's correct scrim cutout.
+    val swipeOffsetPx = try { swipeState.requireOffset() } catch (_: IllegalStateException) { 0f }
     SwipeToDismissBox(
         state = swipeState,
         modifier = modifier.onSizeChanged { boxWidth = it.width.toFloat() },
         backgroundContent = { QueueSwipeBackground(swipeState) },
     ) {
-        content(Modifier, rowBackground)
+        content(Modifier, nativeSwipeRowCoverAtOffset(rowBackground, swipeOffsetPx))
     }
 }
 
@@ -186,6 +191,15 @@ private fun QueueSwipeLabel(playNext: Boolean) {
         )
     }
 }
+
+/**
+ * Resting tracks must not paint the page-colored queue cover over artwork
+ * backdrops. While swiping, a solid cover is necessary to hide the revealed
+ * queue actions beneath the moving row. This is independent of media identity.
+ */
+internal fun nativeSwipeRowCoverAtOffset(pageColor: Color, offsetPx: Float): Color =
+    if (offsetPx.isFinite() && kotlin.math.abs(offsetPx) > 0.5f) pageColor
+    else Color.Transparent
 
 /** Render the swipe cover and current/selection tint in the same captured layer.
  * This solid cover still hides the queue-reveal artwork while the row slides. */
