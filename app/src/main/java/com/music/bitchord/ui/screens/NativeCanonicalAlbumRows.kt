@@ -39,11 +39,17 @@ internal fun nativeCanonicalAlbumVisibleTracks(
  * compositor owns only the numbering, divider, stable RecordingId key and
  * callback slots. It does not use Song, legacy browseId or YouTube videoId.
  */
+/** Hide a repeated release credit but preserve real guest artists. */
+internal fun nativeAlbumTrackSecondaryLine(trackArtist: String, albumArtist: String): String? =
+    trackArtist.trim().takeIf { it.isNotEmpty() &&
+        !it.equals(albumArtist.trim(), ignoreCase = true) }
+
 internal fun LazyListScope.nativeCanonicalAlbumTrackRows(
     tracks: List<CanonicalBrowseTrack>,
     artworkLoader: OpenSubsonicArtworkLoader,
     palette: ArtworkPalette,
     trackNumbers: Map<String, Int>,
+    albumCredit: String,
     onTrackPlay: (CanonicalBrowseTrack) -> Unit,
     onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
     onTrackOptions: (CanonicalBrowseTrack) -> Unit,
@@ -64,6 +70,7 @@ internal fun LazyListScope.nativeCanonicalAlbumTrackRows(
             albumTrackNumber = nativeCanonicalAlbumRowNumber(
                 track.recordingId, index, trackNumbers,
             ),
+            albumCredit = albumCredit,
             palette = palette,
         )
         if (index < tracks.lastIndex) {

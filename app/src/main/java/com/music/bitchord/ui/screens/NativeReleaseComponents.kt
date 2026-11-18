@@ -49,6 +49,9 @@ internal val HEADER_GUTTER = PAGE_GUTTER + 8.dp
 internal val SLEEVE_SHAPE = RoundedCornerShape(12.dp)
 private val SLEEVE_SHADOW = 18.dp
 private val RELEASE_SIDE_BUTTON = 50.dp
+internal const val ALBUM_SLEEVE_FRACTION = 0.66f
+internal fun nativeReleaseSideButtonSize(compactForAlbum: Boolean): Dp =
+    if (compactForAlbum) 46.dp else RELEASE_SIDE_BUTTON
 private val RELEASE_ACTION_GAP = 14.dp
 private val RELEASE_ACTIONS_MAX_WIDTH = 420.dp
 
@@ -69,13 +72,15 @@ internal fun NativeReleaseActionRow(
     pinTargetLabel: String = "álbum",
     isPinnedInLibrary: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
+    compactForAlbum: Boolean = false,
 ) {
+    val sideButton = nativeReleaseSideButtonSize(compactForAlbum)
     Row(
         modifier = Modifier
             .widthIn(max = RELEASE_ACTIONS_MAX_WIDTH)
             .fillMaxWidth()
             .padding(horizontal = HEADER_GUTTER),
-        horizontalArrangement = Arrangement.spacedBy(RELEASE_ACTION_GAP),
+        horizontalArrangement = Arrangement.spacedBy(if (compactForAlbum) 12.dp else RELEASE_ACTION_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isLocal) {
@@ -85,7 +90,7 @@ internal fun NativeReleaseActionRow(
                 onClick = onPlay,
                 filled = true,
                 enabled = canPlay,
-                size = RELEASE_SIDE_BUTTON,
+                size = sideButton,
                 modifier = Modifier.weight(1f),
             )
             ActionPill(
@@ -94,7 +99,7 @@ internal fun NativeReleaseActionRow(
                 onClick = onShuffle,
                 filled = false,
                 enabled = canShuffle,
-                size = RELEASE_SIDE_BUTTON,
+                size = sideButton,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -103,7 +108,7 @@ internal fun NativeReleaseActionRow(
                 contentDescription = stringResource(R.string.shuffle),
                 onClick = onShuffle,
                 haptic = Haptic.Resume,
-                size = RELEASE_SIDE_BUTTON,
+                size = sideButton,
                 enabled = canShuffle,
             )
             ActionPill(
@@ -112,7 +117,7 @@ internal fun NativeReleaseActionRow(
                 onClick = onPlay,
                 filled = true,
                 enabled = canPlay,
-                size = RELEASE_SIDE_BUTTON,
+                size = sideButton,
                 modifier = Modifier.weight(1f),
             )
             CircleIconButton(
@@ -142,7 +147,7 @@ internal fun NativeReleaseActionRow(
                     !reservePinAction && isSaved == true -> Haptic.ToggleOff
                     else -> Haptic.ToggleOn
                 },
-                size = RELEASE_SIDE_BUTTON,
+                size = sideButton,
                 enabled = when {
                     onAddToQueue != null -> true
                     reservePinAction -> onTogglePin != null
@@ -175,7 +180,8 @@ internal fun NativeReleasePinOnlyAction(
                 "Desafixar $targetLabel da Biblioteca" else "Fixar $targetLabel na Biblioteca",
             onClick = onTogglePin,
             haptic = if (isPinned) Haptic.ToggleOff else Haptic.ToggleOn,
-            size = RELEASE_SIDE_BUTTON,
+            size = if (targetLabel == "álbum") nativeReleaseSideButtonSize(true)
+                else RELEASE_SIDE_BUTTON,
         )
     }
 }
@@ -235,6 +241,7 @@ internal fun NativeAlbumHeroActions(
                 pinTargetLabel = "álbum",
                 isPinnedInLibrary = isPinned,
                 onTogglePin = onTogglePin,
+                compactForAlbum = true,
             )
         }
     } else if (onTogglePin != null) {
@@ -262,6 +269,7 @@ internal fun NativeReleaseHeaderLayout(
     artwork: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
     topInset: Dp? = null,
     onCreditClick: (() -> Unit)? = null,
+    inlineAlbumMetadata: Boolean = false,
     actions: @Composable () -> Unit,
 ) {
     Column(
@@ -306,26 +314,59 @@ internal fun NativeReleaseHeaderLayout(
                         else m.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCreditClick) },
             )
         }
-        if (quality != null) {
-            Spacer(Modifier.height(8.dp))
-            SourceQualityBadge(
-                quality = quality,
-                color = palette.onBackgroundVariant,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.testTag("native-album-source-quality"),
-            )
-        }
-        if (meta.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = meta,
-                style = MaterialTheme.typography.labelMedium,
-                color = palette.onBackgroundVariant,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = HEADER_GUTTER),
-            )
+        if (inlineAlbumMetadata) {
+            // Single album-caption line with only verified metadata and
+            // source-advertised quality (not a decoded-stream guarantee).
+            if (meta.isNotBlank() || quality != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = HEADER_GUTTER)
+                        .testTag("native-album-caption"),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (meta.isNotBlank()) Text(
+                        text = meta,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = palette.onBackgroundVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (quality != null) Modifier.weight(1f, fill = false)
+                            else Modifier,
+                    )
+                    if (quality != null) {
+                        if (meta.isNotBlank()) Text(
+                            text = " · ",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = palette.onBackgroundVariant,
+                        )
+                        SourceQualityBadge(
+                            quality = quality, color = palette.onBackgroundVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.testTag("native-album-source-quality"),
+                        )
+                    }
+                }
+            }
+        } else {
+            if (quality != null) {
+                Spacer(Modifier.height(8.dp))
+                SourceQualityBadge(
+                    quality = quality, color = palette.onBackgroundVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.testTag("native-album-source-quality"),
+                )
+            }
+            if (meta.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = meta, style = MaterialTheme.typography.labelMedium,
+                    color = palette.onBackgroundVariant, textAlign = TextAlign.Center,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = HEADER_GUTTER),
+                )
+            }
         }
         actions()
     }

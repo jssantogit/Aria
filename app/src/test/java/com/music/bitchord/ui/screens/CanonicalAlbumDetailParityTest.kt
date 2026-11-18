@@ -6,9 +6,35 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import androidx.compose.ui.unit.dp
 
 /** A real album detail follows DetailScreen release grammar, not Library rows. */
 class CanonicalAlbumDetailParityTest {
+    @Test fun albumMetricsRemainScopedToAlbumPresentation() {
+        assertEquals(0.66f, ALBUM_SLEEVE_FRACTION, 0.0001f)
+        assertEquals(46.dp, nativeReleaseSideButtonSize(true))
+        assertEquals(50.dp, nativeReleaseSideButtonSize(false))
+    }
+
+    @Test fun albumHeaderCaptionRequiresVerifiedReleaseYearAndSourceGenre() {
+        val known = canonicalAlbumFooterMetadata("2017-09-15", listOf(track("id", "Song")))
+        assertEquals("2017", known.year)
+        assertEquals(null, known.genre)
+        assertEquals("2017", nativeAlbumHeaderCaption(known))
+        assertEquals("Metal · 2017", nativeAlbumHeaderCaption(known.copy(genre = "Metal")))
+        assertEquals("", nativeAlbumHeaderCaption(null))
+        assertEquals(null, canonicalAlbumFooterMetadata("unknown", emptyList()).year)
+        assertEquals(null, canonicalAlbumFooterMetadata("2017-02-30", emptyList()).year)
+        assertEquals("2017", canonicalAlbumFooterMetadata("2017", emptyList()).year)
+    }
+
+    @Test fun canonicalAlbumRowsOmitRepeatedArtistButRetainGuestCredits() {
+        assertEquals(null, nativeAlbumTrackSecondaryLine("Déyyess", " DÉYYESS "))
+        assertEquals(null, nativeAlbumTrackSecondaryLine("", "Déyyess"))
+        assertEquals("Guest", nativeAlbumTrackSecondaryLine(" Guest ", "Déyyess"))
+        assertEquals("Guest", nativeAlbumTrackSecondaryLine("Guest", ""))
+    }
+
     @Test fun emptyNativeAlbumSearchUsesSameFeedbackInRootAndNestedRoutes() {
         assertEquals(
             "Nenhuma música corresponde à pesquisa.",

@@ -63,7 +63,7 @@ internal fun NativeCanonicalAlbumContent(
     onCreditClick: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().background(palette.background)) {
-        val sleeve = (maxWidth * 0.76f).coerceAtMost(maxHeight * 0.6f)
+        val sleeve = (maxWidth * ALBUM_SLEEVE_FRACTION).coerceAtMost(maxHeight * 0.6f)
         // An album refresh keeps its place; opening a different ReleaseId
         // starts at its own header instead of inheriting the previous scroll.
         val releaseListState = rememberNativeAlbumDetailListState(releaseIdentity)
@@ -75,7 +75,8 @@ internal fun NativeCanonicalAlbumContent(
                 NativeReleaseHeaderLayout(
                     title = title,
                     credit = credit,
-                    meta = "",
+                    meta = nativeAlbumHeaderCaption(footer),
+                    inlineAlbumMetadata = true,
                     rating = rating,
                     quality = quality,
                     onRate = onRate,
@@ -123,6 +124,7 @@ internal fun NativeCanonicalAlbumContent(
                     artworkLoader = artworkLoader,
                     palette = palette,
                     trackNumbers = trackNumbers,
+                    albumCredit = credit,
                     onTrackPlay = onTrackPlay,
                     onTrackEditRating = onTrackEditRating,
                     onTrackOptions = onTrackOptions,

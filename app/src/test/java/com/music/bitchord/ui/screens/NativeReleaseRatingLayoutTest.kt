@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.theme.ArtworkPalette
 import org.junit.Rule
@@ -57,6 +58,22 @@ class NativeReleaseRatingLayoutTest {
         compose.onNodeWithTag("native-release-title").assertExists()
         compose.onNodeWithTag("native-release-credit").assertDoesNotExist()
         compose.onNodeWithTag("native-album-rating").assertDoesNotExist()
+    }
+
+    @Test fun albumShowsInlineCaptionWithoutInventingQualityBadge() {
+        compose.setContent {
+            MaterialTheme {
+                NativeReleaseHeaderLayout(
+                    title = "In Contact", credit = "Caligula's Horse",
+                    meta = "2017", inlineAlbumMetadata = true,
+                    palette = palette, sleeveSize = 96.dp,
+                    topInset = 0.dp, artwork = {}, actions = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("native-album-caption").assertExists()
+        compose.onNodeWithText("2017").assertExists()
+        compose.onNodeWithTag("native-album-source-quality").assertDoesNotExist()
     }
 
     @Test fun unknownRatingDoesNotInventAnIndicator() {

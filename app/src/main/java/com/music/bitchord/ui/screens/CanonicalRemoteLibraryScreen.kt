@@ -194,7 +194,25 @@ internal data class CanonicalAlbumFooterMetadata(
     val date: String?,
     val summary: String?,
     val genre: String? = null,
+    val year: String? = null,
 )
+
+/** Verified date or explicit year; never extract a number from a title. */
+internal fun canonicalAlbumVerifiedYear(rawDate: String?): String? {
+    val raw = rawDate?.trim().orEmpty()
+    if (raw.length == 4 && raw.all(Char::isDigit)) return raw
+    return try {
+        LocalDate.parse(raw.take(10)).year.toString()
+    } catch (_: DateTimeParseException) {
+        null
+    }
+}
+
+internal fun nativeAlbumHeaderCaption(footer: CanonicalAlbumFooterMetadata?): String =
+    listOfNotNull(
+        footer?.genre?.trim()?.takeIf(String::isNotEmpty),
+        footer?.year?.trim()?.takeIf(String::isNotEmpty),
+    ).joinToString(" · ")
 
 /** Only metadata backed by the release/track catalog is shown. */
 internal fun canonicalAlbumFooterMetadata(
@@ -224,7 +242,10 @@ internal fun canonicalAlbumFooterMetadata(
     }
     // Genre is intentionally absent: CanonicalBrowseTrack currently has no
     // verified genre field. Never guess it from artist, title or source.
-    return CanonicalAlbumFooterMetadata(date, summary)
+    return CanonicalAlbumFooterMetadata(
+        date = date, summary = summary,
+        year = canonicalAlbumVerifiedYear(releaseDate),
+    )
 }
 
 private data class CanonicalAlbumHeaderEvidence(
@@ -2159,8 +2180,13 @@ internal fun CanonicalTrackRow(
     showInlineOptions: Boolean = false,
     palette: ArtworkPalette? = null,
     albumTrackNumber: Int? = null,
+    albumCredit: String? = null,
 ) {
-    // The same source-neutral row compositor used by playlist tracks.
+    // Numbered release rows can hide redundant album credits; every other
+    // library, playlist and artist row keeps its prior subtitles.
+    val secondaryLine = if (albumTrackNumber != null && albumCredit != null) {
+        nativeAlbumTrackSecondaryLine(track.artistDisplay, albumCredit)
+    } else track.artistDisplay
     NativeDetailTrackRowLayout(
         onClick = {
             if (selectionMode && onToggleSelection != null) onToggleSelection()
@@ -2169,7 +2195,8 @@ internal fun CanonicalTrackRow(
         onLongPress = if (selectionMode) null else onLongPress ?: onOptions,
         onMore = null,
         horizontalInset = if (compactForArtist) 0.dp else PAGE_GUTTER,
-        modifier = if (compactForArtist) Modifier else Modifier.heightIn(min = 68.dp),
+        modifier = if (compactForArtist) Modifier
+            else Modifier.heightIn(min = if (albumTrackNumber != null) 60.dp else 68.dp),
         textGap = if (albumTrackNumber != null) PAGE_GUTTER
             else if (compactForArtist) 12.dp else 14.dp,
         leading = {
@@ -2195,8 +2222,8 @@ internal fun CanonicalTrackRow(
             )
         },
         subtitle = {
-            Text(
-                text = track.artistDisplay,
+            if (!secondaryLine.isNullOrBlank()) Text(
+                text = secondaryLine,
                 style = MaterialTheme.typography.bodyMedium,
                 color = palette?.onBackgroundVariant
                     ?: MaterialTheme.colorScheme.onSurfaceVariant,
