@@ -1112,60 +1112,65 @@ private fun BitChordApp(
     }
     // Explore is only the genre index. Public and opted-in discovery requests
     // feed Home, and never manufacture a playable MediaAsset.
-    LaunchedEffect(
-        selectedTab, popularityCandidateIds, catalogEditorialOrder,
-        listenBrainzAccountEnabled, listenBrainzAccountToken,
-    ) {
-        if (selectedTab == TAB_HOME) {
-            if (catalogEditorialOrder.firstOrNull() ==
-                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
-            ) com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
-                viewModel, catalogEditorialOrder,
-            )
-            viewModel.loadCanonicalExploreSitewide()
-            viewModel.loadCanonicalExplorePublicPopularity(cachedCanonicalRows)
-            // Explore now contains only genre navigation. An opted-in user's
-            // private recommendations belong to Home, not the public grid.
-            viewModel.loadCanonicalPersonalRecommendations()
+    // This provider discovery orchestration has no UI state of its own.
+    // Isolating these effects keeps the root Compose method within JVM limits.
+    @Composable
+    fun CatalogEditorialDiscoveryEffects() {
+        LaunchedEffect(
+            selectedTab, popularityCandidateIds, catalogEditorialOrder,
+            listenBrainzAccountEnabled, listenBrainzAccountToken,
+        ) {
+            if (selectedTab == TAB_HOME) {
+                if (catalogEditorialOrder.firstOrNull() ==
+                        com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+                ) com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
+                    viewModel, catalogEditorialOrder,
+                )
+                viewModel.loadCanonicalExploreSitewide()
+                viewModel.loadCanonicalExplorePublicPopularity(cachedCanonicalRows)
+                // Explore now contains only genre navigation. An opted-in user's
+                // private recommendations belong to Home, not the public grid.
+                viewModel.loadCanonicalPersonalRecommendations()
+            }
+        }
+        // Apple-first only queries its eligible secondary if the primary really
+        // settled without a usable Apple product. Loading is never a miss.
+        LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases) {
+            if (selectedTab == TAB_HOME)
+                com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartMusicBrainz(
+                    viewModel, catalogEditorialOrder, appleHomeReleases,
+                )
+        }
+
+        // Apple genre discovery is native: no MusicBrainz seed is required.
+        LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults,
+            appleGenreReleases, catalogEditorialOrder,
+        ) {
+            val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
+            val first = catalogEditorialOrder.firstOrNull()
+            val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+            val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+            if (first == apple) {
+                viewModel.loadAppleGenreEditorial(tag, emptyList())
+                val result = appleGenreReleases[tag]
+                if (mb in catalogEditorialOrder &&
+                    (result is UiState.Error ||
+                        result is UiState.Success && result.data.isEmpty())
+                ) viewModel.loadCanonicalGenre(tag)
+            } else if (first == mb) {
+                if (apple in catalogEditorialOrder &&
+                    (canonicalGenreResults is UiState.Error ||
+                        canonicalGenreResults is UiState.Success &&
+                        (canonicalGenreResults as UiState.Success).data.isEmpty())
+                ) viewModel.loadAppleGenreEditorial(tag, emptyList())
+            }
         }
     }
+    CatalogEditorialDiscoveryEffects()
     val canonicalFeedDate = remember {
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
             .format(java.util.Date())
     }
-    // Apple-first only queries its eligible secondary if the primary really
-    // settled without a usable Apple product. Loading is never a miss.
-    LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases) {
-        if (selectedTab == TAB_HOME)
-            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartMusicBrainz(
-                viewModel, catalogEditorialOrder, appleHomeReleases,
-            )
-    }
-
-    // Apple genre discovery is native: no MusicBrainz seed is required.
-    LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults,
-        appleGenreReleases, catalogEditorialOrder,
-    ) {
-        val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
-        val first = catalogEditorialOrder.firstOrNull()
-        val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
-        val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
-        if (first == apple) {
-            viewModel.loadAppleGenreEditorial(tag, emptyList())
-            val result = appleGenreReleases[tag]
-            if (mb in catalogEditorialOrder &&
-                (result is UiState.Error ||
-                    result is UiState.Success && result.data.isEmpty())
-            ) viewModel.loadCanonicalGenre(tag)
-        } else if (first == mb) {
-            if (apple in catalogEditorialOrder &&
-                (canonicalGenreResults is UiState.Error ||
-                    canonicalGenreResults is UiState.Success &&
-                    (canonicalGenreResults as UiState.Success).data.isEmpty())
-            ) viewModel.loadAppleGenreEditorial(tag, emptyList())
-        }
-    }
-
     // Rendering Now Playing and the mini-player must not rehash and sort hundreds
     // of media URIs. Recompute the native Home shelves only when their input
     // snapshot, date, or the user's locale actually changes.
