@@ -7684,10 +7684,14 @@ internal fun canonicalLibraryDetailLauncherActive(
     launcherType: com.music.bitchord.ui.screens.CanonicalLibraryEntityType,
 ): Boolean = menuOpen && !heldPreview && menuType == launcherType
 
-/** The control already sits in a round surface. A second border on the inner
- * IconButton produced detached white arcs around the artist/album overflow. */
+/**
+ * The outer native toolbar already paints a circular material and hairline.
+ * Adding a filled selected circle over it (plus a square IconButton ripple)
+ * gave album/artist ⋮ a bright double ring absent from adjacent actions.
+ */
+@Suppress("UNUSED_PARAMETER")
 internal fun nativeCollectionOverflowActiveFill(expanded: Boolean, ink: Color): Color =
-    if (expanded) ink.copy(alpha = 0.14f) else Color.Transparent
+    Color.Transparent
 
 @Composable
 private fun NativeCollectionOverflowAction(
@@ -7699,6 +7703,9 @@ private fun NativeCollectionOverflowAction(
     IconButton(
         onClick = onClick,
         modifier = Modifier.size(40.dp)
+            // The ripple also belongs inside the existing circle; it must
+            // not paint a pale rectangular halo around the launcher.
+            .clip(CircleShape)
             .background(nativeCollectionOverflowActiveFill(expanded, ink), CircleShape),
     ) {
         Icon(nativeCollectionOverflowGlyph(), contentDescription = contentDescription,
@@ -8450,9 +8457,11 @@ internal fun FrostedMenuPanel(
             }
         }
         Surface(
-            // Always paint the neutral plate first. Haze only enriches it:
-            // without an opaque fallback, artwork shows through the actions.
-            color = solidPlate,
+            // Like NativeContextActionPlate and the Library filters, the
+            // neutral base belongs to the *same clipped layer* as Haze.
+            // A transparent outer Surface avoids a second opaque panel
+            // competing with the live backdrop sample.
+            color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
             shape = shape,
             shadowElevation = 0.dp,
@@ -8476,20 +8485,25 @@ internal fun FrostedMenuPanel(
                 .clip(shape)
                 .clickable(onClick = {}),
         ) {
-            Box(Modifier.clip(shape).then(
-                if (reduceFilterBlur) Modifier
-                else Modifier.optimizedHazeEffect(
-                    state = hazeState,
-                    style = HazeMaterials.regular(solidPlate.copy(alpha = 0.58f)),
-                )
-            )) {
+            Box(
+                Modifier.clip(shape)
+                    .background(solidPlate)
+                    .then(
+                        if (reduceFilterBlur) Modifier
+                        else Modifier.optimizedHazeEffect(
+                            state = hazeState,
+                            style = HazeMaterials.regular(solidPlate.copy(alpha = 0.58f)),
+                        )
+                    )
+                    .testTag("native-frosted-neutral-material"),
+            ) {
                 Column(Modifier.padding(vertical = 8.dp), content = content)
             }
         }
     }
 }
 
-/** One option on a frosted menu: its label, and a tick or [icon] at the end. */
+/** Shared frosted-menu rows follow ActionRow(Menu): text first, icon trailing. */
 @Composable
 internal fun FrostedMenuRow(
     label: String,
@@ -8500,30 +8514,34 @@ internal fun FrostedMenuRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { selected = checked }
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .heightIn(min = 46.dp)
+            .padding(horizontal = 18.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Match native compact overflow: action glyph before its label,
-        // checkmark (when selected) remains a trailing state indicator.
-        if (icon != null) {
-            Icon(icon, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(14.dp))
-        }
         Text(
             label,
             style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
+        if (icon != null) {
+            Spacer(Modifier.width(14.dp))
+            Icon(
+                icon, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(20.dp)
+                    .testTag("native-frosted-trailing-icon"),
+            )
+        }
         if (checked) {
+            Spacer(Modifier.width(14.dp))
             Icon(
                 Icons.Rounded.Check,
                 contentDescription = null,
                 tint = com.music.bitchord.ui.theme.appleMusicKeyColor(),
+                modifier = Modifier.size(20.dp),
             )
         }
     }

@@ -4,6 +4,15 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.fetchSemanticsNode
+import com.music.bitchord.ui.components.ActionRow
+import com.music.bitchord.ui.components.ActionRowStyle
+import com.music.bitchord.ui.components.LocalActionRowStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -66,17 +75,44 @@ class NativeFrostedMenuRowTest {
         assertEquals(1f, frostedMenuPanelOpaquePlate(isDark = false).alpha)
     }
 
-    @Test fun expandedOverflowHasSubtleFillAndNoSecondWhiteRing() {
+    @Test fun overflowLauncherNeverPaintsASecondSelectedCircle() {
         assertEquals(Color.Transparent,
             nativeCollectionOverflowActiveFill(expanded = false, ink = Color.White))
-        assertEquals(Color.White.copy(alpha = 0.14f),
+        assertEquals(Color.Transparent,
             nativeCollectionOverflowActiveFill(expanded = true, ink = Color.White))
-        assertEquals(Color.Black.copy(alpha = 0.14f),
+        assertEquals(Color.Transparent,
             nativeCollectionOverflowActiveFill(expanded = true, ink = Color.Black))
     }
 
     @Test fun rootSettingsAndArtistUseTheSameFrostedMenuWidth() {
         assertEquals(240.dp, FROSTED_SETTINGS_MENU_WIDTH)
+    }
+
+    @Test fun settingsRowUsesTheSameLeadingLabelColumnAsExistingTrailingIconActions() {
+        val settings = ApplicationProvider.getApplicationContext<Context>()
+            .getString(R.string.settings)
+        compose.setContent {
+            BitChordTheme {
+                CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
+                    Column {
+                        ActionRow(
+                            icon = Icons.Rounded.Settings, label = "Tocar a seguir",
+                            onClick = {},
+                        )
+                        FrostedSettingsAction {}
+                    }
+                }
+            }
+        }
+        val normal = compose.onNodeWithText("Tocar a seguir")
+            .fetchSemanticsNode().boundsInRoot
+        val settingsBounds = compose.onNodeWithText(settings)
+            .fetchSemanticsNode().boundsInRoot
+        val iconBounds = compose.onNodeWithTag(
+            "native-frosted-trailing-icon", useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        assertEquals(normal.left, settingsBounds.left, 1f)
+        org.junit.Assert.assertTrue(iconBounds.left > settingsBounds.right)
     }
 
     @Test fun sharedArtistSettingsActionIsClickableAndNeverSelected() {
