@@ -274,6 +274,7 @@ import com.music.bitchord.ui.components.FloatingBottomBar
 import com.music.bitchord.ui.components.GlassNavBar
 import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
+import com.music.bitchord.ui.components.NativeToolbarIconButton
 import com.music.bitchord.ui.components.nativeCompactMenuLiftShadow
 import com.music.bitchord.ui.components.LastfmLoginAlert
 import com.music.bitchord.ui.components.LocalAppBackdrop
@@ -4996,7 +4997,7 @@ private fun BitChordApp(
                         if (appleLibraryRoundChrome) {
                             if (appleLibraryLandingChrome || applePlaylistCategoryChrome) {
                                 com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
-                                    IconButton(onClick = {
+                                    NativeToolbarIconButton(onClick = {
                                         editingSmartPlaylistId = null
                                         editingNormalPlaylistId = null
                                         showSmartPlaylistBuilder = true
@@ -5019,7 +5020,7 @@ private fun BitChordApp(
                                         unifiedControls.sourceMenuAnchor = nativeMenuAnchorBounds(coords)
                                     },
                                 ) {
-                                    IconButton(onClick = { unifiedControls.sourceMenuOpen = true }) {
+                                    NativeToolbarIconButton(onClick = { unifiedControls.sourceMenuOpen = true }) {
                                         Icon(Icons.Rounded.Layers, contentDescription = "Fonte do catálogo",
                                             tint = MaterialTheme.colorScheme.onSurface)
                                     }
@@ -5030,7 +5031,7 @@ private fun BitChordApp(
                                         unifiedControls.sortMenuAnchor = nativeMenuAnchorBounds(coords)
                                     },
                                 ) {
-                                    IconButton(onClick = { unifiedControls.sortMenuOpen = true }) {
+                                    NativeToolbarIconButton(onClick = { unifiedControls.sortMenuOpen = true }) {
                                         Icon(PlaylistEditorIcons.Sort, contentDescription = "Filtros da biblioteca",
                                             tint = MaterialTheme.colorScheme.onSurface)
                                     }
@@ -5038,7 +5039,7 @@ private fun BitChordApp(
                             }
                             if (applePlaylistCategoryChrome) {
                                 com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
-                                    IconButton(onClick = { playlistLibraryOptionsMenu = true }) {
+                                    NativeToolbarIconButton(onClick = { playlistLibraryOptionsMenu = true }) {
                                         Icon(PlaylistEditorIcons.Sort, contentDescription = "Filtros de playlists",
                                             tint = MaterialTheme.colorScheme.onSurface)
                                     }
@@ -5051,7 +5052,7 @@ private fun BitChordApp(
                                         folderMenuAnchor = nativeMenuAnchorBounds(coords)
                                     },
                                 ) {
-                                    IconButton(onClick = { folderMenuOpen = true }) {
+                                    NativeToolbarIconButton(onClick = { folderMenuOpen = true }) {
                                         Icon(
                                             PlaylistEditorIcons.Sort,
                                             contentDescription = "Filtros de Downloads",
@@ -7458,7 +7459,7 @@ private fun CanonicalPlaylistToolbarActions(
     overflowMenu: (@Composable () -> Unit)? = null,
 ) {
     if (!searching && !hasDetail && showCreate) {
-        IconButton(onClick = onCreate, modifier = Modifier.size(40.dp)) {
+        NativeToolbarIconButton(onClick = onCreate, modifier = Modifier.size(40.dp)) {
             Icon(
                 PlaylistEditorIcons.Add,
                 contentDescription = "Nova playlist",
@@ -7535,7 +7536,7 @@ private fun NativeCollectionSearchAction(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+    NativeToolbarIconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
         Icon(
             if (searching) PlaylistEditorIcons.Close else BitChordIcons.Search,
             contentDescription = contentDescription,
@@ -7546,7 +7547,7 @@ private fun NativeCollectionSearchAction(
 
 @Composable
 private fun NativeCollectionSortAction(contentDescription: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+    NativeToolbarIconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
         Icon(PlaylistEditorIcons.Sort, contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurface)
     }
@@ -7572,6 +7573,7 @@ internal fun NativeCollectionRatingToolbarAction(
         IconButton(
             onClick = onClick,
             modifier = Modifier.size(40.dp)
+                .clip(CircleShape)
                 .onGloballyPositioned { coords ->
                     onBoundsChanged(nativeMenuAnchorBounds(coords))
                 }
@@ -7700,7 +7702,7 @@ private fun NativeCollectionOverflowAction(
     expanded: Boolean = false,
 ) {
     val ink = MaterialTheme.colorScheme.onSurface
-    IconButton(
+    NativeToolbarIconButton(
         onClick = onClick,
         modifier = Modifier.size(40.dp)
             // The ripple also belongs inside the existing circle; it must
@@ -8223,7 +8225,7 @@ private fun UnifiedLibraryToolbarActions(
         Box(Modifier.onGloballyPositioned { coords ->
             controls.sourceMenuAnchor = nativeMenuAnchorBounds(coords)
         }) {
-            IconButton(onClick = { controls.sourceMenuOpen = true }) {
+            NativeToolbarIconButton(onClick = { controls.sourceMenuOpen = true }) {
                 Icon(
                     Icons.Rounded.Layers, contentDescription = "Fonte das músicas",
                     tint = MaterialTheme.colorScheme.onSurface,
@@ -8868,7 +8870,7 @@ internal fun NativeLibraryTopBarSortAction(
     onChange: (LibrarySort) -> Unit,
 ) {
     Box(Modifier.testTag("native-toolbar-library-sort-anchor")) {
-        IconButton(
+        NativeToolbarIconButton(
             onClick = onOpen,
             modifier = Modifier.size(40.dp).testTag("native-toolbar-library-sort-trigger"),
         ) {

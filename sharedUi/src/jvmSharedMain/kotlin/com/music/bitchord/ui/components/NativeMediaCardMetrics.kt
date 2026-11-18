@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 object NativeMediaCardMetrics {
     val shelfWidth = 150.dp
     val shelfCaptionGap = 10.dp
+    // The pressed state shades artwork only, without touching the captions.
+    const val pressedArtworkAlpha = 0.08f
     // Recent-listen covers use the existing square shelf composition, not the
     // editorials' tall overlay. Keep the skeleton and real cards identical.
     val recentCoverWidth = shelfWidth

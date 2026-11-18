@@ -209,6 +209,34 @@ class GlobalAppleTopBarChromeTest {
     }
 
 
+    @Test fun nativeToolbarTouchRippleIsLimitedToItsFortyDpCircle() {
+        compose.setContent {
+            BitChordTheme {
+                Row {
+                    FloatingLibraryTopBarCircle(hazeState = null) {
+                        NativeToolbarIconButton(
+                            onClick = {},
+                            modifier = Modifier.testTag("bounded-toolbar-touch"),
+                        ) {
+                            Icon(Icons.Rounded.Sort, contentDescription = "Ordenar")
+                        }
+                    }
+                    TopBarAccountButton(
+                        account = null, onClick = {},
+                        hostedExpanded = false, onShowHostedMenu = {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("bounded-toolbar-touch", useUnmergedTree = true)
+            .assertWidthIsEqualTo(40.dp)
+        compose.onNodeWithTag("apple-global-more-options", useUnmergedTree = true)
+            .assertWidthIsEqualTo(40.dp)
+        compose.onNodeWithTag("apple-library-floating-circle", useUnmergedTree = true)
+            .assertWidthIsEqualTo(40.dp)
+        compose.onNodeWithContentDescription("Ordenar").assertHasClickAction()
+    }
+
     @Test fun libraryCategoryBackAndActionsDrawEqualFortyDpCircles() {
         var backs = 0
         compose.setContent {

@@ -1,6 +1,15 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,12 +52,24 @@ internal fun NativeShelfCard(
     isCurrent: Boolean = false,
     artwork: @Composable () -> Unit,
 ) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
     Column(
         modifier = modifier
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
+            .longPressMenuClickable(
+                onClick = onClick, onLongClick = onLongPress,
+                interactionSource = pressSource, suppressTapIndication = true,
+            )
             .contextClick(onLongPress),
     ) {
-        artwork()
+        // Full card remains clickable, but feedback paints only the clipped cover.
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(NativeMediaCardMetrics.squareCoverShape)) {
+            artwork()
+            if (pressed) {
+                Box(Modifier.matchParentSize()
+                    .background(Color.Black.copy(alpha = NativeMediaCardMetrics.pressedArtworkAlpha)))
+            }
+        }
         Spacer(Modifier.height(NativeMediaCardMetrics.shelfCaptionGap))
         Row(
             modifier = Modifier.fillMaxWidth(),

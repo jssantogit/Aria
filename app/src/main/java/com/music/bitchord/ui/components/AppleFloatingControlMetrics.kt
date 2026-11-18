@@ -3,6 +3,11 @@ package com.music.bitchord.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,6 +38,32 @@ internal object AppleFloatingControlMetrics {
     const val secondaryFillAlpha = 0.07f
     const val secondaryEdgeAlpha = 0.10f
     const val disabledAlpha = 0.38f
+}
+
+/**
+ * Keep ripple inside the painted 40dp circle; Material3's larger minimum
+ * interactive layout must not become a visible 48dp splash.
+ * Touch expansion remains the platform's accessibility responsibility.
+ */
+@Composable
+internal fun NativeToolbarIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(
+        LocalMinimumInteractiveComponentSize provides AppleFloatingControlMetrics.toolbarDiameter,
+    ) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = modifier
+                .size(AppleFloatingControlMetrics.toolbarDiameter)
+                .clip(CircleShape),
+            content = content,
+        )
+    }
 }
 
 /**

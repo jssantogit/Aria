@@ -12,6 +12,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import com.music.bitchord.ui.components.longPressMenuClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -978,13 +980,18 @@ private fun HeroCard(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
     Box(
         modifier = modifier
             .aspectRatio(HERO_CARD_RATIO)
             .clip(NativeMediaCardMetrics.heroShape)
             .thumbnailBorder(NativeMediaCardMetrics.heroShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
+            .longPressMenuClickable(
+                onClick = onClick, onLongClick = onLongPress,
+                interactionSource = pressSource, suppressTapIndication = true,
+            )
             .contextClick(onLongPress),
     ) {
         val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
@@ -1000,6 +1007,10 @@ private fun HeroCard(
             )
         }
         if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
+        if (pressed) {
+            Box(Modifier.matchParentSize()
+                .background(Color.Black.copy(alpha = NativeMediaCardMetrics.pressedArtworkAlpha)))
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1085,8 +1096,12 @@ internal fun NewShelfCard(
     /** A full-colour mark drawn in place of [icon], for a card that stands for a brand. */
     logo: DrawableResource? = null,
 ) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
     Column(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.clickable(
+            interactionSource = pressSource, indication = null, onClick = onClick,
+        ),
     ) {
         Box(
             modifier = Modifier
@@ -1112,6 +1127,10 @@ internal fun NewShelfCard(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(34.dp),
                 )
+            }
+            if (pressed) {
+                Box(Modifier.matchParentSize()
+                    .background(Color.Black.copy(alpha = NativeMediaCardMetrics.pressedArtworkAlpha)))
             }
         }
         Spacer(Modifier.height(NativeMediaCardMetrics.shelfCaptionGap))

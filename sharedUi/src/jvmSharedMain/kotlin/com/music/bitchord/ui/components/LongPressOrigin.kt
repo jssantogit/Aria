@@ -64,7 +64,10 @@ fun Modifier.longPressMenuClickable(
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
     enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
+    suppressTapIndication: Boolean = false,
 ): Modifier {
+    val pressSource = interactionSource ?: remember { MutableInteractionSource() }
     val capture = remember { HoldOriginCoordinates() }
     val longClick = onLongClick?.let { held ->
         longClick@{
@@ -81,11 +84,18 @@ fun Modifier.longPressMenuClickable(
     // No pressed-ripple bitmap should ever obscure artwork or captions.
     val gesture = when {
         onClick != null && longClick != null -> Modifier.combinedClickable(
-            interactionSource = remember { MutableInteractionSource() },
+            interactionSource = pressSource,
             indication = null,
             enabled = enabled,
             onClick = onClick,
             onLongClick = longClick,
+        )
+        onClick != null && suppressTapIndication -> Modifier.combinedClickable(
+            interactionSource = pressSource,
+            indication = null,
+            enabled = enabled,
+            onClick = onClick,
+            onLongClick = null,
         )
         onClick != null -> Modifier.combinedClickable(
             enabled = enabled, onClick = onClick, onLongClick = null,

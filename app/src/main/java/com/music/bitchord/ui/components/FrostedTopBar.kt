@@ -447,7 +447,7 @@ internal fun ArtworkPageBackButton(
     }
 
     FloatingLibraryTopBarCircle(hazeState = hazeState, modifier = modifier) {
-        IconButton(
+        NativeToolbarIconButton(
             onClick = onClick,
             modifier = Modifier.testTag(
                 if (isCategory) "apple-category-back-button" else "apple-toolbar-back-button",
@@ -512,7 +512,7 @@ internal fun AppleRootSettingsOverflow(
     // by MainActivity in the same full-screen FrostedMenuPanel as artist pages,
     // preserving the correct haze sampling, scrim and positioning.
     FloatingLibraryTopBarCircle(hazeState) {
-        IconButton(
+        NativeToolbarIconButton(
             onClick = onOpen,
             modifier = Modifier.size(AppleFloatingControlMetrics.toolbarDiameter)
                 .then(appleSettingsLauncherOutline(expanded)?.let {
@@ -732,7 +732,7 @@ fun TopBarAccountButton(
     var localExpanded by remember { mutableStateOf(false) }
     val expanded = hostedExpanded ?: localExpanded
     Box(modifier = modifier) {
-        IconButton(
+        NativeToolbarIconButton(
             onClick = {
                 if (onShowHostedMenu != null) onShowHostedMenu()
                 else localExpanded = true
