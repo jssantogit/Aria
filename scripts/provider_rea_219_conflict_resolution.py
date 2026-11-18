@@ -469,18 +469,18 @@ def extract_integrated_root_shell(main: str) -> str:
     are copied or moved into a different owner.
     """
     marker = (
-        "    Box(\\n"
-        "        Modifier\\n"
-        "            .fillMaxSize()\\n"
-        "            .background(MaterialTheme.colorScheme.background),\\n"
-        "    ) {\\n"
+        "    Box(\n"
+        "        Modifier\n"
+        "            .fillMaxSize()\n"
+        "            .background(MaterialTheme.colorScheme.background),\n"
+        "    ) {\n"
     )
     # Only operate on the known top-level app shell after the other semantic
     # reconciliation transformations. Never split arbitrary nested Boxes.
     if main.count(marker) != 1:
         raise RuntimeError("Combined MainActivity: root Box anchor changed")
     start = main.index(marker)
-    end = main.find("\\n}\\n", start)
+    end = main.find("\n}\n", start)
     if end < 0:
         raise RuntimeError("Combined MainActivity: app shell end missing")
     original = main[start:end]
@@ -500,13 +500,13 @@ def extract_integrated_root_shell(main: str) -> str:
     # Only formatting indentation changes inside the exact original region.
     # The extra composable boundary prevents the 64 KiB JVM bytecode overflow
     # while retaining the existing Box's composition order and semantics.
-    indented = "\\n".join(
-        "    " + line if line else "" for line in original.split("\\n")
+    indented = "\n".join(
+        "    " + line if line else "" for line in original.split("\n")
     )
     replacement = (
-        "    val renderIntegratedRootShell: @Composable () -> Unit = {\\n"
-        + indented + "\\n"
-        + "    }\\n"
+        "    val renderIntegratedRootShell: @Composable () -> Unit = {\n"
+        + indented + "\n"
+        + "    }\n"
         + "    renderIntegratedRootShell()"
     )
     return main[:start] + replacement + main[end:]
