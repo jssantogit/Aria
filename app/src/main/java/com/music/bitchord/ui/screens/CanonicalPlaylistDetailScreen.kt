@@ -217,8 +217,11 @@ internal fun canonicalPlaylistHeaderType(smart: Boolean): String =
     if (smart) "Playlist inteligente" else "Playlist"
 
 /** Null means membership is loading; never show a misleading zero. */
-internal fun canonicalPlaylistMembershipSummary(rows: List<V2DisplayRow>?): String? {
-    if (rows == null) return null
+internal fun canonicalPlaylistMembershipSummary(
+    rows: List<V2DisplayRow>?,
+    loadFailed: Boolean = false,
+): String? {
+    if (rows == null || loadFailed) return null
     val count = verifiedPlaylistMemberCountSummary(rows.size)
     val durations = rows.map { it.durationMs }
     val total = if (durations.isNotEmpty() && durations.all { (it ?: 0L) > 0L }) {
@@ -902,7 +905,7 @@ internal fun CanonicalPlaylistDetailScreen(
         if (query.isBlank()) {
             val summary = if (card is LibraryPlaylistCard.Normal) {
                 verifiedPlaylistMemberCountSummary(historicalSongs.size)
-            } else canonicalPlaylistMembershipSummary(rows)
+            } else canonicalPlaylistMembershipSummary(rows, loadFailed = trackLoadFailed)
             if (summary != null) {
                 item(key = "playlist-detail-summary") {
                     NativePlaylistDetailFooter(summary, palette)

@@ -527,6 +527,14 @@ class PlaylistLibraryVisualReuseTest {
         ).size)
     }
 
+    @Test fun erroredMembershipDoesNotAnnounceZeroTracksInTheFooter() {
+        val verifiedEmpty = emptyList<V2DisplayRow>()
+        assertEquals("0 faixas", canonicalPlaylistMembershipSummary(verifiedEmpty))
+        assertEquals(null, canonicalPlaylistMembershipSummary(verifiedEmpty, loadFailed = true))
+        assertEquals(null, canonicalPlaylistMembershipSummary(null))
+        assertEquals(null, canonicalPlaylistMembershipSummary(null, loadFailed = true))
+    }
+
     @Test fun playlistHeaderAndEndSummaryKeepTypeSeparateFromVerifiedMembership() {
         val known = listOf(
             V2DisplayRow("rec-1", "A", "Artist", durationMs = 210000L),
