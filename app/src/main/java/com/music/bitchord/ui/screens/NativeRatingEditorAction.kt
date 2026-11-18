@@ -20,7 +20,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.music.bitchord.ui.theme.appleMusicKeyColor
 
 /** The rating editor uses filled, rounded cancel/confirm capsules. */
 internal data class RatingEditorActionColors(val background: Color, val ink: Color)
@@ -35,8 +34,8 @@ internal fun ratingEditorActionColors(
     loading: Boolean,
 ): RatingEditorActionColors {
     val neutralSurface = if (darkTheme) Color(0xFF36363B) else Color(0xFFE5E5E8)
-    val background = if (emphasized) appleMusicKeyColor(darkTheme) else neutralSurface
-    val ink = if (emphasized || darkTheme) Color.White else Color.Black
+    val background = if (emphasized) Color.White else neutralSurface
+    val ink = if (emphasized) Color.Black else if (darkTheme) Color.White else Color.Black
     return RatingEditorActionColors(
         background = background.copy(alpha = if (enabled || loading) 1f else 0.46f),
         ink = ink.copy(alpha = if (enabled || loading) 1f else 0.55f),
@@ -44,7 +43,7 @@ internal fun ratingEditorActionColors(
 }
 
 /**
- * Screenshot-matched neutral cancel and blue affirmative action.
+ * Neutral cancel and white affirmative action keep blue reserved for rating stars.
  * The background remains the same frosted neutral plate as the library cards.
  */
 @Composable
