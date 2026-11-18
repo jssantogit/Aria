@@ -15,6 +15,17 @@ class NeutralRatingActionPlateTest {
         assertFalse(neutralRatingPlateUsesArtwork(NativeActionCardTreatment.SOLID))
     }
 
+    @Test fun ratingUsesLiveNeutralBlurWhenSourceExistsAndFallsBackWhenDisabled() {
+        assertTrue(expandableActionCardUsesHaze(
+            NativeActionCardTreatment.NEUTRAL_FROSTED, hazeAvailable = true, reduceBlur = false))
+        assertFalse(expandableActionCardUsesHaze(
+            NativeActionCardTreatment.NEUTRAL_FROSTED, hazeAvailable = false, reduceBlur = false))
+        assertFalse(expandableActionCardUsesHaze(
+            NativeActionCardTreatment.NEUTRAL_FROSTED, hazeAvailable = true, reduceBlur = true))
+        assertFalse(expandableActionCardUsesHaze(
+            NativeActionCardTreatment.SOLID, hazeAvailable = true, reduceBlur = false))
+    }
+
     @Test fun ratingHasNoOutlineWhileOtherContextCardsKeepTheirOwnStyles() {
         assertNull(nativeContextPlateBorder(NativeActionCardTreatment.NEUTRAL_FROSTED, dark = true))
         assertNull(nativeContextPlateBorder(NativeActionCardTreatment.NEUTRAL_FROSTED, dark = false))
