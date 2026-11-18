@@ -232,6 +232,62 @@ def resolve(path: str, data: str) -> tuple[str, int]:
     return result, len(matches)
 
 
+def extract_rea_search_source_state(main: str) -> str:
+    """Shrink the combined BitChordApp bytecode without changing REA UI.
+
+    Both PRs compile separately; the real merged Compose body exceeded JVM's
+    64 KiB per-method limit. Move the complete native Search tab observation
+    into its own @Composable (the same state, effects, labels and ordering).
+    Keep selectedSearchProviderKey in the caller: root Search actions use it.
+    No wrapper, pixel, route or provider behavior changes.
+    """
+    start = "    val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()\\n"
+    end = "    val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()\\n"
+    if main.count(start) != 1 or main.count(end) != 1:
+        raise RuntimeError("Combined MainActivity: REA search state anchors changed")
+    a, b = main.index(start), main.index(end)
+    if b <= a:
+        raise RuntimeError("Combined MainActivity: invalid Search state order")
+    body = main[a:b]
+    must_have = [
+        "configuredSearchApis", "unfilteredLocalSearchSongs", "indexedSearchProviderKeys",
+        "produceState(initialValue = emptyList<String>())", "LaunchedEffect(selectedTab)",
+        "LaunchedEffect(visibleSearchSources, searchSource, selectedSearchProviderKey, selectedTab)",
+        "val visibleSearchSources = availableSearchProviderTabs(",
+        "if (!validSelection) viewModel.setSearchSource(SearchSource.CANONICAL)",
+    ]
+    for value in must_have:
+        if value not in body:
+            raise RuntimeError(f"REA Search state contract changed: {value}")
+    # There must be no untracked caller dependency in this exact reviewed
+    # region: it uses only those five arguments, the original global imports,
+    # and the existing return value.
+    call = (
+        "    val visibleSearchSources = rememberIntegratedSearchProviderTabs(\\n"
+        "        context = context, viewModel = viewModel, selectedTab = selectedTab,\\n"
+        "        searchSource = searchSource, selectedSearchProviderKey = selectedSearchProviderKey,\\n"
+        "    )\\n"
+    )
+    new_main = main[:a] + call + main[b:]
+    if "private fun rememberIntegratedSearchProviderTabs(" in new_main:
+        raise RuntimeError("Combined MainActivity: already extracted Search state")
+    function = (
+        "\\n/** Same REA search-source behavior, split from BitChordApp for JVM method size. */\\n"
+        "@Composable\\n"
+        "private fun rememberIntegratedSearchProviderTabs(\\n"
+        "    context: Context,\\n"
+        "    viewModel: MainViewModel,\\n"
+        "    selectedTab: Int,\\n"
+        "    searchSource: SearchSource,\\n"
+        "    selectedSearchProviderKey: String?,\\n"
+        "): List<com.music.bitchord.ui.SearchProviderTab> {\\n"
+        + body +
+        "    return visibleSearchSources\\n"
+        "}\\n"
+    )
+    return new_main.rstrip() + "\\n" + function
+
+
 def reconcile_combined_routes(main: str) -> str:
     # The REA uses one top-bar/AnimatedContent route authority. Add the Apple
     # provider's already-implemented detail underneath it, never reinstate
@@ -266,7 +322,8 @@ def reconcile_combined_routes(main: str) -> str:
             f"{indent}    \"apple_native_album\" else \"apple_native_artist\"\n"
             f"{indent}rediscoveryRecordingId != null ->"
         )
-    return replace_once(main, anchor, replacement, "MainActivity:pageRouteKey")
+    reconciled = replace_once(main, anchor, replacement, "MainActivity:pageRouteKey")
+    return extract_rea_search_source_state(reconciled)
 
 
 
