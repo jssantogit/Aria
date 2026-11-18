@@ -23,9 +23,9 @@ import dev.chrisbanes.haze.materials.HazeMaterials
 
 /**
  * One neutral material language for the Library filter reference, selection,
- * ratings and held-action menus. The centered rating Dialog cannot sample
- * the host Haze: it must use the exact shared popup base (not a fake blurred
- * texture). Artwork may color the PAGE, never contextual action plates.
+ * ratings and held-action menus. The rating Dialog may sample a dedicated
+ * player Haze source; without one, it retains the exact neutral solid fallback.
+ * Artwork may color the PAGE, never contextual action plates.
  */
 internal fun nativeContextPlateColor(dark: Boolean): Color =
     nativeCompactPlateColor(isDark = dark, artworkElevation = null)
@@ -58,7 +58,8 @@ internal fun expandableActionCardUsesHaze(
     treatment: NativeActionCardTreatment,
     hazeAvailable: Boolean,
     reduceBlur: Boolean,
-): Boolean = treatment == NativeActionCardTreatment.FROSTED && hazeAvailable && !reduceBlur
+): Boolean = (treatment == NativeActionCardTreatment.FROSTED ||
+    treatment == NativeActionCardTreatment.NEUTRAL_FROSTED) && hazeAvailable && !reduceBlur
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
