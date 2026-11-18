@@ -288,6 +288,78 @@ def extract_rea_search_source_state(main: str) -> str:
     return new_main.rstrip() + "\n" + function
 
 
+def extract_rea_route_calculation(main: str) -> str:
+    """Put the REA/Apple route decision into a plain Kotlin local function.
+
+    It is pure and still evaluated on every composition; this preserves the
+    existing REA transition owner while removing one large when from the
+    enclosing JVM method (which already exceeded 64 KiB).
+    """
+    old = "        val pageRouteKey = when {\n"
+    marker = "        // AnimatedContent is the route authority."
+    if main.count(old) != 1 or main.count(marker) != 1:
+        raise RuntimeError("Combined MainActivity: pageRouteKey anchors changed")
+    new_main = replace_once(
+        main, old, "        fun integratedPageRouteKey(): String = when {\n",
+        "MainActivity:route decision extraction",
+    )
+    return replace_once(
+        new_main, marker,
+        "        val pageRouteKey = integratedPageRouteKey()\n" + marker,
+        "MainActivity:route binding",
+    )
+
+
+def extract_common_canonical_feed_state(main: str) -> str:
+    """Move seven unchanged, provider-neutral state reads outside BitChordApp.
+
+    Reuses exactly the same flows and Compose lifecycle; returns their
+    inferred value types using a typed generic data class. No provider
+    ordering, list layout, identity, or REA visual behavior is altered.
+    """
+    names = [
+        ("canonicalDiscoveryCatalog", "canonicalDiscoveryCatalog"),
+        ("canonicalHomeLocalPicks", "canonicalHomeLocalPicks"),
+        ("canonicalHomeRemotePicks", "canonicalHomeRemotePicks"),
+        ("canonicalTrendingMbids", "canonicalTrendingRecordingMbids"),
+        ("canonicalTrendingLocalSongs", "canonicalTrendingLocalSongs"),
+        ("canonicalExplorePublicPopularity", "canonicalExplorePublicPopularity"),
+        ("canonicalExploreSitewide", "canonicalExploreSitewide"),
+    ]
+    old = "".join(
+        f"    val {name} by viewModel.{flow}.collectAsStateWithLifecycle()\n"
+        for name, flow in names
+    )
+    if main.count(old) != 1:
+        raise RuntimeError("Combined MainActivity: canonical feed state changed")
+    names_line = ", ".join(name for name, _ in names)
+    new = (
+        "    val (" + names_line + ") =\n"
+        "        rememberIntegratedCanonicalFeedStates(viewModel)\n"
+    )
+    main = replace_once(main, old, new, "MainActivity:canonical feed extraction")
+    fields = ",\n".join(
+        f"    val {name}: {typ}"
+        for (name, _), typ in zip(names, "ABCDEFG")
+    )
+    collected = ",\n".join(
+        f"        viewModel.{flow}.collectAsStateWithLifecycle().value"
+        for _, flow in names
+    )
+    helper = (
+        "\n/** State-only refactor of frozen REA Home/Explore; no UI layout. */\n"
+        "private data class IntegratedCanonicalFeedStates<A, B, C, D, E, F, G>(\n"
+        + fields + ",\n)\n\n"
+        "@Composable\n"
+        "private fun rememberIntegratedCanonicalFeedStates(viewModel: MainViewModel) =\n"
+        "    IntegratedCanonicalFeedStates(\n"
+        + collected + ",\n    )\n"
+    )
+    if "private data class IntegratedCanonicalFeedStates" in main:
+        raise RuntimeError("Combined MainActivity: feed observation already split")
+    return main.rstrip() + "\n" + helper
+
+
 def reconcile_combined_routes(main: str) -> str:
     # The REA uses one top-bar/AnimatedContent route authority. Add the Apple
     # provider's already-implemented detail underneath it, never reinstate
@@ -323,7 +395,9 @@ def reconcile_combined_routes(main: str) -> str:
             f"{indent}rediscoveryRecordingId != null ->"
         )
     reconciled = replace_once(main, anchor, replacement, "MainActivity:pageRouteKey")
-    return extract_rea_search_source_state(reconciled)
+    return extract_common_canonical_feed_state(
+        extract_rea_route_calculation(extract_rea_search_source_state(reconciled))
+    )
 
 
 
