@@ -187,6 +187,11 @@ class NativeFrostedMenuRowTest {
         compose.runOnIdle { assertEquals(1, opened) }
     }
 
+    @Test fun frostedSettingsPressUsesSameQuietFeedbackAsOtherMenuRows() {
+        assertEquals(1f, com.music.bitchord.ui.components.nativeMenuPressInkAlpha(true, false))
+        assertEquals(0.72f, com.music.bitchord.ui.components.nativeMenuPressInkAlpha(true, true))
+    }
+
     @Test fun ordinaryMenuActionIsNotIncorrectlyMarkedSelected() {
         compose.setContent {
             BitChordTheme {

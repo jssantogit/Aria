@@ -37,6 +37,7 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -8564,9 +8565,11 @@ internal fun FrostedMenuPanel(
 @Composable
 internal fun Modifier.frostedMenuQuietClick(
     role: Role? = null,
+    interactionSource: androidx.compose.foundation.interaction.MutableInteractionSource? = null,
     onClick: () -> Unit,
 ): Modifier = this.clickable(
-    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+    interactionSource = interactionSource
+        ?: remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
     indication = null,
     role = role,
     onClick = onClick,
@@ -8580,10 +8583,17 @@ internal fun FrostedMenuRow(
     onClick: () -> Unit,
     icon: ImageVector? = null,
 ) {
+    val pressSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    val ink = MaterialTheme.colorScheme.onSurface.copy(
+        alpha = com.music.bitchord.ui.components.nativeMenuPressInkAlpha(true, pressed),
+    )
     Row(
         Modifier
             .fillMaxWidth()
-            .frostedMenuQuietClick(role = Role.Button, onClick = onClick)
+            .frostedMenuQuietClick(
+                role = Role.Button, interactionSource = pressSource, onClick = onClick,
+            )
             .semantics { selected = checked }
             .heightIn(min = 46.dp)
             .padding(horizontal = 18.dp, vertical = 11.dp),
@@ -8592,14 +8602,14 @@ internal fun FrostedMenuRow(
         Text(
             label,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = ink,
             modifier = Modifier.weight(1f),
         )
         if (icon != null) {
             Spacer(Modifier.width(14.dp))
             Icon(
                 icon, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = ink,
                 modifier = Modifier.size(20.dp)
                     .testTag("native-frosted-trailing-icon"),
             )

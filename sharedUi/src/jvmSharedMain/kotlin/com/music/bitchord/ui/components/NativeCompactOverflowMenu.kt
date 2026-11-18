@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -267,6 +269,17 @@ fun NativeCompactOverflowMenu(
     }
 }
 
+/**
+ * Context menus must respond to a finger without drawing a wide pale
+ * rectangle or changing the row's shape/position. A subtle foreground dim is
+ * shared with the artist/root frosted menu and native contextual action rows.
+ */
+fun nativeMenuPressInkAlpha(enabled: Boolean, pressed: Boolean): Float = when {
+    !enabled -> 0.4f
+    pressed -> 0.72f
+    else -> 1f
+}
+
 @Composable
 fun NativeCompactMenuItem(
     label: String,
@@ -281,13 +294,22 @@ fun NativeCompactMenuItem(
         (actionGate?.consumed != true)
     val color = if (destructive) MaterialTheme.colorScheme.error
         else MaterialTheme.colorScheme.onSurface
-    val ink = color.copy(alpha = if (enabled) 1f else 0.4f)
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    val ink = color.copy(alpha = nativeMenuPressInkAlpha(enabled, pressed))
     val activate = { if (actionGate?.consumeOnce() != false) onClick() }
     val actionModifier = if (selected != null) {
-        Modifier.selectable(selected = selected, enabled = actionEnabled,
-            role = Role.RadioButton, onClick = activate)
+        Modifier.selectable(
+            selected = selected, enabled = actionEnabled,
+            role = Role.RadioButton,
+            interactionSource = pressSource, indication = null,
+            onClick = activate,
+        )
     } else {
-        Modifier.clickable(enabled = actionEnabled, onClick = activate)
+        Modifier.clickable(
+            enabled = actionEnabled, interactionSource = pressSource,
+            indication = null, onClick = activate,
+        )
     }
     Row(
         modifier = Modifier.fillMaxWidth()

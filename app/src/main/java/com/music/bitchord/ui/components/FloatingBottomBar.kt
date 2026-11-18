@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
+import com.music.bitchord.ui.LocalReduceAnimations
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
@@ -316,6 +318,13 @@ fun FloatingBottomBar(
     }
 }
 
+/**
+ * Unlike the selection spring, this short press response also fires when
+ * the user taps the already-selected tab. There is no extra pill/ripple.
+ */
+internal fun bottomTabPressScale(pressed: Boolean, reduceMotion: Boolean): Float =
+    if (reduceMotion || !pressed) 1f else 0.96f
+
 @Composable
 private fun BottomBarItem(
     tab: BottomTab,
@@ -335,6 +344,14 @@ private fun BottomBarItem(
         label = "tabScale",
     )
     val haptics = rememberHaptics()
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    val reducedMotion = LocalReduceAnimations.current
+    val pressScale by animateFloatAsState(
+        targetValue = bottomTabPressScale(pressed, reducedMotion),
+        animationSpec = if (reducedMotion) snap() else tween(110),
+        label = "bottomTabPressScale",
+    )
     val tint by animateColorAsState(
         targetValue = if (selected) {
             selectedTint ?: MaterialTheme.colorScheme.primary
@@ -350,7 +367,7 @@ private fun BottomBarItem(
         modifier = modifier
             .clip(RoundedCornerShape(percent = 50))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = pressSource,
                 indication = null,
             ) {
                 if (!selected) haptics.play(Haptic.Select)
@@ -365,8 +382,8 @@ private fun BottomBarItem(
             modifier = Modifier
                 .size(25.dp)
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
+                    scaleX = scale * pressScale
+                    scaleY = scale * pressScale
                 },
         )
         Spacer(Modifier.height(TAB_ICON_LABEL_GAP))

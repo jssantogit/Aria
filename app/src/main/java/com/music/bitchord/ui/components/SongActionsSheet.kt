@@ -5,6 +5,8 @@ import com.music.bitchord.R
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -709,7 +711,12 @@ internal fun ActionRow(
     // its solid theme background instead of being hardcoded white.
     val foreground = if (apple) Color.White else if (menu || appleSolid)
         MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onBackground
-    val alpha = if (enabled) 1f else 0.4f
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    // Modal sheets retain their normal bounded ripple. Only the contextual
+    // menu rows use quiet foreground feedback, consistent with Settings.
+    val alpha = if (menu) nativeMenuPressInkAlpha(enabled, pressed)
+        else if (enabled) 1f else 0.4f
     val iconView: @Composable () -> Unit = {
         Icon(
             imageVector = icon,
@@ -721,7 +728,13 @@ internal fun ActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
+            .then(
+                if (menu) Modifier.clickable(
+                    interactionSource = pressSource, indication = null,
+                    enabled = enabled, onClick = onClick,
+                )
+                else Modifier.clickable(enabled = enabled, onClick = onClick)
+            )
             .then(modifier)
             .then(
                 if (menu) {

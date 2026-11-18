@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -585,6 +586,7 @@ fun AppleMusicMiniPlayer(
                 interactionSource = playInteraction,
                 modifier = Modifier
                     .size(AppleMusicChromeMetrics.controlTouchSize)
+                    .clip(CircleShape)
                     .graphicsLayer {
                         scaleX = playScale
                         scaleY = playScale
@@ -621,6 +623,7 @@ fun AppleMusicMiniPlayer(
                 interactionSource = nextInteraction,
                 modifier = Modifier
                     .size(AppleMusicChromeMetrics.controlTouchSize)
+                    .clip(CircleShape)
                     .graphicsLayer {
                         scaleX = nextScale
                         scaleY = nextScale

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -523,7 +524,7 @@ fun MiniPlayer(
                         haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
                         onPlayPause()
                     },
-                    modifier = Modifier.size(GLYPH_SLOT),
+                    modifier = Modifier.size(GLYPH_SLOT).clip(CircleShape),
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -542,7 +543,7 @@ fun MiniPlayer(
                     onNext()
                 },
                 enabled = !controlsLocked,
-                modifier = Modifier.size(GLYPH_SLOT),
+                modifier = Modifier.size(GLYPH_SLOT).clip(CircleShape),
             ) {
                 MiniPlayerNextGlyph(
                     tint = MaterialTheme.colorScheme.onBackground

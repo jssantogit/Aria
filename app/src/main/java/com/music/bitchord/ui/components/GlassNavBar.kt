@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -422,7 +423,7 @@ private fun GlassNowPlaying(
                         haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
                         onPlayPause()
                     },
-                    modifier = Modifier.size(glyphSlot),
+                    modifier = Modifier.size(glyphSlot).clip(CircleShape),
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -443,7 +444,7 @@ private fun GlassNowPlaying(
                         onNext()
                     },
                     enabled = !controlsLocked,
-                    modifier = Modifier.size(glyphSlot),
+                    modifier = Modifier.size(glyphSlot).clip(CircleShape),
                 ) {
                     MiniPlayerNextGlyph(
                         tint = contentColor.copy(alpha = if (controlsLocked) 0.3f else 1f),

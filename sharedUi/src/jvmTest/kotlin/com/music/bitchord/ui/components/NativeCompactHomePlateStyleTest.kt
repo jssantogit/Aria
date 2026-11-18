@@ -7,6 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeCompactHomePlateStyleTest {
+    @Test fun contextualMenuPressAlwaysRespondsWithoutAnyNewBackgroundLayer() {
+        assertEquals(1f, nativeMenuPressInkAlpha(enabled = true, pressed = false))
+        assertEquals(0.72f, nativeMenuPressInkAlpha(enabled = true, pressed = true))
+        assertEquals(0.4f, nativeMenuPressInkAlpha(enabled = false, pressed = false))
+        assertEquals(0.4f, nativeMenuPressInkAlpha(enabled = false, pressed = true))
+    }
+
     @Test fun theHomePlateMenuUsesLargerRowsWithoutChangingOtherPopups() {
         assertEquals(62, nativeCompactMenuRowHeightDp(homePlateStyle = true))
         assertEquals(54, nativeCompactMenuRowHeightDp(homePlateStyle = false))
