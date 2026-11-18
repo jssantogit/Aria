@@ -527,6 +527,23 @@ class PlaylistLibraryVisualReuseTest {
         ).size)
     }
 
+    @Test fun playlistHeaderAndEndSummaryKeepTypeSeparateFromVerifiedMembership() {
+        val known = listOf(
+            V2DisplayRow("rec-1", "A", "Artist", durationMs = 210000L),
+            V2DisplayRow("rec-2", "B", "Artist", durationMs = 240000L),
+        )
+        assertEquals("Playlist", canonicalPlaylistHeaderType(false))
+        assertEquals("Playlist inteligente", canonicalPlaylistHeaderType(true))
+        assertEquals("2 faixas · 7min", canonicalPlaylistMembershipSummary(known))
+        assertEquals("2 faixas", canonicalPlaylistMembershipSummary(
+            known.dropLast(1) + known.last().copy(durationMs = null),
+        ))
+        assertEquals(null, canonicalPlaylistMembershipSummary(null))
+        assertEquals("0 faixas", verifiedPlaylistMemberCountSummary(0))
+        assertEquals("1 faixa", verifiedPlaylistMemberCountSummary(1))
+        assertEquals("407 faixas", verifiedPlaylistMemberCountSummary(407))
+    }
+
     @Test fun canonicalHeaderReportsOnlyKnownTrackDurationWithoutGuessing() {
         val known = listOf(
             V2DisplayRow("rec-1", "A", "Artist", durationMs = 210000L),

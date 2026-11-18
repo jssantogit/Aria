@@ -209,25 +209,35 @@ internal fun canonicalPlaylistPaletteArtworkUri(
 ): String? = explicitCoverUri?.takeIf { it.isNotBlank() }
     ?: rows?.firstOrNull()?.localArtworkUri
 
-/** Same music-page metadata format as the native playlist header. */
-internal fun canonicalPlaylistDetailMeta(
-    smart: Boolean, rows: List<V2DisplayRow>?,
-): String {
-    val type = if (smart) "Playlist inteligente" else "Playlist"
-    if (rows == null) return type
-    val count = "${rows.size} " + if (rows.size == 1) "faixa" else "faixas"
+/** A verified playlist count is not a popularity, ranking or editorial claim. */
+internal fun verifiedPlaylistMemberCountSummary(count: Int): String =
+    "${count} " + if (count == 1) "faixa" else "faixas"
+
+internal fun canonicalPlaylistHeaderType(smart: Boolean): String =
+    if (smart) "Playlist inteligente" else "Playlist"
+
+/** Null means membership is loading; never show a misleading zero. */
+internal fun canonicalPlaylistMembershipSummary(rows: List<V2DisplayRow>?): String? {
+    if (rows == null) return null
+    val count = verifiedPlaylistMemberCountSummary(rows.size)
     val durations = rows.map { it.durationMs }
-    val total = if (durations.isNotEmpty() && durations.all { it != null }) {
+    val total = if (durations.isNotEmpty() && durations.all { (it ?: 0L) > 0L }) {
         durations.filterNotNull().sum()
     } else 0L
     val minutes = total / 60000L
     val time = when {
         total <= 0L -> ""
         minutes >= 60L -> " · ${minutes / 60L}h ${minutes % 60L}min"
-        else -> " · ${minutes}min"
+        else -> " · ${minutes.coerceAtLeast(1L)}min"
     }
-    return "${type} · ${count}${time}"
+    return "${count}${time}"
 }
+
+/** Compatibility for callers still requiring the full one-line summary. */
+internal fun canonicalPlaylistDetailMeta(
+    smart: Boolean, rows: List<V2DisplayRow>?,
+): String = listOfNotNull(canonicalPlaylistHeaderType(smart),
+    canonicalPlaylistMembershipSummary(rows)).joinToString(" · ")
 
 /** A saved RecordingId without eligible MediaAsset remains visible but is not clickable. */
 internal fun V2DisplayRow.isAvailablePlaylistMember(): Boolean =
@@ -666,12 +676,10 @@ internal fun CanonicalPlaylistDetailScreen(
             NativePlaylistDetailHeader(
                 title = card.title,
                 credit = "",
-                meta = if (card is LibraryPlaylistCard.Normal) {
-                    "Playlist · ${historicalSongs.size} " +
-                        if (historicalSongs.size == 1) "faixa" else "faixas"
-                } else canonicalPlaylistDetailMeta(
-                    smart = card is LibraryPlaylistCard.Smart, rows = rows,
-                ),
+                // The type belongs under the title; verified totals close
+                // the list, not the hero. This mirrors the observed hierarchy
+                // without manufacturing Apple's editorial update metadata.
+                meta = canonicalPlaylistHeaderType(card is LibraryPlaylistCard.Smart),
                 palette = palette,
                 rating = rating,
                 onRate = if (ratingTarget != null) ({ editingRating = true }) else null,
@@ -890,6 +898,16 @@ internal fun CanonicalPlaylistDetailScreen(
                 modifier = Modifier.padding(start = 80.dp),
                 thickness = 0.5.dp, color = palette.divider,
             )
+        }
+        if (query.isBlank()) {
+            val summary = if (card is LibraryPlaylistCard.Normal) {
+                verifiedPlaylistMemberCountSummary(historicalSongs.size)
+            } else canonicalPlaylistMembershipSummary(rows)
+            if (summary != null) {
+                item(key = "playlist-detail-summary") {
+                    NativePlaylistDetailFooter(summary, palette)
+                }
+            }
         }
     }
 }

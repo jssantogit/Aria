@@ -222,8 +222,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                 NativePlaylistDetailHeader(
                     title = playlist.title,
                     credit = playlist.creator,
-                    meta = "Playlist · ${entries.size} " +
-                        if (entries.size == 1) "faixa" else "faixas",
+                    meta = "Playlist",
                     palette = palette,
                     rating = rating,
                     onRate = if (ratingTarget != null) ({ editingRating = true }) else null,
@@ -381,6 +380,11 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                         color = palette.divider,
                     )
                 }
+            }
+        }
+        if (state is UiState.Success && query.isBlank()) {
+            item(key = "public-playlist-member-summary") {
+                NativePlaylistDetailFooter(verifiedPlaylistMemberCountSummary(entries.size), palette)
             }
         }
     }

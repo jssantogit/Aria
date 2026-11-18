@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -24,6 +25,28 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class NativePlaylistHeroActionsTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun sourcedPlaylistSummaryUsesNativeFooterAndSkipsMissingMetadata() {
+        val palette = com.music.bitchord.ui.theme.ArtworkPalette(
+            background = androidx.compose.ui.graphics.Color.Black,
+            wash = androidx.compose.ui.graphics.Color.Black,
+            elevated = androidx.compose.ui.graphics.Color.DarkGray,
+            accent = androidx.compose.ui.graphics.Color.White,
+            onBackground = androidx.compose.ui.graphics.Color.White,
+            onBackgroundVariant = androidx.compose.ui.graphics.Color.LightGray,
+            divider = androidx.compose.ui.graphics.Color.Gray,
+        )
+        compose.setContent {
+            MaterialTheme {
+                androidx.compose.foundation.layout.Column {
+                    NativePlaylistDetailFooter("2 faixas · 7min", palette)
+                    NativePlaylistDetailFooter("", palette)
+                }
+            }
+        }
+        compose.onNodeWithTag("native-playlist-detail-summary").assertIsDisplayed()
+        compose.onNodeWithText("2 faixas · 7min").assertIsDisplayed()
+    }
 
     @Test fun metadataOnlyPlaylistHasPinButNoPlaybackActions() {
         var pins = 0

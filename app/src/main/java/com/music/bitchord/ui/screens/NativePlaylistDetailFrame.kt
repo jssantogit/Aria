@@ -5,11 +5,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.components.PAGE_GUTTER
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
@@ -78,5 +84,27 @@ internal fun NativePlaylistDetailHeader(
         sleeveSize = sleeveSize,
         artwork = artwork,
         actions = actions,
+    )
+}
+
+/**
+ * End-of-list summary from real playlist membership. The editorial example in
+ * am-descomp shows a footer; unlike that example we do not infer update times,
+ * featured artists, or duration when any row lacks verified duration.
+ */
+@Composable
+internal fun NativePlaylistDetailFooter(
+    summary: String,
+    palette: ArtworkPalette,
+) {
+    if (summary.isBlank()) return
+    Text(
+        text = summary,
+        style = MaterialTheme.typography.bodyMedium,
+        color = palette.onBackgroundVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER, vertical = 24.dp)
+            .testTag("native-playlist-detail-summary"),
     )
 }
