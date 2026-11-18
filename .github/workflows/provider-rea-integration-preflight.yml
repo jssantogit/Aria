@@ -61,8 +61,8 @@ jobs:
               {
                 echo "=== Unmerged stages: 1=base, 2=provider, 3=frozen REA ==="
                 git ls-files -u
-                echo "=== Actual conflict hunks (first 320 lines; artifact has full text) ==="
-                sed -n '1,320p' /tmp/rea-conflict-hunks.txt
+                echo "=== Actual conflict hunks (first 1600 lines; artifact has full text) ==="
+                sed -n '1,1600p' /tmp/rea-conflict-hunks.txt
               }
               echo "::error::Provider #219 and frozen REA #212 do not yet form a conflict-free tree."
             else
