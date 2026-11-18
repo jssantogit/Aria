@@ -459,6 +459,59 @@ def extract_additional_common_state(main: str) -> str:
     return main
 
 
+def extract_integrated_root_shell(main: str) -> str:
+    """Bound the JVM method of the *combined* Compose root without changing UI.
+
+    Box's app-shell content can expand into BitChordApp's bytecode. Give the
+    exact existing screen composition its own non-inline @Composable lambda;
+    it still sees all existing state/callbacks, draws in the same order and
+    retains its original BoxScope. No visual components or navigation routes
+    are copied or moved into a different owner.
+    """
+    marker = (
+        "    Box(\\n"
+        "        Modifier\\n"
+        "            .fillMaxSize()\\n"
+        "            .background(MaterialTheme.colorScheme.background),\\n"
+        "    ) {\\n"
+    )
+    # Only operate on the known top-level app shell after the other semantic
+    # reconciliation transformations. Never split arbitrary nested Boxes.
+    if main.count(marker) != 1:
+        raise RuntimeError("Combined MainActivity: root Box anchor changed")
+    start = main.index(marker)
+    end = main.find("\\n}\\n", start)
+    if end < 0:
+        raise RuntimeError("Combined MainActivity: app shell end missing")
+    original = main[start:end]
+    for invariant in (
+        "val routeBackHandlers: @Composable () -> Unit",
+        "if (confirmJioSaavn)",
+        "HeldContextMenu(",
+        "targetState = pageRouteKey",
+    ):
+        if invariant not in original:
+            raise RuntimeError(f"Combined MainActivity: root Box missing {invariant}")
+    if not original.rstrip().endswith("    }"):
+        raise RuntimeError("Combined MainActivity: root Box is not last body statement")
+    if "renderIntegratedRootShell()" in main:
+        raise RuntimeError("Combined MainActivity: root shell split already applied")
+
+    # Only formatting indentation changes inside the exact original region.
+    # The extra composable boundary prevents the 64 KiB JVM bytecode overflow
+    # while retaining the existing Box's composition order and semantics.
+    indented = "\\n".join(
+        "    " + line if line else "" for line in original.split("\\n")
+    )
+    replacement = (
+        "    val renderIntegratedRootShell: @Composable () -> Unit = {\\n"
+        + indented + "\\n"
+        + "    }\\n"
+        + "    renderIntegratedRootShell()"
+    )
+    return main[:start] + replacement + main[end:]
+
+
 def reconcile_combined_routes(main: str) -> str:
     # The REA uses one top-bar/AnimatedContent route authority. Add the Apple
     # provider's already-implemented detail underneath it, never reinstate
@@ -497,7 +550,7 @@ def reconcile_combined_routes(main: str) -> str:
     stage = extract_common_canonical_feed_state(
         extract_rea_route_calculation(extract_rea_search_source_state(reconciled))
     )
-    return extract_additional_common_state(stage)
+    return extract_integrated_root_shell(extract_additional_common_state(stage))
 
 
 
