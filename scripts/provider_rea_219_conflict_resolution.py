@@ -497,14 +497,56 @@ def extract_integrated_root_shell(main: str) -> str:
     if "renderIntegratedRootShell()" in main:
         raise RuntimeError("Combined MainActivity: root shell split already applied")
 
-    # Only formatting indentation changes inside the exact original region.
-    # The extra composable boundary prevents the 64 KiB JVM bytecode overflow
-    # while retaining the existing Box's composition order and semantics.
+    # The combined REA+provider root is larger than either standalone tree.
+    # Even when Kotlin/Compose compiles, its synthetic lambda helper can exceed
+    # the JVM's 255 parameter-slot limit. Rebind immutable outer locals INSIDE
+    # the root lambda through small, typed anonymous holders. Unlike an Any/Map
+    # cast, the original Kotlin types remain statically checked. This is only
+    # in the disposable combined CI tree, never either upstream branch.
+    #
+    # Each holder has at most 16 captured arguments; the root lambda captures
+    # the holder references, not every individual immutable local. Mutable
+    # vars retain their original delegated state/callback ownership.
+    app_entry = main.find("private fun BitChordApp(")
+    if app_entry < 0 or app_entry >= start:
+        raise RuntimeError("Combined MainActivity: root owner missing")
+    before = main[app_entry:start]
+    outer_names = []
+    for line in before.splitlines():
+        match = re.match(r"^    val ([A-Za-z_][A-Za-z0-9_]*)\\s*(?:by\\b|=|:)", line)
+        if match:
+            outer_names.append(match.group(1))
+        destructured = re.match(r"^    val \\(([^)]+)\\)\\s*=", line)
+        if destructured:
+            outer_names.extend(part.strip() for part in destructured.group(1).split(","))
+    captures = []
+    for name in dict.fromkeys(outer_names):
+        if name != "_" and re.search(rf"(?<![A-Za-z0-9_.]){re.escape(name)}\\b", original):
+            captures.append(name)
+    if not (45 <= len(captures) <= 210):
+        raise RuntimeError(
+            f"Combined MainActivity: immutable root capture inventory changed ({len(captures)})"
+        )
+    if "providerReaRootCapture" in main:
+        raise RuntimeError("Combined MainActivity: root captures already packed")
+    groups = [captures[i:i + 16] for i in range(0, len(captures), 16)]
+    holder_lines = []
+    alias_lines = []
+    for i, group in enumerate(groups):
+        holder = f"providerReaRootCapture{i}"
+        holder_lines.append(f"    val {holder} = object {{")
+        holder_lines.extend(f"        val {name} = {name}" for name in group)
+        holder_lines.append("    }")
+        alias_lines.extend(f"        val {name} = {holder}.{name}" for name in group)
+    # No mutation of the drawn subtree: its local bindings are restored under
+    # the exact same names and original Kotlin types before composing the Box.
     indented = "\n".join(
         "    " + line if line else "" for line in original.split("\n")
     )
     replacement = (
-        "    val renderIntegratedRootShell: @Composable () -> Unit = {\n"
+        "\n".join(holder_lines) + "\n"
+        + "    val renderIntegratedRootShell: @Composable () -> Unit = {\n"
+        + "\n".join(alias_lines) + "\n"
         + indented + "\n"
         + "    }\n"
         + "    renderIntegratedRootShell()"
