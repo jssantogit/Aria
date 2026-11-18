@@ -360,6 +360,105 @@ def extract_common_canonical_feed_state(main: str) -> str:
     return main.rstrip() + "\n" + helper
 
 
+def extract_contiguous_state_observers(
+    main: str, name: str, entries: list[tuple[str, str]],
+) -> str:
+    """Typed, exact-only Compose-method-size split, no changed state source."""
+    if not (2 <= len(entries) <= 18):
+        raise RuntimeError(f"{name}: invalid reviewed state group")
+    old = "".join(
+        f"    val {variable} by {flow}.collectAsStateWithLifecycle()\n"
+        for variable, flow in entries
+    )
+    if main.count(old) != 1:
+        raise RuntimeError(f"Combined MainActivity: {name} state group changed")
+    vars_ = ", ".join(variable for variable, _ in entries)
+    function_name = f"observeIntegrated{name}States"
+    class_name = f"Integrated{name}States"
+    uses_vm = any(flow.startswith("viewModel.") for _, flow in entries)
+    param = "viewModel: MainViewModel" if uses_vm else ""
+    actual = "viewModel" if uses_vm else ""
+    call = (
+        f"    val ({vars_}) =\n"
+        f"        {function_name}({actual})\n"
+    )
+    main = replace_once(main, old, call, f"MainActivity:{name} observation")
+    types = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:len(entries)]
+    fields = ",\n".join(
+        f"    val {variable}: {type_name}"
+        for (variable, _), type_name in zip(entries, types)
+    )
+    reads = ",\n".join(
+        f"        {flow}.collectAsStateWithLifecycle().value"
+        for _, flow in entries
+    )
+    helper = (
+        f"\n/** Unchanged {name} Flow reads, separated from BitChordApp bytecode. */\n"
+        f"private data class {class_name}<{', '.join(types)}>(\n"
+        + fields + ",\n)\n\n"
+        "@Composable\n"
+        f"private fun {function_name}({param}) =\n"
+        f"    {class_name}(\n"
+        + reads + ",\n    )\n"
+    )
+    if f"private data class {class_name}<" in main:
+        raise RuntimeError(f"{name}: state observers already extracted")
+    return main.rstrip() + "\n" + helper
+
+
+def extract_additional_common_state(main: str) -> str:
+    groups = [
+        ("AccountLyricsSearch", [
+            ("account", "viewModel.account"),
+            ("selectedChannelName", "viewModel.selectedChannelName"),
+            ("googleAccounts", "viewModel.googleAccounts"),
+            ("activeAccountId", "viewModel.activeAccountId"),
+            ("activeProfileId", "viewModel.activeProfileId"),
+            ("historyState", "viewModel.history"),
+            ("lyrics", "viewModel.lyrics"),
+            ("lyricsSource", "viewModel.lyricsSource"),
+            ("lyricsChecked", "viewModel.lyricsChecked"),
+            ("lyricsProviderStates", "viewModel.lyricsProviderStates"),
+            ("searchHistory", "viewModel.searchHistory"),
+            ("searchSuggestions", "viewModel.suggestions"),
+            ("searchLoadingMore", "viewModel.searchLoadingMore"),
+            ("searchScrollReset", "viewModel.searchScrollReset"),
+            ("detailStack", "viewModel.detailStack"),
+            ("releaseLibrary", "viewModel.releaseLibrary"),
+        ]),
+        ("SupplementalHome", [
+            ("canonicalPersonalRecommendations", "viewModel.canonicalExplorePersonalRecommendations"),
+            ("listenBrainzAccountEnabled", "AppSettings.listenBrainzEnabled"),
+            ("listenBrainzAccountToken", "AppSettings.listenBrainzToken"),
+            ("homeLoadingMore", "viewModel.homeLoadingMore"),
+            ("homeRecentlyPlayedLoading", "viewModel.homeRecentlyPlayedLoading"),
+        ]),
+        ("DownloadSettings", [
+            ("savedDownloads", "Downloads.saved"),
+            ("localMusicFolderUri", "AppSettings.localMusicFolderUri"),
+            ("filterNonMusicAudio", "AppSettings.filterNonMusicAudio"),
+            ("webdavUrl", "AppSettings.webdavUrl"),
+            ("smbHost", "AppSettings.smbHost"),
+            ("librarySort", "AppSettings.librarySort"),
+        ]),
+        ("PlaybackList", [
+            ("pinnedToOriginal", "OriginalVersion.pinned"),
+            ("qualityUpgradesInFlight", "NerdStats.racingLossless"),
+            ("playlists", "viewModel.playlists"),
+            ("playlistsLoading", "viewModel.playlistsLoading"),
+        ]),
+        ("FolderDisplay", [
+            ("downloadedMusicSort", "AppSettings.downloadedMusicSort"),
+            ("localMusicSort", "AppSettings.localMusicSort"),
+            ("downloadedMusicViewType", "AppSettings.downloadedMusicViewType"),
+            ("localMusicViewType", "AppSettings.localMusicViewType"),
+        ]),
+    ]
+    for group, entries in groups:
+        main = extract_contiguous_state_observers(main, group, entries)
+    return main
+
+
 def reconcile_combined_routes(main: str) -> str:
     # The REA uses one top-bar/AnimatedContent route authority. Add the Apple
     # provider's already-implemented detail underneath it, never reinstate
@@ -395,9 +494,10 @@ def reconcile_combined_routes(main: str) -> str:
             f"{indent}rediscoveryRecordingId != null ->"
         )
     reconciled = replace_once(main, anchor, replacement, "MainActivity:pageRouteKey")
-    return extract_common_canonical_feed_state(
+    stage = extract_common_canonical_feed_state(
         extract_rea_route_calculation(extract_rea_search_source_state(reconciled))
     )
+    return extract_additional_common_state(stage)
 
 
 
