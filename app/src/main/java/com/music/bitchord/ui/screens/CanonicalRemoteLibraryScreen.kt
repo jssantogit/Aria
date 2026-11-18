@@ -708,7 +708,7 @@ internal fun CanonicalRemoteLibraryScreen(
                         // Uncredited provider recordings remain discoverable
                         // via the SAME browse-only display groups used by the
                         // native playlist picker. No fabricated ArtistId.
-                        val displayOnly = if (!unified) emptyList() else {
+                        val displayOnly = run {
                             val creditedNames = credited.mapTo(HashSet()) {
                                 it.name.lowercase()
                             }
@@ -739,7 +739,7 @@ internal fun CanonicalRemoteLibraryScreen(
         key2 = selectedContext,
         key3 = sources to selectedSource,
     ) {
-        if (!unified || selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
+        if (selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
         catalogDb.invalidationTracker.createFlow(
             "catalog_media_asset", "catalog_release_track",
             "catalog_recording_artist_credit", "catalog_release_artist_credit",
@@ -770,7 +770,7 @@ internal fun CanonicalRemoteLibraryScreen(
         key2 = entityState,
         key3 = (sources to selectedSource) to eligibleTracks,
     ) {
-        if (!unified || selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
+        if (selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
         value = try {
             val keys = sources.filter { selectedSource == null || selectedSource == it }
             if (keys.isEmpty()) emptyMap() else {
