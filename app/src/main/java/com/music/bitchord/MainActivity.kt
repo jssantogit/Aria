@@ -2654,7 +2654,14 @@ private fun BitChordApp(
                 ?.let { identity -> loadedArtworkModel?.let { identity to it } }
             songActions = displayedSong
         }
-        Box(Modifier.fillMaxSize()) {
+        // Capture only while this editor is visible: cross-window Haze should
+        // sample the actual Now Playing artwork, never an unrelated library page.
+        val ratingModalHaze = remember { HazeState() }
+        Box(Modifier.fillMaxSize().then(
+            if (localRatingDialogOpen && !reduceDynamicBlur)
+                Modifier.hazeSource(ratingModalHaze)
+            else Modifier,
+        )) {
         NowPlayingScreen(
             song = displayedSong,
             playedBy = playedBy,
@@ -2929,6 +2936,7 @@ private fun BitChordApp(
                 onDismiss = { localRatingDialogOpen = false },
                 anchorBounds = playerRatingAnchor,
                 highlightPlayerLauncher = true,
+                hazeState = ratingModalHaze,
             )
         }
         recoveryNotice?.let { notice ->
