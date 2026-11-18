@@ -546,6 +546,14 @@ fun DetailScreen(
     // list. When no filter is active, matches contains the full running order
     // and plays the complete release/playlist from the tapped position.
     val queue = remember(matches) { matches.map { it.value } }
+    // headerLines/playtime are @Composable. Resolve album credit before
+    // entering LazyListScope; that builder is not a composition context.
+    // Keep one credit source for both canonical and Song-backed rows.
+    val albumRowCredit = if (page.type == BrowseType.ALBUM) {
+        val sourceCount = if (songs.isNotEmpty()) songs.size else canonicalTracks.size
+        val sourceDuration = if (songs.isNotEmpty()) songs.playtime() else null
+        page.headerLines(sourceCount, sourceDuration).first
+    } else null
     val suggested = remember(page.suggestedSongs, query) {
         page.suggestedSongs.matching(query).map { it.value }
     }
@@ -853,8 +861,7 @@ fun DetailScreen(
                         onSongSwipe = onSongSwipe,
                     )
                 } else if (canonicalTracks.isNotEmpty()) {
-                    val albumCreditForRows = if (page.type == BrowseType.ALBUM)
-                        page.headerLines(canonicalTracks.size, null).first else ""
+                    val albumCreditForRows = albumRowCredit.orEmpty()
                     // Keep the original release-page typography and numbered
                     // tracklist. A metadata-only row is simply non-playable;
                     // no synthetic video IDs or technical warning labels.
@@ -962,8 +969,7 @@ fun DetailScreen(
                     // already the largest thing on the page — Apple Music
                     // numbers those rows instead, and so does this.
                     val numbered = page.type == BrowseType.ALBUM
-                    val albumCreditForRows = if (numbered)
-                        page.headerLines(songs.size, songs.playtime()).first else null
+                    val albumCreditForRows = if (numbered) albumRowCredit else null
                     val isCurrentRow = playingRowMatcher(matches.map { it.value }, currentSong)
                     if (matches.isEmpty() && state.data.isNotEmpty()) {
                         item(key = "no-matches") {
