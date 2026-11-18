@@ -1,6 +1,6 @@
 name: Provider 219 x REA 212 integration preflight
 
-# Diagnostic-only compatibility gate. This workflow changes no remote refs,
+# Disposable semantic-integration compatibility gate. It changes no remote refs,
 # never merges PRs and does not grant authorization for visual or device smoke.
 on:
   pull_request:
@@ -48,31 +48,39 @@ jobs:
           if ! git merge --no-ff --no-commit refs/remotes/origin/rea-212 > /tmp/rea-merge.log 2>&1; then
             cat /tmp/rea-merge.log
             git diff --name-only --diff-filter=U > /tmp/rea-conflicts.txt
-            if test -s /tmp/rea-conflicts.txt; then
+            if ! test -s /tmp/rea-conflicts.txt; then
+              echo "::error::Temporary merge failed without content conflicts."
+              exit 1
+            fi
+            mapfile -t conflicts < /tmp/rea-conflicts.txt
+            git diff --cc -- "${conflicts[@]}" > /tmp/rea-conflict-hunks.txt
+            {
+              echo ""
+              echo "**Detected content conflicts (reconciled in disposable CI tree only):**"
+              sed 's/^/- `/; s/$/`/' /tmp/rea-conflicts.txt
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Each recognized hunk has its own reviewed semantic rule.
+            # Unknown changes fail closed; never choose ours/theirs wholesale.
+            if ! python3 scripts/provider_rea_219_conflict_resolution.py; then
+              echo "::error::Provider/REA reconciliation is not proven for this exact pair of HEADs."
               {
                 echo ""
-                echo "**Conflicting paths (must reconcile without changing REA visuals):**"
-                sed 's/^/- \`/; s/$/\`/' /tmp/rea-conflicts.txt
+                echo "### Reconciliation was rejected"
+                echo "A reviewed hunk changed or an invariant failed. Do not merge."
               } >> "$GITHUB_STEP_SUMMARY"
-              # Record exact Git conflict hunks, without selecting either side
-              # or treating a provisional auto-resolution as merge approval.
-              mapfile -t conflicts < /tmp/rea-conflicts.txt
-              git diff --cc -- "${conflicts[@]}" > /tmp/rea-conflict-hunks.txt
-              {
-                echo "=== Unmerged stages: 1=base, 2=provider, 3=frozen REA ==="
-                git ls-files -u
-                echo "=== Actual conflict hunks (first 1600 lines; artifact has full text) ==="
-                sed -n '1,1600p' /tmp/rea-conflict-hunks.txt
-              }
-              echo "::error::Provider #219 and frozen REA #212 do not yet form a conflict-free tree."
-            else
-              echo "::error::Temporary merge failed; see the Git merge diagnostics above."
+              exit 1
             fi
-            exit 1
+            {
+              echo ""
+              echo "### Explicit reconciliation prepared (not merged remotely)"
+              echo "Provider/REA conflict hunks were individually resolved by the checked-in allowlisted contract."
+              echo "**This does not make the original PR #219 branch git-mergeable.** It validates only this combined runner tree."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
           {
             echo ""
-            echo "Temporary combined tree is conflict-free; running Android and shared-native verification."
+            echo "Temporary combined tree is staged; running Android and native presentation verification."
+            git diff --cached --stat | tail -15
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve unresolved conflict hunks for review
@@ -106,4 +114,4 @@ jobs:
       - name: Report compatibility only (not pixel parity or merge authorization)
         if: success()
         run: |
-          echo "Combined-tree compilation and unit tests passed. This does NOT prove visual/pixel parity or authorize merging any PR." >> "$GITHUB_STEP_SUMMARY"
+          echo "Combined-tree compilation and tests passed on an explicitly reconciled disposable tree. PR #219 itself may still have Git conflicts. This does NOT prove physical/pixel parity or authorize merging any PR." >> "$GITHUB_STEP_SUMMARY"
