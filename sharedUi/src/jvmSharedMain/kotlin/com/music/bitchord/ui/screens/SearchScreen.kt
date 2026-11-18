@@ -58,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -285,6 +286,14 @@ fun SearchScreen(
     /** Mirrors the actual ViewModel submit state; Local remains live while typing. */
     searchCommitted: Boolean = false,
     appleResultTabs: Boolean = false,
+    /** Apple commercial catalog; IDs are storefront-scoped, never MBIDs. */
+    appleResults: UiState<List<AppleEditorialSearchRow>>? = null,
+    appleArtistResults: UiState<List<AppleEditorialSearchRow>>? = null,
+    appleTrackResults: UiState<List<AppleEditorialTrackSearchRow>>? = null,
+    onAppleOpen: (AppleEditorialSearchRow) -> Unit = {},
+    onAppleTrackOpen: (AppleEditorialTrackSearchRow) -> Unit = {},
+    applePaging: Map<AppleSearchSection, AppleSearchPageStatus> = emptyMap(),
+    onAppleLoadMore: (AppleSearchSection) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -454,7 +463,9 @@ fun SearchScreen(
                         }
                     }
                     if (query.isBlank() &&
-                        canonicalResults == null && canonicalDetail == null
+                        canonicalResults == null && canonicalDetail == null &&
+                        appleResults == null && appleArtistResults == null &&
+                        appleTrackResults == null
                     ) {
                     // Same recent-search row, clear/remove actions, and persisted
                     // list as the original Search; never route legacy video IDs
@@ -483,7 +494,8 @@ fun SearchScreen(
                         canonicalPublicPlaylists, onCanonicalPlaylistOpen,
                         onCanonicalPlaylistLongPress,
                     )
-                } else canonicalMusicBrainzResults(
+                } else if (catalogSearchMusicBrainzVisible && canonicalDetail == null) {
+                    canonicalMusicBrainzResults(
                     query, canonicalResults, canonicalDetail, filter, onCanonicalOpen,
                     onCanonicalLongPress, onCanonicalBack,
                     onCanonicalLoadMore, canonicalLoadingMore,
@@ -492,6 +504,51 @@ fun SearchScreen(
                     onCanonicalPlay, onCanonicalAddToQueue,
                     onCanonicalRecordingInfo, appleResultTabs,
                 )
+                } else if (filter == SearchFilter.ARTISTS && canonicalDetail == null) {
+                    appleEditorialArtistRows(
+                        appleArtistResults, onAppleOpen,
+                        paging = applePaging[AppleSearchSection.ARTISTS],
+                        onLoadMore = { onAppleLoadMore(AppleSearchSection.ARTISTS) },
+                    )
+                } else if (filter == SearchFilter.ALBUMS && canonicalDetail == null) {
+                    appleEditorialAlbumRows(
+                        appleResults, onAppleOpen,
+                        paging = applePaging[AppleSearchSection.ALBUMS],
+                        onLoadMore = { onAppleLoadMore(AppleSearchSection.ALBUMS) },
+                    )
+                } else if (filter == SearchFilter.SONGS && canonicalDetail == null) {
+                    appleEditorialTrackRows(
+                        appleTrackResults, onAppleTrackOpen,
+                        paging = applePaging[AppleSearchSection.TRACKS],
+                        onLoadMore = { onAppleLoadMore(AppleSearchSection.TRACKS) },
+                    )
+                } else if (filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()) {
+                    appleEditorialArtistRows(
+                        appleArtistResults, onAppleOpen, showHeading = true,
+                        paging = applePaging[AppleSearchSection.ARTISTS],
+                        onLoadMore = { onAppleLoadMore(AppleSearchSection.ARTISTS) },
+                    )
+                    appleEditorialTrackRows(
+                        appleTrackResults, onAppleTrackOpen, showHeading = true,
+                        paging = applePaging[AppleSearchSection.TRACKS],
+                        onLoadMore = { onAppleLoadMore(AppleSearchSection.TRACKS) },
+                    )
+                    appleEditorialAlbumRows(
+                        appleResults, onAppleOpen, showHeading = true,
+                        paging = applePaging[AppleSearchSection.ALBUMS],
+                        onLoadMore = { onAppleLoadMore(AppleSearchSection.ALBUMS) },
+                    )
+                } else {
+                    canonicalMusicBrainzResults(
+                    query, canonicalResults, canonicalDetail, filter, onCanonicalOpen,
+                    onCanonicalLongPress, onCanonicalBack,
+                    onCanonicalLoadMore, canonicalLoadingMore,
+                    onCanonicalSearchLoadMore, canonicalSearchHasMore,
+                    canonicalSearchLoadingMore,
+                    onCanonicalPlay, onCanonicalAddToQueue,
+                    onCanonicalRecordingInfo, appleResultTabs,
+                )
+                }
                 }
                 searchingAddons && serverSearchEditing(query, searchCommitted) -> {
                     // Server search is explicit; the backend has no verified
