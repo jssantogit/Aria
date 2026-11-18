@@ -8,7 +8,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.ui.test.assertExists
 import com.music.bitchord.ui.components.ActionRow
 import com.music.bitchord.ui.components.ActionRowStyle
 import com.music.bitchord.ui.components.LocalActionRowStyle
