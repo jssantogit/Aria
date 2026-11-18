@@ -144,6 +144,47 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Diagnose combined-tree JUnit failures
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import collections
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path('app/build/test-results/testDevDebugUnitTest')
+          failures = []
+          for file in sorted(root.glob('TEST-*.xml')):
+              try:
+                  suite = ET.parse(file).getroot()
+              except ET.ParseError as exc:
+                  print(f'Unreadable JUnit XML {file.name}: {exc}')
+                  continue
+              for case in suite.iter('testcase'):
+                  for kind in ('failure', 'error'):
+                      item = case.find(kind)
+                      if item is not None:
+                          failures.append((case.get('classname', ''), case.get('name', ''), item.get('type', ''), item.get('message', ''), (item.text or '').strip()))
+          if not failures:
+              print('No test failure elements in combined-tree JUnit XML; check the previous build step.')
+          else:
+              print(f'JUnit failures: {len(failures)}')
+              reasons = collections.Counter((typ, msg) for _, _, typ, msg, _ in failures)
+              for (typ, msg), count in reasons.most_common(12):
+                  print(f'  {count} x {typ}: {msg[:600]}')
+              print('Representative failing test stack traces:')
+              shown = set()
+              for cls, name, typ, msg, trace in failures:
+                  signature = (typ, msg)
+                  if signature in shown:
+                      continue
+                  shown.add(signature)
+                  print(f'--- {cls}.{name} [{typ}: {msg[:300]}]')
+                  print('\n'.join(trace.splitlines()[:22])[:4000])
+                  if len(shown) >= 6:
+                      break
+          PY
       - name: Report compatibility only (not pixel parity or merge authorization)
         if: success()
         run: |
