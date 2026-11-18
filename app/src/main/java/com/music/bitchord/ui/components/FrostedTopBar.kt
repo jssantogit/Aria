@@ -482,9 +482,13 @@ internal fun FloatingLibraryTopBarCircle(
     ) { content() }
 }
 
-/** The root and pushed-screen settings launchers use the same selected edge as held cards. */
-internal fun appleSettingsLauncherOutline(expanded: Boolean): Color? =
-    if (expanded) heldContextSelectionOutline() else null
+/**
+ * Settings opens a contextual plate, not a held-item selection. Keep the
+ * original glass circle and icon but never draw an extra white ring while
+ * its popup is expanded. Shared by root and pushed-screen ⋮ launchers.
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun appleSettingsLauncherOutline(expanded: Boolean): Color? = null
 
 /**
  * Root Explore and Library share this compact Apple-style menu.

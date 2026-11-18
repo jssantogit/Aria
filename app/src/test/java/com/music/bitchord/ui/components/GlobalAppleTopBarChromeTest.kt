@@ -62,9 +62,11 @@ import org.robolectric.annotation.ConscryptMode
 class GlobalAppleTopBarChromeTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun rootAndGlobalOverflowShareWhiteActiveOutlineOnlyWhileExpanded() {
-        assertEquals(heldContextSelectionOutline(), appleSettingsLauncherOutline(expanded = true))
+    @Test fun rootAndGlobalOverflowNeverAddAnActiveWhiteOutline() {
+        // The root Home and pushed-screen launchers use this same policy.
+        // Their existing glass surface already has the shared neutral edge.
         assertEquals(null, appleSettingsLauncherOutline(expanded = false))
+        assertEquals(null, appleSettingsLauncherOutline(expanded = true))
     }
 
     @Test fun toolbarBackUsesSharedNativeVectorInsteadOfGenericMaterialArrow() {
