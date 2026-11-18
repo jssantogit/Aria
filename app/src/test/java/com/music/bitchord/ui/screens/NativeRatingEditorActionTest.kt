@@ -24,11 +24,11 @@ import org.robolectric.annotation.ConscryptMode
 class NativeRatingEditorActionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun ratingModalUsesNeutralCancelAndBlueConfirmCapsules() {
+    @Test fun ratingModalUsesNeutralCancelAndWhiteConfirmCapsules() {
         val dark = ratingEditorActionColors(darkTheme = true, emphasized = true,
             enabled = true, loading = false)
-        assertEquals(androidx.compose.ui.graphics.Color(0xFF0091FF), dark.background)
-        assertEquals(androidx.compose.ui.graphics.Color.White, dark.ink)
+        assertEquals(androidx.compose.ui.graphics.Color.White, dark.background)
+        assertEquals(androidx.compose.ui.graphics.Color.Black, dark.ink)
         val cancel = ratingEditorActionColors(darkTheme = true, emphasized = false,
             enabled = true, loading = false)
         assertEquals(androidx.compose.ui.graphics.Color(0xFF36363B), cancel.background)
@@ -37,8 +37,8 @@ class NativeRatingEditorActionTest {
         assertEquals(999, ratingEditorActionCornerRadiusDp())
         val light = ratingEditorActionColors(darkTheme = false, emphasized = true,
             enabled = true, loading = false)
-        assertEquals(androidx.compose.ui.graphics.Color(0xFF0088FF), light.background)
-        assertEquals(androidx.compose.ui.graphics.Color.White, light.ink)
+        assertEquals(androidx.compose.ui.graphics.Color.White, light.background)
+        assertEquals(androidx.compose.ui.graphics.Color.Black, light.ink)
     }
 
     @Test fun saveHas44DpHitTargetAndCallsExactlyOnce() {
