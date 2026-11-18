@@ -4530,8 +4530,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         section: AppleSearchSection,
         snapshot: ApplePublicSearchSnapshot,
         ticket: com.music.bitchord.data.providers.ProviderRequestTicket,
+        requestOrder: List<ProviderKey>,
     ) {
-        if (ProviderRuntime.gateOrNull()?.accept(ticket) != true) return
+        if (ProviderRuntime.gateOrNull()?.accept(ticket) != true ||
+            !catalogSearchOrderIsCurrent(
+                BuiltInProviderKeys.ITUNES, requestOrder, eligibleCatalogSearchProviders(),
+            )
+        ) return
         when (section) {
             AppleSearchSection.ARTISTS -> {
                 val prior = (_appleEditorialArtists.value as? UiState.Success)?.data.orEmpty()
@@ -4568,7 +4573,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 )?.heroUrl ?: return@withPermit
                                 if (_searchSource.value != SearchSource.CANONICAL ||
                                     _query.value.trim() != query ||
-                                    applePublicPagers[section] !== pager
+                                    applePublicPagers[section] !== pager ||
+                                    !catalogSearchOrderIsCurrent(
+                                        BuiltInProviderKeys.ITUNES, requestOrder,
+                                        eligibleCatalogSearchProviders(),
+                                    )
                                 ) return@withPermit
                                 _appleEditorialArtists.update { state ->
                                     if (state !is UiState.Success) state else UiState.Success(
@@ -4651,6 +4660,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             AppleSearchSection.TRACKS -> ItunesCatalogEntity.SONG
             AppleSearchSection.ALBUMS -> ItunesCatalogEntity.ALBUM
         }
+        val requestOrder = eligibleCatalogSearchProviders()
         val pager = ApplePublicSearchPager(
             query = query, entity = entity, country = "br", pageSize = 24,
             source = ItunesPublicSearchSource(),
@@ -4670,12 +4680,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ApplePublicSearchPageLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
             if (!permissionGate.accept(permissionTicket) ||
+                !catalogSearchOrderIsCurrent(
+                    BuiltInProviderKeys.ITUNES, requestOrder, eligibleCatalogSearchProviders(),
+                ) ||
                 _searchSource.value != SearchSource.CANONICAL ||
                 _query.value.trim() != query || applePublicPagers[section] !== pager
             ) return@launch
             when (result) {
                 is ApplePublicSearchPageLoad.Success ->
-                    publishApplePublicSearch(section, result.snapshot, permissionTicket)
+                    publishApplePublicSearch(section, result.snapshot, permissionTicket, requestOrder)
                 is ApplePublicSearchPageLoad.Failure -> when (section) {
                     AppleSearchSection.ARTISTS ->
                         _appleEditorialArtists.value = UiState.Error("apple_catalog_unavailable")
@@ -4697,6 +4710,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchSource.value != SearchSource.CANONICAL
         ) return
         val query = _query.value.trim()
+        val requestOrder = eligibleCatalogSearchProviders()
+        if (catalogAppleQuery != query ||
+            !catalogSearchOrderIsCurrent(
+                BuiltInProviderKeys.ITUNES, requestOrder, eligibleCatalogSearchProviders(),
+            )
+        ) return
         _appleSearchPaging.update {
             it + (section to status.copy(loadingMore = true, retryableError = false))
         }
@@ -4713,13 +4732,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ApplePublicSearchPageLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
             if (!permissionGate.accept(permissionTicket) ||
+                !catalogSearchOrderIsCurrent(
+                    BuiltInProviderKeys.ITUNES, requestOrder, eligibleCatalogSearchProviders(),
+                ) ||
                 applePublicPagers[section] !== pager ||
                 _query.value.trim() != query ||
                 _searchSource.value != SearchSource.CANONICAL
             ) return@launch
             when (result) {
                 is ApplePublicSearchPageLoad.Success ->
-                    publishApplePublicSearch(section, result.snapshot, permissionTicket)
+                    publishApplePublicSearch(section, result.snapshot, permissionTicket, requestOrder)
                 is ApplePublicSearchPageLoad.Failure ->
                     _appleSearchPaging.update { current ->
                         current + (section to status.copy(retryableError = true))
@@ -5285,6 +5307,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _canonicalResults.value = UiState.Loading
         catalogMusicBrainzQuery = query
         canonicalSearchJobProvider = BuiltInProviderKeys.MUSICBRAINZ
+        val requestOrder = eligibleCatalogSearchProviders()
         val permissionGate = ProviderRuntime.gateOrNull()
         val permissionTicket = permissionGate?.open(
             ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.MUSICBRAINZ,
@@ -5298,6 +5321,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             correctSource = _searchSource.value == SearchSource.CANONICAL,
             correctQuery = _query.value.trim() == query,
             visibleProvider = _catalogSearchMusicBrainzVisible.value,
+        ) && catalogSearchOrderIsCurrent(
+            BuiltInProviderKeys.MUSICBRAINZ, requestOrder, eligibleCatalogSearchProviders(),
         )
         val searchJob = viewModelScope.launch {
             // Do not wait for the first public HTTP response to paint a previously
