@@ -271,6 +271,55 @@ def reconcile_combined_routes(main: str) -> str:
     return replace_once(main, anchor, replacement, "MainActivity:pageRouteKey")
 
 
+
+def reconcile_combined_search(combined: str) -> str:
+    """Keep the *entire* REA edit/result branch, then insert Apple rows.
+
+    Git may auto-merge portions of #219's old 'when' between two actual
+    conflict blocks. Resolving only <<<<<<< markers leaves dangling
+    SearchFilter.FOO -> clauses inside REA's 'if' grammar. Source this one
+    visual/composition region from the exact fetched REA HEAD; leave all
+    other automatically merged code (and the #219-only Apple functions)
+    untouched.
+    """
+    original = subprocess.check_output(
+        ["git", "show", f"refs/remotes/origin/rea-212:{SEARCH}"],
+        cwd=ROOT, text=True,
+    )
+    start = "                searchingCanonical -> {\n"
+    end = "                searchingLibrary || searchingAddons -> if (\n"
+
+    def span(data: str, what: str) -> tuple[int, int]:
+        if data.count(start) != 1 or data.count(end) != 1:
+            raise RuntimeError(f"{what}: canonical search region is not unique")
+        left = data.index(start)
+        right = data.index(end, left)
+        if right <= left:
+            raise RuntimeError(f"{what}: bad search region order")
+        return left, right
+
+    rl, rr = span(original, "REA")
+    cl, cr = span(combined, "combined")
+    rea_region = original[rl:rr]
+    anchor = "                } else canonicalMusicBrainzResults(\n"
+    rea_region = replace_once(
+        rea_region, anchor,
+        apple_filtered_rows() + anchor,
+        "SearchScreen:REA canonical Apple/MB renderer",
+    )
+    # Strict invariants keep the provider-controlled dispatch and REAL
+    # REA suggestions, including the server pre-submit path.
+    for name in (
+        "canonicalSearchEditing(", "searchingAddons && serverSearchEditing(",
+        "catalogSearchMusicBrainzVisible", "appleEditorialArtistRows(",
+        "appleEditorialAlbumRows(", "appleEditorialTrackRows(",
+    ):
+        if name not in rea_region:
+            raise RuntimeError(f"Reconciled Search region missing {name!r}")
+    return combined[:cl] + rea_region + combined[cr:]
+
+
+
 def verify_contracts(main: str, search: str, held: str) -> None:
     for needle in [
         "targetState = pageRouteKey", "appleNativeDetailOpen -> if",
@@ -312,6 +361,7 @@ def run() -> int:
         if path == MAIN:
             combined = reconcile_combined_routes(combined)
         if path == SEARCH:
+            combined = reconcile_combined_search(combined)
             # The REA deleted this import, but the #219 Apple pagination
             # still uses OutlinedButton in its metadata-only result rows.
             if "OutlinedButton(" in combined and (
