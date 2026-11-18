@@ -317,7 +317,7 @@ internal fun ratingEditorModalWidthDp(screenWidthDp: Int): Int =
         .coerceIn(1, ratingEditorFloatingMaxWidthDp())
 
 internal fun ratingEditorModalGlyphSizeDp(screenWidthDp: Int): Int =
-    ((ratingEditorModalWidthDp(screenWidthDp) - 24) / 5).coerceIn(18, 32)
+    ((ratingEditorModalWidthDp(screenWidthDp) - 24) / 5).coerceIn(18, 46)
 
 /** Legacy geometry helper remains for callers, but no modal is anchored. */
 internal fun anchoredRatingCardWidthDp(screenWidthDp: Int): Int =
@@ -464,8 +464,8 @@ internal fun CanonicalRecordingFeedbackPanel(
                             // Retain the player's exact original star
                             // contours but drop the circular *button* platter.
                             // Five repeated platters looked like generic chips.
-                            // A 32dp vector viewport matches the reference and
-                            // preserves full-height, accessible touch slots.
+                            // A larger vector viewport gives the stars more presence without
+                            // changing the card width or accessible touch slots.
                             Box(
                                 modifier = Modifier.size(modalGlyphSize)
                                     .testTag("rating-editor-star-$i-${starFill.name.lowercase()}")
