@@ -70,7 +70,8 @@ internal fun NativeArtistPublicTopSection(
     rows: List<CanonicalCatalogSearchRow>,
     palette: ArtworkPalette,
     sampled: Boolean = false,
-    onRecordingOpen: (CanonicalCatalogSearchRow) -> Unit,
+    title: String? = null,
+    onRecordingOpen: ((CanonicalCatalogSearchRow) -> Unit)?,
     onRecordingHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
 ) {
     val exact = rows.filter {
@@ -105,7 +106,7 @@ internal fun NativeArtistPublicTopSection(
         )
     }
     NativeArtistTracksShelf(
-        title = stringResource(R.string.top_songs),
+        title = title ?: stringResource(R.string.top_songs),
         tracks = exact,
         palette = palette,
         horizontalPadding = PAGE_GUTTER,
@@ -114,7 +115,8 @@ internal fun NativeArtistPublicTopSection(
         NativeDetailTrackRowLayout(
             // A public Recording MBID is not a playable RecordingId. Unlike
             // the old metadata-only navigation there is no tap destination.
-            onClick = if (recording.hasCatalogedAsset || recording.hasVerifiedLocalAsset)
+            onClick = if (onRecordingOpen != null &&
+                (recording.hasCatalogedAsset || recording.hasVerifiedLocalAsset))
                 ({ onRecordingOpen(recording) }) else null,
             onLongPress = onRecordingHold?.let { hold -> { hold(recording) } },
             onMore = null,
