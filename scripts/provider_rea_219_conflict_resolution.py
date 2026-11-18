@@ -118,17 +118,15 @@ def replace_main(i: int, ours: str, rea: str) -> str:
     if i == 9:
         return rea
     if i == 10:
-        # Native Apple actions are intentionally additive. REA owns the
-        # visible root toolbar and must prevent duplicated playlist controls.
-        ours = replace_once(
-            ours,
-            "if (!showSettings && !showAccountScrobbling && !showPlaylistLibrary) {",
-            "if (!showSettings && !showAccountScrobbling &&\n"
-            "                            toolbarOwner != NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&\n"
-            "                            toolbarOwner != NativeTopBarRouteOwner.PUBLIC_PLAYLIST) {",
-            "MainActivity:toolbar",
-        )
-        return ours
+        # Apple native album search/sort and artist share actions are additive.
+        # The history button copied from old #219 is not: REA deliberately
+        # removed its private NativeHistoryTopBarAction function and owns
+        # top chrome/history. Keep only REA's root toolbar guard after Apple.
+        tail = "                        if (!showSettings && !showAccountScrobbling && !showPlaylistLibrary) {"
+        if ours.count(tail) != 1 or ours.count("NativeHistoryTopBarAction(") != 1:
+            raise RuntimeError("MainActivity: legacy history toolbar changed")
+        apple_actions = ours.split(tail, 1)[0]
+        return glue(apple_actions, rea)
     if i == 11:
         return ours.replace(
             "unifiedLibraryCategory == null && !appleNativeDetailOpen",
@@ -326,10 +324,12 @@ def verify_contracts(main: str, search: str, held: str) -> None:
         "canonicalAppleArtworkPromotion", "visibleSearchSources",
         "refreshCanonicalGenreEditorial", "heldCatalogSearchOrigin = origin",
         "toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST",
-        "NativeCollectionSearchAction", "NativeHistoryTopBarAction",
+        "NativeCollectionSearchAction", "NativeArtistShareTopBarAction",
     ]:
         if needle not in main:
             raise RuntimeError(f"Combined MainActivity lost {needle!r}")
+    if "NativeHistoryTopBarAction(" in main:
+        raise RuntimeError("Legacy History button from #219 leaked into frozen REA chrome")
     for needle in [
         "searchCommitted", "appleResultTabs",
         "canonicalSearchEditing", "onCanonicalLongPress",
