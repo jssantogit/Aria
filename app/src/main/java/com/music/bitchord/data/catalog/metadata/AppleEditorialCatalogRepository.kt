@@ -137,6 +137,7 @@ internal class AppleEditorialCatalogRepository(
             ItunesCatalogFailure.INVALID_QUERY)
         return when (val source = itunes.search(
             query, ItunesCatalogEntity.ALBUM, storefront, 200, attribute,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
         )) {
             is ItunesCatalogResult.Failure ->
                 AppleEditorialLoad.Failure(source.reason)
