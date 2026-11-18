@@ -513,15 +513,15 @@ def extract_integrated_root_shell(main: str) -> str:
     before = main[app_entry:start]
     outer_names = []
     for line in before.splitlines():
-        match = re.match(r"^    val ([A-Za-z_][A-Za-z0-9_]*)\\s*(?:by\\b|=|:)", line)
+        match = re.match(r"^    val ([A-Za-z_][A-Za-z0-9_]*)\s*(?:by\b|=|:)", line)
         if match:
             outer_names.append(match.group(1))
-        destructured = re.match(r"^    val \\(([^)]+)\\)\\s*=", line)
+        destructured = re.match(r"^    val \(([^)]+)\)\s*=", line)
         if destructured:
             outer_names.extend(part.strip() for part in destructured.group(1).split(","))
     captures = []
     for name in dict.fromkeys(outer_names):
-        if name != "_" and re.search(rf"(?<![A-Za-z0-9_.]){re.escape(name)}\\b", original):
+        if name != "_" and re.search(rf"(?<![A-Za-z0-9_.]){re.escape(name)}\b", original):
             captures.append(name)
     if not (45 <= len(captures) <= 210):
         raise RuntimeError(
