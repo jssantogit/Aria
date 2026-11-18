@@ -311,6 +311,19 @@ def run() -> int:
         combined, n = resolve(path, data)
         if path == MAIN:
             combined = reconcile_combined_routes(combined)
+        if path == SEARCH:
+            # The REA deleted this import, but the #219 Apple pagination
+            # still uses OutlinedButton in its metadata-only result rows.
+            if "OutlinedButton(" in combined and (
+                "import androidx.compose.material3.OutlinedButton\\n" not in combined
+            ):
+                combined = replace_once(
+                    combined,
+                    "import androidx.compose.material3.MaterialTheme\\n",
+                    "import androidx.compose.material3.MaterialTheme\\n"
+                    "import androidx.compose.material3.OutlinedButton\\n",
+                    "SearchScreen:Apple pagination import",
+                )
         changed[path] = (combined, n)
     verify_contracts(changed[MAIN][0], changed[SEARCH][0], changed[HELD][0])
 
@@ -318,6 +331,12 @@ def run() -> int:
     for path, (content, count) in changed.items():
         (ROOT / path).write_text(content, encoding="utf-8")
         print(f"Explicitly reconciled {path} ({count} verified conflicts)")
+        if path == SEARCH:
+            # Provenance of the exact CI-generated source, not the unmerged
+            # PR file. Include only the currently failing Kotlin section.
+            for line_no, line in enumerate(content.splitlines(), 1):
+                if 450 <= line_no <= 525:
+                    print(f"COMBINED_SEARCH {line_no}: {line}")
     subprocess.run(["git", "add", "--", *EXPECTED], cwd=ROOT, check=True)
     pending = subprocess.check_output(
         ["git", "diff", "--name-only", "--diff-filter=U"],
