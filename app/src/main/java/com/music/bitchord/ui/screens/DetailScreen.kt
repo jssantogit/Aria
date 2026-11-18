@@ -384,11 +384,19 @@ fun DetailScreen(
         it.kind == CanonicalSearchKind.RECORDING &&
             it.artistScopeMbid?.equals(publicArtistMbid, ignoreCase = true) == true
     } else emptyList()
+    // Only exact, proven artist MBIDs may enter a canonical artist shelf.
+    // Other canonicalTracks are album rows and must never be silently
+    // converted into a second, numbered artist tracklist.
+    val scopedCanonicalArtistTracks = if (publicArtistMbid != null) canonicalTracks.filter {
+        it.kind == CanonicalSearchKind.RECORDING &&
+            it.artistScopeMbid?.equals(publicArtistMbid, ignoreCase = true) == true
+    } else emptyList()
     val artistVisibleSections = nativeArtistVisibleSections(
         NativeArtistSectionEvidence(
             context = if (isLocalArtist) NativeArtistContext.LIBRARY
                 else NativeArtistContext.ONLINE_CATALOG,
-            hasTracks = isArtist && (songs.isNotEmpty() || publicTopRows.isNotEmpty()),
+            hasTracks = isArtist && (songs.isNotEmpty() || publicTopRows.isNotEmpty() ||
+                scopedCanonicalArtistTracks.isNotEmpty()),
             hasVerifiedPopularity = legacyRankedArtistFeed || publicTopRows.isNotEmpty(),
         ),
     )
@@ -841,7 +849,38 @@ fun DetailScreen(
             }
             if (!isArtist) aboutItem()
 
-            when (val state = page.songs) {
+            // An already verified catalog shelf is not hidden while an
+            // unrelated legacy Song feed is loading or failed. Both online
+            // and Library artists use the native track shelf geometry.
+            if (isArtist && publicArtistMbid != null &&
+                publicTopRows.isNotEmpty() && onCanonicalPublicTopOpen != null
+            ) {
+                item(key = "canonical-artist-public-top") {
+                    NativeArtistPublicTopSection(
+                        artistMbid = publicArtistMbid,
+                        rows = publicTopRows,
+                        palette = palette,
+                        sampled = canonicalPublicTopSampled,
+                        onRecordingOpen = onCanonicalPublicTopOpen,
+                        onRecordingHold = onCanonicalTrackHold,
+                    )
+                }
+            } else if (isArtist && publicArtistMbid != null &&
+                scopedCanonicalArtistTracks.isNotEmpty()
+            ) {
+                item(key = "canonical-artist-recordings") {
+                    NativeArtistPublicTopSection(
+                        artistMbid = publicArtistMbid,
+                        rows = scopedCanonicalArtistTracks,
+                        palette = palette,
+                        title = "Faixas",
+                        onRecordingOpen = onCanonicalTrackPlay?.let { play ->
+                            { row -> play(row.musicBrainzId) }
+                        },
+                        onRecordingHold = onCanonicalTrackHold,
+                    )
+                }
+            } else when (val state = page.songs) {
                 is UiState.Loading -> detailSkeleton(isArtist)
                 is UiState.Error -> item { MessageState(state.message) }
                 is UiState.Success -> if (folder != null && folderState != null) {
@@ -860,7 +899,7 @@ fun DetailScreen(
                         onSongLongPress = onSongLongPress,
                         onSongSwipe = onSongSwipe,
                     )
-                } else if (canonicalTracks.isNotEmpty()) {
+                } else if (!isArtist && canonicalTracks.isNotEmpty()) {
                     val albumCreditForRows = albumRowCredit.orEmpty()
                     // Keep the original release-page typography and numbered
                     // tracklist. A metadata-only row is simply non-playable;
@@ -922,19 +961,6 @@ fun DetailScreen(
                                 color = palette.divider,
                             )
                         }
-                    }
-                } else if (isArtist && publicArtistMbid != null &&
-                    publicTopRows.isNotEmpty() && onCanonicalPublicTopOpen != null
-                ) {
-                    item(key = "canonical-artist-public-top") {
-                        NativeArtistPublicTopSection(
-                            artistMbid = publicArtistMbid,
-                            rows = publicTopRows,
-                            palette = palette,
-                            sampled = canonicalPublicTopSampled,
-                            onRecordingOpen = onCanonicalPublicTopOpen,
-                            onRecordingHold = onCanonicalTrackHold,
-                        )
                     }
                 } else if (isArtist && (
                     NativeArtistSection.TRACKS in artistVisibleSections ||
