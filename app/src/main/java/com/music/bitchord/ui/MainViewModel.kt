@@ -640,6 +640,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Independent page sessions per Apple entity; never share cursors across queries. */
     private val applePublicPagers =
         java.util.concurrent.ConcurrentHashMap<AppleSearchSection, ApplePublicSearchPager>()
+    /** Bind page continuation to the request's original priority epoch, not the current one. */
+    private val applePublicPagerOrders =
+        java.util.concurrent.ConcurrentHashMap<AppleSearchSection, List<ProviderKey>>()
     private val applePublicPagingJobs = mutableMapOf<AppleSearchSection, Job>()
     private val _appleSearchPaging =
         MutableStateFlow<Map<AppleSearchSection, AppleSearchPageStatus>>(emptyMap())
@@ -4523,6 +4526,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         applePublicPagingJobs.values.forEach { it.cancel() }
         applePublicPagingJobs.clear()
         applePublicPagers.clear()
+        applePublicPagerOrders.clear()
         _appleSearchPaging.value = emptyMap()
     }
 
@@ -4666,6 +4670,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             source = ItunesPublicSearchSource(),
         )
         applePublicPagers[section] = pager
+        applePublicPagerOrders[section] = requestOrder
         _appleSearchPaging.update { it - section }
         return viewModelScope.launch(Dispatchers.IO) {
             val permissionGate = ProviderRuntime.gateOrNull()
@@ -4710,7 +4715,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchSource.value != SearchSource.CANONICAL
         ) return
         val query = _query.value.trim()
-        val requestOrder = eligibleCatalogSearchProviders()
+        val requestOrder = applePublicPagerOrders[section] ?: return
         if (catalogAppleQuery != query ||
             !catalogSearchOrderIsCurrent(
                 BuiltInProviderKeys.ITUNES, requestOrder, eligibleCatalogSearchProviders(),
