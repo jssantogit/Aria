@@ -241,8 +241,8 @@ def extract_rea_search_source_state(main: str) -> str:
     Keep selectedSearchProviderKey in the caller: root Search actions use it.
     No wrapper, pixel, route or provider behavior changes.
     """
-    start = "    val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()\\n"
-    end = "    val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()\\n"
+    start = "    val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()\n"
+    end = "    val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()\n"
     if main.count(start) != 1 or main.count(end) != 1:
         raise RuntimeError("Combined MainActivity: REA search state anchors changed")
     a, b = main.index(start), main.index(end)
@@ -263,29 +263,29 @@ def extract_rea_search_source_state(main: str) -> str:
     # region: it uses only those five arguments, the original global imports,
     # and the existing return value.
     call = (
-        "    val visibleSearchSources = rememberIntegratedSearchProviderTabs(\\n"
-        "        context = context, viewModel = viewModel, selectedTab = selectedTab,\\n"
-        "        searchSource = searchSource, selectedSearchProviderKey = selectedSearchProviderKey,\\n"
-        "    )\\n"
+        "    val visibleSearchSources = rememberIntegratedSearchProviderTabs(\n"
+        "        context = context, viewModel = viewModel, selectedTab = selectedTab,\n"
+        "        searchSource = searchSource, selectedSearchProviderKey = selectedSearchProviderKey,\n"
+        "    )\n"
     )
     new_main = main[:a] + call + main[b:]
     if "private fun rememberIntegratedSearchProviderTabs(" in new_main:
         raise RuntimeError("Combined MainActivity: already extracted Search state")
     function = (
-        "\\n/** Same REA search-source behavior, split from BitChordApp for JVM method size. */\\n"
-        "@Composable\\n"
-        "private fun rememberIntegratedSearchProviderTabs(\\n"
-        "    context: Context,\\n"
-        "    viewModel: MainViewModel,\\n"
-        "    selectedTab: Int,\\n"
-        "    searchSource: SearchSource,\\n"
-        "    selectedSearchProviderKey: String?,\\n"
-        "): List<com.music.bitchord.ui.SearchProviderTab> {\\n"
+        "\n/** Same REA search-source behavior, split from BitChordApp for JVM method size. */\n"
+        "@Composable\n"
+        "private fun rememberIntegratedSearchProviderTabs(\n"
+        "    context: Context,\n"
+        "    viewModel: MainViewModel,\n"
+        "    selectedTab: Int,\n"
+        "    searchSource: SearchSource,\n"
+        "    selectedSearchProviderKey: String?,\n"
+        "): List<com.music.bitchord.ui.SearchProviderTab> {\n"
         + body +
-        "    return visibleSearchSources\\n"
-        "}\\n"
+        "    return visibleSearchSources\n"
+        "}\n"
     )
-    return new_main.rstrip() + "\\n" + function
+    return new_main.rstrip() + "\n" + function
 
 
 def reconcile_combined_routes(main: str) -> str:
