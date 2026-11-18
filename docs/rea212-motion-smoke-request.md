@@ -1,5 +1,14 @@
 # REA #212 — autorização de smoke da rodada de animações
 
+## Pedido explícito de APK — 18/11/2026 — feedback proporcional (#212)
+
+- Autorização: o usuário solicitou “Dispare apk” em 18/11/2026 para avaliar visualmente no aparelho a correção do feedback de toque em ícones e cards e o recorte circular do destaque dos menus expansíveis.
+- Código validado: `e33a36ef7c502afecf9a1e0a7990c3f68b2c3677`; Android CI #44328125747, Desktop #44328125651, TV/Wear #44328125684 e auditoria backend #44328125721 todos SUCCESS para esse commit.
+- Este commit altera apenas o documento de autorização do workflow `Apple Music Bottom Bar · Smoke APK`, cujo gatilho branch-scoped é push neste caminho. O APK deve incluir o código desse HEAD sem modificações de produção.
+- Gate obrigatório: testes focados de avaliação, Android unit tests completos, shared Automix e sharedUi; somente após todos aprovados montar `app:assembleDevDebug` e publicar o APK universal com checksum SHA-256.
+- No aparelho: avaliar proporção do ripple de ⋮ e de controles de fonte/ordenação/pesquisa, destaque sem halo nos menus expansíveis, toque em capas quadradas e hero, legendas sem splash, pressão longa sem deslocamento, mini-player e barra inferior sem regressão.
+- Gerar artefato não significa aprovação visual; manter a PR #212 em draft, sem merge e sem declarar smoke físico executado.
+
 - Autorização: usuário solicitou em 15/11/2026 continuar a validação e, **apenas se estiver tudo certo**, realizar smoke.
 - Escopo: rodada de animações e redução de movimento publicada a partir de `8cd010503feb86d2fdab2ba603c7c0c1bc03e138` na PR #212 Android.
 - Execução: o workflow `Apple Music Bottom Bar · Smoke APK` deve rodar **primeiro** `:app:testDevDebugUnitTest`, o planejador Automix compartilhado e `:sharedUi:jvmTest`. Somente se todos passarem deve compilar `:app:assembleDevDebug` e publicar o APK universal.
