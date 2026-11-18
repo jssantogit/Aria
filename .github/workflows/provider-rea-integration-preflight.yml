@@ -108,8 +108,41 @@ jobs:
           echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
           chmod +x gradlew
 
+      # A known class-loader regression in the synthetic merged root surfaced
+      # as dozens of ClassFormatError summaries without the JVM error detail.
+      # Run a single representative test first and print its XML exception.
+      - name: Diagnose combined JVM class loading
+        shell: bash
+        run: |
+          set +e
+          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.DislikeSkipPolicyTest'
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+          for path in sorted(pathlib.Path("app/build/test-results/testDevDebugUnitTest").glob("*.xml")):
+              root = ET.parse(path).getroot()
+              for testcase in root.findall(".//testcase"):
+                  for kind in ("failure", "error"):
+                      for problem in testcase.findall(kind):
+                          print(f"\nJVM_CLASS_LOADING_ERROR {path.name}: {testcase.attrib.get('name')} ")
+                          print(f"{problem.attrib.get('message', '')}\n{(problem.text or '')[:12000]}")
+          PY
+            exit "$status"
+          fi
+
       - name: Test exact combined Android and native presentation tree
         run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest :app:assembleDevDebug :sharedUi:jvmTest
+
+      - name: Preserve combined-tree JVM failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-rea-219-combined-jvm-test-results
+          path: app/build/test-results/testDevDebugUnitTest/*.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Report compatibility only (not pixel parity or merge authorization)
         if: success()
