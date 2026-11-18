@@ -315,13 +315,13 @@ def run() -> int:
             # The REA deleted this import, but the #219 Apple pagination
             # still uses OutlinedButton in its metadata-only result rows.
             if "OutlinedButton(" in combined and (
-                "import androidx.compose.material3.OutlinedButton\\n" not in combined
+                "import androidx.compose.material3.OutlinedButton\n" not in combined
             ):
                 combined = replace_once(
                     combined,
-                    "import androidx.compose.material3.MaterialTheme\\n",
-                    "import androidx.compose.material3.MaterialTheme\\n"
-                    "import androidx.compose.material3.OutlinedButton\\n",
+                    "import androidx.compose.material3.MaterialTheme\n",
+                    "import androidx.compose.material3.MaterialTheme\n"
+                    "import androidx.compose.material3.OutlinedButton\n",
                     "SearchScreen:Apple pagination import",
                 )
         changed[path] = (combined, n)
