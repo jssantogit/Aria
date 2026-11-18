@@ -118,26 +118,22 @@ internal object ProviderCapabilityRegistry {
                 notes = "Awaiting PR #216 reconciliation",
             ),
         )
-        // Kotlin-native public Apple Music web catalog, independent from the
-        // documented iTunes Search API and artist artwork adapter. New provider
-        // keys never acquire implicit choices; migration only opts in sources
-        // that were already enabled by the previous version of BitChord.
+        // Separate native Web adapter; policy owns ordering and explicit opt-in.
+        // Until the canonical consumer is wired, readiness is deliberately BLOCKED.
         for (capability in listOf(
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
         )) {
-            add(
-                ProviderInventoryEntry(
-                    key = BuiltInProviderKeys.APPLE_MUSIC_WEB,
-                    capability = capability,
-                    tab = ProviderSettingsTab.CATALOG,
-                    displayName = if (capability == ProviderCapability.CATALOG_SEARCH)
-                        "Apple Music Web (Busca)" else "Apple Music Web (Discografia)",
-                    readiness = ProviderReadiness.BLOCKED,
-                    supportsReordering = true,
-                    notes = "Native Kotlin pilot blocked until authenticated live validation and catalog adapter wiring",
-                ),
-            )
+            add(ProviderInventoryEntry(
+                key = BuiltInProviderKeys.APPLE_MUSIC_WEB,
+                capability = capability,
+                tab = ProviderSettingsTab.CATALOG,
+                displayName = if (capability == ProviderCapability.CATALOG_SEARCH)
+                    "Apple Music Web (Busca)" else "Apple Music Web (Discografia)",
+                readiness = ProviderReadiness.BLOCKED,
+                supportsReordering = true,
+                notes = "Kotlin-native Apple Web; blocked pending generic catalog consumer validation",
+            ))
         }
 
         add(

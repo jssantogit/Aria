@@ -30,6 +30,37 @@ import org.junit.Test
 
 /** Regression at the actual shared MusicBrainz HTTP admission boundary. */
 class MusicBrainzTransportAdmissionTest {
+    @Test fun editorialSearchUsesItsOwnCapabilityWithoutReenablingGeneralSearch(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(search = false, discography = true, identity = true))
+        var network = 0
+        val client = MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    network++
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+            admission = { gate },
+        )
+        val general = MusicBrainzCatalogSearch(client)
+        val editorial = MusicBrainzCatalogSearch(
+            client, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        )
+        assertTrue(general.searchReleaseGroups("test")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(editorial.searchReleaseGroups("test")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertEquals(1, network)
+
+        gate.replace(policy(search = true, discography = false, identity = true))
+        assertTrue(editorial.searchReleaseGroups("test2")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(general.searchReleaseGroups("test2")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertEquals(2, network)
+    }
+
     private val mb = ProviderKey("musicbrainz")
     private val ready = ProviderDescriptor(mb,
         setOf(ProviderCapability.CATALOG_SEARCH,

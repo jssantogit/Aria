@@ -3,6 +3,8 @@ package com.music.bitchord.playback
 import com.music.bitchord.data.catalog.artistCreditFromSubtitle
 
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.configuredCanonicalPersonalProviderKeys
+import com.music.bitchord.data.catalog.isCanonicalPersonalProviderCurrentlyAuthorized
 import com.music.bitchord.data.catalog.RecordingEntity
 import com.music.bitchord.data.catalog.MediaAssetEntity
 import com.music.bitchord.data.catalog.OpenSubsonicLibraryProviderConfigurationReader
@@ -385,6 +387,26 @@ class PlaybackService : MediaLibraryService() {
     private val quickPicksMutex = Mutex()
     private val QUICK_PICKS_CACHE_TTL_MS = 60_000L
 
+    /**
+     * Android Auto must never expose historical server rows by scanning all
+     * opensubsonic:* assets. Use the same current-account canonical capability
+     * allowlist as Home, Server Search and Spotify import.
+     */
+    private suspend fun currentAuthorizedRemoteSongs(
+        query: String,
+        limit: Int,
+    ): List<Song> {
+        val allowed = configuredCanonicalPersonalProviderKeys(this)
+            .filter { it.startsWith("opensubsonic:") || it.startsWith("jellyfin:") }
+        if (allowed.isEmpty()) return emptyList()
+        val rows = CanonicalCatalogDatabase.get(this).catalogDao()
+            .searchCanonicalRemoteServerAssets(query, limit = limit, providerKeys = allowed)
+            .filter {
+                isCanonicalPersonalProviderCurrentlyAuthorized(this, it.providerKey)
+            }
+        return canonicalAutoSongs(rows)
+    }
+
     private suspend fun cachedQuickPicksSongs(): List<Song> = quickPicksMutex.withLock {
         cachedQuickPicks?.let { (at, songs) ->
             if (SystemClock.elapsedRealtime() - at < QUICK_PICKS_CACHE_TTL_MS && songs.isNotEmpty()) return songs
@@ -407,9 +429,7 @@ class PlaybackService : MediaLibraryService() {
             emptyList()
         }
         val remote = try {
-            CanonicalCatalogDatabase.get(this@PlaybackService)
-                .catalogDao().searchCanonicalRemoteServerAssets("", limit = 200)
-                .let(::canonicalAutoSongs)
+            currentAuthorizedRemoteSongs("", limit = 200)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -7991,9 +8011,7 @@ class PlaybackService : MediaLibraryService() {
             // 4. When there is no on-device audio, resume with verified
             // personal-server assets instead of contacting YouTube Home.
             val remoteSongs = try {
-                CanonicalCatalogDatabase.get(this@PlaybackService)
-                    .catalogDao().searchCanonicalRemoteServerAssets("", limit = 200)
-                    .let(::canonicalAutoSongs)
+                currentAuthorizedRemoteSongs("", limit = 200)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -8260,10 +8278,7 @@ class PlaybackService : MediaLibraryService() {
             emptyList()
         }
         val remote = try {
-            CanonicalCatalogDatabase.get(this).catalogDao()
-                .searchCanonicalRemoteServerAssets(safeQuery, limit = 200)
-                .let(::canonicalAutoSongs)
-                .let { canonicalAutoSearch(it, safeQuery) }
+            canonicalAutoSearch(currentAuthorizedRemoteSongs(safeQuery, limit = 200), safeQuery)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

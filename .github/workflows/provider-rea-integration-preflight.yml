@@ -1,0 +1,117 @@
+name: Provider 219 x REA 212 integration preflight
+
+# Disposable semantic-integration compatibility gate. It changes no remote refs,
+# never merges PRs and does not grant authorization for visual or device smoke.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-rea-preflight-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+jobs:
+  combined-tree:
+    if: ${{ github.event.pull_request.number == 219 }}
+    name: Compose frozen REA tree with Provider Engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact provider HEAD (not the PR synthetic merge)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Attempt temporary merge with exact PR 212 HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/pull/212/head:refs/remotes/origin/rea-212'
+          REA_SHA="$(git rev-parse refs/remotes/origin/rea-212)"
+          PROVIDER_SHA="$(git rev-parse HEAD)"
+          # Git 2.56+ may require a local committer identity even for a
+          # no-commit merge. This stays inside the disposable runner only.
+          git config user.name "Provider Compatibility Preflight"
+          git config user.email "provider-preflight@users.noreply.github.com"
+          {
+            echo "### Provider/REA compatibility (temporary runner checkout)"
+            echo "- Provider #219: \`$PROVIDER_SHA\`"
+            echo "- Frozen REA #212: \`$REA_SHA\`"
+            echo "- Remote branches and PRs are **never merged or updated** by this job."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if ! git merge --no-ff --no-commit refs/remotes/origin/rea-212 > /tmp/rea-merge.log 2>&1; then
+            cat /tmp/rea-merge.log
+            git diff --name-only --diff-filter=U > /tmp/rea-conflicts.txt
+            if ! test -s /tmp/rea-conflicts.txt; then
+              echo "::error::Temporary merge failed without content conflicts."
+              exit 1
+            fi
+            mapfile -t conflicts < /tmp/rea-conflicts.txt
+            git diff --cc -- "${conflicts[@]}" > /tmp/rea-conflict-hunks.txt
+            {
+              echo ""
+              echo "**Detected content conflicts (reconciled in disposable CI tree only):**"
+              sed 's/^/- `/; s/$/`/' /tmp/rea-conflicts.txt
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Each recognized hunk has its own reviewed semantic rule.
+            # Unknown changes fail closed; never choose ours/theirs wholesale.
+            if ! python3 scripts/provider_rea_219_conflict_resolution.py; then
+              echo "::error::Provider/REA reconciliation is not proven for this exact pair of HEADs."
+              {
+                echo ""
+                echo "### Reconciliation was rejected"
+                echo "A reviewed hunk changed or an invariant failed. Do not merge."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            {
+              echo ""
+              echo "### Explicit reconciliation prepared (not merged remotely)"
+              echo "Provider/REA conflict hunks were individually resolved by the checked-in allowlisted contract."
+              echo "**This does not make the original PR #219 branch git-mergeable.** It validates only this combined runner tree."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo ""
+            echo "Temporary combined tree is staged; running Android and native presentation verification."
+            git diff --cached --stat | tail -15
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve unresolved conflict hunks for review
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-219-rea-212-conflict-hunks
+          path: /tmp/rea-conflict-hunks.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Provide existing Android build configuration
+        shell: bash
+        run: |
+          echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
+          echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
+          chmod +x gradlew
+
+      - name: Test exact combined Android and native presentation tree
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest :app:assembleDevDebug :sharedUi:jvmTest
+
+      - name: Report compatibility only (not pixel parity or merge authorization)
+        if: success()
+        run: |
+          echo "Combined-tree compilation and tests passed on an explicitly reconciled disposable tree. PR #219 itself may still have Git conflicts. This does NOT prove physical/pixel parity or authorize merging any PR." >> "$GITHUB_STEP_SUMMARY"

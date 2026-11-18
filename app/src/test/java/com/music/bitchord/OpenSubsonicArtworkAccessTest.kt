@@ -581,7 +581,6 @@ class OpenSubsonicArtworkAccessTest {
                 secretReplacement = secret,
             ),
         )
-        credentials.readCalls = 0
         val permitted = ProviderKey("opensubsonic", "home")
         val capability = ProviderCapability.PERSONAL_LIBRARY
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
@@ -602,6 +601,10 @@ class OpenSubsonicArtworkAccessTest {
             artworkUri = logicalArtworkUri("home", "cover-native"),
         )
         val store = FakeArtworkAssetStore(linkedMapOf(asset.id to asset))
+        // Computing the opaque catalog providerKey for the fixture above
+        // reads the fake credential once; production resolve must still defer
+        // any subsequent credential access until the runtime request.
+        credentials.readCalls = 0
         return Fixture(
             persistence = persistence,
             credentials = credentials,

@@ -32,6 +32,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.ConscryptMode
+import java.util.concurrent.atomic.AtomicInteger
 
 @ConscryptMode(ConscryptMode.Mode.OFF)
 @RunWith(RobolectricTestRunner::class)
@@ -370,5 +371,197 @@ class MusicBrainzCachedSearchRepositoryTest {
             assertEquals(setOf(owned.musicBrainzId), snapshot.recordingMbidsWithAssets)
         } finally { db.close() }
     }
+
+    @Test fun offlineHomeEditorialUsesDiscographyNotGeneralSearchAndKeepsOwnedRecordings() =
+        runBlocking {
+            val db = Room.inMemoryDatabaseBuilder(
+                RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+            ).allowMainThreadQueries().build()
+            try {
+                val artistMbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
+                val localMbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+                val editorialOnlyMbid = "3e619ba2-34f0-4649-83d8-05483e2fabe5"
+                val index = MusicBrainzCatalogIndex(
+                    db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(),
+                )
+                index.persistArtists(listOf(
+                    MusicBrainzArtistHit(artistMbid, "ILLIT", null, "KR"),
+                ))
+                val ids = index.persistRecordings(listOf(
+                    MusicBrainzRecordingHit(localMbid, "Magnetic Local", "ILLIT", 160_000L),
+                    MusicBrainzRecordingHit(editorialOnlyMbid, "Magnetic Catalog", "ILLIT", 162_000L),
+                ))
+                db.catalogDao().upsertMediaAsset(
+                    com.music.bitchord.data.catalog.MediaAssetEntity(
+                        "local-home-1", ids.getValue(localMbid),
+                        "local-mediastore", "local-key",
+                        "content://media/external/audio/media/29",
+                        null, null, null, null,
+                    ),
+                )
+                val authority = gate(search = false, discography = true)
+                val cache = MusicBrainzCachedSearchRepository(
+                    db, cacheRead = ProviderCachedReadAccess { authority },
+                )
+                val before = cache.search("", capability =
+                    ProviderCapability.EDITORIAL_DISCOGRAPHY)
+                assertEquals(listOf(artistMbid),
+                    before.artists.map { it.musicBrainzId })
+                assertEquals(setOf(localMbid, editorialOnlyMbid),
+                    before.recordings.map { it.musicBrainzId }.toSet())
+
+                authority.replace(policy(search = true, discography = false))
+                val after = cache.search("", capability =
+                    ProviderCapability.EDITORIAL_DISCOGRAPHY)
+                assertTrue(after.artists.isEmpty())
+                assertTrue(after.groups.isEmpty())
+                assertTrue(after.releases.isEmpty())
+                assertEquals(listOf(localMbid),
+                    after.recordings.map { it.musicBrainzId })
+                assertEquals(setOf(localMbid), after.recordingMbidsWithAssets)
+                // The reverse capability toggle cannot reauthorize Home.
+                assertEquals(listOf(artistMbid),
+                    cache.search("", capability = ProviderCapability.CATALOG_SEARCH)
+                        .artists.map { it.musicBrainzId })
+            } finally { db.close() }
+        }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun personalLibraryPermissionCannotBePassedAsMusicBrainzSearchCacheAuthority(): Unit = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+        ).allowMainThreadQueries().build()
+        try {
+            MusicBrainzCachedSearchRepository(db).search(
+                "", capability = ProviderCapability.PERSONAL_LIBRARY,
+            )
+        } finally { db.close() }
+    }
+
+    @Test fun personalAccountRevocationTriggersReactiveRoomProjectionEvenWithMbOff(): Unit =
+        runBlocking {
+            val db = Room.inMemoryDatabaseBuilder(
+                RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+            ).allowMainThreadQueries().build()
+            try {
+                val mbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+                val index = MusicBrainzCatalogIndex(
+                    db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(),
+                )
+                val id = index.persistRecordings(listOf(
+                    MusicBrainzRecordingHit(mbid, "Magnetic", "ILLIT", 160000L),
+                )).getValue(mbid)
+                db.catalogDao().upsertMediaAsset(
+                    com.music.bitchord.data.catalog.MediaAssetEntity(
+                        "asset-remote", id, "opensubsonic:home", "track-1",
+                        "bitchord://canonical?recording=1",
+                        null, null, null, null,
+                    ),
+                )
+                val grant = mutableSetOf("local-mediastore", "opensubsonic:home")
+                val account = ProviderKey("opensubsonic", "home")
+                val state = MutableStateFlow(ProviderSessionSnapshot(
+                    status = ProviderSessionStatus.READY,
+                    eligible = mapOf(ProviderCapability.PERSONAL_LIBRARY to listOf(account)),
+                ))
+                val cache = MusicBrainzCachedSearchRepository(
+                    db, cacheRead = ProviderCachedReadAccess { gate(search = false) },
+                    personalProviderKeys = { grant.toSet() },
+                )
+                val received = Channel<List<String>>(Channel.UNLIMITED)
+                val observer = launch {
+                    cache.observe("Magnetic", providerState = state).collect { value ->
+                        received.send(value.recordings.map { it.musicBrainzId })
+                    }
+                }
+                try {
+                    assertEquals(listOf(mbid), withTimeout(5_000) { received.receive() })
+                    grant.remove("opensubsonic:home")
+                    state.value = ProviderSessionSnapshot(
+                        status = ProviderSessionStatus.READY,
+                        eligible = mapOf(ProviderCapability.PERSONAL_LIBRARY to emptyList()),
+                    )
+                    assertEquals(emptyList<String>(),
+                        withTimeout(5_000) { received.receive() })
+                    assertEquals(id, db.catalogDao().entityIdForExternalIdentity(
+                        "musicbrainz", "recording", mbid,
+                    ))
+                } finally {
+                    observer.cancelAndJoin()
+                }
+            } finally { db.close() }
+        }
+
+    @Test fun personalRealmChangesDuringRoomQueryNeverPublishItsOldMbids(): Unit =
+        runBlocking {
+            val db = Room.inMemoryDatabaseBuilder(
+                RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+            ).allowMainThreadQueries().build()
+            try {
+                val mbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+                val id = MusicBrainzCatalogIndex(
+                    db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(),
+                ).persistRecordings(listOf(
+                    MusicBrainzRecordingHit(mbid, "Magnetic", "ILLIT", 160000L),
+                )).getValue(mbid)
+                db.catalogDao().upsertMediaAsset(
+                    com.music.bitchord.data.catalog.MediaAssetEntity(
+                        "asset-remote", id, "opensubsonic:home", "track-1",
+                        "bitchord://canonical?recording=1",
+                        null, null, null, null,
+                    ),
+                )
+                val reads = AtomicInteger()
+                val cache = MusicBrainzCachedSearchRepository(
+                    db, cacheRead = ProviderCachedReadAccess { gate(search = false) },
+                    personalProviderKeys = {
+                        if (reads.getAndIncrement() == 0)
+                            setOf("local-mediastore", "opensubsonic:home")
+                        else setOf("local-mediastore")
+                    },
+                )
+                val snapshot = cache.search("Magnetic")
+                assertTrue(snapshot.recordings.isEmpty())
+                assertTrue(snapshot.recordingMbidsWithAssets.isEmpty())
+                assertTrue(reads.get() >= 2)
+            } finally { db.close() }
+        }
+
+
+
+    @Test fun editorialCatalogRemainsButRemoteAssetBadgeDoesNotSurviveGrantRotation(): Unit =
+        runBlocking {
+            val db = Room.inMemoryDatabaseBuilder(
+                RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+            ).allowMainThreadQueries().build()
+            try {
+                val mbid = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+                val id = MusicBrainzCatalogIndex(
+                    db, cacheRead = ProviderCachedReadAccess.permissiveForUnitTests(),
+                ).persistRecordings(listOf(
+                    MusicBrainzRecordingHit(mbid, "Magnetic", "ILLIT", 160000L),
+                )).getValue(mbid)
+                db.catalogDao().upsertMediaAsset(
+                    com.music.bitchord.data.catalog.MediaAssetEntity(
+                        "asset-remote", id, "opensubsonic:home", "track-1",
+                        "bitchord://canonical?recording=1",
+                        null, null, null, null,
+                    ),
+                )
+                val reads = AtomicInteger()
+                val repository = MusicBrainzCachedSearchRepository(
+                    db, cacheRead = ProviderCachedReadAccess { gate(search = true) },
+                    personalProviderKeys = {
+                        if (reads.getAndIncrement() == 0)
+                            setOf("local-mediastore", "opensubsonic:home")
+                        else setOf("local-mediastore")
+                    },
+                )
+                val result = repository.search("Magnetic")
+                assertEquals(listOf(mbid), result.recordings.map { it.musicBrainzId })
+                assertTrue(result.recordingMbidsWithAssets.isEmpty())
+                assertTrue(reads.get() >= 2)
+            } finally { db.close() }
+        }
 
 }

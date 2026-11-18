@@ -21,6 +21,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ItunesCatalogRateLimiterTest {
+
+    @Test fun anEditorialSearchUsesOnlyEditorialPermission() = runBlocking {
+        val key = BuiltInProviderKeys.ITUNES
+        fun policy(search: Boolean, editorial: Boolean) = ProviderCapabilityPolicy(
+            listOf(BuiltInProviderDescriptors.itunes(ProviderReadiness.READY)),
+            mapOf(
+                ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(key, search, 0)),
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to
+                    listOf(ProviderChoice(key, editorial, 0)),
+            ),
+        )
+        val gate = ProviderPolicyGate(policy(search = false, editorial = true))
+        var contacts = 0
+        val transport = KtorItunesCatalogTransport(
+            limiter = ItunesCatalogRateLimiter(clockMs = { 1000L }, sleep = {}),
+            admission = RateLimitedProviderTransport { gate },
+            testExchange = { _, _ -> contacts++; """{"resultCount":0,"results":[]}""" },
+        )
+        assertTrue(transport.get("search", mapOf("term" to "jazz"),
+            ProviderCapability.EDITORIAL_DISCOGRAPHY).contains("resultCount"))
+        try {
+            transport.get("search", mapOf("term" to "jazz"))
+            throw AssertionError("General Search must still be denied")
+        } catch (_: ProviderRequestDeniedException) { }
+        assertEquals(1, contacts)
+        gate.replace(policy(search = true, editorial = false))
+        try {
+            transport.get("search", mapOf("term" to "jazz"),
+                ProviderCapability.EDITORIAL_DISCOGRAPHY)
+            throw AssertionError("Editorial Search must be denied")
+        } catch (_: ProviderRequestDeniedException) { }
+        assertTrue(transport.get("search", mapOf("term" to "jazz")).contains("resultCount"))
+        assertEquals(2, contacts)
+    }
+
     @Test fun realItunesTransportSeparatesSearchAndDiscographyAdmission() = runBlocking {
         val itunes = BuiltInProviderKeys.ITUNES
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(

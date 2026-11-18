@@ -11,6 +11,7 @@ import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.catalog.metadata.appleStoreLinkForExactProduct
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogEntity
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogFailure
+import com.music.bitchord.data.catalog.metadata.ItunesCatalogSearchAttribute
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogResult
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogTransport
@@ -22,6 +23,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ItunesCatalogClientTest {
+    @Test fun nativeGenreQueriesUseTheDocumentedAppleFieldWithoutRewritingIds() = runBlocking {
+        val transport = FakeTransport("""{"resultCount":0,"results":[]}""")
+        val client = ItunesCatalogClient(transport)
+        val result = client.search(
+            "K-Pop", ItunesCatalogEntity.ALBUM,
+            country = "BR", limit = 100,
+            attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        )
+        assertTrue(result is ItunesCatalogResult.Success)
+        assertEquals("genreIndex", transport.parameters["attribute"])
+        assertEquals("album", transport.parameters["entity"])
+        assertEquals("br", transport.parameters["country"])
+        assertEquals("music", transport.parameters["media"])
+    }
+
     @Test fun independentArtworkOptOutSuppressesAppleCdnButPreservesCatalogRelease() = runBlocking {
         val key = BuiltInProviderKeys.ITUNES
         val descriptors = listOf(BuiltInProviderDescriptors.itunes(ProviderReadiness.READY))
