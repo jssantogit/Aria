@@ -41,6 +41,9 @@ internal fun nativeArtistReleaseHoldAction(
     onReleaseOptions: (ReleaseEntity) -> Unit,
 ): (() -> Unit)? = if (selectionActive) null else ({ onReleaseOptions(release) })
 
+/** The hero represents the artist, not the currently filtered search results. */
+internal fun <T> nativeArtistHeroTrackSet(allArtistTracks: List<T>): List<T> = allArtistTracks
+
 /** A verified artist can be rated without pretending its songs are playable. */
 internal fun shouldShowNativeCanonicalArtistActions(
     hasTracks: Boolean,
@@ -77,6 +80,7 @@ internal fun NativeCanonicalArtistContent(
     onRateArtistAnchorChange: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
     onPlayAll: (List<CanonicalBrowseTrack>, Boolean) -> Unit,
 ) {
+    val heroTracks = nativeArtistHeroTrackSet(tracks)
     val shownTracks = tracks.filter {
         query.isBlank() ||
             it.title.contains(query, ignoreCase = true) ||
@@ -123,7 +127,7 @@ internal fun NativeCanonicalArtistContent(
                 )
             }
             if (shouldShowNativeCanonicalArtistActions(
-                    hasTracks = shownTracks.isNotEmpty(),
+                    hasTracks = heroTracks.isNotEmpty(),
                     canRate = artistRatingState.target != null && onRateArtist != null,
                 )
             ) {
@@ -131,10 +135,10 @@ internal fun NativeCanonicalArtistContent(
                     // The native artist page uses three circular buttons,
                     // not the wide album/folder action pills.
                     ActionRow(
-                        onPlay = { onPlayAll(shownTracks, false) },
-                        onShuffle = { onPlayAll(shownTracks, true) },
-                        canPlay = shownTracks.isNotEmpty(),
-                        canShuffle = shownTracks.isNotEmpty(),
+                        onPlay = { onPlayAll(heroTracks, false) },
+                        onShuffle = { onPlayAll(heroTracks, true) },
+                        canPlay = heroTracks.isNotEmpty(),
+                        canShuffle = heroTracks.isNotEmpty(),
                         onRateArtistAnchorChange = onRateArtistAnchorChange,
                         onRateArtist = if (artistRatingState.target != null)
                             onRateArtist else null,
