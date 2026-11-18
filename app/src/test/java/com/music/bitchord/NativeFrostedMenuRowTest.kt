@@ -25,6 +25,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import com.music.bitchord.ui.components.TopBarAccountButton
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsEnabled
 import com.music.bitchord.ui.theme.BitChordTheme
 import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
@@ -167,6 +169,22 @@ class NativeFrostedMenuRowTest {
         }
         compose.onNodeWithText(label).assertIsNotSelected().performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test fun quietSettingsRowRemainsAccessibleAndInteractive() {
+        var opened by mutableIntStateOf(0)
+        val label = ApplicationProvider.getApplicationContext<Context>()
+            .getString(R.string.settings)
+        compose.setContent {
+            BitChordTheme {
+                FrostedSettingsAction { opened++ }
+            }
+        }
+        compose.onNodeWithText(label)
+            .assertHasClickAction()
+            .assertIsEnabled()
+            .performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
     }
 
     @Test fun ordinaryMenuActionIsNotIncorrectlyMarkedSelected() {

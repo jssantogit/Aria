@@ -8492,7 +8492,7 @@ internal fun FrostedMenuPanel(
                     drawPath(mask, menuScrimColor)
                 }
             }
-            .clickable(onClick = onDismiss),
+            .frostedMenuQuietClick(onClick = onDismiss),
         contentAlignment = Alignment.TopStart,
     ) {
         val position = if (anchorBounds == null) {
@@ -8536,7 +8536,7 @@ internal fun FrostedMenuPanel(
                 .then(entrance)
                 .testTag("native-frosted-overflow")
                 .clip(shape)
-                .clickable(onClick = {}),
+                .frostedMenuQuietClick(onClick = {}),
         ) {
             Box(
                 Modifier.clip(shape)
@@ -8556,6 +8556,22 @@ internal fun FrostedMenuPanel(
     }
 }
 
+/**
+ * A menu item owns a large accessible hit target, but should never splash
+ * a bright rectangular Material ripple across the neutral frosted card.
+ * This mirrors the press-neutral long-press action surface.
+ */
+@Composable
+internal fun Modifier.frostedMenuQuietClick(
+    role: Role? = null,
+    onClick: () -> Unit,
+): Modifier = this.clickable(
+    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+    indication = null,
+    role = role,
+    onClick = onClick,
+)
+
 /** Shared frosted-menu rows follow ActionRow(Menu): text first, icon trailing. */
 @Composable
 internal fun FrostedMenuRow(
@@ -8567,7 +8583,7 @@ internal fun FrostedMenuRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
+            .frostedMenuQuietClick(role = Role.Button, onClick = onClick)
             .semantics { selected = checked }
             .heightIn(min = 46.dp)
             .padding(horizontal = 18.dp, vertical = 11.dp),
