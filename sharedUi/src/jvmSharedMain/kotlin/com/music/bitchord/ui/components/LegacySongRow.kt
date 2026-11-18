@@ -124,6 +124,11 @@ import androidx.compose.foundation.border
  * dismissing, since nothing is being removed. Long-press opens the actions
  * menu.
  */
+/** Per-album artist credit is redundant; guest artists remain readable. */
+fun albumRowSecondaryArtist(trackArtist: String, albumCredit: String?): String? =
+    trackArtist.trim().takeIf { it.isNotEmpty() &&
+        (albumCredit == null || !it.equals(albumCredit.trim(), ignoreCase = true)) }
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SongRow(
@@ -186,6 +191,8 @@ fun SongRow(
      * different catalogues sit side by side: the Addons search.
      */
     showSourceQuality: Boolean = false,
+    /** Only numbered album pages pass a verified header credit. */
+    albumCredit: String? = null,
 ) {
     NativeDetailTrackSwipeContainer(
         onSwipeToQueue = onSwipeToQueue,
@@ -208,6 +215,7 @@ fun SongRow(
             searchPlayingStyle = searchPlayingStyle,
             selected = selected,
             showSourceQuality = showSourceQuality,
+            albumCredit = albumCredit,
         )
     }
 }
@@ -230,6 +238,7 @@ private fun SongRowContent(
     searchPlayingStyle: Boolean = false,
     selected: Boolean = false,
     showSourceQuality: Boolean = false,
+    albumCredit: String? = null,
 ) {
     val titleColor by animateColorAsState(
         targetValue = if (isCurrent) activeTint else MaterialTheme.colorScheme.onBackground,
@@ -283,7 +292,8 @@ private fun SongRowContent(
         },
         subtitle = {
             val subtitle = listOfNotNull(
-                song.artist.takeIf { it.isNotBlank() },
+                if (trackNumber != null) albumRowSecondaryArtist(song.artist, albumCredit)
+                    else song.artist.takeIf { it.isNotBlank() },
                 song.downloadFormat,
             ).joinToString(" · ")
             val quality = if (showSourceQuality) song.sourceQualityBadge() else null
@@ -294,12 +304,14 @@ private fun SongRowContent(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                Text(
-                    text = if (quality != null && subtitle.isNotEmpty()) " · $subtitle" else subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = subtitleColor, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = if (quality != null) " · $subtitle" else subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = subtitleColor, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
         afterText = {

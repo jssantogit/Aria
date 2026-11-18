@@ -7,3 +7,8 @@ Referência de evidências: [am-descomp #8](https://github.com/jssantogit/am-des
 - Faixas de álbuns canônicos: manter numeração de release original, divisores, RecordingId estável e menu de pressionamento longo, sem ⋮ inline. Mínimo 60dp (antes 68dp); artista repetido do crédito do álbum pode ser omitido; artista convidado/diferente permanece. Biblioteca geral, playlists e outras linhas não são alteradas.
 - Os modos local, catálogo e servidor conservam identidade e capacidades; álbum metadata-only não ganha ação de reprodução. As ações locais existentes (duas pílulas) não foram trocadas por trio online; apenas as dimensões são ajustadas.
 - Aproximação a validar em aparelho antes de afirmar paridade; os verdadeiros bounds, fontes e variantes Apple continuam unknown/requires_runtime. Não gerar APK nem fazer merge nesta rodada.
+
+## Compatibilidade do adaptador legado (Song)
+- `LegacySongRow.SongRow` recebeu `albumCredit` opcional: apenas o detalhe de álbum numerado utiliza esse parâmetro, com o crédito obtido de `page.headerLines()` já usado no hero. Linhas normais e playlists não mudam. Crédito de participação diferente do álbum e formato de download permanecem embaixo, quando disponíveis.
+- As linhas de álbum metadata-only no `DetailScreen` usam a mesma regra condicional do compositor canônico, preservando seleção, índice original e ações por long-press.
+- Testes JVM do componente compartilhado verificam artista repetido, participação e ausência de regressão das listas gerais.

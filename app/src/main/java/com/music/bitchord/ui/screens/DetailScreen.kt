@@ -853,6 +853,8 @@ fun DetailScreen(
                         onSongSwipe = onSongSwipe,
                     )
                 } else if (canonicalTracks.isNotEmpty()) {
+                    val albumCreditForRows = if (page.type == BrowseType.ALBUM)
+                        page.headerLines(canonicalTracks.size, null).first else ""
                     // Keep the original release-page typography and numbered
                     // tracklist. A metadata-only row is simply non-playable;
                     // no synthetic video IDs or technical warning labels.
@@ -888,6 +890,10 @@ fun DetailScreen(
                             },
                             subtitle = {
                                 row.subtitle?.takeIf { it.isNotBlank() }?.let { artist ->
+                                    if (page.type == BrowseType.ALBUM)
+                                        nativeAlbumTrackSecondaryLine(artist, albumCreditForRows)
+                                    else artist
+                                }?.let { artist ->
                                     Text(
                                         text = artist,
                                         style = MaterialTheme.typography.bodyMedium,
@@ -956,6 +962,8 @@ fun DetailScreen(
                     // already the largest thing on the page — Apple Music
                     // numbers those rows instead, and so does this.
                     val numbered = page.type == BrowseType.ALBUM
+                    val albumCreditForRows = if (numbered)
+                        page.headerLines(songs.size, songs.playtime()).first else null
                     val isCurrentRow = playingRowMatcher(matches.map { it.value }, currentSong)
                     if (matches.isEmpty() && state.data.isNotEmpty()) {
                         item(key = "no-matches") {
@@ -984,6 +992,7 @@ fun DetailScreen(
                             // The track's place on the release, not its place in
                             // what the filter — or a sort — left standing.
                             trackNumber = originalTrackNumbers[song.videoId].takeIf { numbered },
+                            albumCredit = albumCreditForRows,
                             subtitleColor = palette.onBackgroundVariant,
                             downloadedTint = downloadedTint,
                             isCurrent = isCurrent,
