@@ -6,7 +6,10 @@ on:
       - 'app/src/main/java/com/music/bitchord/data/catalog/provider/applemusicweb/**'
       - 'app/src/main/java/com/music/bitchord/data/providers/ProviderCapabilityRegistry.kt'
       - 'app/src/main/java/com/music/bitchord/data/providers/ProviderCatalogAdapters.kt'
+      - 'app/src/main/java/com/music/bitchord/data/providers/CatalogSearchAdapter.kt'
+      - 'app/src/main/java/com/music/bitchord/data/providers/CatalogSearchAdapterReader.kt'
       - 'app/src/test/java/com/music/bitchord/AppleMusicWeb*'
+      - 'app/src/test/java/com/music/bitchord/CatalogSearchAdapterReaderTest.kt'
       - '.github/workflows/apple-music-web-contracts.yml'
   workflow_dispatch:
 
@@ -41,7 +44,8 @@ jobs:
             --tests 'com.music.bitchord.AppleMusicWebResilienceTest' \
             --tests 'com.music.bitchord.AppleMusicWebOperationsTest' \
             --tests 'com.music.bitchord.AppleMusicWebEditorialGatewayTest' \
-            --tests 'com.music.bitchord.AppleMusicWebGenericRoutingTest'
+            --tests 'com.music.bitchord.AppleMusicWebGenericRoutingTest' \
+            --tests 'com.music.bitchord.CatalogSearchAdapterReaderTest'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
