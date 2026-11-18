@@ -926,6 +926,12 @@ private fun BitChordApp(
         } }
         if (!validSelection) viewModel.setSearchSource(SearchSource.CANONICAL)
     }
+    val canonicalAppleArtworkPromotion by
+        viewModel.canonicalAppleArtworkPromotion.collectAsStateWithLifecycle()
+    val canonicalGroupCardApplePromotions by
+        viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
+    val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
+    val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
     val addonResults by viewModel.addonResults.collectAsStateWithLifecycle()
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
@@ -3251,6 +3257,8 @@ private fun BitChordApp(
                 communityMetadataRecording != null -> "community_recording:" + communityMetadataRecording!!.musicBrainzId
                 openedPublicPlaylist != null -> "public_playlist:" + openedPublicPlaylist!!.mbid
                 detail != null -> detail.browseId
+                appleNativeDetailOpen -> if (appleNativeKind == AppleNativeDetailKind.ALBUM)
+                    "apple_native_album" else "apple_native_artist"
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
@@ -4299,9 +4307,9 @@ private fun BitChordApp(
                                     item, heading, canonicalEditorialPlaybackSource(explore = true),
                                 )
                             },
-                            onRetry = { viewModel.loadCanonicalGenre(visibleGenre.tag) },
+                            onRetry = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
-                            onRefresh = { viewModel.loadCanonicalGenre(visibleGenre.tag) },
+                            onRefresh = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
                             pullState = explorePull,
                             contentPadding = listPadding,
                             title = visibleGenre.title,
@@ -4931,11 +4939,13 @@ private fun BitChordApp(
                 // The top-bar footprint is transparent on every page so the
                 // shared app-level gradient is continuous; its controls float
                 // as separate circles in both the glass and blur materials.
+                val visualDetail = detail ?: appleSharedVisual?.page
                 val isDetailVisible =
-                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL && detail != null &&
-                    (detail.type == BrowseType.ALBUM ||
-                        detail.type == BrowseType.PLAYLIST ||
-                        detail.type == BrowseType.ARTIST) &&
+                    (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL || appleNativeDetailOpen) &&
+                    visualDetail != null &&
+                    (visualDetail.type == BrowseType.ALBUM ||
+                        visualDetail.type == BrowseType.PLAYLIST ||
+                        visualDetail.type == BrowseType.ARTIST) &&
                     !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showWearOs && !showEqualizer && !showReplay
                 val appleDetailPalette = rememberArtworkPalette(
@@ -5198,6 +5208,10 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
+                        appleNativeKind == AppleNativeDetailKind.ALBUM ->
+                            ({ backAppleAlbum(); Unit })
+                        appleNativeKind == AppleNativeDetailKind.ARTIST ->
+                            ({ viewModel.backAppleEditorialArtist(); Unit })
                         appleExploreGenreChrome -> ({ activeCanonicalGenre = null })
 
                         else -> null
@@ -5425,7 +5439,31 @@ private fun BitChordApp(
                                 }
                             }
                         }
-                        if (!showSettings && !showAccountScrobbling &&
+                        if (appleSharedVisual != null &&
+                            !showSettings && !showAccountScrobbling &&
+                            !showSources && !showReplay
+                        ) {
+                            if (appleNativeKind == AppleNativeDetailKind.ALBUM) {
+                                // Identical native search/sort controls used by
+                                // every album DetailScreen. Metadata-only
+                                // Apple tracks never expose a playback/menu ID.
+                                NativeCollectionSearchAction(
+                                    searching = detailSearching,
+                                    contentDescription = stringResource(
+                                        if (detailSearching) R.string.close_search
+                                        else R.string.search_this_list,
+                                    ),
+                                    onClick = { detailSearching = !detailSearching },
+                                )
+                                NativeCollectionSortAction(
+                                    contentDescription = stringResource(R.string.sort_songs),
+                                    onClick = { songSortMenuOpen = true },
+                                )
+                            } else if (appleNativeKind == AppleNativeDetailKind.ARTIST) {
+                                NativeArtistShareTopBarAction(appleSharedVisual.page.title)
+                            }
+                        }
+                        if (!showSettings && !showAccountScrobbling && !appleNativeDetailOpen &&
                             toolbarOwner != NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&
                             toolbarOwner != NativeTopBarRouteOwner.PUBLIC_PLAYLIST) {
                             // Left of the account photo, and only on a Library
@@ -5533,13 +5571,13 @@ private fun BitChordApp(
                             // there is a batch to report on — see
                             // [TopBarDownloadButton], which decides that for
                             // itself rather than being told.
-                            if (unifiedLibraryCategory == null && !appleSearchRootChrome) {
+                            if (unifiedLibraryCategory == null && !appleSearchRootChrome && !appleNativeDetailOpen) {
                                 TopBarDownloadButton(onClick = { showDownloadManager = true })
                             }
                             // Not on a release page, whose pill already carries
                             // three of its own controls — Apple Music leaves the
                             // profile off its album pages too.
-                            if (!appleSearchRootChrome && !isReleaseDetail &&
+                            if (!appleSearchRootChrome && !appleNativeDetailOpen && !isReleaseDetail &&
                                 !(detail?.type == BrowseType.ARTIST && detailActiveShelf == null) &&
                                 openedPublicPlaylist == null &&
                                 !shouldUseUnifiedAlbumDetailToolbar(
