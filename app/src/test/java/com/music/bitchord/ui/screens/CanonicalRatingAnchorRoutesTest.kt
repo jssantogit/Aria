@@ -48,10 +48,10 @@ class CanonicalRatingAnchorRoutesTest {
         assertEquals(320, ratingEditorFloatingMaxWidthDp())
     }
 
-    @Test fun starGlyphsKeepTheirOriginalSizeOnNormalScreensAndShrinkForMultiWindow() {
-        assertEquals(32, ratingEditorModalGlyphSizeDp(400))
-        assertEquals(32, ratingEditorModalGlyphSizeDp(320))
-        assertEquals(32, ratingEditorModalGlyphSizeDp(240))
+    @Test fun starGlyphsGrowWithoutWideningTheModalAndShrinkForMultiWindow() {
+        assertEquals(46, ratingEditorModalGlyphSizeDp(400))
+        assertEquals(46, ratingEditorModalGlyphSizeDp(320))
+        assertEquals(36, ratingEditorModalGlyphSizeDp(240))
         assertEquals(28, ratingEditorModalGlyphSizeDp(200))
     }
 
