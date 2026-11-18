@@ -535,6 +535,15 @@ class PlaylistLibraryVisualReuseTest {
         assertEquals(null, canonicalPlaylistMembershipSummary(null, loadFailed = true))
     }
 
+    @Test fun publicPlaylistFooterDistinguishesLoadedSubsetFromSourceCount() {
+        assertEquals("2 faixas", publicPlaylistLoadedSummary(2, 2))
+        assertEquals("1 faixa", publicPlaylistLoadedSummary(1, 1))
+        assertEquals("Mostrando 150 de 407 faixas",
+            publicPlaylistLoadedSummary(150, 407))
+        assertEquals("2 faixas carregadas", publicPlaylistLoadedSummary(2, null))
+        assertEquals("0 faixas", publicPlaylistLoadedSummary(0, 0))
+    }
+
     @Test fun playlistHeaderAndEndSummaryKeepTypeSeparateFromVerifiedMembership() {
         val known = listOf(
             V2DisplayRow("rec-1", "A", "Artist", durationMs = 210000L),

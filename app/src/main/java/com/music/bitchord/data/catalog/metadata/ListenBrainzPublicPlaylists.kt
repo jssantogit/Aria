@@ -57,6 +57,8 @@ internal data class ListenBrainzPublicPlaylistTrack(
 internal data class ListenBrainzPublicPlaylistDetail(
     val playlist: ListenBrainzPublicPlaylist,
     val tracks: List<ListenBrainzPublicPlaylistTrack>,
+    /** Number of entries in the verified JSPF payload, before the 150-row UI cap. */
+    val sourceTrackCount: Int = tracks.size,
 )
 
 internal data class ListenBrainzPublicPlaylistHttp(val status: Int, val body: String)
@@ -336,7 +338,9 @@ internal fun parseListenBrainzPublicPlaylistDetail(
             artworkUrl = artwork,
         )
     }
-    return ListenBrainzPublicPlaylistDetail(selected, rows)
+    return ListenBrainzPublicPlaylistDetail(
+        playlist = selected, tracks = rows, sourceTrackCount = tracks.size,
+    )
 }
 
 internal class ListenBrainzPublicPlaylistClient(

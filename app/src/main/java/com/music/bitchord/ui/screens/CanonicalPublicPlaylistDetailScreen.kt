@@ -69,6 +69,17 @@ import kotlinx.coroutines.withContext
 /** Match the rounded 52dp sleeves used by the canonical Library track rows. */
 internal fun publicPlaylistTrackCoverShape() = RoundedCornerShape(8.dp)
 
+/** Never label the bounded first 150 entries as the entire public playlist. */
+internal fun publicPlaylistLoadedSummary(shown: Int, sourceCount: Int?): String {
+    val safeShown = shown.coerceAtLeast(0)
+    if (sourceCount == null) return "${safeShown} " +
+        if (safeShown == 1) "faixa carregada" else "faixas carregadas"
+    val safeCount = sourceCount.coerceAtLeast(safeShown)
+    return if (safeShown < safeCount) {
+        "Mostrando $safeShown de ${verifiedPlaylistMemberCountSummary(safeCount)}"
+    } else verifiedPlaylistMemberCountSummary(safeShown)
+}
+
 /** Warm only the first visible public sleeves and the exact hero.
  * The shared Coil planner enforces the same trusted-URL policy everywhere. */
 internal fun publicPlaylistWarmupCandidates(
@@ -133,7 +144,8 @@ internal fun CanonicalPublicPlaylistDetailScreen(
             recordingId = recordingId, onDismiss = { editingRecording = null },
         )
     }
-    val entries = (state as? UiState.Success)?.data?.tracks.orEmpty()
+    val publicDetail = (state as? UiState.Success)?.data
+    val entries = publicDetail?.tracks.orEmpty()
     val artworkWarmup = remember(playlist.mbid, playlist.artworkUrl, entries) {
         publicPlaylistWarmupCandidates(playlist.artworkUrl, entries)
     }
@@ -384,7 +396,10 @@ internal fun CanonicalPublicPlaylistDetailScreen(
         }
         if (state is UiState.Success && query.isBlank()) {
             item(key = "public-playlist-member-summary") {
-                NativePlaylistDetailFooter(verifiedPlaylistMemberCountSummary(entries.size), palette)
+                NativePlaylistDetailFooter(
+                    publicPlaylistLoadedSummary(entries.size, publicDetail?.sourceTrackCount),
+                    palette,
+                )
             }
         }
     }

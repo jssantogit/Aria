@@ -171,6 +171,16 @@ class ListenBrainzPublicPlaylistTest {
             parseListenBrainzPublicPlaylistSearch(body, "rock")!!.map { it.mbid })
     }
 
+    @Test fun boundedJspfListKeepsSourceTrackCountWithoutLoadingEveryArtwork() {
+        val selected = ListenBrainzPublicPlaylist(rock, "Rock", "Curator", null)
+        val track = """{"title":"Example","creator":"Artist"}"""
+        val body = """{"playlist":{"identifier":"https://listenbrainz.org/playlist/$rock",
+            "track":[${List(153) { track }.joinToString(",")}]}}"""
+        val details = parseListenBrainzPublicPlaylistDetail(body, selected)!!
+        assertEquals(150, details.tracks.size)
+        assertEquals(153, details.sourceTrackCount)
+    }
+
     @Test fun jspfDetailPreservesRealMbidsAndDoesNotPromoteInvalidUrls() {
         val selected = ListenBrainzPublicPlaylist(rock, "Classic Rock", "Curator", null)
         val body = """{"playlist":{"identifier":"https://listenbrainz.org/playlist/$rock",
