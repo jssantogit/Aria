@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.screens
 
+import dev.chrisbanes.haze.HazeState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -147,6 +148,7 @@ internal fun CanonicalSongRatingDialog(
     anchorBounds: IntRect? = null,
     highlightPlayerLauncher: Boolean = false,
     artworkUrl: String? = song.thumbnailUrl,
+    hazeState: HazeState? = null,
 ) {
     val context = LocalContext.current.applicationContext
     // The account-scoped Catalog asset snapshot is an offline, verified identity
@@ -180,6 +182,7 @@ internal fun CanonicalSongRatingDialog(
             recordingId = id, onDismiss = onDismiss, anchorBounds = anchorBounds,
             highlightPlayerLauncher = highlightPlayerLauncher,
             artworkUrl = artworkUrl,
+            hazeState = hazeState,
         )
     } else {
         NativeAlertHost(onDismiss = onDismiss) {
@@ -203,6 +206,7 @@ internal fun CanonicalRecordingRatingDialog(
     anchorBounds: IntRect? = null,
     highlightPlayerLauncher: Boolean = false,
     artworkUrl: String? = null,
+    hazeState: HazeState? = null,
 ) {
     val context = LocalContext.current.applicationContext
     val store: RecordingRatingStore = remember(context) {
@@ -225,6 +229,7 @@ internal fun CanonicalRecordingRatingDialog(
         anchorBounds = anchorBounds,
         highlightPlayerLauncher = highlightPlayerLauncher,
         artworkUrl = artworkUrl,
+        hazeState = hazeState,
         saving = saving,
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },
@@ -343,6 +348,7 @@ internal fun CanonicalRecordingFeedbackPanel(
     highlightPlayerLauncher: Boolean = false,
     /** Retained for existing callers; artwork cannot tint the neutral modal. */
     artworkUrl: String? = null,
+    hazeState: HazeState? = null,
 ) {
     var selected by remember { mutableDoubleStateOf(rating?.takeIf { it in 1.0..5.0 } ?: 0.0) }
     var touched by remember { mutableStateOf(false) }
@@ -578,6 +584,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                 modifier = Modifier.width(modalWidth)
                     .testTag("native-rating-modal"),
                 treatment = NativeActionCardTreatment.NEUTRAL_FROSTED,
+                hazeState = hazeState,
                 // Never feed album art into the rating dialog's surface.
                 artworkUrl = null,
             ) {
