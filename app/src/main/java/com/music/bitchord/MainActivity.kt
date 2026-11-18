@@ -8397,6 +8397,36 @@ internal val FROSTED_SETTINGS_MENU_WIDTH = 240.dp
 internal fun frostedMenuPanelOpaquePlate(isDark: Boolean): Color =
     com.music.bitchord.ui.components.nativeCompactPlateColor(isDark, artworkElevation = null)
 
+/**
+ * Like the held-item spotlight, keep the original launcher fully visible through
+ * the dimming scrim. The hole is circular, exactly centred on the native 40dp
+ * button, not an added icon, background, border or oversized touch rectangle.
+ * All coordinates are window pixels; the overlay may start below the status bar.
+ */
+internal fun frostedMenuLauncherSpotlightBounds(
+    anchor: androidx.compose.ui.unit.IntRect?,
+    overlayOrigin: androidx.compose.ui.unit.IntOffset,
+    overlaySize: androidx.compose.ui.unit.IntSize,
+    diameterPx: Int,
+): Rect? {
+    if (anchor == null || diameterPx <= 0 ||
+        overlaySize.width <= 0 || overlaySize.height <= 0
+    ) return null
+    // Large/row anchors are not top-bar icons; never punch a misleading hole.
+    if (anchor.width <= 0 || anchor.height <= 0 ||
+        anchor.width > diameterPx * 3 / 2 || anchor.height > diameterPx * 3 / 2
+    ) return null
+    val diameter = minOf(diameterPx, anchor.width, anchor.height).toFloat()
+    val centerX = (anchor.left.toFloat() + anchor.right.toFloat()) / 2f - overlayOrigin.x
+    val centerY = (anchor.top.toFloat() + anchor.bottom.toFloat()) / 2f - overlayOrigin.y
+    val radius = diameter / 2f
+    val cutout = Rect(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
+    if (cutout.left < 0f || cutout.top < 0f ||
+        cutout.right > overlaySize.width || cutout.bottom > overlaySize.height
+    ) return null
+    return cutout
+}
+
 /** The scrim and frosted panel both top-bar menus are drawn on. */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -8426,6 +8456,12 @@ internal fun FrostedMenuPanel(
     var rootOrigin by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset.Zero) }
     val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.roundToPx() }
     val margin = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.roundToPx() }
+    val launcherDiameterPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        com.music.bitchord.ui.components.AppleFloatingControlMetrics.libraryDiameter.roundToPx()
+    }
+    val menuScrimColor = MaterialTheme.colorScheme.scrim.copy(
+        alpha = com.music.bitchord.ui.components.nativeCompactMenuScrimAlpha(darkPlate),
+    )
     Box(
         Modifier
             .fillMaxSize()
@@ -8434,11 +8470,26 @@ internal fun FrostedMenuPanel(
                 val origin = coords.positionInWindow()
                 rootOrigin = androidx.compose.ui.unit.IntOffset(origin.x.toInt(), origin.y.toInt())
             }
-            .background(
-                MaterialTheme.colorScheme.scrim.copy(
-                    alpha = com.music.bitchord.ui.components.nativeCompactMenuScrimAlpha(darkPlate),
-                ),
-            )
+            .drawBehind {
+                val spotlight = frostedMenuLauncherSpotlightBounds(
+                    anchor = anchorBounds,
+                    overlayOrigin = rootOrigin,
+                    overlaySize = rootSize,
+                    diameterPx = launcherDiameterPx,
+                )
+                if (spotlight == null) {
+                    drawRect(menuScrimColor)
+                } else {
+                    // Even-odd excludes only the real circular launcher.
+                    // No second control or border is painted over its glyph.
+                    val mask = androidx.compose.ui.graphics.Path().apply {
+                        fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                        addRect(Rect(0f, 0f, size.width, size.height))
+                        addOval(spotlight)
+                    }
+                    drawPath(mask, menuScrimColor)
+                }
+            }
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.TopStart,
     ) {

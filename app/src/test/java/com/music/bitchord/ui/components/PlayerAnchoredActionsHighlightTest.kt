@@ -12,8 +12,8 @@ import org.junit.Test
 /** The expanded player menu's highlighted ⋯ sits on its real launcher,
  * even when a dialog window has a nonzero screen origin. */
 class PlayerAnchoredActionsHighlightTest {
-    @Test fun expandedCollectionOverflowUsesSoftFillAndNoDuplicatedWhiteBorder() {
-        assertEquals(Color.White.copy(alpha = 0.14f),
+    @Test fun expandedCollectionOverflowNeverAddsASecondFillOverItsOriginalButton() {
+        assertEquals(Color.Transparent,
             com.music.bitchord.nativeCollectionOverflowActiveFill(true, Color.White))
         assertEquals(Color.Transparent,
             com.music.bitchord.nativeCollectionOverflowActiveFill(false, Color.White))

@@ -12,6 +12,10 @@ import com.music.bitchord.ui.components.ActionRow
 import com.music.bitchord.ui.components.ActionRowStyle
 import com.music.bitchord.ui.components.LocalActionRowStyle
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotSelected
@@ -82,6 +86,43 @@ class NativeFrostedMenuRowTest {
             nativeCollectionOverflowActiveFill(expanded = true, ink = Color.Black))
     }
 
+    @Test fun anchoredCardSpotlightMatchesTheOriginalFortyDpLauncher() {
+        assertEquals(
+            Rect(194f, 84f, 234f, 124f),
+            frostedMenuLauncherSpotlightBounds(
+                anchor = IntRect(200, 100, 248, 148),
+                overlayOrigin = IntOffset(10, 20),
+                overlaySize = IntSize(420, 900),
+                diameterPx = 40,
+            ),
+        )
+    }
+
+    @Test fun launcherSpotlightNeverSpillsOutsideAnIconOrViewport() {
+        assertEquals(
+            Rect(100f, 100f, 124f, 124f),
+            frostedMenuLauncherSpotlightBounds(
+                IntRect(100, 100, 124, 124), IntOffset.Zero, IntSize(400, 800), 40,
+            ),
+        )
+        assertEquals(
+            null,
+            frostedMenuLauncherSpotlightBounds(
+                IntRect(100, 100, 300, 148), IntOffset.Zero, IntSize(400, 800), 40,
+            ),
+        )
+        assertEquals(
+            null,
+            frostedMenuLauncherSpotlightBounds(
+                IntRect(900, -500, 940, -460), IntOffset.Zero, IntSize(400, 800), 40,
+            ),
+        )
+        assertEquals(
+            null,
+            frostedMenuLauncherSpotlightBounds(null, IntOffset.Zero, IntSize(400, 800), 40),
+        )
+    }
+
     @Test fun rootSettingsAndArtistUseTheSameFrostedMenuWidth() {
         assertEquals(240.dp, FROSTED_SETTINGS_MENU_WIDTH)
     }
@@ -110,7 +151,9 @@ class NativeFrostedMenuRowTest {
             "native-frosted-trailing-icon", useUnmergedTree = true,
         ).fetchSemanticsNode().boundsInRoot
         assertEquals(normal.left, settingsBounds.left, 1f)
-        org.junit.Assert.assertTrue(iconBounds.left > settingsBounds.right)
+        // Text semantics can span the weighted row, so compare visual centres
+        // rather than treating the allocated text box as glyph ink.
+        org.junit.Assert.assertTrue(iconBounds.center.x > settingsBounds.center.x)
     }
 
     @Test fun sharedArtistSettingsActionIsClickableAndNeverSelected() {
