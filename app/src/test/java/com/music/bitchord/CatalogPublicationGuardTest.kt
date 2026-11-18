@@ -8,6 +8,7 @@ import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.ui.catalogPublicationAllowed
+import com.music.bitchord.ui.catalogSearchOrderIsCurrent
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,6 +35,27 @@ class CatalogPublicationGuardTest {
         gate.replace(policy(false, true))
         assertFalse(catalogPublicationAllowed(gate, ticket, true, true, true))
         assertTrue(gate.open(ProviderCapability.CATALOG_SEARCH, sibling) != null)
+    }
+
+
+    @Test fun lateCatalogPageCannotPublishAfterPriorityReorderWithoutRevokingTicket() {
+        val gate = ProviderPolicyGate(policy(true, true))
+        val ticket = gate.open(ProviderCapability.CATALOG_SEARCH, provider)!!
+        val originalOrder = gate.ordered(ProviderCapability.CATALOG_SEARCH).map { it.key }
+        val reversed = originalOrder.reversed()
+        assertTrue(catalogSearchOrderIsCurrent(provider, originalOrder, originalOrder))
+        // Only priority changes. The original ticket can remain valid, so the
+        // display/session epoch needs its own guard.
+        assertFalse(catalogSearchOrderIsCurrent(provider, originalOrder, reversed))
+        assertTrue(catalogPublicationAllowed(gate, ticket, true, true, true))
+    }
+
+    @Test fun oldCatalogPagesAreRejectedWhenLastProviderDisabledOrMissing() {
+        val originalOrder = listOf(provider, sibling)
+        assertFalse(catalogSearchOrderIsCurrent(provider, originalOrder, listOf(sibling)))
+        assertFalse(catalogSearchOrderIsCurrent(provider, originalOrder, emptyList()))
+        assertFalse(catalogSearchOrderIsCurrent(ProviderKey("unregistered"), originalOrder, originalOrder))
+        assertTrue(catalogSearchOrderIsCurrent(sibling, originalOrder, originalOrder))
     }
 
     @Test fun changingQueryOrVisibleProviderRejectsOldSnapshot() {
