@@ -185,6 +185,23 @@ jobs:
                   if len(shown) >= 6:
                       break
           PY
+      # A 3-way merge can produce Kotlin that neither branch contains.
+      # When the combined Kotlin compiler rejects a Compose call, print the
+      # exact source already reconciled in this disposable checkout; line
+      # numbers from either standalone branch are not authoritative.
+      - name: Inspect actual combined DetailScreen after failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source=app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt
+          echo "Combined DetailScreen at failed SHA (read-only, runner-local):"
+          if test -f "$source"; then
+            nl -ba "$source" | sed -n '910,975p;1025,1085p'
+          else
+            echo "Combined file missing; see merge/reconciliation log."
+          fi
+
       - name: Report compatibility only (not pixel parity or merge authorization)
         if: success()
         run: |
