@@ -16,15 +16,15 @@ import org.junit.Test
 class CatalogPublicationGuardTest {
     private val provider = ProviderKey("test-catalog", "instance-one")
     private val sibling = ProviderKey("test-catalog", "instance-two")
-    private fun policy(firstEnabled: Boolean, siblingEnabled: Boolean) =
+    private fun policy(firstEnabled: Boolean, siblingEnabled: Boolean, reverse: Boolean = false) =
         ProviderCapabilityPolicy(
             listOf(provider, sibling).map { key ->
                 ProviderDescriptor(key, setOf(ProviderCapability.CATALOG_SEARCH),
                     readiness = ProviderReadiness.READY)
             },
             mapOf(ProviderCapability.CATALOG_SEARCH to listOf(
-                ProviderChoice(provider, firstEnabled, 0),
-                ProviderChoice(sibling, siblingEnabled, 1),
+                ProviderChoice(provider, firstEnabled, if (reverse) 1 else 0),
+                ProviderChoice(sibling, siblingEnabled, if (reverse) 0 else 1),
             )),
         )
 
@@ -42,11 +42,13 @@ class CatalogPublicationGuardTest {
         val gate = ProviderPolicyGate(policy(true, true))
         val ticket = gate.open(ProviderCapability.CATALOG_SEARCH, provider)!!
         val originalOrder = gate.ordered(ProviderCapability.CATALOG_SEARCH).map { it.key }
-        val reversed = originalOrder.reversed()
         assertTrue(catalogSearchOrderIsCurrent(provider, originalOrder, originalOrder))
-        // Only priority changes. The original ticket can remain valid, so the
-        // display/session epoch needs its own guard.
-        assertFalse(catalogSearchOrderIsCurrent(provider, originalOrder, reversed))
+        gate.replace(policy(true, true, reverse = true))
+        val reordered = gate.ordered(ProviderCapability.CATALOG_SEARCH).map { it.key }
+        // Priority-only changes preserve the original capability ticket, but
+        // must invalidate any response from the previous display order.
+        assertTrue(gate.accept(ticket))
+        assertFalse(catalogSearchOrderIsCurrent(provider, originalOrder, reordered))
         assertTrue(catalogPublicationAllowed(gate, ticket, true, true, true))
     }
 
