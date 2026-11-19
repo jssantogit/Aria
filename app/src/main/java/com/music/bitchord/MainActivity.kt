@@ -6197,6 +6197,17 @@ private fun BitChordApp(
                         onRate = { spec ->
                             searchMetadataRatingTarget = catalogId to spec.ratingLabel
                         },
+                        onAddVerifiedRecordings = { spec ->
+                            spec.playlistKind?.let { kind ->
+                                searchMetadataPlaylistTarget =
+                                    com.music.bitchord.ui.screens.CatalogSearchPlaylistTarget(
+                                        kind = kind,
+                                        id = spec.ratingTarget.entityId,
+                                        title = target.title,
+                                        artist = target.subtitle,
+                                    )
+                            }
+                        },
                     )
                 } else LegacyBrowseActionsMenuBody(
                     target = target,
@@ -6404,18 +6415,6 @@ private fun BitChordApp(
                             "https://listenbrainz.org/playlist/${row.mbid}")
                     }
                     context.startActivity(Intent.createChooser(share, "Compartilhar playlist"))
-                },
-                onDownloadCatalog = { row ->
-                    // An MBID identifies metadata, not an authorized stream.
-                    // The button is exposed but cannot launch a fake download.
-                    Toast.makeText(context,
-                        "Sem fonte de áudio verificada para baixar este item.",
-                        Toast.LENGTH_LONG).show()
-                },
-                onDownloadPublicPlaylist = { _ ->
-                    Toast.makeText(context,
-                        "Playlists públicas não fornecem arquivos de áudio para baixar.",
-                        Toast.LENGTH_LONG).show()
                 },
             )
             // Indexed OpenSubsonic search results are real provider-owned
