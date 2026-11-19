@@ -181,7 +181,7 @@ internal fun CanonicalPlaylistCoverArt(
 ) {
     val covers = remember(rows) { distinctCanonicalPlaylistCoverRows(rows) }
     when {
-        customCoverUri != null -> Box(modifier.clip(RoundedCornerShape(12.dp))) {
+        !customCoverUri.isNullOrBlank() -> Box(modifier.clip(RoundedCornerShape(12.dp))) {
             // As with native track artwork, preserve the automatic sleeve
             // beneath Coil. A revoked/broken document must not leave a blank cover.
             CanonicalPlaylistCoverArt(rows = rows, modifier = Modifier.fillMaxSize())
@@ -198,8 +198,14 @@ internal fun CanonicalPlaylistCoverArt(
         covers.isNotEmpty() -> SmartPlaylistPreviewArtwork(
             row = covers.first(), modifier = modifier,
         )
-        else -> Box(modifier, contentAlignment = Alignment.Center) {
-            PlaylistWizardArtworkPlaceholder(180.dp)
+        else -> BoxWithConstraints(
+            modifier.clip(RoundedCornerShape(12.dp))
+                .testTag("canonical-playlist-empty-cover"),
+            contentAlignment = Alignment.Center,
+        ) {
+            // The empty cover also appears inside 44dp Library tiles. A
+            // hard-coded 180dp placeholder overflowed those compact frames.
+            PlaylistWizardArtworkPlaceholder(minOf(maxWidth, maxHeight))
         }
     }
 }
