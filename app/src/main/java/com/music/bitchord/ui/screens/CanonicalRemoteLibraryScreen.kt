@@ -1192,7 +1192,9 @@ internal fun CanonicalRemoteLibraryScreen(
         ) {
             if (!unified) {
                 RemoteBrowseTopBar(
-                    title = selectedEntity?.name ?: title,
+                    // Native category/artist/album draws the only visible
+                    // title. The source host supplies Back without duplicating it.
+                    title = "",
                     onBack = if (selectedEntity != null) {
                         {
                             if (artistNestedReleaseOpen) artistNestedBackToken++
@@ -1403,7 +1405,10 @@ internal fun CanonicalRemoteLibraryScreen(
                 onAlbumOptions = openAlbumMenu,
                 onArtistOptions = openArtistMenu,
                 selectedItems = if (detail == null) selectedItems else emptyList(),
-                canLongPressSelect = canSelectCanonicalLibraryByLongPress(
+                // The dedicated source host has no batch action bar. Keep
+                // long press as a contextual menu rather than trapping users
+                // in an uncloseable selection draft.
+                canLongPressSelect = unified && canSelectCanonicalLibraryByLongPress(
                     selectedContext, detailOpen = detail != null,
                 ),
                 onToggleSelection = toggleSelection,
