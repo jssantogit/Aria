@@ -1185,10 +1185,12 @@ fun DetailScreen(
                         content = detailListItems,
                     )
                 } else {
-                    // Albums continue with their existing native release list.
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
+                    // Metadata-only catalog albums and playable releases use
+                    // the same native viewport as Library and Navidrome. Only
+                    // identity-backed rows and actions differ by provider.
+                    NativeAlbumDetailFrame(
+                        palette = palette,
+                        listState = listState,
                         contentPadding = PaddingValues(
                             bottom = contentPadding.calculateBottomPadding(),
                         ),
