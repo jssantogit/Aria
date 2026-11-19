@@ -147,6 +147,8 @@ fun BrowseActionsSheet(
     onShuffle: (() -> Unit)? = null,
     /** Null where the sheet was opened from the page it would navigate to. */
     onOpen: (() -> Unit)? = null,
+    /** Metadata search opens details, while source-backed albums open their page. */
+    onOpenLabel: String? = null,
     /** Only a verified canonical Recording → ReleaseGroup relationship may
      * open an album from a track's Library context menu. */
     onOpenAlbum: (() -> Unit)? = null,
@@ -309,7 +311,7 @@ fun BrowseActionsSheet(
             onOpen?.let {
                 ActionRow(
                     BitChordIcons.ChevronRight,
-                    target.type.localizedOpenLabel(),
+                    onOpenLabel ?: target.type.localizedOpenLabel(),
                     onClick = it,
                 )
             }
