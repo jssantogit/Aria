@@ -47,6 +47,18 @@ class CanonicalPlaylistMixedMusicBrainzTest {
         assertEquals(1, distinctCanonicalPlaylistCoverRows(
             listOf(playable, playable.copy(id = "another-recording")),
         ).size)
+        // A remote asset by itself is not proof that an artwork bitmap exists.
+        assertTrue(distinctCanonicalPlaylistCoverRows(
+            listOf(playable.copy(
+                id = "remote-without-art",
+                localArtworkUri = null,
+                remoteMediaAssetId = "remote-asset",
+            )),
+        ).isEmpty())
+        assertEquals(
+            "content://library/pureflow",
+            canonicalPlaylistPaletteArtworkUri(null, listOf(metadata, playable)),
+        )
     }
 
     @Test fun removalOnlyChangesTheTargetRecordingAndKeepsPlaylistIdentity() {
