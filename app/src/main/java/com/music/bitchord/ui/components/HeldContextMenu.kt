@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +36,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -48,6 +53,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -85,6 +91,16 @@ internal fun heldSpotlightCutout(
 
 /** Reuse the Library filter's frosted action surface; keep a solid fallback for reduced blur. */
 internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
+
+/**
+ * A row can paint only its cover, glyphs and text yet occupy a full-width
+ * transparent box. Removing the scrim from that entire box makes a FALSE
+ * pale "highlight". Prefer its pixel-accurate alpha mask when recorded.
+ */
+internal fun heldSpotlightUsesPixelMask(
+    captureAvailable: Boolean,
+    recordingReady: Boolean,
+): Boolean = captureAvailable && recordingReady
 
 /**
  * The context menu anchored to an item held in place. The item stays in its
@@ -132,6 +148,12 @@ fun <T : Any> HeldContextMenu(
     }
     val shown = requested ?: last ?: return
     val (menuItem, heldItem) = shown
+    // If the list changes or the overlay is removed mid-animation, release
+    // its recording rather than leaving a graphics layer active on that row.
+    DisposableEffect(heldItem) {
+        onDispose { heldItem.releaseLift() }
+    }
+    val maskLayer = rememberGraphicsLayer()
     val open = requested != null
     val context = LocalContext.current
     val appReduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
@@ -190,38 +212,74 @@ fun <T : Any> HeldContextMenu(
             // second tap on a row mid-exit would run its action twice.
             .then(if (open) Modifier else Modifier.pointerInput(Unit) { swallowAll() }),
         content = {
-            // Dim everything except the real, still-composed selected item.
-            // EvenOdd draws a cutout rather than painting a bright rectangle
-            // or using a Clear blend that could erase the underlying page.
+            // Dim the whole page, then *erase the dimming ONLY where the
+            // held composable actually PAINTS pixels*. Earlier code cut out
+            // its whole bounding rectangle; a transparent artist/song row
+            // therefore revealed a large undimmed (pale-looking) page tile.
+            // Keep this scrim in its own offscreen layer: DstOut must never
+            // punch through the real underlying page or mini-player.
             Spacer(
                 Modifier
                     .fillMaxSize()
                     .testTag("held-context-backdrop")
-                    .drawBehind {
-                        val cutout = heldSpotlightCutout(
-                            sourceBounds = heldItem.bounds,
-                            overlayOrigin = overlayOffset,
-                            viewportWidth = size.width,
-                            viewportHeight = size.height,
-                        )
-                        val mask = androidx.compose.ui.graphics.Path().apply {
-                            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
-                            addRect(androidx.compose.ui.geometry.Rect(Offset.Zero, size))
-                            if (cutout != null) {
-                                addRoundRect(
-                                    androidx.compose.ui.geometry.RoundRect(
-                                        cutout, CornerRadius(12.dp.toPx()),
-                                    ),
-                                )
-                            }
-                        }
-                        drawPath(
-                            path = mask,
-                            color = scrimColor.copy(
-                                alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
-                            ),
-                        )
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
                     }
+                    .drawBehind {
+                        val capture = heldItem.paintLayer
+                        if (heldSpotlightUsesPixelMask(
+                                captureAvailable = capture != null,
+                                recordingReady = capture != null &&
+                                    capture.size.width > 0 && capture.size.height > 0,
+                            )
+                        ) {
+                            drawRect(
+                                color = scrimColor.copy(
+                                    alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
+                                ),
+                            )
+                            // The source stays in its ORIGINAL Compose tree.
+                            // This second layer uses its alpha as a stencil:
+                            // no screenshot, bitmap, new tint, white highlight,
+                            // forced opaque row backing, or duplicate artwork.
+                            val source = requireNotNull(capture)
+                            maskLayer.record(size = source.size) {
+                                drawLayer(source)
+                            }
+                            maskLayer.topLeft = IntOffset(
+                                (heldItem.bounds.left - overlayOffset.x).roundToInt(),
+                                (heldItem.bounds.top - overlayOffset.y).roundToInt(),
+                            )
+                            maskLayer.blendMode = BlendMode.DstOut
+                            drawLayer(maskLayer)
+                        } else {
+                            // The first entrance frame or older non-recording
+                            // routes preserve the previous no-blank fallback.
+                            val cutout = heldSpotlightCutout(
+                                sourceBounds = heldItem.bounds,
+                                overlayOrigin = overlayOffset,
+                                viewportWidth = size.width,
+                                viewportHeight = size.height,
+                            )
+                            val mask = androidx.compose.ui.graphics.Path().apply {
+                                fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                                addRect(androidx.compose.ui.geometry.Rect(Offset.Zero, size))
+                                if (cutout != null) {
+                                    addRoundRect(
+                                        androidx.compose.ui.geometry.RoundRect(
+                                            cutout, CornerRadius(12.dp.toPx()),
+                                        ),
+                                    )
+                                }
+                            }
+                            drawPath(
+                                path = mask,
+                                color = scrimColor.copy(
+                                    alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
+                                ),
+                            )
+                        }
+                    },
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
