@@ -1,91 +1,62 @@
 package com.music.bitchord.ui.screens
 
-import android.content.Intent
-import android.net.Uri
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/** The album uses its existing native top bar; online-only context does not invent assets. */
+/**
+ * Online release/ReleaseGroup and online artist are metadata-only entities.
+ * Both reuse CanonicalCatalogEntityMenuBody and the same frosted native menu
+ * frame as source-owned Library entries, with no fabricated queue callbacks.
+ */
 @Composable
 internal fun CanonicalCatalogReleaseOverflowMenu(
     browseId: String,
     title: String,
     subtitle: String,
     cover: String?,
-    plateTint: Color? = null,
+    @Suppress("UNUSED_PARAMETER") plateTint: Color? = null,
     expanded: Boolean,
     onDismiss: () -> Unit,
     hazeState: dev.chrisbanes.haze.HazeState,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     onSettings: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val target = remember(browseId) { canonicalCatalogEntityRatingTarget(browseId) }
-    val repo = remember(context) { CatalogMetadataPinRepository.get(context.applicationContext) }
-    val saved by repo.pins.collectAsStateWithLifecycle()
-    val pin = remember(browseId, title, subtitle, cover) {
-        CatalogMetadataPin(browseId, title.trim().take(240), subtitle.take(240),
-            trustedCatalogMetadataPinArtwork(cover))
-    }
-    val isPinned = saved.any { it.browseId == browseId }
+    val spec = remember(browseId) { canonicalCatalogEntityMenuSpec(browseId) }
     var ratingOpen by remember(browseId) { mutableStateOf(false) }
-    if (ratingOpen && target != null) {
+    if (ratingOpen && spec != null) {
         CanonicalCatalogEntityRatingDialog(
-            target = target, title = "Avaliar álbum",
+            target = spec.ratingTarget,
+            title = spec.ratingLabel,
             onDismiss = { ratingOpen = false },
         )
     }
+
     if (expanded) {
         com.music.bitchord.FrostedMenuPanel(
             hazeState = hazeState,
             anchorBounds = anchorBounds,
             onDismiss = onDismiss,
         ) {
-            if (target != null) {
-                com.music.bitchord.FrostedMenuRow(
-                    label = "Avaliar álbum",
-                    checked = false,
-                    icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.RatingPlain,
-                    onClick = {
-                        onDismiss()
-                        ratingOpen = true
-                    },
-                )
-            }
-            if (validCatalogMetadataPin(pin)) {
-                com.music.bitchord.FrostedMenuRow(
-                    label = if (isPinned) "Desafixar da Biblioteca" else "Fixar na Biblioteca",
-                    checked = false,
-                    icon = com.music.bitchord.ui.icons.BitChordIcons.Pin,
-                    onClick = { repo.toggle(pin); onDismiss() },
-                )
-            }
-            if (target != null) {
-                com.music.bitchord.FrostedMenuRow(
-                    label = "Ver no MusicBrainz",
-                    checked = false,
-                    icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Globe,
-                    onClick = {
-                        onDismiss()
-                        val endpoint = if (target.entityType == "RELEASE_GROUP")
-                            "release-group" else "release"
-                        val url = Uri.parse("https://musicbrainz.org/$endpoint/" + target.entityId)
-                        context.startActivity(Intent(Intent.ACTION_VIEW, url))
-                    },
+            if (spec != null) {
+                CanonicalCatalogEntityMenuBody(
+                    browseId = browseId,
+                    title = title,
+                    subtitle = subtitle,
+                    artworkUrl = cover,
+                    onDismiss = onDismiss,
+                    onRate = { ratingOpen = true },
                 )
             }
             com.music.bitchord.FrostedMenuRow(
                 label = "Configurações",
                 checked = false,
-                icon = androidx.compose.material.icons.Icons.Rounded.Settings,
+                icon = Icons.Rounded.Settings,
                 onClick = {
                     onDismiss()
                     onSettings()
