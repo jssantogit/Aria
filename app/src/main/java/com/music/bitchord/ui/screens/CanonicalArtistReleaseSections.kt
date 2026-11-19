@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.catalog.ReleaseEntity
+import com.music.bitchord.data.catalog.CanonicalRecordingReleaseTitleRow
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 
@@ -198,3 +199,39 @@ internal fun canonicalArtistReleaseDateLabel(value: String?): String? {
         "d 'de' MMM 'de' yyyy", java.util.Locale.forLanguageTag("pt-BR"),
     ))
 }
+
+/**
+ * Only an actual Release date may supply the smaller year caption on artist
+ * album/single cards. MediaStore DATE_ADDED and a year in the title are not
+ * release chronology; invalid/partial dates remain unknown.
+ */
+internal fun canonicalArtistReleaseYearLabel(raw: String?): String? {
+    val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    if (Regex("""\d{4}""").matches(value)) {
+        return value.takeIf { it.toIntOrNull() != null && it.toInt() in 1000..9999 }
+    }
+    if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(value)) return null
+    return runCatching { java.time.LocalDate.parse(value).year.toString() }.getOrNull()
+}
+
+/**
+ * Artist Recording rows show their *release*, never the same artist credit
+ * already established by the page header. Use only typed ReleaseTrack links
+ * to a release available in the current source-filtered artist context.
+ * If multiple distinct editions compete, no title/year is asserted.
+ */
+internal fun canonicalArtistTrackReleaseLabels(
+    links: List<CanonicalRecordingReleaseTitleRow>,
+    eligibleReleaseIds: Set<String>,
+    evidence: Map<String, CanonicalArtistReleaseEvidence>,
+): Map<String, String> = links.asSequence()
+    .filter { it.releaseId in eligibleReleaseIds }
+    .groupBy { it.recordingId }
+    .mapNotNull { (recordingId, candidates) ->
+        val unique = candidates.distinctBy { it.releaseId }.singleOrNull()
+            ?: return@mapNotNull null
+        val name = unique.releaseTitle.trim().takeIf(String::isNotBlank)
+            ?: return@mapNotNull null
+        val year = canonicalArtistReleaseYearLabel(evidence[unique.releaseId]?.firstReleaseDate)
+        recordingId to listOfNotNull(name, year).joinToString(" · ")
+    }.toMap()
