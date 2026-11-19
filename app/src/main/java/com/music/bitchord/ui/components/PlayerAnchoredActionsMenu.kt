@@ -1,6 +1,5 @@
 package com.music.bitchord.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -28,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -45,15 +44,31 @@ import com.music.bitchord.ui.components.CompactRatingIndicator
 import com.music.bitchord.ui.components.CompactRatingGeometry
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
 import dev.chrisbanes.haze.HazeState
 
-/** Same original three-dot silhouette as the Now Playing launcher, without a baked platter. */
-internal fun playerAnchoredMenuHighlightGlyph() = originalNowPlayingOverflowGlyph()
-
-/** Selected overflow highlights darken the original neutral puck; never draw a ring. */
-internal fun playerOverflowPuckColor(selected: Boolean): Color =
-    com.music.bitchord.ui.player.portraitOverflowPuckColor(selected)
+/**
+ * The player button is still painted in the underlying Now Playing dialog.
+ * Exclude its real circle from this dialog's scrim, rather than rendering a
+ * second glyph/puck at guessed offsets (which creates double dots on devices
+ * with different window insets or magnification).
+ *
+ * All coordinates are measured in window pixels, not screen dp.
+ */
+internal fun playerOverflowScrimCutout(
+    anchor: IntRect?,
+    overlayOrigin: IntOffset,
+    overlaySize: IntSize,
+): androidx.compose.ui.geometry.Rect? {
+    if (anchor == null || overlaySize.width <= 0 || overlaySize.height <= 0 ||
+        anchor.width <= 0 || anchor.height <= 0) return null
+    val left = (anchor.left - overlayOrigin.x).toFloat()
+    val top = (anchor.top - overlayOrigin.y).toFloat()
+    val right = (anchor.right - overlayOrigin.x).toFloat()
+    val bottom = (anchor.bottom - overlayOrigin.y).toFloat()
+    if (left >= overlaySize.width || top >= overlaySize.height ||
+        right <= 0f || bottom <= 0f) return null
+    return androidx.compose.ui.geometry.Rect(left, top, right, bottom)
+}
 
 /**
  * The player controls occupy the space directly behind the menu. Fading the
@@ -159,9 +174,34 @@ fun PlayerAnchoredActionsMenu(
                 },
             contentAlignment = Alignment.TopStart,
         ) {
-            Box(Modifier.matchParentSize()
-                .background(Color.Black.copy(alpha = 0.28f))
-                .clickable(onClick = onDismiss))
+            Box(
+                Modifier.matchParentSize()
+                    // Punch the scrim out around the ACTUAL 40dp launcher.
+                    // The original glyph and puck retain their exact tint,
+                    // geometry, alpha and position; never draw a second copy.
+                    .drawBehind {
+                        val spotlight = if (highlightLauncher) {
+                            playerOverflowScrimCutout(
+                                anchor = anchorBounds,
+                                overlayOrigin = rootOrigin,
+                                overlaySize = rootSize,
+                            )
+                        } else null
+                        if (spotlight == null) {
+                            drawRect(Color.Black.copy(alpha = 0.28f))
+                        } else {
+                            val outside = androidx.compose.ui.graphics.Path().apply {
+                                fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                                addRect(androidx.compose.ui.geometry.Rect(
+                                    androidx.compose.ui.geometry.Offset.Zero, size,
+                                ))
+                                addOval(spotlight)
+                            }
+                            drawPath(outside, Color.Black.copy(alpha = 0.28f))
+                        }
+                    }
+                    .clickable(onClick = onDismiss),
+            )
             val anchor = anchorBounds ?: IntRect(
                 rootSize.width - margin - with(density) { 44.dp.roundToPx() },
                 rootOrigin.y + margin + with(density) { 72.dp.roundToPx() },
@@ -246,40 +286,6 @@ fun PlayerAnchoredActionsMenu(
                 }
             }
 
-            // The activity's original puck is behind this dialog and blurred
-            // with the player. A selected copy in the SAME screen-space bounds
-            // makes the expanding menu visibly originate at its ⋯ launcher.
-            if (highlightLauncher && anchorBounds != null) {
-                val highlightSize = 40.dp
-                val highlightPx = with(density) { highlightSize.roundToPx() }
-                // Preserve the three-dot silhouette and white tint, but show
-                // a darker neutral puck without any selected outline.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset {
-                            playerAnchoredMenuHighlightPosition(
-                                anchor = anchorBounds,
-                                overlayOrigin = rootOrigin,
-                                overlaySize = rootSize,
-                                highlightSizePx = highlightPx,
-                            )
-                        }
-                        .size(highlightSize)
-                        .clip(CircleShape)
-                        .background(playerOverflowPuckColor(selected = true))
-                        .testTag("player-overflow-highlight")
-                        .clickable(onClick = onDismiss),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = playerAnchoredMenuHighlightGlyph(),
-                        contentDescription = "Fechar opções do player",
-                        tint = Color.White,
-                        modifier = Modifier.size(34.dp),
-                    )
-                }
-            }
         }
     }
 }
