@@ -6,6 +6,10 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
 import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
 import org.junit.Test
 
@@ -36,6 +40,20 @@ class PlayerAnchoredActionsHighlightTest {
 
     @Test fun highlightedMenuUsesExactlyTheOriginalPlayerVector() {
         assertSame(originalPortraitNowPlayingOverflowGlyph(), playerAnchoredMenuHighlightGlyph())
+        assertSame(originalNowPlayingOverflowGlyph(), playerAnchoredMenuHighlightGlyph())
+        assertEquals(0.18f, playerOverflowPuckColor(selected = false).alpha, 0.0001f)
+        assertEquals(0.38f, playerOverflowPuckColor(selected = true).alpha, 0.0001f)
+    }
+
+    @Test fun playerOverflowMenuHasBorderlessNeutralBlurAndOpaqueFallback() {
+        val treatment = NativeActionCardTreatment.PLAYER_NEUTRAL_FROSTED
+        assertNull(nativeContextPlateBorder(treatment, dark = true))
+        assertNull(nativeContextPlateBorder(treatment, dark = false))
+        assertEquals(18, nativeContextPlateCornerRadiusDp(treatment))
+        assertTrue(expandableActionCardUsesHaze(treatment, hazeAvailable = true, reduceBlur = false))
+        assertFalse(expandableActionCardUsesHaze(treatment, hazeAvailable = true, reduceBlur = true))
+        assertFalse(expandableActionCardUsesHaze(treatment, hazeAvailable = false, reduceBlur = false))
+        assertFalse(neutralRatingPlateUsesArtwork(treatment))
     }
 
     @Test fun buttonHighlightFollowsExactLauncherCoordinates() {
