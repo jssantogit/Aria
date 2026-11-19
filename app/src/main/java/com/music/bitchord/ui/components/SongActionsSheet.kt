@@ -725,7 +725,8 @@ internal fun ActionRow(
             tint = (tint ?: foreground).copy(alpha = alpha),
             modifier = Modifier
                 .size(if (playerGeometry) 18.dp else if (menu) 20.dp else 22.dp)
-                .then(if (menu) Modifier.testTag("native-action-menu-trailing-icon") else Modifier),
+                .testTag(if (menu) "native-action-menu-trailing-icon"
+                    else "native-action-sheet-trailing-icon"),
         )
     }
     Row(
@@ -750,12 +751,9 @@ internal fun ActionRow(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // A context menu reads label-first with the glyph at the far edge;
-        // the sheet keeps the glyph leading, like every other list in the app.
-        if (!menu) {
-            iconView()
-            Spacer(Modifier.width(if (playerGeometry) 22.dp else 18.dp))
-        }
+        // Menu actions are label-first in every presentation: expanded
+        // popups, held previews, the player and full action sheets. Album
+        // covers/avatars in regular library rows remain a different pattern.
         Text(
             text = label,
             style = if (playerGeometry) MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp) else MaterialTheme.typography.bodyLarge,
@@ -773,10 +771,8 @@ internal fun ActionRow(
                 maxLines = 1,
             )
         }
-        if (menu) {
-            Spacer(Modifier.width(14.dp))
-            iconView()
-        }
+        Spacer(Modifier.width(14.dp))
+        iconView()
     }
 }
 
@@ -801,35 +797,24 @@ private fun LoadingActionRow(icon: ImageVector, label: String, palette: ArtworkP
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Only full sheets use a leading glyph. A held/contextual menu keeps
-        // the action icon beside the trailing loading indicator, never before
-        // the text: identical direction to ActionRow(Menu).
-        if (!menu) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = palette.onBackground.copy(alpha = 0.4f),
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(18.dp))
-        }
+        // Loading placeholders obey the same direction as real actions.
+        // A pending canonical link never flashes a leading icon then jumps
+        // to the opposite edge after the lookup completes.
         Text(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
             color = palette.onBackground.copy(alpha = 0.4f),
             modifier = Modifier.weight(1f),
         )
-        if (menu) {
-            Spacer(Modifier.width(14.dp))
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = palette.onBackground.copy(alpha = 0.4f),
-                modifier = Modifier.size(20.dp)
-                    .testTag("native-loading-menu-trailing-icon"),
-            )
-            Spacer(Modifier.width(10.dp))
-        }
+        Spacer(Modifier.width(14.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = palette.onBackground.copy(alpha = 0.4f),
+            modifier = Modifier.size(if (menu) 20.dp else 22.dp)
+                .testTag("native-loading-menu-trailing-icon"),
+        )
+        Spacer(Modifier.width(10.dp))
         CircularProgressIndicator(
             color = palette.onBackgroundVariant,
             strokeWidth = 2.dp,
