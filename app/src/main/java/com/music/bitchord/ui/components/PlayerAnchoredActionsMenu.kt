@@ -53,7 +53,7 @@ internal fun playerAnchoredMenuHighlightGlyph() = originalNowPlayingOverflowGlyp
 
 /** Selected overflow highlights darken the original neutral puck; never draw a ring. */
 internal fun playerOverflowPuckColor(selected: Boolean): Color =
-    Color.Black.copy(alpha = if (selected) 0.38f else 0.18f)
+    com.music.bitchord.ui.player.portraitOverflowPuckColor(selected)
 
 /**
  * The player controls occupy the space directly behind the menu. Fading the
