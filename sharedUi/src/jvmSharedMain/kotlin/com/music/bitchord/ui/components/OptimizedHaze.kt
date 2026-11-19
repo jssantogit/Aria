@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.components
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
@@ -44,6 +45,7 @@ fun Modifier.optimizedHazeEffect(
  * base remains the accessibility/failure fallback, never a fabricated blur.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
 fun Modifier.neutralFrostedMaterial(
     shape: Shape,
     neutralColor: Color,
