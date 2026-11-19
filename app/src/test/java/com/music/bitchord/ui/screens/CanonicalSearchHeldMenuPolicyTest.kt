@@ -34,11 +34,11 @@ class CanonicalSearchHeldMenuPolicyTest {
         assertFalse(canonicalSearchHeldCanAddToPlaylist(CanonicalSearchKind.ARTIST))
     }
 
-    @Test fun downloadActionNeverClaimsMusicBrainzMetadataIsAudio() {
-        assertTrue(canonicalSearchHeldShowsDownload(CanonicalSearchKind.RECORDING))
-        assertTrue(canonicalSearchHeldShowsDownload(CanonicalSearchKind.RELEASE))
-        assertTrue(canonicalSearchHeldShowsDownload(CanonicalSearchKind.RELEASE_GROUP))
-        assertFalse(canonicalSearchHeldShowsDownload(CanonicalSearchKind.ARTIST))
+    @Test fun metadataOnlySearchNeverOffersNoOpDownloads() {
+        // A toast stating that no source exists is not a real download action.
+        CanonicalSearchKind.entries.forEach { kind ->
+            assertFalse(canonicalSearchHeldShowsDownload(kind))
+        }
     }
 
     @Test fun catalogMetadataPlaylistPreservesOrderedVerifiedRecordingIdsWithoutAudio() {
