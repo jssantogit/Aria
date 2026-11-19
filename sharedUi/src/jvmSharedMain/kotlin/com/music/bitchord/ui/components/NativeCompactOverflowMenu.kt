@@ -346,15 +346,20 @@ fun NativeCompactMenuItem(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = ink,
-                modifier = Modifier.size(22.dp))
-        }
+        // Contextual action rows are always label-first, icon-trailing.
+        // Source/category selectors use the exact same column and keep their
+        // state check at the far right; an artist/avatar *list* is separate.
         Text(label, modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge, color = ink)
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = ink,
+                modifier = Modifier.size(22.dp)
+                    .testTag("native-compact-menu-trailing-icon"))
+        }
         if (selected == true) {
             Icon(PlaylistEditorIcons.Check, contentDescription = null,
-                tint = ink, modifier = Modifier.size(18.dp))
+                tint = ink, modifier = Modifier.size(18.dp)
+                    .testTag("native-compact-menu-selected-check"))
         }
     }
 }
