@@ -6180,7 +6180,25 @@ private fun BitChordApp(
             var browseRenameDirty by remember { mutableStateOf(false) }
             var confirmBrowseDismiss by remember { mutableStateOf(false) }
             val browseMenuBody: @Composable (BrowseTarget, SongActionsPresentation) -> Unit = { target, presentation ->
-                LegacyBrowseActionsMenuBody(
+                val catalogId = target.browseId
+                if (catalogId != null &&
+                    com.music.bitchord.ui.screens.canonicalCatalogEntityMenuSpec(catalogId) != null
+                ) {
+                    // A MusicBrainz Artist/Release is a metadata identity, not
+                    // an authorized MediaAsset. Reuse Library menu geometry,
+                    // but never feed its legacy playback/queue callbacks.
+                    com.music.bitchord.ui.screens.CanonicalCatalogEntityMenuBody(
+                        browseId = catalogId,
+                        title = target.title,
+                        subtitle = target.subtitle,
+                        artworkUrl = target.thumbnailUrl,
+                        presentation = presentation,
+                        onDismiss = { browseActions = null },
+                        onRate = { spec ->
+                            searchMetadataRatingTarget = catalogId to spec.ratingLabel
+                        },
+                    )
+                } else LegacyBrowseActionsMenuBody(
                     target = target,
                     presentation = presentation,
                     viewModel = viewModel,
