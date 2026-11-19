@@ -677,6 +677,24 @@ internal interface CanonicalCatalogDao {
         recordingIds: List<String>,
     ): List<CanonicalRecordingReleaseTitleRow>
 
+    /** Provider-owned ReleaseTrack edges disambiguate releases that share a Recording. */
+    @Query(
+        """
+        SELECT DISTINCT owned.recordingId AS recordingId,
+               rel.id AS releaseId,
+               rel.title AS releaseTitle
+        FROM catalog_release_track_source AS owned
+        INNER JOIN catalog_release AS rel ON rel.id = owned.releaseId
+        WHERE owned.recordingId IN (:recordingIds)
+          AND owned.provider IN (:providerKeys)
+        ORDER BY owned.recordingId, rel.id
+        """,
+    )
+    suspend fun providerOwnedRecordingReleaseTitles(
+        recordingIds: List<String>,
+        providerKeys: List<String>,
+    ): List<CanonicalRecordingReleaseTitleRow>
+
     /**
      * Public artist recordings already supply a positively verified Official
      * audio Release MBID. Never search for a title by matching artist or song
