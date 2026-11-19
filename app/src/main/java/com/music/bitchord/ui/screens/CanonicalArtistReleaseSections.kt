@@ -2,6 +2,7 @@ package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.catalog.ReleaseEntity
 import com.music.bitchord.data.catalog.CanonicalRecordingReleaseTitleRow
+import com.music.bitchord.data.catalog.CanonicalArtistOfficialReleaseCaptionRow
 import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 
@@ -235,3 +236,21 @@ internal fun canonicalArtistTrackReleaseLabels(
         val year = canonicalArtistReleaseYearLabel(evidence[unique.releaseId]?.firstReleaseDate)
         recordingId to listOfNotNull(name, year).joinToString(" · ")
     }.toMap()
+
+/**
+ * Public recordings may expose a verified official audio Release MBID. Its
+ * cached canonical title/date can be shown as a caption, but NEVER a second
+ * copy of the page artist or a fuzzy match to a similarly named album.
+ */
+internal fun canonicalArtistOfficialReleaseCaption(
+    edition: CanonicalArtistOfficialReleaseCaptionRow,
+): String? {
+    val title = edition.releaseTitle.trim().takeIf(String::isNotBlank) ?: return null
+    val year = canonicalArtistReleaseYearLabel(edition.releaseDate)
+    return listOfNotNull(title, year).joinToString(" · ")
+}
+
+/** The legacy artist ShelfItem may include a year as separate metadata. */
+internal fun canonicalArtistShelfYearFromSubtitle(subtitle: String): String? =
+    subtitle.split(" · ", " • ").map(String::trim)
+        .firstOrNull { Regex("""\d{4}""").matches(it) && it.toInt() in 1000..9999 }
