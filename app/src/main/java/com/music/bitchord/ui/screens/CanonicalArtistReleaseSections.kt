@@ -252,5 +252,5 @@ internal fun canonicalArtistOfficialReleaseCaption(
 
 /** The legacy artist ShelfItem may include a year as separate metadata. */
 internal fun canonicalArtistShelfYearFromSubtitle(subtitle: String): String? =
-    subtitle.split(" · ", " • ").map(String::trim)
+    subtitle.split(" · ", " • ").map { it.trim() }
         .firstOrNull { Regex("""\d{4}""").matches(it) && it.toInt() in 1000..9999 }
