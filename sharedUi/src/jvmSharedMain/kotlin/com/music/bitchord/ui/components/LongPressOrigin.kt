@@ -7,6 +7,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -26,9 +31,16 @@ import androidx.compose.ui.semantics.semantics
 @Stable
 class HeldItem internal constructor(
     val bounds: Rect,
+    /**
+     * Display list of the actual held composable, without the page's opaque
+     * background. Kept only during the menu to erase dimming over PAINTED
+     * pixels, not the transparent area of a wide row.
+     */
+    val paintLayer: GraphicsLayer? = null,
+    private val onRelease: () -> Unit = {},
 ) {
-    /** Compatibility for dismiss callbacks predating the source-spotlight UI. */
-    fun releaseLift() = Unit
+    /** Release the temporary recording when the overlay's exit completes. */
+    fun releaseLift() = onRelease()
 }
 
 /**
@@ -69,6 +81,11 @@ fun Modifier.longPressMenuClickable(
 ): Modifier {
     val pressSource = interactionSource ?: remember { MutableInteractionSource() }
     val capture = remember { HoldOriginCoordinates() }
+    // Recording only while a long-press menu is visible avoids capturing
+    // dozens of idle carousel/list items on every frame. A GraphicsLayer
+    // preserves transparent pixels; it is NOT a screenshot of the page.
+    val paintedItem = rememberGraphicsLayer()
+    val recording = remember { mutableStateOf(false) }
     val longClick = onLongClick?.let { held ->
         longClick@{
             val coordinates = capture.coordinates?.takeIf { it.isAttached }
@@ -77,7 +94,10 @@ fun Modifier.longPressMenuClickable(
             if (!heldOriginFullyVisible(bounds, coordinates.size.width, coordinates.size.height)) {
                 return@longClick
             }
-            LongPressOrigin.record(HeldItem(bounds))
+            recording.value = true
+            LongPressOrigin.record(
+                HeldItem(bounds, paintedItem) { recording.value = false },
+            )
             held()
         }
     }
@@ -114,6 +134,18 @@ fun Modifier.longPressMenuClickable(
     }
     return this
         .onPlaced { capture.coordinates = it }
+        .drawWithContent {
+            if (recording.value) {
+                // Record the row's OWN content/alpha, not the opaque window.
+                // The exact same commands still paint in the original place.
+                paintedItem.record {
+                    this@drawWithContent.drawContent()
+                }
+                drawLayer(paintedItem)
+            } else {
+                drawContent()
+            }
+        }
         .then(gesture)
 }
 
