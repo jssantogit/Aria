@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.listening.SavedCanonicalStaticPlaylist
+import com.music.bitchord.data.catalog.CanonicalRecordingCoverGroupRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -59,6 +60,38 @@ class CanonicalPlaylistMixedMusicBrainzTest {
             "content://library/pureflow",
             canonicalPlaylistPaletteArtworkUri(null, listOf(metadata, playable)),
         )
+    }
+
+    @Test fun verifiedOfficialMusicBrainzArtIsVisualOnlyAndMayJoinTheCollage() {
+        val trusted = "https://coverartarchive.org/release-group/official/250.jpg"
+        val covers = mapVerifiedPlaylistRecordingCovers(
+            listOf(metadataId),
+            listOf(
+                CanonicalRecordingCoverGroupRow(metadataId, "group-without-art"),
+                CanonicalRecordingCoverGroupRow(metadataId, "group-official"),
+                CanonicalRecordingCoverGroupRow("unknown", "group-other"),
+            ),
+            mapOf(
+                "group-without-art" to "http://example.com/cover.jpg",
+                "group-official" to trusted,
+                "group-other" to "https://coverartarchive.org/other.jpg",
+            ),
+        )
+        assertEquals(mapOf(metadataId to trusted), covers)
+        val visual = distinctCanonicalPlaylistVisualCovers(
+            listOf(playable, metadata), covers,
+        )
+        assertEquals(2, visual.size)
+        assertEquals(playable, visual[0].playable)
+        assertEquals(trusted, visual[1].verifiedCatalogUrl)
+        assertFalse(metadata.isAvailablePlaylistMember())
+        assertEquals(trusted, canonicalPlaylistPaletteArtworkUri(
+            null, listOf(metadata), covers,
+        ))
+        assertEquals(emptyList<CanonicalPlaylistVisualCover>(),
+            distinctCanonicalPlaylistVisualCovers(
+                listOf(metadata), mapOf(metadataId to "http://evil.example/cover.jpg"),
+            ))
     }
 
     @Test fun removalOnlyChangesTheTargetRecordingAndKeepsPlaylistIdentity() {
