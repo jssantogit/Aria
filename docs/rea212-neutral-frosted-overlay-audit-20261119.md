@@ -38,7 +38,7 @@ A solução é usar **um material neutro e a captura real da tela**, nunca uma t
 - A raiz Android cria `HazeState` uma vez, provê `LocalNeutralOverlayHazeState` e `LocalNeutralOverlayReducedBlur`, e entrega o mesmo objeto à captura `Modifier.hazeSource` no `AnimatedContent`.
 - `NativeContextActionPlate` usa explicit HazeState se presente (player) ou herdado (catálogo/Biblioteca); se ausente, neutro sólido honesto.
 - O modifier compartilhado `neutralFrostedMaterial` implementa shape + cor base #29292D escuro/#F5F5F7 claro + `HazeMaterials.regular(neutral.copy(alpha=0.58))` quando a fonte é válida e blur permitido. Redução de blur preserva cor sólida canônica. A camada escurecida pertence ao scrim fora da placa, não ao material, e não adiciona tint de capa.
-- Haze 1.3.1 continua pinado no Android; alterações de dependências/protocolo de blur não foram feitas. **Blur entre janelas** em Popups/Dialogs precisa de prova física e desempenho; a presença de HazeState em Compose não comprova captura visual do sistema.
+- A dependência Android de Haze foi elevada de 1.3.1 para **1.5.4** (o módulo sharedUi e Desktop preservam suas resoluções específicas). Esta versão oferece `HazeDialog`: o novo `NeutralOverlayDialog` a utiliza quando há fonte e blur permitido; na ausência/redução usa `Dialog` comum. Rating, alertas da conta/Configurações e menu do player migram para o mesmo host. O novo runtime requer CI Android real para confirmar compatibilidade, não apenas análise estática. **Blur entre janelas** em Popups/Dialogs precisa de prova física e desempenho; a presença de HazeState em Compose não comprova captura visual do sistema.
 
 ## Gates
 
@@ -47,3 +47,9 @@ A solução é usar **um material neutro e a captura real da tela**, nunca uma t
 3. Conferir posicionamento do menu do álbum, estrelas, salvar, cancelar, seleção de arquivo, prompts de conta, saída de áudio, menus ancorados e funcionamento de Back/dismiss. Não equiparar build verde a smoke físico executado.
 
 Nenhum APK novo ou merge está autorizado automaticamente por esta auditoria; PR #212 permanece Draft.
+
+## Complemento de compatibilidade entre janelas — 19/11/2026
+
+- **Limitação corrigida:** Haze 1.3.1 não possuía `HazeDialog`; um componente com `hazeEffect` dentro de um `Dialog` convencional não basta para provar recorte borrado da janela anterior. Haze 1.5.4 Android fornece `HazeDialog` para conectar a fonte do host à janela filha. Mantidos os artefatos e versões de Haze da árvore Desktop/Shared, sem upgrade indiscriminado.
+- **Host tipado único:** `NeutralOverlayDialog` escolhe `HazeDialog` quando `HazeState` está disponível e `AppSettings.reduceDynamicBlur` é falso; caso contrário mantém `Dialog` normal, sem quebra de ações, foco ou dimensão. `CanonicalRecordingFeedbackPanel` herda a fonte do host ou usa a fonte explícita do player; `NativeAlertHost` herda a fonte para alertas em Configurações; `PlayerAnchoredActionsMenu` usa sua própria captura do Now Playing.
+- **Validação indispensável:** real difusão cross-window em Android 14+/Galaxy A54, layers de scrim e mini-player, Haze dinâmico após abrir/fechar repetidamente, tema claro/escuro e modo reduzir blur. O build/CI sozinhos não confirmam pixels de blur; tratar eventuais artefatos de Haze na janela como bloqueio físico para aceite final.
