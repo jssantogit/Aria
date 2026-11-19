@@ -35,6 +35,22 @@ class CanonicalAlbumDetailParityTest {
         assertEquals("Guest", nativeAlbumTrackSecondaryLine("Guest", ""))
     }
 
+    @Test fun missingReleaseCreditUsesOnlyUnanimousVerifiedAlbumArtists() {
+        val illit = listOf(track("one", "Super in Love"), track("two", "More"))
+            .map { it.copy(artistDisplay = "ILLIT") }
+        assertEquals("ILLIT", nativeAlbumDisplayCredit(null, illit))
+        assertEquals("ILLIT", nativeAlbumDisplayCredit("  ", illit))
+        assertEquals("Official Credit", nativeAlbumDisplayCredit(" Official Credit ", illit))
+        assertEquals(null, nativeAlbumTrackSecondaryLine("ILLIT", nativeAlbumDisplayCredit(null, illit)))
+
+        val mixed = illit + track("guest", "Duet").copy(artistDisplay = "Guest Artist")
+        assertEquals("", nativeAlbumDisplayCredit(null, mixed))
+        assertEquals("ILLIT", nativeAlbumTrackSecondaryLine("ILLIT", nativeAlbumDisplayCredit(null, mixed)))
+        assertEquals("", nativeAlbumDisplayCredit(null, emptyList()))
+        assertEquals("", nativeAlbumDisplayCredit(null, illit + track("unknown", "Untitled")
+            .copy(artistDisplay = "")))
+    }
+
     @Test fun emptyNativeAlbumSearchUsesSameFeedbackInRootAndNestedRoutes() {
         assertEquals(
             "Nenhuma música corresponde à pesquisa.",
