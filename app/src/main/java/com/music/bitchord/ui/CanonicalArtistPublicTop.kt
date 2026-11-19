@@ -167,6 +167,9 @@ internal fun canonicalVerifiedArtistTopRows(
                 subtitle = verified.artistDisplay.orEmpty(),
                 artistScopeMbid = artist,
                 artworkUri = cover,
+                // Preserve the exact Recording -> Official audio edition
+                // proof for the artist row subtitle; it is NOT a playback ID.
+                coverReleaseMbid = officialEdition,
                 durationMs = verified.durationMs?.takeIf { it > 0L },
             )
         }
