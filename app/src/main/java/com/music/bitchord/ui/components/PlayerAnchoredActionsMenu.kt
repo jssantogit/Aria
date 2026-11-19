@@ -142,8 +142,9 @@ fun PlayerAnchoredActionsMenu(
         else entrance.animateTo(1f, tween(durationMillis = 170))
     }
 
-    Dialog(
+    NeutralOverlayDialog(
         onDismissRequest = onDismiss,
+        hazeState = hazeState,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
