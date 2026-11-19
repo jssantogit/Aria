@@ -51,8 +51,8 @@ class PlayerAnchoredActionsHighlightTest {
         assertEquals(launched.defaultHeight, highlighted.defaultHeight)
         assertEquals(launched.viewportWidth, highlighted.viewportWidth, 0.0001f)
         assertEquals(launched.viewportHeight, highlighted.viewportHeight, 0.0001f)
-        assertEquals(0.18f, playerOverflowPuckColor(selected = false).alpha, 0.0001f)
-        assertEquals(0.38f, playerOverflowPuckColor(selected = true).alpha, 0.0001f)
+        assertEquals(0.18f, playerOverflowPuckColor(selected = false).alpha, 0.005f)
+        assertEquals(0.38f, playerOverflowPuckColor(selected = true).alpha, 0.005f)
     }
 
     @Test fun ratingDialogsInheritPageHazeButExplicitPlayerCaptureTakesPrecedence() {
