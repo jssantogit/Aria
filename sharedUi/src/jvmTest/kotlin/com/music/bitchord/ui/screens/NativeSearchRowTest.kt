@@ -1,5 +1,7 @@
 package com.music.bitchord.ui.screens
 
+import com.music.bitchord.data.model.UiState
+import com.music.bitchord.data.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -77,6 +79,31 @@ class NativeSearchRowTest {
             subtitle = null,
         )
         assertEquals("Álbum", canonicalNativeSearchRowUi(row, "Álbum").subtitle)
+    }
+
+    @Test fun serverFailuresAndLoadingNeverMasqueradeAsAnEmptyResult() {
+        val noLegacyMatches = UiState.Success(emptyList<Song>())
+        val noServerMatches = UiState.Success(emptyList<CanonicalServerSearchRow>())
+        assertTrue(canonicalServerSearchPendingWithoutFallback(
+            UiState.Loading, noLegacyMatches,
+        ))
+        assertFalse(canonicalServerSearchPendingWithoutFallback(
+            noServerMatches, noLegacyMatches,
+        ))
+        assertEquals("Servidor indisponível", canonicalServerSearchErrorWithoutFallback(
+            UiState.Error("Servidor indisponível"), noLegacyMatches,
+        ))
+        assertNull(canonicalServerSearchErrorWithoutFallback(
+            noServerMatches, noLegacyMatches,
+        ))
+        // Legacy fetching has not finished; do not hide its legitimate
+        // matches behind a premature remote-only loading/error message.
+        assertFalse(canonicalServerSearchPendingWithoutFallback(
+            UiState.Loading, UiState.Loading,
+        ))
+        assertNull(canonicalServerSearchErrorWithoutFallback(
+            UiState.Error("Servidor indisponível"), UiState.Loading,
+        ))
     }
 
     @Test fun nativeSearchUsesSameProvenSecondaryMetadataAcrossOrigins() {
