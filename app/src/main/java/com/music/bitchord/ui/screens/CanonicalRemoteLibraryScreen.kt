@@ -300,6 +300,14 @@ internal fun canonicalLibraryPlaybackSourceScope(
     providerKey: String,
 ): String? = if (unified) selectedSource else providerKey
 
+/** Selection uses the same native gesture but requires a visible batch bar.
+ * A dedicated source root keeps long-press menus, never a stranded draft. */
+internal fun canonicalLibraryCanStartBatchSelection(
+    unified: Boolean,
+    category: CanonicalSmartFilterContext,
+    detailOpen: Boolean,
+): Boolean = unified && canSelectCanonicalLibraryByLongPress(category, detailOpen)
+
 /** Browse-only artist groups use the same Recording-backed evidence in every
  * Library host. Display group IDs are not promoted into canonical ArtistIds. */
 internal fun canonicalLibraryDisplayArtistGroups(
@@ -1408,8 +1416,8 @@ internal fun CanonicalRemoteLibraryScreen(
                 // The dedicated source host has no batch action bar. Keep
                 // long press as a contextual menu rather than trapping users
                 // in an uncloseable selection draft.
-                canLongPressSelect = unified && canSelectCanonicalLibraryByLongPress(
-                    selectedContext, detailOpen = detail != null,
+                canLongPressSelect = canonicalLibraryCanStartBatchSelection(
+                    unified, selectedContext, detailOpen = detail != null,
                 ),
                 onToggleSelection = toggleSelection,
                 onPlayAll = { visible, shuffle ->
