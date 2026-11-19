@@ -2034,7 +2034,7 @@ internal fun CanonicalTrackRow(
         onMore = null,
         horizontalInset = if (compactForArtist) 0.dp else PAGE_GUTTER,
         modifier = if (compactForArtist) Modifier
-            else Modifier.heightIn(min = if (albumTrackNumber != null) 60.dp else 68.dp),
+            else Modifier.heightIn(min = if (albumTrackNumber != null) 54.dp else 68.dp),
         textGap = if (albumTrackNumber != null) PAGE_GUTTER
             else if (compactForArtist) 12.dp else 14.dp,
         leading = {
