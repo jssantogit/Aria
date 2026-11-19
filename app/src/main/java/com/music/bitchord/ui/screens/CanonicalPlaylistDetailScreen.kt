@@ -70,6 +70,9 @@ import com.music.bitchord.download.Downloads
 import com.music.bitchord.data.listening.CanonicalStaticPlaylistRepository
 import com.music.bitchord.data.listening.SmartPlaylistDefinitionDatabase
 import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
+import com.music.bitchord.data.catalog.metadata.isTrustedArchiveImageUrl
+import com.music.bitchord.data.model.ROW_ART_PX
+import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.catalog.CanonicalRecordingReleaseGroupLinkRow
 import com.music.bitchord.data.catalog.CatalogReleaseGroupEntity
 import com.music.bitchord.playback.CanonicalCollectionIntentPlanner
@@ -169,6 +172,52 @@ internal fun distinctCanonicalPlaylistCoverRows(rows: List<V2DisplayRow>): List<
                 ?: row.id
         }.take(4).toList()
 
+/** A native playable sleeve or a trusted official MusicBrainz front.
+ * Metadata artwork never changes the Recording's playback capability. */
+internal data class CanonicalPlaylistVisualCover(
+    val playable: V2DisplayRow? = null,
+    val verifiedCatalogUrl: String? = null,
+)
+
+internal fun distinctCanonicalPlaylistVisualCovers(
+    rows: List<V2DisplayRow>,
+    verifiedMetadataCovers: Map<String, String>,
+): List<CanonicalPlaylistVisualCover> {
+    val audioCovers = distinctCanonicalPlaylistCoverRows(rows).associateBy(V2DisplayRow::id)
+    return rows.mapNotNull { row ->
+        val playable = audioCovers[row.id]
+        if (playable != null) CanonicalPlaylistVisualCover(playable = playable)
+        else verifiedMetadataCovers[row.id]?.takeIf(::isTrustedArchiveImageUrl)
+            ?.let { CanonicalPlaylistVisualCover(verifiedCatalogUrl = it) }
+    }.distinctBy { cover ->
+        cover.playable?.let { row ->
+            row.localArtworkUri?.let { "local:$it" }
+                ?: row.remoteArtworkRevision?.let { "remote:$it" }
+                ?: "asset:${row.remoteMediaAssetId}"
+        } ?: "catalog:${cover.verifiedCatalogUrl}"
+    }.take(4)
+}
+
+@Composable
+internal fun CanonicalPlaylistVisualArtwork(
+    cover: CanonicalPlaylistVisualCover,
+    modifier: Modifier = Modifier,
+) {
+    val row = cover.playable
+    if (row != null) SmartPlaylistPreviewArtwork(row, modifier)
+    else Box(modifier.clip(publicPlaylistTrackCoverShape())) {
+        NativePlaylistMissingArtwork(Modifier.fillMaxSize())
+        cover.verifiedCatalogUrl?.let { url ->
+            AsyncImage(
+                model = url.artworkAt(ROW_ART_PX),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
 /**
  * Artwork always comes from recordings actually in the saved collection.
  * No generated cover URLs, no legacy video IDs and no title-based album lookup.
@@ -178,13 +227,24 @@ internal fun CanonicalPlaylistCoverArt(
     rows: List<V2DisplayRow>,
     modifier: Modifier = Modifier,
     customCoverUri: String? = null,
+    verifiedMetadataCovers: Map<String, String>? = null,
 ) {
-    val covers = remember(rows) { distinctCanonicalPlaylistCoverRows(rows) }
+    // Parent detail supplies its batch; standalone Library cards resolve only
+    // their own saved members. Neither path queries Room per visible row.
+    val ownCovers = if (verifiedMetadataCovers == null)
+        rememberVerifiedPlaylistMetadataCovers(rows) else emptyMap()
+    val byRecording = verifiedMetadataCovers ?: ownCovers
+    val covers = remember(rows, byRecording) {
+        distinctCanonicalPlaylistVisualCovers(rows, byRecording)
+    }
     when {
         !customCoverUri.isNullOrBlank() -> Box(modifier.clip(RoundedCornerShape(12.dp))) {
             // As with native track artwork, preserve the automatic sleeve
             // beneath Coil. A revoked/broken document must not leave a blank cover.
-            CanonicalPlaylistCoverArt(rows = rows, modifier = Modifier.fillMaxSize())
+            CanonicalPlaylistCoverArt(
+                rows = rows, modifier = Modifier.fillMaxSize(),
+                verifiedMetadataCovers = byRecording,
+            )
             AsyncImage(
                 model = customCoverUri,
                 contentDescription = "Capa personalizada",
@@ -195,8 +255,8 @@ internal fun CanonicalPlaylistCoverArt(
         covers.size >= 2 -> CanonicalPlaylistCoverTiles(
             covers = covers, modifier = modifier,
         )
-        covers.isNotEmpty() -> SmartPlaylistPreviewArtwork(
-            row = covers.first(), modifier = modifier,
+        covers.isNotEmpty() -> CanonicalPlaylistVisualArtwork(
+            cover = covers.first(), modifier = modifier,
         )
         else -> BoxWithConstraints(
             modifier.clip(RoundedCornerShape(12.dp))
@@ -215,28 +275,28 @@ internal fun CanonicalPlaylistCoverArt(
  * the other real sleeve; use the same native artwork renderer at every size. */
 @Composable
 internal fun CanonicalPlaylistCoverTiles(
-    covers: List<V2DisplayRow>,
+    covers: List<CanonicalPlaylistVisualCover>,
     modifier: Modifier = Modifier,
 ) {
-    val verified = remember(covers) { distinctCanonicalPlaylistCoverRows(covers) }
+    val verified = covers.take(4)
     when (verified.size) {
         2 -> Row(modifier.clip(RoundedCornerShape(12.dp))
             .testTag("canonical-playlist-cover-two")) {
             verified.forEach { row ->
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    SmartPlaylistPreviewArtwork(row, Modifier.fillMaxSize())
+                    CanonicalPlaylistVisualArtwork(row, Modifier.fillMaxSize())
                 }
             }
         }
         3 -> Row(modifier.clip(RoundedCornerShape(12.dp))
             .testTag("canonical-playlist-cover-three")) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                SmartPlaylistPreviewArtwork(verified[0], Modifier.fillMaxSize())
+                CanonicalPlaylistVisualArtwork(verified[0], Modifier.fillMaxSize())
             }
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 verified.drop(1).forEach { row ->
                     Box(Modifier.weight(1f).fillMaxWidth()) {
-                        SmartPlaylistPreviewArtwork(row, Modifier.fillMaxSize())
+                        CanonicalPlaylistVisualArtwork(row, Modifier.fillMaxSize())
                     }
                 }
             }
@@ -247,14 +307,14 @@ internal fun CanonicalPlaylistCoverTiles(
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     for (index in offset until offset + 2) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
-                            SmartPlaylistPreviewArtwork(verified[index], Modifier.fillMaxSize())
+                            CanonicalPlaylistVisualArtwork(verified[index], Modifier.fillMaxSize())
                         }
                     }
                 }
             }
         }
         else -> verified.firstOrNull()?.let { row ->
-            SmartPlaylistPreviewArtwork(row, modifier)
+            CanonicalPlaylistVisualArtwork(row, modifier)
         }
     }
 }
@@ -285,8 +345,12 @@ internal fun NativePlaylistMissingArtwork(modifier: Modifier = Modifier) {
 internal fun canonicalPlaylistPaletteArtworkUri(
     explicitCoverUri: String?,
     rows: List<V2DisplayRow>?,
+    verifiedMetadataCovers: Map<String, String> = emptyMap(),
 ): String? = explicitCoverUri?.takeIf { it.isNotBlank() }
-    ?: rows?.firstNotNullOfOrNull { it.localArtworkUri?.takeIf(String::isNotBlank) }
+    ?: rows?.firstNotNullOfOrNull { row ->
+        row.localArtworkUri?.takeIf(String::isNotBlank)
+            ?: verifiedMetadataCovers[row.id]?.takeIf(::isTrustedArchiveImageUrl)
+    }
 
 /** A verified playlist count is not a popularity, ranking or editorial claim. */
 internal fun verifiedPlaylistMemberCountSummary(count: Int): String =
@@ -384,6 +448,7 @@ internal fun CanonicalPlaylistTrackRow(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
     allowUnavailableHold: Boolean = false,
+    verifiedMetadataArtworkUrl: String? = null,
 ) {
     val available = track.isAvailablePlaylistMember()
     // Ratings belong to the Recording identity, not to playback capability.
@@ -424,7 +489,18 @@ internal fun CanonicalPlaylistTrackRow(
                     Box(Modifier.fillMaxSize().clip(publicPlaylistTrackCoverShape())) {
                         if (available) SmartPlaylistPreviewArtwork(
                             row = track, modifier = Modifier.fillMaxSize(),
-                        ) else NativePlaylistMissingArtwork(Modifier.fillMaxSize())
+                        ) else {
+                            NativePlaylistMissingArtwork(Modifier.fillMaxSize())
+                            verifiedMetadataArtworkUrl?.takeIf(::isTrustedArchiveImageUrl)
+                                ?.let { url ->
+                                    AsyncImage(
+                                        model = url.artworkAt(ROW_ART_PX),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                        }
                     }
                 }
             },
@@ -691,6 +767,7 @@ internal fun CanonicalPlaylistDetailScreen(
             emptyList()
         }
     }
+    val metadataCovers = rememberVerifiedPlaylistMetadataCovers(rows)
     LaunchedEffect(card.id, rows) {
         onRowsReady(rows)
     }
@@ -750,7 +827,9 @@ internal fun CanonicalPlaylistDetailScreen(
     val palette = rememberArtworkPalette(
         imageUrl = if (card is LibraryPlaylistCard.Normal) {
             card.shelfItem.thumbnailUrl ?: historicalSongs.firstOrNull()?.thumbnailUrl
-        } else canonicalPlaylistPaletteArtworkUri(card.explicitCoverUri(), rows),
+        } else canonicalPlaylistPaletteArtworkUri(
+            card.explicitCoverUri(), rows, metadataCovers,
+        ),
     )
     val playlistDescription = when (card) {
         is LibraryPlaylistCard.CanonicalNormal -> card.definition.description
@@ -842,6 +921,7 @@ internal fun CanonicalPlaylistDetailScreen(
                         CanonicalPlaylistCoverArt(
                             rows = rows.orEmpty(), modifier = Modifier.fillMaxSize(),
                             customCoverUri = card.explicitCoverUri(),
+                            verifiedMetadataCovers = metadataCovers,
                         )
                     }
                 },
@@ -1037,6 +1117,7 @@ internal fun CanonicalPlaylistDetailScreen(
                 ),
                 isPlaying = isPlaying,
                 allowUnavailableHold = card is LibraryPlaylistCard.CanonicalNormal,
+                verifiedMetadataArtworkUrl = metadataCovers[track.id],
             )
             HorizontalDivider(
                 modifier = Modifier.padding(start = 80.dp),
