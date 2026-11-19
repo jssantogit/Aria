@@ -39,8 +39,18 @@ class PlayerAnchoredActionsHighlightTest {
     }
 
     @Test fun highlightedMenuUsesExactlyTheOriginalPlayerVector() {
-        assertSame(originalPortraitNowPlayingOverflowGlyph(), playerAnchoredMenuHighlightGlyph())
-        assertSame(originalNowPlayingOverflowGlyph(), playerAnchoredMenuHighlightGlyph())
+        // Composable vector getters can return independent but geometrically
+        // equivalent ImageVectors across module classloaders. Compare the
+        // actual drawable contract, not Java object identity.
+        val launched = originalPortraitNowPlayingOverflowGlyph()
+        val highlighted = playerAnchoredMenuHighlightGlyph()
+        val shared = originalNowPlayingOverflowGlyph()
+        assertEquals(launched.name, highlighted.name)
+        assertEquals(shared.name, highlighted.name)
+        assertEquals(launched.defaultWidth, highlighted.defaultWidth)
+        assertEquals(launched.defaultHeight, highlighted.defaultHeight)
+        assertEquals(launched.viewportWidth, highlighted.viewportWidth, 0.0001f)
+        assertEquals(launched.viewportHeight, highlighted.viewportHeight, 0.0001f)
         assertEquals(0.18f, playerOverflowPuckColor(selected = false).alpha, 0.0001f)
         assertEquals(0.38f, playerOverflowPuckColor(selected = true).alpha, 0.0001f)
     }
