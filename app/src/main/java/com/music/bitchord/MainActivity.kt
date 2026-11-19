@@ -737,6 +737,9 @@ private fun BitChordApp(
     var playerMenuAnchor by remember {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
     }
+    // The player is hosted in an M3 dialog. Its anchored action card opens in
+    // another window, so capture a dedicated neutral Haze source while visible.
+    val playerOverflowMenuHaze = remember { HazeState() }
     var playerShareLyricsRequestToken by remember { mutableIntStateOf(0) }
     /**
      * The row or card that was held to open the track menu, or null when it
@@ -2660,6 +2663,10 @@ private fun BitChordApp(
         Box(Modifier.fillMaxSize().then(
             if (localRatingDialogOpen && !reduceDynamicBlur)
                 Modifier.hazeSource(ratingModalHaze)
+            else Modifier,
+        ).then(
+            if (menuFromPlayer && menuFromAppleQueue && songActions != null && !reduceDynamicBlur)
+                Modifier.hazeSource(playerOverflowMenuHaze)
             else Modifier,
         )) {
         NowPlayingScreen(
@@ -5948,6 +5955,7 @@ private fun BitChordApp(
                     com.music.bitchord.ui.components.PlayerAnchoredActionsMenu(
                         anchorBounds = playerMenuAnchor,
                         artworkUrl = song.thumbnailUrl,
+                        hazeState = playerOverflowMenuHaze,
                         onDismiss = { songActions = null },
                     ) {
                         songMenuBody(song, SongActionsPresentation.Menu)
