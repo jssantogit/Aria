@@ -121,6 +121,7 @@ internal fun CanonicalPublicPlaylistOverflowMenu(
                         onDismiss()
                     }
                 } else null,
+                shareLabel = "Compartilhar playlist",
                 onShare = {
                     onDismiss()
                     val shareText = buildString {
