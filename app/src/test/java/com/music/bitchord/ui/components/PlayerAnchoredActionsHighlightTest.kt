@@ -45,6 +45,20 @@ class PlayerAnchoredActionsHighlightTest {
         assertEquals(0.38f, playerOverflowPuckColor(selected = true).alpha, 0.0001f)
     }
 
+    @Test fun ratingDialogsInheritPageHazeButExplicitPlayerCaptureTakesPrecedence() {
+        val page = dev.chrisbanes.haze.HazeState()
+        val player = dev.chrisbanes.haze.HazeState()
+        assertSame(page, nativeContextPlateHazeSource(explicit = null, inherited = page))
+        assertSame(player, nativeContextPlateHazeSource(explicit = player, inherited = page))
+        assertNull(nativeContextPlateHazeSource(explicit = null, inherited = null))
+        val treatment = NativeActionCardTreatment.NEUTRAL_FROSTED
+        assertNull(nativeContextPlateBorder(treatment, dark = true))
+        assertNull(nativeContextPlateBorder(treatment, dark = false))
+        assertEquals(30, nativeContextPlateCornerRadiusDp(treatment))
+        assertTrue(expandableActionCardUsesHaze(treatment, hazeAvailable = true, reduceBlur = false))
+        assertFalse(expandableActionCardUsesHaze(treatment, hazeAvailable = true, reduceBlur = true))
+    }
+
     @Test fun playerOverflowMenuHasBorderlessNeutralBlurAndOpaqueFallback() {
         val treatment = NativeActionCardTreatment.PLAYER_NEUTRAL_FROSTED
         assertNull(nativeContextPlateBorder(treatment, dark = true))
