@@ -53,6 +53,9 @@ class NativeArtistPublicTopSectionTest {
             }
         }
         compose.onNodeWithText("Canonical recording").assertExists()
+        // Artist identity already appears in the page header; an unverified
+        // edition must not fall back to repeating that same artist byline.
+        compose.onNodeWithText("Artist").assertDoesNotExist()
         compose.onNodeWithText("Other identity").assertDoesNotExist()
         compose.onNodeWithText("Canonical recording").assertHasNoClickAction()
         compose.onNodeWithTag("artist-top-more-${correct.musicBrainzId}").assertDoesNotExist()
