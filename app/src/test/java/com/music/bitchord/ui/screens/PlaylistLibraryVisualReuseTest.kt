@@ -502,11 +502,16 @@ class PlaylistLibraryVisualReuseTest {
 
     @Test fun normalPlaylistPickerAndLibraryCoverUseSameOrderedDeduplicatedMembers() {
         assertEquals(
-            listOf("rec-1", "rec-2", "rec-3", "rec-4"),
+            listOf("rec-1", "rec-2", "rec-3", "rec-4", "rec-5"),
             canonicalStaticPlaylistCoverCandidateIds(
                 listOf("rec-1", "rec-1", "rec-2", "rec-3", "rec-4", "rec-5"),
             ),
         )
+        // First four may be music-only MBIDs. Still find later trusted covers,
+        // without triggering unbounded reads for a 500-track playlist.
+        assertEquals(24, canonicalStaticPlaylistCoverCandidateIds(
+            (1..100).map { "recording-$it" },
+        ).size)
         assertTrue(canonicalStaticPlaylistCoverCandidateIds(emptyList()).isEmpty())
     }
 
