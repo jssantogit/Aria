@@ -189,8 +189,14 @@ internal fun rememberCanonicalArtistReleases(
                 val recordingReleaseLinks = recordingIds.chunked(300).flatMap { ids ->
                     dao.recordingReleaseTitlesByIds(ids)
                 }
+                val ownedReleaseLinks = if (keys.isNotEmpty()) {
+                    recordingIds.chunked(300).flatMap { ids ->
+                        dao.providerOwnedRecordingReleaseTitles(ids, keys)
+                    }
+                } else emptyList()
                 val trackReleaseLabels = canonicalArtistTrackReleaseLabels(
                     recordingReleaseLinks, releaseKeys.toSet(), proofs,
+                    providerOwnedLinks = ownedReleaseLinks,
                 )
                 CanonicalArtistNativeReleases(
                     sections, canonicalLibraryEntityArtworkById(coverLinks, tracks), proofs,
