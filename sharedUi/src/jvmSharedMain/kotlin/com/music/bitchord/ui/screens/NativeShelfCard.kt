@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
@@ -54,18 +56,27 @@ internal fun NativeShelfCard(
 ) {
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
+    var heldActionOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(pressed) {
+        if (!pressed) heldActionOpen = false
+    }
+    // A normal tap gets tactile darkening. Once the long press has selected
+    // this card, the artwork must return to its untouched original pixels.
+    val heldAction = onLongPress?.let { action ->
+        { heldActionOpen = true; action() }
+    }
     Column(
         modifier = modifier
             .longPressMenuClickable(
-                onClick = onClick, onLongClick = onLongPress,
+                onClick = onClick, onLongClick = heldAction,
                 interactionSource = pressSource, suppressTapIndication = true,
             )
-            .contextClick(onLongPress),
+            .contextClick(heldAction),
     ) {
         // Full card remains clickable, but feedback paints only the clipped cover.
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(NativeMediaCardMetrics.squareCoverShape)) {
             artwork()
-            if (pressed) {
+            if (nativeShelfPressInkVisible(pressed, heldActionOpen)) {
                 Box(Modifier.matchParentSize()
                     .background(Color.Black.copy(alpha = NativeMediaCardMetrics.pressedArtworkAlpha)))
             }
@@ -102,3 +113,7 @@ internal fun NativeShelfCard(
         )
     }
 }
+
+/** Holding is a selection, not a continuing pressed-artwork animation. */
+internal fun nativeShelfPressInkVisible(pressed: Boolean, heldActionOpen: Boolean): Boolean =
+    pressed && !heldActionOpen
