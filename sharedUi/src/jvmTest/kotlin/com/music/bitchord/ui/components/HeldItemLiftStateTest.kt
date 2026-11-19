@@ -6,6 +6,17 @@ import org.junit.Test
 
 /** Native content remains painted; holding a card cannot replace it with a bitmap. */
 class HeldItemLiftStateTest {
+    @Test fun heldRecordingIsReleasedAfterMenuExit() {
+        var releases = 0
+        val held = HeldItem(
+            bounds = Rect(16f, 450f, 420f, 532f),
+            onRelease = { releases++ },
+        )
+        assertEquals(null, held.paintLayer)
+        held.releaseLift()
+        assertEquals(1, releases)
+    }
+
     @Test fun aHoldOnlyRecordsTheOriginalBounds() {
         val original = Rect(24f, 100f, 344f, 420f)
         val held = HeldItem(original)
