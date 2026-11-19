@@ -181,15 +181,18 @@ internal fun rememberRouteArrivalModifier(
     var arrivingForward by remember { mutableStateOf(forward) }
 
     LaunchedEffect(routeKey, reduceMotion) {
+        // Read the old destination before advancing it. The wizard uses this
+        // pair to distinguish a forward drill-down from Back and prior tabs.
+        val previousRoute = previous
         val animate = shouldAnimateRouteArrival(
-            previous = previous,
+            previous = previousRoute,
             next = routeKey,
             reduced = reduceMotion,
             rootTabPrefix = rootTabPrefix,
         )
         previous = routeKey
         if (animate) {
-            arrivingForward = directionForRouteChange?.invoke(previous, routeKey) ?: forward
+            arrivingForward = directionForRouteChange?.invoke(previousRoute, routeKey) ?: forward
             progress.snapTo(0f)
             progress.animateTo(
                 1f,
