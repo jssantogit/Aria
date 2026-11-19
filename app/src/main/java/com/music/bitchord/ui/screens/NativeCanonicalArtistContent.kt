@@ -165,9 +165,9 @@ internal fun NativeCanonicalArtistContent(
                     )
                     NativeArtistTopReleaseCard(
                         title = release.title,
-                        subtitle = canonicalArtistReleaseDateLabel(
+                        subtitle = canonicalArtistReleaseYearLabel(
                             nativeReleases.evidence[release.id]?.firstReleaseDate,
-                        ) ?: release.artistDisplay.orEmpty(),
+                        ).orEmpty(),
                         label = if (release.id == sections.recentAlbum?.id)
                             stringResource(R.string.recent_album) else "Lançamento recente",
                         palette = palette,
@@ -241,6 +241,7 @@ internal fun NativeCanonicalArtistContent(
                                 ))
                             },
                             compactForArtist = true,
+                            artistReleaseSubtitle = nativeReleases.trackReleaseLabels[track.recordingId],
                             palette = palette,
                         )
                     }
@@ -260,7 +261,9 @@ internal fun NativeCanonicalArtistContent(
                     ) { release ->
                         NativeArtistReleaseCard(
                             title = release.title,
-                            subtitle = release.artistDisplay.orEmpty(),
+                            subtitle = canonicalArtistReleaseYearLabel(
+                                nativeReleases.evidence[release.id]?.firstReleaseDate,
+                            ).orEmpty(),
                             palette = palette,
                             modifier = Modifier.width(152.dp),
                             onClick = {
