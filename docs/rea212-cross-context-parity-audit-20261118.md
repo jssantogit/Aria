@@ -1,0 +1,50 @@
+# REA #212 — Auditoria de paridade transversal por contexto (18/11/2026)
+
+## Contrato de produto
+
+A mesma entidade musical mantém a mesma apresentação, hierarquia visual, navegação, ações e estados de interface, independentemente da origem do conteúdo (MusicBrainz/catálogo, MediaStore/local, Navidrome/OpenSubsonic e provedores futuros). O adaptador muda **os dados e as capacidades comprovadas**, não cria uma segunda tela genérica nem simula reprodução/identidade.
+
+Invariantes:
+- **RecordingId**, **ReleaseId**, **ArtistId**, **MediaAssetId** e providerKey não são equivalentes. Nunca derivar identidade canônica de título/nome, nem permitir escolha silenciosa de outra fonte numa vista de um servidor específico.
+- A mesma fonte visual é usada para header, lista, cards, long press, estado de carregamento, busca, avaliações, ações e acessibilidade. Conteúdo editorial só aparece com evidência; ações indisponíveis não devem ser inventadas.
+- Uma faixa metadata-only pode ter título, crédito, capa, avaliação e ações editoriais sem ser reproduzível. Um artista sem ranking não pode receber a seção "Mais tocadas" por inferência; deve usar "Faixas".
+- Não copiar automaticamente para a Library dados editoriais de um artista identificado apenas por nome. Corroboração externa deve ter prova independente de identidade.
+
+## Matriz de superfícies inspecionadas
+
+| Superfície | Pontos de entrada / implementação | Resultado deste corte | Limites |
+|---|---|---|---|
+| Biblioteca: Músicas, Álbuns, Artistas | `CanonicalRemoteLibraryScreen`, `NativeUnifiedLibraryBody`, `CanonicalTrackRow`, `NativeLibraryEntityCard` | **CORRIGIDO**: modo fonte única (Navidrome/MediaStore) deixa de compor painel genérico e passa pelo mesmo corpo nativo do modo unificado. Apenas top bar, tabs e filtros do host de origem permanecem externos. | Paridade pixel a pixel depende de aparelho/escala; seleção de lote no modo dedicado permanece deliberadamente restrita, não criar uma segunda barra. |
+| Artista da Library local × Navidrome | `CanonicalArtistDetailRoute` → `NativeCanonicalArtistContent` → `NativeArtistDetailFrame`, carrosséis e ações | **REUTILIZAÇÃO CONFIRMADA**: mesma composição e filtros por RecordingId; fonte atual controla reprodução e arte. **CORRIGIDO**: exibir grupo de artista sem ArtistId comprovado também na fonte única, com ID de display-only distinto. | Grupos de exibição não recebem ArtistId inventado; filtros salvos específicos do provedor sem prova de associação não fabricam grupos adicionais. |
+| Artista online × Artist da Library | `DetailScreen` e `CanonicalArtistDetailRoute` compartilham `NativeArtistDetailFrame`, `ArtistHeader`, `NativeArtistTracksShelf`, `NativeArtistReleaseShelf`, seções e menus nativos | **CORRIGIDO**: gravações online comprovadamente pertencentes ao Artist MBID usam carrossel nativo de Faixas; feed de popularidade real mantém seu título; dados já disponíveis não desaparecem só porque feed legado está carregando/falhou. Removido ramo numerado de álbum para artista canônico. | Compositores de seções continuam adaptados a dados editoriais e locais diferentes; dados "Artista similar", biografia, lançamentos e playability dependem de evidência e capacidade, não do modo da tela. |
+| Álbum na Library / álbum dentro de artista local ou Navidrome | `NativeCanonicalLibraryAlbumDetail`, `NativeCanonicalNestedAlbumDetail` → `NativeCanonicalAlbumContent` | **COMPARTILHADO**: mesmo corpo, cabeçalho, faixas numeradas, qualidade, ações, nota, footer e contador. | Escopo e ordem de gravações vêm de ReleaseId + asset source; não contar gravação não provada como tocável. |
+| Álbum online × Library | `DetailScreen`, `NativeReleaseHeaderLayout`, `NativeDetailTrackRowLayout`, `NativeAlbumDetailFrame` | **CORRIGIDO**: `NativeAlbumDetailFrame` agora serve catálogo online, Library e Navidrome; header e linhas continuam compartilhados por componentes. | Adaptadores de domínio/tracklist ainda são distintos: online pode ser metadata-only, biblioteca exige MediaAsset verificado. Full unified `Recording+MediaAsset` é dependência de IDM; não resolver alterando visual. |
+| Playlist local/inteligente/pública | `CanonicalPlaylistDetailScreen`, `CanonicalPublicPlaylistDetailScreen`, `DetailScreen` → `NativePlaylistDetailFrame`, `NativePlaylistDetailHeader` | **COMPARTILHADO**: viewport e apresentação de header; long press no host e ações tipadas conforme propriedade/manifesto. | Playback de playlist pública só a partir de membros comprovadamente disponíveis; não criar fila que não existe. |
+| Pesquisa online/servidor/Library | `SearchScreen`, `NativeSearchResultRow`, `SongRow` e adaptadores por fonte | **AUDITADO, PARIDADE PARCIAL**: mesmo host de busca; catálogo/servidor usam `NativeSearchResultRow`, Library de Songs usa `SongRow` para estados ativos e fila. | Pendência de integração: seções de resultado Artista/Álbum da Library e catalog search genérico devem usar IDs tipados e capacidade do Provider Engine #219. Não combinar linhas por nome nem retirar ações de playback já existentes para forçar homogeneidade. |
+| Home/Explorar | `HomeScreen`, `ExploreScreen`, `MainActivity` e fontes de shelf | **AUDITADO**: shells e cards compartilhados; conteúdo editorial depende de provedor, atividade ou metadados disponíveis. | Paridade de **conteúdo** com novos adapters depende dos contratos IDM e Apple Music Web; não inferir Home/Explorar 100% completo neste REA. |
+| Player / fila / miniplayer | `NowPlayingScreen`, `PlayerControls`, `PlayerQueue`, `MiniPlayer` | **REUTILIZAÇÃO CONFIRMADA**: não há player separado para Navidrome versus local. Disponibilidade da fonte e formato pertencem ao resolver. | Contratos de HLS/DASH e fallbacks continuam na responsabilidade de IDM/backend. |
+| Avaliações e menus de contexto | `CanonicalRecordingFeedbackPanel`, `NativeRatingEditorAction`, `HeldContextMenu`, `NativeContextActionPlate` | **COMPARTILHADO**: avaliação local canônica, gesto half-star, ação salvar; novos ajustes REA de blur e escala. | Haze da avaliação em Dialog foi conectado ao Now Playing; outras origens sem Haze fornecem fallback neutro. Aceite físico ainda pendente. |
+| Configurações/Fontes/Downloads/Acquisition | Telas funcionais próprias | **FORA DA PARIDADE DE ENTIDADE**: estes fluxos não representam Artista/Álbum/Gravação e mantêm semânticas próprias. | Não fundir download offline com aquisição nem forçar entidades de músicas em configurações. |
+
+## Correções e evidência nesta branch
+
+1. `CanonicalRemoteLibraryScreen`: renderização nativa única para `unified=true/false`; removidos `RemoteCanonicalEntityList`, `RemoteBrowseSummary`, `TrackList` e `EmptyRemoteLibrary` não utilizados. Fonte dedicada preserva top bar/tabs e troca de categoria, sem uma segunda árvore de detalhe. `effectiveSourceKey` é obrigatório nos grupos tocáveis da fonte.
+2. `canonicalLibraryDisplayArtistGroups` aplicado à Library por fonte; inclui nomes de grupos sem ArtistId mas preserva apenas IDs de exibição. Lookup de capas/datas agrupado por `sources` também funciona fora da vista unificada.
+3. `DetailScreen` online: prioridade correta de dados editoriais comprovados e de gravações com `artistScopeMbid` exato, sem ramos numerados genéricos ou reprodução inventada; `NativeArtistPublicTopSection` aceita rótulo para conteúdo não ranqueado.
+4. `NativeAlbumDetailFrame` compartilhado entre catálogo online e biblioteca local/Navidrome, com scroll, preenchimento, material e árvore de conteúdo fornecida pelos adaptadores.
+5. Regressões de escopo de origem, artistas sem crédito, lista online não ranqueada e viewport de álbum adicionadas. Testes de paridade da playlist, rating, row e ArtistFrame existentes são preservados.
+
+## Critérios de aceite antes do smoke humano / merge
+
+1. Android CI e demais workflows SUCCESS **no SHA exato**. Não reutilizar verdes dos HEADs anteriores. A0 emulador skipped não valida visual ou playback real.
+2. Aparelho: artista online com MBID e artista com gravações metadata-only; local MediaStore; Navidrome conectado; artista com e sem ArtistId; álbum na raiz e aberto dentro do artista; playlists normal/inteligente/pública; busca dos três escopos; Home e Explorar.
+3. Em cada contexto: título, foto/capa, seções, números/ordem, faixas, metadados e rodapé, busca e sort, scroll-restoration, pin, estrelas, menus long press, disponibilidade real e fonte de áudio; contraste/blur, reduzir animações e fonte ampliada.
+4. Não declarar equivalência de **catálogo/metadata** sem same-entity link verificado. Se o catálogo online expõe biografia/similares e Navidrome não tem o mesmo ArtistId, a ausência é uma limitação de dados, não justificativa para criar uma tela diferente.
+5. PR #212 ainda é **OPEN/DRAFT**, baseada em #209; manter sequência de merge e reconciliação com #219 separadas, sem forçar promoção, APK ou smoke neste corte.
+
+## Pendências de arquitetura fora de uma correção visual segura
+
+- **IDM #219** deve unificar o contrato de resultados e detalhamento por capabilities e proveniência, sem fundir MusicBrainz metadata identity e MediaAsset local/Navidrome. Buscar por álbum/artista no servidor e comparar com online exige mapeamento e source filtering corretos.
+- Validar se a origem dedicada Navidrome precisa migrar seus próprios filtros avançados para o mesmo host de tabs da Library unificada, sem perder customização e sem criar duplicidade de controles.
+- Completar evidência de paridade nos layouts que dependem de dados editoriais efetivos (biografias, discografia, similares, gêneros, playlists e qualidade/formatos).
+- Resultado visual em aparelho e testes reais da ordem/ações do Navidrome ainda não comprovados por mera inspeção estática.
