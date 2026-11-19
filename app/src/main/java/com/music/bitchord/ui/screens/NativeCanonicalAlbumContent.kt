@@ -27,6 +27,25 @@ import com.music.bitchord.ui.theme.ArtworkPalette
 internal fun rememberNativeAlbumDetailListState(releaseIdentity: String): LazyListState =
     rememberSaveable(releaseIdentity, saver = LazyListState.Saver) { LazyListState() }
 
+/** One source-neutral album/release viewport. Online metadata albums,
+ * MediaStore albums and Navidrome albums share the same list container;
+ * adapters supply rows, ratings, artwork and only actions they can prove. */
+@Composable
+internal fun NativeAlbumDetailFrame(
+    palette: ArtworkPalette,
+    listState: LazyListState,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxSize().background(palette.background),
+        contentPadding = contentPadding,
+        content = content,
+    )
+}
+
 /** A single native release body for Library albums and albums nested in artists.
  * The caller owns verified media membership, source-specific cover, rating,
  * running order and playback capabilities. Only one visual tree is rendered.
@@ -67,8 +86,9 @@ internal fun NativeCanonicalAlbumContent(
         // An album refresh keeps its place; opening a different ReleaseId
         // starts at its own header instead of inheriting the previous scroll.
         val releaseListState = rememberNativeAlbumDetailListState(releaseIdentity)
-        LazyColumn(
-            state = releaseListState,
+        NativeAlbumDetailFrame(
+            palette = palette,
+            listState = releaseListState,
             contentPadding = PaddingValues(bottom = 112.dp),
         ) {
             item(key = headerKey) {
