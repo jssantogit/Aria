@@ -190,3 +190,17 @@
 - **Workflow permitido:** `Apple Music Bottom Bar · Smoke APK` via push deste arquivo no branch `experiment/apple-music-bottom-bar-pr209-20261108`, sem mudanças adicionais de aplicação. Exigir testes focados de avaliação, Android unit tests completos, shared Automix e sharedUi JVM. **Somente publicar** `BitChord-AppleMusicBar-devDebug-universal.apk` e checksum SHA-256 após todos esses gates aprovarem.
 - **Verificação no aparelho (ainda pendente):** confirmar ausência de duração em listas de faixas de Pesquisa/Biblioteca/Artista/Álbum; compartilhar frame entre catálogo/local/Navidrome; erro/loading da busca remota; menus de avaliação, blur e ícones; scroll e navegação. APK gerado não representa smoke físico realizado ou aprovado.
 - **Entrega esperada:** registrar URL da execução e do artefato GitHub Actions e SHA exato deste push; manter PR #212 OPEN/DRAFT.
+
+
+## Pedido explícito de APK — 19/11/2026 — destaque alpha do long press (#212)
+
+- Autorização explícita: usuário confirmou "Passou verde. Dispare apk" em 19/11/2026, para a rodada REA de destaque do pressionamento longo, blur/menus unificados e correções de CI.
+- HEAD de implementação **já verde**: `5e52696acea0237b4a27e56757d9f05c72d08f11` na PR #212 Draft (base #209). Gates exatos:
+  - [Android CI #44538424994](https://github.com/jssantogit/BitChord/actions/runs/44538424994): SUCCESS.
+  - [TV/Wear #44538424885](https://github.com/jssantogit/BitChord/actions/runs/44538424885): SUCCESS após retry de falha de ambiente.
+  - [Desktop #44538425089](https://github.com/jssantogit/BitChord/actions/runs/44538425089): SUCCESS após retry de NDK corrompido.
+  - [Retired YouTube Backend Audit #44538424900](https://github.com/jssantogit/BitChord/actions/runs/44538424900): SUCCESS; A0 emulador SKIPPED.
+- Solicitação de execução por push deste documento: workflow `Apple Music Bottom Bar · Smoke APK` na própria branch experimental, sem mudanças de código de produção. Este commit documental terá SHA distinto do HEAD já validado e deverá ser usado para identificar o APK gerado.
+- Gates do workflow: UI de avaliação focalizada, suíte Android unit, planner Automix, sharedUi JVM; só então `:app:assembleDevDebug`, artefato universal `BitChord-AppleMusicBar-devDebug-universal.apk` e `SHA256SUMS.txt`. Falha em qualquer gate bloqueia publicação.
+- Smoke **físico pendente**: conferir faixa transparente na página de artista (sem placa clara), arte opaca «&Our Vibe»/aespa, long press de Search, Biblioteca local/Navidrome, álbum, playlist, Home/Explore; ícones à direita, blur, gesto/cancelamento, ausência de flicker/duplicação/perda de frames e diferenças entre temas. A captura/layer temporária deve ser liberada ao fechar. Não declarar aceite visual pelo sucesso do CI.
+- Preservar #212 Draft, sem merge e sem mudar frentes IDM/AMS.
