@@ -64,9 +64,10 @@ import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.roundToInt
 
 /**
- * The held item stays in the original Compose tree. The only visual selection
- * treatment is a hole in the existing dimming scrim — no bitmap, ring, shadow,
- * extra background or altered corner radius. It cannot crop native cover/text.
+ * The held item stays in the original Compose tree. For normal long presses
+ * the dark scrim is cut out using only the item's ACTUAL painted alpha, not its
+ * full box (a transparent track row must not reveal a bright page rectangle).
+ * No bitmap, ring, shadow, extra background or altered corner radius.
  */
 internal fun heldPreviewBackingColor(): Color = Color.Transparent
 
@@ -104,12 +105,12 @@ internal fun heldSpotlightUsesPixelMask(
 
 /**
  * The context menu anchored to an item held in place. The item stays in its
- * original list, the page behind it dims, and actions hang
- * off it.
+ * original list, the page behind it dims, and actions hang off it.
  *
- * Nothing is copied or physically lifted. The source keeps drawing normally
- * while the dimming scrim excludes its exact bounds. Only the actions float
- * beside the item, preserving each native card's artwork and caption geometry.
+ * No source is replaced or physically lifted. The original keeps drawing;
+ * a temporary display list provides a painted-alpha stencil so only visible
+ * pixels of the source remain undimmed. Unlike a box-shaped spotlight, this
+ * does not brighten the transparent spaces around an artist's track row.
  *
  * Only a hold opens this. The ⋮ keeps opening the bottom sheet — a tap on a
  * small button is a request for the full menu, while a hold on the item itself
@@ -252,9 +253,19 @@ fun <T : Any> HeldContextMenu(
                             )
                             maskLayer.blendMode = BlendMode.DstOut
                             drawLayer(maskLayer)
+                        } else if (capture != null) {
+                            // The source has not recorded its first held frame
+                            // yet. Do not flash a bright rectangle while
+                            // waiting for the precise alpha stencil.
+                            drawRect(
+                                color = scrimColor.copy(
+                                    alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
+                                ),
+                            )
                         } else {
-                            // The first entrance frame or older non-recording
-                            // routes preserve the previous no-blank fallback.
+                            // Compatibility for the few older routes without
+                            // an item display list: keep geometry instead of
+                            // hiding the source entirely.
                             val cutout = heldSpotlightCutout(
                                 sourceBounds = heldItem.bounds,
                                 overlayOrigin = overlayOffset,
