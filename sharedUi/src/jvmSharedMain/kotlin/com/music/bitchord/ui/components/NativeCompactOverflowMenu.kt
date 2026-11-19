@@ -9,12 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
@@ -182,7 +178,6 @@ fun Modifier.nativeCompactMenuLiftShadow(isDark: Boolean, shape: Shape): Modifie
  * animate when the caller dismisses it (unlike removing a DropdownMenu in one
  * frame). Outside tap and Back remain owned by the Popup.
  */
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun NativeCompactOverflowMenu(
     expanded: Boolean,
@@ -211,9 +206,6 @@ fun NativeCompactOverflowMenu(
     val plate = nativeCompactPlateColor(isDark, plateTint)
     val hazeState = LocalNeutralOverlayHazeState.current
     val reduceBlur = LocalNeutralOverlayReducedBlur.current
-    val useHaze = nativeNeutralOverlayCanBlur(hazeState != null, reduceBlur)
-    val hairline = if (isDark) Color.White.copy(alpha = 0.10f)
-        else Color.Black.copy(alpha = 0.06f)
     val duration = if (reduceMotion) 0 else 170
     val exitDuration = if (reduceMotion) 0 else 130
     val gap = with(LocalDensity.current) { 12.dp.roundToPx() }
@@ -265,13 +257,12 @@ fun NativeCompactOverflowMenu(
                     // A single solid plate, no Material3 outlined fallback.
                     border = null,
                 ) {
-                    Box(Modifier.clip(plateShape)
-                        .background(plate)
-                        .then(if (useHaze) Modifier.optimizedHazeEffect(
-                            state = requireNotNull(hazeState),
-                            style = HazeMaterials.regular(plate.copy(alpha = 0.58f)),
-                        ) else Modifier)
-                        .testTag("native-compact-neutral-material")) {
+                    Box(Modifier.neutralFrostedMaterial(
+                        shape = plateShape,
+                        neutralColor = plate,
+                        hazeState = hazeState,
+                        reduceBlur = reduceBlur,
+                    ).testTag("native-compact-neutral-material")) {
                     CompositionLocalProvider(
                         LocalNativeCompactMenuActionsEnabled provides expanded,
                         LocalNativeCompactMenuActionGate provides actionGate,
