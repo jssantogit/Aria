@@ -38,21 +38,42 @@ class PlayerAnchoredActionsHighlightTest {
         assertEquals(1f, playerAnchoredMenuPlateScale(1f), 0.0001f)
     }
 
-    @Test fun highlightedMenuUsesExactlyTheOriginalPlayerVector() {
-        // Composable vector getters can return independent but geometrically
-        // equivalent ImageVectors across module classloaders. Compare the
-        // actual drawable contract, not Java object identity.
+    @Test fun playerMenuSpotlightUsesOriginalLauncherWithoutRepaintingItsGlyph() {
+        // The menu window only masks its scrim. The one real MorePlain icon is
+        // owned by NowPlayingScreen; no second icon or tinted puck is drawn.
         val launched = originalPortraitNowPlayingOverflowGlyph()
-        val highlighted = playerAnchoredMenuHighlightGlyph()
         val shared = originalNowPlayingOverflowGlyph()
-        assertEquals(launched.name, highlighted.name)
-        assertEquals(shared.name, highlighted.name)
-        assertEquals(launched.defaultWidth, highlighted.defaultWidth)
-        assertEquals(launched.defaultHeight, highlighted.defaultHeight)
-        assertEquals(launched.viewportWidth, highlighted.viewportWidth, 0.0001f)
-        assertEquals(launched.viewportHeight, highlighted.viewportHeight, 0.0001f)
-        assertEquals(0.18f, playerOverflowPuckColor(selected = false).alpha, 0.005f)
-        assertEquals(0.38f, playerOverflowPuckColor(selected = true).alpha, 0.005f)
+        assertEquals(launched.name, shared.name)
+        assertEquals(launched.defaultWidth, shared.defaultWidth)
+        assertEquals(launched.defaultHeight, shared.defaultHeight)
+        assertEquals(launched.viewportWidth, shared.viewportWidth, 0.0001f)
+        assertEquals(launched.viewportHeight, shared.viewportHeight, 0.0001f)
+        assertEquals(
+            androidx.compose.ui.geometry.Rect(318f, 64f, 358f, 104f),
+            playerOverflowScrimCutout(
+                anchor = IntRect(328, 88, 368, 128),
+                overlayOrigin = IntOffset(10, 24),
+                overlaySize = IntSize(400, 800),
+            ),
+        )
+    }
+
+    @Test fun missingOrOffscreenPlayerAnchorNeverCutsOutAnUnrelatedControl() {
+        assertNull(playerOverflowScrimCutout(
+            anchor = null,
+            overlayOrigin = IntOffset.Zero,
+            overlaySize = IntSize(400, 800),
+        ))
+        assertNull(playerOverflowScrimCutout(
+            anchor = IntRect(900, -500, 940, -460),
+            overlayOrigin = IntOffset.Zero,
+            overlaySize = IntSize(400, 800),
+        ))
+        assertNull(playerOverflowScrimCutout(
+            anchor = IntRect(10, 10, 10, 10),
+            overlayOrigin = IntOffset.Zero,
+            overlaySize = IntSize(400, 800),
+        ))
     }
 
     @Test fun ratingDialogsInheritPageHazeButExplicitPlayerCaptureTakesPrecedence() {
