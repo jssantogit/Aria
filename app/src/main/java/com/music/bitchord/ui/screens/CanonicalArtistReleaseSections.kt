@@ -225,17 +225,26 @@ internal fun canonicalArtistTrackReleaseLabels(
     links: List<CanonicalRecordingReleaseTitleRow>,
     eligibleReleaseIds: Set<String>,
     evidence: Map<String, CanonicalArtistReleaseEvidence>,
-): Map<String, String> = links.asSequence()
-    .filter { it.releaseId in eligibleReleaseIds }
-    .groupBy { it.recordingId }
-    .mapNotNull { (recordingId, candidates) ->
-        val unique = candidates.distinctBy { it.releaseId }.singleOrNull()
+    providerOwnedLinks: List<CanonicalRecordingReleaseTitleRow> = emptyList(),
+): Map<String, String> {
+    val eligible = links.filter { it.releaseId in eligibleReleaseIds }
+        .groupBy { it.recordingId }
+    val owned = providerOwnedLinks.filter { it.releaseId in eligibleReleaseIds }
+        .groupBy { it.recordingId }
+    return eligible.mapNotNull { (recordingId, candidates) ->
+        // Prefer the source that actually owns this Recording↔Release edge.
+        // A global MusicBrainz association must not override local/Navidrome
+        // album membership. Multiple distinct source-owned releases remain
+        // ambiguous; selecting the first would falsify an album relationship.
+        val scoped = owned[recordingId].takeUnless { it.isNullOrEmpty() } ?: candidates
+        val unique = scoped.distinctBy { it.releaseId }.singleOrNull()
             ?: return@mapNotNull null
         val name = unique.releaseTitle.trim().takeIf(String::isNotBlank)
             ?: return@mapNotNull null
         val year = canonicalArtistReleaseYearLabel(evidence[unique.releaseId]?.firstReleaseDate)
         recordingId to listOfNotNull(name, year).joinToString(" · ")
     }.toMap()
+}
 
 /**
  * Public recordings may expose a verified official audio Release MBID. Its
