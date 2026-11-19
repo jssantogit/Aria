@@ -875,7 +875,7 @@ fun DetailScreen(
                         palette = palette,
                         title = "Faixas",
                         onRecordingOpen = onCanonicalTrackPlay?.let { play ->
-                            { row -> play(row.musicBrainzId) }
+                            { row: CanonicalCatalogSearchRow -> play(row.musicBrainzId) }
                         },
                         onRecordingHold = onCanonicalTrackHold,
                     )
