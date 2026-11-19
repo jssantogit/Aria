@@ -90,6 +90,26 @@ class NativeMenuTrailingActionsTest {
         assertTrue(icon.center.x > label.center.x)
     }
 
+    @Test fun fullActionSheetsAlsoKeepTheirIconsOnTheRight() {
+        compose.setContent {
+            MaterialTheme {
+                CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.AppleSolid) {
+                    ActionRow(
+                        icon = Icons.Rounded.Info,
+                        label = "Abrir artista",
+                        onClick = {},
+                    )
+                }
+            }
+        }
+        val label = compose.onNodeWithText("Abrir artista", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val icon = compose.onNodeWithTag(
+            "native-action-sheet-trailing-icon", useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        assertTrue(icon.center.x > label.center.x)
+    }
+
     @Test fun alreadyCanonicalFrostedMenuUsesTheSameDirection() {
         compose.setContent {
             MaterialTheme {
