@@ -22,6 +22,7 @@ internal data class CanonicalCatalogEntityMenuSpec(
     val ratingTarget: CanonicalEntityRatingTarget,
     val musicBrainzUrl: String,
     val ratingLabel: String,
+    val playlistKind: CanonicalSearchKind?,
 )
 
 internal fun canonicalCatalogEntityMenuSpec(browseId: String?): CanonicalCatalogEntityMenuSpec? {
@@ -37,6 +38,13 @@ internal fun canonicalCatalogEntityMenuSpec(browseId: String?): CanonicalCatalog
         ratingTarget = target,
         musicBrainzUrl = "https://musicbrainz.org/$endpoint/${target.entityId}",
         ratingLabel = label,
+        // Edition and group import requires a verified RecordingId listing.
+        // Artists have no unique, bounded track collection to import.
+        playlistKind = when (target.entityType) {
+            "ALBUM" -> CanonicalSearchKind.RELEASE
+            "RELEASE_GROUP" -> CanonicalSearchKind.RELEASE_GROUP
+            else -> null
+        },
     )
 }
 
@@ -57,6 +65,7 @@ internal fun CanonicalCatalogEntityMenuBody(
     presentation: SongActionsPresentation = SongActionsPresentation.Menu,
     onDismiss: () -> Unit,
     onRate: (CanonicalCatalogEntityMenuSpec) -> Unit,
+    onAddVerifiedRecordings: ((CanonicalCatalogEntityMenuSpec) -> Unit)? = null,
 ) {
     val spec = remember(browseId) { canonicalCatalogEntityMenuSpec(browseId) } ?: return
     val context = LocalContext.current
@@ -85,8 +94,14 @@ internal fun CanonicalCatalogEntityMenuBody(
             fromCard = false,
         ),
         presentation = presentation,
-        // This identity is a MusicBrainz entity only; do not supply callbacks
-        // for onPlay/onShuffle/onPlayNext/onAddToQueue/onAddToPlaylist.
+        // This identity is a MusicBrainz entity only; never supply onPlay,
+        // onShuffle, onPlayNext or onAddToQueue.
+        onAddToPlaylist = if (spec.playlistKind != null && onAddVerifiedRecordings != null) {
+            {
+                onDismiss()
+                onAddVerifiedRecordings(spec)
+            }
+        } else null,
         onEditRating = {
             onDismiss()
             onRate(spec)
