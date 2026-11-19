@@ -10,6 +10,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -256,6 +257,28 @@ class NativeArtistSharedSectionsComposeTest {
         compose.onNodeWithText("Mesmo artista").assertExists()
         compose.onNodeWithTag("artist-rating-in-frame").performClick()
         compose.runOnIdle { assertEquals(1, ratingOpens) }
+    }
+
+    @Test fun albumViewportIsTheSameComposableForOnlineLocalAndNavidrome() {
+        val sourceTitle = mutableStateOf("Álbum online")
+        compose.setContent {
+            MaterialTheme {
+                NativeAlbumDetailFrame(
+                    palette = themeArtworkPalette(),
+                    listState = rememberLazyListState(),
+                    contentPadding = PaddingValues(bottom = 112.dp),
+                ) {
+                    item { Text(sourceTitle.value) }
+                }
+            }
+        }
+        compose.onNodeWithTag("native-album-detail-frame").assertExists()
+        compose.onNodeWithText("Álbum online").assertExists()
+        compose.runOnIdle { sourceTitle.value = "Álbum Navidrome" }
+        compose.onNodeWithTag("native-album-detail-frame").assertExists()
+        compose.onNodeWithText("Álbum Navidrome").assertExists()
+        compose.runOnIdle { sourceTitle.value = "Álbum local" }
+        compose.onNodeWithText("Álbum local").assertExists()
     }
 
     @Test fun artistHeaderKeepsReadableNameWhenArtworkProvidersHaveNoLogo() {
