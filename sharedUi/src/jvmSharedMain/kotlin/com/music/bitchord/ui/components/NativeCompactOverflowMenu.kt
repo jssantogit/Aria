@@ -9,6 +9,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Box
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
@@ -118,6 +124,14 @@ private val LocalNativeCompactMenuActionGate =
 
 private val LocalNativeCompactHomePlateStyle = compositionLocalOf { false }
 
+/** Shared Android page capture; Dialog/Popup subcompositions inherit the live source. */
+val LocalNeutralOverlayHazeState = compositionLocalOf<HazeState?> { null }
+/** Separate from reduced motion: accessibility may request fully solid cards. */
+val LocalNeutralOverlayReducedBlur = compositionLocalOf { true }
+
+internal fun nativeNeutralOverlayCanBlur(hazeAvailable: Boolean, reduceBlur: Boolean): Boolean =
+    hazeAvailable && !reduceBlur
+
 /** Keep the familiar compact button menu unless the creator opts into the held plate. */
 internal fun nativeCompactMenuRowHeightDp(homePlateStyle: Boolean): Int =
     if (homePlateStyle) 62 else 54
@@ -168,6 +182,7 @@ fun Modifier.nativeCompactMenuLiftShadow(isDark: Boolean, shape: Shape): Modifie
  * animate when the caller dismisses it (unlike removing a DropdownMenu in one
  * frame). Outside tap and Back remain owned by the Popup.
  */
+@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun NativeCompactOverflowMenu(
     expanded: Boolean,
@@ -194,6 +209,9 @@ fun NativeCompactOverflowMenu(
     val reduceMotion = LocalReduceAnimations.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val plate = nativeCompactPlateColor(isDark, plateTint)
+    val hazeState = LocalNeutralOverlayHazeState.current
+    val reduceBlur = LocalNeutralOverlayReducedBlur.current
+    val useHaze = nativeNeutralOverlayCanBlur(hazeState != null, reduceBlur)
     val hairline = if (isDark) Color.White.copy(alpha = 0.10f)
         else Color.Black.copy(alpha = 0.06f)
     val duration = if (reduceMotion) 0 else 170
@@ -241,12 +259,19 @@ fun NativeCompactOverflowMenu(
                         .nativeCompactMenuLiftShadow(isDark, plateShape)
                         .testTag("native-compact-overflow"),
                     shape = plateShape,
-                    color = plate,
+                    color = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.onSurface,
                     shadowElevation = 0.dp,
                     // A single solid plate, no Material3 outlined fallback.
                     border = null,
                 ) {
+                    Box(Modifier.clip(plateShape)
+                        .background(plate)
+                        .then(if (useHaze) Modifier.optimizedHazeEffect(
+                            state = requireNotNull(hazeState),
+                            style = HazeMaterials.regular(plate.copy(alpha = 0.58f)),
+                        ) else Modifier)
+                        .testTag("native-compact-neutral-material")) {
                     CompositionLocalProvider(
                         LocalNativeCompactMenuActionsEnabled provides expanded,
                         LocalNativeCompactMenuActionGate provides actionGate,
@@ -262,6 +287,7 @@ fun NativeCompactOverflowMenu(
                             modifier = scrollModifier.padding(vertical = 5.dp),
                             content = content,
                         )
+                    }
                     }
                 }
             }
