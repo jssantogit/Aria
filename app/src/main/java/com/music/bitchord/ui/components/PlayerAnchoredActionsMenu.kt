@@ -45,10 +45,15 @@ import com.music.bitchord.ui.components.CompactRatingIndicator
 import com.music.bitchord.ui.components.CompactRatingGeometry
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
+import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
+import dev.chrisbanes.haze.HazeState
 
-/** Same drawable as the original Now Playing launcher; never substitute a generic More icon. */
-internal fun playerAnchoredMenuHighlightGlyph() = originalPortraitNowPlayingOverflowGlyph()
+/** Same original three-dot silhouette as the Now Playing launcher, without a baked platter. */
+internal fun playerAnchoredMenuHighlightGlyph() = originalNowPlayingOverflowGlyph()
+
+/** Selected overflow highlights darken the original neutral puck; never draw a ring. */
+internal fun playerOverflowPuckColor(selected: Boolean): Color =
+    Color.Black.copy(alpha = if (selected) 0.38f else 0.18f)
 
 /**
  * The player controls occupy the space directly behind the menu. Fading the
@@ -90,14 +95,16 @@ internal fun playerAnchoredMenuHighlightPosition(
  * A fresh, full-width dialog stays above Now Playing and aligns its native
  * plate to the actual overflow button bounds captured in that player window.
  *
- * The panel reuses the neutral contextual action plate. The player remains
- * visible only outside it, beneath the separate dialog's dimming scrim.
- * Its opaque panel prevents double-exposure during entrance scaling.
+ * The panel reuses the borderless neutral contextual action plate with the
+ * player's dedicated cross-window Haze source. When blur is reduced or the
+ * source is absent, the same readable neutral solid color remains.
+ * The panel never fades its content during entrance scaling.
  */
 @Composable
 fun PlayerAnchoredActionsMenu(
     anchorBounds: IntRect?,
     artworkUrl: String?,
+    hazeState: HazeState? = null,
     onDismiss: () -> Unit,
     highlightLauncher: Boolean = true,
     highlightRatingLauncher: Boolean = false,
@@ -195,11 +202,13 @@ fun PlayerAnchoredActionsMenu(
                     // child's PaneTitle semantics and crashes Compose UI tests
                     // (and can break TalkBack). Child actions keep priority.
                     .pointerInput(Unit) { detectTapGestures(onTap = {}) }
-            // One shared neutral card for the player ⋯ and rating controls.
-            // No separate album-art backdrop or second menu tint layer.
+            // Match the neutral frosted rating/Library material without the
+            // player-only hairline. The real Haze source is captured behind
+            // this separate dialog by Now Playing while the menu is open.
             NativeContextActionPlate(
                 modifier = plateModifier,
-                treatment = NativeActionCardTreatment.SOLID,
+                hazeState = hazeState,
+                treatment = NativeActionCardTreatment.PLAYER_NEUTRAL_FROSTED,
             ) {
                 content()
             }
@@ -242,8 +251,8 @@ fun PlayerAnchoredActionsMenu(
             if (highlightLauncher && anchorBounds != null) {
                 val highlightSize = 40.dp
                 val highlightPx = with(density) { highlightSize.roundToPx() }
-                // The AM-DECOMP portrait vector ALREADY paints the circular
-                // platter. No second Surface, grey fill, or alternative ⋯ icon.
+                // Preserve the three-dot silhouette and white tint, but show
+                // a darker neutral puck without any selected outline.
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -256,7 +265,8 @@ fun PlayerAnchoredActionsMenu(
                             )
                         }
                         .size(highlightSize)
-                        .border(0.75.dp, heldContextSelectionOutline(), CircleShape)
+                        .clip(CircleShape)
+                        .background(playerOverflowPuckColor(selected = true))
                         .testTag("player-overflow-highlight")
                         .clickable(onClick = onDismiss),
                     contentAlignment = Alignment.Center,
