@@ -193,6 +193,13 @@ internal data class CanonicalRecordingReleaseTitleRow(
     val releaseTitle: String,
 )
 
+/** Exact MusicBrainz Release MBID -> cached canonical Release and release date. */
+internal data class CanonicalArtistOfficialReleaseCaptionRow(
+    val releaseMbid: String,
+    val releaseTitle: String,
+    val releaseDate: String?,
+)
+
 /** Verified Recording→ReleaseTrack→ReleaseGroupEdition association. */
 internal data class CanonicalRecordingReleaseGroupLinkRow(
     val recordingId: String,
@@ -669,6 +676,30 @@ internal interface CanonicalCatalogDao {
     suspend fun recordingReleaseTitlesByIds(
         recordingIds: List<String>,
     ): List<CanonicalRecordingReleaseTitleRow>
+
+    /**
+     * Public artist recordings already supply a positively verified Official
+     * audio Release MBID. Never search for a title by matching artist or song
+     * names. The cache may be incomplete, in which case the caption is absent.
+     */
+    @Query(
+        """
+        SELECT identity.externalId AS releaseMbid,
+               release.title AS releaseTitle,
+               enrichment.releaseDate AS releaseDate
+        FROM catalog_external_identity AS identity
+        INNER JOIN catalog_release AS release ON release.id = identity.entityId
+        LEFT JOIN musicbrainz_release_enrichment AS enrichment
+          ON enrichment.releaseId = release.id AND enrichment.mbid = identity.externalId
+        WHERE identity.provider = 'musicbrainz'
+          AND identity.entityType = 'release'
+          AND identity.externalId IN (:releaseMbids)
+        ORDER BY identity.externalId
+        """,
+    )
+    suspend fun cachedArtistOfficialReleaseCaptions(
+        releaseMbids: List<String>,
+    ): List<CanonicalArtistOfficialReleaseCaptionRow>
 
     /**
      * Exact group navigation fallback for recordings found on multiple
