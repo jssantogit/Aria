@@ -6162,7 +6162,8 @@ private fun BitChordApp(
                 FrostedMenuPanel(
                     hazeState = hazeState,
                     anchorBounds = rootSettingsOverflowAnchor,
-                    menuWidth = FROSTED_SETTINGS_MENU_WIDTH,
+                    menuWidth = FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH,
+                    contentVerticalPadding = FROSTED_ROOT_SETTINGS_SINGLE_ACTION_VERTICAL_PADDING,
                     onDismiss = { rootSettingsOverflowOpen = false },
                 ) {
                     FrostedSettingsAction {
@@ -8435,8 +8436,14 @@ private fun FrostedUnifiedLibrarySortMenu(
     }
 }
 
-/** Width of the approved artist overflow plate, also used by root Settings. */
+/** Keep the established artist/album multi-action card width unchanged. */
 internal val FROSTED_SETTINGS_MENU_WIDTH = 240.dp
+
+/** Root ⋯ contains only Settings: use the existing compact one-action token. */
+internal val FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH =
+    com.music.bitchord.ui.components.APPLE_SETTINGS_SINGLE_ACTION_WIDTH
+/** Trim only the card's outer vertical inset; the full-width action row retains its hit target. */
+internal val FROSTED_ROOT_SETTINGS_SINGLE_ACTION_VERTICAL_PADDING = 4.dp
 
 /** Opaque canvas fallback: Haze can temporarily be missing its source while opening. */
 internal fun frostedMenuPanelOpaquePlate(isDark: Boolean): Color =
@@ -8480,6 +8487,7 @@ internal fun FrostedMenuPanel(
     onDismiss: () -> Unit,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     menuWidth: Dp = 280.dp,
+    contentVerticalPadding: Dp = 8.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // The menu owns Back just like the Popup it replaces; otherwise Android
@@ -8589,7 +8597,7 @@ internal fun FrostedMenuPanel(
                     reduceBlur = reduceFilterBlur,
                 ).testTag("native-frosted-neutral-material"),
             ) {
-                Column(Modifier.padding(vertical = 8.dp), content = content)
+                Column(Modifier.padding(vertical = contentVerticalPadding), content = content)
             }
         }
     }
