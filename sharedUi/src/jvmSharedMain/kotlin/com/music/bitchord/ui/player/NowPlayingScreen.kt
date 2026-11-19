@@ -638,11 +638,14 @@ private fun SlidingPlayerDeck(
     }
 }
 
-/** The portrait player draws the ORIGINAL AM-DECOMP More platter once. */
-/** Original AM-DECOMP portrait platter is already part of this exact vector. */
-fun originalPortraitNowPlayingOverflowGlyph() = AppleQueueVectors.More
+/** The original three-dot AM-DECOMP silhouette without its baked-in circle. */
+fun originalPortraitNowPlayingOverflowGlyph() = AppleQueueVectors.MorePlain
 
 internal fun nativePortraitAppleQueueOverflowGlyph() = originalPortraitNowPlayingOverflowGlyph()
+
+/** One neutral backdrop language for the resting and selected portrait ⋯. */
+fun portraitOverflowPuckColor(selected: Boolean): Color =
+    Color.Black.copy(alpha = if (selected) 0.38f else 0.18f)
 
 /**
  * Apple Music's Now Playing, closely: artwork that shrinks when paused, a
@@ -650,7 +653,7 @@ internal fun nativePortraitAppleQueueOverflowGlyph() = originalPortraitNowPlayin
  * glyphs, a volume capsule flanked by speaker icons, and lyrics / AirPlay /
  * queue along the bottom.
  */
-/** Original Apple 7.0 vector button for the queue overflow. */
+/** Original three-dot geometry, placed on the same neutral puck as other actions. */
 @Composable
 private fun AppleQueueHeaderAction(
     imageVector: androidx.compose.ui.graphics.vector.ImageVector,
@@ -660,9 +663,8 @@ private fun AppleQueueHeaderAction(
 ) {
     Box(
         Modifier.size(40.dp)
-            // The original AM-DECOMP ⋯ vector already CONTAINS its own
-            // translucent circular platter. Drawing another backdrop/border
-            // here made a visibly different doubled-ring button.
+            // The glyph is unplattered; a single neutral dark puck provides
+            // contrast with player artwork, without an outline or extra ring.
             .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
                 val bounds = coords.boundsInWindow()
                 onBoundsChanged(androidx.compose.ui.unit.IntRect(
@@ -670,6 +672,8 @@ private fun AppleQueueHeaderAction(
                     bounds.right.toInt(), bounds.bottom.toInt(),
                 ))
             })
+            .clip(CircleShape)
+            .background(portraitOverflowPuckColor(selected = false))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
