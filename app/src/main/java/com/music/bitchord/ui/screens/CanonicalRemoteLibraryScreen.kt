@@ -253,7 +253,7 @@ private data class CanonicalAlbumHeaderEvidence(
     val releaseDate: String?,
 )
 
-private data class CanonicalSelectedEntity(
+internal data class CanonicalSelectedEntity(
     val id: String,
     val name: String,
     val artworkUri: String? = null,
@@ -1205,7 +1205,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     title = "",
                     onBack = if (selectedEntity != null) {
                         {
-                            if (artistNestedReleaseOpen) artistNestedBackToken++
+                            if (artistNestedReleaseOpen) artistNestedBackToken += 1
                             else selectedEntity = null
                         }
                     } else onClose,
