@@ -21,7 +21,8 @@ class NativeSearchRowTest {
         val visual = canonicalNativeSearchRowUi(row, "Recording")
         assertEquals("Armageddon", visual.title)
         assertEquals("aespa", visual.subtitle)
-        assertEquals("3:05", visual.durationLabel)
+        // MusicBrainz retains duration metadata, but Apple-style track rows do not show it.
+        assertEquals(185000L, row.durationMs)
         assertFalse(visual.artistPortrait)
         assertFalse(visual.downloadBadge)
     }
@@ -106,23 +107,22 @@ class NativeSearchRowTest {
         ))
     }
 
-    @Test fun nativeSearchUsesSameProvenSecondaryMetadataAcrossOrigins() {
+    @Test fun appleStyleSearchRowsHaveOnlyTitleAndSourceSubtitle() {
         val catalogRecording = NativeSearchRowUi(
             title = "Armageddon", subtitle = "aespa", artworkUri = null,
-            artistPortrait = false, durationLabel = "3:05",
+            artistPortrait = false,
         )
         val serverRecording = catalogRecording.copy(
-            durationLabel = null, artworkUri = "https://example.org/server-cover",
+            artworkUri = "https://example.org/server-cover",
         )
         val artist = NativeSearchRowUi(
             title = "aespa", subtitle = "Artista", artworkUri = null,
             artistPortrait = true,
         )
-        assertEquals("aespa · 3:05", nativeSearchSecondaryLine(catalogRecording))
-        assertEquals("aespa", nativeSearchSecondaryLine(serverRecording))
-        assertEquals("Artista", nativeSearchSecondaryLine(artist))
-        assertEquals("3:05", nativeSearchSecondaryLine(catalogRecording.copy(subtitle = "  ")))
-        assertEquals("", nativeSearchSecondaryLine(artist.copy(subtitle = " ", durationLabel = " ")))
+        assertEquals("aespa", catalogRecording.subtitle)
+        assertEquals("aespa", serverRecording.subtitle)
+        assertEquals("Artista", artist.subtitle)
+        assertFalse("durationLabel" in NativeSearchRowUi::class.java.declaredFields.map { it.name })
     }
 
     @Test fun nativeSearchPresentationExposesNoLegacyNavigationOrPlaybackIdFields() {
