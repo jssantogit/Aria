@@ -522,11 +522,11 @@ fun SearchScreen(
                     }
                 }
                 searchingLibrary || searchingAddons -> {
-                    val serverFailure = if (searchingAddons) {
+                    val serverFailure = if (searchingAddons && query.isNotBlank()) {
                         canonicalServerSearchErrorWithoutFallback(serverResults, addonResults)
                     } else null
                     when {
-                        searchingAddons && canonicalServerSearchPendingWithoutFallback(
+                        searchingAddons && query.isNotBlank() && canonicalServerSearchPendingWithoutFallback(
                             serverResults, addonResults,
                         ) -> songListSkeleton(keyPrefix = "skeleton:search:server")
                         serverFailure != null -> item(key = "server:provider-error") {
