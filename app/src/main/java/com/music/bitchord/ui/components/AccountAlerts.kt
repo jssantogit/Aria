@@ -43,6 +43,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -924,6 +925,10 @@ internal fun AlertScaffold(
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(ALERT_CORNER)
+    val source = hazeState ?: LocalNeutralOverlayHazeState.current
+    val neutral = nativeContextPlateColor(
+        MaterialTheme.colorScheme.background.luminance() < 0.5f,
+    )
 
     Box(
         modifier = Modifier
@@ -939,21 +944,15 @@ internal fun AlertScaffold(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
-                .clip(shape)
-                .testTag("native-alert-scaffold")
-                .then(
-                    // A nested full-screen editor is its own dialog window and
-                    // cannot sample the Activity's haze source. Keep the exact
-                    // first-party alert metrics with a solid surface instead.
-                    if (reduceDynamicBlur || hazeState == null) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
+                // Haze's shared source capture supports Dialog subcompositions;
+                // explicit null from legacy Settings callers is not an opt-out.
+                .neutralFrostedMaterial(
+                    shape = shape,
+                    neutralColor = neutral,
+                    hazeState = source,
+                    reduceBlur = reduceDynamicBlur,
                 )
+                .testTag("native-alert-scaffold")
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
