@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material3.Button
@@ -188,25 +190,83 @@ internal fun CanonicalPlaylistCoverArt(
                 contentScale = ContentScale.Crop,
             )
         }
-        covers.size >= 4 -> Column(modifier.clip(RoundedCornerShape(12.dp))) {
-            for (offset in listOf(0, 2)) {
-                Row(Modifier.weight(1f).fillMaxWidth()) {
-                    for (index in offset until offset + 2) {
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            SmartPlaylistPreviewArtwork(
-                                row = covers[index], modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        covers.size >= 2 -> CanonicalPlaylistCoverTiles(
+            covers = covers, modifier = modifier,
+        )
         covers.isNotEmpty() -> SmartPlaylistPreviewArtwork(
             row = covers.first(), modifier = modifier,
         )
         else -> Box(modifier, contentAlignment = Alignment.Center) {
             PlaylistWizardArtworkPlaceholder(180.dp)
         }
+    }
+}
+
+/** Cover every pixel of the collage with verified artwork.
+ * With two or three releases, don't add generic empty quadrants or discard
+ * the other real sleeve; use the same native artwork renderer at every size. */
+@Composable
+internal fun CanonicalPlaylistCoverTiles(
+    covers: List<V2DisplayRow>,
+    modifier: Modifier = Modifier,
+) {
+    val verified = remember(covers) { distinctCanonicalPlaylistCoverRows(covers) }
+    when (verified.size) {
+        2 -> Row(modifier.clip(RoundedCornerShape(12.dp))
+            .testTag("canonical-playlist-cover-two")) {
+            verified.forEach { row ->
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    SmartPlaylistPreviewArtwork(row, Modifier.fillMaxSize())
+                }
+            }
+        }
+        3 -> Row(modifier.clip(RoundedCornerShape(12.dp))
+            .testTag("canonical-playlist-cover-three")) {
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                SmartPlaylistPreviewArtwork(verified[0], Modifier.fillMaxSize())
+            }
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                verified.drop(1).forEach { row ->
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        SmartPlaylistPreviewArtwork(row, Modifier.fillMaxSize())
+                    }
+                }
+            }
+        }
+        4 -> Column(modifier.clip(RoundedCornerShape(12.dp))
+            .testTag("canonical-playlist-cover-four")) {
+            for (offset in listOf(0, 2)) {
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                    for (index in offset until offset + 2) {
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            SmartPlaylistPreviewArtwork(verified[index], Modifier.fillMaxSize())
+                        }
+                    }
+                }
+            }
+        }
+        else -> verified.firstOrNull()?.let { row ->
+            SmartPlaylistPreviewArtwork(row, modifier)
+        }
+    }
+}
+
+/** The same 52dp, 8dp-radius neutral music-note fallback as public playlists.
+ * Missing artwork is not an excuse to gray out a real saved Recording identity. */
+@Composable
+internal fun NativePlaylistMissingArtwork(modifier: Modifier = Modifier) {
+    Box(
+        modifier.clip(publicPlaylistTrackCoverShape())
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .testTag("native-playlist-missing-artwork"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Rounded.MusicNote,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -218,7 +278,7 @@ internal fun canonicalPlaylistPaletteArtworkUri(
     explicitCoverUri: String?,
     rows: List<V2DisplayRow>?,
 ): String? = explicitCoverUri?.takeIf { it.isNotBlank() }
-    ?: rows?.firstOrNull()?.localArtworkUri
+    ?: rows?.firstNotNullOfOrNull { it.localArtworkUri?.takeIf(String::isNotBlank) }
 
 /** A verified playlist count is not a popularity, ranking or editorial claim. */
 internal fun verifiedPlaylistMemberCountSummary(count: Int): String =
@@ -334,7 +394,7 @@ internal fun CanonicalPlaylistTrackRow(
         rowBackground = rowBackground,
     ) { rowModifier, swipeCover ->
         NativeDetailTrackRowLayout(
-            modifier = rowModifier.then(
+            modifier = rowModifier.heightIn(min = 68.dp).then(
                 if (isCurrent) Modifier.testTag("canonical-playlist-current-track")
                 else Modifier,
             ),
@@ -350,10 +410,10 @@ internal fun CanonicalPlaylistTrackRow(
             // "Sem áudio" is already explicit; do not make the label illegible.
             opacity = 1f,
             leading = {
-                NativeDetailTrackArtwork(showPlayingBars = isCurrent && isPlaying) {
-                    SmartPlaylistPreviewArtwork(
+                NativeDetailTrackArtwork(showPlayingBars = available && isCurrent && isPlaying) {
+                    if (available) SmartPlaylistPreviewArtwork(
                         row = track, modifier = Modifier.fillMaxSize(),
-                    )
+                    ) else NativePlaylistMissingArtwork(Modifier.fillMaxSize())
                 }
             },
             title = {
@@ -376,6 +436,7 @@ internal fun CanonicalPlaylistTrackRow(
                     color = titleColor,
                 )
             },
+            showRatingSlot = available,
             actions = {},
 
         )
