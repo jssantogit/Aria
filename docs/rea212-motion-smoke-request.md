@@ -181,3 +181,12 @@
 - **HEAD de código antes do documento:** `5f9a3288642a45e631beb250b919dfdcd4aae203`. [Android CI #44010894838](https://github.com/jssantogit/BitChord/actions/runs/44010894838) SUCCESS; Desktop #44010894800 e TV/Wear #44010894790 SUCCESS para esse SHA. O novo commit altera **somente este documento** para disparar o workflow branch-scoped.
 - **Execução autorizada:** `Apple Music Bottom Bar · Smoke APK` disparado via push com mudança em `docs/rea212-motion-smoke-request.md`. O workflow deve executar testes focais de avaliação, a suíte Android completa, Automix e sharedUi antes de `assembleDevDebug`; falha em qualquer gate bloqueia o APK. Registrar SHA-256 do universal.
 - **Restrições:** não alterar fontes, não mesclar a PR #212, não publicar release assinada e não declarar smoke físico concluído. A importação de playlists Spotify permanece desativada.
+
+## Solicitação de APK — 19/11/2026 — REA #212, sem duração individual nas faixas
+
+- **Autorização explícita do proprietário:** “Dispare apk” (19/11/2026). Preparar APK de smoke Android para verificação física da REA #212, **sem executar o IDM** e **sem merge**.
+- **HEAD de código antes deste documento:** `3e5373a200b975ea5b0046a08247af38dcc5b132`, incluindo o ajuste de apresentação Apple Music (sem duração por gravação/faixa) e o reparo do teste `CanonicalExploreGridTest` que ainda usava o campo de UI removido.
+- **Gate Android anterior:** CI de `48aa0c58` falhou na **compilação dos testes**, por argumento `durationLabel` inexistente em `CanonicalExploreGridTest.kt`; a chamada foi atualizada no commit `3e5373a2`. Desktop/TV-Wear/backend tiveram SUCCESS no SHA antigo; não herdar esses sinais para o novo HEAD.
+- **Workflow permitido:** `Apple Music Bottom Bar · Smoke APK` via push deste arquivo no branch `experiment/apple-music-bottom-bar-pr209-20261108`, sem mudanças adicionais de aplicação. Exigir testes focados de avaliação, Android unit tests completos, shared Automix e sharedUi JVM. **Somente publicar** `BitChord-AppleMusicBar-devDebug-universal.apk` e checksum SHA-256 após todos esses gates aprovarem.
+- **Verificação no aparelho (ainda pendente):** confirmar ausência de duração em listas de faixas de Pesquisa/Biblioteca/Artista/Álbum; compartilhar frame entre catálogo/local/Navidrome; erro/loading da busca remota; menus de avaliação, blur e ícones; scroll e navegação. APK gerado não representa smoke físico realizado ou aprovado.
+- **Entrega esperada:** registrar URL da execução e do artefato GitHub Actions e SHA exato deste push; manter PR #212 OPEN/DRAFT.
