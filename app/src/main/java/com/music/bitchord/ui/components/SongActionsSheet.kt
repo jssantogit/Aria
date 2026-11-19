@@ -723,7 +723,9 @@ internal fun ActionRow(
             imageVector = icon,
             contentDescription = null,
             tint = (tint ?: foreground).copy(alpha = alpha),
-            modifier = Modifier.size(if (playerGeometry) 18.dp else if (menu) 20.dp else 22.dp),
+            modifier = Modifier
+                .size(if (playerGeometry) 18.dp else if (menu) 20.dp else 22.dp)
+                .then(if (menu) Modifier.testTag("native-action-menu-trailing-icon") else Modifier),
         )
     }
     Row(
