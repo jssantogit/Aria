@@ -698,6 +698,12 @@ internal fun SmartPlaylistV2WizardUi(
     LaunchedEffect(selectedFieldTab) {
         if (page == WizardStep.FIELDS) pageListState.scrollToItem(0)
     }
+    // A shorter album/artist result set must never inherit a distant scroll
+    // offset from the Songs tab. Keep the same LazyColumn and search state,
+    // but reveal the top of the newly selected browse category.
+    LaunchedEffect(normalBrowseType) {
+        if (page == WizardStep.SONGS) pageListState.scrollToItem(0)
+    }
     val canContinue = name.trim().isNotEmpty() && name.length <= 80
     val canReview = hasConfiguredRules && canContinue && runCatching {
         SmartPlaylistV2Query(rule, sort, limit.toInt(), seed.toInt())
