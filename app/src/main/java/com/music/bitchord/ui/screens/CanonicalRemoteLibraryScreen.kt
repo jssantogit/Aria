@@ -368,6 +368,8 @@ internal fun CanonicalRemoteLibraryScreen(
         }
     }
     val selectedSource = if (unified) selectedSourceKey else null
+    // A dedicated source must not choose another provider for a group action.
+    val effectiveSourceKey = if (unified) selectedSource else providerKey
     var libraryQuery by remember(unified) { mutableStateOf("") }
     LaunchedEffect(searchVisible) { if (!searchVisible) libraryQuery = "" }
     val selectedStars = if (unified) selectedStarsFilter else null
@@ -1164,7 +1166,43 @@ internal fun CanonicalRemoteLibraryScreen(
         Box(Modifier.fillMaxSize()
             .hazeSource(heldLibraryHaze)
         ) {
-        if (unified) {
+        // One visual tree for both the unified Library and dedicated sources.
+        // Only the provider-specific host navigation stays outside the shared
+        // artist, album, song and category compositors.
+        Column(
+            modifier = Modifier.fillMaxSize().then(
+                if (unified) Modifier else Modifier.statusBarsPadding().navigationBarsPadding()
+            ),
+        ) {
+            if (!unified) {
+                RemoteBrowseTopBar(
+                    title = selectedEntity?.name ?: title,
+                    onBack = if (selectedEntity != null) {
+                        {
+                            if (artistNestedReleaseOpen) artistNestedBackToken++
+                            else selectedEntity = null
+                        }
+                    } else onClose,
+                )
+                if (selectedEntity == null) {
+                    RemoteBrowseContextTabs(
+                        selected = selectedContext,
+                        onSelect = { selectedContext = it },
+                    )
+                    if (compatible.isNotEmpty() || selectedFilterId != null) {
+                        RemoteSongSavedFilterMenu(
+                            selectedName = selected?.name,
+                            options = compatible,
+                            selectedFilterId = selectedFilterId,
+                            onSelect = { selectedFilterId = it },
+                        )
+                    }
+                    if (filtersUnavailable && selectedFilterId == null) {
+                        RemoteBrowseMessage("Filtros salvos indisponíveis.")
+                    }
+                }
+            }
+            Box(Modifier.weight(1f)) {
             // Selected albums/artists keep the exact native page chrome.
             // Only their revalidated RecordingId membership changes.
             val detail = selectedEntity
@@ -1191,7 +1229,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     tracks = sortCanonicalUnifiedTracks(scopedDetailTracks, unifiedSort),
                     availableLibraryTracks = eligibleTracks,
                     sourceKeys = sources,
-                    selectedSourceKey = selectedSource,
+                    selectedSourceKey = effectiveSourceKey,
                     heroArtworkTrack = entityArtworkById[detail.id]
                         ?: scopedDetailTracks.firstOrNull(),
                     artworkLoader = artworkLoader,
@@ -1252,7 +1290,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     onPlayAll = { visible, shuffle ->
                         executeLibraryTrack(
                             SmartCollectionActionSource.LibraryTracks(
-                                visible.map { it.recordingId }, selectedSource, shuffle,
+                                visible.map { it.recordingId }, effectiveSourceKey, shuffle,
                             ),
                             CanonicalCollectionIntent.PLAY_NOW,
                         )
@@ -1284,7 +1322,7 @@ internal fun CanonicalRemoteLibraryScreen(
                         entityRatingValues, selection,
                     ),
                     albumQuality = canonicalAlbumSourceQuality(
-                        scopedDetailTracks, selectedSource,
+                        scopedDetailTracks, effectiveSourceKey,
                     ),
                     onCreditClick = verifiedAlbumCreditArtist?.let { credit ->
                         onOpenSourceOwnedArtist?.let { open ->
@@ -1320,7 +1358,7 @@ internal fun CanonicalRemoteLibraryScreen(
                     onPlayAll = { visible, shuffle ->
                         executeLibraryTrack(
                             SmartCollectionActionSource.LibraryTracks(
-                                visible.map { it.recordingId }, selectedSource, shuffle,
+                                visible.map { it.recordingId }, effectiveSourceKey, shuffle,
                             ),
                             CanonicalCollectionIntent.PLAY_NOW,
                         )
@@ -1356,140 +1394,13 @@ internal fun CanonicalRemoteLibraryScreen(
                 onPlayAll = { visible, shuffle ->
                     executeLibraryTrack(
                         SmartCollectionActionSource.LibraryTracks(
-                            visible.map { it.recordingId }, selectedSource, shuffle,
+                            visible.map { it.recordingId }, effectiveSourceKey, shuffle,
                         ),
                         CanonicalCollectionIntent.PLAY_NOW,
                     )
                 },
                 onEntitySelect = { selectedEntity = it },
             )
-        } else Column(
-            modifier = Modifier.fillMaxSize()
-                .statusBarsPadding().navigationBarsPadding()
-                .then(if (unified) Modifier.padding(
-                    // Existing ListeningLibraryPage floating top-bar inset.
-                    top = 72.dp,
-                ) else Modifier),
-        ) {
-            if (!unified) RemoteBrowseTopBar(
-                title = selectedEntity?.name ?: title,
-                onBack = if (selectedEntity != null) { { selectedEntity = null } } else onClose,
-            )
-            if (selectedEntity != null) {
-                Text(
-                    selectedEntity?.name.orEmpty(),
-                    style = MaterialTheme.typography.headlineLarge,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 20.dp),
-                )
-                when (detailState) {
-                    CanonicalDetailBrowseState.Loading ->
-                        NativeLoadingSpinner()
-                    CanonicalDetailBrowseState.Failed ->
-                        RemoteBrowseMessage("Não foi possível confirmar as músicas deste item.")
-                    is CanonicalDetailBrowseState.Ready -> {
-                        RemoteBrowseSummary(songCount = scopedDetailTracks.size)
-                        TrackList(
-                            tracks = scopedDetailTracks,
-                            artworkLoader = artworkLoader,
-                            onTrackPlay = playTrack,
-                            onTrackEditRating = editRating,
-                            onTrackOptions = openTrackMenu,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            } else {
-                if (unified) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.headlineLarge,
-                        modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 20.dp),
-                    )
-                } else {
-                    RemoteBrowseContextTabs(
-                        selected = selectedContext,
-                        onSelect = { selectedContext = it },
-                    )
-                }
-                if (unified && searchVisible) SearchField(
-                    query = libraryQuery,
-                    onQueryChange = { libraryQuery = it },
-                    onSubmit = {},
-                    placeholder = "Pesquisar na biblioteca",
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
-                )
-                if (compatible.isNotEmpty() || selectedFilterId != null) {
-                    RemoteSongSavedFilterMenu(
-                        selectedName = selected?.name,
-                        options = compatible,
-                        selectedFilterId = selectedFilterId,
-                        onSelect = { selectedFilterId = it },
-                    )
-                }
-                if (filtersUnavailable && selectedFilterId == null) {
-                    RemoteBrowseMessage("Filtros salvos indisponíveis.")
-                }
-                when (selectedContext) {
-                    CanonicalSmartFilterContext.SONGS -> {
-                        when (filteredState) {
-                            CanonicalSongFilterState.Loading ->
-                                NativeLoadingSpinner()
-                            CanonicalSongFilterState.Failed ->
-                                RemoteBrowseMessage(
-                                    "Este filtro não pôde ser aplicado. Selecione Todas.",
-                                )
-                            is CanonicalSongFilterState.Ready -> {
-                                RemoteBrowseSummary(songCount = displayedTracks.size)
-                                TrackList(
-                                    tracks = displayedTracks,
-                                    artworkLoader = artworkLoader,
-                                    onTrackPlay = playTrack,
-                            onTrackEditRating = editRating,
-                            onTrackOptions = openTrackMenu,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-                    }
-                    CanonicalSmartFilterContext.ALBUMS -> when (val state = entityState) {
-                        CanonicalEntityBrowseState.Loading ->
-                            NativeLoadingSpinner()
-                        CanonicalEntityBrowseState.Failed ->
-                            RemoteBrowseMessage("Não foi possível aplicar o filtro de álbuns.")
-                        is CanonicalEntityBrowseState.Artists -> Unit
-                        is CanonicalEntityBrowseState.Albums -> {
-                            RemoteBrowseMessage("${state.releases.size} álbuns vinculados à fonte")
-                            RemoteCanonicalEntityList(
-                                entries = state.releases.map { entity ->
-                                    Triple(
-                                        CanonicalSelectedEntity(entity.id, entity.title),
-                                        entity.artistDisplay.orEmpty(),
-                                        entity.artworkUri,
-                                    )
-                                },
-                                onSelect = { selectedEntity = it },
-                                emptyText = "Nenhum álbum canônico disponível nesta fonte.",
-                            )
-                        }
-                    }
-                    CanonicalSmartFilterContext.ARTISTS -> when (val state = entityState) {
-                        CanonicalEntityBrowseState.Loading ->
-                            NativeLoadingSpinner()
-                        CanonicalEntityBrowseState.Failed ->
-                            RemoteBrowseMessage("Não foi possível aplicar o filtro de artistas.")
-                        is CanonicalEntityBrowseState.Albums -> Unit
-                        is CanonicalEntityBrowseState.Artists -> {
-                            RemoteBrowseMessage("${state.artists.size} artistas vinculados à fonte")
-                            RemoteCanonicalEntityList(
-                                entries = state.artists.map { artist ->
-                                    Triple(artist, "", null)
-                                },
-                                onSelect = { selectedEntity = it },
-                                emptyText = "Nenhum artista canônico disponível nesta fonte.",
-                            )
-                        }
-                    }
-                }
             }
         }
         } // The lifted overlay is the source's sibling, not its child.
