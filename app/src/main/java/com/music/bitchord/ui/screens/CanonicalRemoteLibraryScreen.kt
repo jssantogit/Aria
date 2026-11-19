@@ -1913,41 +1913,6 @@ internal fun canonicalLibraryUsesHeldContextMenu(
     hasHazeBackdrop: Boolean,
 ): Boolean = hasCapturedHold && hasHazeBackdrop
 
-/** Selection is by canonical ID; text is presentation only. */
-@Composable
-private fun RemoteCanonicalEntityList(
-    entries: List<Triple<CanonicalSelectedEntity, String, String?>>,
-    onSelect: (CanonicalSelectedEntity) -> Unit,
-    emptyText: String,
-) {
-    if (entries.isEmpty()) {
-        RemoteBrowseMessage(emptyText)
-        return
-    }
-    // Identical artwork/title/subtitle geometry to the existing Library and
-    // playlist list rows; never reproduce a second plain-text entity list.
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp),
-    ) {
-        items(entries, key = { it.first.id }) { (entity, subtitle, artworkUri) ->
-            LibraryRow(
-                title = entity.name,
-                subtitle = subtitle,
-                imageUrl = artworkUri,
-                onClick = { onSelect(entity) },
-                artworkSize = 64.dp,
-                horizontalPadding = PAGE_GUTTER,
-            )
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 84.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-            )
-        }
-    }
-}
-
 /** Only fields supported by the selected canonical media context are offered. */
 @Composable
 internal fun RemoteSongSavedFilterMenu(
@@ -2019,76 +1984,6 @@ internal fun RemoteBrowseTopBar(
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
     )
-}
-
-@Composable
-private fun RemoteBrowseSummary(songCount: Int) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.CloudDone,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.remote_library_track_count, songCount),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = stringResource(R.string.remote_library_offline_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun TrackList(
-    tracks: List<CanonicalBrowseTrack>,
-    artworkLoader: OpenSubsonicArtworkLoader,
-    onTrackPlay: (CanonicalBrowseTrack) -> Unit,
-    onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
-    onTrackOptions: (CanonicalBrowseTrack) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (tracks.isEmpty()) {
-        EmptyRemoteLibrary(modifier)
-        return
-    }
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp),
-    ) {
-        items(
-            items = tracks,
-            key = CanonicalBrowseTrack::recordingId,
-        ) { track ->
-            CanonicalTrackRow(
-                track = track,
-                artworkLoader = artworkLoader,
-                onClick = { onTrackPlay(track) },
-                onEditRating = { onTrackEditRating(track) },
-                onOptions = { onTrackOptions(track) },
-                onLongPress = { onTrackOptions(track) },
-                showInlineOptions = false,
-            )
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 84.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-            )
-        }
-    }
 }
 
 @Composable
@@ -2264,22 +2159,6 @@ private fun ArtworkPlaceholder(
                 modifier = Modifier.size(24.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun EmptyRemoteLibrary(modifier: Modifier = Modifier) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .fillMaxSize()
-            .padding(32.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.remote_library_empty),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
