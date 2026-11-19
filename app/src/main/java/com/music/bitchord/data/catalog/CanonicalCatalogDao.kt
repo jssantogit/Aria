@@ -685,12 +685,12 @@ internal interface CanonicalCatalogDao {
     @Query(
         """
         SELECT identity.externalId AS releaseMbid,
-               release.title AS releaseTitle,
+               rel.title AS releaseTitle,
                enrichment.releaseDate AS releaseDate
         FROM catalog_external_identity AS identity
-        INNER JOIN catalog_release AS release ON release.id = identity.entityId
+        INNER JOIN catalog_release AS rel ON rel.id = identity.entityId
         LEFT JOIN musicbrainz_release_enrichment AS enrichment
-          ON enrichment.releaseId = release.id AND enrichment.mbid = identity.externalId
+          ON enrichment.releaseId = rel.id AND enrichment.mbid = identity.externalId
         WHERE identity.provider = 'musicbrainz'
           AND identity.entityType = 'release'
           AND identity.externalId IN (:releaseMbids)
