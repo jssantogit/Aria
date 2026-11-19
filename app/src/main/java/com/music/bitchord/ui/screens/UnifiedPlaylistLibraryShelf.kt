@@ -720,8 +720,10 @@ internal fun UnifiedPlaylistLibraryShelf(
  * row AND the add-to-playlist destination picker. Never reimplement a second
  * thumbnail, collage, artwork URL or provider-specific title lookup.
  */
+/** Inspect a small bounded prefix, not just the first four entries: those
+ * may all be metadata-only or different tracks sharing one album cover. */
 internal fun canonicalStaticPlaylistCoverCandidateIds(ids: List<String>): List<String> =
-    ids.filter(String::isNotBlank).distinct().take(4)
+    ids.filter(String::isNotBlank).distinct().take(24)
 
 @Composable
 internal fun CanonicalStaticPlaylistCoverArt(
@@ -734,9 +736,11 @@ internal fun CanonicalStaticPlaylistCoverArt(
     ) {
         val coverIds = canonicalStaticPlaylistCoverCandidateIds(playlist.recordingIds)
         value = if (coverIds.isEmpty()) emptyList() else try {
+            // Keep metadata-only RecordingIds for verified MusicBrainz artwork.
+            // The cover renderer itself never treats them as playable assets.
             canonicalNormalPlaylistSelectedRows(
                 context, coverIds, playlist.sourceProviderKey,
-            ).filter { it.isAvailablePlaylistMember() }
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
