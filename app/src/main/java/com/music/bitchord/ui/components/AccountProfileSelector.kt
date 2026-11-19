@@ -36,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -137,6 +138,11 @@ fun AccountProfileSelector(
 @Composable private fun SelectorAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = Role.Button, onClick = onClick)
         .semantics { contentDescription = label }.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null); Spacer(Modifier.width(16.dp)); Text(label)
+        // Profile identity rows retain a leading avatar. Action rows inside
+        // this selector follow the native label-left, action-icon-right rule.
+        Text(label, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(16.dp))
+        Icon(icon, null, modifier = Modifier
+            .testTag("native-account-action-trailing-icon"))
     }
 }
