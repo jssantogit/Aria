@@ -39,6 +39,26 @@ internal fun nativeCanonicalAlbumVisibleTracks(
  * compositor owns only the numbering, divider, stable RecordingId key and
  * callback slots. It does not use Song, legacy browseId or YouTube videoId.
  */
+/**
+ * Header credits must come from a release artist or a unanimous set of its
+ * verified RecordingId members. An empty release credit must not erase the
+ * artist while repeating it beneath every numbered song. Mixed/unknown artist
+ * credits are left to each track row rather than guessing a lead artist.
+ *
+ * This resolves display text only. It never creates an ArtistId or a route.
+ */
+internal fun nativeAlbumDisplayCredit(
+    releaseArtist: String?,
+    albumTracks: List<CanonicalBrowseTrack>,
+): String {
+    releaseArtist?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
+    val credits = albumTracks.map { it.artistDisplay.trim() }
+    val first = credits.firstOrNull()?.takeIf(String::isNotEmpty) ?: return ""
+    return first.takeIf { lead ->
+        credits.all { it.isNotEmpty() && it.equals(lead, ignoreCase = true) }
+    }.orEmpty()
+}
+
 /** Hide a repeated release credit but preserve real guest artists. */
 internal fun nativeAlbumTrackSecondaryLine(trackArtist: String, albumArtist: String): String? =
     trackArtist.trim().takeIf { it.isNotEmpty() &&
