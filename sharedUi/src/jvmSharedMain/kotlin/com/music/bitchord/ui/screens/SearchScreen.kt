@@ -954,9 +954,6 @@ internal fun canonicalNativeSearchRowUi(
         artistPortrait = row.kind == CanonicalSearchKind.ARTIST,
         downloadBadge = row.kind == CanonicalSearchKind.RECORDING &&
             row.hasVerifiedLocalAsset,
-        durationLabel = if (row.kind == CanonicalSearchKind.RECORDING) {
-            canonicalDurationLabel(row.durationMs)
-        } else null,
     )
 }
 
@@ -1693,7 +1690,6 @@ private fun BrowseRow(
     onClick: (() -> Unit)?,
     onLongPress: (() -> Unit)? = null,
     localDownloaded: Boolean = false,
-    durationLabel: String? = null,
 ) {
     NativeSearchResultRow(
         row = NativeSearchRowUi(
@@ -1705,14 +1701,13 @@ private fun BrowseRow(
             artworkUri = item.thumbnailUrl,
             artistPortrait = item.type == BrowseType.ARTIST,
             downloadBadge = localDownloaded,
-            durationLabel = durationLabel,
         ),
         onClick = onClick,
         onLongPress = onLongPress,
     )
 }
 
-/** Display-only duration from actual MusicBrainz recording evidence. */
+/** Format verified metadata durations when explicitly needed outside song/search rows. */
 fun canonicalDurationLabel(durationMs: Long?): String? {
     if (durationMs == null || durationMs < 1000L) return null
     val totalSeconds = durationMs / 1000L
