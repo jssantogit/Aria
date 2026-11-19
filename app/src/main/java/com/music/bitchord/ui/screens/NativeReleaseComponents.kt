@@ -298,7 +298,10 @@ internal fun NativeReleaseHeaderLayout(
                 .testTag("native-release-title"),
         )
         if (credit.isNotBlank()) {
-            Spacer(Modifier.height(2.dp))
+            // Album titles and artist credits are distinct hierarchy levels.
+            // Keep the existing compact gap for non-album release/playlist
+            // surfaces, but give the Apple-style album header more breathing room.
+            Spacer(Modifier.height(if (inlineAlbumMetadata) 7.dp else 2.dp))
             Text(
                 text = credit,
                 style = MaterialTheme.typography.titleLarge.copy(
