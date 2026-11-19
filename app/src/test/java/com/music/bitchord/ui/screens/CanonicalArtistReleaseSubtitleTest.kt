@@ -64,6 +64,34 @@ class CanonicalArtistReleaseSubtitleTest {
         assertEquals(1, labels.size)
     }
 
+    @Test fun selectedProviderAlbumWinsOverOtherOfficialEditionsOfSameRecording() {
+        val global = listOf(
+            link("track", "single", "Single version"),
+            link("track", "album", "Artist studio album"),
+        )
+        val selectedProvider = listOf(link("track", "album", "Artist studio album"))
+        val labels = canonicalArtistTrackReleaseLabels(
+            links = global,
+            eligibleReleaseIds = setOf("single", "album"),
+            evidence = mapOf("album" to proof("album", "2026-05-10")),
+            providerOwnedLinks = selectedProvider,
+        )
+        assertEquals("Artist studio album · 2026", labels["track"])
+        assertFalse("track" in canonicalArtistTrackReleaseLabels(
+            links = global,
+            eligibleReleaseIds = setOf("single", "album"),
+            evidence = emptyMap(),
+        ))
+        // Even if two different releases are owned by the same provider,
+        // never arbitrarily pick one merely because it comes first.
+        assertFalse("track" in canonicalArtistTrackReleaseLabels(
+            links = global,
+            eligibleReleaseIds = setOf("single", "album"),
+            evidence = emptyMap(),
+            providerOwnedLinks = global,
+        ))
+    }
+
     @Test fun verifiedPublicEditionCaptionRequiresRealTitleButNotInventedYear() {
         val linked = CanonicalArtistOfficialReleaseCaptionRow(
             "official-release", "Whiplash - The 5th Mini Album - EP", "2024-10-21",
