@@ -5363,32 +5363,78 @@ private fun BitChordApp(
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
 
-                // One tab handler, whichever bar is drawing it.
-                val onTabSelected: (Int) -> Unit = { index ->
+                // A root-tab tap must win over ALL remembered pushed routes,
+                // including a tap while a category of this SAME tab is open.
+                // Previously only some Library layers were cleared: Recent
+                // Additions, public playlists and secondary pages could keep
+                // winning pageRouteKey after selectedTab changed, making the
+                // navigation capsule appear unresponsive until several Backs.
+                //
+                // Keep per-tab scroll, sort, source and query preferences; only
+                // close transient navigation destinations and their overlays.
+                // One callback is shared by both bottom-bar implementations.
+                val onTabSelected: (Int) -> Unit = tabClick@{ index ->
+                    if (!rootTabAcceptsNavigation(index)) return@tabClick
                     viewModel.clearDetail()
-                    // Tab changes dismiss an open canonical Recording details page.
+                    viewModel.closeMoodGenre()
+                    detailActiveShelf = null
                     rediscoveryRecordingId = null
                     communityMetadataRecording = null
                     showCanonicalMyRatings = false
+                    openedPublicPlaylist = null
+                    publicPlaylistSearching = false
+                    publicPlaylistSortOpen = false
+                    publicPlaylistOptionsOpen = false
+                    activeCanonicalGenre = null
+
+                    // All Library routes, whether entered from a category,
+                    // pinned entity, recent additions or a playlist detail.
+                    libraryShowAll = null
+                    showAllLocalRecentAdditions = false
+                    unifiedLibraryCategory = null
+                    unifiedLibraryDetailOpen = false
+                    unifiedLibraryNestedAlbumOpen = false
+                    unifiedLibraryBackToken = 0
+                    pinnedLibraryRequest = null
+                    showPlaylistLibrary = false
+                    openedCanonicalPlaylist = null
+                    pinnedPlaylistRequest = null
                     showSmartPlaylistBuilder = false
-                    viewModel.closeMoodGenre()
+                    editingSmartPlaylistId = null
+                    editingNormalPlaylistId = null
+                    startNormalPlaylistSongPicker = false
+                    playlistLibrarySortMenu = false
+                    playlistLibraryOptionsMenu = false
+                    playlistDetailSortMenu = false
+                    playlistDetailOptionsMenu = false
+                    librarySortMenuOpen = false
+
+                    // Settings, Replay and external screens are also pushed
+                    // routes, never owners of the bottom tabs. Modal alerts
+                    // still own their own Back/dismiss until the user closes
+                    // them; this only applies after a real tab tap arrives.
+                    showSpotify = false
+                    showDiscord = false
+                    showHistory = false
                     showSettings = false
+                    settingsSection = null
+                    settingsSubScreen = null
                     showAccountScrobbling = false
                     showSources = false
                     showListenTogether = false
                     showWearOs = false
                     showEqualizer = false
                     showReplay = false
-                    settingsSubScreen = null
-                    showHistory = false
-                    libraryShowAll = null
-                    unifiedLibraryCategory = null
-                    showPlaylistLibrary = false
-                    openedCanonicalPlaylist = null
+                    replayStory = null
+                    showReplayShare = false
+                    rootSettingsOverflowOpen = false
+
+                    // Navigation is committed AFTER the previous route owners
+                    // are cleared, so pageRouteKey resolves to the chosen root
+                    // on the next composition even after a deep navigation.
                     selectedTab = index
 
-                    // Every search tab tap resets the field, focuses it, and opens
-                    // the keyboard through SearchScreen's focus request.
+                    // Search deliberately starts a fresh entry on every tap.
                     if (index == TAB_SEARCH) {
                         viewModel.onQueryChange("")
                         searchFocusRequested = true
