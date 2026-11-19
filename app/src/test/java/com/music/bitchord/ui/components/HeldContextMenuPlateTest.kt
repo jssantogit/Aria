@@ -36,6 +36,32 @@ class HeldContextMenuPlateTest {
         ))
     }
 
+    @Test fun contextualBackdropOpacityFadesFromClearToTargetWithoutOvershoot() {
+        // Applies identically to the pixel-accurate source mask, pending layer
+        // and legacy geometric fallback. A menu spring must not drive the scrim.
+        assertEquals(0f, heldContextScrimAlpha(0.30f, 0f), 0.0001f)
+        assertEquals(0.15f, heldContextScrimAlpha(0.30f, 0.5f), 0.0001f)
+        assertEquals(0.30f, heldContextScrimAlpha(0.30f, 1f), 0.0001f)
+        assertEquals(0.30f, heldContextScrimAlpha(0.30f, 1.25f), 0.0001f)
+        assertEquals(0f, heldContextScrimAlpha(0.30f, -0.2f), 0.0001f)
+        assertEquals(0.09f, heldContextScrimAlpha(0.18f, 0.5f), 0.0001f)
+    }
+
+    @Test fun backdropHasAsymmetricEasedFadeAndHonorsReducedMotion() {
+        assertEquals(220, heldContextScrimFadeDurationMillis(
+            opening = true, reduceMotion = false,
+        ))
+        assertEquals(170, heldContextScrimFadeDurationMillis(
+            opening = false, reduceMotion = false,
+        ))
+        assertEquals(0, heldContextScrimFadeDurationMillis(
+            opening = true, reduceMotion = true,
+        ))
+        assertEquals(0, heldContextScrimFadeDurationMillis(
+            opening = false, reduceMotion = true,
+        ))
+    }
+
     @Test fun heldSnapshotDoesNotReceiveASecondGreyCardSurface() {
         assertEquals(Color.Transparent, heldPreviewBackingColor())
     }
