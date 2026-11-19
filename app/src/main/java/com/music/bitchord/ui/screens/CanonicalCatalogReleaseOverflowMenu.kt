@@ -29,6 +29,18 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
 ) {
     val spec = remember(browseId) { canonicalCatalogEntityMenuSpec(browseId) }
     var ratingOpen by remember(browseId) { mutableStateOf(false) }
+    var playlistOpen by remember(browseId) { mutableStateOf(false) }
+    if (playlistOpen && spec?.playlistKind != null) {
+        CanonicalSearchMetadataPlaylistPicker(
+            target = CatalogSearchPlaylistTarget(
+                kind = spec.playlistKind,
+                id = spec.ratingTarget.entityId,
+                title = title,
+                artist = subtitle,
+            ),
+            onDismiss = { playlistOpen = false },
+        )
+    }
     if (ratingOpen && spec != null) {
         CanonicalCatalogEntityRatingDialog(
             target = spec.ratingTarget,
@@ -51,6 +63,7 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
                     artworkUrl = cover,
                     onDismiss = onDismiss,
                     onRate = { ratingOpen = true },
+                    onAddVerifiedRecordings = { playlistOpen = true },
                 )
             }
             com.music.bitchord.FrostedMenuRow(
