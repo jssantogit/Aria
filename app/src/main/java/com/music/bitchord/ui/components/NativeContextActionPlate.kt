@@ -27,6 +27,11 @@ import dev.chrisbanes.haze.HazeState
 internal fun nativeContextPlateColor(dark: Boolean): Color =
     nativeCompactPlateColor(isDark = dark, artworkElevation = null)
 
+/** Explicit player source wins; other dialogs inherit the active page capture. */
+internal fun nativeContextPlateHazeSource(
+    explicit: HazeState?, inherited: HazeState?,
+): HazeState? = explicit ?: inherited
+
 internal enum class NativeActionCardTreatment { FROSTED, SOLID, NEUTRAL_FROSTED, PLAYER_NEUTRAL_FROSTED }
 
 /** The centered rating modal uses the exact neutral popup surface, without artwork. */
@@ -76,7 +81,9 @@ internal fun NativeContextActionPlate(
     val palette = rememberArtworkPalette(artworkUrl)
     // Standalone rating and entity dialogs inherit the page's real Haze source
     // rather than silently switching to a solid plate when the caller omits it.
-    val effectiveHaze = hazeState ?: LocalNeutralOverlayHazeState.current
+    val effectiveHaze = nativeContextPlateHazeSource(
+        hazeState, LocalNeutralOverlayHazeState.current,
+    )
     val sampledHaze = if (expandableActionCardUsesHaze(
         treatment = treatment, hazeAvailable = effectiveHaze != null, reduceBlur = reduceBlur,
     )) effectiveHaze else null
