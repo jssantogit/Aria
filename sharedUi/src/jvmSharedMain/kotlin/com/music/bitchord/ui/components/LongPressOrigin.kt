@@ -52,14 +52,26 @@ object LongPressOrigin {
     private var recordedAt = 0L
 
     internal fun record(item: HeldItem) {
+        // A previous hold that no menu claimed must stop recording its source.
+        held?.takeIf { it !== item }?.releaseLift()
         held = item
         recordedAt = System.nanoTime()
     }
 
     fun consume(): HeldItem? {
-        val item = held?.takeIf { System.nanoTime() - recordedAt < FRESH_NANOS }
+        val pending = held
         held = null
-        return item
+        val claimed = pending?.takeIf { System.nanoTime() - recordedAt < FRESH_NANOS }
+        if (claimed == null) pending?.releaseLift()
+        return claimed
+    }
+
+    /** A sheet-style or refused action has no lifted menu to own the layer. */
+    internal fun discardUnconsumed(item: HeldItem) {
+        if (held === item) {
+            held = null
+            item.releaseLift()
+        }
     }
 
     private const val FRESH_NANOS = 500_000_000L
@@ -96,10 +108,16 @@ fun Modifier.longPressMenuClickable(
                 return@longClick
             }
             recording.value = paintedItem != null
-            LongPressOrigin.record(
-                HeldItem(bounds, paintedItem) { recording.value = false },
-            )
-            held()
+            val origin = HeldItem(bounds, paintedItem) { recording.value = false }
+            LongPressOrigin.record(origin)
+            try {
+                held()
+            } finally {
+                // All lifted-menu hosts consume synchronously in the callback.
+                // An ordinary sheet or ignored action must not keep drawing
+                // into a temporary layer until another gesture happens.
+                LongPressOrigin.discardUnconsumed(origin)
+            }
         }
     }
     // No pressed-ripple bitmap should ever obscure artwork or captions.
