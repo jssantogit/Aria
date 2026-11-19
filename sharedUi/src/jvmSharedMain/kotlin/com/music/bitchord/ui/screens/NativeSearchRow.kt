@@ -30,8 +30,8 @@ import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.sharedui.resources.*
 import com.music.bitchord.ui.components.PAGE_GUTTER
-import com.music.bitchord.ui.components.contextClick
-import com.music.bitchord.ui.components.longPressMenuClickable
+import com.music.bitchord.ui.components.NativeDetailTrackArtwork
+import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
 import com.music.bitchord.ui.components.thumbnailBorder
 import org.jetbrains.compose.resources.stringResource
 
@@ -50,11 +50,21 @@ data class NativeSearchRowUi(
 )
 
 /**
- * Original 52dp native search row, now shared by legacy Search, MusicBrainz
- * public metadata search and server/local search. The caller decides whether
- * the row can open, play or show long-press actions.
+ * A search result's verified duration is display metadata, never an asset
+ * identity or a playback promise. Artists/albums without duration retain
+ * their original subtitle without a placeholder.
  */
-@OptIn(ExperimentalFoundationApi::class)
+internal fun nativeSearchSecondaryLine(row: NativeSearchRowUi): String =
+    listOfNotNull(
+        row.subtitle.trim().takeIf(String::isNotEmpty),
+        row.durationLabel?.trim()?.takeIf(String::isNotEmpty),
+    ).joinToString(" · ")
+
+/**
+ * One native 52dp artwork + shared detail-row frame for local, server and
+ * catalog search. The caller owns identity, capability and all callbacks:
+ * metadata-only Recordings still open information rather than playing.
+ */
 @Composable
 fun NativeSearchResultRow(
     row: NativeSearchRowUi,
@@ -62,51 +72,46 @@ fun NativeSearchResultRow(
     onLongPress: (() -> Unit)? = null,
     horizontalPadding: androidx.compose.ui.unit.Dp = PAGE_GUTTER,
 ) {
-    // Search metadata is deliberately presentation-only. Long-press actions
-    // require a source-owned host callback; never invent an opaque per-row
-    // menu or turn a hold on a remote asset into "Play".
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("native-search-result-row")
-            .then(if (onClick != null || onLongPress != null) {
-                Modifier.longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
-                    .contextClick(onLongPress)
-            } else Modifier)
-            .padding(horizontal = horizontalPadding, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(52.dp)) {
-            val shape = if (row.artistPortrait) CircleShape else RoundedCornerShape(8.dp)
-            AsyncImage(
-                model = row.artworkUri.artworkAt(ROW_ART_PX),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(shape)
-                    .thumbnailBorder(shape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            if (row.downloadBadge && !row.artistPortrait) {
-                Box(
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                        .padding(2.dp)
-                        .size(17.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.82f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.DownloadDone,
-                        contentDescription = stringResource(Res.string.downloaded),
-                        tint = Color.White,
-                        modifier = Modifier.size(12.dp),
-                    )
+    // The same geometry, held capture and touch behavior as SongRow, but
+    // without claiming a playable Song, rating or source-specific queue.
+    NativeDetailTrackRowLayout(
+        onClick = onClick,
+        onLongPress = onLongPress,
+        modifier = Modifier.testTag("native-search-result-row"),
+        horizontalInset = horizontalPadding,
+        showRatingSlot = false,
+        leading = {
+            NativeDetailTrackArtwork {
+                val shape = if (row.artistPortrait) CircleShape else RoundedCornerShape(8.dp)
+                AsyncImage(
+                    model = row.artworkUri.artworkAt(ROW_ART_PX),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(shape)
+                        .thumbnailBorder(shape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                if (row.downloadBadge && !row.artistPortrait) {
+                    Box(
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(2.dp)
+                            .size(17.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.82f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.DownloadDone,
+                            contentDescription = stringResource(Res.string.downloaded),
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
                 }
             }
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
+        },
+        title = {
             Text(
                 text = row.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -114,15 +119,16 @@ fun NativeSearchResultRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        },
+        subtitle = {
             Text(
-                text = row.subtitle,
+                text = nativeSearchSecondaryLine(row),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        // No trailing track ⋮ and no hidden solid menu. Catalog and Library
-        // adapters provide their verified actions through the held host.
-    }
+        },
+        rating = {},
+    )
 }
