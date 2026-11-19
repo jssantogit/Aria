@@ -9,7 +9,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -18,8 +17,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 
 /**
  * One neutral material language for the Library filter reference, selection,
@@ -63,7 +60,6 @@ internal fun expandableActionCardUsesHaze(
     treatment == NativeActionCardTreatment.NEUTRAL_FROSTED ||
     treatment == NativeActionCardTreatment.PLAYER_NEUTRAL_FROSTED) && hazeAvailable && !reduceBlur
 
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 internal fun NativeContextActionPlate(
     modifier: Modifier = Modifier,
@@ -81,9 +77,9 @@ internal fun NativeContextActionPlate(
     // Standalone rating and entity dialogs inherit the page's real Haze source
     // rather than silently switching to a solid plate when the caller omits it.
     val effectiveHaze = hazeState ?: LocalNeutralOverlayHazeState.current
-    val useHaze = expandableActionCardUsesHaze(
+    val sampledHaze = if (expandableActionCardUsesHaze(
         treatment = treatment, hazeAvailable = effectiveHaze != null, reduceBlur = reduceBlur,
-    )
+    )) effectiveHaze else null
     val useArtwork = neutralRatingPlateUsesArtwork(treatment) &&
         effectiveHaze == null && artworkUrl != null && !reduceBlur
     Surface(
@@ -94,15 +90,12 @@ internal fun NativeContextActionPlate(
         border = nativeContextPlateBorder(treatment, dark),
     ) {
         Box(
-            Modifier.clip(shape)
-                // Never rely on an asynchronous Haze texture to make text legible.
-                .background(base)
-                .then(
-                    if (useHaze) Modifier.optimizedHazeEffect(
-                        state = requireNotNull(effectiveHaze),
-                        style = HazeMaterials.regular(base.copy(alpha = 0.58f)),
-                    ) else Modifier,
-                ),
+            Modifier.neutralFrostedMaterial(
+                shape = shape,
+                neutralColor = base,
+                hazeState = sampledHaze,
+                reduceBlur = reduceBlur,
+            ),
         ) {
             if (useArtwork) {
                 ArtworkBackdrop(
