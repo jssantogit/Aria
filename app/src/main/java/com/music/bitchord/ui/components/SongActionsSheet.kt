@@ -798,19 +798,35 @@ private fun LoadingActionRow(icon: ImageVector, label: String, palette: ArtworkP
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = palette.onBackground.copy(alpha = 0.4f),
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(18.dp))
+        // Only full sheets use a leading glyph. A held/contextual menu keeps
+        // the action icon beside the trailing loading indicator, never before
+        // the text: identical direction to ActionRow(Menu).
+        if (!menu) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = palette.onBackground.copy(alpha = 0.4f),
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(18.dp))
+        }
         Text(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
             color = palette.onBackground.copy(alpha = 0.4f),
             modifier = Modifier.weight(1f),
         )
+        if (menu) {
+            Spacer(Modifier.width(14.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = palette.onBackground.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp)
+                    .testTag("native-loading-menu-trailing-icon"),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         CircularProgressIndicator(
             color = palette.onBackgroundVariant,
             strokeWidth = 2.dp,
