@@ -277,6 +277,7 @@ import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScr
 import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.NativeToolbarIconButton
 import com.music.bitchord.ui.components.nativeCompactMenuLiftShadow
+import com.music.bitchord.ui.components.neutralFrostedMaterial
 import com.music.bitchord.ui.components.LastfmLoginAlert
 import com.music.bitchord.ui.components.LocalAppBackdrop
 import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
@@ -8564,16 +8565,12 @@ internal fun FrostedMenuPanel(
                 .frostedMenuQuietClick(onClick = {}),
         ) {
             Box(
-                Modifier.clip(shape)
-                    .background(solidPlate)
-                    .then(
-                        if (reduceFilterBlur) Modifier
-                        else Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(solidPlate.copy(alpha = 0.58f)),
-                        )
-                    )
-                    .testTag("native-frosted-neutral-material"),
+                Modifier.neutralFrostedMaterial(
+                    shape = shape,
+                    neutralColor = solidPlate,
+                    hazeState = hazeState,
+                    reduceBlur = reduceFilterBlur,
+                ).testTag("native-frosted-neutral-material"),
             ) {
                 Column(Modifier.padding(vertical = 8.dp), content = content)
             }
