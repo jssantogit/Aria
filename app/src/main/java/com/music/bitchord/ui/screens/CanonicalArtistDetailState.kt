@@ -20,6 +20,7 @@ internal data class CanonicalArtistNativeReleases(
     val sections: CanonicalArtistReleaseSections,
     val artwork: Map<String, CanonicalBrowseTrack>,
     val evidence: Map<String, CanonicalArtistReleaseEvidence> = emptyMap(),
+    val trackReleaseLabels: Map<String, String> = emptyMap(),
 ) {
     companion object {
         val EMPTY = CanonicalArtistNativeReleases(
@@ -185,8 +186,15 @@ internal fun rememberCanonicalArtistReleases(
                         ),
                     )
                 }
+                val recordingReleaseLinks = recordingIds.chunked(300).flatMap { ids ->
+                    dao.recordingReleaseTitlesByIds(ids)
+                }
+                val trackReleaseLabels = canonicalArtistTrackReleaseLabels(
+                    recordingReleaseLinks, releaseKeys.toSet(), proofs,
+                )
                 CanonicalArtistNativeReleases(
                     sections, canonicalLibraryEntityArtworkById(coverLinks, tracks), proofs,
+                    trackReleaseLabels,
                 )
             }
             } catch (cancelled: CancellationException) {
