@@ -49,7 +49,6 @@ class CanonicalExploreGridTest {
                         subtitle = "Música · NewJeans",
                         artworkUri = null,
                         artistPortrait = false,
-                        durationLabel = "3:20",
                     ),
                     onClick = {},
                     onLongPress = { held++ },
