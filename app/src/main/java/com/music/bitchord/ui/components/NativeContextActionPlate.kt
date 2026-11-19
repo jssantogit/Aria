@@ -78,11 +78,14 @@ internal fun NativeContextActionPlate(
     val shape = RoundedCornerShape(nativeContextPlateCornerRadiusDp(treatment).dp)
     val base = nativeContextPlateColor(dark)
     val palette = rememberArtworkPalette(artworkUrl)
+    // Standalone rating and entity dialogs inherit the page's real Haze source
+    // rather than silently switching to a solid plate when the caller omits it.
+    val effectiveHaze = hazeState ?: LocalNeutralOverlayHazeState.current
     val useHaze = expandableActionCardUsesHaze(
-        treatment = treatment, hazeAvailable = hazeState != null, reduceBlur = reduceBlur,
+        treatment = treatment, hazeAvailable = effectiveHaze != null, reduceBlur = reduceBlur,
     )
     val useArtwork = neutralRatingPlateUsesArtwork(treatment) &&
-        hazeState == null && artworkUrl != null && !reduceBlur
+        effectiveHaze == null && artworkUrl != null && !reduceBlur
     Surface(
         modifier = modifier.shadow(12.dp, shape, clip = false),
         shape = shape,
@@ -96,7 +99,7 @@ internal fun NativeContextActionPlate(
                 .background(base)
                 .then(
                     if (useHaze) Modifier.optimizedHazeEffect(
-                        state = requireNotNull(hazeState),
+                        state = requireNotNull(effectiveHaze),
                         style = HazeMaterials.regular(base.copy(alpha = 0.58f)),
                     ) else Modifier,
                 ),
