@@ -64,7 +64,10 @@ internal fun NativeCanonicalNestedAlbumDetail(
     NativeCanonicalAlbumContent(
         releaseIdentity = release.id,
         title = canonicalAlbumDisplayTitle(release.title, evidence?.primaryType),
-        credit = release.artistDisplay.orEmpty(),
+        // Preserve a real release artist. If that field is absent but every
+        // verified member agrees, show the common artist in the shared header
+        // instead of repeating that artist beneath each numbered track.
+        credit = nativeAlbumDisplayCredit(release.artistDisplay, albumRunningOrder),
         visibleTracks = visibleAlbumTracks,
         playbackTracks = albumTracks,
         artworkLoader = artworkLoader,
