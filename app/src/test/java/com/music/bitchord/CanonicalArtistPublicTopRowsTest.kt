@@ -79,6 +79,9 @@ class CanonicalArtistPublicTopRowsTest {
         assertEquals(CanonicalSearchKind.RECORDING, row.kind)
         assertEquals(artist, row.artistScopeMbid)
         assertEquals("Closer", row.title)
+        // The album byline must use the exact Official audio edition link,
+        // never a guessed album from the Recording's artist/title strings.
+        assertEquals(officialRelease, row.coverReleaseMbid)
         assertFalse(row.hasCatalogedAsset)
         assertEquals(null, row.artworkUri)
     }
