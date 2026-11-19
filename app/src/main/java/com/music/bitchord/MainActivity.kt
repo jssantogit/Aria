@@ -487,7 +487,13 @@ class MainActivity : AppCompatActivity() {
                 }
                 val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
                 val canonicalRatings = rememberCanonicalRatingDisplay()
+                // Every neutral popup and rating editor shares the page's real
+                // backdrop capture. Its presence never overrides Reduce blur.
+                val neutralOverlayHaze = remember { HazeState() }
+                val neutralOverlayReduceBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
                 CompositionLocalProvider(
+                    com.music.bitchord.ui.components.LocalNeutralOverlayHazeState provides neutralOverlayHaze,
+                    com.music.bitchord.ui.components.LocalNeutralOverlayReducedBlur provides neutralOverlayReduceBlur,
                     LocalCanonicalRatingDisplay provides canonicalRatings,
                     LocalCompactRatingStyle provides compactRatingStyle,
                     LocalReduceAnimations provides reduceGlobalMotion,
@@ -512,6 +518,7 @@ class MainActivity : AppCompatActivity() {
                         windowWidth = maxWidth,
                         windowHeight = maxHeight,
                         appBackdrop = appBackdrop,
+                        neutralOverlayHaze = neutralOverlayHaze,
                     )
                 }
                 }
@@ -571,11 +578,12 @@ private fun BitChordApp(
      */
     windowHeight: Dp,
     appBackdrop: LayerBackdrop,
+    neutralOverlayHaze: HazeState,
     viewModel: MainViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val hazeState = remember { HazeState() }
+    val hazeState = neutralOverlayHaze
     // Recording the backdrop layer costs a draw pass, so it only runs when a
     // liquid-glass surface (the nav bar or artwork-page back button) can sample it.
     val glassActive = LocalLiquidGlassEnabled.current && isGlassSupported()
