@@ -81,10 +81,10 @@ fun Modifier.longPressMenuClickable(
 ): Modifier {
     val pressSource = interactionSource ?: remember { MutableInteractionSource() }
     val capture = remember { HoldOriginCoordinates() }
-    // Recording only while a long-press menu is visible avoids capturing
-    // dozens of idle carousel/list items on every frame. A GraphicsLayer
-    // preserves transparent pixels; it is NOT a screenshot of the page.
-    val paintedItem = rememberGraphicsLayer()
+    // Normal tap-only rows never allocate a display list. Eligible holds
+    // create a layer, but its content is only recorded while their menu is up.
+    // It preserves alpha and is NOT a screenshot of the entire page.
+    val paintedItem = if (onLongClick != null) rememberGraphicsLayer() else null
     val recording = remember { mutableStateOf(false) }
     val longClick = onLongClick?.let { held ->
         longClick@{
@@ -94,7 +94,7 @@ fun Modifier.longPressMenuClickable(
             if (!heldOriginFullyVisible(bounds, coordinates.size.width, coordinates.size.height)) {
                 return@longClick
             }
-            recording.value = true
+            recording.value = paintedItem != null
             LongPressOrigin.record(
                 HeldItem(bounds, paintedItem) { recording.value = false },
             )
@@ -135,13 +135,14 @@ fun Modifier.longPressMenuClickable(
     return this
         .onPlaced { capture.coordinates = it }
         .drawWithContent {
-            if (recording.value) {
+            val layer = paintedItem
+            if (recording.value && layer != null) {
                 // Record the row's OWN content/alpha, not the opaque window.
                 // The exact same commands still paint in the original place.
-                paintedItem.record {
+                layer.record {
                     this@drawWithContent.drawContent()
                 }
-                drawLayer(paintedItem)
+                drawLayer(layer)
             } else {
                 drawContent()
             }
