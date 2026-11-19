@@ -60,4 +60,26 @@ class CanonicalPlaylistTrackMenuComposeTest {
         compose.onNodeWithText("Adicionar à fila").assertExists()
         compose.onNodeWithText("Abrir álbum").assertDoesNotExist()
     }
+
+    @Test fun metadataOnlyMemberOffersRemovalButNeverFakePlayback() {
+        var removals = 0
+        compose.setContent {
+            MaterialTheme {
+                CanonicalPlaylistHeldTrackActions(
+                    onDismiss = {},
+                    onPlay = null,
+                    onPlayNext = null,
+                    onAddToQueue = null,
+                    onOpenAlbum = null,
+                    onRemove = { removals++ },
+                )
+            }
+        }
+        compose.onNodeWithText("Reproduzir daqui").assertDoesNotExist()
+        compose.onNodeWithText("Reproduzir a seguir").assertDoesNotExist()
+        compose.onNodeWithText("Adicionar à fila").assertDoesNotExist()
+        compose.onNodeWithText("Remover da playlist").performClick()
+        compose.runOnIdle { assertEquals(1, removals) }
+    }
+
 }
