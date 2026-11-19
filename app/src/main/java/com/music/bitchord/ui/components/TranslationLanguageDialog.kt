@@ -128,8 +128,6 @@ fun TranslationLanguageDialog(
                     hazeState = hazeState,
                     reduceBlur = reduceDynamicBlur,
                 )
-                    },
-                )
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
