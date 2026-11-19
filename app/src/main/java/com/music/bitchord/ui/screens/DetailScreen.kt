@@ -1580,15 +1580,19 @@ private fun CompactSongRow(
                 style = MaterialTheme.typography.titleMedium,
                 color = if (isCurrent) palette.accent else palette.onBackground,
             )
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.onBackgroundVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // An artist page already identifies the performer. Display the
+            // actual album tag on this legacy local song, never a guessed one.
+            song.albumName?.trim()?.takeIf(String::isNotBlank)?.let { album ->
+                Text(
+                    text = album,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.onBackgroundVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-        // The weighted title/artist block truncates before trailing stars.
+        // The weighted title/album block truncates before trailing stars.
         CanonicalSongRatingStars(
             song = song,
             modifier = Modifier.padding(start = 8.dp),
