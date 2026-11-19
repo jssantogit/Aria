@@ -104,6 +104,23 @@ internal fun heldSpotlightUsesPixelMask(
 ): Boolean = captureAvailable && recordingReady
 
 /**
+ * Fade the backdrop independently of the held menu's spring. A spring
+ * accelerates rapidly and can overshoot; it should animate the plate only.
+ * The selected item's alpha stencil stays unchanged at every fade frame.
+ */
+internal fun heldContextScrimAlpha(baseAlpha: Float, fade: Float): Float =
+    baseAlpha.coerceIn(0f, 1f) * fade.coerceIn(0f, 1f)
+
+internal fun heldContextScrimFadeDurationMillis(
+    opening: Boolean,
+    reduceMotion: Boolean,
+): Int = when {
+    reduceMotion -> 0
+    opening -> 220
+    else -> 170
+}
+
+/**
  * The context menu anchored to an item held in place. The item stays in its
  * original list, the page behind it dims, and actions hang off it.
  *
@@ -167,6 +184,18 @@ fun <T : Any> HeldContextMenu(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
     val progress = remember { Animatable(0f) }
+    // A separate eased opacity curve creates a gentle, monotonic fade while
+    // keeping the menu's original spring and its dismissal timing unchanged.
+    val scrimFade = remember { Animatable(0f) }
+    LaunchedEffect(open, reduceMotion) {
+        scrimFade.animateTo(
+            targetValue = if (open) 1f else 0f,
+            animationSpec = tween(
+                durationMillis = heldContextScrimFadeDurationMillis(open, reduceMotion),
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
     LaunchedEffect(open) {
         if (open) {
             progress.animateTo(
@@ -236,7 +265,7 @@ fun <T : Any> HeldContextMenu(
                         ) {
                             drawRect(
                                 color = scrimColor.copy(
-                                    alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
+                                    alpha = heldContextScrimAlpha(scrimColor.alpha, scrimFade.value),
                                 ),
                             )
                             // The source stays in its ORIGINAL Compose tree.
@@ -259,7 +288,7 @@ fun <T : Any> HeldContextMenu(
                             // waiting for the precise alpha stencil.
                             drawRect(
                                 color = scrimColor.copy(
-                                    alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
+                                    alpha = heldContextScrimAlpha(scrimColor.alpha, scrimFade.value),
                                 ),
                             )
                         } else {
@@ -286,7 +315,7 @@ fun <T : Any> HeldContextMenu(
                             drawPath(
                                 path = mask,
                                 color = scrimColor.copy(
-                                    alpha = scrimColor.alpha * progress.value.coerceIn(0f, 1f),
+                                    alpha = heldContextScrimAlpha(scrimColor.alpha, scrimFade.value),
                                 ),
                             )
                         }
