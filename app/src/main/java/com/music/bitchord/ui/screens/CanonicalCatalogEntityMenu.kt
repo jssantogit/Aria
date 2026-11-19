@@ -54,6 +54,7 @@ internal fun CanonicalCatalogEntityMenuBody(
     title: String,
     subtitle: String,
     artworkUrl: String?,
+    presentation: SongActionsPresentation = SongActionsPresentation.Menu,
     onDismiss: () -> Unit,
     onRate: (CanonicalCatalogEntityMenuSpec) -> Unit,
 ) {
@@ -83,7 +84,7 @@ internal fun CanonicalCatalogEntityMenuBody(
             type = spec.browseType,
             fromCard = false,
         ),
-        presentation = SongActionsPresentation.Menu,
+        presentation = presentation,
         // This identity is a MusicBrainz entity only; do not supply callbacks
         // for onPlay/onShuffle/onPlayNext/onAddToQueue/onAddToPlaylist.
         onEditRating = {
