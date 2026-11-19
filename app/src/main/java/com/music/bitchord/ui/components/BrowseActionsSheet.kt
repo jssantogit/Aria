@@ -158,6 +158,9 @@ fun BrowseActionsSheet(
      * from something other than a real browse id (a Local Music grouping).
      */
     onShare: (() -> Unit)? = null,
+    /** Optional, identity-verified source link for metadata-only catalog entities. */
+    onViewSource: (() -> Unit)? = null,
+    viewSourceLabel: String = "Ver no MusicBrainz",
     /**
      * Set whenever [target] is a playlist, regardless of who owns it — pinning
      * doesn't touch the account, only what sits at the top of this device's
@@ -326,6 +329,9 @@ fun BrowseActionsSheet(
                     stringResource(if (isPinned) R.string.unpin else R.string.pin),
                     onClick = it,
                 )
+            }
+            onViewSource?.let { open ->
+                ActionRow(PlaylistEditorIcons.Globe, viewSourceLabel, onClick = open)
             }
             if (onRename != null) {
                 ActionRow(PlaylistEditorIcons.Edit, stringResource(R.string.rename)) {
