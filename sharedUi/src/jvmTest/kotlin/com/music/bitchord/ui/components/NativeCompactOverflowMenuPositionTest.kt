@@ -8,6 +8,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NativeCompactOverflowMenuPositionTest {
+    @Test fun neutralPopupOnlySamplesRealHazeWhenAvailableAndPermitted() {
+        org.junit.Assert.assertTrue(nativeNeutralOverlayCanBlur(
+            hazeAvailable = true, reduceBlur = false,
+        ))
+        org.junit.Assert.assertFalse(nativeNeutralOverlayCanBlur(
+            hazeAvailable = false, reduceBlur = false,
+        ))
+        org.junit.Assert.assertFalse(nativeNeutralOverlayCanBlur(
+            hazeAvailable = true, reduceBlur = true,
+        ))
+        // Standalone previews and JVM tests without an Android page host keep a
+        // fully readable solid fallback instead of claiming simulated blur.
+    }
+
     private val window = IntSize(400, 800)
     private val popup = IntSize(220, 200)
 
