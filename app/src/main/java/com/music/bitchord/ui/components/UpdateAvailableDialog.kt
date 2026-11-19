@@ -123,8 +123,6 @@ fun UpdateAvailableDialog(
                     hazeState = hazeState,
                     reduceBlur = reduceDynamicBlur,
                 )
-                    },
-                )
                 // Swallows the tap before it reaches the scrim behind, so
                 // touching the card itself never dismisses it.
                 .clickable(
