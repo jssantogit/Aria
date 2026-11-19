@@ -157,8 +157,10 @@ internal fun distinctCanonicalPlaylistCoverRows(rows: List<V2DisplayRow>): List<
         .filter { row ->
             row.isAvailablePlaylistMember() &&
                 (!row.localArtworkUri.isNullOrBlank() ||
-                    !row.remoteArtworkRevision.isNullOrBlank() ||
-                    !row.remoteMediaAssetId.isNullOrBlank())
+                    (!row.remoteArtworkRevision.isNullOrBlank() &&
+                        (!row.remoteMediaAssetId.isNullOrBlank() ||
+                            row.remoteArtworkRevision.startsWith("content://") ||
+                            row.remoteArtworkRevision.startsWith("file://"))))
         }
         .distinctBy { row ->
             row.localArtworkUri?.let { "local:$it" }
