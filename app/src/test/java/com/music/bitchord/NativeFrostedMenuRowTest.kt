@@ -125,8 +125,19 @@ class NativeFrostedMenuRowTest {
         )
     }
 
-    @Test fun rootSettingsAndArtistUseTheSameFrostedMenuWidth() {
+    @Test fun rootSettingsUsesSingleActionPlateWithoutChangingArtistMenu() {
+        // 240dp is the multi-action artist/album plate, not the one-row
+        // Settings entry shown on the Library, Explore and Downloads roots.
         assertEquals(240.dp, FROSTED_SETTINGS_MENU_WIDTH)
+        assertEquals(200.dp, FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH)
+        assertEquals(
+            com.music.bitchord.ui.components.APPLE_SETTINGS_SINGLE_ACTION_WIDTH,
+            FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH,
+        )
+        assertEquals(4.dp, FROSTED_ROOT_SETTINGS_SINGLE_ACTION_VERTICAL_PADDING)
+        org.junit.Assert.assertTrue(
+            FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH < FROSTED_SETTINGS_MENU_WIDTH,
+        )
     }
 
     @Test fun settingsRowUsesTheSameLeadingLabelColumnAsExistingTrailingIconActions() {
