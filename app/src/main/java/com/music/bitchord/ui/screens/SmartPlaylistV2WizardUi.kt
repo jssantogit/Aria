@@ -96,7 +96,55 @@ internal fun smartConditionCountLabel(count: Int, configured: Boolean = false): 
     else label
 }
 
-private enum class WizardStep { IDENTITY, EDIT, SONGS, RULES, GROUP, CATEGORIES, FIELDS, EDITOR, REVIEW }
+internal enum class WizardStep { IDENTITY, EDIT, SONGS, RULES, GROUP, CATEGORIES, FIELDS, EDITOR, REVIEW }
+
+/**
+ * A creator step is a pushed destination, not a root tab. The 150ms nearly
+ * opaque root-tab arrival was imperceptible, and it never fired when the
+ * Songs (Músicas / Álbuns / Artistas) or condition-field subtab changed.
+ *
+ * Build a stable key from navigation identity only. Search text, draft edits,
+ * loading and selected track IDs must never restart entrance motion.
+ */
+internal fun playlistWizardArrivalKey(
+    page: WizardStep,
+    browseTabIndex: Int = 0,
+    categoryId: String = "",
+    fieldTabIndex: Int = 0,
+    groupPath: List<Int> = emptyList(),
+): String {
+    val depth = when (page) {
+        WizardStep.IDENTITY, WizardStep.EDIT -> 0
+        WizardStep.SONGS, WizardStep.RULES -> 1
+        WizardStep.REVIEW, WizardStep.GROUP -> 2
+        WizardStep.CATEGORIES -> 3
+        WizardStep.FIELDS -> 4
+        WizardStep.EDITOR -> 5
+    }
+    val slot = when (page) {
+        WizardStep.SONGS -> browseTabIndex.coerceAtLeast(0)
+        WizardStep.FIELDS -> fieldTabIndex.coerceAtLeast(0)
+        else -> 0
+    }
+    val scope = when (page) {
+        WizardStep.FIELDS -> categoryId
+        WizardStep.GROUP -> groupPath.joinToString(",")
+        else -> ""
+    }
+    return "wizard:$depth:${page.name}:$slot:$scope"
+}
+
+/** Enter right-to-left for deeper destinations; reverse for Back/previous tab. */
+internal fun playlistWizardArrivalForward(previous: String, next: String): Boolean {
+    val from = previous.split(":")
+    val to = next.split(":")
+    val fromDepth = from.getOrNull(1)?.toIntOrNull() ?: return true
+    val toDepth = to.getOrNull(1)?.toIntOrNull() ?: return true
+    if (toDepth != fromDepth) return toDepth > fromDepth
+    val fromTab = from.getOrNull(3)?.toIntOrNull() ?: 0
+    val toTab = to.getOrNull(3)?.toIntOrNull() ?: 0
+    return toTab >= fromTab
+}
 
 /** Only known audio-source providers are selectable. iTunes/MusicBrainz
  * metadata must never masquerade as playable catalog endpoints here. */
@@ -662,14 +710,22 @@ internal fun SmartPlaylistV2WizardUi(
         }
     }
 
-    // The wizard keeps a stationary toolbar and primary action while its
-    // actual step content enters. No second LazyColumn is kept alive, so
-    // keyboard focus, selections and scroll state retain single ownership.
+    // Every actual internal navigation change receives the SAME visible
+    // pushed-page arrival as Settings/Library. Do not use rootTabPrefix:
+    // root-tab alpha (0.975 -> 1) is intentionally almost imperceptible.
+    // Keep one LazyColumn mounted, preserving the input/selection owner.
+    val wizardArrivalKey = playlistWizardArrivalKey(
+        page = page,
+        browseTabIndex = CanonicalPlaylistBrowseType.entries.indexOf(normalBrowseType),
+        categoryId = selectedCategory.id,
+        fieldTabIndex = smartConditionFieldTabs(selectedCategory)
+            .indexOfFirst { it.key == selectedFieldTab },
+        groupPath = selectedPath,
+    )
     val wizardStepArrival = com.music.bitchord.ui.components.rememberRouteArrivalModifier(
-        routeKey = "wizard:${page.name}",
+        routeKey = wizardArrivalKey,
         reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
-        forward = page != WizardStep.EDIT && page != WizardStep.IDENTITY,
-        rootTabPrefix = "wizard:",
+        directionForRouteChange = ::playlistWizardArrivalForward,
     )
 
     // Do not mix the editor with the app's own scrollable library screen.
