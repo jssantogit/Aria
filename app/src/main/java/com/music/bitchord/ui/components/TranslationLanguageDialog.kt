@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +82,9 @@ fun TranslationLanguageDialog(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val selected by AppSettings.translationLanguage.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(ALERT_CORNER)
+    val neutralPlate = nativeContextPlateColor(
+        MaterialTheme.colorScheme.background.luminance() < 0.5f,
+    )
     val appLocale = AppCompatDelegate.getApplicationLocales().get(0) ?: Locale.getDefault()
     var query by remember { mutableStateOf("") }
 
@@ -118,15 +122,12 @@ fun TranslationLanguageDialog(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
+                .neutralFrostedMaterial(
+                    shape = shape,
+                    neutralColor = neutralPlate,
+                    hazeState = hazeState,
+                    reduceBlur = reduceDynamicBlur,
+                )
                     },
                 )
                 .clickable(
