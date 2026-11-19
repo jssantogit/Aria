@@ -65,6 +65,8 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.music.bitchord.ui.components.NativeContextActionPlate
+import com.music.bitchord.ui.components.NeutralOverlayDialog
+import com.music.bitchord.ui.components.LocalNeutralOverlayHazeState
 import com.music.bitchord.ui.components.NativeActionCardTreatment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -573,8 +575,10 @@ internal fun CanonicalRecordingFeedbackPanel(
             }
         }
     }
-    androidx.compose.ui.window.Dialog(
+    val effectiveHaze = hazeState ?: LocalNeutralOverlayHazeState.current
+    NeutralOverlayDialog(
         onDismissRequest = requestDismiss,
+        hazeState = effectiveHaze,
         properties = androidx.compose.ui.window.DialogProperties(
             usePlatformDefaultWidth = false,
         ),
@@ -584,7 +588,7 @@ internal fun CanonicalRecordingFeedbackPanel(
                 modifier = Modifier.width(modalWidth)
                     .testTag("native-rating-modal"),
                 treatment = NativeActionCardTreatment.NEUTRAL_FROSTED,
-                hazeState = hazeState,
+                hazeState = effectiveHaze,
                 // Never feed album art into the rating dialog's surface.
                 artworkUrl = null,
             ) {
