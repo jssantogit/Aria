@@ -2,8 +2,6 @@ package com.music.bitchord.ui.screens
 
 import com.music.bitchord.R
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -43,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
@@ -61,8 +58,6 @@ import com.music.bitchord.data.spotify.LocalPlaylistStore
 import com.music.bitchord.download.Downloads
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.ui.components.PillTextField
-import com.music.bitchord.data.settings.AppSettings
-import com.music.bitchord.ui.components.shouldBlurHeldContextBackdrop
 import com.music.bitchord.ui.components.HeldContextMenu
 import com.music.bitchord.ui.components.LongPressOrigin
 import com.music.bitchord.ui.components.HeldItem
@@ -309,16 +304,11 @@ internal fun UnifiedPlaylistLibraryShelf(
     }
     val visible = visibleLibraryPlaylistCards(cards, query, filter, sort)
     val playlistScroll = listState ?: rememberLazyListState()
+    // Keep the REAL selected row sharp. HeldContextMenu owns the scrim and
+    // the painted-alpha cutout; a host-wide blur would soften the selected
+    // artwork and letters even where its alpha mask exposes the original.
+    // Haze remains available to frost ONLY the action plate.
     val playlistHeldHaze = remember { HazeState() }
-    val reduceHeldBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val playlistHeldBlur by animateDpAsState(
-        targetValue = if (shouldBlurHeldContextBackdrop(
-                heldVisible = optionsFor != null && heldMenuOrigin != null,
-                reduceDynamicBlur = reduceHeldBlur,
-            )) 20.dp else 0.dp,
-        animationSpec = tween(durationMillis = 180),
-        label = "playlist-held-backdrop-blur",
-    )
 
     // The host owns status-bar and floating-player insets. Applying a second
     // statusBarsPadding() + 64dp here created an artificial gap and a second
@@ -326,8 +316,7 @@ internal fun UnifiedPlaylistLibraryShelf(
     if (selectedCard == null) LazyColumn(
         state = playlistScroll,
         modifier = Modifier.fillMaxSize()
-            .hazeSource(playlistHeldHaze)
-            .then(if (playlistHeldBlur > 0.dp) Modifier.blur(playlistHeldBlur) else Modifier),
+            .hazeSource(playlistHeldHaze),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
