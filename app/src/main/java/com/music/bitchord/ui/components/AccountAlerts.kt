@@ -904,8 +904,9 @@ fun NativeAlertHost(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Dialog(
+    NeutralOverlayDialog(
         onDismissRequest = onDismiss,
+        hazeState = LocalNeutralOverlayHazeState.current,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
