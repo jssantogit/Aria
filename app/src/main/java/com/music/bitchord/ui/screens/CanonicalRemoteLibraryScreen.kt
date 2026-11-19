@@ -292,6 +292,26 @@ internal fun canonicalLibraryDetailUsesAnchoredOverflow(
     type: CanonicalLibraryEntityType,
 ): Boolean = detailOpen && type != CanonicalLibraryEntityType.TRACK
 
+/** Shared source scope: a dedicated server never falls back to another one.
+ * Only the unified Library permits an explicit ALL-sources null scope. */
+internal fun canonicalLibraryPlaybackSourceScope(
+    unified: Boolean,
+    selectedSource: String?,
+    providerKey: String,
+): String? = if (unified) selectedSource else providerKey
+
+/** Browse-only artist groups use the same Recording-backed evidence in every
+ * Library host. Display group IDs are not promoted into canonical ArtistIds. */
+internal fun canonicalLibraryDisplayArtistGroups(
+    tracks: List<CanonicalBrowseTrack>,
+    credited: List<CanonicalSelectedEntity>,
+): List<CanonicalSelectedEntity> {
+    val names = credited.mapTo(HashSet()) { it.name.lowercase() }
+    return canonicalLibraryDisplayArtistNames(tracks, names).map { name ->
+        CanonicalSelectedEntity(playlistDisplayArtistGroupId(name), name)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CanonicalRemoteLibraryScreen(
@@ -369,7 +389,7 @@ internal fun CanonicalRemoteLibraryScreen(
     }
     val selectedSource = if (unified) selectedSourceKey else null
     // A dedicated source must not choose another provider for a group action.
-    val effectiveSourceKey = if (unified) selectedSource else providerKey
+    val effectiveSourceKey = canonicalLibraryPlaybackSourceScope(unified, selectedSource, providerKey)
     var libraryQuery by remember(unified) { mutableStateOf("") }
     LaunchedEffect(searchVisible) { if (!searchVisible) libraryQuery = "" }
     val selectedStars = if (unified) selectedStarsFilter else null
@@ -710,16 +730,12 @@ internal fun CanonicalRemoteLibraryScreen(
                         // Uncredited provider recordings remain discoverable
                         // via the SAME browse-only display groups used by the
                         // native playlist picker. No fabricated ArtistId.
-                        val displayOnly = run {
-                            val creditedNames = credited.mapTo(HashSet()) {
-                                it.name.lowercase()
-                            }
-                            canonicalLibraryDisplayArtistNames(
-                                eligibleTracks, creditedNames,
-                            ).map { name ->
-                                CanonicalSelectedEntity(playlistDisplayArtistGroupId(name), name)
-                            }
-                        }
+                        // For a provider-specific saved filter, uncredited
+                        // groups have no verified filter membership. An
+                        // unfiltered Navidrome/MediaStore page still exposes
+                        // the same browse-only groups as the unified Library.
+                        val displayOnly = if (!unified && selected != null) emptyList()
+                            else canonicalLibraryDisplayArtistGroups(eligibleTracks, credited)
                         (credited + displayOnly).distinctBy { it.id }
                             .filter { !unified || libraryQuery.isBlank() ||
                                 it.name.contains(libraryQuery, ignoreCase = true) }
