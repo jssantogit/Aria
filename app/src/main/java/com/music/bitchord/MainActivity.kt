@@ -5373,8 +5373,10 @@ private fun BitChordApp(
                 // Keep per-tab scroll, sort, source and query preferences; only
                 // close transient navigation destinations and their overlays.
                 // One callback is shared by both bottom-bar implementations.
-                val onTabSelected: (Int) -> Unit = tabClick@{ index ->
-                    if (!rootTabAcceptsNavigation(index)) return@tabClick
+                val onTabSelected: (Int) -> Unit = { index ->
+                    dispatchRootTabSelection(
+                        index = index,
+                        dismissPushedPages = {
                     viewModel.clearDetail()
                     viewModel.closeMoodGenre()
                     detailActiveShelf = null
@@ -5429,16 +5431,15 @@ private fun BitChordApp(
                     showReplayShare = false
                     rootSettingsOverflowOpen = false
 
-                    // Navigation is committed AFTER the previous route owners
-                    // are cleared, so pageRouteKey resolves to the chosen root
-                    // on the next composition even after a deep navigation.
-                    selectedTab = index
-
-                    // Search deliberately starts a fresh entry on every tap.
-                    if (index == TAB_SEARCH) {
-                        viewModel.onQueryChange("")
-                        searchFocusRequested = true
-                    }
+                    // Keep the navigation capsule and view-model destination
+                    // consistent: dismissal precedes the selected tab write.
+                        },
+                        activateRoot = { target -> selectedTab = target },
+                        focusFreshSearch = {
+                            viewModel.onQueryChange("")
+                            searchFocusRequested = true
+                        },
+                    )
                 }
 
                 // Screenshot-matched experiment: two independent Apple Music
