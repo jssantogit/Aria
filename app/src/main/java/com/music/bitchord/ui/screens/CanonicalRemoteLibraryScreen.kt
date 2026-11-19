@@ -2019,12 +2019,19 @@ internal fun CanonicalTrackRow(
     palette: ArtworkPalette? = null,
     albumTrackNumber: Int? = null,
     albumCredit: String? = null,
+    /** Artist-specific supporting line from verified ReleaseTrack membership. */
+    artistReleaseSubtitle: String? = null,
 ) {
-    // Numbered release rows can hide redundant album credits; every other
-    // library, playlist and artist row keeps its prior subtitles.
-    val secondaryLine = if (albumTrackNumber != null && albumCredit != null) {
-        nativeAlbumTrackSecondaryLine(track.artistDisplay, albumCredit)
-    } else track.artistDisplay
+    // Artist pages already identify their artist in the hero. Their song
+    // captions must refer to a verified release, not repeat that credit.
+    // A missing or ambiguous link is deliberately blank, not a guessed album.
+    // Numbered album rows and root Library/playlist rows retain their own policy.
+    val secondaryLine = when {
+        compactForArtist -> artistReleaseSubtitle.orEmpty()
+        albumTrackNumber != null && albumCredit != null ->
+            nativeAlbumTrackSecondaryLine(track.artistDisplay, albumCredit)
+        else -> track.artistDisplay
+    }
     NativeDetailTrackRowLayout(
         onClick = {
             if (selectionMode && onToggleSelection != null) onToggleSelection()
