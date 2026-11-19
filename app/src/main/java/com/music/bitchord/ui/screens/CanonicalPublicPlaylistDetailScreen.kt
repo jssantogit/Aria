@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.ui.components.RowMoreButton
@@ -332,6 +333,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                     val coverUri = entry.artworkUrl
                         ?: catalogRows.firstOrNull { it.id == recordingId }?.localArtworkUri
                     NativeDetailTrackRowLayout(
+                        modifier = Modifier.heightIn(min = 68.dp),
                         onClick = if (playable && recordingId != null)
                             ({ onVerifiedRecordingPlay(recordingId) }) else null,
                         onLongPress = if (recordingId?.let(::isVerifiedCatalogRecordingId) == true)
@@ -347,21 +349,15 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                         opacity = 1f,
                         leading = {
                             NativeDetailTrackArtwork(showPlayingBars = false) {
-                                Box(
-                                    Modifier.fillMaxSize()
-                                        .clip(publicPlaylistTrackCoverShape())
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(Icons.Rounded.MusicNote, contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Box(Modifier.fillMaxSize()) {
+                                    NativePlaylistMissingArtwork(Modifier.fillMaxSize())
                                     if (!coverUri.isNullOrBlank()) {
                                         AsyncImage(
                                             model = coverUri.artworkAt(ROW_ART_PX),
                                             contentDescription = null,
                                             contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier.fillMaxSize()
+                                                .clip(publicPlaylistTrackCoverShape()),
                                         )
                                     }
                                 }
