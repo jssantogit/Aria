@@ -4,8 +4,11 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 class NowPlayingNativeOverflowGlyphTest {
-    @Test fun portraitAppleQueueOverflowUsesOriginalAmDecompPlatterNotGenericCircle() {
-        assertSame(AppleQueueVectors.More, nativePortraitAppleQueueOverflowGlyph())
+    @Test fun portraitAppleQueueOverflowUsesOriginalAmDecompDotsWithoutBakedCircle() {
+        assertSame(AppleQueueVectors.MorePlain, nativePortraitAppleQueueOverflowGlyph())
+        assertSame(originalNowPlayingOverflowGlyph(), originalPortraitNowPlayingOverflowGlyph())
+        org.junit.Assert.assertEquals(0.18f, portraitOverflowPuckColor(selected = false).alpha, 0.0001f)
+        org.junit.Assert.assertEquals(0.38f, portraitOverflowPuckColor(selected = true).alpha, 0.0001f)
     }
 
     @Test fun landscapePlayerOverflowHasNoInnerPlatterOrMaterialVariant() {
