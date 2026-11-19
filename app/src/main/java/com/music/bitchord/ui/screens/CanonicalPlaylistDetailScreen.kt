@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material3.Button
@@ -147,12 +149,21 @@ internal fun LibraryPlaylistCard.explicitCoverUri(): String? = when (this) {
 
 /** Repeat each sleeve only once in a collage, as the native playlist page does. */
 internal fun distinctCanonicalPlaylistCoverRows(rows: List<V2DisplayRow>): List<V2DisplayRow> =
-    rows.distinctBy { row ->
-        row.localArtworkUri?.let { "local:$it" }
-            ?: row.remoteArtworkRevision?.takeIf { it.isNotBlank() }
-            ?: row.remoteMediaAssetId?.let { "remote:$it" }
-            ?: row.id
-    }.take(4)
+    rows.asSequence()
+        // MusicBrainz-only members have verified labels, not cover media.
+        // Never spend a collage quadrant on their generic music-note placeholder.
+        .filter { row ->
+            row.isAvailablePlaylistMember() &&
+                (!row.localArtworkUri.isNullOrBlank() ||
+                    !row.remoteArtworkRevision.isNullOrBlank() ||
+                    !row.remoteMediaAssetId.isNullOrBlank())
+        }
+        .distinctBy { row ->
+            row.localArtworkUri?.let { "local:$it" }
+                ?: row.remoteArtworkRevision?.takeIf { it.isNotBlank() }
+                ?: row.remoteMediaAssetId?.let { "remote:$it" }
+                ?: row.id
+        }.take(4).toList()
 
 /**
  * Artwork always comes from recordings actually in the saved collection.
@@ -248,6 +259,21 @@ internal fun V2DisplayRow.isAvailablePlaylistMember(): Boolean =
         // Metadata-only labels are useful offline but NEVER a playback proof.
         !artist.endsWith(CATALOG_METADATA_NO_AUDIO_SUFFIX)
 
+/** A metadata-only entry must not disable a mixed playlist's play/shuffle UI.
+ * The playback layer independently validates each eligible asset at queue time. */
+internal fun canonicalPlaylistHasPlayableRows(rows: List<V2DisplayRow>?): Boolean =
+    rows != null &&
+        rows.size <= CanonicalCollectionIntentPlanner.MAX_INPUT_SIZE &&
+        rows.any(V2DisplayRow::isAvailablePlaylistMember)
+
+/** Remove by exact RecordingId, keeping source, artwork and every other member. */
+internal fun removeCanonicalPlaylistRecording(
+    playlist: SavedCanonicalStaticPlaylist,
+    recordingId: String,
+): SavedCanonicalStaticPlaylist =
+    if (recordingId !in playlist.recordingIds) playlist
+    else playlist.copy(recordingIds = playlist.recordingIds.filterNot { it == recordingId })
+
 /** Only an exact, uniquely proven Recording → ReleaseGroup relationship
  * enables album navigation. No artist/title inference or arbitrary edition. */
 internal fun canonicalPlaylistAlbumForRecording(
@@ -289,6 +315,7 @@ internal fun CanonicalPlaylistTrackRow(
     activeTint: androidx.compose.ui.graphics.Color = appleMusicKeyColor(),
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    allowUnavailableHold: Boolean = false,
 ) {
     val available = track.isAvailablePlaylistMember()
     val swipeSetting = com.music.bitchord.ui.AppUi.hostOrNull?.swipeToPlayNext
@@ -317,9 +344,11 @@ internal fun CanonicalPlaylistTrackRow(
                 else androidx.compose.ui.graphics.Color.Transparent,
             ),
             onClick = if (available) ({ onPlay(track.id) }) else null,
-            onLongPress = if (available) onHeldActions else null,
+            // Even non-playable saved entries must remain accessible for removal.
+            onLongPress = if (available || allowUnavailableHold) onHeldActions else null,
             onMore = null,
-            opacity = if (available) 1f else 0.45f,
+            // "Sem áudio" is already explicit; do not make the label illegible.
+            opacity = 1f,
             leading = {
                 NativeDetailTrackArtwork(showPlayingBars = isCurrent && isPlaying) {
                     SmartPlaylistPreviewArtwork(
@@ -373,19 +402,22 @@ internal fun canonicalPlaylistSwipeIntent(playNext: Boolean): CanonicalCollectio
 @Composable
 internal fun CanonicalPlaylistHeldTrackActions(
     onDismiss: () -> Unit,
-    onPlay: () -> Unit,
+    onPlay: (() -> Unit)?,
     onPlayNext: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenAlbum: (() -> Unit)?,
+    onRemove: (() -> Unit)? = null,
 ) {
-        NativeCompactMenuItem(
-            label = "Reproduzir daqui",
-            icon = Icons.Rounded.PlayArrow,
-            onClick = {
-                onDismiss()
-                onPlay()
-            },
-        )
+        onPlay?.let { play ->
+            NativeCompactMenuItem(
+                label = "Reproduzir daqui",
+                icon = Icons.Rounded.PlayArrow,
+                onClick = {
+                    onDismiss()
+                    play()
+                },
+            )
+        }
         onPlayNext?.let { next ->
             NativeCompactMenuItem(
                 label = "Reproduzir a seguir",
@@ -413,6 +445,16 @@ internal fun CanonicalPlaylistHeldTrackActions(
                 onClick = {
                     onDismiss()
                     openAlbum()
+                },
+            )
+        }
+        onRemove?.let { remove ->
+            NativeCompactMenuItem(
+                label = "Remover da playlist",
+                icon = Icons.Rounded.DeleteOutline,
+                onClick = {
+                    onDismiss()
+                    remove()
                 },
             )
         }
@@ -503,6 +545,28 @@ internal fun CanonicalPlaylistDetailScreen(
         suggestionPage,
         shuffleSeed = suggestionShuffleSeed,
     )
+    fun removeSavedRecording(id: String) {
+        val playlist = card as? LibraryPlaylistCard.CanonicalNormal ?: return
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    // Read on click: another screen may have edited this playlist.
+                    val latest = normalRepository.list().firstOrNull {
+                        it.id == playlist.definition.id
+                    } ?: error("Playlist indisponível")
+                    if (id in latest.recordingIds) {
+                        normalRepository.save(removeCanonicalPlaylistRecording(latest, id))
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(
+                    context, "Não foi possível remover a faixa.", Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
     fun addSuggested(id: String) {
         val playlist = card as? LibraryPlaylistCard.CanonicalNormal ?: return
         if (pendingSuggestionId != null || id !in suggestions.map { it.id }) return
@@ -622,9 +686,7 @@ internal fun CanonicalPlaylistDetailScreen(
     }.takeIf { it.isNotBlank() }
     val canPlay = if (card is LibraryPlaylistCard.Normal) {
         playableHistoricalSongs.isNotEmpty()
-    } else rows?.isNotEmpty() == true &&
-        (rows?.size ?: 0) <= CanonicalCollectionIntentPlanner.MAX_INPUT_SIZE &&
-        rows.orEmpty().all { it.isAvailablePlaylistMember() }
+    } else canonicalPlaylistHasPlayableRows(rows)
 
     var heldTrack by remember(card.id) { mutableStateOf<V2DisplayRow?>(null) }
     var heldTrackOrigin by remember(card.id) { mutableStateOf<HeldItem?>(null) }
@@ -647,18 +709,20 @@ internal fun CanonicalPlaylistDetailScreen(
                 onDismiss = dismissHeldTrack,
                 onPreviewClick = { chosen ->
                     dismissHeldTrack()
-                    onTrackClick(chosen.id)
+                    if (chosen.isAvailablePlaylistMember()) onTrackClick(chosen.id)
                 },
             ) { chosen ->
                 CanonicalPlaylistHeldTrackActions(
                     onDismiss = dismissHeldTrack,
-                    onPlay = { onTrackClick(chosen.id) },
-                    onPlayNext = {
-                        onTrackQueue(chosen.id, CanonicalCollectionIntent.ADD_NEXT)
-                    },
-                    onAddToQueue = {
-                        onTrackQueue(chosen.id, CanonicalCollectionIntent.ADD_TO_QUEUE)
-                    },
+                    onPlay = if (chosen.isAvailablePlaylistMember()) {
+                        { onTrackClick(chosen.id) }
+                    } else null,
+                    onPlayNext = if (chosen.isAvailablePlaylistMember()) {
+                        { onTrackQueue(chosen.id, CanonicalCollectionIntent.ADD_NEXT) }
+                    } else null,
+                    onAddToQueue = if (chosen.isAvailablePlaylistMember()) {
+                        { onTrackQueue(chosen.id, CanonicalCollectionIntent.ADD_TO_QUEUE) }
+                    } else null,
                     onOpenAlbum = albumByRecording[chosen.id]?.let { group ->
                         {
                             onOpenAlbum(
@@ -668,6 +732,9 @@ internal fun CanonicalPlaylistDetailScreen(
                             )
                         }
                     },
+                    onRemove = if (card is LibraryPlaylistCard.CanonicalNormal) {
+                        { removeSavedRecording(chosen.id) }
+                    } else null,
                 )
             }
         },
@@ -896,6 +963,7 @@ internal fun CanonicalPlaylistDetailScreen(
                     track.id, currentCanonicalRecordingId,
                 ),
                 isPlaying = isPlaying,
+                allowUnavailableHold = card is LibraryPlaylistCard.CanonicalNormal,
             )
             HorizontalDivider(
                 modifier = Modifier.padding(start = 80.dp),
