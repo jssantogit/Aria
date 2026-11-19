@@ -24,9 +24,9 @@ import androidx.compose.ui.semantics.semantics
 /**
  * Provenance of a held item: its unchanged position in the real composition.
  *
- * We no longer capture or re-render the item into a bitmap. The context
- * overlay dims only what surrounds these bounds; the real card, artwork,
- * caption and native clip retain their original pixels and z-order.
+ * No bitmap copy or relocated item. A temporary transparent display list
+ * of the source's ACTUAL pixels serves as an alpha stencil for the scrim;
+ * the original card/artwork/text stay in their native composition and z-order.
  */
 @Stable
 class HeldItem internal constructor(
@@ -66,9 +66,10 @@ object LongPressOrigin {
 }
 
 /**
- * Long-press registration with no screenshot, graphics layer, shadow or
- * suppression of the source's original paint. This prevents a transient
- * white rectangle from being captured and stretched over carousel artwork.
+ * Long-press registration that preserves the real item without a screenshot.
+ * Recording its native pixels in a temporary GraphicsLayer only while held
+ * allows the scrim to leave text and artwork untouched, without lightening
+ * the empty background of a transparent row or changing its geometry.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
