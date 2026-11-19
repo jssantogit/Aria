@@ -290,7 +290,7 @@ fun <T : Any> HeldContextMenu(
                                 ),
                             )
                         }
-                    },
+                    }
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
