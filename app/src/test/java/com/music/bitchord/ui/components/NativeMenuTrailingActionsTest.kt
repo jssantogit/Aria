@@ -6,8 +6,6 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.test.assertExists
-import androidx.compose.ui.test.fetchSemanticsNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
