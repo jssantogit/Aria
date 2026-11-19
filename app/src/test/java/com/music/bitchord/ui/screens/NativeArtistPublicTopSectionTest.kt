@@ -67,6 +67,33 @@ class NativeArtistPublicTopSectionTest {
         }
     }
 
+    @Test fun unrankedCatalogArtistSharesTrackShelfWithoutInventingPopularityOrPlayback() {
+        val artist = "b7ffd2af-418f-4be2-bdd1-22f8b48613da"
+        val recording = CanonicalCatalogSearchRow(
+            musicBrainzId = "13dd61c7-ce73-4e97-9f0c-9f0e53144411",
+            kind = CanonicalSearchKind.RECORDING,
+            title = "Verified metadata track",
+            subtitle = "Artist",
+            artistScopeMbid = artist,
+            hasCatalogedAsset = true,
+        )
+        compose.setContent {
+            MaterialTheme {
+                NativeArtistPublicTopSection(
+                    artistMbid = artist,
+                    rows = listOf(recording),
+                    palette = themeArtworkPalette(),
+                    title = "Faixas",
+                    onRecordingOpen = null,
+                )
+            }
+        }
+        compose.onNodeWithText("Faixas").assertExists()
+        compose.onNodeWithText("Verified metadata track").assertExists()
+        compose.onNodeWithText("Verified metadata track").assertHasNoClickAction()
+        compose.onNodeWithTag("artist-top-row-${recording.musicBrainzId}").assertExists()
+    }
+
     @Test fun sampledPopularityUsesTopTracksTitleWithoutTechnicalCaption() {
         val artist = "b7ffd2af-418f-4be2-bdd1-22f8b48613da"
         val row = CanonicalCatalogSearchRow(
