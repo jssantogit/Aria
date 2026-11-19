@@ -521,25 +521,37 @@ fun SearchScreen(
                         )
                     }
                 }
-                searchingLibrary || searchingAddons -> if (
-                    searchingLibrary ||
-                    serverResults !is UiState.Success || serverResults.data.isEmpty() ||
-                    addonResults !is UiState.Success || addonResults.data.isNotEmpty()
-                ) librarySearchResults(
-                    query = query.trim(),
-                    results = if (searchingAddons) addonResults else libraryResults,
-                    addons = searchingAddons,
-                    addonHistory = addonHistory,
-                    onAddonHistoryClick = onAddonHistoryClick,
-                    onAddonHistoryRemove = onAddonHistoryRemove,
-                    onAddonHistoryClear = onAddonHistoryClear,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                    onSongClick = if (searchingAddons) onAddonSongClick else onLibrarySongClick,
-                    onSongLongPress = onSongLongPress,
-                    onSongSwipe = onSongSwipe,
-                    appleStyle = appleResultTabs,
-                )
+                searchingLibrary || searchingAddons -> {
+                    val serverFailure = if (searchingAddons) {
+                        canonicalServerSearchErrorWithoutFallback(serverResults, addonResults)
+                    } else null
+                    when {
+                        searchingAddons && canonicalServerSearchPendingWithoutFallback(
+                            serverResults, addonResults,
+                        ) -> songListSkeleton(keyPrefix = "skeleton:search:server")
+                        serverFailure != null -> item(key = "server:provider-error") {
+                            MessageState(serverFailure)
+                        }
+                        searchingLibrary ||
+                            serverResults !is UiState.Success || serverResults.data.isEmpty() ||
+                            addonResults !is UiState.Success || addonResults.data.isNotEmpty() ->
+                            librarySearchResults(
+                                query = query.trim(),
+                                results = if (searchingAddons) addonResults else libraryResults,
+                                addons = searchingAddons,
+                                addonHistory = addonHistory,
+                                onAddonHistoryClick = onAddonHistoryClick,
+                                onAddonHistoryRemove = onAddonHistoryRemove,
+                                onAddonHistoryClear = onAddonHistoryClear,
+                                currentSong = currentSong,
+                                isPlaying = isPlaying,
+                                onSongClick = if (searchingAddons) onAddonSongClick else onLibrarySongClick,
+                                onSongLongPress = onSongLongPress,
+                                onSongSwipe = onSongSwipe,
+                                appleStyle = appleResultTabs,
+                            )
+                    }
+                }
                 suggesting -> {
                     searchSuggestions(
                         suggestions = suggestions,
@@ -894,6 +906,25 @@ fun canonicalSearchEditing(
 /** No server lookup occurs until the user explicitly submits the query. */
 fun serverSearchEditing(query: String, searchCommitted: Boolean): Boolean =
     query.isNotBlank() && !searchCommitted
+
+/**
+ * A verified empty legacy addon response is not proof that the configured
+ * remote provider returned no matches. Preserve its loading/error state until
+ * the server query itself settles. Real legacy results remain visible.
+ */
+internal fun canonicalServerSearchPendingWithoutFallback(
+    server: UiState<List<CanonicalServerSearchRow>>?,
+    legacy: UiState<List<Song>>?,
+): Boolean = server is UiState.Loading &&
+    legacy is UiState.Success && legacy.data.isEmpty()
+
+internal fun canonicalServerSearchErrorWithoutFallback(
+    server: UiState<List<CanonicalServerSearchRow>>?,
+    legacy: UiState<List<Song>>?,
+): String? = (server as? UiState.Error)?.message?.takeIf {
+    legacy is UiState.Success && legacy.data.isEmpty()
+}
+
 
 /** Show only terms, not YouTube media IDs, in the canonical empty-query surface. */
 fun canonicalRecentSearchEntries(history: List<SearchHistoryEntity>): List<SearchHistoryEntity> =
