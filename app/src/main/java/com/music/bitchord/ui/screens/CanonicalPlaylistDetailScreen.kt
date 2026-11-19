@@ -386,6 +386,8 @@ internal fun CanonicalPlaylistTrackRow(
     allowUnavailableHold: Boolean = false,
 ) {
     val available = track.isAvailablePlaylistMember()
+    // Ratings belong to the Recording identity, not to playback capability.
+    val trackRating = track.canonicalPlaylistRating(LocalCanonicalRatingDisplay.current)
     val swipeSetting = com.music.bitchord.ui.AppUi.hostOrNull?.swipeToPlayNext
     val playNext = swipeSetting?.collectAsStateWithLifecycle()?.value ?: false
     val onSwipeToQueue = if (available && onQueue != null) {
@@ -419,9 +421,11 @@ internal fun CanonicalPlaylistTrackRow(
             opacity = 1f,
             leading = {
                 NativeDetailTrackArtwork(showPlayingBars = available && isCurrent && isPlaying) {
-                    if (available) SmartPlaylistPreviewArtwork(
-                        row = track, modifier = Modifier.fillMaxSize(),
-                    ) else NativePlaylistMissingArtwork(Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize().clip(publicPlaylistTrackCoverShape())) {
+                        if (available) SmartPlaylistPreviewArtwork(
+                            row = track, modifier = Modifier.fillMaxSize(),
+                        ) else NativePlaylistMissingArtwork(Modifier.fillMaxSize())
+                    }
                 }
             },
             title = {
@@ -440,11 +444,11 @@ internal fun CanonicalPlaylistTrackRow(
             },
             rating = {
                 CanonicalRatingStars(
-                    rating = track.canonicalPlaylistRating(LocalCanonicalRatingDisplay.current),
+                    rating = trackRating,
                     color = titleColor,
                 )
             },
-            showRatingSlot = available,
+            showRatingSlot = available || trackRating != null,
             actions = {},
 
         )
