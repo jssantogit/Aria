@@ -1875,13 +1875,16 @@ internal fun NativeArtistReleaseCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = palette.onBackgroundVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // Unknown chronology is not an excuse to repeat the artist name.
+        if (subtitle.isNotBlank()) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -1897,7 +1900,10 @@ private fun SectionCard(
     val observeCaaCover = rememberCaaCoverLoadObserver(item.thumbnailUrl)
     NativeArtistReleaseCard(
         title = item.title,
-        subtitle = item.subtitle,
+        // A release in an artist's carousel needs its YEAR, not that artist
+        // repeated beneath every cover. Accept only an explicit year metadata
+        // segment; no extraction from titles or inferred scan timestamps.
+        subtitle = canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
         palette = palette,
         onClick = onClick,
         modifier = modifier,
