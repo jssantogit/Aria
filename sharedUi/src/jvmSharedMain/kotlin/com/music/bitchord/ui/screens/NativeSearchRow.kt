@@ -46,21 +46,9 @@ data class NativeSearchRowUi(
     val artworkUri: String?,
     val artistPortrait: Boolean,
     val downloadBadge: Boolean = false,
-    val durationLabel: String? = null,
 )
 
-/**
- * A search result's verified duration is display metadata, never an asset
- * identity or a playback promise. Artists/albums without duration retain
- * their original subtitle without a placeholder.
- */
-internal fun nativeSearchSecondaryLine(row: NativeSearchRowUi): String =
-    listOfNotNull(
-        row.subtitle.trim().takeIf(String::isNotEmpty),
-        row.durationLabel?.trim()?.takeIf(String::isNotEmpty),
-    ).joinToString(" · ")
-
-/**
+ /**
  * One native 52dp artwork + shared detail-row frame for local, server and
  * catalog search. The caller owns identity, capability and all callbacks:
  * metadata-only Recordings still open information rather than playing.
@@ -122,7 +110,7 @@ fun NativeSearchResultRow(
         },
         subtitle = {
             Text(
-                text = nativeSearchSecondaryLine(row),
+                text = row.subtitle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
