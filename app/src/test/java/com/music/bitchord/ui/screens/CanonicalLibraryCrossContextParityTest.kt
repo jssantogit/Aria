@@ -42,6 +42,20 @@ class CanonicalLibraryCrossContextParityTest {
         )
     }
 
+    @Test fun sourceOnlyNavigationKeepsContextMenusWithoutStrandedBatchSelection() {
+        for (category in com.music.bitchord.data.listening.CanonicalSmartFilterContext.entries) {
+            assertEquals(false, canonicalLibraryCanStartBatchSelection(
+                unified = false, category = category, detailOpen = false,
+            ))
+            assertEquals(false, canonicalLibraryCanStartBatchSelection(
+                unified = true, category = category, detailOpen = true,
+            ))
+            assertEquals(true, canonicalLibraryCanStartBatchSelection(
+                unified = true, category = category, detailOpen = false,
+            ))
+        }
+    }
+
     @Test fun uncreditedArtistsKeepTheSameBrowseOnlyGroupAsLocalAndRemoteLibrary() {
         val recording = CanonicalBrowseTrack(
             recordingId = "recording:uncredited",
