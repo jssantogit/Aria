@@ -1,22 +1,21 @@
 package com.music.bitchord.ui.screens
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.PlaylistAdd
-import androidx.compose.material.icons.rounded.Share
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.sharedui.resources.Res
 import com.music.bitchord.sharedui.resources.apple_search_view_details
+import com.music.bitchord.ui.components.BrowseActionsSheet
+import com.music.bitchord.ui.components.BrowseTarget
 import com.music.bitchord.ui.components.HeldContextMenu
 import com.music.bitchord.ui.components.HeldItem
-import com.music.bitchord.ui.components.NativeCompactMenuDivider
-import com.music.bitchord.ui.components.NativeCompactMenuItem
-import com.music.bitchord.ui.icons.BitChordIcons
-import com.music.bitchord.ui.icons.PlaylistEditorIcons
+import com.music.bitchord.ui.components.SongActionsPresentation
 import dev.chrisbanes.haze.HazeState
 import org.jetbrains.compose.resources.stringResource
 
@@ -28,10 +27,17 @@ internal fun canonicalSearchHeldCanAddToPlaylist(kind: CanonicalSearchKind): Boo
     kind == CanonicalSearchKind.RECORDING || kind == CanonicalSearchKind.RELEASE ||
         kind == CanonicalSearchKind.RELEASE_GROUP
 
-internal fun canonicalSearchHeldShowsDownload(kind: CanonicalSearchKind): Boolean =
-    canonicalSearchHeldCanAddToPlaylist(kind)
+/** A no-op download row is a false capability and must never be shown. */
+internal fun canonicalSearchHeldShowsDownload(@Suppress("UNUSED_PARAMETER") kind: CanonicalSearchKind): Boolean =
+    false
 
-/** Search uses long press only: no trailing ⋯ and no playback/queue actions. */
+private fun canonicalSearchBrowseType(kind: CanonicalSearchKind): BrowseType = when (kind) {
+    CanonicalSearchKind.ARTIST -> BrowseType.ARTIST
+    CanonicalSearchKind.RELEASE, CanonicalSearchKind.RELEASE_GROUP -> BrowseType.ALBUM
+    CanonicalSearchKind.RECORDING -> BrowseType.OTHER
+}
+
+/** Long press uses the same label-first, icon-trailing entity rows as detail overflow. */
 @Composable
 internal fun CanonicalSearchHeldMenus(
     catalogRow: CanonicalCatalogSearchRow?,
@@ -41,7 +47,6 @@ internal fun CanonicalSearchHeldMenus(
     hazeState: HazeState,
     bottomChromeClearance: Dp = 100.dp,
     hostProvidesBlur: Boolean = false,
-    /** Inherit page art when this same menu is opened inside a detail page. */
     plateTint: Color? = null,
     onDismissCatalog: () -> Unit,
     onDismissPublicPlaylist: () -> Unit,
@@ -55,10 +60,18 @@ internal fun CanonicalSearchHeldMenus(
     onPinPublicPlaylist: (CanonicalPublicPlaylistSearchRow) -> Unit,
     onShareCatalog: (CanonicalCatalogSearchRow) -> Unit,
     onSharePublicPlaylist: (CanonicalPublicPlaylistSearchRow) -> Unit,
-    onDownloadCatalog: (CanonicalCatalogSearchRow) -> Unit,
-    onDownloadPublicPlaylist: (CanonicalPublicPlaylistSearchRow) -> Unit,
 ) {
     val details = stringResource(Res.string.apple_search_view_details)
+    val context = LocalContext.current
+    val catalogRepository = remember(context) {
+        CatalogMetadataPinRepository.get(context.applicationContext)
+    }
+    val publicRepository = remember(context) {
+        LibraryPlaylistPinRepository.get(context.applicationContext)
+    }
+    val catalogPins by catalogRepository.pins.collectAsStateWithLifecycle()
+    val publicPins by publicRepository.pins.collectAsStateWithLifecycle()
+
     HeldContextMenu(
         item = catalogRow,
         held = catalogOrigin,
@@ -69,37 +82,42 @@ internal fun CanonicalSearchHeldMenus(
         onDismiss = onDismissCatalog,
         onPreviewClick = { row -> onDismissCatalog(); onOpenCatalog(row) },
     ) { row ->
-        NativeCompactMenuItem(
-            label = details, icon = Icons.Rounded.Info,
-            onClick = { onDismissCatalog(); onOpenCatalog(row) },
+        val route = "catalog:${row.kind.name}:${row.musicBrainzId}"
+        val verified = isVerifiedCatalogRecordingId(row.musicBrainzId)
+        val pin = CatalogMetadataPin(
+            browseId = route,
+            title = row.title.trim().take(240),
+            subtitle = row.subtitle.orEmpty().take(240),
+            artworkUrl = trustedCatalogMetadataPinArtwork(row.artworkUri),
         )
-        if (canonicalSearchHeldCanAddToPlaylist(row.kind)) {
-            NativeCompactMenuItem(
-                label = "Adicionar à playlist",
-                icon = Icons.Rounded.PlaylistAdd,
-                onClick = { onDismissCatalog(); onAddCatalogToPlaylist(row) },
-            )
-        }
-        NativeCompactMenuItem(
-            label = "Editar avaliação", icon = PlaylistEditorIcons.RatingPlain,
-            onClick = { onDismissCatalog(); onRateCatalog(row) },
+        BrowseActionsSheet(
+            target = BrowseTarget(
+                browseId = route,
+                title = row.title,
+                subtitle = row.subtitle.orEmpty(),
+                type = canonicalSearchBrowseType(row.kind),
+                fromCard = false,
+            ),
+            presentation = SongActionsPresentation.Menu,
+            onOpenLabel = details,
+            onOpen = { onDismissCatalog(); onOpenCatalog(row) },
+            onAddToPlaylist = if (verified && canonicalSearchHeldCanAddToPlaylist(row.kind)) {
+                { onDismissCatalog(); onAddCatalogToPlaylist(row) }
+            } else null,
+            onEditRating = if (verified) {
+                { onDismissCatalog(); onRateCatalog(row) }
+            } else null,
+            isPinned = catalogPins.any { it.browseId == route },
+            onTogglePin = if (validCatalogMetadataPin(pin)) {
+                { onDismissCatalog(); onPinCatalog(row) }
+            } else null,
+            onShare = if (verified) {
+                { onDismissCatalog(); onShareCatalog(row) }
+            } else null,
+            // No Play/Next/Queue/Download: a MusicBrainz MBID is metadata.
         )
-        NativeCompactMenuItem(
-            label = "Fixar", icon = BitChordIcons.Pin,
-            onClick = { onDismissCatalog(); onPinCatalog(row) },
-        )
-        NativeCompactMenuItem(
-            label = "Compartilhar", icon = Icons.Rounded.Share,
-            onClick = { onDismissCatalog(); onShareCatalog(row) },
-        )
-        if (canonicalSearchHeldShowsDownload(row.kind)) {
-            NativeCompactMenuDivider()
-            NativeCompactMenuItem(
-                label = "Baixar", icon = Icons.Rounded.Download,
-                onClick = { onDismissCatalog(); onDownloadCatalog(row) },
-            )
-        }
     }
+
     HeldContextMenu(
         item = publicPlaylist,
         held = publicPlaylistOrigin,
@@ -110,30 +128,33 @@ internal fun CanonicalSearchHeldMenus(
         onDismiss = onDismissPublicPlaylist,
         onPreviewClick = { row -> onDismissPublicPlaylist(); onOpenPublicPlaylist(row) },
     ) { row ->
-        NativeCompactMenuItem(
-            label = details, icon = Icons.Rounded.Info,
-            onClick = { onDismissPublicPlaylist(); onOpenPublicPlaylist(row) },
-        )
-        NativeCompactMenuItem(
-            label = "Adicionar à playlist", icon = Icons.Rounded.PlaylistAdd,
-            onClick = { onDismissPublicPlaylist(); onAddPublicPlaylistToPlaylist(row) },
-        )
-        NativeCompactMenuItem(
-            label = "Editar avaliação", icon = PlaylistEditorIcons.RatingPlain,
-            onClick = { onDismissPublicPlaylist(); onRatePublicPlaylist(row) },
-        )
-        NativeCompactMenuItem(
-            label = "Fixar", icon = BitChordIcons.Pin,
-            onClick = { onDismissPublicPlaylist(); onPinPublicPlaylist(row) },
-        )
-        NativeCompactMenuItem(
-            label = "Compartilhar", icon = Icons.Rounded.Share,
-            onClick = { onDismissPublicPlaylist(); onSharePublicPlaylist(row) },
-        )
-        NativeCompactMenuDivider()
-        NativeCompactMenuItem(
-            label = "Baixar", icon = Icons.Rounded.Download,
-            onClick = { onDismissPublicPlaylist(); onDownloadPublicPlaylist(row) },
+        val pin = LibraryPlaylistPin("public:${row.mbid}", row.title, row.creator)
+        val verified = canonicalPublicPlaylistRatingTarget(row.mbid) != null
+        BrowseActionsSheet(
+            target = BrowseTarget(
+                browseId = "public:${row.mbid}",
+                title = row.title,
+                subtitle = row.creator,
+                type = BrowseType.PLAYLIST,
+                fromCard = false,
+            ),
+            presentation = SongActionsPresentation.Menu,
+            onOpenLabel = details,
+            onOpen = { onDismissPublicPlaylist(); onOpenPublicPlaylist(row) },
+            onAddToPlaylist = if (verified) {
+                { onDismissPublicPlaylist(); onAddPublicPlaylistToPlaylist(row) }
+            } else null,
+            onEditRating = if (verified) {
+                { onDismissPublicPlaylist(); onRatePublicPlaylist(row) }
+            } else null,
+            isPinned = publicPins.any { it.id == pin.id },
+            onTogglePin = if (validLibraryPlaylistPin(pin)) {
+                { onDismissPublicPlaylist(); onPinPublicPlaylist(row) }
+            } else null,
+            onShare = if (verified) {
+                { onDismissPublicPlaylist(); onSharePublicPlaylist(row) }
+            } else null,
+            // Public ListenBrainz playlist metadata cannot be played or downloaded.
         )
     }
 }
