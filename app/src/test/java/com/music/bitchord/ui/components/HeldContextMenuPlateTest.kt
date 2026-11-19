@@ -21,6 +21,21 @@ class HeldContextMenuPlateTest {
         assertEquals(false, heldActionsUseHaze(reduceDynamicBlur = true))
     }
 
+    @Test fun transparentRowsUseOnlyThePaintedPixelMaskNotAFullWidthCutout() {
+        org.junit.Assert.assertTrue(heldSpotlightUsesPixelMask(
+            captureAvailable = true, recordingReady = true,
+        ))
+        org.junit.Assert.assertFalse(heldSpotlightUsesPixelMask(
+            captureAvailable = true, recordingReady = false,
+        ))
+        org.junit.Assert.assertFalse(heldSpotlightUsesPixelMask(
+            captureAvailable = false, recordingReady = true,
+        ))
+        org.junit.Assert.assertFalse(heldSpotlightUsesPixelMask(
+            captureAvailable = false, recordingReady = false,
+        ))
+    }
+
     @Test fun heldSnapshotDoesNotReceiveASecondGreyCardSurface() {
         assertEquals(Color.Transparent, heldPreviewBackingColor())
     }
