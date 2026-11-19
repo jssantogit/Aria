@@ -24,6 +24,8 @@ import com.music.bitchord.ui.loadCanonicalCoversProgressively
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collectLatest
+import java.util.Locale
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -79,6 +81,37 @@ internal fun NativeArtistPublicTopSection(
             it.artistScopeMbid?.equals(artistMbid, ignoreCase = true) == true
     }
     val context = LocalContext.current.applicationContext
+    val catalogDb = remember(context) { CanonicalCatalogDatabase.get(context) }
+    val officialReleaseIds = exact.mapNotNull { row ->
+        row.coverReleaseMbid?.trim()?.takeIf(String::isNotBlank)
+    }.distinct()
+    // The source Recording has already proved an exact Official edition MBID.
+    // Render only its cached title/date; never use the artist as a substitute
+    // or guess an album by matching the song name or artwork.
+    val releaseCaptions by produceState<Map<String, String>>(
+        initialValue = emptyMap(),
+        key1 = officialReleaseIds,
+    ) {
+        if (officialReleaseIds.isEmpty()) return@produceState
+        catalogDb.invalidationTracker.createFlow(
+            "catalog_release", "catalog_external_identity", "musicbrainz_release_enrichment",
+        ).collectLatest {
+            value = try {
+                withContext(Dispatchers.IO) {
+                    catalogDb.catalogDao().cachedArtistOfficialReleaseCaptions(officialReleaseIds)
+                        .mapNotNull { cached ->
+                            canonicalArtistOfficialReleaseCaption(cached)?.let { caption ->
+                                cached.releaseMbid.lowercase(Locale.ROOT) to caption
+                            }
+                        }.toMap()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        }
+    }
     val coverArt = remember(context) {
         CoverArtArchive(
             store = RoomMusicBrainzCoverArtStore(
@@ -150,13 +183,17 @@ internal fun NativeArtistPublicTopSection(
                 )
             },
             subtitle = {
-                Text(
-                    text = recording.subtitle.orEmpty(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.onBackgroundVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val caption = recording.coverReleaseMbid
+                    ?.lowercase(Locale.ROOT)?.let(releaseCaptions::get)
+                if (!caption.isNullOrBlank()) {
+                    Text(
+                        text = caption,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.onBackgroundVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             },
             rating = {},
             showRatingSlot = false,
