@@ -30,7 +30,7 @@ import dev.chrisbanes.haze.materials.HazeMaterials
 internal fun nativeContextPlateColor(dark: Boolean): Color =
     nativeCompactPlateColor(isDark = dark, artworkElevation = null)
 
-internal enum class NativeActionCardTreatment { FROSTED, SOLID, NEUTRAL_FROSTED }
+internal enum class NativeActionCardTreatment { FROSTED, SOLID, NEUTRAL_FROSTED, PLAYER_NEUTRAL_FROSTED }
 
 /** The centered rating modal uses the exact neutral popup surface, without artwork. */
 internal fun neutralRatingPlateUsesArtwork(treatment: NativeActionCardTreatment): Boolean =
@@ -40,12 +40,13 @@ internal fun neutralRatingPlateUsesArtwork(treatment: NativeActionCardTreatment)
 internal fun nativeContextPlateCornerRadiusDp(treatment: NativeActionCardTreatment): Int =
     if (treatment == NativeActionCardTreatment.NEUTRAL_FROSTED) 30 else 18
 
-/** Rating has no outline; preserve the existing subtle borders on other card types. */
+/** Rating and player overflow have no outline; preserve legacy borders elsewhere. */
 internal fun nativeContextPlateBorder(
     treatment: NativeActionCardTreatment,
     dark: Boolean,
 ): BorderStroke? {
-    if (treatment == NativeActionCardTreatment.NEUTRAL_FROSTED) return null
+    if (treatment == NativeActionCardTreatment.NEUTRAL_FROSTED ||
+        treatment == NativeActionCardTreatment.PLAYER_NEUTRAL_FROSTED) return null
     return BorderStroke(
         0.5.dp,
         (if (dark) Color.White else Color.Black).copy(
@@ -59,7 +60,8 @@ internal fun expandableActionCardUsesHaze(
     hazeAvailable: Boolean,
     reduceBlur: Boolean,
 ): Boolean = (treatment == NativeActionCardTreatment.FROSTED ||
-    treatment == NativeActionCardTreatment.NEUTRAL_FROSTED) && hazeAvailable && !reduceBlur
+    treatment == NativeActionCardTreatment.NEUTRAL_FROSTED ||
+    treatment == NativeActionCardTreatment.PLAYER_NEUTRAL_FROSTED) && hazeAvailable && !reduceBlur
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
