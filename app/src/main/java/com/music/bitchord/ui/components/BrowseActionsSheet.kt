@@ -160,6 +160,8 @@ fun BrowseActionsSheet(
      * from something other than a real browse id (a Local Music grouping).
      */
     onShare: (() -> Unit)? = null,
+    /** Preserve entity-specific share labels without changing the native action layout. */
+    shareLabel: String? = null,
     /** Optional, identity-verified source link for metadata-only catalog entities. */
     onViewSource: (() -> Unit)? = null,
     viewSourceLabel: String = "Ver no MusicBrainz",
@@ -323,7 +325,8 @@ fun BrowseActionsSheet(
                 )
             }
             onShare?.let {
-                ActionRow(Icons.Rounded.Share, stringResource(R.string.share), onClick = it)
+                ActionRow(Icons.Rounded.Share,
+                    shareLabel ?: stringResource(R.string.share), onClick = it)
             }
             onTogglePin?.let {
                 ActionRow(
