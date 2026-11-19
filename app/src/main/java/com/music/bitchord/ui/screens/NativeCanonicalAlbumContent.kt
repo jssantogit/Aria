@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.catalog.CanonicalBrowseTrack
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicArtworkLoader
@@ -40,7 +41,8 @@ internal fun NativeAlbumDetailFrame(
 ) {
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize().background(palette.background),
+        modifier = modifier.fillMaxSize().background(palette.background)
+            .testTag("native-album-detail-frame"),
         contentPadding = contentPadding,
         content = content,
     )
