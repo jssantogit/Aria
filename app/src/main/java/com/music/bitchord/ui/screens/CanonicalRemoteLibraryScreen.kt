@@ -1342,8 +1342,11 @@ internal fun CanonicalRemoteLibraryScreen(
                     heroArtworkUri = detail.artworkUri,
                     heroArtworkTrack = entityArtworkById[detail.id]
                         ?: scopedDetailTracks.firstOrNull(),
-                    albumCredit = album?.artistDisplay?.takeIf(String::isNotBlank)
-                        ?: scopedDetailTracks.firstOrNull()?.artistDisplay.orEmpty(),
+                    // Prefer the release's verified credit. Only use member
+                    // recordings as fallback if every artist credit agrees.
+                    albumCredit = nativeAlbumDisplayCredit(
+                        album?.artistDisplay, scopedDetailTracks,
+                    ),
                     albumRating = canonicalLibraryEntityRatingForRow(
                         entityRatingValues, selection,
                     ),
