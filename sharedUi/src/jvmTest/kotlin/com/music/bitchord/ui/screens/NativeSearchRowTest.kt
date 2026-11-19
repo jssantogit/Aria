@@ -79,6 +79,25 @@ class NativeSearchRowTest {
         assertEquals("Álbum", canonicalNativeSearchRowUi(row, "Álbum").subtitle)
     }
 
+    @Test fun nativeSearchUsesSameProvenSecondaryMetadataAcrossOrigins() {
+        val catalogRecording = NativeSearchRowUi(
+            title = "Armageddon", subtitle = "aespa", artworkUri = null,
+            artistPortrait = false, durationLabel = "3:05",
+        )
+        val serverRecording = catalogRecording.copy(
+            durationLabel = null, artworkUri = "https://example.org/server-cover",
+        )
+        val artist = NativeSearchRowUi(
+            title = "aespa", subtitle = "Artista", artworkUri = null,
+            artistPortrait = true,
+        )
+        assertEquals("aespa · 3:05", nativeSearchSecondaryLine(catalogRecording))
+        assertEquals("aespa", nativeSearchSecondaryLine(serverRecording))
+        assertEquals("Artista", nativeSearchSecondaryLine(artist))
+        assertEquals("3:05", nativeSearchSecondaryLine(catalogRecording.copy(subtitle = "  ")))
+        assertEquals("", nativeSearchSecondaryLine(artist.copy(subtitle = " ", durationLabel = " ")))
+    }
+
     @Test fun nativeSearchPresentationExposesNoLegacyNavigationOrPlaybackIdFields() {
         val fields = NativeSearchRowUi::class.java.declaredFields.map { it.name }.toSet()
         assertFalse("browseId" in fields)
