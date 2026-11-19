@@ -104,8 +104,8 @@ internal fun playerAnchoredMenuHighlightPosition(
 fun PlayerAnchoredActionsMenu(
     anchorBounds: IntRect?,
     artworkUrl: String?,
-    hazeState: HazeState? = null,
     onDismiss: () -> Unit,
+    hazeState: HazeState? = null,
     highlightLauncher: Boolean = true,
     highlightRatingLauncher: Boolean = false,
     ratingLauncherScore: Double? = null,
