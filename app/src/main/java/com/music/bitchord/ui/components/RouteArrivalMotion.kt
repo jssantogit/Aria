@@ -172,6 +172,9 @@ internal fun rememberRouteArrivalModifier(
     reduceMotion: Boolean,
     forward: Boolean = true,
     rootTabPrefix: String? = null,
+    /** Optional per-navigation direction; read against the previous route,
+     * not guessed from the destination alone (Back must move backward). */
+    directionForRouteChange: ((String, String) -> Boolean)? = null,
 ): Modifier {
     val progress = remember { Animatable(1f) }
     var previous by remember { mutableStateOf(routeKey) }
@@ -186,7 +189,7 @@ internal fun rememberRouteArrivalModifier(
         )
         previous = routeKey
         if (animate) {
-            arrivingForward = forward
+            arrivingForward = directionForRouteChange?.invoke(previous, routeKey) ?: forward
             progress.snapTo(0f)
             progress.animateTo(
                 1f,
