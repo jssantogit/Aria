@@ -49,6 +49,35 @@ class CatalogMetadataPinsTest {
         assertEquals(pin.browseId, target?.browseId)
     }
 
+    @Test fun missingArtistPortraitMayReuseExistingArtistPageArtWithoutChangingMusicBrainzId() {
+        val mbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val artist = CatalogMetadataPin(
+            browseId = "catalog:ARTIST:$mbid",
+            title = "STAYC",
+        )
+        val cachedAppleHero = "https://is1-ssl.mzstatic.com/image/thumb/artist.jpg"
+        val photoCache = mapOf("STAYC" to cachedAppleHero)
+        assertTrue(validCatalogMetadataPin(artist))
+        assertEquals(cachedAppleHero, pinnedCatalogArtworkUrl(artist, photoCache))
+        // A pin with a verified, explicitly stored artwork URL keeps priority.
+        val own = artist.copy(artworkUrl = "https://is1-ssl.mzstatic.com/own.jpg")
+        assertEquals(own.artworkUrl, pinnedCatalogArtworkUrl(own, photoCache))
+        // MBID identity, opening route and playback restrictions stay untouched.
+        assertEquals(artist.browseId, catalogMetadataPinNativeTarget(artist)?.browseId)
+    }
+
+    @Test fun artistPhotoLookupNeverFillsReleaseRecordingOrInvalidCatalogPins() {
+        val mbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val sameNamePhoto = mapOf("STAYC" to "https://is1-ssl.mzstatic.com/artist.jpg")
+        val releaseWithArtistName = CatalogMetadataPin("catalog:RELEASE_GROUP:$mbid", "STAYC")
+        val recordingWithArtistName = CatalogMetadataPin("catalog:RECORDING:$mbid", "STAYC")
+        assertEquals(null, pinnedCatalogArtworkUrl(releaseWithArtistName, sameNamePhoto))
+        assertEquals(null, pinnedCatalogArtworkUrl(recordingWithArtistName, sameNamePhoto))
+        assertEquals(null, pinnedCatalogArtworkUrl(
+            CatalogMetadataPin("catalog:ARTIST:unverified", "STAYC"), sameNamePhoto,
+        ))
+    }
+
     @Test fun pinnedArtistOpensArtistDetailAndRejectsFakeIdentities() {
         val artist = release.copy(
             browseId = "catalog:ARTIST:$id",
