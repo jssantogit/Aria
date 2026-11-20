@@ -90,8 +90,13 @@ internal class CatalogMetadataPinRepository(private val prefs: SharedPreferences
         return pins.value.any { it.browseId == pin.browseId }
     }
 
+    @Synchronized
+    internal fun reloadFromDisk() {
+        pins.value = decodeCatalogMetadataPins(prefs.getString(KEY, null))
+    }
+
     companion object {
-        private const val KEY = "pinned_catalog_metadata_v1"
+        internal const val KEY = "pinned_catalog_metadata_v1"
         @Volatile private var singleton: CatalogMetadataPinRepository? = null
         fun get(context: Context): CatalogMetadataPinRepository =
             singleton ?: synchronized(this) {
