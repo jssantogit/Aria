@@ -637,7 +637,13 @@ internal fun CanonicalRemoteLibraryScreen(
             value += 1L
         }
     }
-    val filteredState by produceState<CanonicalSongFilterState>(
+    // Each Library category owns its first snapshot. produceState's key1/key2
+    // restart its effect but do NOT reset its retained value, so switching
+    // Albums -> Songs could briefly show the previous (empty) track snapshot.
+    val filteredState by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource,
+    ) {
+    produceState<CanonicalSongFilterState>(
         initialValue = CanonicalSongFilterState.Loading,
         key1 = library.tracks, key2 = selectedFilterId,
         key3 = (Triple(selectedContext, selected, filtersUnavailable) to tagEvidenceRevision)
@@ -682,9 +688,15 @@ internal fun CanonicalRemoteLibraryScreen(
             CanonicalSongFilterState.Failed
         }
     }
+    }
     val displayedTracks = (filteredState as? CanonicalSongFilterState.Ready)?.tracks.orEmpty()
 
-    val entityState by produceState<CanonicalEntityBrowseState>(
+    // Navigation identity, not the current search text, decides when stale
+    // Album/Artist results must be replaced by a real Loading snapshot.
+    val entityState by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource, unified,
+    ) {
+    produceState<CanonicalEntityBrowseState>(
         initialValue = CanonicalEntityBrowseState.Loading,
         key1 = providerKey, key2 = selectedContext,
         key3 = (selectedFilterId to selected to filtersUnavailable) to
@@ -757,9 +769,13 @@ internal fun CanonicalRemoteLibraryScreen(
             }
         }
     }
+    }
     // One Room grouped read per active category/provider scope, not a
     // per-entity query loop. Unknown remote dates remain null.
-    val nativeEntitySortDates by produceState(
+    val nativeEntitySortDates by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource,
+    ) {
+    produceState(
         initialValue = emptyMap<String, CanonicalEntitySortDateRow>(),
         key1 = catalogDb,
         key2 = selectedContext,
@@ -786,11 +802,15 @@ internal fun CanonicalRemoteLibraryScreen(
             }
         }
     }
+    }
 
     // Resolve album/artist artwork by real canonical membership, never by
     // comparing an artist's display name with a recording's credit text.
     // These are grouped Room reads, not SQL calls from LazyColumn rows.
-    val entityArtworkById by produceState<Map<String, CanonicalBrowseTrack>>(
+    val entityArtworkById by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource,
+    ) {
+    produceState<Map<String, CanonicalBrowseTrack>>(
         initialValue = emptyMap(),
         key1 = selectedContext,
         key2 = entityState,
@@ -870,8 +890,14 @@ internal fun CanonicalRemoteLibraryScreen(
             emptyMap()
         }
     }
+    }
 
-    val detailState by produceState<CanonicalDetailBrowseState>(
+    // Detail member rows cannot belong to the previously selected album or
+    // artist while the new entity's SQL membership is still loading.
+    val detailState by androidx.compose.runtime.key(
+        selectedEntity?.id, selectedContext, providerKey, selectedSource,
+    ) {
+    produceState<CanonicalDetailBrowseState>(
         initialValue = CanonicalDetailBrowseState.Loading,
         key1 = providerKey, key2 = selectedContext,
         key3 = Triple(selectedEntity, sources, selectedSource),
@@ -909,6 +935,7 @@ internal fun CanonicalRemoteLibraryScreen(
                 CanonicalDetailBrowseState.Failed
             }
         }
+    }
     }
     val scopedDetailTracks = when (val d = detailState) {
         is CanonicalDetailBrowseState.Ready -> {
