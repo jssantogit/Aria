@@ -3159,16 +3159,14 @@ private fun BitChordApp(
         val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, detail?.browseId)
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                // Root peers use one 150ms content fade, not the previous
-                // 160ms host arrival layered over a second animation. Player,
-                // mini-player and bottom chrome stay outside this content host.
+                // Show the destination on the first frame, already nearly
+                // opaque. The previous root page must never ghost behind it;
+                // chrome/player remain outside this composited content host.
                 AnimatedContent(
                     targetState = pageRouteKey,
-                    // Apple Music's linked @animator root-tab resources
-                    // declare 150ms linear content fades. No direction-based
-                    // translation, host arrival fade, or implicit size spring.
-                    // Pushed pages retain the separate BitChord 180ms fade;
-                    // Library Show all still switches immediately.
+                    // Settling fades keep alpha >= 0.985 and retire old slots
+                    // immediately. This avoids blank frames when a destination
+                    // is cold, and previously visible rows bleeding through.
                     transitionSpec = {
                         val libraryTabKey = "$TAB_KEY$TAB_LIBRARY"
                         val libraryShowAllSwap =
@@ -3220,16 +3218,13 @@ private fun BitChordApp(
                         ),
                     label = "content",
                 ) { key ->
-                    // AnimatedContent can retain an outgoing composable even
-                    // for an instant transition. Drop its pixels at composition
-                    // time when switching into/out of Search or the wizard:
-                    // otherwise its previous rows can still paint behind a
-                    // translucent destination during the first frame.
-                    if (key != pageRouteKey &&
-                        com.music.bitchord.ui.components.mainPageMustReplaceImmediately(
-                            key, pageRouteKey, TAB_KEY, "$TAB_KEY$TAB_SEARCH",
-                        )
-                    ) return@AnimatedContent
+                    // A retired slot may still be composed while AnimatedContent
+                    // completes its bookkeeping. Never render its rows, even
+                    // for root peers or a cold destination whose Room snapshot
+                    // has not arrived. Each visible frame belongs to ONE route.
+                    if (!com.music.bitchord.ui.components.shouldDrawCurrentPageSlot(
+                            slotRoute = key, activeRoute = pageRouteKey,
+                        )) return@AnimatedContent
 
                     // Every branch below reads `key` rather than the state that
                     // produced it. The two are the same thing only for the page
@@ -4046,7 +4041,9 @@ private fun BitChordApp(
                             },
                             contentPadding = listPadding,
                         )
-                    } else when (key.removePrefix(TAB_KEY).toIntOrNull() ?: selectedTab) {
+                    } else if (com.music.bitchord.ui.components.isKnownRootTabSlot(
+                            key, TAB_KEY, tabs.size,
+                        )) when (key.removePrefix(TAB_KEY).toIntOrNull()) {
                         // Home keeps its native feed. Explore's root reuses the
                         // existing native category grid, never Home shelves.
                         TAB_HOME -> HomeScreen(
@@ -4576,6 +4573,24 @@ private fun BitChordApp(
                             ),
                             deviceItems = emptyList(),
                         )
+                    }
+                    } else {
+                        // A detail route can be selected before its stack item
+                        // is available (or after it is popped). Previously the
+                        // generic 'else when' fell through to Library and showed
+                        // a stale root page for one frame. A neutral, opaque
+                        // loading surface preserves route identity instead.
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background,
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                com.music.bitchord.ui.screens.NativeLoadingSpinner()
+                            }
+                        }
                     }
                 }
 
