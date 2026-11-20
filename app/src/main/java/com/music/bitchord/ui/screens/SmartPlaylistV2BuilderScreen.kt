@@ -307,7 +307,11 @@ internal fun SmartPlaylistV2BuilderScreen(
         key1 = accountPersistence,
     ) {
         accountPersistence.observe().collect {
-            value = canonicalAvailablePlaylistSourceKeys(context)
+            // Resolving configured servers can touch SharedPreferences and
+            // Android Keystore. It must not delay the wizard's first frame.
+            value = withContext(Dispatchers.IO) {
+                canonicalAvailablePlaylistSourceKeys(context)
+            }
         }
     }
     val catalog = remember(catalogDatabase) { catalogDatabase.catalogDao() }
@@ -673,7 +677,10 @@ internal fun SmartPlaylistV2BuilderScreen(
         if (!normalMode) return@LaunchedEffect
         normalLoading = true
         try {
-            delay(160)
+            // Typing needs a debounce; first entry and empty-query tab
+            // switches do not. Those should query Room immediately.
+            val debounceMillis = normalPlaylistSearchDebounceMillis(normalSearch)
+            if (debounceMillis > 0L) delay(debounceMillis)
             if (normalBrowseGroup != null &&
                 normalBrowseType == CanonicalPlaylistBrowseType.ALBUMS) {
                 normalRows = canonicalNormalPlaylistGroupTracks(
