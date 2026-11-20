@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -87,19 +88,16 @@ internal fun DiagnosticsPanel(
 
     Column(
         modifier = Modifier.fillMaxSize()
-            .then(if (embedded) Modifier.padding(top = 148.dp) else Modifier.statusBarsPadding())
+            // The global Settings top bar owns Back in embedded mode.
+            // Reserve space below its floating button, then show our page
+            // heading rather than leaving an empty 148dp block.
+            .then(if (embedded) Modifier.padding(top = 80.dp) else Modifier.statusBarsPadding())
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = PAGE_GUTTER, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (!embedded) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ArtworkPageBackButton(onClick = onBack, hazeState = null)
-                Spacer(Modifier.width(16.dp))
-                Text("Logs", style = MaterialTheme.typography.headlineLarge)
-            }
-        }
+        DiagnosticsPanelHeader(embedded = embedded, onBack = onBack)
         SettingsGroupSurface {
             SettingsRow(
                 title = if (status.active) "Captura em andamento" else "Captura parada",
@@ -173,5 +171,28 @@ internal fun DiagnosticsPanel(
         // Incident triage, retained crashes, restart capture, and detailed
         // traces are intentionally absent from this UI, not from diagnostics.
         // Diagnostics.createExport() still serializes the full evidence.
+    }
+}
+
+/** Embedded Settings uses the parent's floating Back, but still owns a title.
+ * The standalone dev Activity renders its own Back beside the same title. */
+@Composable
+internal fun DiagnosticsPanelHeader(embedded: Boolean, onBack: () -> Unit) {
+    if (embedded) {
+        Text(
+            "Logs",
+            style = MaterialTheme.typography.headlineLarge,
+            modifier = Modifier.testTag("diagnostics-page-title"),
+        )
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ArtworkPageBackButton(onClick = onBack, hazeState = null)
+            Spacer(Modifier.width(16.dp))
+            Text(
+                "Logs",
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.testTag("diagnostics-page-title"),
+            )
+        }
     }
 }

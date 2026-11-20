@@ -398,7 +398,7 @@ import com.music.bitchord.ui.screens.rememberSmartCollectionBatchAction
 import com.music.bitchord.ui.screens.SmartCollectionActionSource
 import com.music.bitchord.ui.screens.SmartPlaylistBuilderEntry
 import com.music.bitchord.ui.screens.explicitCoverUri
-import com.music.bitchord.ui.screens.SmartPlaylistBuilderScreen
+import com.music.bitchord.ui.screens.PlaylistCreatorDialogRoute
 import com.music.bitchord.ui.screens.ExploreScreen
 import com.music.bitchord.ui.screens.SearchScreen
 import com.music.bitchord.data.settings.SongSort
@@ -4565,40 +4565,17 @@ private fun BitChordApp(
                 // AnimatedContent: removing Library before Android attaches the
                 // Dialog left the center of the screen completely black.
                 if (showSmartPlaylistBuilder) {
-                    LaunchedEffect(showSmartPlaylistBuilder) {
-                        com.music.bitchord.diagnostics.Diagnostics.event(
-                            category = com.music.bitchord.diagnostics.DiagnosticCategory.UI,
-                            name = "playlist_wizard_entered",
-                            metadata = mapOf(
-                                "mode" to if (editingSmartPlaylistId != null ||
-                                    editingNormalPlaylistId != null) "edit" else "create",
-                            ),
-                        )
-                    }
-                    SmartPlaylistBuilderScreen(
+                    PlaylistCreatorDialogRoute(
+                        initialV2Id = editingSmartPlaylistId,
+                        initialNormalId = editingNormalPlaylistId,
+                        startOnNormalSongs = startNormalPlaylistSongPicker,
                         onBack = {
                             showSmartPlaylistBuilder = false
                             editingSmartPlaylistId = null
                             editingNormalPlaylistId = null
                             startNormalPlaylistSongPicker = false
                         },
-                        initialV2Id = editingSmartPlaylistId,
-                        initialNormalId = editingNormalPlaylistId,
-                        startOnNormalSongs = startNormalPlaylistSongPicker,
-                        onSavedAction = { id, intent ->
-                            executeSmartCollection(SmartCollectionActionSource.SavedDefinition(id), intent)
-                        },
-                        onPreviewAction = { query, intent ->
-                            executeSmartCollection(SmartCollectionActionSource.PreviewQuery(query), intent)
-                        },
-                        onSavedV2Action = { id, intent ->
-                            executeSmartCollection(SmartCollectionActionSource.SavedV2Definition(id), intent)
-                        },
-                        onPreviewV2Action = { query, ownerId, intent ->
-                            executeSmartCollection(
-                                SmartCollectionActionSource.PreviewV2Query(query, ownerId), intent,
-                            )
-                        },
+                        onCollectionAction = executeSmartCollection,
                     )
                 }
 
