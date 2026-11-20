@@ -81,6 +81,7 @@ import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Settings
@@ -1007,6 +1008,15 @@ private fun BitChordApp(
     var songSortMenuOpen by remember { mutableStateOf(false) }
     var detailSortMenuAnchor by remember {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
+    }
+    val pinEditorState = remember(context) {
+        com.music.bitchord.ui.screens.LibraryPinsEditorState(context)
+    }
+    BackHandler(enabled = pinEditorState.editing) {
+        pinEditorState.cancel()
+    }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != TAB_LIBRARY && pinEditorState.editing) pinEditorState.cancel()
     }
     var rootSettingsOverflowOpen by remember { mutableStateOf(false) }
     var rootSettingsOverflowAnchor by remember {
@@ -4437,6 +4447,7 @@ private fun BitChordApp(
                             navigationHome = true,
                             pinnedSection = {
                                 com.music.bitchord.ui.screens.CanonicalPinnedLibraryHomeSection(
+                                    editor = pinEditorState,
                                     refreshRequested = MainViewModel.Feed.LIBRARY in refreshing,
                                     onPlayRecording = { recordingId ->
                                         executeSmartCollection(
@@ -5019,7 +5030,32 @@ private fun BitChordApp(
                         }
                     } else null,
                     actions = {
-                        if (appleLibraryRoundChrome) {
+                        if (appleLibraryLandingChrome && pinEditorState.editing) {
+                            // A committed edit closes the mode. Failures and
+                            // conflicting external pins retain the draft.
+                            Box(
+                                Modifier.size(44.dp).clip(CircleShape)
+                                    .background(Color(0xFF0A84FF)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                NativeToolbarIconButton(onClick = {
+                                    when (pinEditorState.save()) {
+                                        com.music.bitchord.ui.screens.LibraryPinEditResult.SAVED -> Unit
+                                        com.music.bitchord.ui.screens.LibraryPinEditResult.STALE ->
+                                            Toast.makeText(context, "As fixadas mudaram. Saia e edite novamente.", Toast.LENGTH_LONG).show()
+                                        com.music.bitchord.ui.screens.LibraryPinEditResult.WRITE_FAILED ->
+                                            Toast.makeText(context, "Não foi possível salvar as fixadas.", Toast.LENGTH_LONG).show()
+                                    }
+                                }) {
+                                    Icon(
+                                        Icons.Rounded.Check,
+                                        contentDescription = "Concluir edição de fixadas",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(26.dp),
+                                    )
+                                }
+                            }
+                        } else if (appleLibraryRoundChrome) {
                             if (appleLibraryLandingChrome || applePlaylistCategoryChrome) {
                                 com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
                                     NativeToolbarIconButton(onClick = {
@@ -6206,13 +6242,35 @@ private fun BitChordApp(
             // menu and action row as the artist detail overflow, not a second
             // oversized, solid NativeCompactOverflowMenu.
             if (rootSettingsOverflowOpen) {
+                val canEditLibraryPins = selectedTab == TAB_LIBRARY &&
+                    detail == null && libraryShowAll == null &&
+                    unifiedLibraryCategory == null && !showPlaylistLibrary &&
+                    !showAllLocalRecentAdditions && !showSettings &&
+                    pinEditorState.hasPins()
                 FrostedMenuPanel(
                     hazeState = hazeState,
                     anchorBounds = rootSettingsOverflowAnchor,
-                    menuWidth = FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH,
+                    menuWidth = if (canEditLibraryPins) 230.dp
+                        else FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH,
                     contentVerticalPadding = FROSTED_ROOT_SETTINGS_SINGLE_ACTION_VERTICAL_PADDING,
                     onDismiss = { rootSettingsOverflowOpen = false },
                 ) {
+                    if (canEditLibraryPins) {
+                        FrostedMenuRow(
+                            label = "Editar Fixadas",
+                            checked = false,
+                            onClick = {
+                                rootSettingsOverflowOpen = false
+                                pinEditorState.start()
+                            },
+                            icon = Icons.Rounded.PushPin,
+                        )
+                        androidx.compose.material3.HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            thickness = 0.5.dp,
+                        )
+                    }
                     FrostedSettingsAction {
                         rootSettingsOverflowOpen = false
                         showSettings = true
