@@ -1440,6 +1440,7 @@ private fun BitChordApp(
         genreListState.scrollToItem(0)
     }
     val libraryListState = rememberLazyListState()
+    LibraryPinsEditorScrollToTop(pinEditorState, libraryListState)
     val historyListState = rememberLazyListState()
     val libraryShowAllGridState = rememberLazyGridState()
     val searchListState = rememberLazyListState()
@@ -8183,6 +8184,21 @@ private fun LibraryPinsRootOverflowMenu(
             )
         }
         FrostedSettingsAction(onClick = onSettings)
+    }
+}
+
+/**
+ * The Apple Music edit-pins command emits scrollToTop. Keep the pinned grid
+ * visible when the command is entered from a scrolled Library landing page.
+ * The exact Apple scroll animation is unknown; use a reliable jump to item 0.
+ */
+@Composable
+private fun LibraryPinsEditorScrollToTop(
+    editor: com.music.bitchord.ui.screens.LibraryPinsEditorState,
+    state: androidx.compose.foundation.lazy.LazyListState,
+) {
+    LaunchedEffect(editor.editing) {
+        if (editor.editing) state.scrollToItem(0)
     }
 }
 
