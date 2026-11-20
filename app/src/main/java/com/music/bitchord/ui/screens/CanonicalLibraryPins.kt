@@ -155,8 +155,13 @@ internal class CanonicalLibraryPinRepository(
         return pinnedNow
     }
 
+    @Synchronized
+    internal fun reloadFromDisk() {
+        pins.value = decodeCanonicalLibraryPins(preferences.getString(KEY, null))
+    }
+
     companion object {
-        private const val KEY = "pinned_canonical_library_v1"
+        internal const val KEY = "pinned_canonical_library_v1"
         @Volatile private var singleton: CanonicalLibraryPinRepository? = null
 
         fun get(context: Context): CanonicalLibraryPinRepository =
