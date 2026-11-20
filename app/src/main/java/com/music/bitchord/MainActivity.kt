@@ -5031,30 +5031,7 @@ private fun BitChordApp(
                     } else null,
                     actions = {
                         if (appleLibraryLandingChrome && pinEditorState.editing) {
-                            // A committed edit closes the mode. Failures and
-                            // conflicting external pins retain the draft.
-                            Box(
-                                Modifier.size(44.dp).clip(CircleShape)
-                                    .background(Color(0xFF0A84FF)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                NativeToolbarIconButton(onClick = {
-                                    when (pinEditorState.save()) {
-                                        com.music.bitchord.ui.screens.LibraryPinEditResult.SAVED -> Unit
-                                        com.music.bitchord.ui.screens.LibraryPinEditResult.STALE ->
-                                            Toast.makeText(context, "As fixadas mudaram. Saia e edite novamente.", Toast.LENGTH_LONG).show()
-                                        com.music.bitchord.ui.screens.LibraryPinEditResult.WRITE_FAILED ->
-                                            Toast.makeText(context, "Não foi possível salvar as fixadas.", Toast.LENGTH_LONG).show()
-                                    }
-                                }) {
-                                    Icon(
-                                        Icons.Rounded.Check,
-                                        contentDescription = "Concluir edição de fixadas",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(26.dp),
-                                    )
-                                }
-                            }
+                            LibraryPinsDoneToolbarAction(pinEditorState, context)
                         } else if (appleLibraryRoundChrome) {
                             if (appleLibraryLandingChrome || applePlaylistCategoryChrome) {
                                 com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
@@ -6247,35 +6224,20 @@ private fun BitChordApp(
                     unifiedLibraryCategory == null && !showPlaylistLibrary &&
                     !showAllLocalRecentAdditions && !showSettings &&
                     pinEditorState.hasPins()
-                FrostedMenuPanel(
+                LibraryPinsRootOverflowMenu(
                     hazeState = hazeState,
                     anchorBounds = rootSettingsOverflowAnchor,
-                    menuWidth = if (canEditLibraryPins) 230.dp
-                        else FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH,
-                    contentVerticalPadding = FROSTED_ROOT_SETTINGS_SINGLE_ACTION_VERTICAL_PADDING,
-                    onDismiss = { rootSettingsOverflowOpen = false },
-                ) {
-                    if (canEditLibraryPins) {
-                        FrostedMenuRow(
-                            label = "Editar Fixadas",
-                            checked = false,
-                            onClick = {
-                                rootSettingsOverflowOpen = false
-                                pinEditorState.start()
-                            },
-                            icon = Icons.Rounded.PushPin,
-                        )
-                        androidx.compose.material3.HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            thickness = 0.5.dp,
-                        )
-                    }
-                    FrostedSettingsAction {
+                    canEditPins = canEditLibraryPins,
+                    onEditPins = {
+                        rootSettingsOverflowOpen = false
+                        pinEditorState.start()
+                    },
+                    onSettings = {
                         rootSettingsOverflowOpen = false
                         showSettings = true
-                    }
-                }
+                    },
+                    onDismiss = { rootSettingsOverflowOpen = false },
+                )
             }
 
             // ---- Album / playlist actions ----
@@ -8216,6 +8178,78 @@ private fun UnifiedAlbumDetailSortMenu(
         onFlipDateDirection = state::flipDateDirection,
         onDismiss = state::dismissSort,
     )
+}
+
+/**
+ * Kept outside BitChordApp: the host has already hit the JVM 64KB method limit.
+ * The original ✓ is only an observed visual affordance, so save semantics are
+ * an explicit BitChord transaction with an error state that keeps its draft.
+ */
+@Composable
+private fun LibraryPinsDoneToolbarAction(
+    editor: com.music.bitchord.ui.screens.LibraryPinsEditorState,
+    context: Context,
+) {
+    Box(
+        Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF0A84FF)),
+        contentAlignment = Alignment.Center,
+    ) {
+        NativeToolbarIconButton(onClick = {
+            when (editor.save()) {
+                com.music.bitchord.ui.screens.LibraryPinEditResult.SAVED -> Unit
+                com.music.bitchord.ui.screens.LibraryPinEditResult.STALE ->
+                    Toast.makeText(
+                        context, "As fixadas mudaram. Saia e edite novamente.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                com.music.bitchord.ui.screens.LibraryPinEditResult.WRITE_FAILED ->
+                    Toast.makeText(
+                        context, "Não foi possível salvar as fixadas.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+            }
+        }) {
+            Icon(
+                Icons.Rounded.Check,
+                contentDescription = "Concluir edição de fixadas",
+                tint = Color.White,
+                modifier = Modifier.size(26.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryPinsRootOverflowMenu(
+    hazeState: HazeState,
+    anchorBounds: androidx.compose.ui.unit.IntRect?,
+    canEditPins: Boolean,
+    onEditPins: () -> Unit,
+    onSettings: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    FrostedMenuPanel(
+        hazeState = hazeState,
+        anchorBounds = anchorBounds,
+        menuWidth = if (canEditPins) 230.dp else FROSTED_ROOT_SETTINGS_SINGLE_ACTION_WIDTH,
+        contentVerticalPadding = FROSTED_ROOT_SETTINGS_SINGLE_ACTION_VERTICAL_PADDING,
+        onDismiss = onDismiss,
+    ) {
+        if (canEditPins) {
+            FrostedMenuRow(
+                label = "Editar Fixadas",
+                checked = false,
+                onClick = onEditPins,
+                icon = Icons.Rounded.PushPin,
+            )
+            androidx.compose.material3.HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                thickness = 0.5.dp,
+            )
+        }
+        FrostedSettingsAction(onClick = onSettings)
+    }
 }
 
 /** Capture a real circular control; fixed top-right menu guesses fail for left actions. */
