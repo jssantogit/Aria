@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Person
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,13 +65,21 @@ import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.NativeInlineTextAction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 
+/** Artist portraits are circles in every Library context, including editing.
+ * Albums, tracks and playlists keep the same 14dp rounded square. */
+internal fun pinnedLibraryArtworkShape(artist: Boolean): Shape =
+    if (artist) CircleShape else RoundedCornerShape(14.dp)
+
 /**
- * Pinned art is a cover, not a full Library entity card. Keep its name in
- * accessibility semantics, but no visible title, artist, or three-dot action.
- * Long press still reaches the existing manage/unpin menu.
+ * Pinned art has a caption in the shelf editor wrapper and an accessible
+ * identity on its own. Preserve the existing click/long-press behavior.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -79,11 +89,12 @@ internal fun PinnedLibraryArtworkTile(
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
     interactive: Boolean = true,
+    artist: Boolean = false,
     artwork: @Composable () -> Unit,
 ) {
     Box(
         modifier = modifier.fillMaxWidth().aspectRatio(1f)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(pinnedLibraryArtworkShape(artist))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .then(if (interactive) Modifier.combinedClickable(
                 onClick = onClick, onLongClick = onLongPress,
@@ -449,6 +460,43 @@ internal fun CanonicalPinnedLibraryShelf(
         }
     val isEditing = editor?.editing == true
     val visible = if (expanded || isEditing) ordered else ordered.take(6)
+    // Artist rows in Search often have no own image URL (MusicBrainz provides
+    // identity and metadata, not an artist portrait). Resolve those images
+    // through the same exact-name Apple artist-art service as the Artist page,
+    // without changing the pinned MBID, provider or offline behavior.
+    val pinnedArtistNames = remember(visible) {
+        visible.mapNotNull { (_, entry) ->
+            val (card, _, catalog) = entry
+            when {
+                card?.pin?.selection?.type == CanonicalLibraryEntityType.ARTIST -> card.title
+                catalog?.browseId?.startsWith("catalog:ARTIST:") == true &&
+                    validCatalogMetadataPin(catalog) -> catalog.title
+                else -> null
+            }
+        }.map(String::trim).filter(String::isNotEmpty).distinct()
+    }
+    val artistPhotos by produceState(
+        initialValue = emptyMap<String, String>(),
+        key1 = pinnedArtistNames,
+    ) {
+        value = pinnedArtistNames.mapNotNull { name ->
+            AppleArtistArtRepository.cached(name)?.heroUrl?.let { name to it }
+        }.toMap()
+        // Avoid issuing a burst of unbounded image metadata lookups when the
+        // editor expands many saved pins. Each portrait settles independently.
+        coroutineScope {
+            val concurrency = Semaphore(2)
+            pinnedArtistNames.filterNot { it in value }.forEach { name ->
+                launch {
+                    concurrency.withPermit {
+                        AppleArtistArtRepository.artFor(name)?.heroUrl?.let { url ->
+                            value = value + (name to url)
+                        }
+                    }
+                }
+            }
+        }
+    }
     Column(
         modifier = Modifier.fillMaxWidth()
             .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 20.dp, bottom = 14.dp),
@@ -487,6 +535,9 @@ internal fun CanonicalPinnedLibraryShelf(
                                         title = title,
                                         editing = isEditing,
                                         columns = columns,
+                                        isArtist = card?.pin?.selection?.type ==
+                                            CanonicalLibraryEntityType.ARTIST ||
+                                            catalog?.browseId?.startsWith("catalog:ARTIST:") == true,
                                         onClick = {
                                             when {
                                                 card != null && card.accessible -> onOpen(card.pin)
@@ -522,12 +573,19 @@ internal fun CanonicalPinnedLibraryShelf(
                                     ) {
                                         when {
                                             card != null -> when {
-                                                card.artistPhotoUrl != null -> AsyncImage(
-                                                    model = card.artistPhotoUrl,
-                                                    contentDescription = null,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                )
+                                                card.pin.selection.type == CanonicalLibraryEntityType.ARTIST &&
+                                                    (artistPhotos[card.title] ?: card.artistPhotoUrl) != null ->
+                                                    Box(Modifier.fillMaxSize()) {
+                                                        com.music.bitchord.ui.components.CoverPlaceholder(
+                                                            Icons.Rounded.Person, Modifier.fillMaxSize(),
+                                                        )
+                                                        AsyncImage(
+                                                            model = artistPhotos[card.title] ?: card.artistPhotoUrl,
+                                                            contentDescription = null,
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize(),
+                                                        )
+                                                    }
                                                 card.artwork != null -> CanonicalUnifiedArtwork(
                                                     card.artwork, loader, Modifier.fillMaxSize(),
                                                 )
@@ -568,16 +626,22 @@ internal fun CanonicalPinnedLibraryShelf(
                                                 }
                                             }
                                             catalog != null -> {
-                                                if (catalog.artworkUrl != null) AsyncImage(
-                                                    model = catalog.artworkUrl,
-                                                    contentDescription = null,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                ) else com.music.bitchord.ui.components.CoverPlaceholder(
-                                                    if (catalog.browseId.startsWith("catalog:ARTIST:"))
-                                                        Icons.Rounded.Person else Icons.Rounded.Album,
-                                                    Modifier.fillMaxSize(),
-                                                )
+                                                val catalogArtist = catalog.browseId.startsWith("catalog:ARTIST:")
+                                                val image = catalog.artworkUrl ?: if (catalogArtist)
+                                                    artistPhotos[catalog.title.trim()] else null
+                                                Box(Modifier.fillMaxSize()) {
+                                                    com.music.bitchord.ui.components.CoverPlaceholder(
+                                                        if (catalogArtist) Icons.Rounded.Person
+                                                        else Icons.Rounded.Album,
+                                                        Modifier.fillMaxSize(),
+                                                    )
+                                                    if (image != null) AsyncImage(
+                                                        model = image,
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    )
+                                                }
                                             }
                                         }
                                     }
