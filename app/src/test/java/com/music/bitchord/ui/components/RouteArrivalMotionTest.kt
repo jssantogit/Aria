@@ -144,6 +144,50 @@ class RouteArrivalMotionTest {
         )
     }
 
+    @Test fun pageHostNeverPaintsRetiredRouteContent() {
+        for (previous in listOf(
+            "tab:0", "tab:2", "unified_library", "canonical_playlist_library",
+            "settings", "smart_playlist_builder", "artist:123", "public_playlist:123",
+        )) {
+            for (target in listOf(
+                "tab:0", "tab:2", "unified_library", "canonical_playlist_library",
+                "settings", "smart_playlist_builder", "artist:123", "public_playlist:123",
+            )) {
+                assertEquals(previous == target,
+                    shouldDrawCurrentPageSlot(previous, target))
+            }
+        }
+    }
+
+    @Test fun unresolvedDetailsAreNotMistakenForRootLibraryTab() {
+        for (root in listOf("tab:0", "tab:1", "tab:2", "tab:3")) {
+            assertTrue(isKnownRootTabSlot(root, "tab:", 4))
+        }
+        for (pushed in listOf(
+            "artist:123", "album:456", "settings", "smart_playlist_builder",
+            "unified_library", "canonical_playlist_library", "tab:not-a-number",
+            "tab:4", "tab:-1", "tab:2:detail", "untitled",
+        )) {
+            assertFalse("Do not render Library for $pushed",
+                isKnownRootTabSlot(pushed, "tab:", 4))
+        }
+    }
+
+    @Test fun firstIncomingPageFrameIsNearlyOpaqueNotTransparent() {
+        assertTrue(PAGE_ENTRY_MIN_ALPHA > 0.98f)
+        assertTrue(PAGE_ENTRY_MIN_ALPHA <= 1f)
+        val root = rootTabContentTransform(false)
+        val pushed = isolatedPageContentTransform(false)
+        org.junit.Assert.assertNull(root.sizeTransform)
+        org.junit.Assert.assertNull(pushed.sizeTransform)
+        // Both transitions retire the outgoing slot, while their incoming
+        // destination starts above 98% opacity instead of fading from zero.
+        assertTrue(root.targetContentEnter != androidx.compose.animation.EnterTransition.None)
+        assertTrue(pushed.targetContentEnter != androidx.compose.animation.EnterTransition.None)
+        assertTrue(root.initialContentExit != androidx.compose.animation.ExitTransition.None)
+        assertTrue(pushed.initialContentExit != androidx.compose.animation.ExitTransition.None)
+    }
+
     @Test fun rootPeersAloneRetainTheirApprovedCrossfade() {
         assertFalse(mainPageRequiresImmediateExit("tab:0", "tab:3", "tab:"))
         assertFalse(mainPageRequiresImmediateExit("tab:3", "tab:1", "tab:"))
