@@ -1,5 +1,7 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
@@ -37,6 +40,8 @@ import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.transformations
 import com.music.bitchord.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.DebugLog as Log
 import com.music.bitchord.data.canvas.AppleArtistArt
 import com.music.bitchord.data.canvas.ArtistSignature
@@ -83,6 +88,15 @@ internal fun ArtistHeader(
         // of an Apple logo is a few hundred KB the CDN may still be resizing — the
         // name stands in for it, so the header is never left with nothing in it.
         var logoShown by remember(imageUrl) { mutableStateOf(false) }
+        val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+        // Keep the text readable until the decoded logo is really ready.
+        // Crossfade both in the SAME header instead of replacing its content
+        // with an abrupt frame where the name seems to disappear.
+        val titleAlpha by animateFloatAsState(
+            targetValue = if (logoShown) 0f else 1f,
+            animationSpec = tween(durationMillis = if (reduceMotion) 0 else 160),
+            label = "native_artist_title_logo_arrival",
+        )
         if (imageUrl != null) {
             val context = LocalPlatformContext.current
             var attempt by remember(imageUrl) { mutableIntStateOf(0) }
@@ -151,6 +165,7 @@ internal fun ArtistHeader(
                     .padding(top = 14.dp, bottom = if (isSignature) 6.dp else 20.dp)
                     // Sized from the incoming width in layout rather than through a
                     // BoxWithConstraints, which would subcompose the image.
+                    .graphicsLayer { alpha = 1f - titleAlpha }
                     .layout { measurable, constraints ->
                         val widest = constraints.maxWidth * ARTIST_LOGO_WIDTH * sizeFactor
                         val height = minOf(widest / aspect, maxLogoHeight.toPx()).roundToInt()
@@ -168,7 +183,7 @@ internal fun ArtistHeader(
             }
             }
         }
-        if (!logoShown) Text(
+        if (titleAlpha > 0.001f) Text(
             text = artistName,
             style = MaterialTheme.typography.displayLarge,
             color = palette.onBackground,
@@ -180,7 +195,8 @@ internal fun ArtistHeader(
                 // Bottom is half the top inset — the stats pills (or, absent
                 // those, the action row) sit closer under the name than the
                 // name sits under the artwork.
-                .padding(start = HEADER_GUTTER, end = HEADER_GUTTER, top = 14.dp, bottom = 7.dp),
+                .padding(start = HEADER_GUTTER, end = HEADER_GUTTER, top = 14.dp, bottom = 7.dp)
+                .graphicsLayer { alpha = titleAlpha },
         )
     }
 }

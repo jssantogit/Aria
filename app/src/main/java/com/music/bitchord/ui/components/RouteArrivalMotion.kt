@@ -176,7 +176,7 @@ internal fun mainPageRequiresImmediateExit(
     rootTabPrefix: String,
 ): Boolean = !(previous.startsWith(rootTabPrefix) && next.startsWith(rootTabPrefix))
 
-/** Pushed pages may settle slightly, but may never start at alpha 0.
+/** Artist sub-shelves are nested destinations, not content updates. They must\n * obey the same near-opaque arrival and instant retirement as pushed pages.\n * Keeping a 0-alpha 220ms fade here reopened the blank/ghost frame fixed in\n * the root navigation host.\n */\ninternal fun artistShelfContentTransform(reducedMotion: Boolean): ContentTransform =\n    isolatedPageContentTransform(reducedMotion)\n\n/** Pushed pages may settle slightly, but may never start at alpha 0.
  * An alpha-0 incoming page plus a zero-duration outgoing exit used to expose
  * a completely empty host for the first frame(s), especially on cold Room load. */
 internal fun isolatedPageContentTransform(reducedMotion: Boolean): ContentTransform =

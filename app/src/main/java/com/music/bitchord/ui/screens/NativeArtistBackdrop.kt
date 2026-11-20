@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.screens
 
 import android.os.Build
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +11,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
@@ -25,6 +30,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.player.CanvasArtworkPlayer
@@ -61,6 +67,15 @@ internal fun PageBackground(
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val art = heroUrl?.takeIf(::hasNativeArtistBackdropStill)
+    val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    // Coil readiness belongs to the URL, not to the last artist screen.
+    // Never reveal an unfinished image, or briefly reuse the previous hero.
+    var stillReady by remember(art) { mutableStateOf(false) }
+    val stillAlpha by animateFloatAsState(
+        targetValue = if (stillReady) 1f else 0f,
+        animationSpec = tween(durationMillis = if (reduceMotion) 0 else 180),
+        label = "native_artist_photo_arrival",
+    )
     // Do not allocate two empty painters for an artist with no portrait.
     // A still over a moving canvas would also freeze the animation's foot.
     val softenFoot = art != null && canvas == null && !reduceDynamicBlur &&
@@ -73,19 +88,18 @@ internal fun PageBackground(
                 .height(artHeight)
                 .offset { IntOffset(0, listState.headerTop(artHeight.toPx()).roundToInt()) },
         ) {
+            // The eventual photo and its blurred foot share one stable wash.
+            // There is no gray placeholder rectangle and no black first frame.
+            Box(Modifier.matchParentSize().background(palette.wash))
             if (art != null) {
                 AsyncImage(
                     model = art,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(palette.elevated),
+                    onState = { stillReady = it is AsyncImagePainter.State.Success },
+                    modifier = Modifier.matchParentSize()
+                        .graphicsLayer { alpha = stillAlpha },
                 )
-            } else {
-                // The header may still be compact and show the artist's name.
-                // No spurious gray rectangle should sit above the page wash.
-                Box(Modifier.matchParentSize().background(palette.wash))
             }
 
             // Above the still art but below the scrim, so the scrim that
@@ -113,7 +127,10 @@ internal fun PageBackground(
                         .matchParentSize()
                         // Offscreen so the mask cuts the blurred result rather
                         // than each draw beneath it.
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .graphicsLayer {
+                            compositingStrategy = CompositingStrategy.Offscreen
+                            alpha = stillAlpha
+                        }
                         .drawWithContent {
                             drawContent()
                             drawRect(SOFT_FOOT_MASK, blendMode = BlendMode.DstIn)

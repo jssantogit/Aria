@@ -5,10 +5,7 @@ import com.music.bitchord.R
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import com.music.bitchord.ui.components.artistShelfContentTransform
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -652,17 +649,18 @@ fun DetailScreen(
         }
     }
 
+    val reduceDetailMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     AnimatedContent(
         targetState = activeShelf,
-        transitionSpec = {
-            // The prior shelf may belong to a different artist/album state.
-            // Keep its pixels out of the arriving section without moving the hero.
-            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(0))
-        },
+        transitionSpec = { artistShelfContentTransform(reduceDetailMotion) },
         label = "artist_shelf_transition",
         modifier = modifier.fillMaxSize(),
     ) { targetShelf ->
-        if (targetShelf == null) {
+        // AnimatedContent can compose the retired slot even with a zero-ms
+        // exit. Never draw it using the currently selected shelf or palette.
+        if (targetShelf != activeShelf) {
+            // Retired composition: deliberately no visible content.
+        } else if (targetShelf == null) {
             // An artist's photograph dissolves into [ArtworkPalette.wash]; a
             // release's sleeve sits framed on one flat colour with nothing to
             // dissolve, so it takes the same [ArtworkPalette.background] the

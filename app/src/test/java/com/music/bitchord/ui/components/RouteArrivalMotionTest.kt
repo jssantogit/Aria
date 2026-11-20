@@ -195,6 +195,21 @@ class RouteArrivalMotionTest {
         assertTrue(mainPageRequiresImmediateExit("artist:one", "album:two", "tab:"))
     }
 
+    @Test fun artistShelfNeverStartsFullyTransparentOrRetainsTheOldShelf() {
+        val animated = artistShelfContentTransform(reducedMotion = false)
+        val reduced = artistShelfContentTransform(reducedMotion = true)
+        assertEquals(PAGE_ENTRY_MIN_ALPHA, 0.985f, 0.0001f)
+        assertEquals(isolatedPageContentTransform(false).targetContentEnter,
+            animated.targetContentEnter)
+        assertEquals(isolatedPageContentTransform(false).initialContentExit,
+            animated.initialContentExit)
+        org.junit.Assert.assertNull(animated.sizeTransform)
+        assertEquals(androidx.compose.animation.EnterTransition.None,
+            reduced.targetContentEnter)
+        assertEquals(androidx.compose.animation.ExitTransition.None,
+            reduced.initialContentExit)
+    }
+
     @Test fun isolatedPageTransformNeverFadesTheOutgoingRoute() {
         val transform = isolatedPageContentTransform(reducedMotion = false)
         org.junit.Assert.assertNotEquals(

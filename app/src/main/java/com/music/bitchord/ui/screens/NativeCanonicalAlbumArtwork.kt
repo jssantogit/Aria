@@ -1,13 +1,23 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.catalog.CanonicalBrowseTrack
 import com.music.bitchord.data.catalog.provider.opensubsonic.OpenSubsonicArtworkLoader
 import com.music.bitchord.ui.components.CoverPlaceholder
@@ -73,12 +83,25 @@ internal fun NativeCanonicalAlbumArtwork(
             releaseArtworkUri = releaseArtworkUri,
             hasTrackArtwork = nativeAlbumTrackHasLoadableArtwork(artworkTrack),
         )) {
-            NativeAlbumHeroSource.DIRECT_URI -> AsyncImage(
-                model = releaseArtworkUri?.trim(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            NativeAlbumHeroSource.DIRECT_URI -> {
+                val directUri = releaseArtworkUri?.trim()
+                val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+                // The placeholder has the final sleeve's dimensions. Reveal
+                // the decoded pixels only after Coil succeeds for THIS URI.
+                var ready by remember(directUri) { mutableStateOf(false) }
+                val imageAlpha by animateFloatAsState(
+                    targetValue = if (ready) 1f else 0f,
+                    animationSpec = tween(durationMillis = if (reduceMotion) 0 else 180),
+                    label = "native_album_cover_arrival",
+                )
+                AsyncImage(
+                    model = directUri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    onState = { ready = it is AsyncImagePainter.State.Success },
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = imageAlpha },
+                )
+            }
             NativeAlbumHeroSource.TRACK_LOADER -> artworkTrack?.let { track ->
                 CanonicalUnifiedArtwork(track, artworkLoader, Modifier.fillMaxSize())
             }
