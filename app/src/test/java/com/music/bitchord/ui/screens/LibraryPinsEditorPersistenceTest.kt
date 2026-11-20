@@ -27,9 +27,11 @@ class LibraryPinsEditorPersistenceTest {
             LibraryPinsEditorState.ORDER_KEY,
         )
         val backup = keys.associateWith { prefs.getString(it, null) }
-        val canonicalRepo = CanonicalLibraryPinRepository.get(app)
-        val playlistRepo = LibraryPlaylistPinRepository.get(app)
-        val catalogRepo = CatalogMetadataPinRepository.get(app)
+        // Avoid process-global repository singletons shared by other Robolectric
+        // tests, which may be bound to a different Application sandbox.
+        val canonicalRepo = CanonicalLibraryPinRepository(prefs)
+        val playlistRepo = LibraryPlaylistPinRepository(prefs)
+        val catalogRepo = CatalogMetadataPinRepository(prefs)
         try {
             val album = CanonicalLibraryPin(
                 CanonicalLibrarySelection(CanonicalLibraryEntityType.ALBUM, "album-test"),
@@ -57,7 +59,7 @@ class LibraryPinsEditorPersistenceTest {
             playlistRepo.reloadFromDisk()
             catalogRepo.reloadFromDisk()
 
-            val editor = LibraryPinsEditorState(app)
+            val editor = LibraryPinsEditorState(app, canonicalRepo, playlistRepo, catalogRepo)
             assertEquals(listOf(albumKey, playlistKey, catalogKey),
                 editor.displayOrder(editor.allPins()))
             editor.start()
@@ -71,7 +73,12 @@ class LibraryPinsEditorPersistenceTest {
             assertTrue(playlistRepo.pins.value.isEmpty())
             assertEquals(listOf(catalogKey, albumKey), decodeLibraryPinOrder(
                 prefs.getString(LibraryPinsEditorState.ORDER_KEY, null)))
-            val reopened = LibraryPinsEditorState(app)
+            val reopened = LibraryPinsEditorState(
+                app,
+                CanonicalLibraryPinRepository(prefs),
+                LibraryPlaylistPinRepository(prefs),
+                CatalogMetadataPinRepository(prefs),
+            )
             assertEquals(listOf(catalogKey, albumKey),
                 reopened.displayOrder(reopened.allPins()))
 
