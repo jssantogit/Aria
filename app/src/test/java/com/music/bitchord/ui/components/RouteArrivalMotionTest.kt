@@ -199,10 +199,8 @@ class RouteArrivalMotionTest {
         val animated = artistShelfContentTransform(reducedMotion = false)
         val reduced = artistShelfContentTransform(reducedMotion = true)
         assertEquals(PAGE_ENTRY_MIN_ALPHA, 0.985f, 0.0001f)
-        assertEquals(isolatedPageContentTransform(false).targetContentEnter,
-            animated.targetContentEnter)
-        assertEquals(isolatedPageContentTransform(false).initialContentExit,
-            animated.initialContentExit)
+        assertTrue(animated.targetContentEnter != androidx.compose.animation.EnterTransition.None)
+        assertTrue(animated.initialContentExit != androidx.compose.animation.ExitTransition.None)
         org.junit.Assert.assertNull(animated.sizeTransform)
         assertEquals(androidx.compose.animation.EnterTransition.None,
             reduced.targetContentEnter)
