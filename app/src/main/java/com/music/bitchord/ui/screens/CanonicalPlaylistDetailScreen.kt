@@ -555,7 +555,8 @@ internal fun CanonicalPlaylistHeldTrackActions(
     onPlayNext: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenAlbum: (() -> Unit)?,
-    onRemove: (() -> Unit)? = null,
+    onRemoveTrack: (() -> Unit)? = null,
+    onRemoveAlbum: (() -> Unit)? = null,
 ) {
         onPlay?.let { play ->
             NativeCompactMenuItem(
@@ -597,10 +598,20 @@ internal fun CanonicalPlaylistHeldTrackActions(
                 },
             )
         }
-        onRemove?.let { remove ->
+        onRemoveTrack?.let { remove ->
             NativeCompactMenuItem(
-                label = "Remover da playlist",
+                label = "Remover faixa",
                 icon = Icons.Rounded.DeleteOutline,
+                onClick = {
+                    onDismiss()
+                    remove()
+                },
+            )
+        }
+        onRemoveAlbum?.let { remove ->
+            NativeCompactMenuItem(
+                label = "Remover álbum",
+                icon = Icons.Rounded.Album,
                 onClick = {
                     onDismiss()
                     remove()
@@ -686,6 +697,50 @@ internal fun CanonicalPlaylistDetailScreen(
                 emptyList()
             }
         }
+    }
+    var pendingAlbumRemoval by remember(card.id) {
+        mutableStateOf<CanonicalPlaylistAlbumRemovalRequest?>(null)
+    }
+    pendingAlbumRemoval?.let { request ->
+        CanonicalPlaylistAlbumRemovalConfirmation(
+            request = request,
+            onDismiss = { pendingAlbumRemoval = null },
+            onConfirm = {
+                pendingAlbumRemoval = null
+                if (card is LibraryPlaylistCard.CanonicalNormal) {
+                    scope.launch {
+                        try {
+                            val removed = withContext(Dispatchers.IO) {
+                                val latest = normalRepository.list().firstOrNull {
+                                    it.id == card.definition.id
+                                } ?: error("Playlist indisponível")
+                                val exact = readCanonicalPlaylistExactAlbums(
+                                    context, latest.recordingIds, latest.sourceProviderKey,
+                                )
+                                val updated = removeCanonicalPlaylistVerifiedAlbum(
+                                    latest, request, exact,
+                                )
+                                if (updated === latest) false else {
+                                    normalRepository.save(updated)
+                                    true
+                                }
+                            }
+                            if (!removed) Toast.makeText(
+                                context, "O álbum mudou. Atualize a playlist.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            Toast.makeText(
+                                context, "Não foi possível remover o álbum.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                }
+            },
+        )
     }
     val suggestions = suggestedCanonicalPlaylistTracks(
         availableSuggestions,
@@ -803,6 +858,23 @@ internal fun CanonicalPlaylistDetailScreen(
             emptyMap()
         }
     }
+    // The editor adds exact catalog ReleaseIds, not MusicBrainz ReleaseGroups.
+    // Use those same membership edges to remove whole albums from this
+    // particular playlist, never from the Library or another account.
+    val exactAlbums by produceState(
+        initialValue = emptyMap<String, com.music.bitchord.data.catalog.CanonicalRecordingReleaseTitleRow>(),
+        key1 = card.id, key2 = rows, key3 = source,
+    ) {
+        value = if (card !is LibraryPlaylistCard.CanonicalNormal) emptyMap() else try {
+            readCanonicalPlaylistExactAlbums(
+                context, rows.orEmpty().map { it.id }, source,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
     val visibleRows = remember(rows, query, sort) {
         val filtered = rows.orEmpty().filter {
             it.title.contains(query, ignoreCase = true) ||
@@ -884,8 +956,19 @@ internal fun CanonicalPlaylistDetailScreen(
                             )
                         }
                     },
-                    onRemove = if (card is LibraryPlaylistCard.CanonicalNormal) {
+                    onRemoveTrack = if (card is LibraryPlaylistCard.CanonicalNormal) {
                         { removeSavedRecording(chosen.id) }
+                    } else null,
+                    onRemoveAlbum = if (card is LibraryPlaylistCard.CanonicalNormal &&
+                        canonicalPlaylistAlbumRemovalRequest(
+                            chosen.id, rows.orEmpty().map { it.id }, exactAlbums,
+                        ) != null
+                    ) {
+                        {
+                            pendingAlbumRemoval = canonicalPlaylistAlbumRemovalRequest(
+                                chosen.id, rows.orEmpty().map { it.id }, exactAlbums,
+                            )
+                        }
                     } else null,
                 )
             }

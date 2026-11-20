@@ -61,6 +61,32 @@ class CanonicalPlaylistTrackMenuComposeTest {
         compose.onNodeWithText("Abrir álbum").assertDoesNotExist()
     }
 
+    @Test fun savedAlbumActionIsSeparateAndDismissesNativeMenu() {
+        var dismissed = 0
+        var trackRemovals = 0
+        var albumRemovals = 0
+        compose.setContent {
+            MaterialTheme {
+                CanonicalPlaylistHeldTrackActions(
+                    onDismiss = { dismissed++ },
+                    onPlay = {},
+                    onPlayNext = {},
+                    onAddToQueue = {},
+                    onOpenAlbum = null,
+                    onRemoveTrack = { trackRemovals++ },
+                    onRemoveAlbum = { albumRemovals++ },
+                )
+            }
+        }
+        compose.onNodeWithText("Remover faixa").assertExists()
+        compose.onNodeWithText("Remover álbum").performClick()
+        compose.runOnIdle {
+            assertEquals(1, albumRemovals)
+            assertEquals(0, trackRemovals)
+            assertEquals(1, dismissed)
+        }
+    }
+
     @Test fun metadataOnlyMemberOffersRemovalButNeverFakePlayback() {
         var removals = 0
         compose.setContent {
@@ -71,14 +97,14 @@ class CanonicalPlaylistTrackMenuComposeTest {
                     onPlayNext = null,
                     onAddToQueue = null,
                     onOpenAlbum = null,
-                    onRemove = { removals++ },
+                    onRemoveTrack = { removals++ },
                 )
             }
         }
         compose.onNodeWithText("Reproduzir daqui").assertDoesNotExist()
         compose.onNodeWithText("Reproduzir a seguir").assertDoesNotExist()
         compose.onNodeWithText("Adicionar à fila").assertDoesNotExist()
-        compose.onNodeWithText("Remover da playlist").performClick()
+        compose.onNodeWithText("Remover faixa").performClick()
         compose.runOnIdle { assertEquals(1, removals) }
     }
 
