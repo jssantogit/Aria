@@ -887,10 +887,14 @@ internal fun SmartPlaylistV2BuilderScreen(
             decorFitsSystemWindows = false,
         ),
     ) {
-        // Root-tab content fades cannot animate the editor's separate Android
-        // Dialog window. Fade its content in with the same 150ms linear policy.
+        // The editor has its own Android Dialog window. Starting its content
+        // at alpha 0 used to create a blank/black intermediate frame even
+        // though the Activity had already committed the creator route.
+        // Start nearly opaque, then settle like the page host.
         val reduceCreatorMotion = com.music.bitchord.ui.LocalReduceAnimations.current
-        val dialogEntrance = remember { Animatable(if (reduceCreatorMotion) 1f else 0f) }
+        val dialogEntrance = remember { Animatable(
+            com.music.bitchord.ui.components.PAGE_ENTRY_MIN_ALPHA,
+        ) }
         LaunchedEffect(reduceCreatorMotion) {
             if (reduceCreatorMotion) dialogEntrance.snapTo(1f)
             else dialogEntrance.animateTo(1f, tween(150, easing = LinearEasing))
