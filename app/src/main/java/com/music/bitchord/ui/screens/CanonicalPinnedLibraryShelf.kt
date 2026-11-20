@@ -315,6 +315,12 @@ internal fun catalogMetadataPinNativeTarget(pin: CatalogMetadataPin): BrowseTarg
     )
 }
 
+/** Apple-style pinned shelf: three square sleeves per phone row.
+ * Keep the larger-width policy independent of item count so two pins never
+ * stretch to half the screen; empty slots remain naturally unoccupied. */
+internal fun pinnedLibraryGridColumns(availableWidth: androidx.compose.ui.unit.Dp): Int =
+    if (availableWidth >= 600.dp) 4 else 3
+
 /** The native Library landing shelf mirrors the reference's 3-column covers
  * BEFORE category links. Nothing is shown when the user has no pins. Six covers
  * are initially visible; the rest expand in-place without a parallel route. */
@@ -455,9 +461,10 @@ internal fun CanonicalPinnedLibraryShelf(
             ) { NativeLoadingSpinner() }
         }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            // Two columns on phones as in the original reference; four in
-            // wider layouts. Do not force a screenshot width on tablets.
-            val columns = if (maxWidth >= 600.dp) 4 else 2
+            // The phone reference shows ~200px sleeves in a 709px viewport:
+            // three grid slots (two occupied), not two oversized columns.
+            // The 0.87 edit-mode scale stays inside each slot.
+            val columns = pinnedLibraryGridColumns(maxWidth)
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 visible.chunked(columns).forEach { row ->
                     Row(
