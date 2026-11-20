@@ -108,8 +108,13 @@ internal class LibraryPlaylistPinRepository(private val preferences: SharedPrefe
                 .putString(KEY, encodeLibraryPlaylistPins(next)).commit()) pins.value = next
     }
 
+    @Synchronized
+    internal fun reloadFromDisk() {
+        pins.value = decodeLibraryPlaylistPins(preferences.getString(KEY, null))
+    }
+
     companion object {
-        private const val KEY = "pinned_library_playlists_v1"
+        internal const val KEY = "pinned_library_playlists_v1"
         @Volatile private var singleton: LibraryPlaylistPinRepository? = null
         fun get(context: Context): LibraryPlaylistPinRepository =
             singleton ?: synchronized(this) {
