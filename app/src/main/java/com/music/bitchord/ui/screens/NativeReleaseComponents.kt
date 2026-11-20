@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.bitchord.R
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.DetailActionLayoutMetrics
 import com.music.bitchord.ui.components.SourceQuality
 import com.music.bitchord.ui.components.SourceQualityBadge
 import com.music.bitchord.ui.components.thumbnailBorder
@@ -51,7 +52,7 @@ private val SLEEVE_SHADOW = 18.dp
 private val RELEASE_SIDE_BUTTON = 50.dp
 internal const val ALBUM_SLEEVE_FRACTION = 0.66f
 internal fun nativeReleaseSideButtonSize(compactForAlbum: Boolean): Dp =
-    if (compactForAlbum) 46.dp else RELEASE_SIDE_BUTTON
+    if (compactForAlbum) DetailActionLayoutMetrics.albumSide else RELEASE_SIDE_BUTTON
 private val RELEASE_ACTION_GAP = 14.dp
 private val RELEASE_ACTIONS_MAX_WIDTH = 420.dp
 
@@ -74,13 +75,20 @@ internal fun NativeReleaseActionRow(
     onTogglePin: (() -> Unit)? = null,
     compactForAlbum: Boolean = false,
 ) {
+    val compactAlbum = compactForAlbum && !isLocal
     val sideButton = nativeReleaseSideButtonSize(compactForAlbum)
     Row(
         modifier = Modifier
             .widthIn(max = RELEASE_ACTIONS_MAX_WIDTH)
             .fillMaxWidth()
             .padding(horizontal = HEADER_GUTTER),
-        horizontalArrangement = Arrangement.spacedBy(if (compactForAlbum) 12.dp else RELEASE_ACTION_GAP),
+        horizontalArrangement = if (compactAlbum) {
+            Arrangement.spacedBy(
+                DetailActionLayoutMetrics.albumGap, Alignment.CenterHorizontally,
+            )
+        } else Arrangement.spacedBy(
+            if (compactForAlbum) 12.dp else RELEASE_ACTION_GAP,
+        ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isLocal) {
@@ -118,7 +126,13 @@ internal fun NativeReleaseActionRow(
                 filled = true,
                 enabled = canPlay,
                 size = sideButton,
-                modifier = Modifier.weight(1f),
+                // The loading placeholder already displays the intended
+                // 130dp Apple-style pill. Do not expand it to consume all
+                // remaining width when this online album finishes loading.
+                modifier = if (compactAlbum) {
+                    Modifier.width(DetailActionLayoutMetrics.albumPlay)
+                        .testTag("native-compact-album-play-pill")
+                } else Modifier.weight(1f),
             )
             CircleIconButton(
                 icon = if (reservePinAction && isPinnedInLibrary ||

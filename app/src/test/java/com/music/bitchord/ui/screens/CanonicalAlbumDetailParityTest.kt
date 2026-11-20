@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 class CanonicalAlbumDetailParityTest {
     @Test fun albumMetricsRemainScopedToAlbumPresentation() {
         assertEquals(0.66f, ALBUM_SLEEVE_FRACTION, 0.0001f)
-        assertEquals(46.dp, nativeReleaseSideButtonSize(true))
+        assertEquals(50.dp, nativeReleaseSideButtonSize(true))
         assertEquals(50.dp, nativeReleaseSideButtonSize(false))
     }
 

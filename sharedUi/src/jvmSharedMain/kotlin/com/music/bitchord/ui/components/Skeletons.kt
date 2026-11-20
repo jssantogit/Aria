@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import com.music.bitchord.ui.LocalReduceAnimations
 
 /**
@@ -333,12 +334,19 @@ private fun DetailActionsSkeleton(isArtist: Boolean) {
             // Matches the real pair's inset, height and corner, so the header
             // above them doesn't shift when the track list lands.
             .padding(horizontal = PAGE_GUTTER + 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(
+            DetailActionLayoutMetrics.albumGap, Alignment.CenterHorizontally,
+        ),
     ) {
-        ShimmerBox(Modifier.size(50.dp), CircleShape)
-        ShimmerBox(Modifier.width(130.dp).height(50.dp), CircleShape)
+        ShimmerBox(Modifier.size(DetailActionLayoutMetrics.albumSide), CircleShape)
+        ShimmerBox(
+            Modifier.width(DetailActionLayoutMetrics.albumPlay)
+                .height(DetailActionLayoutMetrics.albumSide)
+                .testTag("detail-action-skeleton-play-pill"),
+            CircleShape,
+        )
         if (!isArtist) {
-            ShimmerBox(Modifier.size(50.dp), CircleShape)
+            ShimmerBox(Modifier.size(DetailActionLayoutMetrics.albumSide), CircleShape)
         }
     }
 }
@@ -347,7 +355,7 @@ private fun DetailActionsSkeleton(isArtist: Boolean) {
  * An album, playlist or artist page below its header — the header itself is
  * drawn from what the row that was tapped already knew, so it never waits.
  */
-fun LazyListScope.detailSkeleton(isArtist: Boolean) {
+fun LazyListScope.detailSkeleton(isArtist: Boolean, showActions: Boolean = true) {
     if (isArtist) {
         item(key = "skeleton:detail:actions") {
             Column(Modifier.graphicsLayer { alpha = 0.4f }) {
@@ -383,10 +391,15 @@ fun LazyListScope.detailSkeleton(isArtist: Boolean) {
         }
         return
     }
-    item(key = "skeleton:detail:actions") {
-        Column(Modifier.graphicsLayer { alpha = 0.4f }) {
-            DetailActionsSkeleton(isArtist = false)
-            Spacer(Modifier.height(20.dp))
+    // If the page header already painted the actual release controls, don't
+    // draw a second ghost Shuffle / Play / Plus row underneath while the
+    // catalog's track listing is still arriving.
+    if (showActions) {
+        item(key = "skeleton:detail:actions") {
+            Column(Modifier.graphicsLayer { alpha = 0.4f }) {
+                DetailActionsSkeleton(isArtist = false)
+                Spacer(Modifier.height(20.dp))
+            }
         }
     }
     songListSkeleton(count = 8, keyPrefix = "skeleton:detail:song", alpha = 0.4f)

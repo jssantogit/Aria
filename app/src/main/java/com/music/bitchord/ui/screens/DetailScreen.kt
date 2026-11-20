@@ -879,7 +879,13 @@ fun DetailScreen(
                     )
                 }
             } else when (val state = page.songs) {
-                is UiState.Loading -> detailSkeleton(isArtist)
+                is UiState.Loading -> detailSkeleton(
+                    isArtist = isArtist,
+                    showActions = isArtist || !(
+                        songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
+                            canPinCatalogRelease || (catalogRatingTarget != null && !isArtist)
+                    ),
+                )
                 is UiState.Error -> item { MessageState(state.message) }
                 is UiState.Success -> if (folder != null && folderState != null) {
                     localFolderItems(

@@ -2,6 +2,15 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import com.music.bitchord.ui.components.DetailActionLayoutMetrics
+import com.music.bitchord.ui.components.detailSkeleton
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -21,6 +30,39 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class NativeAlbumHeroActionsTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun onlineAlbumLoadedPlayWidthMatchesItsLoadingPlaceholder() {
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.width(360.dp)) {
+                    NativeReleaseActionRow(
+                        onPlay = {}, onShuffle = {}, isLocal = false,
+                        compactForAlbum = true, reservePinAction = true,
+                        onTogglePin = {},
+                    )
+                    LazyColumn(Modifier.height(150.dp)) {
+                        detailSkeleton(isArtist = false)
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("native-compact-album-play-pill")
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlay)
+        compose.onNodeWithTag("detail-action-skeleton-play-pill")
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlay)
+        org.junit.Assert.assertEquals(50.dp, nativeReleaseSideButtonSize(true))
+    }
+
+    @Test fun albumWithPaintedControlsDoesNotShowSecondLoadingActionRow() {
+        compose.setContent {
+            MaterialTheme {
+                LazyColumn(Modifier.height(300.dp)) {
+                    detailSkeleton(isArtist = false, showActions = false)
+                }
+            }
+        }
+        compose.onNodeWithTag("detail-action-skeleton-play-pill").assertDoesNotExist()
+    }
 
     @Test fun metadataOnlyAlbumRetainsPinWithoutPlayOrShuffle() {
         var pins = 0
