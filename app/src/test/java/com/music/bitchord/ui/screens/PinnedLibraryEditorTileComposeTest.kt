@@ -55,6 +55,27 @@ class PinnedLibraryEditorTileComposeTest {
         compose.runOnIdle { assertEquals(1, opens) }
     }
 
+    @Test fun pinnedMusicBrainzArtistRemainsEditableWithCircularArtwork() {
+        var removed = 0
+        compose.setContent {
+            MaterialTheme {
+                PinnedLibraryEditorTile(
+                    id = "catalog:catalog:ARTIST:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    title = "STAYC", editing = true, columns = 3,
+                    isArtist = true,
+                    onClick = {}, onLongPress = {},
+                    onRemove = { removed++ }, onMoveBy = {},
+                ) { Box(Modifier.size(80.dp)) }
+            }
+        }
+        compose.onNodeWithTag("pinned-library-artwork", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithText("STAYC").assertExists()
+        compose.onNodeWithTag("library-pin-editor-remove", useUnmergedTree = true)
+            .assertExists().performClick()
+        compose.runOnIdle { assertEquals(1, removed) }
+    }
+
     @Test fun editPinShowsRemovableOverlayAndKeepsItsTitle() {
         var removals = 0
         compose.setContent {
