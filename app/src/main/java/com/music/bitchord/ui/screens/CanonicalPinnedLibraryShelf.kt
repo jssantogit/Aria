@@ -326,6 +326,19 @@ internal fun catalogMetadataPinNativeTarget(pin: CatalogMetadataPin): BrowseTarg
     )
 }
 
+/** Catalog records retain their own verified MBIDs; an artist portrait is
+ * presentation data only. A metadata-only recording/release never borrows an
+ * artist's image merely because its displayed title matches the artist. */
+internal fun pinnedCatalogArtworkUrl(
+    pin: CatalogMetadataPin,
+    artistPhotos: Map<String, String>,
+): String? {
+    if (!validCatalogMetadataPin(pin)) return null
+    val stored = trustedCatalogMetadataPinArtwork(pin.artworkUrl)
+    return stored ?: if (pin.browseId.startsWith("catalog:ARTIST:"))
+        artistPhotos[pin.title.trim()] else null
+}
+
 /** Apple-style pinned shelf: three square sleeves per phone row.
  * Keep the larger-width policy independent of item count so two pins never
  * stretch to half the screen; empty slots remain naturally unoccupied. */
@@ -574,13 +587,13 @@ internal fun CanonicalPinnedLibraryShelf(
                                         when {
                                             card != null -> when {
                                                 card.pin.selection.type == CanonicalLibraryEntityType.ARTIST &&
-                                                    (artistPhotos[card.title] ?: card.artistPhotoUrl) != null ->
+                                                    (artistPhotos[card.title.trim()] ?: card.artistPhotoUrl) != null ->
                                                     Box(Modifier.fillMaxSize()) {
                                                         com.music.bitchord.ui.components.CoverPlaceholder(
                                                             Icons.Rounded.Person, Modifier.fillMaxSize(),
                                                         )
                                                         AsyncImage(
-                                                            model = artistPhotos[card.title] ?: card.artistPhotoUrl,
+                                                            model = artistPhotos[card.title.trim()] ?: card.artistPhotoUrl,
                                                             contentDescription = null,
                                                             contentScale = ContentScale.Crop,
                                                             modifier = Modifier.fillMaxSize(),
@@ -627,8 +640,7 @@ internal fun CanonicalPinnedLibraryShelf(
                                             }
                                             catalog != null -> {
                                                 val catalogArtist = catalog.browseId.startsWith("catalog:ARTIST:")
-                                                val image = catalog.artworkUrl ?: if (catalogArtist)
-                                                    artistPhotos[catalog.title.trim()] else null
+                                                val image = pinnedCatalogArtworkUrl(catalog, artistPhotos)
                                                 Box(Modifier.fillMaxSize()) {
                                                     com.music.bitchord.ui.components.CoverPlaceholder(
                                                         if (catalogArtist) Icons.Rounded.Person
