@@ -183,8 +183,9 @@ internal fun NativeArtistPublicTopSection(
                 )
             },
             subtitle = {
-                val caption = recording.coverReleaseMbid
-                    ?.lowercase(Locale.ROOT)?.let(releaseCaptions::get)
+                val caption = canonicalArtistPublicTrackReleaseCaption(
+                    recording, releaseCaptions,
+                )
                 if (!caption.isNullOrBlank()) {
                     Text(
                         text = caption,
@@ -201,4 +202,20 @@ internal fun NativeArtistPublicTopSection(
 
         )
     }
+}
+
+
+/** Use the verified Recording→Official edition in the current network result.
+ * Previously its title was thrown away; the Room-only lookup then stayed
+ * blank for a newly visited online artist. Cached captions are a fallback. */
+internal fun canonicalArtistPublicTrackReleaseCaption(
+    recording: CanonicalCatalogSearchRow,
+    cached: Map<String, String>,
+): String? {
+    if (recording.kind != CanonicalSearchKind.RECORDING) return null
+    val edition = recording.coverReleaseMbid?.trim()?.takeIf(String::isNotBlank)
+        ?: return null
+    return canonicalArtistVerifiedEditionCaption(
+        recording.officialReleaseTitle, recording.releaseDate,
+    ) ?: cached[edition.lowercase(Locale.ROOT)]
 }

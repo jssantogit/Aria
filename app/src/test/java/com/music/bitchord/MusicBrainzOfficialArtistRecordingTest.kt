@@ -17,7 +17,12 @@ class MusicBrainzOfficialArtistRecordingTest {
     private val another = "22222222-2222-4222-8222-222222222222"
     private val group = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
-    private suspend fun lookup(video: Boolean, releases: String) : Triple<String?, String?, String?> {
+    private data class OfficialEvidence(
+        val first: String?, val second: String?, val third: String?,
+        val title: String?, val date: String?,
+    )
+
+    private suspend fun lookup(video: Boolean, releases: String): OfficialEvidence {
         var inc: String? = null
         val transport = object : MusicBrainzTransport {
             override suspend fun get(
@@ -38,10 +43,13 @@ class MusicBrainzOfficialArtistRecordingTest {
         )
         val result = provider.lookupOfficialAudioRecording(recording)
         assertTrue(result is MetadataLookupResult.Success)
-        return Triple(
-            (result as MetadataLookupResult.Success).value.officialAudioReleaseMbid,
-            result.value.officialAudioReleaseGroupMbid,
+        val verified = (result as MetadataLookupResult.Success).value
+        return OfficialEvidence(
+            verified.officialAudioReleaseMbid,
+            verified.officialAudioReleaseGroupMbid,
             inc,
+            verified.officialAudioReleaseTitle,
+            verified.officialAudioReleaseDate,
         )
     }
 
@@ -54,6 +62,23 @@ class MusicBrainzOfficialArtistRecordingTest {
         assertEquals(group, confirmedGroup)
         assertEquals(release, selected)
         assertEquals("artist-credits+releases+release-groups", inc)
+    }
+
+    @Test fun officialRecordingProvidesExactEditionTitleAndDateWithoutAnotherLookup() = runBlocking {
+        val bootleg = """{"id":"$another","title":"Wrong album",
+          "date":"2010-01-01","status":"Bootleg",
+          "release-group":{"primary-type":"Album"}}"""
+        val official = """{"id":"$release","title":"Get Up",
+          "date":"2023-07-21","status":"Official",
+          "release-group":{"id":"$group","primary-type":"EP"}}"""
+        val result = lookup(false, "$bootleg,$official")
+        assertEquals(release, result.first)
+        assertEquals("Get Up", result.title)
+        assertEquals("2023-07-21", result.date)
+        val rejected = lookup(true, official)
+        assertNull(rejected.first)
+        assertNull(rejected.title)
+        assertNull(rejected.date)
     }
 
     @Test fun rejectsVideoRemixCompilationAndMissingReleaseProof() = runBlocking {

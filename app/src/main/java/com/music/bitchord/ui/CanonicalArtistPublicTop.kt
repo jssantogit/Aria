@@ -170,6 +170,8 @@ internal fun canonicalVerifiedArtistTopRows(
                 // Preserve the exact Recording -> Official audio edition
                 // proof for the artist row subtitle; it is NOT a playback ID.
                 coverReleaseMbid = officialEdition,
+                officialReleaseTitle = verified.officialAudioReleaseTitle,
+                releaseDate = verified.officialAudioReleaseDate,
                 durationMs = verified.durationMs?.takeIf { it > 0L },
             )
         }

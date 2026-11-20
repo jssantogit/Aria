@@ -86,6 +86,24 @@ class CanonicalArtistPublicTopRowsTest {
         assertEquals(null, row.artworkUri)
     }
 
+    @Test fun verifiedOnlineRecordingCarriesItsOfficialAlbumCaptionEvidence() {
+        val ranked = listOf(ListenBrainzArtistTopRecording(first, listens = 99, listeners = 9))
+        val proof = RecordingMetadataEnrichment(
+            musicBrainzId = first, title = "Song", artistDisplay = "Artist",
+            artistCredits = listOf(MusicBrainzArtistCredit(artist, "Artist")),
+            officialAudioReleaseMbid = officialRelease,
+            officialAudioReleaseTitle = "Get Up",
+            officialAudioReleaseDate = "2023-07-21",
+        )
+        val result = canonicalVerifiedArtistTopRows(artist, ranked, mapOf(first to proof))
+        assertEquals(officialRelease, result.single().coverReleaseMbid)
+        assertEquals("Get Up", result.single().officialReleaseTitle)
+        assertEquals("2023-07-21", result.single().releaseDate)
+        assertTrue(canonicalVerifiedArtistTopRows(
+            artist, ranked, mapOf(first to proof.copy(officialAudioReleaseMbid = null)),
+        ).isEmpty())
+    }
+
     @Test fun mismatchedRecordingIdentityMissingCreditsAndUnsafeVersionsFailClosed() {
         val ranking = listOf(
             ListenBrainzArtistTopRecording(first, 100, 10),

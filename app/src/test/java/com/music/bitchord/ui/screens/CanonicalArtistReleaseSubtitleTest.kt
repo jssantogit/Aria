@@ -2,6 +2,8 @@ package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.catalog.CanonicalArtistOfficialReleaseCaptionRow
 import com.music.bitchord.data.catalog.CanonicalRecordingReleaseTitleRow
+import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import com.music.bitchord.ui.screens.CanonicalSearchKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -103,6 +105,34 @@ class CanonicalArtistReleaseSubtitleTest {
         assertEquals("Whiplash - The 5th Mini Album - EP",
             canonicalArtistOfficialReleaseCaption(linked.copy(releaseDate = null)))
         assertNull(canonicalArtistOfficialReleaseCaption(linked.copy(releaseTitle = " ")))
+    }
+
+    @Test fun publicArtistTrackPrefersExactVerifiedEditionOverEmptyRoomCache() {
+        val row = CanonicalCatalogSearchRow(
+            musicBrainzId = "recording",
+            kind = CanonicalSearchKind.RECORDING,
+            title = "Super Shy", subtitle = "NewJeans",
+            coverReleaseMbid = "11111111-1111-4111-8111-111111111111",
+            officialReleaseTitle = "Get Up",
+            releaseDate = "2023-07-21",
+        )
+        assertEquals("Get Up · 2023",
+            canonicalArtistPublicTrackReleaseCaption(row, emptyMap()))
+        assertEquals("Get Up · 2023",
+            canonicalArtistPublicTrackReleaseCaption(
+                row, mapOf(row.coverReleaseMbid!! to "Wrong cached title"),
+            ))
+        assertEquals("Cached Official · 2024",
+            canonicalArtistPublicTrackReleaseCaption(
+                row.copy(officialReleaseTitle = null),
+                mapOf(row.coverReleaseMbid!! to "Cached Official · 2024"),
+            ))
+        assertNull(canonicalArtistPublicTrackReleaseCaption(
+            row.copy(coverReleaseMbid = null), emptyMap(),
+        ))
+        assertNull(canonicalArtistPublicTrackReleaseCaption(
+            row.copy(kind = CanonicalSearchKind.RELEASE_GROUP), emptyMap(),
+        ))
     }
 
     @Test fun artistLegacyCardsOnlyReadStandaloneYearMetadataSegment() {

@@ -86,9 +86,18 @@ internal fun canonicalNativeSections(
             subtitle = CanonicalEditorialDiscography.classify(
                 row.releaseKind, row.secondaryTypes,
             ).let { decision ->
-                if (decision.isPublishable) {
+                val classification = if (decision.isPublishable) {
                     (listOfNotNull(decision.format) + decision.secondaryTypes).joinToString(" · ")
                 } else row.subtitle.orEmpty()
+                // A release-group's first-release date is already verified
+                // upstream. Preserve it as a standalone year segment so both
+                // the artist carousel and Show All grid render the same year.
+                // Keep the type metadata for contextual menus/other callers.
+                if (parentKind == CanonicalSearchKind.ARTIST) {
+                    listOfNotNull(classification.takeIf(String::isNotBlank),
+                        com.music.bitchord.ui.screens.canonicalArtistReleaseYearLabel(row.releaseDate))
+                        .joinToString(" · ")
+                } else classification
             },
             thumbnailUrl = row.artworkUri,
             videoId = null,

@@ -49,6 +49,11 @@ internal data class RecordingMetadataEnrichment(
     val officialAudioReleaseGroupMbid: String? = null,
     /** Resolved CoverArtArchive image of that exact edition, if available. */
     val officialAudioArtworkUri: String? = null,
+    /** Official edition name and date FROM the verified Recording→Release
+     * edge. Public artist rows can show this without waiting for Room to have
+     * separately indexed that edition; never use a name-based join. */
+    val officialAudioReleaseTitle: String? = null,
+    val officialAudioReleaseDate: String? = null,
 )
 
 internal data class ReleaseMetadataEnrichment(

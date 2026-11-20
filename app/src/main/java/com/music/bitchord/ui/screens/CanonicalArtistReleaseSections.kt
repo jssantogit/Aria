@@ -251,13 +251,20 @@ internal fun canonicalArtistTrackReleaseLabels(
  * cached canonical title/date can be shown as a caption, but NEVER a second
  * copy of the page artist or a fuzzy match to a similarly named album.
  */
+internal fun canonicalArtistVerifiedEditionCaption(
+    officialTitle: String?,
+    officialReleaseDate: String?,
+): String? {
+    val title = officialTitle?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return listOfNotNull(title, canonicalArtistReleaseYearLabel(officialReleaseDate))
+        .joinToString(" · ")
+}
+
 internal fun canonicalArtistOfficialReleaseCaption(
     edition: CanonicalArtistOfficialReleaseCaptionRow,
-): String? {
-    val title = edition.releaseTitle.trim().takeIf(String::isNotBlank) ?: return null
-    val year = canonicalArtistReleaseYearLabel(edition.releaseDate)
-    return listOfNotNull(title, year).joinToString(" · ")
-}
+): String? = canonicalArtistVerifiedEditionCaption(
+    edition.releaseTitle, edition.releaseDate,
+)
 
 /** The legacy artist ShelfItem may include a year as separate metadata. */
 internal fun canonicalArtistShelfYearFromSubtitle(subtitle: String): String? =

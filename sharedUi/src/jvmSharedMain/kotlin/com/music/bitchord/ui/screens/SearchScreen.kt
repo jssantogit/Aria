@@ -140,6 +140,9 @@ data class CanonicalCatalogSearchRow(
     val artworkProvenance: CanonicalArtworkProvenance? = null,
     /** Complete MusicBrainz release/group artist credit IDs; not persisted in Room. */
     val artistCreditMbids: List<String>? = null,
+    /** Title of the exact verified Official audio edition on a public artist
+     * Recording. Display-only; never grants audio access or creates a ReleaseId. */
+    val officialReleaseTitle: String? = null,
 )
 
 /**

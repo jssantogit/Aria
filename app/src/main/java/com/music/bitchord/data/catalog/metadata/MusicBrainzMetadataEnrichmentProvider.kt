@@ -330,15 +330,17 @@ internal class MusicBrainzMetadataEnrichmentProvider(
                 durationMs = dto.length?.takeIf { it >= 0L },
                 artistDisplay = renderArtistCredit(dto.artistCredit),
                 artistCredits = dto.artistCredit?.toEvidence(),
-                officialAudioReleaseMbid = officialAudioEdition?.first,
-                officialAudioReleaseGroupMbid = officialAudioEdition?.second,
+                officialAudioReleaseMbid = officialAudioEdition?.id.validMbidOrNull(),
+                officialAudioReleaseGroupMbid = officialAudioEdition?.group?.id.validMbidOrNull(),
+                officialAudioReleaseTitle = officialAudioEdition?.title.clean(),
+                officialAudioReleaseDate = officialAudioEdition?.date.clean(),
             ),
         )
     }
 
     /** No bootlegs, video recordings, fan compilations, live-only versions,
      * DJ mixes or Other/video releases are eligible for the public chart. */
-    private fun MusicBrainzRecordingDto.verifiedOfficialAudioRelease(): Pair<String, String?>? {
+    private fun MusicBrainzRecordingDto.verifiedOfficialAudioRelease(): MusicBrainzRecordingReleaseDto? {
         if (video == true) return null
         val disallowed = setOf(
             "live", "compilation", "remix", "dj-mix", "mixtape/street",
@@ -357,11 +359,7 @@ internal class MusicBrainzMetadataEnrichmentProvider(
             .sortedWith(compareBy<MusicBrainzRecordingReleaseDto> {
                 it.date.orEmpty().ifBlank { "9999-12-31" }
             }.thenBy { it.id.orEmpty() })
-            .firstOrNull()?.let { release ->
-                release.id.validMbidOrNull()?.let { confirmedId ->
-                    confirmedId to release.group?.id.validMbidOrNull()
-                }
-            }
+            .firstOrNull()
     }
 
     override suspend fun lookupRelease(externalId: String): MetadataLookupResult<ReleaseMetadataEnrichment> {
@@ -482,6 +480,7 @@ private data class MusicBrainzRecordingDto(
 @Serializable
 private data class MusicBrainzRecordingReleaseDto(
     val id: String? = null,
+    val title: String? = null,
     val date: String? = null,
     val status: String? = null,
     @SerialName("release-group") val group: MusicBrainzRecordingGroupDto? = null,

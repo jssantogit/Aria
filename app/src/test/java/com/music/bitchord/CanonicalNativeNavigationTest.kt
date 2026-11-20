@@ -43,6 +43,9 @@ class CanonicalNativeNavigationTest {
         assertEquals(listOf("NJWMX"), sections[0].items.map { it.title })
         assertEquals(listOf("Supernatural", "Get Up"), sections[1].items.map { it.title })
         assertTrue(sections.flatMap { it.items }.all { it.videoId == null })
+        assertEquals("Album · 2023", sections[0].items.single().subtitle)
+        assertEquals(listOf("Single · 2024", "EP · 2023"),
+            sections[1].items.map { it.subtitle })
     }
 
     @Test fun artistAndAlbumKeepNativeDetailTypesWithoutLegacyVideoIds() {
@@ -64,6 +67,20 @@ class CanonicalNativeNavigationTest {
         assertEquals(canonicalNativeBrowseId(group), card.browseId)
         assertNull(card.videoId)
         assertEquals("EP", card.subtitle)
+    }
+
+    @Test fun onlineArtistCardsKeepOnlyVerifiedYearsAndNeverExtractArtistNames() {
+        val withDate = group.copy(releaseDate = "2025-08-29", releaseKind = "EP")
+        val unknown = group.copy(
+            musicBrainzId = "other", releaseDate = null, releaseKind = "Album",
+        )
+        val sections = canonicalNativeSections(
+            CanonicalSearchKind.ARTIST, listOf(withDate, unknown), "Lançamentos",
+        )
+        assertEquals("EP · 2025", sections.flatMap { it.items }
+            .single { it.browseId == canonicalNativeBrowseId(withDate) }.subtitle)
+        assertEquals("Album", sections.flatMap { it.items }
+            .single { it.browseId == canonicalNativeBrowseId(unknown) }.subtitle)
     }
 
     @Test fun editionsStayDistinctAndNeverPretendToBePlayableTracks() {
