@@ -116,6 +116,12 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import java.util.UUID
 
+/** Typing is debounced, but empty-query first load / switching the browse
+ * tabs should never pay a fixed 160ms penalty. Cancellable LaunchedEffect
+ * still discards obsolete searches as the user changes terms or source. */
+internal fun normalPlaylistSearchDebounceMillis(query: String): Long =
+    if (query.isBlank()) 0L else 160L
+
 /** Only the Library-embedded creator needs an enlarged floating dialog radius. */
 internal val playlistLibraryCreatorModalShape = RoundedCornerShape(32.dp)
 
