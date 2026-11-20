@@ -28,6 +28,8 @@ internal fun <T> ExploreCategoryContentTransition(
         transitionSpec = { exploreCategoryContentTransform(reduceMotion) },
         label = "explore-category-content",
     ) { visibleCategory ->
-        content(visibleCategory)
+        // A retired genre may still be scheduled for composition. Its artwork
+        // and text must not flash underneath the next genre's loading state.
+        if (visibleCategory == category) content(visibleCategory)
     }
 }
