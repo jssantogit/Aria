@@ -4043,7 +4043,8 @@ private fun BitChordApp(
                         )
                     } else if (com.music.bitchord.ui.components.isKnownRootTabSlot(
                             key, TAB_KEY, tabs.size,
-                        )) when (key.removePrefix(TAB_KEY).toIntOrNull()) {
+                        )) {
+                        when (key.removePrefix(TAB_KEY).toIntOrNull()) {
                         // Home keeps its native feed. Explore's root reuses the
                         // existing native category grid, never Home shelves.
                         TAB_HOME -> HomeScreen(
@@ -4573,7 +4574,7 @@ private fun BitChordApp(
                             ),
                             deviceItems = emptyList(),
                         )
-                    }
+                        }
                     } else {
                         // A detail route can be selected before its stack item
                         // is available (or after it is popped). Previously the
