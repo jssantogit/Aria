@@ -3,6 +3,8 @@ package com.music.bitchord.ui.screens
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsEqualTo
@@ -19,6 +21,7 @@ import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.ui.theme.BitChordTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,6 +60,11 @@ class PinnedArtworkOnlyComposeTest {
         compose.onNodeWithContentDescription("kk").assertExists()
         compose.onNodeWithTag("pinned-library-artwork").performTouchInput { longClick() }
         compose.runOnIdle { assertEquals(1, menus) }
+    }
+
+    @Test fun artistPinKeepsCircularShapeWhileReleasesAndPlaylistsStayRoundedSquares() {
+        assertSame(CircleShape, pinnedLibraryArtworkShape(artist = true))
+        assertTrue(pinnedLibraryArtworkShape(artist = false) is RoundedCornerShape)
     }
 
     @Test fun localPinnedLookupReusesOriginalShelfIdentityRatherThanAddingLocalPrefixTwice() {
