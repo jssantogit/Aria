@@ -99,12 +99,12 @@ internal fun smartConditionCountLabel(count: Int, configured: Boolean = false): 
 internal enum class WizardStep { IDENTITY, EDIT, SONGS, RULES, GROUP, CATEGORIES, FIELDS, EDITOR, REVIEW }
 
 /**
- * A creator step is a pushed destination, not a root tab. The 150ms nearly
- * opaque root-tab arrival was imperceptible, and it never fired when the
- * Songs (Músicas / Álbuns / Artistas) or condition-field subtab changed.
+ * Every wizard step and internal tab gets a stable navigation identity.
+ * Only the content uses a stationary 165ms soft fade; the old directional
+ * slide felt as though the entire screen was being pushed around.
  *
- * Build a stable key from navigation identity only. Search text, draft edits,
- * loading and selected track IDs must never restart entrance motion.
+ * Search text, draft edits, loading and selected track IDs must not restart
+ * that fade or replace the live LazyColumn/input owner.
  */
 internal fun playlistWizardArrivalKey(
     page: WizardStep,
@@ -132,18 +132,6 @@ internal fun playlistWizardArrivalKey(
         else -> ""
     }
     return "wizard:$depth:${page.name}:$slot:$scope"
-}
-
-/** Enter right-to-left for deeper destinations; reverse for Back/previous tab. */
-internal fun playlistWizardArrivalForward(previous: String, next: String): Boolean {
-    val from = previous.split(":")
-    val to = next.split(":")
-    val fromDepth = from.getOrNull(1)?.toIntOrNull() ?: return true
-    val toDepth = to.getOrNull(1)?.toIntOrNull() ?: return true
-    if (toDepth != fromDepth) return toDepth > fromDepth
-    val fromTab = from.getOrNull(3)?.toIntOrNull() ?: 0
-    val toTab = to.getOrNull(3)?.toIntOrNull() ?: 0
-    return toTab >= fromTab
 }
 
 /** Only known audio-source providers are selectable. iTunes/MusicBrainz
@@ -716,10 +704,9 @@ internal fun SmartPlaylistV2WizardUi(
         }
     }
 
-    // Every actual internal navigation change receives the SAME visible
-    // pushed-page arrival as Settings/Library. Do not use rootTabPrefix:
-    // root-tab alpha (0.975 -> 1) is intentionally almost imperceptible.
-    // Keep one LazyColumn mounted, preserving the input/selection owner.
+    // A short fade settles the content without horizontally moving the page,
+    // top bar or keyboard. The same modifier handles wizard steps, song browse
+    // tabs and condition-field tabs; the live LazyColumn retains input state.
     val wizardArrivalKey = playlistWizardArrivalKey(
         page = page,
         browseTabIndex = CanonicalPlaylistBrowseType.entries.indexOf(normalBrowseType),
@@ -731,7 +718,7 @@ internal fun SmartPlaylistV2WizardUi(
     val wizardStepArrival = com.music.bitchord.ui.components.rememberRouteArrivalModifier(
         routeKey = wizardArrivalKey,
         reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
-        directionForRouteChange = ::playlistWizardArrivalForward,
+        style = com.music.bitchord.ui.components.RouteArrivalStyle.STATIONARY_SOFT_FADE,
     )
 
     // Do not mix the editor with the app's own scrollable library screen.
