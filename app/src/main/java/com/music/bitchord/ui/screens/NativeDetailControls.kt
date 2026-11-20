@@ -3,6 +3,8 @@ package com.music.bitchord.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.ui.components.IconSilhouettePressContent
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -111,6 +118,9 @@ internal fun CircleIconButton(
     customIcon: (@Composable () -> Unit)? = null,
 ) {
     val haptics = rememberHaptics()
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     // Keep the action label on the clickable parent, not an inert child node.
     val actionLabel = contentDescription
     Box(
@@ -126,7 +136,11 @@ internal fun CircleIconButton(
                 } else Modifier
             )
             .then(
-                if (enabled) Modifier.clickable {
+                if (enabled) Modifier.clickable(
+                    interactionSource = pressSource,
+                    indication = null,
+                    role = Role.Button,
+                ) {
                     haptics.play(haptic)
                     onClick()
                 } else Modifier.semantics(mergeDescendants = true) {
@@ -136,15 +150,21 @@ internal fun CircleIconButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        if (customIcon != null) {
-            customIcon()
-        } else {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = tint,
-                modifier = Modifier.size(size * 0.44f),
-            )
+        IconSilhouettePressContent(
+            pressed = pressed,
+            enabled = enabled,
+            reducedMotion = reduceMotion,
+        ) {
+            if (customIcon != null) {
+                customIcon()
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = tint,
+                    modifier = Modifier.size(size * 0.44f),
+                )
+            }
         }
     }
 }

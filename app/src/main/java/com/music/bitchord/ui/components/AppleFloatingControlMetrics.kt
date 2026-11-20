@@ -5,11 +5,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.clip
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.settings.AppSettings
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -41,9 +41,9 @@ internal object AppleFloatingControlMetrics {
 }
 
 /**
- * Keep ripple inside the painted 40dp circle; Material3's larger minimum
- * interactive layout must not become a visible 48dp splash.
- * Touch expansion remains the platform's accessibility responsibility.
+ * Keep the permanent 40dp floating-circle surface, but do not draw an
+ * additional circle when pressed. Only the icon itself contracts/dims.
+ * The invisible target and accessible action label remain in the host.
  */
 @Composable
 internal fun NativeToolbarIconButton(
@@ -52,18 +52,14 @@ internal fun NativeToolbarIconButton(
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    CompositionLocalProvider(
-        LocalMinimumInteractiveComponentSize provides AppleFloatingControlMetrics.toolbarDiameter,
-    ) {
-        IconButton(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = modifier
-                .size(AppleFloatingControlMetrics.toolbarDiameter)
-                .clip(CircleShape),
-            content = content,
-        )
-    }
+    val reducedMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    IconSilhouettePressButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.size(AppleFloatingControlMetrics.toolbarDiameter).clip(CircleShape),
+        reducedMotion = reducedMotion,
+        content = content,
+    )
 }
 
 /**

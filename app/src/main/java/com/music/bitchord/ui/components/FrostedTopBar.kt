@@ -354,18 +354,15 @@ fun FrostedTopBar(
                 } else {
                     // Preserve the old 48dp accessible hit target in this
                     // flat/legacy toolbar path, without a Material 3 button.
-                    Box(
+                    IconSilhouettePressButton(
+                        onClick = onBack,
+                        reducedMotion = reduceMotion,
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = 4.dp)
                             .size(48.dp)
                             .clip(CircleShape)
-                            .clickable(
-                                role = androidx.compose.ui.semantics.Role.Button,
-                                onClick = onBack,
-                            )
                             .testTag("native-flat-topbar-back"),
-                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             artworkPageBackIcon(),

@@ -40,6 +40,36 @@ internal fun IconSilhouettePressButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    Box(
+        modifier = modifier.clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            role = Role.Button,
+            onClick = onClick,
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Only the composited icon (or its spinner) moves. No circle, rounded
+        // highlight, or scale is ever applied to the transparent hit target.
+        IconSilhouettePressContent(
+            pressed = pressed,
+            enabled = enabled,
+            reducedMotion = reducedMotion,
+            content = content,
+        )
+    }
+}
+
+/** Reuse the same glyph-only affordance when a control intentionally owns a
+ * permanent circular glass surface with its own clickable semantics. */
+@Composable
+internal fun IconSilhouettePressContent(
+    pressed: Boolean,
+    enabled: Boolean,
+    reducedMotion: Boolean,
+    content: @Composable () -> Unit,
+) {
     val scale by animateFloatAsState(
         targetValue = iconSilhouettePressScale(pressed && enabled, reducedMotion),
         animationSpec = if (reducedMotion) snap() else spring(
@@ -53,24 +83,11 @@ internal fun IconSilhouettePressButton(
         label = "iconSilhouettePressAlpha",
     )
     Box(
-        modifier = modifier.clickable(
-            interactionSource = interaction,
-            indication = null,
-            enabled = enabled,
-            role = Role.Button,
-            onClick = onClick,
-        ),
+        modifier = Modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            alpha = glyphAlpha
+        },
         contentAlignment = Alignment.Center,
-    ) {
-        // Only the composited icon (or its spinner) moves. No circle, rounded
-        // highlight, or scale is ever applied to the transparent hit target.
-        Box(
-            modifier = Modifier.graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                alpha = glyphAlpha
-            },
-            contentAlignment = Alignment.Center,
-        ) { content() }
-    }
+    ) { content() }
 }
