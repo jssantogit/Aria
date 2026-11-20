@@ -55,6 +55,21 @@ internal fun rememberFrostedMenuEntranceModifier(reduceMotion: Boolean): Modifie
 
 internal data class RouteArrivalFrame(val alpha: Float, val translationDp: Float)
 
+/** Opt-in content-only transition for the playlist wizard.
+ * Unlike pushed Settings routes, every step/subtab stays in place. */
+internal enum class RouteArrivalStyle { DIRECTIONAL, STATIONARY_SOFT_FADE }
+
+/** Slightly more visible than the 150ms root-tab fade without shifting the UI.
+ * The wizard owns a single LazyColumn: do not keep old form rows alive merely
+ * to crossfade, and do not animate the keyboard or host layout bounds. */
+internal fun playlistWizardStationaryArrivalFrame(progress: Float): RouteArrivalFrame {
+    val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
+    return RouteArrivalFrame(
+        alpha = 0.88f + 0.12f * p,
+        translationDp = 0f,
+    )
+}
+
 internal fun routeArrivalFrame(progress: Float, forward: Boolean): RouteArrivalFrame {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
     // +0 and -0 compare differently in a Float-backed data class. At rest
@@ -175,6 +190,7 @@ internal fun rememberRouteArrivalModifier(
     /** Optional per-navigation direction; read against the previous route,
      * not guessed from the destination alone (Back must move backward). */
     directionForRouteChange: ((String, String) -> Boolean)? = null,
+    style: RouteArrivalStyle = RouteArrivalStyle.DIRECTIONAL,
 ): Modifier {
     val progress = remember { Animatable(1f) }
     var previous by remember { mutableStateOf(routeKey) }
@@ -197,7 +213,11 @@ internal fun rememberRouteArrivalModifier(
             progress.animateTo(
                 1f,
                 animationSpec = tween(
-                    durationMillis = if (rootTabPrefix != null) rootTabFadeMillis(reduceMotion) else 185,
+                    durationMillis = when {
+                        rootTabPrefix != null -> rootTabFadeMillis(reduceMotion)
+                        style == RouteArrivalStyle.STATIONARY_SOFT_FADE -> 165
+                        else -> 185
+                    },
                     easing = if (rootTabPrefix != null) LinearEasing else FastOutSlowInEasing,
                 ),
             )
@@ -207,10 +227,11 @@ internal fun rememberRouteArrivalModifier(
     }
 
     return Modifier.graphicsLayer {
-        val frame = if (rootTabPrefix == null) {
-            routeArrivalFrame(progress.value, arrivingForward)
-        } else {
-            rootTabArrivalFrame(progress.value)
+        val frame = when {
+            rootTabPrefix != null -> rootTabArrivalFrame(progress.value)
+            style == RouteArrivalStyle.STATIONARY_SOFT_FADE ->
+                playlistWizardStationaryArrivalFrame(progress.value)
+            else -> routeArrivalFrame(progress.value, arrivingForward)
         }
         alpha = frame.alpha
         translationX = frame.translationDp.dp.toPx()
