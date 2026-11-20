@@ -1009,15 +1009,9 @@ private fun BitChordApp(
     var detailSortMenuAnchor by remember {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
     }
-    val pinEditorState = remember(context) {
-        com.music.bitchord.ui.screens.LibraryPinsEditorState(context)
-    }
-    BackHandler(enabled = pinEditorState.editing) {
-        pinEditorState.cancel()
-    }
-    LaunchedEffect(selectedTab) {
-        if (selectedTab != TAB_LIBRARY && pinEditorState.editing) pinEditorState.cancel()
-    }
+    val pinEditorState = rememberLibraryPinsEditorState(
+        context, selectedTab, TAB_LIBRARY,
+    )
     var rootSettingsOverflowOpen by remember { mutableStateOf(false) }
     var rootSettingsOverflowAnchor by remember {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
@@ -5033,86 +5027,26 @@ private fun BitChordApp(
                         if (appleLibraryLandingChrome && pinEditorState.editing) {
                             LibraryPinsDoneToolbarAction(pinEditorState, context)
                         } else if (appleLibraryRoundChrome) {
-                            if (appleLibraryLandingChrome || applePlaylistCategoryChrome) {
-                                com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
-                                    NativeToolbarIconButton(onClick = {
-                                        editingSmartPlaylistId = null
-                                        editingNormalPlaylistId = null
-                                        showSmartPlaylistBuilder = true
-                                    }) {
-                                        Icon(
-                                            painter = androidx.compose.ui.res.painterResource(
-                                                com.music.bitchord.R.drawable.ic_apple_library_new_playlist,
-                                            ),
-                                            contentDescription = "Criar playlist",
-                                            tint = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                }
-                            }
-                            if (appleLibraryCategoryChrome) {
-                                com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(
-                                    hazeState = hazeState,
-                                    modifier = Modifier.onGloballyPositioned { coords ->
-                                        unifiedControls.sourceMenuAnchor = nativeMenuAnchorBounds(coords)
-                                    },
-                                ) {
-                                    NativeToolbarIconButton(onClick = { unifiedControls.sourceMenuOpen = true }) {
-                                        Icon(Icons.Rounded.Layers, contentDescription = "Fonte do catálogo",
-                                            tint = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                                com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(
-                                    hazeState = hazeState,
-                                    modifier = Modifier.onGloballyPositioned { coords ->
-                                        unifiedControls.sortMenuAnchor = nativeMenuAnchorBounds(coords)
-                                    },
-                                ) {
-                                    NativeToolbarIconButton(onClick = { unifiedControls.sortMenuOpen = true }) {
-                                        Icon(PlaylistEditorIcons.Sort, contentDescription = "Filtros da biblioteca",
-                                            tint = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            }
-                            if (applePlaylistCategoryChrome) {
-                                com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
-                                    NativeToolbarIconButton(onClick = { playlistLibraryOptionsMenu = true }) {
-                                        Icon(PlaylistEditorIcons.Sort, contentDescription = "Filtros de playlists",
-                                            tint = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            }
-                            if (appleDownloadsChrome) {
-                                com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(
-                                    hazeState = hazeState,
-                                    modifier = Modifier.onGloballyPositioned { coords ->
-                                        folderMenuAnchor = nativeMenuAnchorBounds(coords)
-                                    },
-                                ) {
-                                    NativeToolbarIconButton(onClick = { folderMenuOpen = true }) {
-                                        Icon(
-                                            PlaylistEditorIcons.Sort,
-                                            contentDescription = "Filtros de Downloads",
-                                            tint = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
-                                }
-                            }
-                            Box(Modifier.onGloballyPositioned {
-                                rootSettingsOverflowAnchor = nativeMenuAnchorBounds(it)
-                            }) {
-                                com.music.bitchord.ui.components.AppleRootSettingsOverflow(
-                                    hazeState = hazeState,
-                                    description = when {
-                                        appleExploreRootChrome || appleExploreGenreChrome -> "Mais opções de Explorar"
-                                        appleDownloadsChrome -> "Mais opções de Downloads"
-                                        else -> "Mais opções da biblioteca"
-                                    },
-                                    expanded = rootSettingsOverflowOpen,
-                                    onOpen = { rootSettingsOverflowOpen = true },
-                                )
-                            }
+                            AppleLibraryRoundToolbarActions(
+                                hazeState = hazeState,
+                                showCreate = appleLibraryLandingChrome || applePlaylistCategoryChrome,
+                                onCreate = {
+                                    editingSmartPlaylistId = null
+                                    editingNormalPlaylistId = null
+                                    showSmartPlaylistBuilder = true
+                                },
+                                showCategoryFilters = appleLibraryCategoryChrome,
+                                unifiedControls = unifiedControls,
+                                showPlaylistFilters = applePlaylistCategoryChrome,
+                                onPlaylistFilters = { playlistLibraryOptionsMenu = true },
+                                showDownloadFilters = appleDownloadsChrome,
+                                onDownloadFilters = { folderMenuOpen = true },
+                                onDownloadAnchor = { folderMenuAnchor = it },
+                                exploreRoot = appleExploreRootChrome || appleExploreGenreChrome,
+                                rootExpanded = rootSettingsOverflowOpen,
+                                onRootOpen = { rootSettingsOverflowOpen = true },
+                                onRootAnchor = { rootSettingsOverflowAnchor = it },
+                            )
                         } else {
                         UnifiedLibraryRouteToolbar(
                             recentPage = toolbarOwner == NativeTopBarRouteOwner.RECENT_ADDITIONS,
@@ -8249,6 +8183,129 @@ private fun LibraryPinsRootOverflowMenu(
             )
         }
         FrostedSettingsAction(onClick = onSettings)
+    }
+}
+
+/** Small lifecycle owner: do not enlarge the 64KB BitChordApp method. */
+@Composable
+private fun rememberLibraryPinsEditorState(
+    context: Context,
+    selectedTab: Int,
+    libraryTab: Int,
+): com.music.bitchord.ui.screens.LibraryPinsEditorState {
+    val editor = remember(context) {
+        com.music.bitchord.ui.screens.LibraryPinsEditorState(context)
+    }
+    BackHandler(enabled = editor.editing) { editor.cancel() }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != libraryTab && editor.editing) editor.cancel()
+    }
+    return editor
+}
+
+/**
+ * The Library's floating action group is one reusable composable. Moving the
+ * 80-line inline branch out of BitChordApp prevents MethodTooLargeException.
+ */
+@Composable
+private fun AppleLibraryRoundToolbarActions(
+    hazeState: HazeState,
+    showCreate: Boolean,
+    onCreate: () -> Unit,
+    showCategoryFilters: Boolean,
+    unifiedControls: UnifiedLibraryUiControls,
+    showPlaylistFilters: Boolean,
+    onPlaylistFilters: () -> Unit,
+    showDownloadFilters: Boolean,
+    onDownloadFilters: () -> Unit,
+    onDownloadAnchor: (androidx.compose.ui.unit.IntRect) -> Unit,
+    exploreRoot: Boolean,
+    rootExpanded: Boolean,
+    onRootOpen: () -> Unit,
+    onRootAnchor: (androidx.compose.ui.unit.IntRect) -> Unit,
+) {
+    if (showCreate) {
+        com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
+            NativeToolbarIconButton(onClick = onCreate) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(
+                        com.music.bitchord.R.drawable.ic_apple_library_new_playlist,
+                    ),
+                    contentDescription = "Criar playlist",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+    }
+    if (showCategoryFilters) {
+        com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(
+            hazeState = hazeState,
+            modifier = Modifier.onGloballyPositioned { coords ->
+                unifiedControls.sourceMenuAnchor = nativeMenuAnchorBounds(coords)
+            },
+        ) {
+            NativeToolbarIconButton(onClick = { unifiedControls.sourceMenuOpen = true }) {
+                Icon(
+                    Icons.Rounded.Layers,
+                    contentDescription = "Fonte do catálogo",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(
+            hazeState = hazeState,
+            modifier = Modifier.onGloballyPositioned { coords ->
+                unifiedControls.sortMenuAnchor = nativeMenuAnchorBounds(coords)
+            },
+        ) {
+            NativeToolbarIconButton(onClick = { unifiedControls.sortMenuOpen = true }) {
+                Icon(
+                    PlaylistEditorIcons.Sort,
+                    contentDescription = "Filtros da biblioteca",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+    if (showPlaylistFilters) {
+        com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(hazeState) {
+            NativeToolbarIconButton(onClick = onPlaylistFilters) {
+                Icon(
+                    PlaylistEditorIcons.Sort,
+                    contentDescription = "Filtros de playlists",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+    if (showDownloadFilters) {
+        com.music.bitchord.ui.components.FloatingLibraryTopBarCircle(
+            hazeState = hazeState,
+            modifier = Modifier.onGloballyPositioned {
+                onDownloadAnchor(nativeMenuAnchorBounds(it))
+            },
+        ) {
+            NativeToolbarIconButton(onClick = onDownloadFilters) {
+                Icon(
+                    PlaylistEditorIcons.Sort,
+                    contentDescription = "Filtros de Downloads",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+    Box(Modifier.onGloballyPositioned { onRootAnchor(nativeMenuAnchorBounds(it)) }) {
+        com.music.bitchord.ui.components.AppleRootSettingsOverflow(
+            hazeState = hazeState,
+            description = when {
+                exploreRoot -> "Mais opções de Explorar"
+                showDownloadFilters -> "Mais opções de Downloads"
+                else -> "Mais opções da biblioteca"
+            },
+            expanded = rootExpanded,
+            onOpen = onRootOpen,
+        )
     }
 }
 
