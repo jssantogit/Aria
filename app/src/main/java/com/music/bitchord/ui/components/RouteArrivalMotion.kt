@@ -99,21 +99,28 @@ internal fun rootTabArrivalFrame(progress: Float): RouteArrivalFrame {
 }
 
 /**
- * The AM-DECOMP #7 static tab transaction binds @animator/nav_default_*
- * alpha enter/exit to 150ms linear. It does not prove video timing or
- * tab-indicator motion. Keep both fades on the content only, never on chrome.
- * Do not layer the previous 160ms host arrival over these two fades.
+ * The AM-DECOMP #7 static tab transaction links 150ms alpha animators, but
+ * equal enter/exit fades in our full-page AnimatedContent created transparent
+ * gaps and could expose a stale outgoing tab. The shared page host must never
+ * show a partial old page or a black/empty intermediate frame.
+ *
+ * Retire the old content immediately. Bring the new page in already opaque
+ * (98.5%) with a tiny linear settling fade; the independently hosted toolbar,
+ * bottom navigation and player remain at 100% opacity throughout.
  */
 internal fun rootTabFadeMillis(reducedMotion: Boolean): Int = if (reducedMotion) 0 else 150
 
-/** Root peers must not inherit AnimatedContent's SizeTransform spring. */
+internal const val PAGE_ENTRY_MIN_ALPHA = 0.985f
+
+/** Root peers never retain stale pixels or inherit SizeTransform's spring. */
 internal fun rootTabContentTransform(reducedMotion: Boolean = false): ContentTransform {
     val duration = rootTabFadeMillis(reducedMotion)
     return ContentTransform(
         targetContentEnter = if (duration == 0) EnterTransition.None else
-            fadeIn(animationSpec = tween(duration, easing = LinearEasing)),
+            fadeIn(initialAlpha = PAGE_ENTRY_MIN_ALPHA,
+                animationSpec = tween(duration, easing = LinearEasing)),
         initialContentExit = if (duration == 0) ExitTransition.None else
-            fadeOut(animationSpec = tween(duration, easing = LinearEasing)),
+            fadeOut(animationSpec = tween(0)),
         sizeTransform = null,
     )
 }
@@ -138,6 +145,20 @@ internal fun mainPageMustReplaceImmediately(
         previous == "smart_playlist_builder" || next == "smart_playlist_builder"
 }
 
+/** This slot belongs to a retired destination. Content must not be drawn
+ * using mutable state owned by the replacement route. Slot-local remembered
+ * scroll/menu state can be retained by Compose until disposal. */
+internal fun shouldDrawCurrentPageSlot(slotRoute: String, activeRoute: String): Boolean =
+    slotRoute == activeRoute
+
+/** Non-tab navigation keys (artist MBIDs, albums, playlists, etc.) are never
+ * allowed to fall through into the root Library tab when details are loading. */
+internal fun isKnownRootTabSlot(routeKey: String, rootTabPrefix: String, tabCount: Int): Boolean {
+    if (!routeKey.startsWith(rootTabPrefix)) return false
+    val tab = routeKey.removePrefix(rootTabPrefix).toIntOrNull() ?: return false
+    return tab in 0 until tabCount
+}
+
 /** Both slots switch without a fade or size spring; no translucent overlap. */
 internal fun immediatePageContentTransform(reducedMotion: Boolean = false): ContentTransform =
     ContentTransform(
@@ -155,15 +176,13 @@ internal fun mainPageRequiresImmediateExit(
     rootTabPrefix: String,
 ): Boolean = !(previous.startsWith(rootTabPrefix) && next.startsWith(rootTabPrefix))
 
-/** The outgoing page is gone on the first frame; the incoming page may fade in
- * over the stable host background, without resurrecting stale route content. */
+/** Pushed pages may settle slightly, but may never start at alpha 0.
+ * An alpha-0 incoming page plus a zero-duration outgoing exit used to expose
+ * a completely empty host for the first frame(s), especially on cold Room load. */
 internal fun isolatedPageContentTransform(reducedMotion: Boolean): ContentTransform =
     ContentTransform(
         targetContentEnter = if (reducedMotion) EnterTransition.None else
-            fadeIn(animationSpec = tween(180)),
-        // AnimatedContent retains the outgoing composition while enter runs.
-        // None would leave those pixels visible; a zero-duration alpha exit
-        // suppresses them immediately without altering the incoming motion.
+            fadeIn(initialAlpha = PAGE_ENTRY_MIN_ALPHA, animationSpec = tween(180)),
         initialContentExit = if (reducedMotion) ExitTransition.None else
             fadeOut(animationSpec = tween(0)),
         sizeTransform = null,
