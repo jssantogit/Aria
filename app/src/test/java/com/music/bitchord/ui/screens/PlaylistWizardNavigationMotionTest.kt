@@ -87,6 +87,13 @@ class PlaylistWizardNavigationMotionTest {
         ))
     }
 
+    @Test fun emptyPlaylistBrowseQueryDoesNotWaitForTypingDebounce() {
+        assertEquals(0L, normalPlaylistSearchDebounceMillis(""))
+        assertEquals(0L, normalPlaylistSearchDebounceMillis("  "))
+        assertEquals(160L, normalPlaylistSearchDebounceMillis("newjeans"))
+        assertEquals(160L, normalPlaylistSearchDebounceMillis("a"))
+    }
+
     @Test fun stationaryFadeIsSubtleFiniteAndRespectsStableFinalState() {
         val start = playlistWizardStationaryArrivalFrame(0f)
         val middle = playlistWizardStationaryArrivalFrame(0.5f)
