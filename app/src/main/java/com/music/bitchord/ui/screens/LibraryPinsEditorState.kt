@@ -70,13 +70,21 @@ internal enum class LibraryPinEditResult {
  * so removal and move are never half-applied on disk. Source repositories
  * remain the source of truth for typed identity and playback eligibility.
  */
-internal class LibraryPinsEditorState(context: Context) {
+internal class LibraryPinsEditorState(
+    context: Context,
+    // Production uses the shared repositories; tests may supply repositories
+    // backed by an isolated preferences file to avoid Robolectric's static
+    // singletons leaking across distinct Application test sandboxes.
+    private val canonical: CanonicalLibraryPinRepository =
+        CanonicalLibraryPinRepository.get(context.applicationContext),
+    private val playlists: LibraryPlaylistPinRepository =
+        LibraryPlaylistPinRepository.get(context.applicationContext),
+    private val catalog: CatalogMetadataPinRepository =
+        CatalogMetadataPinRepository.get(context.applicationContext),
+) {
     private val appContext = context.applicationContext
     private val prefs: SharedPreferences =
         appContext.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
-    private val canonical = CanonicalLibraryPinRepository.get(appContext)
-    private val playlists = LibraryPlaylistPinRepository.get(appContext)
-    private val catalog = CatalogMetadataPinRepository.get(appContext)
 
     var editing by mutableStateOf(false)
         private set
