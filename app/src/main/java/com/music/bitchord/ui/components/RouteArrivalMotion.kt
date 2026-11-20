@@ -62,6 +62,9 @@ internal enum class RouteArrivalStyle { DIRECTIONAL, STATIONARY_SOFT_FADE }
 /** Slightly more visible than the 150ms root-tab fade without shifting the UI.
  * The wizard owns a single LazyColumn: do not keep old form rows alive merely
  * to crossfade, and do not animate the keyboard or host layout bounds. */
+internal fun playlistWizardFadeMillis(reducedMotion: Boolean): Int =
+    if (reducedMotion) 0 else 165
+
 internal fun playlistWizardStationaryArrivalFrame(progress: Float): RouteArrivalFrame {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
     return RouteArrivalFrame(
@@ -215,7 +218,8 @@ internal fun rememberRouteArrivalModifier(
                 animationSpec = tween(
                     durationMillis = when {
                         rootTabPrefix != null -> rootTabFadeMillis(reduceMotion)
-                        style == RouteArrivalStyle.STATIONARY_SOFT_FADE -> 165
+                        style == RouteArrivalStyle.STATIONARY_SOFT_FADE ->
+                            playlistWizardFadeMillis(reduceMotion)
                         else -> 185
                     },
                     easing = if (rootTabPrefix != null) LinearEasing else FastOutSlowInEasing,
