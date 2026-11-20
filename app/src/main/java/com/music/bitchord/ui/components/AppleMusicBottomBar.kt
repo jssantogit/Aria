@@ -31,7 +31,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -201,16 +200,6 @@ internal fun appleMusicTabScaleTarget(
 internal fun miniPlayerSwipeVisualOffset(distancePx: Float, thresholdPx: Float, maxPx: Float): Float =
     if (!distancePx.isFinite() || thresholdPx <= 0f || maxPx <= 0f) 0f
     else (distancePx / thresholdPx).coerceIn(-1f, 1f) * maxPx
-
-@Composable
-private fun appleMusicPressScale(pressed: Boolean, reduced: Boolean): Float {
-    val scale by animateFloatAsState(
-        targetValue = GlobalMotionPolicy.pressedScale(pressed, reduced, activeScale = 0.9f),
-        animationSpec = if (reduced) snap() else spring(dampingRatio = 0.80f, stiffness = 510f),
-        label = "appleMusicTransportPress",
-    )
-    return scale
-}
 
 /** Maps the existing four real destinations to five *visible* tab positions. */
 internal fun appleMusicVisualIndexForDestination(destination: Int): Int = when (destination) {
@@ -412,13 +401,6 @@ fun AppleMusicMiniPlayer(
     // content key bound to the queue item, not every changing Song field.
     val trackIdentity = appleMiniPlayerContentKey(song)
     val trackTransition = updateTransition(targetState = song, label = "appleMusicMiniTrack")
-    val playInteraction = remember { MutableInteractionSource() }
-    val nextInteraction = remember { MutableInteractionSource() }
-    val playPressed by playInteraction.collectIsPressedAsState()
-    val nextPressed by nextInteraction.collectIsPressedAsState()
-    val playScale = appleMusicPressScale(playPressed, reduceMotion)
-    val nextScale = appleMusicPressScale(nextPressed, reduceMotion)
-
     // The shared recognizer already owns the skip/expand decision.
     // Pointer updates should invalidate ONLY this row's graphics layer,
     // not recompose artwork/text or restart a crossfade for every drag pixel.
@@ -577,20 +559,14 @@ fun AppleMusicMiniPlayer(
                     )
                 }
             }
-            IconButton(
+            IconSilhouettePressButton(
                 onClick = {
                     haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
                     onPlayPause()
                 },
                 enabled = !isLoading,
-                interactionSource = playInteraction,
-                modifier = Modifier
-                    .size(AppleMusicChromeMetrics.controlTouchSize)
-                    .clip(CircleShape)
-                    .graphicsLayer {
-                        scaleX = playScale
-                        scaleY = playScale
-                    },
+                reducedMotion = reduceMotion,
+                modifier = Modifier.size(AppleMusicChromeMetrics.controlTouchSize),
             ) {
                 Crossfade(
                     targetState = isLoading to isPlaying,
@@ -614,20 +590,14 @@ fun AppleMusicMiniPlayer(
                 }
             }
             Spacer(Modifier.width(6.dp))
-            IconButton(
+            IconSilhouettePressButton(
                 onClick = {
                     haptics.play(Haptic.SkipNext)
                     onNext()
                 },
                 enabled = !controlsLocked,
-                interactionSource = nextInteraction,
-                modifier = Modifier
-                    .size(AppleMusicChromeMetrics.controlTouchSize)
-                    .clip(CircleShape)
-                    .graphicsLayer {
-                        scaleX = nextScale
-                        scaleY = nextScale
-                    },
+                reducedMotion = reduceMotion,
+                modifier = Modifier.size(AppleMusicChromeMetrics.controlTouchSize),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.apple_music_mp_next),

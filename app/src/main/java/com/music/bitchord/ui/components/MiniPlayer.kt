@@ -26,7 +26,6 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -519,12 +518,13 @@ fun MiniPlayer(
                     )
                 }
             } else {
-                IconButton(
+                IconSilhouettePressButton(
                     onClick = {
                         haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
                         onPlayPause()
                     },
-                    modifier = Modifier.size(GLYPH_SLOT).clip(CircleShape),
+                    modifier = Modifier.size(GLYPH_SLOT),
+                    reducedMotion = reduceMotion,
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -537,13 +537,14 @@ fun MiniPlayer(
             Spacer(Modifier.width(TRANSPORT_GAP))
             // Faded and inert rather than removed while the host holds the
             // controls, so the bar keeps its shape — see [controlsLocked].
-            IconButton(
+            IconSilhouettePressButton(
                 onClick = {
                     haptics.play(Haptic.SkipNext)
                     onNext()
                 },
                 enabled = !controlsLocked,
-                modifier = Modifier.size(GLYPH_SLOT).clip(CircleShape),
+                modifier = Modifier.size(GLYPH_SLOT),
+                reducedMotion = reduceMotion,
             ) {
                 MiniPlayerNextGlyph(
                     tint = MaterialTheme.colorScheme.onBackground
