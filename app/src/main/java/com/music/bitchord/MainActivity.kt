@@ -3108,10 +3108,11 @@ private fun BitChordApp(
         // This owner is shared by the visible top bar AND its separately
         // hosted Haze popups. Keep it outside the nested page Box so no
         // stale page can mount a second row of controls in either layer.
-        val playlistRoute = canonicalPlaylistRoute(
-            showBuilder = showSmartPlaylistBuilder,
-            showLibrary = showPlaylistLibrary,
-        )
+        // The full-screen playlist editor owns a separate Android Dialog
+        // window. Keep the real originating page mounted until that window is
+        // drawn; routing to an empty activity slot first creates black gaps on
+        // both entry and dismissal. The in-Library creation modal is unchanged.
+        val playlistRoute = canonicalPlaylistModalBackgroundRoute(showPlaylistLibrary)
         // Preserve the existing page route and its Back stack. Only
         // the composited arrival changes for tab-to-tab navigation.
         val pageRouteKey = when {
@@ -3149,8 +3150,8 @@ private fun BitChordApp(
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
-                // The wizard is pushed FROM the playlist category. It must win
-                // over that category while editing or creating a playlist.
+                // The Dialog-owned creator overlays the preserved parent
+                // playlist page instead of replacing it with a blank host.
                 playlistRoute != null -> playlistRoute
                 else -> "$TAB_KEY$selectedTab"
             }
@@ -3495,42 +3496,6 @@ private fun BitChordApp(
                         )
                     } else if (key == "my_ratings") {
                         CanonicalMyRatingsScreen(onBack = { showCanonicalMyRatings = false })
-                    } else if (key == "smart_playlist_builder") {
-                        LaunchedEffect(key) {
-                            com.music.bitchord.diagnostics.Diagnostics.event(
-                                category = com.music.bitchord.diagnostics.DiagnosticCategory.UI,
-                                name = "playlist_wizard_entered",
-                                metadata = mapOf(
-                                    "mode" to if (editingSmartPlaylistId != null ||
-                                        editingNormalPlaylistId != null) "edit" else "create",
-                                ),
-                            )
-                        }
-                        SmartPlaylistBuilderScreen(
-                            onBack = {
-                                showSmartPlaylistBuilder = false
-                                editingSmartPlaylistId = null
-                                editingNormalPlaylistId = null
-                                startNormalPlaylistSongPicker = false
-                            },
-                            initialV2Id = editingSmartPlaylistId,
-                            initialNormalId = editingNormalPlaylistId,
-                            startOnNormalSongs = startNormalPlaylistSongPicker,
-                            onSavedAction = { id, intent ->
-                                executeSmartCollection(SmartCollectionActionSource.SavedDefinition(id), intent)
-                            },
-                            onPreviewAction = { query, intent ->
-                                executeSmartCollection(SmartCollectionActionSource.PreviewQuery(query), intent)
-                            },
-                            onSavedV2Action = { id, intent ->
-                                executeSmartCollection(SmartCollectionActionSource.SavedV2Definition(id), intent)
-                            },
-                            onPreviewV2Action = { query, ownerId, intent ->
-                                executeSmartCollection(
-                                    SmartCollectionActionSource.PreviewV2Query(query, ownerId), intent,
-                                )
-                            },
-                        )
                     } else if (key.startsWith("public_playlist:")) {
                         com.music.bitchord.ui.screens.CanonicalPublicPlaylistRoute(
                             routeKey = key,
@@ -4595,6 +4560,48 @@ private fun BitChordApp(
                     }
                 }
 
+                // The normal creator is a full-window Dialog. Compose it as a
+                // sibling of the stable page rather than as a destination in
+                // AnimatedContent: removing Library before Android attaches the
+                // Dialog left the center of the screen completely black.
+                if (showSmartPlaylistBuilder) {
+                    LaunchedEffect(showSmartPlaylistBuilder) {
+                        com.music.bitchord.diagnostics.Diagnostics.event(
+                            category = com.music.bitchord.diagnostics.DiagnosticCategory.UI,
+                            name = "playlist_wizard_entered",
+                            metadata = mapOf(
+                                "mode" to if (editingSmartPlaylistId != null ||
+                                    editingNormalPlaylistId != null) "edit" else "create",
+                            ),
+                        )
+                    }
+                    SmartPlaylistBuilderScreen(
+                        onBack = {
+                            showSmartPlaylistBuilder = false
+                            editingSmartPlaylistId = null
+                            editingNormalPlaylistId = null
+                            startNormalPlaylistSongPicker = false
+                        },
+                        initialV2Id = editingSmartPlaylistId,
+                        initialNormalId = editingNormalPlaylistId,
+                        startOnNormalSongs = startNormalPlaylistSongPicker,
+                        onSavedAction = { id, intent ->
+                            executeSmartCollection(SmartCollectionActionSource.SavedDefinition(id), intent)
+                        },
+                        onPreviewAction = { query, intent ->
+                            executeSmartCollection(SmartCollectionActionSource.PreviewQuery(query), intent)
+                        },
+                        onSavedV2Action = { id, intent ->
+                            executeSmartCollection(SmartCollectionActionSource.SavedV2Definition(id), intent)
+                        },
+                        onPreviewV2Action = { query, ownerId, intent ->
+                            executeSmartCollection(
+                                SmartCollectionActionSource.PreviewV2Query(query, ownerId), intent,
+                            )
+                        },
+                    )
+                }
+
                 // ---- Settings sub-screen overlays ----
                 // When a sub-screen is opened from Settings, AnimatedContent keeps
                 // "settings" as target so SettingsSheet stays mounted with its scroll.
@@ -4819,7 +4826,7 @@ private fun BitChordApp(
                     detail == null && libraryShowAll == null &&
                     unifiedLibraryCategory == null && !showPlaylistLibrary &&
                     !showSettings && !showHistory && !showReplay &&
-                    !showAllLocalRecentAdditions && !showSmartPlaylistBuilder &&
+                    !showAllLocalRecentAdditions &&
                     openedPublicPlaylist == null && !showAccountScrobbling &&
                     !showDiscord && !showSpotify
                 val appleLibraryCategoryChrome =
@@ -4827,7 +4834,7 @@ private fun BitChordApp(
                     !unifiedLibraryDetailOpen && detail == null && !showSettings
                 val applePlaylistCategoryChrome =
                     toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&
-                    openedCanonicalPlaylist == null && !showSmartPlaylistBuilder &&
+                    openedCanonicalPlaylist == null &&
                     detail == null && !showSettings
                 // Explore keeps its own genre-only page, not Apple's search field.
                 // Only its top overflow reuses the already-native Settings menu.
@@ -4869,7 +4876,6 @@ private fun BitChordApp(
                             com.music.bitchord.data.listening.CanonicalSmartFilterContext.ARTISTS -> "Artistas"
                             else -> "Músicas"
                         }
-                        showSmartPlaylistBuilder && detail == null -> "Nova playlist"
                         toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY ->
                             openedCanonicalPlaylist?.title ?: "Playlists"
                         showAccountScrobbling -> stringResource(R.string.account_scrobbling)
@@ -4959,11 +4965,6 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY -> ({
                             if (unifiedLibraryDetailOpen) unifiedLibraryBackToken++
                             else unifiedLibraryCategory = null
-                        })
-                        showSmartPlaylistBuilder && detail == null -> ({
-                            showSmartPlaylistBuilder = false
-                            editingSmartPlaylistId = null
-                            editingNormalPlaylistId = null
                         })
                         toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY -> ({
                             if (openedCanonicalPlaylist != null) openedCanonicalPlaylist = null
@@ -5108,7 +5109,7 @@ private fun BitChordApp(
                             )
                         }
                         if (toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY &&
-                            !showSmartPlaylistBuilder && !showSettings && !showAccountScrobbling) {
+                            !showSettings && !showAccountScrobbling) {
                             CanonicalPlaylistToolbarActions(
                                 hasDetail = openedCanonicalPlaylist != null,
                                 ratingTarget = openedCanonicalPlaylist?.id?.let {
