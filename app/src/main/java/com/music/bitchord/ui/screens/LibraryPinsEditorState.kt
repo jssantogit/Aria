@@ -47,7 +47,7 @@ internal fun orderedLibraryPinKeys(
 internal fun encodeLibraryPinOrder(ids: List<String>): String =
     JSONArray().apply {
         ids.asSequence().filter { it.length in 1..600 }.distinct().take(300)
-            .forEach(::put)
+            .forEach { put(it) }
     }.toString()
 
 internal fun decodeLibraryPinOrder(raw: String?): List<String> {
