@@ -58,6 +58,7 @@ internal fun PinnedLibraryEditorTile(
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
     onMoveBy: (Int) -> Unit,
+    isArtist: Boolean = false,
     modifier: Modifier = Modifier,
     artwork: @Composable () -> Unit,
 ) {
@@ -119,6 +120,7 @@ internal fun PinnedLibraryEditorTile(
                 onClick = onClick,
                 onLongPress = onLongPress,
                 interactive = !editing,
+                artist = isArtist,
                 modifier = Modifier.graphicsLayer {
                     scaleX = imageScale
                     scaleY = imageScale
