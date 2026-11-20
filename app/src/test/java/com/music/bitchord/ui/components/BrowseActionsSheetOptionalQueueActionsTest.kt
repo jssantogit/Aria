@@ -57,18 +57,20 @@ class BrowseActionsSheetOptionalQueueActionsTest {
 
     @Test fun artistAlbumAndPlaylistAllShareTheExactShortPinLabel() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        for (type in listOf(BrowseType.ARTIST, BrowseType.ALBUM, BrowseType.PLAYLIST)) {
-            compose.setContent {
-                MaterialTheme {
-                    BrowseActionsSheet(
-                        target = BrowseTarget(
-                            browseId = null, title = "Example", subtitle = "",
-                            type = type,
-                        ),
-                        onTogglePin = {},
-                    )
-                }
+        val displayedType = androidx.compose.runtime.mutableStateOf(BrowseType.ARTIST)
+        compose.setContent {
+            MaterialTheme {
+                BrowseActionsSheet(
+                    target = BrowseTarget(
+                        browseId = null, title = "Example", subtitle = "",
+                        type = displayedType.value,
+                    ),
+                    onTogglePin = {},
+                )
             }
+        }
+        for (type in listOf(BrowseType.ARTIST, BrowseType.ALBUM, BrowseType.PLAYLIST)) {
+            compose.runOnIdle { displayedType.value = type }
             compose.onNodeWithText(context.getString(R.string.pin)).assertExists()
             compose.onNodeWithText("Fixar na Biblioteca").assertDoesNotExist()
         }
