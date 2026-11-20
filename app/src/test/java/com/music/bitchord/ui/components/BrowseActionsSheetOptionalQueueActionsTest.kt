@@ -55,6 +55,25 @@ class BrowseActionsSheetOptionalQueueActionsTest {
         assertEquals(1, pinTaps)
     }
 
+    @Test fun artistAlbumAndPlaylistAllShareTheExactShortPinLabel() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        for (type in listOf(BrowseType.ARTIST, BrowseType.ALBUM, BrowseType.PLAYLIST)) {
+            compose.setContent {
+                MaterialTheme {
+                    BrowseActionsSheet(
+                        target = BrowseTarget(
+                            browseId = null, title = "Example", subtitle = "",
+                            type = type,
+                        ),
+                        onTogglePin = {},
+                    )
+                }
+            }
+            compose.onNodeWithText(context.getString(R.string.pin)).assertExists()
+            compose.onNodeWithText("Fixar na Biblioteca").assertDoesNotExist()
+        }
+    }
+
     @Test fun albumActionsReuseThePlayerHeaderGeometryButKeepTheirOwnCommands() {
         var playlistTaps = 0
         var ratingTaps = 0

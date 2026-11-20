@@ -39,6 +39,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.music.bitchord.R
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -689,7 +691,7 @@ internal fun CanonicalPinnedLibraryShelf(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 NativeInlineTextAction(
-                    label = "Desafixar da Biblioteca",
+                    label = stringResource(R.string.unpin),
                     onClick = {
                         catalogPinRepo.toggle(pin)
                         catalogOptionsFor = null

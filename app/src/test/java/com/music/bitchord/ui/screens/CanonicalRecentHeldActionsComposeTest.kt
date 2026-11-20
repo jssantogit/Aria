@@ -39,9 +39,10 @@ class CanonicalRecentHeldActionsComposeTest {
             }
         }
         listOf("Tocar a seguir", "Adicionar à fila", "Adicionar à playlist",
-            "Editar avaliação", "Fixar na Biblioteca").forEach {
+            "Editar avaliação", "Fixar").forEach {
             compose.onNodeWithText(it).assertExists()
         }
+        compose.onNodeWithText("Fixar na Biblioteca").assertDoesNotExist()
         // A real contextual menu closes after one action, not three in succession.
         compose.onNodeWithText("Adicionar à playlist").performClick()
         compose.runOnIdle { assertEquals(listOf("playlist"), invoked) }
@@ -58,7 +59,9 @@ class CanonicalRecentHeldActionsComposeTest {
                 }
             }
         }
-        compose.onNodeWithText("Desafixar da Biblioteca").assertExists()
+        compose.onNodeWithText("Desafixar").assertExists()
+        compose.onNodeWithText("Desafixar da Biblioteca").assertDoesNotExist()
+        compose.onNodeWithText("Fixar na Biblioteca").assertDoesNotExist()
         compose.onNodeWithText("Adicionar à playlist").assertExists()
     }
 }

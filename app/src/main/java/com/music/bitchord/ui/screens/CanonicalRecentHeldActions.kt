@@ -6,6 +6,8 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.music.bitchord.R
 import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.icons.BitChordIcons
 
@@ -44,7 +46,7 @@ internal fun CanonicalRecentHeldActions(
         onClick = onEditRating,
     )
     NativeCompactMenuItem(
-        label = if (isPinned) "Desafixar da Biblioteca" else "Fixar na Biblioteca",
+        label = stringResource(if (isPinned) R.string.unpin else R.string.pin),
         icon = BitChordIcons.Pin,
         onClick = onTogglePin,
     )
