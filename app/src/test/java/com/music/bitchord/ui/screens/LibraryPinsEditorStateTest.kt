@@ -4,8 +4,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import android.app.Application
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.ConscryptMode
 
-/** Persistent order is cross-source; provider titles must never be identity. */
+/** Persistent order is cross-source; provider titles must never be identity.
+ * org.json.JSONArray needs a real Android implementation, not JVM mock stubs. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [35])
+@ConscryptMode(ConscryptMode.Mode.OFF)
 class LibraryPinsEditorStateTest {
     private val recording = CanonicalLibraryPin(
         CanonicalLibrarySelection(
