@@ -481,8 +481,9 @@ internal fun CanonicalPinnedLibraryShelf(
         visible.mapNotNull { (_, entry) ->
             val (card, _, catalog) = entry
             when {
-                card?.pin?.selection?.type == CanonicalLibraryEntityType.ARTIST -> card.title
-                catalog?.browseId?.startsWith("catalog:ARTIST:") == true &&
+                card != null && card.pin.selection.type ==
+                    CanonicalLibraryEntityType.ARTIST -> card.title
+                catalog != null && catalog.browseId.startsWith("catalog:ARTIST:") &&
                     validCatalogMetadataPin(catalog) -> catalog.title
                 else -> null
             }
