@@ -701,47 +701,6 @@ internal fun CanonicalPlaylistDetailScreen(
     var pendingAlbumRemoval by remember(card.id) {
         mutableStateOf<CanonicalPlaylistAlbumRemovalRequest?>(null)
     }
-    pendingAlbumRemoval?.let { request ->
-        CanonicalPlaylistAlbumRemovalConfirmation(
-            request = request,
-            onDismiss = { pendingAlbumRemoval = null },
-            onConfirm = {
-                pendingAlbumRemoval = null
-                if (card is LibraryPlaylistCard.CanonicalNormal) {
-                    scope.launch {
-                        try {
-                            val removed = withContext(Dispatchers.IO) {
-                                val latest = normalRepository.list().firstOrNull {
-                                    it.id == card.definition.id
-                                } ?: error("Playlist indisponível")
-                                val exact = readCanonicalPlaylistExactAlbums(
-                                    context, latest.recordingIds, latest.sourceProviderKey,
-                                )
-                                val updated = removeCanonicalPlaylistVerifiedAlbum(
-                                    latest, request, exact,
-                                )
-                                if (updated === latest) false else {
-                                    normalRepository.save(updated)
-                                    true
-                                }
-                            }
-                            if (!removed) Toast.makeText(
-                                context, "O álbum mudou. Atualize a playlist.",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            Toast.makeText(
-                                context, "Não foi possível remover o álbum.",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    }
-                }
-            },
-        )
-    }
     val suggestions = suggestedCanonicalPlaylistTracks(
         availableSuggestions,
         (card as? LibraryPlaylistCard.CanonicalNormal)
@@ -1217,5 +1176,46 @@ internal fun CanonicalPlaylistDetailScreen(
                 }
             }
         }
+    }
+    pendingAlbumRemoval?.let { request ->
+        CanonicalPlaylistAlbumRemovalConfirmation(
+            request = request,
+            onDismiss = { pendingAlbumRemoval = null },
+            onConfirm = {
+                pendingAlbumRemoval = null
+                if (card is LibraryPlaylistCard.CanonicalNormal) {
+                    scope.launch {
+                        try {
+                            val removed = withContext(Dispatchers.IO) {
+                                val latest = normalRepository.list().firstOrNull {
+                                    it.id == card.definition.id
+                                } ?: error("Playlist indisponível")
+                                val exact = readCanonicalPlaylistExactAlbums(
+                                    context, latest.recordingIds, latest.sourceProviderKey,
+                                )
+                                val updated = removeCanonicalPlaylistVerifiedAlbum(
+                                    latest, request, exact,
+                                )
+                                if (updated === latest) false else {
+                                    normalRepository.save(updated)
+                                    true
+                                }
+                            }
+                            if (!removed) Toast.makeText(
+                                context, "O álbum mudou. Atualize a playlist.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            Toast.makeText(
+                                context, "Não foi possível remover o álbum.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                }
+            },
+        )
     }
 }
