@@ -24,13 +24,25 @@ import org.robolectric.annotation.ConscryptMode
 class PinnedLibraryEditorTileComposeTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun phoneGridKeepsThreeSlotsAndDoesNotEnlargeOnlyTwoPins() {
+        // At a 360dp phone viewport, two occupied slots should each remain
+        // ~112dp wide, not stretch to roughly half the Library shelf.
+        val phoneWidth = 360.dp
+        val phoneColumns = pinnedLibraryGridColumns(phoneWidth)
+        assertEquals(3, phoneColumns)
+        assertEquals(112.dp, (phoneWidth - 24.dp) / phoneColumns)
+        assertEquals(3, pinnedLibraryGridColumns(599.dp))
+        assertEquals(4, pinnedLibraryGridColumns(600.dp))
+        assertEquals(4, pinnedLibraryGridColumns(840.dp))
+    }
+
     @Test fun normalPinShowsTitleAndNeverShowsRemovalButton() {
         var opens = 0
         compose.setContent {
             MaterialTheme {
                 PinnedLibraryEditorTile(
                     id = "canonical:ALBUM:test", title = "NJWMX",
-                    editing = false, columns = 2,
+                    editing = false, columns = 3,
                     onClick = { opens++ }, onLongPress = {}, onRemove = {},
                     onMoveBy = {},
                 ) { Box(Modifier.size(80.dp)) }
@@ -49,7 +61,7 @@ class PinnedLibraryEditorTileComposeTest {
             MaterialTheme {
                 PinnedLibraryEditorTile(
                     id = "playlist:normal:test", title = "NewJeans 1st EP",
-                    editing = true, columns = 2,
+                    editing = true, columns = 3,
                     onClick = {}, onLongPress = {},
                     onRemove = { removals++ }, onMoveBy = {},
                 ) { Box(Modifier.size(80.dp)) }
