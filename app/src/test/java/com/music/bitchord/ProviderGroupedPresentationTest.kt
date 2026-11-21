@@ -93,11 +93,20 @@ class ProviderGroupedPresentationTest {
                 tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS),
             row(apple, ProviderCapability.RELEASE_ARTWORK, "Apple / iTunes (Capas)",
                 tab = ProviderSettingsTab.ARTWORK),
+            row(apple, ProviderCapability.CATALOG_SEARCH, "Apple / iTunes (Busca)",
+                tab = ProviderSettingsTab.CATALOG),
         )
-        assertEquals(listOf(serverA, serverB, apple),
+        assertEquals(listOf(serverA, serverB, apple, apple),
             groupProviderRows(entries).map { it.key })
+        assertEquals(
+            listOf(ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+                ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+                ProviderSettingsTab.ARTWORK, ProviderSettingsTab.CATALOG),
+            groupProviderRows(entries).map { it.tab },
+        )
         assertEquals(2, groupProviderRows(entries).first().rows.size)
         assertEquals(listOf(apple), groupProviderRows(entries.takeLast(1)).map { it.key })
+        assertEquals(1, groupProviderRows(entries).last().rows.size)
         val custom = ProviderKey("addon", "extension-a")
         assertEquals("Minha Fonte (Especial)",
             groupProviderRows(listOf(row(custom, ProviderCapability.EXTENSION_PLAYBACK,
