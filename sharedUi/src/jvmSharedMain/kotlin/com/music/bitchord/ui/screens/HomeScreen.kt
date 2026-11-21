@@ -138,8 +138,11 @@ private val HOME_TITLE_LIFT = 28.dp
 internal fun homeTitleTopInset(
     topBarInset: Dp,
     reserveFloatingBackSpace: Boolean,
-): Dp = if (reserveFloatingBackSpace) topBarInset.coerceAtLeast(0.dp)
-else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
+): Dp = if (reserveFloatingBackSpace) {
+    // Back keeps Home's globally approved Y; give the title 4dp clearance
+    // beyond its 8dp inner top padding instead of painting under the puck.
+    (topBarInset + 12.dp).coerceAtLeast(0.dp)
+} else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
 
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
