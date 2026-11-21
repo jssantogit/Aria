@@ -2,6 +2,8 @@ package com.music.bitchord
 
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.HomeFloatingActionRestOffset
+import com.music.bitchord.ui.components.FloatingTopChromeHostHeight
+import com.music.bitchord.ui.components.topChromeChildOffset
 import com.music.bitchord.ui.components.floatingTopChromeContentPadding
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -25,7 +27,7 @@ class NativeTopBarPlacementPolicyTest {
     }
 
     @Test fun allOtherRoutesAndSearchFieldRestAtHomeY() {
-        assertEquals(34.dp, HomeFloatingActionRestOffset)
+        assertEquals(26.dp, HomeFloatingActionRestOffset)
         assertEquals(
             HomeFloatingActionRestOffset,
             nativeTopBarActionsOffset(
@@ -37,13 +39,16 @@ class NativeTopBarPlacementPolicyTest {
     }
 
     @Test fun contentClearsEntireFloatingPuckAndHas12DpGap() {
-        // 52dp toolbar, +34dp offset, 40dp circle = bottom at 80dp.
-        // Its content starts at 92dp, or 116dp after a 24dp status bar.
-        assertEquals(92.dp, floatingTopChromeContentPadding(0.dp))
-        assertEquals(116.dp, floatingTopChromeContentPadding(24.dp))
+        // 52dp toolbar, +26dp offset, 40dp circle = bottom at 72dp.
+        // Its content starts at 84dp, or 108dp after a 24dp status bar.
+        assertEquals(84.dp, floatingTopChromeContentPadding(0.dp))
+        assertEquals(108.dp, floatingTopChromeContentPadding(24.dp))
     }
 
     @Test fun playlistHeadingDoesNotAddASecondFloatingOffset() {
         assertEquals(8.dp, playlistLibraryHeadingExtraTopPadding())
+        assertEquals(84.dp, FloatingTopChromeHostHeight)
+        assertEquals(10.dp, topChromeChildOffset(26.dp))
+        assertEquals((-16).dp, topChromeChildOffset(0.dp))
     }
 }
