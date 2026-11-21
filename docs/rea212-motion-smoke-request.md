@@ -239,3 +239,8 @@
 - **Código de referência:** `c84ebaf2674655caf833080968ca086d93d9bac6`; a branch estava em `b6e7a856b8f0b8c39498ae61111621c3f4fb57d5` antes desta tentativa. Este registro documental é o único delta adicional solicitado pelo gatilho `push`.
 - **Gate obrigatório inalterado:** testes Android focados/completos, Automix e sharedUi; só criar o APK universal e SHA-256 após sucesso de todos. Não declarar smoke físico, GREEN ou merge antes de evidências.
 
+## Reexecução pós-falha Compose no seletor de fontes — 20/11/2026
+
+- **Evidência:** [Smoke #44854789291](https://github.com/jssantogit/BitChord/actions/runs/44854789291) e [Android CI #44854795859](https://github.com/jssantogit/BitChord/actions/runs/44854795859) falharam ambos no teste `SmartPlaylistV2WizardComposeTest.sourceSelectorIsInlineOnCreationPageAndPreservesExactNavidromeId`, `expected opensubsonic:account-b, was null`. Foram 3.839 testes executados, 1 falha e 1 skip. Desktop, TV/Wear e auditoria de backend aprovados.
+- **Correção focalizada:** commit [`6a28f74e`](https://github.com/jssantogit/BitChord/commit/6a28f74e0230bed72a6e5567787e1878b9252420) usa `waitForIdle()` e `performScrollTo()` antes de clicar na opção da conta B dentro da lista expansível, garantindo que a escolha real esteja visível; mantém comparação exata do ID selecionado, verificação do recolhimento e do resumo. Nenhuma asserção enfraquecida, nenhum ajuste no código de produção.
+- **Autorização de nova execução:** usuário reportou o resultado RED para correção; solicita-se reexecutar o mesmo smoke test-gated após esta correção. Os gates de testes, compilação de APK universal e geração de checksum não podem ser ignorados. Nenhuma aprovação visual automática e nenhuma alteração no estado Draft.
