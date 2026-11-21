@@ -289,6 +289,14 @@ internal fun NativeAlbumHeroActions(
     }
 }
 
+/**
+ * Artist, album and playlist pages use the same content-clearance origin,
+ * regardless of online, MediaStore, Navidrome, library or nested context.
+ * Only artist photography (not interactive content) may bleed behind chrome.
+ */
+@Composable
+internal fun nativeCollectionTopChromeInset(): Dp = topBarContentPadding()
+
 @Suppress("UNUSED_PARAMETER") // Rating/editing are owned by the top toolbar, kept for existing caller API.
 @Composable
 internal fun NativeReleaseHeaderLayout(
@@ -308,7 +316,7 @@ internal fun NativeReleaseHeaderLayout(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
-            .padding(top = topInset ?: topBarContentPadding(), bottom = 18.dp),
+            .padding(top = topInset ?: nativeCollectionTopChromeInset(), bottom = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(

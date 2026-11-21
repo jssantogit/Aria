@@ -691,7 +691,7 @@ fun DetailScreen(
     // of a screen still filled with artwork. Done as an effect rather than in
     // the tap, so the row it scrolls to is already in the list by the time it
     // runs.
-    val searchStop = with(LocalDensity.current) { topBarContentPadding().roundToPx() }
+    val searchStop = with(LocalDensity.current) { nativeCollectionTopChromeInset().roundToPx() }
     LaunchedEffect(searching) {
         if (searching) {
             focusSearch = true

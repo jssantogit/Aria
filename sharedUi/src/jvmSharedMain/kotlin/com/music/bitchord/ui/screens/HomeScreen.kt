@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import com.music.bitchord.ui.components.ShelfRow
-import com.music.bitchord.ui.components.ResilientAppleCover
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -56,7 +55,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -93,7 +91,6 @@ import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.NativeMediaCardMetrics
-import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.SignInBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
@@ -106,40 +103,21 @@ import com.music.bitchord.ui.performance.RuntimePerformanceUiContext
 import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.MeshPalette
 
-/**
- * A 100px Search API thumbnail is fine for a 52dp list row, but never for a
- * full-bleed editorial hero or album-sized square. The Apple CDN's larger
- * URL is produced only after Android verified its actual dimensions; do not
- * upscale the original to hide a pending/failing probe.
- *
- * This is presentation only. It does not grant identity to any artwork URL.
- */
-fun appleProminentArtworkOrNull(url: String?): String? {
-    if (url.isNullOrBlank()) return null
-    val uri = try { java.net.URI(url) } catch (_: Exception) { return null }
-    val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return url
-    if (host != "mzstatic.com" && !host.endsWith(".mzstatic.com")) return url
-    val match = Regex(
-        """/(\d{2,4})x(\d{2,4})(?:bb|-[0-9]{2,3})\.(?:jpe?g|png|webp)$""",
-        RegexOption.IGNORE_CASE,
-    ).find(uri.path.orEmpty()) ?: return null
-    val width = match.groupValues[1].toIntOrNull() ?: return null
-    val height = match.groupValues[2].toIntOrNull() ?: return null
-    return url.takeIf { width >= 600 && height >= 600 }
-}
+/** Home and other landing pages share one measured large-title baseline. */
 
 /**
- * Root titles occupy the same height as Explore and Library. Pushed genre
- * headings start BELOW the 40dp floating Back rather than behind its bottom.
+ * Home intentionally raises its large heading. Explore genre details have an
+ * independent floating Back control, so they must use the FULL top-bar inset
+ * instead of lifting the heading under that control.
  */
 internal fun homeTitleTopInset(
     topBarInset: Dp,
     reserveFloatingBackSpace: Boolean,
 ): Dp = if (reserveFloatingBackSpace) {
-    topBarInset.coerceAtLeast(0.dp) + NativePageHeaderMetrics.pushedTitleClearance
-} else {
-    (topBarInset - NativePageHeaderMetrics.homeRootTitleLift).coerceAtLeast(0.dp)
-}
+    // The shared inset now lands BELOW the floating Back circle, so a
+    // detail genre must not add another route-specific lift or offset.
+    topBarInset.coerceAtLeast(0.dp)
+} else rootLandingTitleListTopInset(topBarInset, titleInnerTop = 8.dp)
 
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
@@ -250,8 +228,8 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // Root heading matches the Explore/Library band; pushed genres clear
-            // the global Back puck before painting their own title.
+            // The three landing-page titles share one visual baseline
+            // while content below them clears the floating top controls.
             contentPadding = if (title != null) {
                 PaddingValues(
                     top = homeTitleTopInset(
@@ -266,13 +244,7 @@ fun HomeScreen(
         ) {
             if (title != null) {
                 item(key = "home-title") {
-                    HomeTitle(
-                        title = title,
-                        actions = headerActions,
-                        onBack = onBack,
-                        trailing = headerTrailing,
-                        pushedCategory = reserveFloatingBackSpace,
-                    )
+                    HomeTitle(title, actions = headerActions, onBack = onBack, trailing = headerTrailing)
                 }
             }
             if (!signedIn && onSignIn != null) {
@@ -664,32 +636,24 @@ fun HomeTitle(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     onBack: (() -> Unit)? = null,
-    pushedCategory: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
         modifier = modifier.fillMaxWidth()
-            .padding(
-                start = PAGE_GUTTER + (if (pushedCategory) NativePageHeaderMetrics.pushedTitleStartInset else 0.dp),
-                end = PAGE_GUTTER,
-                top = 8.dp,
-                bottom = 8.dp,
-            ),
+            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text = title,
             modifier = Modifier.weight(1f).testTag("home-title"),
-            style = if (pushedCategory) MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            ) else MaterialTheme.typography.displayLarge,
+            style = MaterialTheme.typography.displayLarge,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        // Any legacy in-list Back remains actionable, while the real genre
-        // route uses only the globally owned floating Back control.
+        // A genre page must line up with Home/Explore, not indent the title
+        // by the back button's width. Keep Back reachable at the right.
         if (onBack != null) {
             NativeHomeHeaderIconAction(
                 icon = PlaylistEditorIcons.Back,
@@ -1033,14 +997,12 @@ private fun HeroCard(
             .contextClick(onLongPress),
     ) {
         val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
-        val isAppleCard = item.browseId?.startsWith("itunes:") == true
-        val prominent = appleProminentArtworkOrNull(item.thumbnailUrl)
-        if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
+        if (hasCatalogIdentity) CatalogArtworkFallback(
             hero = true, modifier = Modifier.fillMaxSize(),
         )
-        if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
-            ResilientAppleCover(
-                model = prominent.artworkAt(HEADER_ART_PX),
+        if (!item.thumbnailUrl.isNullOrBlank() || !hasCatalogIdentity) {
+            AsyncImage(
+                model = item.thumbnailUrl.artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1324,14 +1286,12 @@ internal fun ShelfCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
-                    val isAppleCard = item.browseId?.startsWith("itunes:") == true
-                    val prominent = appleProminentArtworkOrNull(item.thumbnailUrl)
-                    if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
+                    if (hasCatalogIdentity) CatalogArtworkFallback(
                         hero = false, modifier = Modifier.fillMaxSize(),
                     )
-                    if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
-                        ResilientAppleCover(
-                            model = prominent.artworkAt(CARD_ART_PX),
+                    if (!item.thumbnailUrl.isNullOrBlank() || !hasCatalogIdentity) {
+                        AsyncImage(
+                            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
                             contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
