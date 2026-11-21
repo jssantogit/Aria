@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -63,6 +64,8 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -119,9 +122,10 @@ fun ProvidersScreen(
 
     // An unsaved reorder draft must not revive after process recreation.
     var editing by remember { mutableStateOf(false) }
-    // Keep a single section open: the categories remain on one vertical screen.
-    var expandedTab by rememberSaveable { mutableStateOf("") }
+    // Search-category presentation: one active origin tab, never accordion sections.
+    var selectedTabName by rememberSaveable { mutableStateOf(ProviderSettingsTab.CATALOG.name) }
     var tabBeforeOrganize by remember { mutableStateOf<String?>(null) }
+    var categorySearch by rememberSaveable { mutableStateOf("") }
     var connections by rememberSaveable { mutableStateOf(false) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
     var saving by remember { mutableStateOf(false) }
@@ -133,7 +137,7 @@ fun ProvidersScreen(
     fun cancelEdit() {
         editing = false
         staged = emptyMap()
-        tabBeforeOrganize?.let { expandedTab = it }
+        tabBeforeOrganize?.let { selectedTabName = it }
         tabBeforeOrganize = null
         message = null
     }
@@ -257,10 +261,13 @@ fun ProvidersScreen(
             .filter { it.entry.supportsReordering }
             .groupBy { it.entry.capability }
             .mapValues { (_, rows) -> rows.map { it.entry.key } }
-        tabBeforeOrganize = expandedTab
-        expandedTab = ProviderSettingsTab.entries.firstOrNull { tab ->
-            visibleProviderRows(grouped[tab].orEmpty(), editing = true).isNotEmpty()
-        }?.name.orEmpty()
+        tabBeforeOrganize = selectedTabName
+        val currentTab = ProviderSettingsTab.entries.firstOrNull { it.name == selectedTabName }
+        if (currentTab == null || visibleProviderRows(grouped[currentTab].orEmpty(), editing = true).isEmpty()) {
+            ProviderSettingsTab.entries.firstOrNull { tab ->
+                visibleProviderRows(grouped[tab].orEmpty(), editing = true).isNotEmpty()
+            }?.let { selectedTabName = it.name }
+        }
         editing = true
         message = null
     }
@@ -330,109 +337,103 @@ fun ProvidersScreen(
             Text("As preferências não puderam ser gravadas. Você pode tentar novamente.",
                 color = MaterialTheme.colorScheme.error)
         }
-        val editableTabs = ProviderSettingsTab.entries.any { tab ->
-            visibleProviderRows(grouped[tab].orEmpty(), editing = true).isNotEmpty()
+        val tabs = ProviderSettingsTab.entries
+        val selectedTab = tabs.firstOrNull { it.name == selectedTabName } ?: ProviderSettingsTab.CATALOG
+        if (!editing) {
+            Spacer(Modifier.height(13.dp))
+            PlaylistWizardSearchEntry(
+                value = categorySearch,
+                onValueChange = { categorySearch = it },
+                placeholder = "Buscar nesta categoria",
+            )
         }
-        if (editing && !editableTabs) {
-            Text("Nenhum grupo possui dois provedores reordenáveis.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-
         Spacer(Modifier.height(20.dp))
-        // Reuse the actual Settings visual hierarchy: one inset surface
-        // with category rows and separators, not six floating headings.
-        SettingsGroupSurface {
-            var displayedCategories = 0
-            for (tab in ProviderSettingsTab.entries) {
-                val rows = visibleProviderRows(orderedForDisplay(grouped[tab].orEmpty()), editing)
-                if (rows.isEmpty()) continue
-                if (displayedCategories++ > 0) RowDivider()
-                val isExpanded = expandedTab == tab.name
-                SettingsRow(
-                    icon = tab.providerIcon(),
-                    title = tab.providerTitle(),
-                    onClick = {
-                        if (!saving) expandedTab = if (isExpanded) "" else tab.name
-                    },
-                    trailing = {
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Rounded.KeyboardArrowUp
-                                else Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    enabled = !saving,
-                    reserveIconSpace = false,
-                    minHeight = 62.dp,
-                    modifier = Modifier
-                        .testTag("providers-category-${tab.name}")
-                        .semantics {
-                            stateDescription = if (isExpanded) "Expandida" else "Recolhida"
-                        },
-                )
-                if (!isExpanded) continue
-
-                RowDivider()
-                val hasMultipleReorderScopes = editing &&
-                    rows.map { it.entry.capability }.distinct().size > 1
-                for ((index, row) in rows.withIndex()) {
-                    val capabilityChanged = index == 0 ||
-                        rows[index - 1].entry.capability != row.entry.capability
-                    if (hasMultipleReorderScopes && capabilityChanged) {
-                        Text(
-                            text = row.entry.capability.organizeScopeTitle(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(
-                                start = TEXT_INSET,
-                                end = ROW_INSET,
-                                top = 13.dp,
-                                bottom = 5.dp,
-                            ),
-                        )
-                    } else if (index > 0 && !capabilityChanged) {
-                        RowDivider()
-                    } else if (index > 0) {
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    key(row.entry.capability, row.entry.key) {
-                        ProviderSettingRow(
-                            row = row,
-                            editing = editing,
-                            saving = saving || snapshot.status == ProviderSessionStatus.BOOTING,
-                            savedEnabled = snapshot.configured[row.entry.capability].orEmpty()
-                                .any { it.key == row.entry.key && it.enabled },
-                            isDraggable = editing,
-                            compactScopeLabel = hasMultipleReorderScopes,
-                            onOpen = { openEntry(row.entry) },
-                            onToggle = { enabled -> toggle(row.entry, enabled) },
-                            canMoveUp = staged[row.entry.capability].orEmpty()
-                                .indexOf(row.entry.key) > 0,
-                            canMoveDown = staged[row.entry.capability].orEmpty().let { order ->
-                                val position = order.indexOf(row.entry.key)
-                                position >= 0 && position < order.lastIndex
-                            },
-                            onMove = { by -> move(row.entry.capability, row.entry.key, by) },
-                        )
-                    }
+        // Exact blue search tabs used inside the playlist filter categories.
+        AppleSearchOriginTabs(
+            options = tabs.map { it.providerTitle() },
+            selectedIndex = tabs.indexOf(selectedTab),
+            onSelect = { index ->
+                if (!saving) tabs.getOrNull(index)?.let { next ->
+                    selectedTabName = next.name
+                    categorySearch = ""
                 }
+            },
+        )
+        Spacer(Modifier.height(16.dp))
+
+        val selectedRows = visibleProviderRows(
+            orderedForDisplay(grouped[selectedTab].orEmpty()), editing,
+        )
+        val displayedRows = if (editing) selectedRows else searchProviderRows(
+            selectedRows, categorySearch,
+        )
+        if (displayedRows.isEmpty()) {
+            Text(
+                text = if (editing) "Nenhum provedor reordenável nesta categoria."
+                    else if (categorySearch.isNotBlank()) "Nenhum provedor encontrado."
+                    else "Nenhum provedor disponível nesta categoria.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 24.dp, horizontal = 8.dp),
+            )
+        }
+        val multipleReorderScopes = editing &&
+            displayedRows.map { it.entry.capability }.distinct().size > 1
+        for ((index, row) in displayedRows.withIndex()) {
+            val boundary = index == 0 ||
+                displayedRows[index - 1].entry.capability != row.entry.capability
+            if (multipleReorderScopes && boundary) {
+                Text(
+                    text = row.entry.capability.organizeScopeTitle(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 48.dp, top = 12.dp, bottom = 5.dp),
+                )
+            }
+            key(row.entry.capability, row.entry.key) {
+                ProviderSettingRow(
+                    row = row,
+                    number = index + 1,
+                    editing = editing,
+                    saving = saving || snapshot.status == ProviderSessionStatus.BOOTING,
+                    savedEnabled = snapshot.configured[row.entry.capability].orEmpty()
+                        .any { it.key == row.entry.key && it.enabled },
+                    isDraggable = editing,
+                    compactScopeLabel = multipleReorderScopes,
+                    onOpen = { openEntry(row.entry) },
+                    onToggle = { enabled -> toggle(row.entry, enabled) },
+                    canMoveUp = staged[row.entry.capability].orEmpty()
+                        .indexOf(row.entry.key) > 0,
+                    canMoveDown = staged[row.entry.capability].orEmpty().let { order ->
+                        val position = order.indexOf(row.entry.key)
+                        position >= 0 && position < order.lastIndex
+                    },
+                    onMove = { by -> move(row.entry.capability, row.entry.key, by) },
+                )
+            }
+            if (index < displayedRows.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 48.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
             }
         }
         if (!editing) {
-            Spacer(Modifier.height(20.dp))
-            SettingsGroupSurface {
-                SettingsRow(
-                    icon = Icons.Rounded.Settings,
-                    title = "Conexões e bibliotecas",
-                    onClick = { connections = true },
-                    reserveIconSpace = false,
-                    minHeight = 62.dp,
-                    modifier = Modifier.testTag("providers-connections"),
-                )
-            }
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 48.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+            SettingsRow(
+                icon = Icons.Rounded.Settings,
+                title = "Conexões e bibliotecas",
+                onClick = { connections = true },
+                reserveIconSpace = false,
+                minHeight = 62.dp,
+                modifier = Modifier.testTag("providers-connections"),
+            )
         }
         Spacer(Modifier.height(12.dp))
     }
@@ -498,6 +499,19 @@ fun ProvidersScreen(
             confirmButton = { TextButton(onClick = { info = null }) { Text("Fechar") } },
         )
     }
+}
+
+/**
+ * Search is scoped to the selected tab, just like the filter field picker.
+ * It is a presentation filter only; the canonical choices are never mutated.
+ */
+internal fun searchProviderRows(
+    rows: List<ProviderTabRowState>,
+    query: String,
+): List<ProviderTabRowState> {
+    val normalized = query.trim()
+    if (normalized.isBlank()) return rows
+    return rows.filter { it.entry.displayName.contains(normalized, ignoreCase = true) }
 }
 
 /**
@@ -621,6 +635,7 @@ private fun ProviderHeader(
 @Composable
 private fun ProviderSettingRow(
     row: ProviderTabRowState,
+    number: Int,
     editing: Boolean,
     saving: Boolean,
     /** The switch reflects durable user choice, not runtime eligibility. */
@@ -640,12 +655,15 @@ private fun ProviderSettingRow(
     var dragY by remember(entry.key, editing) { mutableFloatStateOf(0f) }
     Row(
         modifier = Modifier.fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .padding(horizontal = ROW_INSET),
-        verticalAlignment = Alignment.CenterVertically) {
+            .heightIn(min = 68.dp)
+            .padding(vertical = 12.dp, horizontal = 8.dp)
+            .testTag("providers-field-row"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         if (isDraggable) {
             Box(
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(width = 24.dp, height = 40.dp)
                     .semantics {
                         contentDescription = "Reorganizar " + entry.displayName
                         customActions = buildList {
@@ -659,48 +677,49 @@ private fun ProviderSettingRow(
                             })
                         }
                     }
-                    .pointerInput(entry.key, editing) {
-                    detectDragGestures(onDragEnd = { dragY = 0f },
-                        onDragCancel = { dragY = 0f }) { change, amount ->
-                        change.consume()
-                        dragY += amount.y
-                        if (abs(dragY) >= threshold) {
-                            onMove(if (dragY > 0f) 1 else -1)
-                            dragY = 0f
+                    .pointerInput(entry.capability, entry.key, editing) {
+                        detectDragGestures(
+                            onDragEnd = { dragY = 0f },
+                            onDragCancel = { dragY = 0f },
+                        ) { change, amount ->
+                            change.consume()
+                            dragY += amount.y
+                            if (abs(dragY) >= threshold) {
+                                onMove(if (dragY > 0f) 1 else -1)
+                                dragY = 0f
+                            }
                         }
-                    }
-                },
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = AppleQueueVectors.DragHandle,
-                    contentDescription = null, // The drag target owns TalkBack actions.
+                    contentDescription = null,
                     modifier = Modifier.size(22.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        } else if (editing) {
-            Spacer(Modifier.width(48.dp))
         } else {
-            // Match the drag-handle slot so entering Organizar does not jump
-            // the provider name sideways; retain the small original glyph.
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterStart) {
-                Icon(entry.tab.providerIcon(), contentDescription = null,
-                    modifier = Modifier.size(21.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Text(
+                text = "${number}.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(width = 24.dp, height = 28.dp),
+                textAlign = TextAlign.Center,
+            )
         }
         Column(
             modifier = Modifier.weight(1f)
-                .clickable(enabled = !editing && !saving, onClick = onOpen)
-                .padding(vertical = 8.dp),
+                .clickable(enabled = !editing && !saving, onClick = onOpen),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
                 if (compactScopeLabel) entry.displayName.substringBeforeLast(" (")
                 else entry.displayName,
                 style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             val warning = when {
                 entry.readiness == ProviderReadiness.NOT_IMPLEMENTED -> "Não implementado"
@@ -712,7 +731,7 @@ private fun ProviderSettingRow(
             }
             warning?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
             }
         }
         if (!editing) {
