@@ -35,6 +35,44 @@ import org.robolectric.annotation.ConscryptMode
 class ProviderCapabilitiesScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun providerToolbarUsesOneOverflowWithOrganizeAndConnections() {
+        var organizeCalls = 0
+        var connectionsCalls = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderHeader(
+                    title = "Provedores",
+                    editing = false,
+                    saving = false,
+                    onBack = {},
+                    onOrganize = { organizeCalls++ },
+                    showOrganize = true,
+                    onConnections = { connectionsCalls++ },
+                    onCancel = {},
+                    onDone = {},
+                )
+            }
+        }
+        compose.onAllNodesWithTag("providers-top-organize", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithTag("providers-top-connections", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onNodeWithTag("providers-top-overflow", useUnmergedTree = true)
+            .performClick()
+        compose.onNodeWithText("Conexões").performClick()
+        compose.runOnIdle {
+            assertEquals(0, organizeCalls)
+            assertEquals(1, connectionsCalls)
+        }
+        compose.onNodeWithTag("providers-top-overflow", useUnmergedTree = true)
+            .performClick()
+        compose.onNodeWithText("Organizar").performClick()
+        compose.runOnIdle {
+            assertEquals(1, organizeCalls)
+            assertEquals(1, connectionsCalls)
+        }
+    }
+
     @Test fun musicBrainzGetsNativeSettingsPageWithThreeIndependentRowsNotDialog() {
         val key = ProviderKey("musicbrainz")
         fun row(capability: ProviderCapability) = ProviderTabRowState(
