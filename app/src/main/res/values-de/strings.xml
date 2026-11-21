@@ -1433,4 +1433,6 @@
     <string name="apple_player_share_song">Song teilen</string>
     <string name="apple_player_share_lyrics">Songtext teilen…</string>
     <string name="apple_library_search_in_category">In %1$s suchen</string>
+    <string name="providers_settings">Anbieter</string>
+    <string name="providers_settings_subtitle">Anbieter für Katalog, Cover, Songtexte, Statistiken, Audio und Downloads verwalten</string>
 </resources>
