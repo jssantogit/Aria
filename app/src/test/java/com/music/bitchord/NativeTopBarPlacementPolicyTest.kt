@@ -6,55 +6,50 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NativeTopBarPlacementPolicyTest {
-    @Test fun largeTitleRootPagesKeepTheirSpecialActionRestingLane() {
+    @Test fun homeKeepsItsScrollSensitiveOffset() {
         assertEquals(
             15.dp,
             nativeTopBarActionsOffset(
                 homeRootVisible = true,
                 homeSettingsOffset = 15.dp,
-                libraryRootVisible = false,
-                exploreRootVisible = false,
+                searchRootVisible = false,
             ),
         )
-        for (root in listOf("library", "explore")) {
-            assertEquals(
-                HomeFloatingActionRestOffset,
-                nativeTopBarActionsOffset(
-                    homeRootVisible = false,
-                    homeSettingsOffset = 15.dp,
-                    libraryRootVisible = root == "library",
-                    exploreRootVisible = root == "explore",
-                ),
-            )
-        }
+        assertEquals(
+            0.dp,
+            nativeTopBarActionsOffset(
+                homeRootVisible = true,
+                homeSettingsOffset = 0.dp,
+                searchRootVisible = false,
+            ),
+        )
     }
 
-    @Test fun playlistHeadingDoesNotAddHomeFloatingActionDisplacement() {
-        assertEquals(8.dp, playlistLibraryHeadingExtraTopPadding())
+    @Test fun allNonSearchPagesUseHomeRestingY() {
+        assertEquals(34.dp, HomeFloatingActionRestOffset)
+        assertEquals(
+            HomeFloatingActionRestOffset,
+            nativeTopBarActionsOffset(
+                homeRootVisible = false,
+                homeSettingsOffset = 20.dp,
+                searchRootVisible = false,
+            ),
+        )
+        assertEquals(HomeFloatingActionRestOffset, nativeTopBarBackOffset())
     }
 
-    @Test fun pushedContentAndSearchUseTheUnshiftedGlobalBar() {
+    @Test fun searchRootKeepsInlineFieldAtTheUnshiftedLane() {
         assertEquals(
             0.dp,
             nativeTopBarActionsOffset(
                 homeRootVisible = false,
                 homeSettingsOffset = 20.dp,
-                libraryRootVisible = false,
-                exploreRootVisible = false,
+                searchRootVisible = true,
             ),
         )
-        assertEquals(0.dp, nativeTopBarBackOffset())
     }
 
-    @Test fun aVisibleHomeTakesPrecedenceOverAnyStaleRootFlags() {
-        assertEquals(
-            8.dp,
-            nativeTopBarActionsOffset(
-                homeRootVisible = true,
-                homeSettingsOffset = 8.dp,
-                libraryRootVisible = true,
-                exploreRootVisible = true,
-            ),
-        )
+    @Test fun playlistHeadingReservesClearanceBelowItsFloatingBack() {
+        assertEquals(42.dp, playlistLibraryHeadingExtraTopPadding())
     }
 }
