@@ -10,8 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -659,13 +657,14 @@ internal fun PlaylistWizardSourceChoices(
     selectedValue: String?,
     onChoose: (String?) -> Unit,
 ) {
-    // One continuous grouped selection list rather than individual stacked
-    // card plates. AM-DECOMP documents this general list hierarchy, not an
-    // exact source picker; measurements here belong to BitChord.
+    // Only the wizard LazyColumn owns vertical scrolling. Nesting a second
+    // 428dp scroll viewport inside an expanding LazyColumn gives clipped rows
+    // semantic click targets whose screen coordinates can overlap the first
+    // ("Todas as fontes") row. With one owner, scroll-to and physical taps
+    // target the actual Navidrome account, even low down in a long source list.
+    // The selection card still expands inline; the surrounding form scrolls.
     Column(
         modifier = Modifier.fillMaxWidth()
-            .heightIn(max = 428.dp)
-            .verticalScroll(rememberScrollState())
             .testTag("playlist-source-choice-list"),
     ) {
         options.forEachIndexed { index, option ->
