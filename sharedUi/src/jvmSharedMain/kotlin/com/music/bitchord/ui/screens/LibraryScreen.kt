@@ -148,7 +148,10 @@ fun LibraryScreen(
             // Lift the large ROOT heading into the same band as their circles,
             // without lifting the category rows under those buttons.
             contentPadding = if (navigationHome) PaddingValues(
-                top = (contentPadding.calculateTopPadding() - 56.dp).coerceAtLeast(0.dp),
+                top = rootLandingTitleListTopInset(
+                    contentPadding.calculateTopPadding(),
+                    titleInnerTop = 4.dp,
+                ),
                 bottom = contentPadding.calculateBottomPadding(),
             ) else contentPadding,
         ) {
