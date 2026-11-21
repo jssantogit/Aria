@@ -222,3 +222,12 @@
 - **Gatilho:** alterar apenas este documento para acionar o workflow `Apple Music Bottom Bar · Smoke APK` via `push` na branch experimental. Nenhuma alteração de código, teste ou política de produção neste commit de solicitação.
 - **Gate:** executar regressões de rating, suíte Android completa, Automix compartilhado e sharedUi, sem ignorar falhas; montar universal `devDebug` e publicar SHA-256 somente após tudo GREEN. O SHA do APK conterá este commit documental sobre o código validado.
 - **Smoke físico posterior:** repetir os timestamps do vídeo, confirmar ausência de frames pretos/ghosts e verificar chegada visual de fotografias de artistas, capas e logotipos, incluindo Library, Explorar e criador de playlists. Compilar não equivale a validar visualmente no Galaxy. PR #212 permanece Draft, sem merge.
+
+## Autorização explícita de smoke — REA Player ⋮ / spotlight — 20/11/2026
+
+- **Autorização do usuário:** “Pode disparar CI com o rótulo apple-music-smoke”, solicitada após as correções do glifo original e do destaque do botão ⋮ do Player.
+- **PR e rótulo:** [#212](https://github.com/jssantogit/BitChord/pull/212), `apple-music-smoke` reaplicado na PR; como o workflow existe na branch experimental, este commit documental aciona seu gatilho confiável por `push`.
+- **Código base:** `c84ebaf2674655caf833080968ca086d93d9bac6`. A geração do APK deve conservar esse código, somado somente ao novo commit de solicitação.
+- **Gate inalterado:** testes de rating focados, suíte Android completa, shared Automix e `sharedUi:jvmTest` antes de `assembleDevDebug` e publicação do universal/checksum. Se houver falha, bloquear APK; não forçar GREEN.
+- **Smoke físico posterior:** verificar o ícone original único do ⋮ antes/depois de expandir o menu, igualdade de cores e transparências no recorte com fundo escurecido, ausência de halo/duplicação, comportamento em tela de letras e fila, tamanhos de fonte e Reduce animations. Publicar APK não é prova de validação visual.
+- **Escopo:** somente CI/APK de smoke da REA; PR permanece Draft, sem merge ou release.
