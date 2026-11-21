@@ -5111,7 +5111,9 @@ private fun BitChordApp(
                     appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
                     appleExploreRootChrome || appleExploreGenreChrome || appleDownloadsChrome
 
-                FrostedTopBar(
+                // Provedores owns its REA floating controls and large title:
+                // do not paint an empty second toolbar over its header.
+                if (!showSources) FrostedTopBar(
                     title = when {
                         showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
