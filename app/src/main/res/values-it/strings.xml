@@ -1372,4 +1372,6 @@
     <string name="apple_player_share_song">Condividi brano</string>
     <string name="apple_player_share_lyrics">Condividi testo…</string>
     <string name="apple_library_search_in_category">Cerca in %1$s</string>
+    <string name="providers_settings">Fornitori</string>
+    <string name="providers_settings_subtitle">Gestisci i fornitori di catalogo, copertine, testi, statistiche, audio e download</string>
 </resources>
