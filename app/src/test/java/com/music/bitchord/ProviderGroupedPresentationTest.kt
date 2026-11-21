@@ -101,6 +101,7 @@ class ProviderGroupedPresentationTest {
         // readiness changes; filtering must NEVER mutate ProviderRuntime's input.
         assertEquals(4, fullGroups.first().rows.size)
         assertEquals(4, fullGroups.size)
+        assertTrue(searchProviderGroups(visible, "Identificação").isEmpty())
         assertEquals("Discogs", visible.last().title)
     }
 
