@@ -161,6 +161,7 @@ fun ProvidersScreen(
                 onBack = ::back,
                 onOrganize = {},
                 showOrganize = false,
+                onConnections = {},
                 onCancel = {},
                 onDone = {},
             )
@@ -320,6 +321,7 @@ fun ProvidersScreen(
             onBack = ::back,
             onOrganize = ::enterEdit,
             showOrganize = true,
+            onConnections = { connections = true },
             onCancel = ::cancelEdit,
             onDone = ::commitEdit,
         )
@@ -417,22 +419,6 @@ fun ProvidersScreen(
                     color = MaterialTheme.colorScheme.outlineVariant,
                 )
             }
-        }
-        if (!editing) {
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 48.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant,
-            )
-            SettingsRow(
-                icon = Icons.Rounded.Settings,
-                title = "Conexões e bibliotecas",
-                onClick = { connections = true },
-                reserveIconSpace = false,
-                minHeight = 62.dp,
-                modifier = Modifier.testTag("providers-connections"),
-            )
         }
         Spacer(Modifier.height(12.dp))
     }
@@ -601,6 +587,7 @@ private fun ProviderHeader(
     onBack: () -> Unit,
     onOrganize: () -> Unit,
     showOrganize: Boolean,
+    onConnections: () -> Unit,
     onCancel: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -618,10 +605,35 @@ private fun ProviderHeader(
                 hazeState = null,
             )
             if (showOrganize) {
-                FloatingLibraryTopBarCircle(hazeState = null) {
-                    IconButton(onClick = onOrganize, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Rounded.Sort, "Organizar provedores",
-                            modifier = Modifier.size(22.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FloatingLibraryTopBarCircle(hazeState = null) {
+                        IconButton(
+                            onClick = onConnections,
+                            modifier = Modifier.size(40.dp)
+                                .testTag("providers-top-connections"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = "Conexões e bibliotecas",
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                    FloatingLibraryTopBarCircle(hazeState = null) {
+                        IconButton(
+                            onClick = onOrganize,
+                            modifier = Modifier.size(40.dp)
+                                .testTag("providers-top-organize"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Sort,
+                                contentDescription = "Organizar provedores",
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 }
             }
