@@ -35,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -54,12 +55,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.catalog.metadata.discogs.DiscogsSearchTokenVault
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
 import com.music.bitchord.data.providers.ProviderCapabilityRegistry
@@ -79,6 +82,8 @@ import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.player.AppleQueueVectors
 import kotlin.math.abs
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -102,6 +107,7 @@ fun ProvidersScreen(
     val providerFlow = remember { ProviderRuntime.state ?: MutableStateFlow(ProviderSessionSnapshot()) }
     val snapshot by providerFlow.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var editing by rememberSaveable { mutableStateOf(false) }
     var connections by rememberSaveable { mutableStateOf(false) }
@@ -109,6 +115,8 @@ fun ProvidersScreen(
     var saving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<ProviderInventoryEntry?>(null) }
+    var discogsToken by remember { mutableStateOf("") }
+    var credentialSaving by remember { mutableStateOf(false) }
 
     fun cancelEdit() {
         editing = false
@@ -191,6 +199,16 @@ fun ProvidersScreen(
                 AppSettings.lyricsSourceOrder.value = projected.order
                 AppSettings.lyricsSources.value = projected.enabled
             }
+        }
+        if (capability == ProviderCapability.LISTENING_STATISTICS) {
+            // Legacy scrobblers still read AppSettings; mirror ONLY after a
+            // confirmed canonical preference commit, never on optimistic tap.
+            val saved = ProviderRuntime.state?.value?.configured?.get(capability).orEmpty()
+            val lastfm = saved.any { it.key.providerId == "lastfm" && it.enabled }
+            val listenBrainz = saved.any { it.key.providerId == "listenbrainz" && it.enabled }
+            AppSettings.setLastfmEnabled(lastfm)
+            AppSettings.setLastfmScrobbleEnabled(lastfm)
+            AppSettings.setListenBrainzEnabled(listenBrainz)
         }
         if (capability == ProviderCapability.EXTENSION_PLAYBACK) {
             ProviderRuntime.authorityOrNull()?.currentExtensionsProjection(configs)
@@ -339,7 +357,53 @@ fun ProvidersScreen(
     }
 
     info?.let { entry ->
-        AlertDialog(
+        if (entry.key.providerId == "discogs") {
+            AlertDialog(
+                onDismissRequest = {
+                    if (!credentialSaving) {
+                        discogsToken = ""
+                        info = null
+                    }
+                },
+                title = { Text("Discogs") },
+                text = {
+                    Column {
+                        Text("Credencial pessoal de busca. Armazenada somente no cofre criptografado do aparelho.")
+                        OutlinedTextField(
+                            value = discogsToken,
+                            onValueChange = { discogsToken = it },
+                            label = { Text("Token") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            enabled = !credentialSaving,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(enabled = !credentialSaving && discogsToken.isNotBlank(),
+                        onClick = {
+                            credentialSaving = true
+                            scope.launch {
+                                val saved = withContext(Dispatchers.IO) {
+                                    DiscogsSearchTokenVault(context).store(discogsToken)
+                                }
+                                discogsToken = ""
+                                if (saved && ProviderRuntime.notifyDiscogsCredentialChanged(true)) {
+                                    info = null
+                                } else message = "Não foi possível guardar a credencial Discogs com segurança."
+                                credentialSaving = false
+                            }
+                        },
+                    ) { Text("Salvar") }
+                },
+                dismissButton = {
+                    TextButton(enabled = !credentialSaving, onClick = {
+                        discogsToken = ""
+                        info = null
+                    }) { Text("Cancelar") }
+                },
+            )
+        } else AlertDialog(
             onDismissRequest = { info = null },
             title = { Text(entry.displayName) },
             text = {
