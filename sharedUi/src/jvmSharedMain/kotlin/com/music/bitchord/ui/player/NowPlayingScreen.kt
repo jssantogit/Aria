@@ -638,14 +638,12 @@ private fun SlidingPlayerDeck(
     }
 }
 
-/** The original three-dot AM-DECOMP silhouette without its baked-in circle. */
-fun originalPortraitNowPlayingOverflowGlyph() = AppleQueueVectors.MorePlain
+/** Complete original AM-DECOMP three-dot vector, including its translucent puck.
+ * Like the rating star, the vector itself owns its single circular surface.
+ */
+fun originalPortraitNowPlayingOverflowGlyph() = AppleQueueVectors.More
 
 internal fun nativePortraitAppleQueueOverflowGlyph() = originalPortraitNowPlayingOverflowGlyph()
-
-/** One neutral backdrop language for the resting and selected portrait ⋯. */
-fun portraitOverflowPuckColor(selected: Boolean): Color =
-    Color.Black.copy(alpha = if (selected) 0.38f else 0.18f)
 
 /**
  * Apple Music's Now Playing, closely: artwork that shrinks when paused, a
@@ -653,31 +651,35 @@ fun portraitOverflowPuckColor(selected: Boolean): Color =
  * glyphs, a volume capsule flanked by speaker icons, and lyrics / AirPlay /
  * queue along the bottom.
  */
-/** Original three-dot geometry, placed on the same neutral puck as other actions. */
+/** One 40dp touch target with one 34dp Apple original vector, like PlayerRatingStar.
+ * The vector contains its own translucent circle; no second background or disc.
+ * Measure the artwork, not the surrounding transparent hit area, so opening the
+ * menu spotlights only the actual launcher instead of creating a double ring.
+ */
 @Composable
-private fun AppleQueueHeaderAction(
+internal fun AppleQueueHeaderAction(
     imageVector: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
     onBoundsChanged: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
 ) {
     Box(
-        Modifier.size(40.dp)
-            // The glyph is unplattered; a single neutral dark puck provides
-            // contrast with player artwork, without an outline or extra ring.
-            .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
-                val bounds = coords.boundsInWindow()
-                onBoundsChanged(androidx.compose.ui.unit.IntRect(
-                    bounds.left.toInt(), bounds.top.toInt(),
-                    bounds.right.toInt(), bounds.bottom.toInt(),
-                ))
-            })
-            .clip(CircleShape)
-            .background(portraitOverflowPuckColor(selected = false))
-            .clickable(onClick = onClick),
+        modifier = Modifier.size(40.dp).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(imageVector = imageVector, contentDescription = description, tint = Color.White, modifier = Modifier.size(34.dp))
+        Icon(
+            imageVector = imageVector,
+            contentDescription = description,
+            tint = Color.White,
+            modifier = Modifier.size(34.dp)
+                .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
+                    val bounds = coords.boundsInWindow()
+                    onBoundsChanged(androidx.compose.ui.unit.IntRect(
+                        bounds.left.toInt(), bounds.top.toInt(),
+                        bounds.right.toInt(), bounds.bottom.toInt(),
+                    ))
+                }),
+        )
     }
 }
 
