@@ -13,8 +13,9 @@ import com.music.bitchord.ui.player.originalNowPlayingOverflowGlyph
 import com.music.bitchord.ui.player.originalPortraitNowPlayingOverflowGlyph
 import org.junit.Test
 
-/** The expanded player menu's highlighted ⋯ sits on its real launcher,
- * even when a dialog window has a nonzero screen origin. */
+/** The expanded player menu's spotlight reveals its original launcher;
+ * all bounds/origins are SCREEN pixels from the two independent dialog windows.
+ * Platform-level window dimming must be disabled so the spotlight stays clear. */
 class PlayerAnchoredActionsHighlightTest {
     @Test fun expandedCollectionOverflowNeverAddsASecondFillOverItsOriginalButton() {
         assertEquals(Color.Transparent,
@@ -102,6 +103,20 @@ class PlayerAnchoredActionsHighlightTest {
         assertFalse(expandableActionCardUsesHaze(treatment, hazeAvailable = true, reduceBlur = true))
         assertFalse(expandableActionCardUsesHaze(treatment, hazeAvailable = false, reduceBlur = false))
         assertFalse(neutralRatingPlateUsesArtwork(treatment))
+    }
+
+    @Test fun spotlightCutoutInScreenCoordinatesPreservesOnlyTheRealPuck() {
+        // The 40dp hit target contains a centered 34dp original vector.
+        // Neither the menu nor the scrim should invent a larger pale circle.
+        val actualIcon = IntRect(103, 203, 137, 237)
+        assertEquals(
+            androidx.compose.ui.geometry.Rect(103f, 203f, 137f, 237f),
+            playerOverflowScrimCutout(
+                anchor = actualIcon,
+                overlayOrigin = IntOffset.Zero,
+                overlaySize = IntSize(400, 800),
+            ),
+        )
     }
 
     @Test fun buttonHighlightFollowsExactLauncherCoordinates() {
