@@ -18,10 +18,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
@@ -36,7 +34,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -80,6 +77,8 @@ import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.player.AppleQueueVectors
+import com.music.bitchord.ui.components.ArtworkPageBackButton
+import com.music.bitchord.ui.components.FloatingLibraryTopBarCircle
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -126,6 +125,7 @@ fun ProvidersScreen(
 
     fun back() {
         when {
+            saving || credentialSaving -> Unit
             connections -> connections = false
             editing -> cancelEdit()
             else -> onBack()
@@ -469,15 +469,15 @@ private fun ProviderHeader(
             TextButton(enabled = !saving, onClick = onCancel) { Text("Cancelar") }
             TextButton(enabled = !saving, onClick = onDone) { Text("Concluir") }
         } else {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-                IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Rounded.ArrowBack, "Voltar", modifier = Modifier.size(22.dp))
-                }
-            }
+            ArtworkPageBackButton(
+                onClick = onBack,
+                hazeState = null,
+            )
             if (showOrganize) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-                    IconButton(onClick = onOrganize, modifier = Modifier.size(44.dp)) {
-                        Icon(Icons.Rounded.Sort, "Organizar provedores", modifier = Modifier.size(22.dp))
+                FloatingLibraryTopBarCircle(hazeState = null) {
+                    IconButton(onClick = onOrganize, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.Sort, "Organizar provedores",
+                            modifier = Modifier.size(22.dp))
                     }
                 }
             }
