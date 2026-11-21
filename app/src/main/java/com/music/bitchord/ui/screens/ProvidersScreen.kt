@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -124,7 +126,8 @@ fun ProvidersScreen(
     BackHandler(enabled = connections || editing) { back() }
 
     if (connections) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()
+            .padding(horizontal = 20.dp)) {
             ProviderHeader(
                 title = "Conexões",
                 editing = false,
@@ -136,7 +139,8 @@ fun ProvidersScreen(
                 onDone = {},
             )
             SourcesScreen(
-                contentPadding = contentPadding,
+                contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+                modifier = Modifier.weight(1f),
                 onEditSource = onEditSource,
                 onEditWebDav = onEditWebDav,
                 onEditSmb = onEditSmb,
@@ -267,6 +271,7 @@ fun ProvidersScreen(
 
     Column(
         modifier = Modifier.fillMaxWidth()
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(bottom = contentPadding.calculateBottomPadding() + 20.dp),
