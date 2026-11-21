@@ -1,0 +1,79 @@
+# Temporary isolated smoke artifact for PR #224. Do not merge this workflow.
+# Only the workflow file may differ from the Android-PR candidate source (CI pending).
+name: IDM #224 — Providers Search Tabs Final Smoke APK
+
+on:
+  push:
+    branches:
+      - smoke/idm-224-providers-search-tabs-final-20261121
+    paths:
+      - .github/workflows/idm-224-providers-tabs-final-apk.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: idm-224-providers-tabs-final-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-ui-apk:
+    name: IDM #224 · providers search tabs dev debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact smoke candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact PR candidate source (CI pending)s and isolated trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          approved="abb1b75b9ea72726e187075a9f754ff776a24692"
+          trigger=".github/workflows/idm-224-providers-tabs-final-apk.yml"
+          git merge-base --is-ancestor "$approved" HEAD
+          changed="$(git diff --name-only "$approved" HEAD)"
+          if [[ "$changed" != "$trigger" ]]; then
+            echo "::error::Smoke branch must differ from PR candidate source (CI pending) only by this workflow"
+            printf 'Unexpected files:\n%s\n' "$changed"
+            exit 1
+          fi
+          echo "PR candidate production and test source: $approved"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure local debug build without service credentials
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+
+      - name: Build installable Android dev debug APK
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+
+      - name: Verify APK and record immutable provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'pr=224\nci_approved_source=abb1b75b9ea72726e187075a9f754ff776a24692\nsmoke_commit=%s\ncredentials_embedded=no\n' "$(git rev-parse HEAD)" > idm-224-apk-manifest.txt
+          find app/build/outputs/apk/dev/debug -name '*.apk' -type f -print -exec sha256sum '{}' \; >> idm-224-apk-manifest.txt
+          grep -q '\.apk' idm-224-apk-manifest.txt
+
+      - name: Publish isolated IDM smoke APK and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: bit-chord-idm-pr224-providers-tabs-final-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/dev/debug/*.apk
+            idm-224-apk-manifest.txt
+          if-no-files-found: error
+          retention-days: 14
