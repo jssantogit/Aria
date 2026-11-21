@@ -3,6 +3,11 @@ package com.music.bitchord.ui.screens
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,10 +36,22 @@ import org.robolectric.annotation.ConscryptMode
 class NativeAlbumHeroActionsTest {
     @get:Rule val compose = createComposeRule()
 
+    // A requested 360dp/393dp layout is constrained by Robolectric's actual
+    // viewport (320dp by default). Test the same width the player actually saw.
+    private var measuredViewport = 0.dp
+
+    @Composable
+    private fun TestViewportColumn(requestedWidth: Dp, content: @Composable ColumnScope.() -> Unit) {
+        BoxWithConstraints(Modifier.width(requestedWidth)) {
+            measuredViewport = maxWidth
+            Column(Modifier.fillMaxWidth(), content = content)
+        }
+    }
+
     @Test fun onlineAlbumLoadedPlayWidthMatchesItsLoadingPlaceholder() {
         compose.setContent {
             MaterialTheme {
-                Column(Modifier.width(360.dp)) {
+                TestViewportColumn(360.dp) {
                     NativeReleaseActionRow(
                         onPlay = {}, onShuffle = {}, isLocal = false,
                         compactForAlbum = true, reservePinAction = true,
@@ -47,9 +64,9 @@ class NativeAlbumHeroActionsTest {
             }
         }
         compose.onNodeWithTag("native-compact-album-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(360.dp))
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(measuredViewport))
         compose.onNodeWithTag("detail-action-skeleton-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(360.dp))
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(measuredViewport))
         // The 360dp viewport produces the SAME width as the tested Library
         // Songs ActionPill: (360 - 2 * PAGE_GUTTER - 12) / 2.
         assertEquals(
@@ -77,7 +94,7 @@ class NativeAlbumHeroActionsTest {
         // Local album keeps two real actions, not an unsupported plus control.
         compose.setContent {
             MaterialTheme {
-                Column(Modifier.width(360.dp)) {
+                TestViewportColumn(360.dp) {
                     NativeReleaseActionRow(
                         onPlay = {}, onShuffle = {}, isLocal = true,
                         compactForAlbum = true, onToggleLibrary = null,
@@ -86,7 +103,7 @@ class NativeAlbumHeroActionsTest {
             }
         }
         compose.onNodeWithTag("native-local-album-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.libraryCategoryPlayWidth(360.dp))
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.libraryCategoryPlayWidth(measuredViewport))
         compose.onNodeWithContentDescription("Fixar álbum na Biblioteca")
             .assertDoesNotExist()
     }
@@ -96,7 +113,7 @@ class NativeAlbumHeroActionsTest {
         // select the same 16dp/12dp two-pill layout as Library > Songs.
         compose.setContent {
             MaterialTheme {
-                Column(Modifier.width(393.dp)) {
+                TestViewportColumn(393.dp) {
                     NativeReleaseActionRow(
                         onPlay = {}, onShuffle = {}, isLocal = true,
                         compactForAlbum = nativeReleaseUsesAlbumGeometry(
@@ -107,7 +124,7 @@ class NativeAlbumHeroActionsTest {
             }
         }
         compose.onNodeWithTag("native-local-album-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.libraryCategoryPlayWidth(393.dp))
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.libraryCategoryPlayWidth(measuredViewport))
         compose.onNodeWithContentDescription("Fixar álbum na Biblioteca")
             .assertDoesNotExist()
     }
@@ -116,7 +133,7 @@ class NativeAlbumHeroActionsTest {
         var pinTaps = 0
         compose.setContent {
             MaterialTheme {
-                Column(Modifier.width(360.dp)) {
+                TestViewportColumn(360.dp) {
                     NativePlaylistHeroActions(
                         canPlay = true, isPinned = true, onTogglePin = { pinTaps++ },
                         onPlay = {}, onShuffle = {},
@@ -125,7 +142,7 @@ class NativeAlbumHeroActionsTest {
             }
         }
         compose.onNodeWithTag("native-compact-playlist-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(360.dp))
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(measuredViewport))
         compose.onNodeWithContentDescription("Desafixar playlist da Biblioteca")
             .performClick()
         compose.runOnIdle { assertEquals(1, pinTaps) }
@@ -134,7 +151,7 @@ class NativeAlbumHeroActionsTest {
     @Test fun publicPlaylistDisabledPlaybackStillUsesTheAlbumCapsuleSize() {
         compose.setContent {
             MaterialTheme {
-                Column(Modifier.width(393.dp)) {
+                TestViewportColumn(393.dp) {
                     NativeReleaseActionRow(
                         onPlay = {}, onShuffle = {}, isLocal = false,
                         compactForAlbum = true, pinTargetLabel = "playlist",
@@ -145,7 +162,7 @@ class NativeAlbumHeroActionsTest {
             }
         }
         compose.onNodeWithTag("native-compact-playlist-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(393.dp))
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(measuredViewport))
     }
 
     @Test fun albumWithPaintedControlsDoesNotShowSecondLoadingActionRow() {
