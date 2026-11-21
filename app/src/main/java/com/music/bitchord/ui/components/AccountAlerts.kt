@@ -11,7 +11,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.semantics.Role
 import com.music.bitchord.ui.theme.appleMusicKeyColor
@@ -795,7 +796,8 @@ fun ConfirmationAlert(
             action?.invoke()
         }
     }
-    BackHandler(enabled = !closing) { closeWith(onDismiss) }
+    // A second Back during the exit must not reach the wizard behind us.
+    BackHandler { if (!closing) closeWith(onDismiss) }
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -833,7 +835,13 @@ fun ConfirmationAlert(
                 hazeState = hazeState,
                 treatment = FLOATING_CONFIRMATION_TREATMENT,
             ) {
-                Column {
+                Column(
+                    modifier = Modifier
+                        // Landscape, large fonts and IME: keep both choices
+                        // reachable without shifting the centered menu window.
+                        .heightIn(max = (maxHeight - 48.dp).coerceAtLeast(0.dp))
+                        .verticalScroll(rememberScrollState()),
+                ) {
                     Column(
                         modifier = Modifier.fillMaxWidth()
                             .padding(horizontal = 22.dp, vertical = 23.dp),
