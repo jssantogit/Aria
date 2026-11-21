@@ -128,6 +128,8 @@ fun ProvidersScreen(
     var categorySearch by rememberSaveable { mutableStateOf("") }
     var connections by rememberSaveable { mutableStateOf(false) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
+    var groupDrafts by remember { mutableStateOf<Map<ProviderSettingsTab, List<ProviderKey>>>(emptyMap()) }
+    var detailGroupKey by remember { mutableStateOf<ProviderKey?>(null) }
     var saving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<ProviderInventoryEntry?>(null) }
@@ -137,6 +139,7 @@ fun ProvidersScreen(
     fun cancelEdit() {
         editing = false
         staged = emptyMap()
+        groupDrafts = emptyMap()
         tabBeforeOrganize?.let { selectedTabName = it }
         tabBeforeOrganize = null
         message = null
@@ -190,8 +193,11 @@ fun ProvidersScreen(
         ProviderCapabilityRegistry.projectTab(tab, inventory, snapshot, policy)
     }
 
-    fun orderedForDisplay(rows: List<ProviderTabRowState>): List<ProviderTabRowState> =
-        if (editing) previewProviderRows(rows, staged) else rows
+    fun displayedGroups(tab: ProviderSettingsTab): List<ProviderDisplayGroup> {
+        val rows = visibleProviderRows(grouped[tab].orEmpty(), editing)
+        val groups = groupProviderRows(rows)
+        return if (editing) orderProviderGroups(groups, groupDrafts[tab].orEmpty()) else groups
+    }
 
     fun openEntry(entry: ProviderInventoryEntry) {
         when (entry.key.providerId) {
@@ -256,8 +262,28 @@ fun ProvidersScreen(
         }
     }
 
+    fun toggleGroup(group: ProviderDisplayGroup, enabled: Boolean) {
+        if (saving || snapshot.status == ProviderSessionStatus.BOOTING) return
+        val changes = planProviderGroupToggle(group, snapshot.configured, enabled)
+        if (changes.isEmpty()) return
+        saving = true
+        message = null
+        scope.launch {
+            try {
+                if (ProviderRuntime.setChoicesBatch(changes)) {
+                    changes.keys.forEach(::publishCompatibility)
+                } else message = "Não foi possível salvar as funções do provedor."
+            } finally {
+                saving = false
+            }
+        }
+    }
+
     fun enterEdit() {
         if (saving || snapshot.status == ProviderSessionStatus.BOOTING) return
+        groupDrafts = grouped.mapValues { (_, rows) ->
+            groupProviderRows(visibleProviderRows(rows, editing = true)).map { it.key }
+        }
         staged = grouped.values.flatten()
             .filter { it.entry.supportsReordering }
             .groupBy { it.entry.capability }
@@ -273,14 +299,17 @@ fun ProvidersScreen(
         message = null
     }
 
-    fun move(capability: ProviderCapability, key: ProviderKey, by: Int) {
-        val keys = staged[capability].orEmpty().toMutableList()
+    fun move(tab: ProviderSettingsTab, key: ProviderKey, by: Int) {
+        val keys = groupDrafts[tab].orEmpty().toMutableList()
         val before = keys.indexOf(key)
         val after = before + by
         if (before < 0 || after !in keys.indices) return
-        keys.removeAt(before)
-        keys.add(after, key)
-        staged = staged + (capability to keys)
+        keys.add(after, keys.removeAt(before))
+        groupDrafts = groupDrafts + (tab to keys)
+        // One visible provider order; exact per-capability orders remain separate.
+        val affected = grouped[tab].orEmpty().map { it.entry.capability }.toSet()
+        val updated = providerGroupDraftOrders(keys, staged.filterKeys { it in affected })
+        staged = staged + updated
     }
 
     fun commitEdit() {
@@ -363,13 +392,11 @@ fun ProvidersScreen(
         )
         Spacer(Modifier.height(16.dp))
 
-        val selectedRows = visibleProviderRows(
-            orderedForDisplay(grouped[selectedTab].orEmpty()), editing,
+        val selectedGroups = displayedGroups(selectedTab)
+        val displayed = if (editing) selectedGroups else searchProviderGroups(
+            selectedGroups, categorySearch,
         )
-        val displayedRows = if (editing) selectedRows else searchProviderRows(
-            selectedRows, categorySearch,
-        )
-        if (displayedRows.isEmpty()) {
+        if (displayed.isEmpty()) {
             Text(
                 text = if (editing) "Nenhum provedor reordenável nesta categoria."
                     else if (categorySearch.isNotBlank()) "Nenhum provedor encontrado."
@@ -379,41 +406,29 @@ fun ProvidersScreen(
                 modifier = Modifier.padding(vertical = 24.dp, horizontal = 8.dp),
             )
         }
-        val multipleReorderScopes = editing &&
-            displayedRows.map { it.entry.capability }.distinct().size > 1
-        for ((index, row) in displayedRows.withIndex()) {
-            val boundary = index == 0 ||
-                displayedRows[index - 1].entry.capability != row.entry.capability
-            if (multipleReorderScopes && boundary) {
-                Text(
-                    text = row.entry.capability.organizeScopeTitle(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 48.dp, top = 12.dp, bottom = 5.dp),
-                )
-            }
-            key(row.entry.capability, row.entry.key) {
+        for ((index, group) in displayed.withIndex()) {
+            key(selectedTab, group.key) {
                 ProviderSettingRow(
-                    row = row,
+                    group = group,
                     number = index + 1,
                     editing = editing,
                     saving = saving || snapshot.status == ProviderSessionStatus.BOOTING,
-                    savedEnabled = snapshot.configured[row.entry.capability].orEmpty()
-                        .any { it.key == row.entry.key && it.enabled },
-                    isDraggable = editing,
-                    compactScopeLabel = multipleReorderScopes,
-                    onOpen = { openEntry(row.entry) },
-                    onToggle = { enabled -> toggle(row.entry, enabled) },
-                    canMoveUp = staged[row.entry.capability].orEmpty()
-                        .indexOf(row.entry.key) > 0,
-                    canMoveDown = staged[row.entry.capability].orEmpty().let { order ->
-                        val position = order.indexOf(row.entry.key)
+                    savedEnabled = providerGroupAllEnabled(group, snapshot.configured),
+                    warning = providerGroupWarning(group, snapshot.configured),
+                    onOpen = {
+                        if (group.rows.size == 1) openEntry(group.rows.first().entry)
+                        else detailGroupKey = group.key
+                    },
+                    onToggle = { enabled -> toggleGroup(group, enabled) },
+                    canMoveUp = groupDrafts[selectedTab].orEmpty().indexOf(group.key) > 0,
+                    canMoveDown = groupDrafts[selectedTab].orEmpty().let { order ->
+                        val position = order.indexOf(group.key)
                         position >= 0 && position < order.lastIndex
                     },
-                    onMove = { by -> move(row.entry.capability, row.entry.key, by) },
+                    onMove = { by -> move(selectedTab, group.key, by) },
                 )
             }
-            if (index < displayedRows.lastIndex) {
+            if (index < displayed.lastIndex) {
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 48.dp),
                     thickness = 0.5.dp,
@@ -422,6 +437,61 @@ fun ProvidersScreen(
             }
         }
         Spacer(Modifier.height(12.dp))
+    }
+
+    // Capability details stay accessible on demand. A simple vendor switch
+    // operates an atomic batch, but independent advanced authorizations are
+    // neither erased nor silently inferred from the one-row presentation.
+    detailGroupKey?.let { key ->
+        val group = groupProviderRows(grouped.values.flatten())
+            .firstOrNull { it.key == key && it.tab.name == selectedTabName }
+        if (group == null) {
+            detailGroupKey = null
+        } else {
+            AlertDialog(
+                onDismissRequest = { if (!saving) detailGroupKey = null },
+                title = { Text(group.title) },
+                text = {
+                    Column {
+                        group.rows.forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    row.entry.capability.organizeScopeTitle(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Switch(
+                                    checked = snapshot.configured[row.entry.capability].orEmpty()
+                                        .any { it.key == row.entry.key && it.enabled },
+                                    onCheckedChange = { enabled -> toggle(row.entry, enabled) },
+                                    enabled = !saving && row.entry.readiness == ProviderReadiness.READY,
+                                    colors = appleSettingsSwitchColors(),
+                                    modifier = Modifier.semantics {
+                                        contentDescription = row.entry.displayName
+                                    },
+                                )
+                            }
+                        }
+                        if (group.rows.any {
+                            it.entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION
+                        }) {
+                            TextButton(onClick = {
+                                detailGroupKey = null
+                                openEntry(group.rows.first { it.entry.readiness ==
+                                    ProviderReadiness.NEEDS_CONFIGURATION }.entry)
+                            }) { Text("Configurar") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { detailGroupKey = null }) { Text("Fechar") }
+                },
+            )
+        }
     }
 
     info?.let { entry ->
