@@ -6,6 +6,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import org.robolectric.RuntimeEnvironment
+import com.music.bitchord.R
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -39,7 +41,7 @@ class CanonicalRecentHeldActionsComposeTest {
             }
         }
         listOf("Tocar a seguir", "Adicionar à fila", "Adicionar à playlist",
-            "Editar avaliação", "Fixar").forEach {
+            "Editar avaliação", RuntimeEnvironment.getApplication().getString(R.string.pin)).forEach {
             compose.onNodeWithText(it).assertExists()
         }
         compose.onNodeWithText("Fixar na Biblioteca").assertDoesNotExist()
@@ -59,7 +61,8 @@ class CanonicalRecentHeldActionsComposeTest {
                 }
             }
         }
-        compose.onNodeWithText("Desafixar").assertExists()
+        compose.onNodeWithText(RuntimeEnvironment.getApplication()
+            .getString(R.string.unpin)).assertExists()
         compose.onNodeWithText("Desafixar da Biblioteca").assertDoesNotExist()
         compose.onNodeWithText("Fixar na Biblioteca").assertDoesNotExist()
         compose.onNodeWithText("Adicionar à playlist").assertExists()

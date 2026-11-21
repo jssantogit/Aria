@@ -237,7 +237,6 @@ class PlaylistWizardNativeActionsTest {
                 )
             }
         }
-        compose.onNodeWithTag("playlist-source-expandable-card").assertExists()
         compose.onNodeWithTag("native-settings-group-surface").assertExists()
         compose.onNodeWithText("Navidrome 2").assertExists()
         compose.onNodeWithContentDescription("Fonte selecionada: Navidrome 2").assertExists()

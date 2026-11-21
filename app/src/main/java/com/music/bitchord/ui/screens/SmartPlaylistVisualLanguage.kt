@@ -575,7 +575,8 @@ internal fun PlaylistWizardExpandableSourceSelector(
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
                     RoundedCornerShape(18.dp),
                 )
-                .testTag("playlist-source-expandable-card"),
+                // The group's own test tag is supplied by SettingsGroupSurface.
+                ,
         ) {
             Row(
                 modifier = Modifier
