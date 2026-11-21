@@ -128,6 +128,7 @@ fun ProvidersScreen(
     var tabBeforeOrganize by remember { mutableStateOf<String?>(null) }
     var categorySearch by rememberSaveable { mutableStateOf("") }
     var connections by rememberSaveable { mutableStateOf(false) }
+    var remoteLibraryDetail by remember { mutableStateOf<ProviderRemoteLibraryTarget?>(null) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
     var initialStaged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
     var groupDrafts by remember { mutableStateOf<Map<ProviderSettingsTab, List<ProviderKey>>>(emptyMap()) }
@@ -157,6 +158,7 @@ fun ProvidersScreen(
                 listenBrainzTokenInput = ""
                 connections = false
             }
+            remoteLibraryDetail != null -> remoteLibraryDetail = null
             detailGroupKey != null -> {
                 discogsToken = ""
                 detailGroupKey = null
@@ -165,7 +167,7 @@ fun ProvidersScreen(
             else -> onBack()
         }
     }
-    BackHandler(enabled = connections || editing || detailGroupKey != null) { back() }
+    BackHandler(enabled = connections || editing || detailGroupKey != null || remoteLibraryDetail != null) { back() }
 
     // Runtime, not this UI, defines which adapters and accounts are installed.
     val inventory = ProviderRuntime.inventoryForSettings()
@@ -189,7 +191,8 @@ fun ProvidersScreen(
             "addon", "custom_module" ->
                 configs.firstOrNull { it.id == entry.key.instanceId }?.let(onEditSource)
                     ?: run { info = entry }
-            "opensubsonic", "local" -> connections = true
+            "opensubsonic" -> remoteLibraryDetail = ProviderRemoteLibraryTarget.OPEN_SUBSONIC
+            "local" -> info = entry
             "lastfm", "listenbrainz", "discogs" -> connections = true
             "soulseek" -> connections = true
             else -> info = entry
@@ -376,6 +379,38 @@ fun ProvidersScreen(
         return
     }
 
+    if (remoteLibraryDetail != null) {
+        val target = remoteLibraryDetail!!
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                ProviderHeader(
+                    title = target.displayName,
+                    editing = false,
+                    saving = false,
+                    onBack = ::back,
+                    onOrganize = {},
+                    showOrganize = false,
+                    onConnections = {},
+                    onCancel = {},
+                    onDone = {},
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = contentPadding.calculateBottomPadding() + 20.dp),
+            ) {
+                ProviderRemoteLibrarySettings(
+                    target = target,
+                    onEditWebDav = onEditWebDav,
+                    onEditSmb = onEditSmb,
+                )
+            }
+        }
+        return
+    }
+
     fun enterEdit() {
         if (saving || snapshot.status == ProviderSessionStatus.BOOTING) return
         groupDrafts = grouped.mapValues { (_, rows) ->
@@ -518,7 +553,17 @@ fun ProvidersScreen(
         val displayed = if (editing) selectedGroups else searchProviderGroups(
             selectedGroups, categorySearch,
         )
-        if (displayed.isEmpty()) {
+        // Remote library setup is in the Audio category but not a fabricated
+        // Provider Engine capability. Configured OpenSubsonic already has a
+        // real grouped row, so never render a duplicate setup placeholder.
+        val remoteLibraries = if (!editing && selectedTab == ProviderSettingsTab.AUDIO_AND_EXTENSIONS) {
+            providerRemoteLibraryEntries(
+                hasOpenSubsonicProvider = selectedGroups.any {
+                    it.key.providerId == "opensubsonic"
+                },
+            ).filter { it.displayName.contains(categorySearch.trim(), ignoreCase = true) }
+        } else emptyList()
+        if (displayed.isEmpty() && remoteLibraries.isEmpty()) {
             Text(
                 text = if (editing) "Nenhum provedor reordenável nesta categoria."
                     else if (categorySearch.isNotBlank()) "Nenhum provedor encontrado."
@@ -548,6 +593,37 @@ fun ProvidersScreen(
                 )
             }
             if (index < displayed.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 48.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+            }
+        }
+        if (displayed.isNotEmpty() && remoteLibraries.isNotEmpty()) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 48.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+        }
+        remoteLibraries.forEachIndexed { index, target ->
+            key(selectedTab, target) {
+                val configured = when (target) {
+                    ProviderRemoteLibraryTarget.WEBDAV -> AppSettings.webdavUrl.value.isNotBlank()
+                    ProviderRemoteLibraryTarget.SMB ->
+                        AppSettings.smbHost.value.isNotBlank() &&
+                            AppSettings.smbShare.value.isNotBlank()
+                    ProviderRemoteLibraryTarget.OPEN_SUBSONIC -> false
+                }
+                ProviderRemoteLibraryRow(
+                    target = target,
+                    number = displayed.size + index + 1,
+                    configured = configured,
+                    onOpen = { remoteLibraryDetail = target },
+                )
+            }
+            if (index < remoteLibraries.lastIndex) {
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 48.dp),
                     thickness = 0.5.dp,
@@ -757,6 +833,65 @@ internal fun ProviderHeader(
     }
     Text(title, style = MaterialTheme.typography.headlineLarge,
         fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+}
+
+/**
+ * WebDAV and SMB are connection-backed personal libraries, not yet Provider
+ * Engine (capability, key) choices. Navidrome has a real engine row only
+ * after an OpenSubsonic account has been provisioned.
+ */
+internal fun providerRemoteLibraryEntries(
+    hasOpenSubsonicProvider: Boolean,
+): List<ProviderRemoteLibraryTarget> = ProviderRemoteLibraryTarget.entries.filter {
+    it != ProviderRemoteLibraryTarget.OPEN_SUBSONIC || !hasOpenSubsonicProvider
+}
+
+@Composable
+internal fun ProviderRemoteLibraryRow(
+    target: ProviderRemoteLibraryTarget,
+    number: Int,
+    configured: Boolean,
+    onOpen: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 60.dp)
+            .clickable(onClick = onOpen)
+            .padding(vertical = 6.dp, horizontal = 8.dp)
+            .testTag("providers-remote-${target.name.lowercase()}"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text = "${number}.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(width = 24.dp, height = 28.dp),
+                textAlign = TextAlign.Center,
+            )
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            Text(
+                target.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                if (configured) "Biblioteca configurada" else "Configuração necessária",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        Text(
+            if (configured) "Gerenciar" else "Configurar",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
