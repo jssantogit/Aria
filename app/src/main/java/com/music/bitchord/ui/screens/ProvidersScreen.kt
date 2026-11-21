@@ -372,9 +372,9 @@ fun ProvidersScreen(
     val selectedDetailTab = ProviderSettingsTab.entries
         .firstOrNull { it.name == selectedTabName } ?: ProviderSettingsTab.CATALOG
     val selectedDetail = detailGroupKey?.let { key ->
-        groupProviderRows(grouped[selectedDetailTab].orEmpty()).firstOrNull {
-            it.key == key
-        }
+        presentableProviderGroups(
+            groupProviderRows(grouped[selectedDetailTab].orEmpty()),
+        ).firstOrNull { it.key == key }
     }
     if (selectedDetail != null) {
         ProviderCapabilitiesScreen(
