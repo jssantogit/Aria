@@ -136,6 +136,9 @@ internal object ProviderRuntime {
 
     fun authorityOrNull(): ProviderAuthorityCoordinator? = coordinator
 
+    fun inventoryForSettings(): List<ProviderInventoryEntry> =
+        coordinator?.inventoryForSettings(SourceRegistry.configs.value).orEmpty()
+
     val state: StateFlow<ProviderSessionSnapshot>?
         get() = session?.state
 
