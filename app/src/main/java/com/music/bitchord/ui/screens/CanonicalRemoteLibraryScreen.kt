@@ -2003,6 +2003,7 @@ internal fun RemoteBrowseTopBar(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .padding(top = com.music.bitchord.ui.components.standaloneTopControlPadding(56.dp))
             .heightIn(min = 56.dp)
             .padding(horizontal = 8.dp),
     ) {

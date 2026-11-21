@@ -121,7 +121,9 @@ internal fun ListeningLibraryPage(content: @Composable () -> Unit) {
         Box(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 72.dp)
+                .padding(top = com.music.bitchord.ui.components.TopBarContentHeight +
+                    com.music.bitchord.ui.components.HomeFloatingActionRestOffset +
+                    com.music.bitchord.ui.components.TopBarContentGap)
                 .navigationBarsPadding(),
         ) {
             content()

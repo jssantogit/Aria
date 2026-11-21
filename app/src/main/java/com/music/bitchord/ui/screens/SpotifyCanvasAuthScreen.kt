@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.R
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.ui.components.standaloneTopControlPadding
 import com.music.bitchord.ui.components.ArtworkPageBackButton
 import com.music.bitchord.ui.components.PillTextField
 import com.music.bitchord.ui.components.NativeSettingsPrimaryAction
@@ -50,7 +51,8 @@ fun SpotifyCanvasAuthScreen(onNavigateUp: () -> Unit) {
         modifier = Modifier.fillMaxSize()
             .statusBarsPadding().navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp)
+            .padding(top = standaloneTopControlPadding(40.dp), bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
