@@ -29,6 +29,10 @@ class NativeTopBarPlacementPolicyTest {
         }
     }
 
+    @Test fun playlistHeadingDoesNotAddHomeFloatingActionDisplacement() {
+        assertEquals(8.dp, playlistLibraryHeadingExtraTopPadding())
+    }
+
     @Test fun pushedContentAndSearchUseTheUnshiftedGlobalBar() {
         assertEquals(
             0.dp,
