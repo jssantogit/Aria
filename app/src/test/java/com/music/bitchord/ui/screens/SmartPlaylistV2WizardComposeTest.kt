@@ -776,7 +776,13 @@ class SmartPlaylistV2WizardComposeTest {
         compose.onNodeWithTag("playlist-source-selector").assertExists()
         compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
         compose.onNodeWithTag("playlist-source-selector").performClick()
+        // The expanded list is nested in the wizard's LazyColumn. Account B
+        // can start below the viewport; a coordinate click without scrolling
+        // may hit the visible "Todas as fontes" row and select null instead.
+        // Exercise the actual visible row, not a clipped semantic target.
+        compose.waitForIdle()
         compose.onNodeWithTag("playlist-source-option-opensubsonic-account-b")
+            .performScrollTo()
             .performClick()
         compose.runOnIdle {
             assertEquals("opensubsonic:account-b", selected.value)
