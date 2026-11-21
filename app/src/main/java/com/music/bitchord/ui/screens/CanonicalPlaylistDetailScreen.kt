@@ -877,6 +877,11 @@ internal fun CanonicalPlaylistDetailScreen(
         heldTrack = null
         heldTrackOrigin = null
     }
+    // Measure once against the actual detail viewport, as canonical albums do.
+    // A LazyColumn item has unbounded height, so its own BoxWithConstraints
+    // cannot reliably enforce the landscape artwork-height limit.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val releaseSleeve = nativeReleaseSleeveSize(maxWidth, maxHeight)
     NativePlaylistDetailFrame(
         palette = palette,
         listState = listState ?: rememberLazyListState(),
@@ -947,8 +952,8 @@ internal fun CanonicalPlaylistDetailScreen(
                 palette = palette,
                 rating = rating,
                 onRate = if (ratingTarget != null) ({ editingRating = true }) else null,
-                // Exactly the same 76% frame as DetailScreen's native release hero.
-                sleeveSize = maxWidth * 0.76f,
+                // Exactly the same 66% artwork and landscape height cap as albums.
+                sleeveSize = releaseSleeve,
                 artwork = {
                     if (card is LibraryPlaylistCard.Normal &&
                         !card.shelfItem.thumbnailUrl.isNullOrBlank()
@@ -1177,6 +1182,7 @@ internal fun CanonicalPlaylistDetailScreen(
             }
         }
     }
+    } // End common viewport scope; confirmation dialog stays outside it.
     pendingAlbumRemoval?.let { request ->
         CanonicalPlaylistAlbumRemovalConfirmation(
             request = request,
