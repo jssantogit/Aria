@@ -103,8 +103,7 @@ import com.music.bitchord.ui.performance.RuntimePerformanceUiContext
 import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.MeshPalette
 
-/** The Home title remains beside its resting actions after safe-content clearance. */
-private val HOME_TITLE_LIFT = 56.dp
+/** Home and other landing pages share one measured large-title baseline. */
 
 /**
  * Home intentionally raises its large heading. Explore genre details have an
@@ -118,7 +117,7 @@ internal fun homeTitleTopInset(
     // The shared inset now lands BELOW the floating Back circle, so a
     // detail genre must not add another route-specific lift or offset.
     topBarInset.coerceAtLeast(0.dp)
-} else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
+} else rootLandingTitleListTopInset(topBarInset, titleInnerTop = 8.dp)
 
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
