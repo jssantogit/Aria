@@ -22,5 +22,12 @@ internal fun nativeTopBarActionsOffset(
     else -> 0.dp
 }
 
+/**
+ * The playlist library LazyColumn already receives the global toolbar inset.
+ * Only the inner title breathing room belongs here; never add Home's
+ * floating-action displacement to a pushed page heading.
+ */
+internal fun playlistLibraryHeadingExtraTopPadding(): Dp = 8.dp
+
 /** Back buttons identify pushed pages and must align with their own actions. */
 internal fun nativeTopBarBackOffset(): Dp = 0.dp
