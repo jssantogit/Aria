@@ -40,6 +40,7 @@ import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -663,8 +664,25 @@ internal fun AppleQueueHeaderAction(
     onClick: () -> Unit,
     onBoundsChanged: ((androidx.compose.ui.unit.IntRect) -> Unit)? = null,
 ) {
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.90f else 1f,
+        animationSpec = tween(durationMillis = if (reduceMotion) 0 else 110),
+        label = "playerOverflowPressScale",
+    )
+    val pressAlpha by animateFloatAsState(
+        targetValue = if (pressed) 0.78f else 1f,
+        animationSpec = tween(durationMillis = if (reduceMotion) 0 else 110),
+        label = "playerOverflowPressAlpha",
+    )
     Box(
-        modifier = Modifier.size(40.dp).clickable(onClick = onClick),
+        modifier = Modifier.size(40.dp).clickable(
+            interactionSource = interactions,
+            indication = null,
+            onClick = onClick,
+        ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -672,6 +690,11 @@ internal fun AppleQueueHeaderAction(
             contentDescription = description,
             tint = Color.White,
             modifier = Modifier.size(34.dp)
+                .graphicsLayer {
+                    scaleX = pressScale
+                    scaleY = pressScale
+                    alpha = pressAlpha
+                }
                 .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
                     val bounds = coords.boundsInWindow()
                     onBoundsChanged(androidx.compose.ui.unit.IntRect(
