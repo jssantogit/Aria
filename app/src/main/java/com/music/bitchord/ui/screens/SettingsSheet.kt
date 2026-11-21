@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.ui.components.appleSettingsSwitchColors
+import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import com.music.bitchord.ui.components.appleSettingsSliderColors
 import com.music.bitchord.ui.theme.appleSelectionAccentColor
 import com.music.bitchord.ui.theme.appleMusicKeyColor
@@ -430,9 +431,15 @@ internal fun SettingsScreen(
         if (selectedSection == null) {
             Text(
                 text = stringResource(R.string.settings),
-                style = MaterialTheme.typography.displayLarge,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+                modifier = Modifier.padding(
+                    start = 32.dp,
+                    end = 20.dp,
+                    top = NativePageHeaderMetrics.settingsPushedTitleTopPadding,
+                    bottom = 14.dp,
+                ).testTag("native-settings-root-title"),
             )
             SearchField(
                 query = searchQuery,
