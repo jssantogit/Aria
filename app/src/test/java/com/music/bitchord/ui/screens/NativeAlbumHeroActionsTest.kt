@@ -73,6 +73,60 @@ class NativeAlbumHeroActionsTest {
         assertEquals(252.dp, DetailActionLayoutMetrics.albumPlayWidth(600.dp))
     }
 
+    @Test fun localOfflineAlbumUsesLibrarySongsPlayWidthWithoutInventingPinAction() {
+        // Local album keeps two real actions, not an unsupported plus control.
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.width(360.dp)) {
+                    NativeReleaseActionRow(
+                        onPlay = {}, onShuffle = {}, isLocal = true,
+                        compactForAlbum = true, onToggleLibrary = null,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("native-local-album-play-pill")
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.libraryCategoryPlayWidth(360.dp))
+        compose.onNodeWithContentDescription("Fixar álbum na Biblioteca")
+            .assertDoesNotExist()
+    }
+
+    @Test fun canonicalPlaylistMatchesAlbumPlayWidthAndKeepsRealPin() {
+        var pinTaps = 0
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.width(360.dp)) {
+                    NativePlaylistHeroActions(
+                        canPlay = true, isPinned = true, onTogglePin = { pinTaps++ },
+                        onPlay = {}, onShuffle = {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("native-compact-playlist-play-pill")
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(360.dp))
+        compose.onNodeWithContentDescription("Desafixar playlist da Biblioteca")
+            .performClick()
+        compose.runOnIdle { assertEquals(1, pinTaps) }
+    }
+
+    @Test fun publicPlaylistDisabledPlaybackStillUsesTheAlbumCapsuleSize() {
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.width(393.dp)) {
+                    NativeReleaseActionRow(
+                        onPlay = {}, onShuffle = {}, isLocal = false,
+                        compactForAlbum = true, pinTargetLabel = "playlist",
+                        canPlay = false, canShuffle = false,
+                        reservePinAction = true, onTogglePin = {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("native-compact-playlist-play-pill")
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(393.dp))
+    }
+
     @Test fun albumWithPaintedControlsDoesNotShowSecondLoadingActionRow() {
         compose.setContent {
             MaterialTheme {
