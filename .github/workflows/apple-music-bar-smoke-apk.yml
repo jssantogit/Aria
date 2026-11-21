@@ -56,7 +56,7 @@ jobs:
           if "${focused_tests[@]}" 2>&1 | tee focused-rating-gradle.log; then
             exit 0
           fi
-          if grep -Eq 'Could not find dev\\.chrisbanes\\.haze:haze(-materials)?:1\\.5\\.4' focused-rating-gradle.log &&
+          if grep -Eq 'Could not find dev\.chrisbanes\.haze:haze(-materials)?:1\.5\.4' focused-rating-gradle.log &&
              grep -q 'Could not resolve all files for configuration' focused-rating-gradle.log; then
             echo "Retrying published Haze metadata resolution with Gradle refresh (once)."
             sleep 10
