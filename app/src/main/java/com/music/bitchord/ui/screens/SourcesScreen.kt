@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,21 +76,19 @@ import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.components.AddonEditorAlert
+import com.music.bitchord.ui.components.appleSettingsSwitchColors
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Where the app is allowed to get audio from.
+ * User-visible configured audio sources, excluding retired transports.
  *
- * The order is fixed rather than something to argue with: the addons a user
- * added are tried first, because they are the sources chosen on purpose, and
- * YouTube Music is tried last, since it needs no setup and has the full
- * catalogue behind it. Nothing on this screen downloads code, and nothing on
- * it can teach the app a new way to behave after it has shipped — an addon
- * answers questions with JSON, and this app is the only thing here running
- * anything.
+ * User-added sources are tried first, followed by the optional built-in
+ * JioSaavn source. The source registry filters legacy serialized YouTube rows
+ * before they reach this UI; provider identities do not define musical identity.
  */
 @Composable
 fun SourcesScreen(
@@ -121,7 +118,8 @@ fun SourcesScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val configs by SourceRegistry.configs.collectAsStateWithLifecycle()
+    val storedConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
+    val configs = SourceRegistry.displayConfigs(storedConfigs)
     val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
     val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
@@ -241,12 +239,11 @@ fun SourcesScreen(
                         awaitingOutput = if (config.enabled && config.awaitsLosslessOutput) losslessOutput else null,
                         onMetered = metered == true,
                         ceiling = ceiling,
-                        // Anything the user configured is theirs to edit or
-                        // delete. JioSaavn and YouTube have no address to
-                        // change, so a tap on them would open an empty editor.
+                        // User-configured sources can be edited; JioSaavn has no
+                        // address to change, so it has no editor.
                         onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
-                        // Every source, including YouTube, honors its switch.
-                        // JioSaavn alone retains its explicit enable confirmation.
+                        // Every visible source honors its switch; JioSaavn
+                        // retains its explicit enable confirmation.
                         onToggle = { enabled ->
                             if (config.kind == SourceKind.JIOSAAVN && enabled && !config.enabled) {
                                 onConfirmJioSaavn()
@@ -615,7 +612,7 @@ private const val SWAP_THRESHOLD = 0.6f
  * put another one in here".
  */
 @Composable
-private fun AddSourceRow(onClick: () -> Unit) {
+internal fun AddSourceRow(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -630,7 +627,7 @@ private fun AddSourceRow(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Rounded.Add,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = appleMusicKeyColor(),
             modifier = Modifier.size(ICON_SIZE),
         )
         Spacer(Modifier.width(ICON_GAP))
@@ -638,7 +635,7 @@ private fun AddSourceRow(onClick: () -> Unit) {
             Text(
                 text = stringResource(R.string.add_addon),
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = appleMusicKeyColor(),
             )
             Text(
                 text = stringResource(R.string.add_addon_detail),
@@ -706,7 +703,7 @@ private fun BluetoothCodecPermissionRow() {
         Icon(
             imageVector = Icons.Rounded.Bluetooth,
             contentDescription = null,
-            tint = if (denied) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            tint = if (denied) MaterialTheme.colorScheme.error else appleMusicKeyColor(),
             modifier = Modifier.size(ICON_SIZE),
         )
         Spacer(Modifier.width(ICON_GAP))
@@ -716,7 +713,7 @@ private fun BluetoothCodecPermissionRow() {
                     if (denied) R.string.lossless_output_permission_denied else R.string.lossless_output_permission,
                 ),
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (denied) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                color = if (denied) MaterialTheme.colorScheme.error else appleMusicKeyColor(),
             )
             Text(
                 text = stringResource(
@@ -850,10 +847,7 @@ private fun SourceRow(
             Switch(
                 checked = config.enabled,
                 onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    checkedBorderColor = MaterialTheme.colorScheme.primary,
-                ),
+                colors = appleSettingsSwitchColors(),
             )
         }
         // Outside the dimming above, and last in the row. A source switched off

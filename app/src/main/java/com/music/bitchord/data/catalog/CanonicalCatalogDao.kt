@@ -8,6 +8,23 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Ephemeral asset candidates for conservative Spotify metadata matching.
+ * The query is read-only and intentionally never records an identity claim.
+ * URI is held on the repository side, not exposed as a provider-native UI ID.
+ */
+internal data class SpotifyCanonicalAssetCandidate(
+    val recordingId: String,
+    val mediaAssetId: String,
+    val providerKey: String,
+    val title: String,
+    val artistDisplay: String,
+    val durationMs: Long?,
+    val uri: String,
+    val path: String?,
+    val artworkUri: String?,
+)
+
 /** Artwork is selected only from a recording with a provider-scoped MediaAsset. */
 internal data class CanonicalPlaylistAlbumCoverRow(
     val groupId: String,
@@ -48,6 +65,8 @@ internal data class CanonicalCachedGroupEditionRow(
     val releaseDate: String?,
     val artistDisplay: String?,
     val status: String?,
+    val isVideoOnlyMedia: Boolean?,
+    val isVideoOnlyContent: Boolean?,
 )
 
 /** Exact Recording MBID to an already-verified Official ReleaseGroup cover. */
@@ -172,6 +191,19 @@ internal data class CanonicalRecordingReleaseTitleRow(
     val recordingId: String,
     val releaseId: String,
     val releaseTitle: String,
+)
+
+/** Exact MusicBrainz Release MBID -> cached canonical Release and release date. */
+internal data class CanonicalArtistOfficialReleaseCaptionRow(
+    val releaseMbid: String,
+    val releaseTitle: String,
+    val releaseDate: String?,
+)
+
+/** Verified Recording→ReleaseTrack→ReleaseGroupEdition association. */
+internal data class CanonicalRecordingReleaseGroupLinkRow(
+    val recordingId: String,
+    val releaseGroupId: String,
 )
 
 /** Asset-scoped optional tags; missing row / NULL is unknown, "[]" is verified empty. */
@@ -322,6 +354,22 @@ internal interface CanonicalCatalogDao {
     @Query("SELECT COUNT(*) FROM catalog_musicbrainz_artist_group WHERE artistId = :artistId")
     suspend fun musicBrainzArtistGroupMembershipCount(artistId: String): Int
 
+    /**
+     * Sidecar-edge deletion only. A complete MusicBrainz artist-MBID browse
+     * may invalidate this artist's earlier website-default-v1 membership,
+     * but never delete the ReleaseGroup entity or any legacy/other-artist edge.
+     */
+    @Query("""
+        DELETE FROM catalog_musicbrainz_artist_group
+        WHERE artistId = :artistId
+          AND publicationEvidence = 'website-default-v1'
+          AND releaseGroupId NOT IN (:retainedGroupIds)
+    """)
+    suspend fun pruneObsoleteMusicBrainzArtistGroups(
+        artistId: String,
+        retainedGroupIds: List<String>,
+    ): Int
+
     @Query("""
         SELECT groupEntity.*
         FROM catalog_musicbrainz_artist_group AS association
@@ -339,18 +387,22 @@ internal interface CanonicalCatalogDao {
      */
     @Query("""
         SELECT ident.externalId AS musicBrainzId, COALESCE((
-                SELECT edition.title
+                SELECT COALESCE(NULLIF(TRIM(evidence.title), ''), edition.title)
                 FROM catalog_release_group_edition AS groupEdition
                 JOIN catalog_release AS edition ON edition.id = groupEdition.releaseId
                 JOIN musicbrainz_release_enrichment AS evidence
                     ON evidence.releaseId = edition.id
                 WHERE groupEdition.releaseGroupId = grp.id
                   AND lower(evidence.status) = 'official'
+                   AND COALESCE(evidence.isVideoOnlyMedia, 0) != 1
+                   AND COALESCE(evidence.isVideoOnlyContent, 0) != 1
                   -- A composite ReleaseGroup label is not necessarily the
                   -- commercially released album title. “How Sweet & Bubble
                   -- Gum” has verified Official editions titled “How Sweet”.
                   -- The title remains source-owned; group ID never changes.
-                  AND instr(lower(grp.title), lower(trim(edition.title) || ' & ')) = 1
+                  AND instr(lower(grp.title),
+                      lower(trim(COALESCE(NULLIF(TRIM(evidence.title), ''), edition.title))
+                            || ' & ')) = 1
                 ORDER BY CASE WHEN evidence.country = 'XW' THEN 0
                               WHEN evidence.country = 'KR' THEN 1 ELSE 2 END,
                          evidence.releaseDate, edition.id
@@ -374,6 +426,99 @@ internal interface CanonicalCatalogDao {
     @Upsert suspend fun upsertCatalogReleaseGroup(entity: CatalogReleaseGroupEntity)
     @Upsert suspend fun upsertCatalogReleaseGroupEdition(entity: CatalogReleaseGroupEditionEntity)
     @Upsert suspend fun upsertCatalogMusicBrainzTrack(entity: CatalogMusicBrainzTrackEntity)
+    @Query("DELETE FROM catalog_musicbrainz_track WHERE releaseId = :releaseId AND trackMbid IN (:trackMbids)")
+    suspend fun deleteObsoleteCatalogMusicBrainzTracks(releaseId: String, trackMbids: List<String>)
+
+    /**
+     * Drop a legacy ReleaseTrack only when its sole explicit edge owner is
+     * MusicBrainz, the recording no longer appears on ANY edition Track,
+     * and the Release has no ambiguous ownership by another provider.
+     * Other-provider/legacy co-claims and their source markers stay intact.
+     */
+    @Query("""
+        DELETE FROM catalog_release_track
+        WHERE releaseId = :releaseId AND recordingId IN (:recordingIds)
+          AND EXISTS (
+              SELECT 1 FROM catalog_release_track_source AS owner
+              WHERE owner.releaseId = catalog_release_track.releaseId
+                AND owner.recordingId = catalog_release_track.recordingId
+                AND owner.provider = 'musicbrainz'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM catalog_release_track_source AS owner
+              WHERE owner.releaseId = catalog_release_track.releaseId
+                AND owner.recordingId = catalog_release_track.recordingId
+                AND owner.provider != 'musicbrainz'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM catalog_external_identity AS identity
+              WHERE identity.entityId = catalog_release_track.releaseId
+                AND identity.entityType = 'release'
+                AND identity.provider != 'musicbrainz'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM catalog_musicbrainz_track AS track
+              WHERE track.releaseId = catalog_release_track.releaseId
+                AND track.recordingId = catalog_release_track.recordingId
+          )
+    """)
+    suspend fun deleteObsoleteMusicBrainzOnlyReleaseTracks(releaseId: String, recordingIds: List<String>)
+
+    /**
+     * A co-owned legacy ReleaseTrack can survive, but an obsolete MusicBrainz
+     * source claim must not survive once no edition Track points to it.
+     */
+    @Query("""
+        DELETE FROM catalog_release_track_source
+        WHERE releaseId = :releaseId AND recordingId IN (:recordingIds)
+          AND provider = 'musicbrainz'
+          AND NOT EXISTS (
+              SELECT 1 FROM catalog_musicbrainz_track AS track
+              WHERE track.releaseId = catalog_release_track_source.releaseId
+                AND track.recordingId = catalog_release_track_source.recordingId
+          )
+    """)
+    suspend fun deleteObsoleteMusicBrainzReleaseTrackSources(releaseId: String, recordingIds: List<String>)
+
+    /**
+     * Refresh legacy sort order only for an already-known, MusicBrainz-exclusive
+     * ReleaseTrack. Edition-specific Track rows retain every exact medium/position;
+     * the legacy schema can represent only one position per Recording.
+     */
+    @Query("""
+        UPDATE catalog_release_track
+        SET trackNumber = (
+            SELECT track.trackNumber FROM catalog_musicbrainz_track AS track
+            WHERE track.releaseId = catalog_release_track.releaseId
+              AND track.recordingId = catalog_release_track.recordingId
+            ORDER BY track.mediumNumber, track.trackNumber, track.trackMbid LIMIT 1
+        )
+        WHERE releaseId = :releaseId AND recordingId IN (:recordingIds)
+          AND EXISTS (
+              SELECT 1 FROM catalog_release_track_source AS owner
+              WHERE owner.releaseId = catalog_release_track.releaseId
+                AND owner.recordingId = catalog_release_track.recordingId
+                AND owner.provider = 'musicbrainz'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM catalog_release_track_source AS owner
+              WHERE owner.releaseId = catalog_release_track.releaseId
+                AND owner.recordingId = catalog_release_track.recordingId
+                AND owner.provider != 'musicbrainz'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM catalog_external_identity AS identity
+              WHERE identity.entityId = catalog_release_track.releaseId
+                AND identity.entityType = 'release'
+                AND identity.provider != 'musicbrainz'
+          )
+          AND EXISTS (
+              SELECT 1 FROM catalog_musicbrainz_track AS track
+              WHERE track.releaseId = catalog_release_track.releaseId
+                AND track.recordingId = catalog_release_track.recordingId
+          )
+    """)
+    suspend fun refreshMusicBrainzOnlyLegacyTrackPositions(releaseId: String, recordingIds: List<String>)
     @Upsert suspend fun upsertMusicBrainzCoverArtCache(entity: MusicBrainzCoverArtCacheEntity)
     @Query("SELECT * FROM catalog_cover_art_cache WHERE entityType = :entityType AND mbid = :mbid LIMIT 1")
     suspend fun musicBrainzCoverArtCache(entityType: String, mbid: String): MusicBrainzCoverArtCacheEntity?
@@ -395,6 +540,8 @@ internal interface CanonicalCatalogDao {
         JOIN musicbrainz_release_enrichment AS releaseInfo
             ON releaseInfo.releaseId = trackEvidence.releaseId
                 AND lower(releaseInfo.status) = 'official'
+                AND COALESCE(releaseInfo.isVideoOnlyMedia, 0) != 1
+                AND COALESCE(releaseInfo.isVideoOnlyContent, 0) != 1
         JOIN catalog_release_group_edition AS relation
             ON relation.releaseId = trackEvidence.releaseId
         JOIN catalog_release_group AS groupInfo
@@ -433,6 +580,8 @@ internal interface CanonicalCatalogDao {
         JOIN musicbrainz_release_enrichment AS releaseInfo
             ON releaseInfo.releaseId = trackEvidence.releaseId
                AND lower(releaseInfo.status) = 'official'
+                AND COALESCE(releaseInfo.isVideoOnlyMedia, 0) != 1
+                AND COALESCE(releaseInfo.isVideoOnlyContent, 0) != 1
         JOIN catalog_release_group_edition AS relation
             ON relation.releaseId = trackEvidence.releaseId
         JOIN catalog_release_group AS groupInfo
@@ -471,6 +620,11 @@ internal interface CanonicalCatalogDao {
     @Query("SELECT * FROM catalog_release_group WHERE id = :id LIMIT 1")
     suspend fun catalogReleaseGroup(id: String): CatalogReleaseGroupEntity?
 
+    /** Display metadata for a uniquely proven playlist track's ReleaseGroup.
+     * Read the group in one batch, never one Room query per visible row. */
+    @Query("SELECT * FROM catalog_release_group WHERE id IN (:ids)")
+    suspend fun catalogReleaseGroupsByIds(ids: List<String>): List<CatalogReleaseGroupEntity>
+
     /**
      * Materialize Official/Promotion/other edition evidence in one statement,
      * rather than one release + identity + enrichment Room read per edition.
@@ -479,10 +633,13 @@ internal interface CanonicalCatalogDao {
      */
     @Query("""
         SELECT ident.externalId AS musicBrainzId,
-               edition.title AS title,
+               COALESCE(NULLIF(TRIM(info.title), ''), edition.title) AS title,
                info.country AS country, info.releaseDate AS releaseDate,
-               COALESCE(info.artistDisplay, edition.artistDisplay) AS artistDisplay,
-               info.status AS status
+               COALESCE(NULLIF(TRIM(info.artistDisplay), ''), edition.artistDisplay)
+                   AS artistDisplay,
+               info.status AS status,
+               info.isVideoOnlyMedia AS isVideoOnlyMedia,
+               info.isVideoOnlyContent AS isVideoOnlyContent
         FROM catalog_release_group_edition AS relation
         JOIN catalog_release AS edition ON edition.id = relation.releaseId
         JOIN catalog_external_identity AS ident
@@ -520,9 +677,72 @@ internal interface CanonicalCatalogDao {
         recordingIds: List<String>,
     ): List<CanonicalRecordingReleaseTitleRow>
 
+    /** Provider-owned ReleaseTrack edges disambiguate releases that share a Recording. */
+    @Query(
+        """
+        SELECT DISTINCT owned.recordingId AS recordingId,
+               rel.id AS releaseId,
+               rel.title AS releaseTitle
+        FROM catalog_release_track_source AS owned
+        INNER JOIN catalog_release AS rel ON rel.id = owned.releaseId
+        WHERE owned.recordingId IN (:recordingIds)
+          AND owned.provider IN (:providerKeys)
+        ORDER BY owned.recordingId, rel.id
+        """,
+    )
+    suspend fun providerOwnedRecordingReleaseTitles(
+        recordingIds: List<String>,
+        providerKeys: List<String>,
+    ): List<CanonicalRecordingReleaseTitleRow>
+
+    /**
+     * Public artist recordings already supply a positively verified Official
+     * audio Release MBID. Never search for a title by matching artist or song
+     * names. The cache may be incomplete, in which case the caption is absent.
+     */
+    @Query(
+        """
+        SELECT identity.externalId AS releaseMbid,
+               rel.title AS releaseTitle,
+               enrichment.releaseDate AS releaseDate
+        FROM catalog_external_identity AS identity
+        INNER JOIN catalog_release AS rel ON rel.id = identity.entityId
+        LEFT JOIN musicbrainz_release_enrichment AS enrichment
+          ON enrichment.releaseId = rel.id AND enrichment.mbid = identity.externalId
+        WHERE identity.provider = 'musicbrainz'
+          AND identity.entityType = 'release'
+          AND identity.externalId IN (:releaseMbids)
+        ORDER BY identity.externalId
+        """,
+    )
+    suspend fun cachedArtistOfficialReleaseCaptions(
+        releaseMbids: List<String>,
+    ): List<CanonicalArtistOfficialReleaseCaptionRow>
+
+    /**
+     * Exact group navigation fallback for recordings found on multiple
+     * editions. This never groups by matching album names or artists.
+     */
+    @Query("""
+        SELECT DISTINCT rt.recordingId AS recordingId,
+                        edition.releaseGroupId AS releaseGroupId
+        FROM catalog_release_track AS rt
+        INNER JOIN catalog_release_group_edition AS edition
+          ON edition.releaseId = rt.releaseId
+        INNER JOIN catalog_release_group AS grp
+          ON grp.id = edition.releaseGroupId
+        WHERE rt.recordingId IN (:recordingIds)
+        ORDER BY rt.recordingId, edition.releaseGroupId
+    """)
+    suspend fun recordingReleaseGroupLinksByIds(
+        recordingIds: List<String>,
+    ): List<CanonicalRecordingReleaseGroupLinkRow>
+
     /**
      * Preserve NULL/un-enriched linked releases so a negative year predicate
      * cannot infer that an unknown release definitely fails to match.
+     * A co-owned ReleaseTrack alone cannot confer an MB edition date after
+     * its MB membership is retired; current Track/source evidence must remain.
      */
     @Query(
         """
@@ -545,6 +765,19 @@ internal interface CanonicalCatalogDao {
                   AND identity.entityType = 'release'
                   AND identity.entityId = rt.releaseId
            ) = 1
+           AND (
+                EXISTS (
+                    SELECT 1 FROM catalog_release_track_source AS sourceOwner
+                    WHERE sourceOwner.releaseId = rt.releaseId
+                      AND sourceOwner.recordingId = rt.recordingId
+                      AND sourceOwner.provider = 'musicbrainz'
+                )
+                OR EXISTS (
+                    SELECT 1 FROM catalog_musicbrainz_track AS exactTrack
+                    WHERE exactTrack.releaseId = rt.releaseId
+                      AND exactTrack.recordingId = rt.recordingId
+                )
+           )
         WHERE rt.recordingId IN (:recordingIds)
         ORDER BY rt.recordingId ASC, rt.releaseId ASC
         """,
@@ -1241,18 +1474,22 @@ internal interface CanonicalCatalogDao {
     @Query(
         """
         SELECT identity.externalId AS musicBrainzId, COALESCE((
-                SELECT edition.title
+                SELECT COALESCE(NULLIF(TRIM(evidence.title), ''), edition.title)
                 FROM catalog_release_group_edition AS groupEdition
                 JOIN catalog_release AS edition ON edition.id = groupEdition.releaseId
                 JOIN musicbrainz_release_enrichment AS evidence
                     ON evidence.releaseId = edition.id
                 WHERE groupEdition.releaseGroupId = grp.id
                   AND lower(evidence.status) = 'official'
+                   AND COALESCE(evidence.isVideoOnlyMedia, 0) != 1
+                   AND COALESCE(evidence.isVideoOnlyContent, 0) != 1
                   -- A composite ReleaseGroup label is not necessarily the
                   -- commercially released album title. “How Sweet & Bubble
                   -- Gum” has verified Official editions titled “How Sweet”.
                   -- The title remains source-owned; group ID never changes.
-                  AND instr(lower(grp.title), lower(trim(edition.title) || ' & ')) = 1
+                  AND instr(lower(grp.title),
+                      lower(trim(COALESCE(NULLIF(TRIM(evidence.title), ''), edition.title))
+                            || ' & ')) = 1
                 ORDER BY CASE WHEN evidence.country = 'XW' THEN 0
                               WHEN evidence.country = 'KR' THEN 1 ELSE 2 END,
                          evidence.releaseDate, edition.id
@@ -1275,9 +1512,14 @@ internal interface CanonicalCatalogDao {
     ): List<com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit>
 
     @Query("""
-        SELECT identity.externalId AS musicBrainzId, edition.title AS title,
-            edition.artistDisplay AS artistDisplay, info.country AS country,
+        SELECT identity.externalId AS musicBrainzId,
+            COALESCE(NULLIF(TRIM(info.title), ''), edition.title) AS title,
+            COALESCE(NULLIF(TRIM(info.artistDisplay), ''), edition.artistDisplay)
+                AS artistDisplay,
+            info.country AS country,
             info.releaseDate AS releaseDate, info.status AS status,
+             info.isVideoOnlyMedia AS isVideoOnlyMedia,
+             info.isVideoOnlyContent AS isVideoOnlyContent,
             COALESCE(art.thumbnailUri, art.artworkUri) AS artworkUri
         FROM catalog_external_identity identity
         JOIN catalog_release edition ON edition.id = identity.entityId
@@ -1287,8 +1529,11 @@ internal interface CanonicalCatalogDao {
             ON art.entityType = 'release:front-v3' AND art.mbid = identity.externalId
         WHERE identity.provider = 'musicbrainz' AND identity.entityType = 'release'
             AND (instr(lower(edition.title), lower(:query)) > 0
-                OR instr(lower(edition.artistDisplay), lower(:query)) > 0)
-        ORDER BY edition.title COLLATE NOCASE, identity.externalId
+                OR instr(lower(edition.artistDisplay), lower(:query)) > 0
+                OR instr(lower(info.title), lower(:query)) > 0
+                OR instr(lower(info.artistDisplay), lower(:query)) > 0)
+        ORDER BY COALESCE(NULLIF(TRIM(info.title), ''), edition.title)
+                   COLLATE NOCASE, identity.externalId
         LIMIT :limit
     """)
     suspend fun searchKnownMusicBrainzReleases(
@@ -1330,9 +1575,9 @@ internal interface CanonicalCatalogDao {
     @Query(
         """
         SELECT identity.externalId AS musicBrainzId,
-               recording.title AS title,
-               recording.artistDisplay AS artistDisplay,
-               recording.durationMs AS durationMs,
+               COALESCE(NULLIF(TRIM(info.title), ''), recording.title) AS title,
+               COALESCE(NULLIF(TRIM(info.artistDisplay), ''), recording.artistDisplay) AS artistDisplay,
+               COALESCE(info.durationMs, recording.durationMs) AS durationMs,
                info.hasOfficialAudioRelease AS hasOfficialAudioRelease,
                info.isVideo AS isVideo
         FROM catalog_external_identity AS identity
@@ -1344,13 +1589,17 @@ internal interface CanonicalCatalogDao {
           AND (
             instr(lower(recording.title), lower(:query)) > 0
             OR instr(lower(recording.artistDisplay), lower(:query)) > 0
+            OR instr(lower(info.title), lower(:query)) > 0
+            OR instr(lower(info.artistDisplay), lower(:query)) > 0
           )
         ORDER BY CASE WHEN EXISTS (
                     SELECT 1 FROM catalog_media_asset playable
                     WHERE playable.recordingId = recording.id
                 ) THEN 0 ELSE 1 END,
-                 recording.artistDisplay COLLATE NOCASE,
-                 recording.title COLLATE NOCASE, identity.externalId
+                 COALESCE(NULLIF(TRIM(info.artistDisplay), ''), recording.artistDisplay)
+                    COLLATE NOCASE,
+                 COALESCE(NULLIF(TRIM(info.title), ''), recording.title)
+                    COLLATE NOCASE, identity.externalId
         LIMIT :limit
         """,
     )
@@ -1442,6 +1691,37 @@ internal interface CanonicalCatalogDao {
         """,
     )
     suspend fun availableRecordingIdsForProvider(provider: String): List<String>
+
+    /**
+     * Bounded exact-title lookup for Spotify import. Only persisted file and
+     * personal-server assets can be candidates; never public metadata or YT.
+     * Final artist/duration/ambiguity checks run in the pure matcher.
+     */
+    @Query(
+        """
+        SELECT recording.id AS recordingId,
+               asset.id AS mediaAssetId,
+               asset.provider AS providerKey,
+               recording.title AS title,
+               recording.artistDisplay AS artistDisplay,
+               recording.durationMs AS durationMs,
+               asset.uri AS uri,
+               asset.path AS path,
+               asset.artworkUri AS artworkUri
+        FROM catalog_recording recording
+        INNER JOIN catalog_media_asset asset
+            ON asset.recordingId = recording.id
+        WHERE lower(trim(recording.title)) = lower(trim(:title))
+          AND (asset.provider = 'local-mediastore'
+            OR asset.provider LIKE 'opensubsonic:%'
+            OR asset.provider LIKE 'jellyfin:%')
+        ORDER BY recording.id, asset.provider, asset.id
+        LIMIT 50
+        """,
+    )
+    suspend fun spotifyCanonicalAssetCandidates(
+        title: String,
+    ): List<SpotifyCanonicalAssetCandidate>
 
     /**
      * Bounded normal-playlist picker. Identity comes from the Recording table,

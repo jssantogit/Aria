@@ -1,6 +1,8 @@
 package com.music.bitchord.data.catalog
 
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -77,7 +79,13 @@ internal class CanonicalLibraryBrowseRepository(
 ) {
     fun observe(providerKey: String): Flow<CanonicalBrowseLibrary> =
         store.observeTrackAssets(providerKey).map { rows ->
-            CanonicalBrowseLibrary(tracks = buildTracks(rows))
+            // collectAsStateWithLifecycle collects on the Compose UI dispatcher.
+            // Grouping, deduplicating and sorting the entire provider library
+            // here previously ran on that same thread for every Room emission.
+            // Keep the observable result and order, but never block a frame.
+            withContext(Dispatchers.Default) {
+                CanonicalBrowseLibrary(tracks = buildTracks(rows))
+            }
         }
 
     private fun buildTracks(rows: List<CanonicalBrowseAssetRow>): List<CanonicalBrowseTrack> = rows

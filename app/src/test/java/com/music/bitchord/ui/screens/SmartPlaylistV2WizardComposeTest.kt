@@ -4,7 +4,12 @@ import android.app.Application
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -12,8 +17,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.CompositionLocalProvider
 import com.music.bitchord.ui.components.LocalCanonicalRatingDisplay
@@ -132,9 +142,11 @@ class SmartPlaylistV2WizardComposeTest {
         assertEquals("music", smartConditionCategories.single {
             SmartPlaylistRuleField.GENRE in it.fields
         }.id)
-        assertTrue(smartConditionCategories.none {
+        // Universal genre and local MediaStore genre are distinct sources,
+        // both offered because both evaluator branches already exist.
+        assertEquals("music", smartConditionCategories.single {
             SmartPlaylistRuleField.LOCAL_GENRE in it.fields
-        })
+        }.id)
         val legacy = smartRuleNewComparison(SmartPlaylistRuleField.LOCAL_GENRE)
         assertEquals(SmartPlaylistRuleOperator.CONTAINS, legacy.operator)
     }
@@ -182,6 +194,150 @@ class SmartPlaylistV2WizardComposeTest {
         compose.runOnIdle { assertEquals(1, pressed) }
     }
 
+    @Test fun conditionCatalogIncludesSupportedLocalEvidenceFieldsExactlyOnce() {
+        val all = smartConditionCategories.flatMap { it.fields }
+        val library = smartConditionCategories.single { it.id == "library" }.fields
+        val music = smartConditionCategories.single { it.id == "music" }.fields
+        assertTrue(SmartPlaylistRuleField.LOCAL_FOLDER in library)
+        assertTrue(SmartPlaylistRuleField.LOCAL_FILE_PATH in library)
+        assertTrue(SmartPlaylistRuleField.LOCAL_GENRE in music)
+        assertEquals(all.size, all.toSet().size)
+    }
+
+    @Test fun musicTabsPartitionEveryFieldWithoutSectionHeadersOrPills() {
+        val category = smartConditionCategories.single { it.id == "music" }
+        val tabs = smartConditionFieldTabs(category)
+        assertEquals(listOf("Todos", "Identidade", "Créditos", "Organização"),
+            tabs.map { it.label })
+        assertEquals(category.fields, tabs.first().fields)
+        val partition = tabs.drop(1).flatMap { it.fields }
+        assertEquals(category.fields.size, partition.size)
+        assertEquals(category.fields.toSet(), partition.toSet())
+        assertEquals(emptyList<SmartConditionFieldTab>(),
+            smartConditionFieldTabs(smartConditionCategories.single { it.id == "ratings" }))
+    }
+
+    @Test fun conditionEditorDisablesSaveForAnInvalidCalendarYear() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule, hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
+        compose.onNodeWithText("Datas e lançamentos").performClick()
+        compose.onNodeWithText("Ano de lançamento da edição").performClick()
+        compose.onNodeWithContentDescription("Ano desta edição (ex.: 2024)")
+            .performTextInput("999")
+        compose.onNodeWithText("Adicionar condição").assertIsNotEnabled()
+    }
+
+    @Test fun conditionEditorRejectsValuesInvalidForTheRealV2RuleContract() {
+        val year = SmartPlaylistRule.Comparison(
+            SmartPlaylistRuleField.RELEASE_YEAR,
+            SmartPlaylistRuleOperator.EQUAL,
+            value = 999.0,
+        )
+        assertEquals(false, smartConditionDraftValid(year))
+        assertTrue(smartConditionDraftValid(year.copy(value = 2024.0)))
+
+        val days = SmartPlaylistRule.Comparison(
+            SmartPlaylistRuleField.DAYS_SINCE_LAST_SKIP,
+            SmartPlaylistRuleOperator.EQUAL,
+            value = -1.0,
+        )
+        assertEquals(false, smartConditionDraftValid(days))
+        assertTrue(smartConditionDraftValid(days.copy(value = 0.0)))
+
+        val invalidText = SmartPlaylistRule.Comparison(
+            SmartPlaylistRuleField.TITLE,
+            SmartPlaylistRuleOperator.CONTAINS,
+            textValue = "x".repeat(161),
+        )
+        assertEquals(false, smartConditionDraftValid(invalidText))
+        assertTrue(smartConditionDraftValid(invalidText.copy(textValue = "Artista")))
+    }
+
+    @Test fun historyAndLibrarySubTabsCoverAvailableEvidenceWithoutDuplication() {
+        // Only groups that have multiple meaningful evidence families get
+        // subtabs. Do not fabricate library-state or offline predicates.
+        for (id in listOf("history", "library")) {
+            val category = smartConditionCategories.single { it.id == id }
+            val tabs = smartConditionFieldTabs(category)
+            assertTrue(tabs.size >= 3)
+            assertEquals("Todos", tabs.first().label)
+            assertEquals(category.fields, tabs.first().fields)
+            val partition = tabs.drop(1).flatMap { it.fields }
+            assertEquals(category.fields.size, partition.size)
+            assertEquals(category.fields.toSet(), partition.toSet())
+        }
+        assertEquals(emptyList<SmartConditionFieldTab>(),
+            smartConditionFieldTabs(smartConditionCategories.single { it.id == "audio" }))
+    }
+
+    @Test fun fieldTabsAndFlatRowsAreIndependentOfSectionHeadings() {
+        var clicked = 0
+        compose.setContent {
+            androidx.compose.material3.MaterialTheme {
+                androidx.compose.foundation.layout.Column {
+                    PlaylistWizardFieldTabs(
+                        smartConditionFieldTabs(smartConditionCategories.first()),
+                        "all", onSelect = {},
+                    )
+                    PlaylistWizardFieldList(listOf(PlaylistWizardNavOption(
+                        title = "Título da música",
+                        description = "Palavras presentes no título",
+                        icon = Icons.Rounded.MusicNote,
+                        onClick = { clicked++ },
+                    )))
+                }
+            }
+        }
+        compose.onNodeWithTag("playlist-field-search-tabs").assertExists()
+        compose.onNodeWithTag("playlist-field-flat-list").assertExists()
+        compose.onAllNodesWithTag("playlist-navigation-chevron").assertCountEquals(0)
+        compose.onNodeWithText("Título da música").performClick()
+        compose.runOnIdle { assertEquals(1, clicked) }
+    }
+
+    @Test fun conditionTabsReuseTheSearchUnderlineAndPreserveTabIdentity() {
+        val tabs = smartConditionFieldTabs(smartConditionCategories.single { it.id == "music" })
+        var selectedKey by mutableStateOf("all")
+        compose.setContent {
+            androidx.compose.material3.MaterialTheme {
+                PlaylistWizardFieldTabs(tabs, selectedKey) { selectedKey = it }
+            }
+        }
+        // Search's shared selected indicator (blue, underlined) belongs to
+        // the category selector too. A second row of chips is not allowed.
+        compose.onNodeWithTag("playlist-field-search-tabs").assertExists()
+        compose.onAllNodesWithTag(
+            "apple-selected-origin-indicator", useUnmergedTree = true,
+        ).assertCountEquals(1)
+        compose.onAllNodesWithTag("playlist-navigation-chevron").assertCountEquals(0)
+        compose.onNodeWithText("CRÉDITOS").performScrollTo().performClick()
+        compose.onNodeWithText("CRÉDITOS").assertIsSelected()
+        compose.runOnIdle { assertEquals("credits", selectedKey) }
+        compose.onAllNodesWithTag(
+            "apple-selected-origin-indicator", useUnmergedTree = true,
+        ).assertCountEquals(1)
+        compose.onNodeWithText("ORGANIZAÇÃO").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("organization", selectedKey) }
+    }
+
     @Test fun secondaryPlaylistActionsAreExplicitNativeButtonsNotBareText() {
         var clicked = 0
         compose.setContent {
@@ -210,20 +366,43 @@ class SmartPlaylistV2WizardComposeTest {
                 currentPreviewQuery = null, onManage = {}, onBack = {},
             )
         }
-        // The LazyColumn virtualizes cards on compact phone windows; assert
-        // each group when it is visible rather than requiring both composed.
+        // Choose the playlist type before selecting its playable sources.
+        // The source options depend on whether the playlist is normal or smart.
         compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
-        compose.onNodeWithText("Fontes de origem").assertExists()
-        assertEquals(true, compose.onAllNodesWithTag("native-settings-group-surface")
-            .fetchSemanticsNodes().isNotEmpty())
-        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
         compose.onNodeWithText("Tipo de playlist").assertExists()
-        assertEquals(true, compose.onAllNodesWithTag("native-settings-group-surface")
-            .fetchSemanticsNodes().isNotEmpty())
+        compose.onNodeWithTag("playlist-kind-smart").assertIsSelected()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
+        compose.onNodeWithText("Fontes de origem").assertExists()
+        compose.onNodeWithTag("playlist-source-selector").assertExists()
         compose.onNodeWithText("Continuar").performClick()
         compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
-        compose.onNodeWithText("+ Adicionar primeira condição").performClick()
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
         compose.onNodeWithTag("native-detail-search-field").assertExists()
+    }
+
+    @Test fun normalOnlyCreationDisplaysTheFullWidthNormalTypeCardInsteadOfBareText() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Nova playlist", rule = rule, hasConfiguredRules = false,
+                normalMode = true, normalOnlyCreation = true,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithTag("playlist-kind-normal").assertExists().assertIsSelected()
+        compose.onNodeWithTag("playlist-kind-smart").assertDoesNotExist()
+        compose.onNodeWithText("Escolha suas músicas").assertExists()
     }
 
     @Test fun reviewDisplaysOnlyReturnedCanonicalPreviewMetadata() {
@@ -439,10 +618,12 @@ class SmartPlaylistV2WizardComposeTest {
     @Test fun deletingSavedPlaylistRequiresExplicitConfirmation() {
         var confirmed = 0
         var cancelled = 0
+        val isOpen = mutableStateOf(true)
         compose.setContent {
-            SmartPlaylistDeletionConfirmation(
+            if (isOpen.value) SmartPlaylistDeletionConfirmation(
                 name = "Favoritas", isFilter = false,
-                onCancel = { cancelled++ }, onConfirm = { confirmed++ },
+                onCancel = { cancelled++; isOpen.value = false },
+                onConfirm = { confirmed++; isOpen.value = false },
             )
         }
         compose.onNodeWithText("Excluir playlist?").assertExists()
@@ -451,9 +632,12 @@ class SmartPlaylistV2WizardComposeTest {
             org.robolectric.RuntimeEnvironment.getApplication()
                 .getString(com.music.bitchord.R.string.cancel),
         ).performClick()
+        compose.waitForIdle()
         compose.runOnIdle { assertEquals(0, confirmed); assertEquals(1, cancelled) }
+        compose.runOnIdle { isOpen.value = true }
         compose.onNodeWithText("Excluir definitivamente").performClick()
-        compose.runOnIdle { assertEquals(1, confirmed) }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, confirmed); assertEquals(1, cancelled) }
     }
 
     @Test fun existingNormalPlaylistOpensDedicatedEditPageInsteadOfNewPlaylistWizard() {
@@ -479,6 +663,7 @@ class SmartPlaylistV2WizardComposeTest {
         compose.onNodeWithText("Editar playlist").assertExists()
         compose.onNodeWithText("Editar músicas").assertExists()
         compose.onNodeWithText("Nova playlist").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Mais opções").performClick()
         compose.onNodeWithText("Excluir playlist").performClick()
         compose.onNodeWithText("Excluir playlist normal?").assertExists()
     }
@@ -503,6 +688,7 @@ class SmartPlaylistV2WizardComposeTest {
             )
         }
         compose.onNodeWithText("Editar playlist").assertExists()
+        compose.onNodeWithContentDescription("Mais opções").performClick()
         compose.onNodeWithText("Excluir playlist").performClick()
         compose.onNodeWithText("Excluir playlist inteligente?").assertExists()
         compose.onNodeWithText(
@@ -542,6 +728,74 @@ class SmartPlaylistV2WizardComposeTest {
     }
 
 
+    @Test fun playlistCreatorThreeDotsUsesRootToolbarPlateAndKeepsFilterActions() {
+        var manageCalls = 0
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "",
+                rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, emptyList()),
+                hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null,
+                savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {},
+                onPreviewAction = null, currentPreviewQuery = null,
+                onManage = { manageCalls++ }, onBack = {},
+            )
+        }
+        compose.onNodeWithContentDescription("Mais opções").performClick()
+        compose.onNodeWithTag("native-compact-overflow")
+            .assertWidthIsEqualTo(com.music.bitchord.ui.components.APPLE_SETTINGS_SINGLE_ACTION_WIDTH)
+        compose.onNodeWithText("Seus filtros").assertExists()
+        compose.onNodeWithText("Salvar filtro").assertExists()
+        compose.onNodeWithText("Salvar como filtro reutilizável").assertDoesNotExist()
+        compose.onNodeWithText("Seus filtros").performClick()
+        compose.runOnIdle { assertEquals(1, manageCalls) }
+    }
+
+    @Test fun sourceSelectorIsInlineOnCreationPageAndPreservesExactNavidromeId() {
+        val selected = androidx.compose.runtime.mutableStateOf<String?>(null)
+        val available = listOf(
+            "local-mediastore", "opensubsonic:account-a", "opensubsonic:account-b",
+        )
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Nova", rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, emptyList()),
+                hasConfiguredRules = false, normalMode = true,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                availableSourceKeys = available,
+                normalSourceProviderKey = selected.value,
+                onNormalSourceChange = { selected.value = it },
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
+        compose.onNodeWithTag("playlist-source-selector").assertExists()
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
+        compose.onNodeWithTag("playlist-source-selector").performClick()
+        // The expanded list is nested in the wizard's LazyColumn. Account B
+        // can start below the viewport; a coordinate click without scrolling
+        // may hit the visible "Todas as fontes" row and select null instead.
+        // Exercise the actual visible row, not a clipped semantic target.
+        compose.waitForIdle()
+        compose.onNodeWithTag("playlist-source-option-opensubsonic-account-b")
+            .performScrollTo()
+            .performClick()
+        compose.runOnIdle {
+            assertEquals("opensubsonic:account-b", selected.value)
+        }
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Fonte selecionada: Navidrome 2").assertExists()
+    }
+
     @Test fun existingSmartPlaylistCanExportReusableFilterWithoutLeavingEditFlow() {
         var exports = 0
         compose.setContent {
@@ -563,7 +817,10 @@ class SmartPlaylistV2WizardComposeTest {
             )
         }
         compose.onNodeWithText("Editar playlist").assertExists()
-        compose.onNodeWithText("Salvar como filtro reutilizável").performClick()
+        compose.onNodeWithContentDescription("Mais opções").performClick()
+        compose.onNodeWithTag("native-compact-overflow")
+            .assertWidthIsEqualTo(com.music.bitchord.ui.components.APPLE_SETTINGS_SINGLE_ACTION_WIDTH)
+        compose.onNodeWithText("Salvar filtro").performClick()
         compose.runOnIdle { assertEquals(1, exports) }
         compose.onNodeWithText("Editar playlist").assertExists()
     }
@@ -752,8 +1009,8 @@ class SmartPlaylistV2WizardComposeTest {
             )
         }
         compose.onNodeWithText("Nova playlist").assertExists()
-        // Identity now includes a 112dp neutral artwork preview; the sources
-        // card is below the fold on Robolectric's compact test window.
+        // Identity retains the real artwork; the editorial source summary
+        // remains below the fold on Robolectric's compact test window.
         compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
         compose.onNodeWithText("Fontes de origem").assertExists()
         compose.onNodeWithText("Continuar").performClick()
@@ -762,8 +1019,8 @@ class SmartPlaylistV2WizardComposeTest {
         compose.onNodeWithText("Revisar playlist").performClick()
         compose.onNodeWithText("Revisar e criar").assertExists()
         compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
-        compose.onNodeWithText("Músicas selecionadas").assertExists()
-        compose.onNodeWithText("Preparando prévia automaticamente…").assertExists()
+        compose.onNodeWithText("Prévia").assertExists()
+        compose.onNodeWithText("Buscando músicas…").assertExists()
         compose.onNodeWithText("Criar playlist").assertIsNotEnabled()
     }
 
@@ -792,7 +1049,7 @@ class SmartPlaylistV2WizardComposeTest {
                 )
             }
         }
-        compose.onNodeWithContentDescription("5/5", substring = true).assertExists()
+        compose.onNodeWithContentDescription("Avaliação: 5 de 5 estrelas", substring = true).assertExists()
     }
 
     @Test fun lastRuleCanBeDeletedWithNativeIconAndReturnsToUnconfiguredState() {
@@ -880,9 +1137,249 @@ class SmartPlaylistV2WizardComposeTest {
         compose.onNodeWithText("Continuar").performClick()
         compose.onNodeWithText("Revisar playlist").performClick()
         compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
-        compose.onNodeWithText("Músicas selecionadas").assertExists()
+        compose.onNodeWithText("Prévia").assertExists()
+        compose.onNodeWithText("1 música encontrada").assertExists()
+        compose.onNodeWithText("Prévia atualizada após aplicar regras, limite e ordenação.")
+            .assertDoesNotExist()
         compose.onAllNodesWithText("Reproduzir").assertCountEquals(0)
         compose.onAllNodesWithText("Adicionar à fila").assertCountEquals(0)
+    }
+
+    @Test fun comparisonOptionsShowTheCurrentOperatorAsSelected() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule, hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
+        compose.onNodeWithText("Músicas e metadados").performClick()
+        compose.onNodeWithText("Título da música").performClick()
+        compose.onNodeWithText("Comparação").performClick()
+        // TITLE defaults to CONTAINS. The native operator picker should
+        // expose which choice is currently active, not a set of blind rows.
+        compose.onNodeWithTag("playlist-choice-option-Contém").assertIsSelected()
+    }
+
+    @Test fun nestedConditionGroupBackReturnsToItsParentRatherThanRuleRoot() {
+        val inner = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ), name = "Interno")
+        val parent = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            inner,
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.ARTIST_DISPLAY, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ), name = "Externo")
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(parent))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithText("Externo").performClick()
+        // Group items are lazy; the second child can be outside the compact
+        // test viewport until the enclosing LazyColumn is scrolled.
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
+        compose.onNodeWithText("Condição 2").assertExists()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Condição 1").performClick()
+        compose.onNodeWithText("Condição 2").assertDoesNotExist()
+        compose.onNodeWithTag("apple-toolbar-back-button").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
+        compose.onNodeWithText("Condição 2").assertExists()
+        // Save is navigation too; it must not jump over the parent group.
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Condição 1").performClick()
+        compose.onNodeWithText("Salvar grupo").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
+        compose.onNodeWithText("Condição 2").assertExists()
+    }
+
+    @Test fun reopeningAConditionCategoryStartsAtTopRatherThanAnOldScrollPosition() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule, hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
+        compose.onNodeWithText("Músicas e metadados").performClick()
+        // FIELDS has only search, tabs and a tall field-list item.
+        // Swipe its content instead of scrolling to a nonexistent LazyColumn index.
+        compose.onNodeWithTag("smart-playlist-wizard-list").performTouchInput { swipeUp() }
+        compose.onNodeWithTag("apple-toolbar-back-button").performClick()
+        compose.onNodeWithText("Músicas e metadados").performClick()
+        // A new category visit is not a return from the editor; its title
+        // and search field should be composed at the top again.
+        compose.onNodeWithText("Músicas e metadados").assertExists()
+        compose.onNodeWithContentDescription("Buscar nesta categoria").assertExists()
+    }
+
+    @Test fun categorySearchFindsOtherTabsWithoutKeepingAStaleTabFilter() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule, hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
+        compose.onNodeWithText("Músicas e metadados").performClick()
+        compose.onNodeWithText("CRÉDITOS").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Buscar nesta categoria")
+            .performTextInput("gênero")
+        // Switching into all-fields search must not remount the editing
+        // field and close the keyboard while the user is still typing.
+        compose.onNodeWithContentDescription("Buscar nesta categoria").assertIsFocused()
+        // Search belongs to the entire category, not to the old sub-tab.
+        compose.onNodeWithText("Gênero musical").assertExists()
+    }
+
+    @Test fun categorySearchDoesNotTurnBackNavigationIntoGlobalSearchResults() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule, hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
+        compose.onNodeWithText("Músicas e metadados").performClick()
+        compose.onNodeWithContentDescription("Buscar nesta categoria")
+            .performTextInput("avaliação")
+        compose.onNodeWithText("Nenhuma condição encontrada.").assertExists()
+        compose.onNodeWithTag("apple-toolbar-back-button").performClick()
+
+        // The field search is local to its category. It must not become
+        // a global query on the preceding category-selection page.
+        compose.onNodeWithTag("playlist-category-grid").assertExists()
+        compose.onNodeWithText("Avaliações").assertExists()
+        compose.onNodeWithText("Avaliação em estrelas").assertDoesNotExist()
+    }
+
+    @Test fun editingComparisonPickerKeepsChoiceRowsWithoutNavigationChevrons() {
+        var selected: String? = null
+        var closed = false
+        compose.setContent {
+            androidx.compose.material3.MaterialTheme {
+                WizardChoiceDialog(
+                    title = "Comparar por",
+                    options = listOf("Contém", "Não contém"),
+                    label = { it },
+                    onChosen = { selected = it },
+                    onClose = { closed = true },
+                )
+            }
+        }
+        compose.onAllNodesWithTag("playlist-navigation-chevron").assertCountEquals(0)
+        // Choose the tappable native row, not its unmerged text descendant.
+        // ModalBottomSheet's test window can intercept simulated pointer taps.
+        // Invoke the row's declared accessibility click, not its text child.
+        compose.onNodeWithTag("playlist-choice-option-Não contém")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.runOnIdle {
+            assertEquals("Não contém", selected)
+            assertTrue(closed)
+        }
+    }
+
+    @Test fun globalConditionSearchReturnsToItsResultsAfterOpeningAnEditor() {
+        val rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, listOf(
+            SmartPlaylistRule.Comparison(
+                SmartPlaylistRuleField.TITLE, SmartPlaylistRuleOperator.IS_PRESENT,
+            ),
+        ))
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Teste", rule = rule, hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithText("Continuar").performClick()
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
+        compose.onNodeWithText("Adicionar primeira condição").performClick()
+        compose.onNodeWithContentDescription("Buscar condições")
+            .performTextInput("Avaliação em estrelas")
+        // The query is also accessible as editable text. Target the one
+        // actual result row rather than an ambiguous onNodeWithText match.
+        compose.onAllNodesWithTag("playlist-field-row")[0].performClick()
+        compose.onNodeWithTag("apple-toolbar-back-button").performClick()
+
+        // Returning must preserve the search scope and query, not fall into
+        // the initial "Músicas e metadados" field tabs.
+        compose.onNodeWithText("Adicionar condição").assertExists()
+        // The query and result both contain the same title; text-only lookup
+        // matches two nodes. Assert the actual search-result surface instead.
+        compose.onNodeWithContentDescription("Buscar condições").assertExists()
+        compose.onAllNodesWithTag("playlist-field-row").assertCountEquals(1)
+        compose.onNodeWithText("Músicas e metadados").assertDoesNotExist()
     }
 
     @Test fun conditionCatalogAddsOnlyTheSelectedFieldAndPreservesExistingGroup() {
@@ -926,7 +1423,7 @@ class SmartPlaylistV2WizardComposeTest {
         compose.onNodeWithText("Continuar").performClick()
         compose.onNodeWithText("Grupo 1").performClick()
         compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(3)
-        compose.onNodeWithText("+ Adicionar condição").performClick()
+        compose.onNodeWithText("Adicionar condição").performClick()
         compose.onNodeWithText("Adicionar condição").assertExists()
         // This category used to be offscreen because GROUP's scroll index
         // was retained in the newly opened CATEGORIES page.

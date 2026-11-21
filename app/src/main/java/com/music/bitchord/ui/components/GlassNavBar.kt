@@ -15,6 +15,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -30,10 +31,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.music.bitchord.R
+import com.music.bitchord.ui.LocalReduceAnimations
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
@@ -294,9 +296,12 @@ private fun GlassNowPlaying(
     val haptics = rememberHaptics()
     val pressSource = remember { MutableInteractionSource() }
     val isPressed by pressSource.collectIsPressedAsState()
+    val reduceMotion = LocalReduceAnimations.current
     val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 1.04f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        targetValue = GlobalMotionPolicy.pressedScale(
+            isPressed, reduceMotion, activeScale = 1.04f,
+        ),
+        animationSpec = if (reduceMotion) snap() else spring(stiffness = Spring.StiffnessMediumLow),
         label = "accessoryPressScale",
     )
 
@@ -331,6 +336,8 @@ private fun GlassNowPlaying(
                 },
                 locked = controlsLocked,
                 onBlocked = onBlockedControl,
+                reduceMotion = reduceMotion,
+                gestureIdentity = appleMiniPlayerContentKey(song),
             )
             .graphicsLayer {
                 scaleX = pressScale
@@ -404,10 +411,10 @@ private fun GlassNowPlaying(
             }
             if (isLoading) {
                 Box(Modifier.size(glyphSlot), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
+                    MiniPlayerLoadingIndicator(
                         color = contentColor,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(if (isInline) 18.dp else 22.dp),
+                        size = if (isInline) 18.dp else 22.dp,
+                        reduceMotion = reduceMotion,
                     )
                 }
             } else {
@@ -416,7 +423,7 @@ private fun GlassNowPlaying(
                         haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
                         onPlayPause()
                     },
-                    modifier = Modifier.size(glyphSlot),
+                    modifier = Modifier.size(glyphSlot).clip(CircleShape),
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -437,7 +444,7 @@ private fun GlassNowPlaying(
                         onNext()
                     },
                     enabled = !controlsLocked,
-                    modifier = Modifier.size(glyphSlot),
+                    modifier = Modifier.size(glyphSlot).clip(CircleShape),
                 ) {
                     MiniPlayerNextGlyph(
                         tint = contentColor.copy(alpha = if (controlsLocked) 0.3f else 1f),

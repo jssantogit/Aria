@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import com.music.bitchord.R
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -88,6 +90,9 @@ fun LyricsSourcesDialog(
     val paxSenixApiKey by AppSettings.paxSenixApiKey.collectAsStateWithLifecycle()
     var showPaxSenixKeyDialog by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(ALERT_CORNER)
+    val neutralPlate = nativeContextPlateColor(
+        MaterialTheme.colorScheme.background.luminance() < 0.5f,
+    )
 
     Box(
         modifier = modifier
@@ -103,16 +108,11 @@ fun LyricsSourcesDialog(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
+                .neutralFrostedMaterial(
+                    shape = shape,
+                    neutralColor = neutralPlate,
+                    hazeState = hazeState,
+                    reduceBlur = reduceDynamicBlur,
                 )
                 // Swallows the tap before it reaches the scrim behind, so
                 // touching the card itself never dismisses it.
@@ -264,7 +264,7 @@ private fun SyllableSyncToggle(checked: Boolean, onToggle: () -> Unit) {
             Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = stringResource(R.string.enabled),
-                tint = MaterialTheme.colorScheme.primary,
+                tint = appleMusicKeyColor(),
                 modifier = Modifier.size(19.dp),
             )
         }
@@ -540,7 +540,7 @@ private fun ReorderableSourceList(
                             Icon(
                                 imageVector = Icons.Rounded.Check,
                                 contentDescription = stringResource(R.string.enabled),
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = appleMusicKeyColor(),
                                 modifier = Modifier.size(19.dp),
                             )
                         }

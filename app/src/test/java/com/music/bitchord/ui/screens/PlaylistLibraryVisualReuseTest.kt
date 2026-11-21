@@ -10,7 +10,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onParent
 import androidx.compose.ui.test.performTouchInput
@@ -18,12 +20,16 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,28 +47,173 @@ import org.robolectric.annotation.ConscryptMode
 class PlaylistLibraryVisualReuseTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun chosenPlaylistCoverOverridesFirstSongForPagePalette() {
+        val row = V2DisplayRow(
+            id = "recording:one",
+            title = "Track",
+            artist = "Artist",
+            localArtworkUri = "content://media/track-art",
+        )
+        assertEquals(
+            "content://media/custom-cover",
+            canonicalPlaylistPaletteArtworkUri(
+                "content://media/custom-cover", listOf(row),
+            ),
+        )
+        assertEquals(
+            "content://media/track-art",
+            canonicalPlaylistPaletteArtworkUri(null, listOf(row)),
+        )
+        assertEquals(null, canonicalPlaylistPaletteArtworkUri(null, emptyList()))
+    }
+
+    @Test fun playlistHighlightRequiresExactVerifiedRecordingId() {
+        assertEquals(
+            true, isVerifiedCanonicalPlaylistCurrentTrack(
+                "recording:known", "recording:known",
+            ),
+        )
+        assertEquals(
+            false, isVerifiedCanonicalPlaylistCurrentTrack(
+                "recording:known", "recording:other",
+            ),
+        )
+        assertEquals(
+            false, isVerifiedCanonicalPlaylistCurrentTrack(
+                "recording:known", null,
+            ),
+        )
+        assertEquals(false, isVerifiedCanonicalPlaylistCurrentTrack("", "recording:known"))
+    }
+
+    @Test fun activeCanonicalPlaylistRowShowsNativePlaybackHighlight() {
+        compose.setContent {
+            CanonicalPlaylistTrackRow(
+                track = V2DisplayRow(
+                    id = "recording:active",
+                    title = "Current Playlist Track",
+                    artist = "Artist",
+                ),
+                onPlay = {},
+                isCurrent = true,
+                isPlaying = true,
+            )
+        }
+        compose.onNodeWithTag("canonical-playlist-current-track").assertExists()
+        // The same 52dp artwork frame and playing bars as SongRow.
+        compose.onNodeWithTag("native-detail-track-artwork", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("native-detail-rating-slot", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Current Playlist Track").assertExists()
+    }
+
+    @Test fun playlistSwipeIntentHonorsPlayerSettingWithoutConvertingRecordingIds() {
+        assertEquals(
+            com.music.bitchord.playback.CanonicalCollectionIntent.ADD_NEXT,
+            canonicalPlaylistSwipeIntent(true),
+        )
+        assertEquals(
+            com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE,
+            canonicalPlaylistSwipeIntent(false),
+        )
+    }
+
+    @Test fun playlistDetailFrameRetainsNativeListGeometryAcrossSources() {
+        compose.setContent {
+            // This UI fixture needs only theme colors, not PlayerPlatform.
+            val resolved = com.music.bitchord.ui.theme.themeArtworkPalette()
+            NativePlaylistDetailFrame(
+                palette = resolved,
+                listState = androidx.compose.foundation.lazy.rememberLazyListState(),
+                bottomPadding = 112.dp,
+            ) {
+                item { androidx.compose.material3.Text("Faixa da playlist") }
+            }
+        }
+        compose.onNodeWithTag("native-playlist-detail-frame").assertExists()
+        compose.onNodeWithText("Faixa da playlist").assertExists()
+    }
+
+    @Test fun canonicalPlaylistQueueKeepsNativeReleaseActionGeometry() {
+        var queued = 0
+        var played = 0
+        var shuffled = 0
+        compose.setContent {
+            NativeReleaseActionRow(
+                onPlay = { played++ },
+                onShuffle = { shuffled++ },
+                isLocal = false,
+                onAddToQueue = { queued++ },
+            )
+        }
+        compose.onNodeWithContentDescription("Adicionar à fila").performClick()
+        compose.onNodeWithContentDescription(
+            org.robolectric.RuntimeEnvironment.getApplication()
+                .getString(com.music.bitchord.R.string.shuffle),
+        ).assertExists()
+        compose.runOnIdle {
+            assertEquals(1, queued)
+            assertEquals(0, played)
+            assertEquals(0, shuffled)
+        }
+    }
+
+    @Test fun onlineMetadataKeepsNativePlaybackControlsDisabledButPinEnabled() {
+        var played = 0
+        var shuffled = 0
+        var pinned = 0
+        compose.setContent {
+            NativeReleaseActionRow(
+                onPlay = { played++ },
+                onShuffle = { shuffled++ },
+                isLocal = false,
+                canPlay = false,
+                canShuffle = false,
+                reservePinAction = true,
+                onTogglePin = { pinned++ },
+            )
+        }
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        // Compose's disabled clickable retains accessibility action metadata,
+        // but exposes Disabled and never executes the callback.
+        compose.onNodeWithText(app.getString(com.music.bitchord.R.string.play))
+            .assertIsNotEnabled()
+        compose.onNodeWithContentDescription(
+            app.getString(com.music.bitchord.R.string.shuffle),
+        ).assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Fixar álbum na Biblioteca").performClick()
+        compose.runOnIdle {
+            assertEquals(0, played)
+            assertEquals(0, shuffled)
+            assertEquals(1, pinned)
+        }
+    }
+
     @Test fun discardPromptUsesNativeAlertAndPreservesBothActions() {
         var discarded = 0
         var continued = 0
+        val isOpen = mutableStateOf(true)
         compose.setContent {
-            com.music.bitchord.ui.components.ConfirmationAlert(
+            if (isOpen.value) com.music.bitchord.ui.components.ConfirmationAlert(
                 hazeState = null,
                 title = "Descartar alterações?",
                 description = "O rascunho desta playlist não será salvo.",
                 confirmLabel = "Descartar",
                 dismissLabel = "Continuar editando",
                 destructive = true,
-                onConfirm = { discarded++ },
-                onDismiss = { continued++ },
+                onConfirm = { discarded++; isOpen.value = false },
+                onDismiss = { continued++; isOpen.value = false },
             )
         }
-        compose.onNodeWithTag("native-alert-scaffold").assertExists()
+        compose.onNodeWithTag("floating-confirmation-menu").assertExists()
         compose.onNodeWithText("Continuar editando").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, continued); assertEquals(0, discarded) }
+        // A dismissed menu must be reopened; one modal cannot activate both
+        // mutually exclusive choices.
+        compose.runOnIdle { isOpen.value = true }
         compose.onNodeWithText("Descartar").performClick()
-        compose.runOnIdle {
-            assertEquals(1, continued)
-            assertEquals(1, discarded)
-        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, continued); assertEquals(1, discarded) }
     }
 
     @Test fun emptyPlaylistListDoesNotShowDuplicateHeaderCreationAction() {
@@ -70,24 +221,26 @@ class PlaylistLibraryVisualReuseTest {
         assertEquals(true, showPlaylistHeaderCreateAction(1))
     }
 
-    @Test fun playlistManagerNavigationUsesNativeBackAndSegments() {
-        var page by mutableStateOf(0)
+    @Test fun playlistManagerUsesSingleFiltersHeadingAndTopRightCreateAction() {
         var backs = 0
-         compose.setContent {
+        var creates = 0
+        compose.setContent {
             PlaylistManagerChrome(
-                selectedIndex = page,
-                onSelect = { page = it },
                 onBack = { backs++ },
+                onCreateFilter = { creates++ },
             )
         }
-        compose.onNodeWithText("Gerenciar coleções").assertExists()
-        compose.onNodeWithText("Clássicas").performClick()
+        compose.onNodeWithText("Seus filtros").assertExists()
+        compose.onNodeWithText("Gerenciar coleções").assertDoesNotExist()
+        compose.onNodeWithText("Clássicas").assertDoesNotExist()
+        compose.onNodeWithText("Inteligentes").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Criar filtro").performClick()
         compose.onNodeWithContentDescription(
             org.robolectric.RuntimeEnvironment.getApplication()
                 .getString(com.music.bitchord.R.string.back),
         ).performClick()
         compose.runOnIdle {
-            assertEquals(2, page)
+            assertEquals(1, creates)
             assertEquals(1, backs)
         }
     }
@@ -125,6 +278,77 @@ class PlaylistLibraryVisualReuseTest {
         RecentLocalAdditionsSnapshot.clear()
     }
 
+    @Test fun metadataOnlyNativeAlbumTrackNeverInventsPlaybackClick() {
+        compose.setContent {
+            com.music.bitchord.ui.components.NativeDetailTrackRowLayout(
+                onClick = null,
+                leading = { androidx.compose.material3.Text("1") },
+                textGap = com.music.bitchord.ui.components.PAGE_GUTTER,
+                title = { androidx.compose.material3.Text("Metadata-only song") },
+                subtitle = { androidx.compose.material3.Text("Verified artist") },
+                rating = {},
+                showRatingSlot = false,
+            )
+        }
+        compose.onNodeWithText("Metadata-only song").assertHasNoClickAction()
+        compose.onNodeWithTag("native-detail-rating-slot").assertDoesNotExist()
+    }
+
+    @Test fun numberedNativeAlbumRowsDoNotReserveAnInvisibleRatingStrip() {
+        compose.setContent {
+            com.music.bitchord.ui.components.NativeDetailTrackRowLayout(
+                onClick = {},
+                leading = { androidx.compose.material3.Text("2") },
+                title = { androidx.compose.material3.Text("Second track") },
+                subtitle = { androidx.compose.material3.Text("Album artist") },
+                rating = { androidx.compose.material3.Text("Hidden rating") },
+                showRatingSlot = false,
+            )
+        }
+        compose.onNodeWithText("Second track").assertExists()
+        compose.onNodeWithTag("native-detail-rating-slot").assertDoesNotExist()
+    }
+
+    @Test fun providerNeutralTrackRowRendersArtworkTextRatingAndActions() {
+        var selected = 0
+        compose.setContent {
+            com.music.bitchord.ui.components.NativeDetailTrackRowLayout(
+                onClick = { selected++ },
+                leading = { androidx.compose.material3.Text("01") },
+                title = { androidx.compose.material3.Text("Canonical title") },
+                subtitle = { androidx.compose.material3.Text("Verified artist") },
+                rating = { androidx.compose.material3.Text("Verified rating") },
+                actions = { androidx.compose.material3.Text("Native menu") },
+            )
+        }
+        compose.onNodeWithText("Canonical title").performClick()
+        compose.onNodeWithText("Verified artist").assertExists()
+        compose.onNodeWithText("Verified rating").assertExists()
+        compose.onNodeWithTag("native-detail-rating-slot", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Native menu").assertExists()
+        compose.runOnIdle { assertEquals(1, selected) }
+    }
+
+    @Test fun nativeSearchFieldReusesPlaylistDetailGeometryWithoutLegacyPage() {
+        var query by mutableStateOf("")
+        compose.setContent {
+            NativeDetailSearchField(
+                query = query,
+                onQueryChange = { query = it },
+                onClose = {},
+                autoFocus = false,
+                onFocused = {},
+                palette = com.music.bitchord.ui.theme.themeArtworkPalette(),
+                placeholder = "Buscar faixas",
+            )
+        }
+        // A Library search background token does not prove geometry on detail pages.
+        // Keep the pre-migration native detail height independently of collection search.
+        compose.onNodeWithTag("native-detail-search-field").assertHeightIsEqualTo(46.dp)
+        compose.onNodeWithContentDescription("Buscar faixas").performTextInput("Magnetic")
+        compose.onNodeWithText("Magnetic").assertExists()
+    }
+
     @Test fun playlistLibrarySearchAndSortWorkOnActualLibraryCardIdentity() {
         fun normal(title: String) = LibraryPlaylistCard.Normal(
             com.music.bitchord.data.model.ShelfItem(
@@ -156,8 +380,38 @@ class PlaylistLibraryVisualReuseTest {
                 onQueryChange = { query = it },
             )
         }
-        compose.onNodeWithText("Buscar em Playlists").assertExists()
-        compose.onNodeWithContentDescription("Buscar em Playlists").performTextInput("newjeans")
+        val resources = org.robolectric.RuntimeEnvironment.getApplication().resources
+        val expectedHint = resources.getString(
+            com.music.bitchord.R.string.apple_library_search_in_category,
+            resources.getString(com.music.bitchord.R.string.playlists),
+        )
+        compose.onNodeWithText(expectedHint).assertExists()
+        compose.onNodeWithTag("native-detail-search-field").assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithContentDescription(expectedHint).performTextInput("newjeans")
+        compose.runOnIdle { assertEquals("newjeans", query) }
+    }
+
+    @Test fun librarySearchUsesSearchImeWithoutClearingTheActiveFilter() {
+        var query by mutableStateOf("")
+        compose.setContent {
+            PlaylistLibrarySearchField(
+                query = query,
+                onQueryChange = { query = it },
+            )
+        }
+        val hint = org.robolectric.RuntimeEnvironment.getApplication().resources.let {
+            it.getString(com.music.bitchord.R.string.apple_library_search_in_category,
+                it.getString(com.music.bitchord.R.string.playlists))
+        }
+        val field = compose.onNodeWithContentDescription(hint)
+        field.assert(
+            androidx.compose.ui.test.SemanticsMatcher.expectValue(
+                androidx.compose.ui.semantics.SemanticsProperties.ImeAction,
+                androidx.compose.ui.text.input.ImeAction.Search,
+            ),
+        )
+        field.performTextInput("newjeans")
+        field.performImeAction()
         compose.runOnIdle { assertEquals("newjeans", query) }
     }
 
@@ -184,11 +438,29 @@ class PlaylistLibraryVisualReuseTest {
         compose.onNodeWithText("Hurt").performClick()
         compose.runOnIdle { assertEquals(1, plays) }
         compose.runOnIdle { chosen = true }
-        compose.onNodeWithContentDescription("Selecionar Hurt").performClick()
+        compose.onNodeWithTag("native-library-selection-action").assertIsOn()
+        compose.onNodeWithContentDescription("Desmarcar Hurt").performClick()
         compose.runOnIdle {
             assertEquals(1, toggles)
             assertEquals(1, overflow) // selection mode has no overflow.
         }
+    }
+
+    @Test fun libraryRootGridCardOmitsInlineOverflowWithoutLosingNavigation() {
+        var opened = 0
+        compose.setContent {
+            NativeLibraryEntityCard(
+                title = "Get Up",
+                subtitle = "NewJeans",
+                imageUrl = null,
+                isArtist = false,
+                onClick = { opened++ },
+                onMore = null, // The category root has no ellipsis.
+            )
+        }
+        compose.onAllNodesWithContentDescription("Opções de Get Up").assertCountEquals(0)
+        compose.onNodeWithText("Get Up").performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
     }
 
     @Test fun longPressSelectsNativeGridCardWithoutPlayingAndClickStillPlays() {
@@ -234,11 +506,16 @@ class PlaylistLibraryVisualReuseTest {
 
     @Test fun normalPlaylistPickerAndLibraryCoverUseSameOrderedDeduplicatedMembers() {
         assertEquals(
-            listOf("rec-1", "rec-2", "rec-3", "rec-4"),
+            listOf("rec-1", "rec-2", "rec-3", "rec-4", "rec-5"),
             canonicalStaticPlaylistCoverCandidateIds(
                 listOf("rec-1", "rec-1", "rec-2", "rec-3", "rec-4", "rec-5"),
             ),
         )
+        // First four may be music-only MBIDs. Still find later trusted covers,
+        // without triggering unbounded reads for a 500-track playlist.
+        assertEquals(24, canonicalStaticPlaylistCoverCandidateIds(
+            (1..100).map { "recording-$it" },
+        ).size)
         assertTrue(canonicalStaticPlaylistCoverCandidateIds(emptyList()).isEmpty())
     }
 
@@ -257,6 +534,40 @@ class PlaylistLibraryVisualReuseTest {
                 row.copy(localArtworkUri = "content://art/$index")
             },
         ).size)
+    }
+
+    @Test fun erroredMembershipDoesNotAnnounceZeroTracksInTheFooter() {
+        val verifiedEmpty = emptyList<V2DisplayRow>()
+        assertEquals("0 faixas", canonicalPlaylistMembershipSummary(verifiedEmpty))
+        assertEquals(null, canonicalPlaylistMembershipSummary(verifiedEmpty, loadFailed = true))
+        assertEquals(null, canonicalPlaylistMembershipSummary(null))
+        assertEquals(null, canonicalPlaylistMembershipSummary(null, loadFailed = true))
+    }
+
+    @Test fun publicPlaylistFooterDistinguishesLoadedSubsetFromSourceCount() {
+        assertEquals("2 faixas", publicPlaylistLoadedSummary(2, 2))
+        assertEquals("1 faixa", publicPlaylistLoadedSummary(1, 1))
+        assertEquals("Mostrando 150 de 407 faixas",
+            publicPlaylistLoadedSummary(150, 407))
+        assertEquals("2 faixas carregadas", publicPlaylistLoadedSummary(2, null))
+        assertEquals("0 faixas", publicPlaylistLoadedSummary(0, 0))
+    }
+
+    @Test fun playlistHeaderAndEndSummaryKeepTypeSeparateFromVerifiedMembership() {
+        val known = listOf(
+            V2DisplayRow("rec-1", "A", "Artist", durationMs = 210000L),
+            V2DisplayRow("rec-2", "B", "Artist", durationMs = 240000L),
+        )
+        assertEquals("Playlist", canonicalPlaylistHeaderType(false))
+        assertEquals("Playlist inteligente", canonicalPlaylistHeaderType(true))
+        assertEquals("2 faixas · 7min", canonicalPlaylistMembershipSummary(known))
+        assertEquals("2 faixas", canonicalPlaylistMembershipSummary(
+            known.dropLast(1) + known.last().copy(durationMs = null),
+        ))
+        assertEquals(null, canonicalPlaylistMembershipSummary(null))
+        assertEquals("0 faixas", verifiedPlaylistMemberCountSummary(0))
+        assertEquals("1 faixa", verifiedPlaylistMemberCountSummary(1))
+        assertEquals("407 faixas", verifiedPlaylistMemberCountSummary(407))
     }
 
     @Test fun canonicalHeaderReportsOnlyKnownTrackDurationWithoutGuessing() {
@@ -300,7 +611,7 @@ class PlaylistLibraryVisualReuseTest {
                 onPlayTrack = { playedRecordingId = it },
             )
         }
-        compose.onNodeWithText("Adições recentes").assertExists()
+        compose.onNodeWithText("Adições Recentes").assertExists()
         compose.onNodeWithText("Hurt").assertExists()
         compose.onNodeWithText("NewJeans").assertExists()
         compose.onNodeWithText("Hurt").performClick()
@@ -352,26 +663,53 @@ class PlaylistLibraryVisualReuseTest {
         compose.runOnIdle { assertEquals("recording:exact-27", clicked) }
     }
 
-    @Test fun playlistTrackMenuQueuesOnlyExplicitSelectedCanonicalRecording() {
-        var queued: Pair<String, com.music.bitchord.playback.CanonicalCollectionIntent>? = null
+    @Test fun longPressOnCanonicalPlaylistTrackDelegatesToHeldMenuWithoutDots() {
+        var holds = 0
         compose.setContent {
             CanonicalPlaylistTrackRow(
                 track = V2DisplayRow(
-                    id = "recording:verified-28", title = "Bubble Gum", artist = "NewJeans",
+                    id = "recording:longpress-1",
+                    title = "Long Press Track",
+                    artist = "Artist",
                 ),
                 onPlay = {},
-                onQueue = { id, intent -> queued = id to intent },
+                onQueue = { _, _ -> },
+                onHeldActions = { holds++ },
             )
         }
-        compose.onNodeWithContentDescription("Ações da música").performClick()
-        compose.waitForIdle()
-        // Target the clickable ActionRow, never the label or sheet container.
-        compose.onNodeWithTag("canonical-track-queue-action")
-            .assertHasClickAction()
+        compose.onNodeWithText("Long Press Track").performTouchInput { longClick() }
+        compose.runOnIdle { assertEquals(1, holds) }
+        compose.onNodeWithContentDescription("Ações da música").assertDoesNotExist()
+        compose.onNodeWithText("Reproduzir daqui").assertDoesNotExist()
+        compose.onNodeWithText("Adicionar à fila").assertDoesNotExist()
+    }
+
+    @Test fun heldPlaylistTrackQueueUsesOnlyExplicitSelectedCanonicalRecording() {
+        var queued: Pair<String, com.music.bitchord.playback.CanonicalCollectionIntent>? = null
+        val selectedRecordingId = "recording:verified-28"
+        compose.setContent {
+            androidx.compose.foundation.layout.Column {
+                CanonicalPlaylistHeldTrackActions(
+                    onDismiss = {},
+                    onPlay = {},
+                    onPlayNext = {
+                        queued = selectedRecordingId to
+                            com.music.bitchord.playback.CanonicalCollectionIntent.ADD_NEXT
+                    },
+                    onAddToQueue = {
+                        queued = selectedRecordingId to
+                            com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE
+                    },
+                    onOpenAlbum = null,
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Ações da música").assertDoesNotExist()
+        compose.onNodeWithText("Adicionar à fila")
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.runOnIdle {
             assertEquals(
-                "recording:verified-28" to
+                selectedRecordingId to
                     com.music.bitchord.playback.CanonicalCollectionIntent.ADD_TO_QUEUE,
                 queued,
             )
@@ -481,20 +819,23 @@ class PlaylistLibraryVisualReuseTest {
         compose.runOnIdle { assertEquals("history", opened) }
     }
 
-    @Test fun conditionCategoriesUseSevenNativeCardsInsteadOfOneCompactBlock() {
+    @Test fun conditionCategoriesShowSixGridCellsAndSeventhWideCell() {
         compose.setContent {
-            PlaylistWizardNavigationList(
+            PlaylistWizardCategoryGrid(
                 (1..7).map { n ->
                     PlaylistWizardNavOption(
                         title = "Categoria $n",
                         description = "Descrição $n",
-                        icon = androidx.compose.material.icons.Icons.Rounded.LibraryMusic,
+                        icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Music,
                         onClick = {},
                     )
                 },
             )
         }
-        compose.onAllNodesWithTag("native-settings-group-surface").assertCountEquals(7)
+        compose.onNodeWithTag("playlist-category-grid", useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithTag("playlist-category-tile", useUnmergedTree = true)
+            .assertCountEquals(7)
+        compose.onNodeWithTag("playlist-category-wide-tile", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("Categoria 7").assertExists()
     }
 

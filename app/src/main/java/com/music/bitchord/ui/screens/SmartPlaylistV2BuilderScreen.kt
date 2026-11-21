@@ -1,5 +1,9 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +14,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.RowMoreButton
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 import com.music.bitchord.ui.components.ConfirmationAlert
+import com.music.bitchord.ui.components.HeldContextMenu
+import com.music.bitchord.ui.components.HeldItem
+import com.music.bitchord.ui.components.LongPressOrigin
+import com.music.bitchord.ui.components.NativeCompactMenuDivider
+import com.music.bitchord.ui.components.NativeCompactMenuItem
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
@@ -19,6 +31,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -34,7 +47,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -49,6 +61,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -63,6 +76,7 @@ import com.music.bitchord.data.catalog.provider.opensubsonic.SharedPrefsOpenSubs
 import com.music.bitchord.data.listening.SavedSmartPlaylistV2Definition
 import com.music.bitchord.data.listening.SavedCanonicalStaticPlaylist
 import com.music.bitchord.data.listening.CanonicalStaticPlaylistRepository
+import com.music.bitchord.ui.components.standaloneTopControlPadding
 import com.music.bitchord.data.listening.SavedSmartPlaylistV2Filter
 import com.music.bitchord.data.listening.SmartPlaylistV2FilterRepository
 import com.music.bitchord.data.listening.applySavedFilterToDraft
@@ -103,6 +117,15 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import java.util.UUID
 
+/** Typing is debounced, but empty-query first load / switching the browse
+ * tabs should never pay a fixed 160ms penalty. Cancellable LaunchedEffect
+ * still discards obsolete searches as the user changes terms or source. */
+internal fun normalPlaylistSearchDebounceMillis(query: String): Long =
+    if (query.isBlank()) 0L else 160L
+
+/** Only the Library-embedded creator needs an enlarged floating dialog radius. */
+internal val playlistLibraryCreatorModalShape = RoundedCornerShape(32.dp)
+
 private fun newRule(): SmartPlaylistRule = SmartPlaylistRule.Comparison(
     SmartPlaylistRuleField.AUDIBLE_COMPLETIONS,
     SmartPlaylistRuleOperator.GREATER_OR_EQUAL,
@@ -139,6 +162,45 @@ internal fun savedFilterActionsForDraft(
     add("Excluir filtro")
 }
 
+/** Reuse identical action rows for the ⋯ popup and the lifted filter card. */
+@Composable
+internal fun SavedFilterMenuActions(
+    options: List<String>,
+    onChoose: (String) -> Unit,
+) {
+    options.forEach { option ->
+        // Keep each action's composition identity stable if the available
+        // commands change between smart and normal draft modes.
+        androidx.compose.runtime.key(option) {
+        val selectedOption = option
+        val destructive = selectedOption == "Excluir filtro"
+        if (destructive) NativeCompactMenuDivider()
+        NativeCompactMenuItem(
+            icon = when (option) {
+                "Criar playlist com este filtro" ->
+                    com.music.bitchord.ui.icons.PlaylistEditorIcons.Music
+                "Excluir filtro" ->
+                    com.music.bitchord.ui.icons.PlaylistEditorIcons.Delete
+                "Combinar com o rascunho (E)",
+                "Combinar com o rascunho (OU)" ->
+                    com.music.bitchord.ui.icons.PlaylistEditorIcons.Link
+                "Editar filtro" ->
+                    com.music.bitchord.ui.icons.PlaylistEditorIcons.Edit
+                else -> com.music.bitchord.ui.icons.PlaylistEditorIcons.Filters
+            },
+            label = when (option) {
+                "Aplicar regras ao rascunho" -> "Aplicar regras"
+                "Combinar com o rascunho (E)" -> "Combinar (E)"
+                "Combinar com o rascunho (OU)" -> "Combinar (OU)"
+                "Criar playlist com este filtro" -> "Criar playlist"
+                else -> option
+            },
+            destructive = destructive,
+            onClick = { onChoose(selectedOption) },
+        )
+        }
+    }
+}
 
 /** A nested create flow must not inherit the parent Library edit intent. */
 internal fun shouldOpenPlaylistAsEdit(
@@ -221,6 +283,7 @@ internal fun SmartPlaylistV2BuilderScreen(
     onClassic: () -> Unit,
     onSavedAction: ((String, CanonicalCollectionIntent) -> Unit)? = null,
     onPreviewAction: ((SmartPlaylistV2Query, String?, CanonicalCollectionIntent) -> Unit)? = null,
+    normalOnlyCreation: Boolean = false,
 ) {
     val context = LocalContext.current.applicationContext
     val repo = remember(context) {
@@ -251,7 +314,11 @@ internal fun SmartPlaylistV2BuilderScreen(
         key1 = accountPersistence,
     ) {
         accountPersistence.observe().collect {
-            value = canonicalAvailablePlaylistSourceKeys(context)
+            // Resolving configured servers can touch SharedPreferences and
+            // Android Keystore. It must not delay the wizard's first frame.
+            value = withContext(Dispatchers.IO) {
+                canonicalAvailablePlaylistSourceKeys(context)
+            }
         }
     }
     val catalog = remember(catalogDatabase) { catalogDatabase.catalogDao() }
@@ -260,7 +327,9 @@ internal fun SmartPlaylistV2BuilderScreen(
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var coverUri by remember { mutableStateOf<String?>(null) }
-    var normalMode by remember { mutableStateOf(false) }
+    var normalMode by remember { mutableStateOf(
+        initialPlaylistWizardNormalMode(normalOnlyCreation)
+    ) }
     var editingNormalId by remember { mutableStateOf<String?>(null) }
     var normalSearch by remember { mutableStateOf("") }
     var normalSourceProviderKey by remember {
@@ -320,8 +389,10 @@ internal fun SmartPlaylistV2BuilderScreen(
     var legacyFailure by remember { mutableStateOf(false) }
     var editorEpoch by remember { mutableStateOf(0) }
     var showWizard by remember { mutableStateOf(true) }
-    var manageTab by remember { mutableStateOf(SmartPlaylistManageTab.PLAYLISTS) }
+    var manageTab by remember { mutableStateOf(SmartPlaylistManageTab.FILTERS) }
     var pendingDeletion by remember { mutableStateOf<PendingSmartDeletion?>(null) }
+    var heldSavedFilter by remember { mutableStateOf<SavedSmartPlaylistV2Filter?>(null) }
+    var heldSavedFilterOrigin by remember { mutableStateOf<HeldItem?>(null) }
     var pendingEditorNavigation by remember { mutableStateOf<PendingEditorNavigation?>(null) }
     // Selecting a different library section starts at its own heading,
     // instead of inheriting the prior tab's last LazyColumn scroll index.
@@ -518,6 +589,30 @@ internal fun SmartPlaylistV2BuilderScreen(
         }
     }
 
+    val chooseSavedFilterAction: (SavedSmartPlaylistV2Filter, String) -> Unit = { filter, option ->
+        when (option) {
+            "Editar filtro" ->
+                requestEditorDestination(PendingEditorNavigation(
+                    filter.id, EditorDestination.EDIT_FILTER,
+                ))
+            "Aplicar regras ao rascunho" -> {
+                if (hasConfiguredRules && rule != filter.rules)
+                    pendingFilterReplacementId = filter.id
+                else applyManagerFilter(filter, SavedFilterApplication.REPLACE)
+            }
+            "Combinar com o rascunho (E)" ->
+                applyManagerFilter(filter, SavedFilterApplication.ALL)
+            "Combinar com o rascunho (OU)" ->
+                applyManagerFilter(filter, SavedFilterApplication.ANY)
+            "Criar playlist com este filtro" ->
+                requestEditorDestination(PendingEditorNavigation(
+                    filter.id, EditorDestination.CREATE_FROM_FILTER,
+                ))
+            "Excluir filtro" ->
+                pendingDeletion = PendingSmartDeletion(filter.id, filter.name, true)
+        }
+    }
+
     // Opening a saved card from the Library edits exactly that definition.
     // This does not infer an ID from its visible name or create a duplicate.
     LaunchedEffect(initialPlaylistId, repo) {
@@ -589,7 +684,10 @@ internal fun SmartPlaylistV2BuilderScreen(
         if (!normalMode) return@LaunchedEffect
         normalLoading = true
         try {
-            delay(160)
+            // Typing needs a debounce; first entry and empty-query tab
+            // switches do not. Those should query Room immediately.
+            val debounceMillis = normalPlaylistSearchDebounceMillis(normalSearch)
+            if (debounceMillis > 0L) delay(debounceMillis)
             if (normalBrowseGroup != null &&
                 normalBrowseType == CanonicalPlaylistBrowseType.ALBUMS) {
                 normalRows = canonicalNormalPlaylistGroupTracks(
@@ -790,12 +888,27 @@ internal fun SmartPlaylistV2BuilderScreen(
             decorFitsSystemWindows = false,
         ),
     ) {
+        // The editor has its own Android Dialog window. Starting its content
+        // at alpha 0 used to create a blank/black intermediate frame even
+        // though the Activity had already committed the creator route.
+        // Start nearly opaque, then settle like the page host.
+        val reduceCreatorMotion = com.music.bitchord.ui.LocalReduceAnimations.current
+        val dialogEntrance = remember { Animatable(
+            com.music.bitchord.ui.components.PAGE_ENTRY_MIN_ALPHA,
+        ) }
+        LaunchedEffect(reduceCreatorMotion) {
+            if (reduceCreatorMotion) dialogEntrance.snapTo(1f)
+            else dialogEntrance.animateTo(1f, tween(150, easing = LinearEasing))
+        }
+        // Haze only samples within this Dialog, never the Activity beneath.
+        val savedFilterHaze = remember { HazeState() }
         Box(
             modifier = if (embeddedInLibrary) Modifier
                 .fillMaxWidth(0.95f).fillMaxHeight(0.90f)
-                .clip(GroupShape)
+                .clip(playlistLibraryCreatorModalShape)
                 .background(MaterialTheme.colorScheme.background)
-            else Modifier.fillMaxSize(),
+                .graphicsLayer { alpha = dialogEntrance.value }
+            else Modifier.fillMaxSize().graphicsLayer { alpha = dialogEntrance.value },
         ) {
         if (showWizard) {
             androidx.compose.runtime.key(editorEpoch) {
@@ -820,6 +933,7 @@ internal fun SmartPlaylistV2BuilderScreen(
                     filterNotice = filterNotice,
                     hasExportedFilter = exportedFilterId != null,
                     startOnNormalSongs = startOnNormalSongs,
+                    normalOnlyCreation = normalOnlyCreation,
                     embeddedInLibrary = embeddedInLibrary,
                     savedDefinitions = saved.filterNot { it.id == editingId },
                     onNameChange = { name = it; filterNotice = null },
@@ -921,14 +1035,16 @@ internal fun SmartPlaylistV2BuilderScreen(
                     },
                     onNormalBrowseGroupChange = { group -> normalBrowseGroup = group },
                     onNormalModeChange = { selected ->
-                        if (selected && !normalMode && !normalSourceTouched &&
-                            editingNormalId == null && normalSelectedIds.isEmpty()
-                        ) {
-                            normalSourceProviderKey =
-                                defaultCanonicalNormalPlaylistSource(availableSourceKeys)
-                            normalSourceTouched = true
+                        if (playlistWizardAllowsSmartCreation(normalOnlyCreation) || selected) {
+                            if (selected && !normalMode && !normalSourceTouched &&
+                                editingNormalId == null && normalSelectedIds.isEmpty()
+                            ) {
+                                normalSourceProviderKey =
+                                    defaultCanonicalNormalPlaylistSource(availableSourceKeys)
+                                normalSourceTouched = true
+                            }
+                            normalMode = selected
                         }
-                        normalMode = selected
                     },
                     onNormalSearchChange = { normalSearch = it },
                     onToggleNormalTrack = { id ->
@@ -1131,8 +1247,10 @@ internal fun SmartPlaylistV2BuilderScreen(
                     },
                     onPreviewAction = onPreviewAction,
                     onManage = {
-                        manageTab = SmartPlaylistManageTab.FILTERS
-                        showWizard = false
+                        if (playlistWizardAllowsSmartCreation(normalOnlyCreation)) {
+                            manageTab = SmartPlaylistManageTab.FILTERS
+                            showWizard = false
+                        }
                     },
                     onBack = onBack,
                 )
@@ -1141,25 +1259,29 @@ internal fun SmartPlaylistV2BuilderScreen(
             // This full-screen editor owns Back; Android's system Back must
             // return from reusable filters just like the first-party back icon.
             BackHandler(enabled = pendingDeletion == null) { showWizard = true }
+            val managerArrival = com.music.bitchord.ui.components.rememberRouteArrivalModifier(
+                routeKey = "playlist-manager:${manageTab.name}",
+                reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
+                rootTabPrefix = "playlist-manager:",
+            )
             Surface(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().hazeSource(savedFilterHaze),
                 color = MaterialTheme.colorScheme.background,
             ) {
-                Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Column(
+                    Modifier.fillMaxSize()
+                        .statusBarsPadding()
+                        .then(if (embeddedInLibrary) Modifier else
+                            Modifier.padding(top = standaloneTopControlPadding(40.dp)))
+                        .navigationBarsPadding(),
+                ) {
                     PlaylistManagerChrome(
-                        selectedIndex = when (manageTab) {
-                            SmartPlaylistManageTab.FILTERS -> 0
-                            SmartPlaylistManageTab.PLAYLISTS -> 1
-                            SmartPlaylistManageTab.CLASSIC -> 2
-                        },
-                        onSelect = { index ->
-                            manageTab = when (index) {
-                                0 -> SmartPlaylistManageTab.FILTERS
-                                1 -> SmartPlaylistManageTab.PLAYLISTS
-                                else -> SmartPlaylistManageTab.CLASSIC
-                            }
-                        },
                         onBack = { showWizard = true },
+                        onCreateFilter = {
+                            requestEditorDestination(PendingEditorNavigation(
+                                "", EditorDestination.CREATE_FILTER,
+                            ))
+                        },
                     )
                     if (error != null) {
                         Text(error.orEmpty(),
@@ -1168,102 +1290,92 @@ internal fun SmartPlaylistV2BuilderScreen(
                     }
                     LazyColumn(
                         state = manageListState,
-                        modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_GUTTER),
+                        modifier = Modifier.fillMaxSize().then(managerArrival)
+                            .padding(horizontal = PAGE_GUTTER),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
             if (manageTab == SmartPlaylistManageTab.FILTERS) {
-            item(key = "v2-saved-filter-heading") {
-                Text("Seus filtros", style = MaterialTheme.typography.titleMedium)
-                Text("Filtros guardam somente regras. Aplicar copia as regras; não vincula alterações futuras.",
-                    style = MaterialTheme.typography.bodySmall)
-                PlaylistWizardSecondaryAction(
-                    label = "Criar filtro",
-                    onClick = {
-                        requestEditorDestination(PendingEditorNavigation(
-                            "", EditorDestination.CREATE_FILTER,
-                        ))
-                    },
-                )
-                if (filtersFailure) {
-                    Text("Não foi possível ler os filtros salvos.")
-                } else if (savedFilters.isEmpty()) {
-                    SettingsGroupSurface {
-                        SettingsRow(
-                            title = "Nenhum filtro salvo",
-                            subtitle = "Use Criar filtro acima para configurar e guardar suas primeiras regras.",
-                            reserveIconSpace = false,
-                        )
-                    }
+            if (filtersFailure) item(key = "v2-saved-filter-error") {
+                Text("Não foi possível ler os filtros salvos.",
+                    color = MaterialTheme.colorScheme.error)
+            }
+            if (!filtersFailure && savedFilters.isEmpty()) {
+                item(key = "v2-saved-filter-empty-state") {
+                    PlaylistManagerEmptyState(
+                        title = "Nenhum filtro salvo",
+                        message = "Guarde regras para aplicá-las em outras playlists.",
+                        icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Filters,
+                    )
                 }
             }
             items(savedFilters, key = { "v2-filter-" + it.id }) { filter ->
                 var more by remember(filter.id) { mutableStateOf(false) }
-                // Reuse a single native settings row per saved filter. Clicking
-                // opens the existing action picker; it never silently overwrites
-                // the editing playlist's rule graph.
-                SettingsGroupSurface {
+                SettingsGroupSurface(
+                    modifier = if (more) Modifier.border(
+                        1.dp, appleMusicKeyColor(), RoundedCornerShape(18.dp),
+                    ) else Modifier,
+                ) {
                     SettingsRow(
                         title = filter.name,
                         subtitle = "${smartConditionCountLabel(smartRuleLeafCount(filter.rules))} · Filtro reutilizável",
                         reserveIconSpace = false,
-                        onClick = { more = true },
-                        trailing = {
-                            RowMoreButton(
-                                onClick = { more = true },
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        onClick = {
+                            requestEditorDestination(PendingEditorNavigation(
+                                filter.id, EditorDestination.EDIT_FILTER,
+                            ))
                         },
-                    )
-                }
-                if (more) {
-                    WizardChoiceDialog(
-                        title = filter.name,
-                        options = savedFilterActionsForDraft(normalMode, editingNormalId),
-                        label = { it },
-                        onChosen = { option ->
-                            when (option) {
-                                "Aplicar regras ao rascunho" -> {
-                                    if (hasConfiguredRules && rule != filter.rules) {
-                                        // Unlike E/OU, replacing existing predicates is
-                                        // destructive. Require explicit confirmation.
-                                        pendingFilterReplacementId = filter.id
-                                    } else {
-                                        applyManagerFilter(filter, SavedFilterApplication.REPLACE)
-                                    }
-                                }
-                                "Combinar com o rascunho (E)" -> {
-                                    applyManagerFilter(filter, SavedFilterApplication.ALL)
-                                }
-                                "Combinar com o rascunho (OU)" -> {
-                                    applyManagerFilter(filter, SavedFilterApplication.ANY)
-                                }
-                                "Editar filtro" -> {
-                                    requestEditorDestination(PendingEditorNavigation(
-                                        filter.id, EditorDestination.EDIT_FILTER,
-                                    ))
-                                }
-                                "Criar playlist com este filtro" -> {
-                                    requestEditorDestination(PendingEditorNavigation(
-                                        filter.id, EditorDestination.CREATE_FROM_FILTER,
-                                    ))
-                                }
-                                "Excluir filtro" -> {
-                                    pendingDeletion = PendingSmartDeletion(
-                                        filter.id, filter.name, true,
+                        onLongPress = {
+                            more = false
+                            val captured = LongPressOrigin.consume()
+                            if (captured != null) {
+                                heldSavedFilterOrigin = captured
+                                heldSavedFilter = filter
+                            } else {
+                                // A mouse or accessibility path can still use ⋯.
+                                more = true
+                            }
+                        },
+                        modifier = Modifier.testTag("playlist-saved-filter-row"),
+                        trailing = {
+                            Box {
+                                RowMoreButton(
+                                    onClick = { more = true },
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                com.music.bitchord.ui.components.NativeCompactOverflowMenu(
+                                    expanded = more,
+                                    onDismissRequest = { more = false },
+                                    homePlateStyle = true,
+                                ) {
+                                    SavedFilterMenuActions(
+                                        options = savedFilterActionsForDraft(normalMode, editingNormalId)
+                                            .filterNot { it == "Editar filtro" },
+                                        onChoose = { option ->
+                                            more = false
+                                            chooseSavedFilterAction(filter, option)
+                                        },
                                     )
                                 }
                             }
                         },
-                        onClose = { more = false },
                     )
                 }
             }
             }
             if (manageTab == SmartPlaylistManageTab.PLAYLISTS) {
             item(key = "v2-saved-title") {
-                Text("Playlists avançadas salvas", style = MaterialTheme.typography.titleMedium)
-                if (savedFailure) Text("Não foi possível carregar as definições")
-                else if (saved.isEmpty()) Text("Nenhuma playlist avançada salva")
+                Text("Playlists inteligentes", style = MaterialTheme.typography.titleMedium)
+                if (savedFailure) Text("Não foi possível carregar as definições",
+                    color = MaterialTheme.colorScheme.error)
+            }
+            if (!savedFailure && saved.isEmpty()) {
+                item(key = "v2-saved-smart-empty-state") {
+                    PlaylistManagerEmptyState(
+                        title = "Nenhuma playlist inteligente",
+                        message = "Crie uma playlist com regras para vê-la aqui.",
+                        icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Music,
+                    )
+                }
             }
             items(saved, key = { "v2-saved-" + it.id }) { item ->
                 var more by remember(item.id) { mutableStateOf(false) }
@@ -1329,14 +1441,25 @@ internal fun SmartPlaylistV2BuilderScreen(
             }
             if (manageTab == SmartPlaylistManageTab.CLASSIC) {
             item(key = "v2-classic-heading") {
-                PlaylistWizardSecondaryAction(
-                    label = "Abrir editor clássico",
-                    onClick = onClassic,
-                )
-                Text("Playlists clássicas", style = MaterialTheme.typography.titleMedium)
-                Text("Você pode converter uma cópia sem alterar a playlist original.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (legacyFailure) Text("Não foi possível carregar as playlists clássicas")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text("Playlists clássicas", style = MaterialTheme.typography.titleMedium)
+                    PlaylistWizardInlineAction(label = "Editor clássico", onClick = onClassic)
+                }
+                if (legacyFailure) Text("Não foi possível carregar as playlists clássicas",
+                    color = MaterialTheme.colorScheme.error)
+            }
+            if (!legacyFailure && legacySaved.isEmpty()) {
+                item(key = "v2-classic-empty-state") {
+                    PlaylistManagerEmptyState(
+                        title = "Nenhuma playlist clássica",
+                        message = "As playlists do formato anterior aparecerão aqui.",
+                        icon = com.music.bitchord.ui.icons.PlaylistEditorIcons.Library,
+                    )
+                }
             }
             items(legacySaved, key = { "v2-classic-" + it.id }) { original ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1356,6 +1479,35 @@ internal fun SmartPlaylistV2BuilderScreen(
 
                     }
                 }
+            }
+        }
+        if (!showWizard) {
+            // Not conditional on the item: keep the host composed so the held
+            // bitmap animates back into its original list row on dismissal.
+            HeldContextMenu(
+                item = heldSavedFilter,
+                held = heldSavedFilterOrigin,
+                hazeState = savedFilterHaze,
+                onDismiss = {
+                    heldSavedFilter = null
+                    heldSavedFilterOrigin = null
+                },
+                onPreviewClick = { filter ->
+                    heldSavedFilter = null
+                    heldSavedFilterOrigin = null
+                    requestEditorDestination(PendingEditorNavigation(
+                        filter.id, EditorDestination.EDIT_FILTER,
+                    ))
+                },
+            ) { filter ->
+                SavedFilterMenuActions(
+                    options = savedFilterActionsForDraft(normalMode, editingNormalId),
+                    onChoose = { option ->
+                        heldSavedFilter = null
+                        heldSavedFilterOrigin = null
+                        chooseSavedFilterAction(filter, option)
+                    },
+                )
             }
         }
         pendingDeletion?.let { pending ->

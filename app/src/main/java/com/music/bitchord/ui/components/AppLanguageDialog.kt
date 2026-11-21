@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.appcompat.app.AppCompatDelegate
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -98,6 +100,9 @@ fun AppLanguageDialog(
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(ALERT_CORNER)
+    val neutralPlate = nativeContextPlateColor(
+        MaterialTheme.colorScheme.background.luminance() < 0.5f,
+    )
     // Full script tag (zh-Hant / zh-Hans preserved); legacy bare "zh" reads as Simplified.
     val currentLanguage = com.music.bitchord.data.LocaleTags.normalizeAppTag(
         AppCompatDelegate.getApplicationLocales().get(0)?.toLanguageTag()
@@ -118,16 +123,11 @@ fun AppLanguageDialog(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
+                .neutralFrostedMaterial(
+                    shape = shape,
+                    neutralColor = neutralPlate,
+                    hazeState = hazeState,
+                    reduceBlur = reduceDynamicBlur,
                 )
                 // Swallows the tap before it reaches the scrim behind, so
                 // touching the card itself never dismisses it.
@@ -216,7 +216,7 @@ private fun LanguageRow(language: AppLanguage, selected: Boolean, onClick: () ->
             Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = appleMusicKeyColor(),
                 modifier = Modifier.size(19.dp),
             )
         }

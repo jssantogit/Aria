@@ -26,6 +26,7 @@
     <string name="home">Accueil</string>
     <string name="play">Lecture</string>
     <string name="explore">Explorer</string>
+    <string name="explore_genres">Genres</string>
     <string name="listen_now">Écouter maintenant</string>
     <string name="downloads">Téléchargements</string>
     <string name="downloaded_songs">Chansons téléchargées</string>
@@ -416,6 +417,14 @@
     <string name="pause_countdown">%1$s avant la pause de la lecture</string>
     <string name="play_to_preview">Lancez la lecture de quelque chose pour remplir l\'aperçu.</string>
     <string name="playlist_name">Nom de la playlist</string>
+    <string name="editor_discard_title">Ignorer les modifications ?</string>
+    <string name="editor_discard_rating_body">Votre nouvelle note n’a pas été enregistrée.</string>
+    <string name="editor_discard_playlist_body">Les modifications de la playlist n’ont pas été enregistrées.</string>
+    <string name="editor_discard_confirm">Ignorer</string>
+    <string name="editor_keep_editing">Continuer à modifier</string>
+    <string name="playlist_editor_name_required">Saisissez un nom de playlist.</string>
+    <string name="playlist_editor_name_too_long">Utilisez 80 caractères maximum.</string>
+    <string name="playlist_editor_save_failed">Impossible d’enregistrer la playlist. Réessayez.</string>
     <string name="presence">Présence</string>
     <string name="preview">Aperçu</string>
     <string name="prioritize_syllable_lyrics">Prioriser les paroles par syllabe</string>
@@ -454,7 +463,7 @@
     <string name="signing_in">Connexion en cours…</string>
     <string name="sleep_timer">Minuteur de veille</string>
     <string name="sources_no_lossless">Aucune source activée ne peut fournir de l\'audio sans perte. Ajoutez un module personnalisé pour lire les fichiers sans perte disponibles sans transcodage.</string>
-    <string name="sources_order_footer">Si une source n\'a pas un titre ou est inaccessible, BitChord essaie la suivante. Les sources situées au-dessus de YouTube peuvent remplacer son enregistrement lorsqu\'elles renvoient une meilleure version.</string>
+    <string name="sources_order_footer">Si une source n\'a pas un titre ou est inaccessible, BitChord essaie la suivante.</string>
     <string name="sources_order_header">Sources, testées dans cet ordre</string>
     <string name="sources_quality_capped">Cette connexion est réglée en dessous de la qualité Élevée, les flux sont donc transcodés pour respecter cette limite. Les téléchargements ne sont pas concernés.</string>
     <string name="jiosaavn_mismatch_warning">Peut trouver la mauvaise version d\'un titre. Active-le à tes risques et périls.</string>
@@ -973,6 +982,7 @@
     <string name="shelf_top_tunes_right_now">Morceaux incontournables</string>
 
     <string name="shelf_trending">Tendances</string>
+    <string name="shelf_listenbrainz_community">Populaire dans la communauté</string>
 
     <string name="shelf_trending_community_playlists">Playlists communautaires tendances</string>
 
@@ -1291,6 +1301,7 @@
     <string name="spotify_import_none">Aucun de ces titres n’a été trouvé sur YouTube Music.</string>
     <string name="spotify_import_title">Importer une playlist Spotify</string>
     <string name="spotify_import_unmatched">%1$d titres n’ont pas été trouvés sur YouTube Music</string>
+    <string name="spotify_import_metadata_only">Playlist enregistrée avec %1$d titres sous forme de métadonnées. Aucun audio associé sans correspondance vérifiée.</string>
     <string name="spotify_library_subtitle">Vos playlists Spotify</string>
     <string name="spotify_sign_in">Se connecter avec Spotify</string>
     <string name="spotify_use_spdc_token">Utiliser un jeton sp_dc</string>
@@ -1368,7 +1379,7 @@
     <string name="canonical_discovery_home_title">Votre musique</string>
     <string name="canonical_discovery_explore_title">Explorer le catalogue</string>
     <string name="canonical_discovery_description">Parcourez les collections enregistrées sur cet appareil ou recherchez sur MusicBrainz. Les métadonnées ne garantissent pas un fichier audio lisible.</string>
-    <string name="canonical_discovery_search">Rechercher sur MusicBrainz</string>
+    <string name="canonical_discovery_search">Rechercher dans le catalogue</string>
     <string name="canonical_discovery_open_library">Ouvrir la bibliothèque</string>
     <string name="canonical_discovery_downloaded_collections">Collections téléchargées</string>
     <string name="canonical_discovery_local_playlists">Playlists enregistrées sur cet appareil</string>
@@ -1384,9 +1395,43 @@
     <string name="canonical_discovery_refresh">Actualiser le catalogue enregistré</string>
     <string name="legacy_library_youtube_disabled">Activez YouTube Music dans les paramètres pour charger cette bibliothèque en ligne. Les playlists et collections locales restent disponibles.</string>
     <string name="spotify_import_youtube_required">Pour importer une playlist Spotify, la recherche via YouTube Music est encore nécessaire. Activez YouTube Music et désactivez la découverte par catalogue.</string>
-    <string name="search_origin_general">Général</string>
+    <string name="search_origin_general">Catalogue</string>
     <string name="search_origin_server">Serveur</string>
     <string name="search_origin_local">Local</string>
     <string name="pause_resume_fade">Fondu à la pause et à la reprise</string>
     <string name="pause_resume_fade_subtitle">Diminue progressivement le volume à la pause et le rétablit à la reprise</string>
+    <string name="home_global_discovery">Découvertes du monde</string>
+
+    <string name="visual_offline_title">Visuels hors ligne</string>
+    <string name="visual_offline_stream">Utiliser le cache temporaire sans conserver les vidéos</string>
+    <string name="visual_offline_wifi">Enregistrer les animations pour un usage hors ligne, via Wi-Fi seulement</string>
+    <string name="visual_offline_still">Remplacer les animations par les images enregistrées</string>
+    <string name="visual_offline_temporary">Temporaire</string>
+    <string name="visual_offline_save_wifi">Enregistrer en Wi-Fi</string>
+    <string name="visual_offline_only_stills">Images fixes</string>
+    <string name="visual_offline_artist_motion">Animations des artistes</string>
+    <string name="visual_offline_album_motion">Animations des albums</string>
+    <string name="visual_offline_player_motion">Animations du lecteur</string>
+    <string name="visual_offline_save_stills">Conserver les images fixes</string>
+    <string name="visual_offline_stills_subtitle">Artists, albums and Now Playing; bounded local storage and no backup</string>
+    <string name="visual_offline_artist_stills">Photos des artistes</string>
+    <string name="visual_offline_album_stills">Pochettes des albums</string>
+    <string name="visual_offline_player_stills">Pochettes du lecteur</string>
+    <string name="visual_offline_images_group">Photos et pochettes enregistrées</string>
+    <string name="visual_offline_motion_group">Animations enregistrées</string>
+    <string name="visual_offline_still_limit">Limite des images enregistrées</string>
+    <string name="visual_offline_still_limit_subtitle">Espace maximal pour les photos d’artistes et les pochettes des albums et du lecteur</string>
+    <string name="visual_offline_motion_limit">Limite des animations enregistrées</string>
+    <string name="visual_offline_motion_limit_subtitle">Limite les nouveaux clips sans supprimer ceux déjà enregistrés ; effacez les visuels pour libérer de la place</string>
+    <string name="visual_offline_clear_title">Effacer les visuels enregistrés</string>
+    <string name="visual_offline_clear_subtitle">Images and animations kept offline (music is not deleted)</string>
+    <string name="visual_offline_confirm_title">Effacer les visuels hors ligne ?</string>
+    <string name="visual_offline_confirm_description">Saved images and animations will be deleted. Music, playlists and ratings will remain. Visuals can be retrieved again when connected.</string>
+    <string name="visual_offline_cleared">Visuels hors ligne effacés</string>
+    <string name="apple_music_tab_radio">Radio</string>
+    <string name="apple_music_tab_radio_unavailable">Radio, bientôt disponible</string>
+    <string name="apple_player_add_to_playlist">Ajouter à une playlist…</string>
+    <string name="apple_player_share_song">Partager la chanson</string>
+    <string name="apple_player_share_lyrics">Partager les paroles…</string>
+    <string name="apple_library_search_in_category">Rechercher dans %1$s</string>
 </resources>

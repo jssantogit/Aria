@@ -7,7 +7,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,9 +18,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -30,21 +32,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,13 +64,70 @@ import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.roundToInt
 
 /**
- * The menu a *held* item lifts into, in the shape Apple Music uses: the item
- * itself pops out of its list, the page behind it blurs, and the actions hang
- * off it.
+ * The held item stays in the original Compose tree. For normal long presses
+ * the dark scrim is cut out using only the item's ACTUAL painted alpha, not its
+ * full box (a transparent track row must not reveal a bright page rectangle).
+ * No bitmap, ring, shadow, extra background or altered corner radius.
+ */
+internal fun heldPreviewBackingColor(): Color = Color.Transparent
+
+/** Kept for independent overflow/header controls; the held spotlight no
+ * longer paints this outline, shadow or any other extra pixels. */
+internal fun heldContextSelectionOutline(): Color = Color.White.copy(alpha = 0.36f)
+
+internal fun heldSpotlightCutout(
+    sourceBounds: androidx.compose.ui.geometry.Rect,
+    overlayOrigin: Offset,
+    viewportWidth: Float,
+    viewportHeight: Float,
+): androidx.compose.ui.geometry.Rect? {
+    if (viewportWidth <= 0f || viewportHeight <= 0f) return null
+    val left = (sourceBounds.left - overlayOrigin.x).coerceIn(0f, viewportWidth)
+    val top = (sourceBounds.top - overlayOrigin.y).coerceIn(0f, viewportHeight)
+    val right = (sourceBounds.right - overlayOrigin.x).coerceIn(0f, viewportWidth)
+    val bottom = (sourceBounds.bottom - overlayOrigin.y).coerceIn(0f, viewportHeight)
+    if (right <= left || bottom <= top) return null
+    return androidx.compose.ui.geometry.Rect(left, top, right, bottom)
+}
+
+/** Reuse the Library filter's frosted action surface; keep a solid fallback for reduced blur. */
+internal fun heldActionsUseHaze(reduceDynamicBlur: Boolean): Boolean = !reduceDynamicBlur
+
+/**
+ * A row can paint only its cover, glyphs and text yet occupy a full-width
+ * transparent box. Removing the scrim from that entire box makes a FALSE
+ * pale "highlight". Prefer its pixel-accurate alpha mask when recorded.
+ */
+internal fun heldSpotlightUsesPixelMask(
+    captureAvailable: Boolean,
+    recordingReady: Boolean,
+): Boolean = captureAvailable && recordingReady
+
+/**
+ * Fade the backdrop independently of the held menu's spring. A spring
+ * accelerates rapidly and can overshoot; it should animate the plate only.
+ * The selected item's alpha stencil stays unchanged at every fade frame.
+ */
+internal fun heldContextScrimAlpha(baseAlpha: Float, fade: Float): Float =
+    baseAlpha.coerceIn(0f, 1f) * fade.coerceIn(0f, 1f)
+
+internal fun heldContextScrimFadeDurationMillis(
+    opening: Boolean,
+    reduceMotion: Boolean,
+): Int = when {
+    reduceMotion -> 0
+    opening -> 220
+    else -> 170
+}
+
+/**
+ * The context menu anchored to an item held in place. The item stays in its
+ * original list, the page behind it dims, and actions hang off it.
  *
- * What lifts is the item exactly as it was drawn — see [HeldItem] — so a
- * grid tile comes up as that tile and a search row as that row. It sits on a
- * frosted plate so it reads as picked up rather than pasted over the blur.
+ * No source is replaced or physically lifted. The original keeps drawing;
+ * a temporary display list provides a painted-alpha stencil so only visible
+ * pixels of the source remain undimmed. Unlike a box-shaped spotlight, this
+ * does not brighten the transparent spaces around an artist's track row.
  *
  * Only a hold opens this. The ⋮ keeps opening the bottom sheet — a tap on a
  * small button is a request for the full menu, while a hold on the item itself
@@ -85,6 +151,12 @@ fun <T : Any> HeldContextMenu(
     onDismiss: () -> Unit,
     /** Tapping the lifted item — open what it stands for. Null leaves it inert. */
     onPreviewClick: ((T) -> Unit)?,
+    /** Actual app mini-player + tab chrome; never place actions behind them. */
+    bottomChromeClearance: Dp = 100.dp,
+    /** Parent already blurs its REAL composed page, not a separate Haze plate. */
+    hostProvidesBlur: Boolean = false,
+    /** The page's already contrast-corrected artwork elevation, when present. */
+    plateTint: Color? = null,
     actions: @Composable (T) -> Unit,
 ) {
     val requested = if (item != null && held != null) item to held else null
@@ -94,8 +166,13 @@ fun <T : Any> HeldContextMenu(
     }
     val shown = requested ?: last ?: return
     val (menuItem, heldItem) = shown
+    // If the list changes or the overlay is removed mid-animation, release
+    // its recording rather than leaving a graphics layer active on that row.
+    DisposableEffect(heldItem) {
+        onDispose { heldItem.releaseLift() }
+    }
+    val maskLayer = rememberGraphicsLayer()
     val open = requested != null
-
     val context = LocalContext.current
     val appReduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val systemAnimationsOff = remember(context) {
@@ -107,6 +184,18 @@ fun <T : Any> HeldContextMenu(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
     val progress = remember { Animatable(0f) }
+    // A separate eased opacity curve creates a gentle, monotonic fade while
+    // keeping the menu's original spring and its dismissal timing unchanged.
+    val scrimFade = remember { Animatable(0f) }
+    LaunchedEffect(open, reduceMotion) {
+        scrimFade.animateTo(
+            targetValue = if (open) 1f else 0f,
+            animationSpec = tween(
+                durationMillis = heldContextScrimFadeDurationMillis(open, reduceMotion),
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
     LaunchedEffect(open) {
         if (open) {
             progress.animateTo(
@@ -131,23 +220,16 @@ fun <T : Any> HeldContextMenu(
     BackHandler(enabled = open, onBack = onDismiss)
 
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    // Plain white or black at half strength, so the blur shows through as
-    // frost rather than the surface greys reading as a flat slab over it. With
-    // no blur behind there is nothing for that to frost, so the plate firms up
-    // to stay legible over the bare scrim.
-    val plate = (if (dark) Color.Black else Color.White).copy(alpha = if (reduceDynamicBlur) 0.85f else 0.5f)
-    val hairline = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
-    // The scrim does less work when the blur is there to push the page back,
-    // and more when it is the only thing doing it.
-    val scrimColor = when {
-        reduceDynamicBlur && dark -> Color.Black.copy(alpha = 0.62f)
-        reduceDynamicBlur -> Color.Black.copy(alpha = 0.36f)
-        dark -> Color.Black.copy(alpha = 0.30f)
-        else -> Color.Black.copy(alpha = 0.10f)
-    }
-    val cardShape = RoundedCornerShape(20.dp)
+    // Keep the actions neutral and legible regardless of cover colors.
+    val plate = heldContextPlateColor(MaterialTheme.colorScheme.background, plateTint)
+    val hairline = if (plate.luminance() < 0.5f)
+        Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.07f)
+    // Preserve the existing dimming strength; only exclude the source item.
+    val scrimColor = if (dark) Color.Black.copy(alpha = 0.30f)
+        else Color.Black.copy(alpha = 0.18f)
     val menuShape = RoundedCornerShape(16.dp)
-    val platePadding = 8.dp
+    // The source card does not move or get a highlight surface. A spotlight
+    // in the backdrop leaves its actual artwork and typography undimmed.
 
     val insets = WindowInsets.safeDrawing
     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
@@ -160,26 +242,84 @@ fun <T : Any> HeldContextMenu(
             // second tap on a row mid-exit would run its action twice.
             .then(if (open) Modifier else Modifier.pointerInput(Unit) { swallowAll() }),
         content = {
-            // The page, pushed back. One alpha fades the whole of it rather
-            // than a blur radius being animated per frame.
-            val backdropAlpha = { progress.value.coerceIn(0f, 1f) }
+            // Dim the whole page, then *erase the dimming ONLY where the
+            // held composable actually PAINTS pixels*. Earlier code cut out
+            // its whole bounding rectangle; a transparent artist/song row
+            // therefore revealed a large undimmed (pale-looking) page tile.
+            // Keep this scrim in its own offscreen layer: DstOut must never
+            // punch through the real underlying page or mini-player.
             Spacer(
                 Modifier
                     .fillMaxSize()
-                    .then(
-                        if (reduceDynamicBlur) {
-                            Modifier
-                        } else {
-                            Modifier.optimizedHazeEffect(
-                                state = hazeState,
-                                style = HazeMaterials.ultraThin(MaterialTheme.colorScheme.background),
-                            ) {
-                                alpha = backdropAlpha()
+                    .testTag("held-context-backdrop")
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawBehind {
+                        val capture = heldItem.paintLayer
+                        if (heldSpotlightUsesPixelMask(
+                                captureAvailable = capture != null,
+                                recordingReady = capture != null &&
+                                    capture.size.width > 0 && capture.size.height > 0,
+                            )
+                        ) {
+                            drawRect(
+                                color = scrimColor.copy(
+                                    alpha = heldContextScrimAlpha(scrimColor.alpha, scrimFade.value),
+                                ),
+                            )
+                            // The source stays in its ORIGINAL Compose tree.
+                            // This second layer uses its alpha as a stencil:
+                            // no screenshot, bitmap, new tint, white highlight,
+                            // forced opaque row backing, or duplicate artwork.
+                            val source = requireNotNull(capture)
+                            maskLayer.record(size = source.size) {
+                                drawLayer(source)
                             }
-                        },
-                    )
-                    .graphicsLayer { alpha = backdropAlpha() }
-                    .background(scrimColor)
+                            maskLayer.topLeft = IntOffset(
+                                (heldItem.bounds.left - overlayOffset.x).roundToInt(),
+                                (heldItem.bounds.top - overlayOffset.y).roundToInt(),
+                            )
+                            maskLayer.blendMode = BlendMode.DstOut
+                            drawLayer(maskLayer)
+                        } else if (capture != null) {
+                            // The source has not recorded its first held frame
+                            // yet. Do not flash a bright rectangle while
+                            // waiting for the precise alpha stencil.
+                            drawRect(
+                                color = scrimColor.copy(
+                                    alpha = heldContextScrimAlpha(scrimColor.alpha, scrimFade.value),
+                                ),
+                            )
+                        } else {
+                            // Compatibility for the few older routes without
+                            // an item display list: keep geometry instead of
+                            // hiding the source entirely.
+                            val cutout = heldSpotlightCutout(
+                                sourceBounds = heldItem.bounds,
+                                overlayOrigin = overlayOffset,
+                                viewportWidth = size.width,
+                                viewportHeight = size.height,
+                            )
+                            val mask = androidx.compose.ui.graphics.Path().apply {
+                                fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                                addRect(androidx.compose.ui.geometry.Rect(Offset.Zero, size))
+                                if (cutout != null) {
+                                    addRoundRect(
+                                        androidx.compose.ui.geometry.RoundRect(
+                                            cutout, CornerRadius(12.dp.toPx()),
+                                        ),
+                                    )
+                                }
+                            }
+                            drawPath(
+                                path = mask,
+                                color = scrimColor.copy(
+                                    alpha = heldContextScrimAlpha(scrimColor.alpha, scrimFade.value),
+                                ),
+                            )
+                        }
+                    }
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -187,40 +327,40 @@ fun <T : Any> HeldContextMenu(
                         onClick = onDismiss,
                     ),
             )
-            // The held item, on its plate. Sized by the layout below to the
-            // item's own bounds plus the plate's margin.
+            // Transparent hit target at the same original bounds. The user's
+            // real cover and caption remain painted by their source composable.
             Box(
                 Modifier
-                    .then(if (reduceMotion) Modifier else Modifier.shadow(20.dp, cardShape, clip = false))
-                    .pointerInput(Unit) {}
-                    .clip(cardShape)
-                    .background(plate)
-                    .border(0.5.dp, hairline, cardShape)
                     .then(
                         if (onPreviewClick != null) {
-                            Modifier.clickable(enabled = open) { onPreviewClick(menuItem) }
-                        } else {
-                            Modifier
-                        },
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                enabled = open,
+                                onClick = { onPreviewClick(menuItem) },
+                            )
+                        } else Modifier
                     )
-                    .padding(platePadding),
-            ) {
-                heldItem.image?.let { image ->
-                    Image(
-                        bitmap = image,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+                    .testTag("held-context-preview"),
+            )
             Column(
                 Modifier
                     // Taps between rows land on the menu, not the scrim under it.
                     .pointerInput(Unit) {}
                     .clip(menuShape)
+                    // Same glass recipe as NativeContextActionPlate (Library filters).
+                    // The neutral paint is a fallback until the Haze source is ready;
+                    // blur stays opt-out for accessibility and low-power devices.
                     .background(plate)
-                    .border(0.5.dp, hairline, menuShape),
+                    .then(
+                        if (heldActionsUseHaze(reduceDynamicBlur)) Modifier.optimizedHazeEffect(
+                            state = hazeState,
+                            style = HazeMaterials.regular(plate.copy(alpha = 0.58f)),
+                        ) else Modifier,
+                    )
+                    .border(0.5.dp, hairline, menuShape)
+                    .verticalScroll(rememberScrollState())
+                    .testTag("held-context-actions"),
             ) {
                 actions(menuItem)
             }
@@ -230,90 +370,60 @@ fun <T : Any> HeldContextMenu(
         val height = constraints.maxHeight
         val margin = 12.dp.roundToPx()
         val gap = 10.dp.roundToPx()
-        val pad = platePadding.roundToPx()
         val top = insets.getTop(this) + 8.dp.roundToPx()
-        val bottom = height - insets.getBottom(this) - 8.dp.roundToPx()
+        val bottom = heldMenuVisibleBottom(
+            viewportHeight = height,
+            systemBottomInset = insets.getBottom(this) + 8.dp.roundToPx(),
+            chromeReserve = bottomChromeClearance.roundToPx(),
+        ).coerceAtLeast(top)
 
         val backdrop = measurables[0].measure(Constraints.fixed(width, height))
 
-        // The held item, in this layout's own coordinates.
+        // The transparent hit target follows the unmodified original item.
+        // No bitmap, scale, shadow or crop is constructed for the preview.
         val itemBounds = heldItem.bounds.translate(-overlayOffset)
-        // The plate at the item's own size, so at rest the picture on it is
-        // pixel for pixel what was held; a full-width row is then scaled down
-        // just enough for the plate to clear the screen edges.
-        val plateW = (itemBounds.width.roundToInt() + pad * 2).coerceAtLeast(1)
-        val plateH = (itemBounds.height.roundToInt() + pad * 2).coerceAtLeast(1)
+        val previewFrame = heldPreviewFixedFrame(heldItem.bounds, overlayOffset)
+        val plateW = previewFrame.width
+        val plateH = previewFrame.height
         val card = measurables[1].measure(Constraints.fixed(plateW, plateH))
-        val liftScale = ((width - margin * 2f) / plateW).coerceAtMost(1f)
-        val visualW = plateW * liftScale
-        val visualH = plateH * liftScale
-
         val menuWidth = (width - margin * 2).coerceAtMost(280.dp.roundToPx()).coerceAtLeast(0)
-        val menuMaxHeight = (bottom - top - visualH.roundToInt() - gap).coerceAtLeast(0)
-        val menu = measurables[2].measure(
-            Constraints(minWidth = menuWidth, maxWidth = menuWidth, maxHeight = menuMaxHeight),
+        val availableHeight = (bottom - top).coerceAtLeast(0)
+        val visualW = itemBounds.width
+        val visualH = itemBounds.height
+        val visualLeft = itemBounds.left
+        val visualTop = itemBounds.top
+        val placement = heldMenuAnchoredVerticalPlacement(
+            sourceTop = visualTop,
+            sourceHeight = visualH,
+            viewportTop = top,
+            viewportBottom = bottom,
+            gap = gap,
+            requestedMenuHeight = heldMenuMaxHeight(
+                availableHeight = availableHeight, minPreview = 0, gap = gap,
+            ),
         )
-
-        // Where the lifted item rests. It stays where it was held whenever the
-        // menu fits beside it; the menu goes below by preference and above
-        // when the item is low on screen, and only when neither fits does the
-        // item climb to make room.
-        val visualLeft = (itemBounds.center.x - visualW / 2f)
-            .coerceIn(margin.toFloat(), (width - margin - visualW).coerceAtLeast(margin.toFloat()))
-        var visualTop = (itemBounds.center.y - visualH / 2f)
-            .coerceIn(top.toFloat(), (bottom - visualH).coerceAtLeast(top.toFloat()))
-        val menuBelow: Boolean
-        when {
-            visualTop + visualH + gap + menu.height <= bottom -> menuBelow = true
-            visualTop - gap - menu.height >= top -> menuBelow = false
-            else -> {
-                menuBelow = true
-                visualTop = (bottom - menu.height - gap - visualH).coerceAtLeast(top.toFloat())
-            }
-        }
+        val menu = measurables[2].measure(
+            Constraints(
+                minWidth = menuWidth, maxWidth = menuWidth,
+                maxHeight = placement.menuMaxHeight,
+            ),
+        )
         val visualCenterX = visualLeft + visualW / 2f
         val visualCenterY = visualTop + visualH / 2f
-
-        // The menu hangs off the item's nearer edge: its start for an item on
-        // the left of the screen, its end for one on the right — a grid's
-        // right-hand column keeps its menu under itself.
         val alignEnd = visualCenterX > width / 2f
         val menuX = (if (alignEnd) visualLeft + visualW - menuWidth else visualLeft).roundToInt()
             .coerceIn(margin, (width - margin - menuWidth).coerceAtLeast(margin))
-        val menuY = if (menuBelow) {
+        val menuY = if (placement.menuBelow) {
             (visualTop + visualH + gap).roundToInt()
         } else {
             (visualTop - gap - menu.height).roundToInt()
-        }
-
-        // The card is placed at its natural size and scaled about its centre,
-        // so its centre is where the visual rectangle's is.
-        val cardX = (visualCenterX - plateW / 2f).roundToInt()
-        val cardY = (visualCenterY - plateH / 2f).roundToInt()
-        // How far the card travels back to sit over what was held. At rest
-        // in the list it is unscaled, so the picture lands exactly on the item.
-        val fromDx = itemBounds.center.x - visualCenterX
-        val fromDy = itemBounds.center.y - visualCenterY
+        }.coerceIn(top, (bottom - menu.height).coerceAtLeast(top))
+        val cardX = previewFrame.x
+        val cardY = previewFrame.y
 
         layout(width, height) {
             backdrop.place(0, 0)
-            card.placeWithLayer(cardX, cardY) {
-                val p = progress.value
-                if (reduceMotion) {
-                    scaleX = liftScale
-                    scaleY = liftScale
-                    alpha = p.coerceIn(0f, 1f)
-                } else {
-                    val scale = lerp(1f, liftScale, p)
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = lerp(fromDx, 0f, p)
-                    translationY = lerp(fromDy, 0f, p)
-                    // Quick, because it starts over the very item it copies:
-                    // only the plate and shadow arriving are new.
-                    alpha = (p * 3f).coerceIn(0f, 1f)
-                }
-            }
+            card.place(cardX, cardY)
             menu.placeWithLayer(menuX, menuY) {
                 val p = progress.value
                 alpha = ((p - 0.1f) / 0.9f).coerceIn(0f, 1f)
@@ -322,17 +432,66 @@ fun <T : Any> HeldContextMenu(
                     // with it.
                     transformOrigin = TransformOrigin(
                         pivotFractionX = if (alignEnd) 1f else 0f,
-                        pivotFractionY = if (menuBelow) 0f else 1f,
+                        pivotFractionY = if (placement.menuBelow) 0f else 1f,
                     )
-                    val scale = lerp(0.55f, 1f, p)
+                    val scale = lerp(0.96f, 1f, p)
                     scaleX = scale
                     scaleY = scale
-                    translationX = lerp(fromDx, 0f, p)
-                    translationY = lerp(fromDy, 0f, p)
+                    // The menu stays anchored to its measured position;
+                    // translating it by a snapshot's displacement could
+                    // overlap neighbouring cards and top-bar controls.
                 }
             }
         }
     }
+}
+
+/** Transparent click-target geometry; never scale or copy the actual source item. */
+internal data class HeldPreviewFixedFrame(
+    val x: Int, val y: Int, val width: Int, val height: Int,
+    val scale: Float = 1f,
+)
+
+internal fun heldPreviewFixedFrame(
+    sourceBounds: androidx.compose.ui.geometry.Rect,
+    overlayOrigin: Offset,
+): HeldPreviewFixedFrame = HeldPreviewFixedFrame(
+    x = (sourceBounds.left - overlayOrigin.x).roundToInt(),
+    y = (sourceBounds.top - overlayOrigin.y).roundToInt(),
+    width = sourceBounds.width.roundToInt().coerceAtLeast(1),
+    height = sourceBounds.height.roundToInt().coerceAtLeast(1),
+)
+
+/** Menu height is constrained to the available side; preview never moves. */
+internal data class HeldAnchoredVerticalPlacement(
+    val previewTop: Float,
+    val menuTop: Int,
+    val menuMaxHeight: Int,
+    val menuBelow: Boolean,
+)
+
+internal fun heldMenuAnchoredVerticalPlacement(
+    sourceTop: Float,
+    sourceHeight: Float,
+    viewportTop: Int,
+    viewportBottom: Int,
+    gap: Int,
+    requestedMenuHeight: Int,
+): HeldAnchoredVerticalPlacement {
+    val belowSpace = (viewportBottom - (sourceTop + sourceHeight + gap)).toInt().coerceAtLeast(0)
+    val aboveSpace = (sourceTop - gap - viewportTop).toInt().coerceAtLeast(0)
+    val below = belowSpace >= requestedMenuHeight ||
+        (belowSpace >= aboveSpace && belowSpace > 0)
+    val available = if (below) belowSpace else aboveSpace
+    val menuHeight = requestedMenuHeight.coerceAtLeast(1).coerceAtMost(available.coerceAtLeast(1))
+    val y = if (below) (sourceTop + sourceHeight + gap).roundToInt()
+        else (sourceTop - gap - menuHeight).roundToInt()
+    return HeldAnchoredVerticalPlacement(
+        previewTop = sourceTop,
+        menuTop = y.coerceIn(viewportTop, (viewportBottom - menuHeight).coerceAtLeast(viewportTop)),
+        menuMaxHeight = menuHeight,
+        menuBelow = below,
+    )
 }
 
 private suspend fun PointerInputScope.swallowAll() {
@@ -342,3 +501,13 @@ private suspend fun PointerInputScope.swallowAll() {
         }
     }
 }
+
+/**
+ * Held item and its action plate share the same neutral opaque material as
+ * the Library filter. The caller's artwork tint is deliberately ignored:
+ * dynamic colors behind white menu text were causing illegible green/purple
+ * context menus and duplicated original-row content.
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun heldContextPlateColor(themeBackground: Color, artworkElevation: Color?): Color =
+    nativeCompactPlateColor(themeBackground.luminance() < 0.5f, artworkElevation = null)

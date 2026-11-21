@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.ui.components.contextClick
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 import com.music.bitchord.ui.AppUi
 import com.music.bitchord.sharedui.resources.*
 import org.jetbrains.compose.resources.painterResource
@@ -11,6 +12,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import com.music.bitchord.ui.components.longPressMenuClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,7 +38,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -59,12 +61,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.MoreVert
+import com.music.bitchord.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
 import com.music.bitchord.ui.icons.BitChordIcons
 import coil3.compose.AsyncImage
@@ -82,9 +86,11 @@ import com.music.bitchord.ui.components.HERO_CARD_RATIO
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.RowMoreButton
-import com.music.bitchord.ui.components.PlayingAccent
+import com.music.bitchord.ui.components.NativeCompactOverflowMenu
+import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
+import com.music.bitchord.ui.components.NativeMediaCardMetrics
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.SignInBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
@@ -100,8 +106,39 @@ import com.music.bitchord.ui.player.MeshPalette
 /** How far the Listen now heading and feed sit above the shared top inset. */
 private val HOME_TITLE_LIFT = 28.dp
 
+/**
+ * Home intentionally raises its large heading. Explore genre details have an
+ * independent floating Back control, so they must use the FULL top-bar inset
+ * instead of lifting the heading under that control.
+ */
+internal fun homeTitleTopInset(
+    topBarInset: Dp,
+    reserveFloatingBackSpace: Boolean,
+): Dp = if (reserveFloatingBackSpace) topBarInset.coerceAtLeast(0.dp)
+else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
+
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
+
+/**
+ * A Home shelf's semantic role must not depend on loading order. Listening
+ * history has cover art plus captions outside the covers, unlike an editorial
+ * hero with its title over artwork. It may be first or follow another shelf.
+ */
+internal enum class HomeShelfPresentation {
+    RECENT_COVERS, EDITORIAL_HERO, SQUARE_SHELF,
+}
+
+internal fun homeShelfPresentation(
+    shelfTitle: String,
+    index: Int,
+    firstIsHero: Boolean,
+): HomeShelfPresentation = when {
+    shelfTitle.trim().equals(RECENTS_TITLE, ignoreCase = true) ->
+        HomeShelfPresentation.RECENT_COVERS
+    index == 0 && firstIsHero -> HomeShelfPresentation.EDITORIAL_HERO
+    else -> HomeShelfPresentation.SQUARE_SHELF
+}
 
 private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Boolean {
     song ?: return { false }
@@ -128,6 +165,7 @@ fun HomeScreen(
     contentPadding: PaddingValues,
     /** The page's heading, or null for none — the desktop's pages carry no heading. */
     title: String?,
+    onBack: (() -> Unit)? = null,
     headerActions: List<HomeHeaderAction> = emptyList(),
     signedIn: Boolean = true,
     onSignIn: (() -> Unit)? = null,
@@ -152,6 +190,10 @@ fun HomeScreen(
     isPlaying: Boolean = false,
     /** Native account access while the floating Home actions are hidden. */
     headerTrailing: (@Composable () -> Unit)? = null,
+    /** An honest empty/loading result, not a synthetic playlist card. */
+    publicPlaylistNotice: String? = null,
+    /** Pushed Explore categories keep the full inset below the floating Back. */
+    reserveFloatingBackSpace: Boolean = false,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -188,7 +230,10 @@ fun HomeScreen(
             // whole feed up by [HOME_TITLE_LIFT] with it.
             contentPadding = if (title != null) {
                 PaddingValues(
-                    top = (contentPadding.calculateTopPadding() - HOME_TITLE_LIFT).coerceAtLeast(0.dp),
+                    top = homeTitleTopInset(
+                        contentPadding.calculateTopPadding(),
+                        reserveFloatingBackSpace = reserveFloatingBackSpace,
+                    ),
                     bottom = contentPadding.calculateBottomPadding(),
                 )
             } else {
@@ -196,7 +241,9 @@ fun HomeScreen(
             },
         ) {
             if (title != null) {
-                item(key = "home-title") { HomeTitle(title, actions = headerActions, trailing = headerTrailing) }
+                item(key = "home-title") {
+                    HomeTitle(title, actions = headerActions, onBack = onBack, trailing = headerTrailing)
+                }
             }
             if (!signedIn && onSignIn != null) {
                 item {
@@ -225,8 +272,14 @@ fun HomeScreen(
                     // The loading skeleton already owns the hero slot. Until
                     // Recently Played lands, every real shelf must retain its
                     // compact-card layout instead of briefly becoming a hero.
+                    val displayShelves = if (publicPlaylistNotice != null &&
+                        state.data.none { it.title.startsWith("Playlists") }
+                    ) state.data.toMutableList().apply {
+                        add(minOf(2, size), HomeShelf("Playlists", emptyList()))
+                    } else state.data
                     itemsIndexedShelves(
-                        shelves = state.data,
+                        shelves = displayShelves,
+                        emptyPlaylistNotice = publicPlaylistNotice,
                         onItemClick = onItemClick,
                         onItemLongPress = onItemLongPress,
                         currentSong = currentSong,
@@ -282,11 +335,27 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     firstIsHero: Boolean = true,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
+    emptyPlaylistNotice: String? = null,
 ) {
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
+            val presentation = homeShelfPresentation(shelf.title, index, firstIsHero)
+            if (shelf.title == "Playlists" && shelf.items.isEmpty() &&
+                emptyPlaylistNotice != null
+            ) {
+                // The native shelf position remains stable even while the
+                // public search is pending. No phantom or clickable playlist.
+                Column(Modifier.padding(bottom = 26.dp)) {
+                    SectionHeader(shelf.title)
+                    Text(
+                        emptyPlaylistNotice,
+                        modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            } else if (presentation == HomeShelfPresentation.RECENT_COVERS) {
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,
@@ -296,7 +365,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     viewType = recentsViewType,
                     onViewTypeToggle = onRecentsViewTypeToggle,
                 )
-            } else if (index == 0 && firstIsHero) {
+            } else if (presentation == HomeShelfPresentation.EDITORIAL_HERO) {
                 HeroShelf(
                     shelf = shelf,
                     onItemClick = openItem,
@@ -330,8 +399,8 @@ private fun RecentShelf(
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
         RecentSectionHeader(
-            title = shelf.title,
-            subtitle = shelf.subtitle,
+            title = localizeShelfTitle(shelf.title),
+            subtitle = localizeShelfSubtitle(shelf.subtitle),
             viewType = viewType,
             onViewTypeToggle = onViewTypeToggle,
         )
@@ -359,22 +428,24 @@ private fun RecentShelf(
                 }
             }
         } else {
-            BoxWithConstraints {
-                val cardWidth = heroCardWidth(maxWidth)
-                ShelfRow(
-                    contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    items(shelf.items) { item ->
-                        HeroCard(
-                            item = item,
-                            onClick = { onItemClick(item) },
-                            onLongPress = onItemLongPress?.let { { it(item) } },
-                            modifier = Modifier.width(cardWidth),
-                            isCurrent = isCurrentItem(item),
-                            isPlaying = isCurrentItem(item) && isPlaying,
-                        )
-                    }
+            // Listening history is a cover carousel, never the tall editorial
+            // image with the track title painted on top. Preserve click/hold
+            // and playing indicators using the existing native square card.
+            ShelfRow(
+                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(shelf.items) { item ->
+                    ShelfCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = onItemLongPress?.let { { it(item) } },
+                        modifier = Modifier
+                            .width(NativeMediaCardMetrics.recentCoverWidth)
+                            .testTag("home-recent-square-card"),
+                        isCurrent = isCurrentItem(item),
+                        isPlaying = isCurrentItem(item) && isPlaying,
+                    )
                 }
             }
         }
@@ -500,7 +571,7 @@ fun CompactTrackRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) PlayingAccent else MaterialTheme.colorScheme.onBackground,
+                color = if (isCurrent) appleMusicKeyColor() else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -512,9 +583,39 @@ fun CompactTrackRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (onLongPress != null) {
-            RowMoreButton(onClick = onLongPress)
-        }
+        // Song actions are available on hold; collection toolbar ⋮ remains.
+    }
+}
+
+/**
+ * Same 40dp native circular surface for the feed back and More controls.
+ * Only the visible shape is measured here; the AM-DECOMP static trace does
+ * not establish the final hit rectangle, shadow or pixel rendering.
+ * Keep the native button semantics and the caller's original callbacks.
+ */
+@Composable
+private fun NativeHomeHeaderIconAction(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    tag: String,
+    glyphSize: androidx.compose.ui.unit.Dp,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(glyphSize),
+        )
     }
 }
 
@@ -532,6 +633,7 @@ fun HomeTitle(
     actions: List<HomeHeaderAction> = emptyList(),
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
@@ -548,34 +650,36 @@ fun HomeTitle(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // A genre page must line up with Home/Explore, not indent the title
+        // by the back button's width. Keep Back reachable at the right.
+        if (onBack != null) {
+            NativeHomeHeaderIconAction(
+                icon = PlaylistEditorIcons.Back,
+                description = "Voltar",
+                onClick = onBack,
+                tag = "home-back",
+                glyphSize = 20.dp,
+            )
+        }
         trailing?.invoke()
         if (actions.isNotEmpty()) {
             Box {
-                IconButton(
+                NativeHomeHeaderIconAction(
+                    icon = PlaylistEditorIcons.More,
+                    description = stringResource(Res.string.more),
                     onClick = { expanded = true },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                        .testTag("home-overflow"),
-                ) {
-                    Icon(
-                        Icons.Rounded.MoreVert,
-                        contentDescription = stringResource(Res.string.more),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                DropdownMenu(
+                    tag = "home-overflow",
+                    glyphSize = 24.dp,
+                )
+                NativeCompactOverflowMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false },
                 ) {
                     actions.forEach { action ->
-                        DropdownMenuItem(
-                            text = { Text(action.label) },
-                            onClick = {
-                                expanded = false
-                                action.onClick()
-                            },
-                        )
+                        NativeCompactMenuItem(label = action.label, onClick = {
+                            expanded = false
+                            action.onClick()
+                        })
                     }
                 }
             }
@@ -622,7 +726,7 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
             Text(
                 text = stringResource(Res.string.show_all),
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = appleMusicKeyColor(),
                 modifier = Modifier
                     .clickable(onClick = onShowAll)
                     .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
@@ -837,6 +941,34 @@ private fun HeroShelf(
     }
 }
 
+/**
+ * Native background is always present underneath catalog artwork. Some CAA
+ * URLs resolve metadata successfully but the actual image fails or takes
+ * longer to decode; the old null-only branch left a completely black tile
+ * despite a real release title. A valid image simply paints over this glyph.
+ * This is a visual fallback only, never a substituted album cover.
+ */
+@Composable
+private fun CatalogArtworkFallback(hero: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(
+                    if (hero) listOf(Color(0xFF25304E), Color(0xFF485573))
+                    else listOf(Color(0xFF222433), Color(0xFF374153)),
+                ),
+            )
+            .testTag("catalog-art-fallback"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Rounded.LibraryMusic, contentDescription = null,
+            tint = Color.White.copy(alpha = if (hero) 0.60f else 0.72f),
+            modifier = Modifier.size(if (hero) 68.dp else 46.dp),
+        )
+    }
+}
+
 /** Big card: artwork with the caption laid over a scrim, as on Listen Now. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -848,29 +980,44 @@ private fun HeroCard(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
     Box(
         modifier = modifier
             .aspectRatio(HERO_CARD_RATIO)
-            .clip(RoundedCornerShape(18.dp))
-            .thumbnailBorder(RoundedCornerShape(18.dp))
+            .clip(NativeMediaCardMetrics.heroShape)
+            .thumbnailBorder(NativeMediaCardMetrics.heroShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
+            .longPressMenuClickable(
+                onClick = onClick, onLongClick = onLongPress,
+                interactionSource = pressSource, suppressTapIndication = true,
+            )
             .contextClick(onLongPress),
     ) {
-        AsyncImage(
-            model = item.thumbnailUrl.artworkAt(HEADER_ART_PX),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+        val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
+        if (hasCatalogIdentity) CatalogArtworkFallback(
+            hero = true, modifier = Modifier.fillMaxSize(),
         )
+        if (!item.thumbnailUrl.isNullOrBlank() || !hasCatalogIdentity) {
+            AsyncImage(
+                model = item.thumbnailUrl.artworkAt(HEADER_ART_PX),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
+        if (pressed) {
+            Box(Modifier.matchParentSize()
+                .background(Color.Black.copy(alpha = NativeMediaCardMetrics.pressedArtworkAlpha)))
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomStart)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
+                        listOf(Color.Transparent, Color.Black.copy(alpha = NativeMediaCardMetrics.heroScrimAlpha)),
                     ),
                 )
                 .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
@@ -878,7 +1025,7 @@ private fun HeroCard(
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.titleLarge,
-                color = if (isCurrent) PlayingAccent else Color.White,
+                color = if (isCurrent) appleMusicKeyColor() else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -949,14 +1096,18 @@ internal fun NewShelfCard(
     /** A full-colour mark drawn in place of [icon], for a card that stands for a brand. */
     logo: DrawableResource? = null,
 ) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
     Column(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.clickable(
+            interactionSource = pressSource, indication = null, onClick = onClick,
+        ),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(NativeMediaCardMetrics.squareCoverShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -977,8 +1128,12 @@ internal fun NewShelfCard(
                     modifier = Modifier.size(34.dp),
                 )
             }
+            if (pressed) {
+                Box(Modifier.matchParentSize()
+                    .background(Color.Black.copy(alpha = NativeMediaCardMetrics.pressedArtworkAlpha)))
+            }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(NativeMediaCardMetrics.shelfCaptionGap))
         Text(
             text = label,
             style = MaterialTheme.typography.titleMedium,
@@ -1008,7 +1163,7 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(12.dp)),
+            .clip(NativeMediaCardMetrics.squareCoverShape),
         contentAlignment = Alignment.Center,
     ) {
         MeshGradientBackground(
@@ -1038,11 +1193,17 @@ internal fun ShelfCard(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
-    Column(
-        modifier = modifier
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
-            .contextClick(onLongPress),
-    ) {
+    // The legacy source adapter retains custom folder artwork; Home and
+    // Explore share the original source-independent title/card composition.
+    NativeShelfCard(
+        title = item.title,
+        subtitle = localizeCardSubtitle(item.subtitle),
+        onClick = onClick,
+        onLongPress = onLongPress,
+        modifier = modifier,
+        isPinned = isPinned,
+        isCurrent = isCurrent,
+        artwork = {
         when (item.browseId) {
             "local:downloads" -> {
                 val palette = remember { MeshPalette(listOf(Color(0xFF1E3C72), Color(0xFF2A5298))) }
@@ -1050,7 +1211,7 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(NativeMediaCardMetrics.squareCoverShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     MeshGradientBackground(
@@ -1088,54 +1249,56 @@ internal fun ShelfCard(
                 icon = Icons.Rounded.Storage,
             )
             else -> {
-                Box(
+                if (item.browseId?.startsWith("catalog:GENRE:") == true) {
+                    // Genre is a navigation category. Its typography is
+                    // intentional artwork, not a fabricated release sleeve.
+                    val palettes = listOf(
+                        listOf(Color(0xFF412A82), Color(0xFF7B3B8E)),
+                        listOf(Color(0xFF135960), Color(0xFF178A7C)),
+                        listOf(Color(0xFF803B33), Color(0xFFBB6C41)),
+                        listOf(Color(0xFF1C4279), Color(0xFF436CB6)),
+                    )
+                    val index = (item.browseId.orEmpty().hashCode() and Int.MAX_VALUE) % palettes.size
+                    Box(
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(NativeMediaCardMetrics.squareCoverShape)
+                            .background(Brush.linearGradient(palettes[index]))
+                            .testTag("explore-genre-card"),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White,
+                            modifier = Modifier.padding(18.dp),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                } else Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .thumbnailBorder(RoundedCornerShape(12.dp))
+                        .clip(NativeMediaCardMetrics.squareCoverShape)
+                        .thumbnailBorder(NativeMediaCardMetrics.squareCoverShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    AsyncImage(
-                        model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                        contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                    val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
+                    if (hasCatalogIdentity) CatalogArtworkFallback(
+                        hero = false, modifier = Modifier.fillMaxSize(),
                     )
+                    if (!item.thumbnailUrl.isNullOrBlank() || !hasCatalogIdentity) {
+                        AsyncImage(
+                            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isPinned) {
-                Icon(
-                    imageVector = BitChordIcons.Pin,
-                    contentDescription = stringResource(Res.string.pinned),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-            }
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) PlayingAccent else MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        }
-        val displaySubtitle = localizeCardSubtitle(item.subtitle)
-        Text(
-            text = displaySubtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+        },
+    )
 }

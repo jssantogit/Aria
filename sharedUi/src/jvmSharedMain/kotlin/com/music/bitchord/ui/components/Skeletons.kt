@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,6 +35,8 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import com.music.bitchord.ui.LocalReduceAnimations
 
 /**
  * Grey stand-ins for content still on the wire, laid out to the same metrics as
@@ -41,7 +44,7 @@ import androidx.compose.ui.unit.dp
  */
 
 /** How long one highlight sweep takes to cross a placeholder. */
-private const val SHIMMER_PERIOD_MS = 1400
+private const val SHIMMER_PERIOD_MS = GlobalMotionPolicy.skeletonSweepMillis
 
 private val BlockShape = RoundedCornerShape(6.dp)
 private val LineShape = RoundedCornerShape(4.dp)
@@ -63,6 +66,13 @@ fun ShimmerBox(modifier: Modifier = Modifier, shape: Shape = BlockShape) {
     val highlight = MaterialTheme.colorScheme.onSurfaceVariant
         .copy(alpha = 0.16f)
         .compositeOver(base)
+    // Shared by Home, Explore, Library, Search and details. Do not keep an
+    // infinite draw animation alive when the user enables Reduce animations.
+    val reduceMotion = LocalReduceAnimations.current
+    if (!GlobalMotionPolicy.shimmerEnabled(reduceMotion)) {
+        Box(modifier.clip(shape).background(base))
+        return
+    }
     val sweep = rememberInfiniteTransition(label = "skeleton").animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -73,9 +83,7 @@ fun ShimmerBox(modifier: Modifier = Modifier, shape: Shape = BlockShape) {
         modifier
             .clip(shape)
             .drawWithCache {
-                // The band travels from fully off one edge to fully off the
-                // other, which leaves a beat of flat grey between passes rather
-                // than a highlight permanently parked somewhere on the block.
+                // Remains a draw-only sweep, no per-frame recomposition.
                 val band = size.width * 0.5f
                 val startX = -band + sweep.value * (size.width + band * 2)
                 val brush = Brush.horizontalGradient(
@@ -194,17 +202,29 @@ fun LazyListScope.recentlyPlayedSkeleton(listLayout: Boolean) {
                     }
                 }
             } else {
-                BoxWithConstraints {
-                    val cardWidth = heroCardWidth(maxWidth)
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        userScrollEnabled = false,
-                    ) {
-                        items(2) {
+                // Match the actual RecentShelf GRID role: square covers with
+                // title and artist outside the image. Do not reserve a tall
+                // hero-sized placeholder that jumps when history arrives.
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    userScrollEnabled = false,
+                ) {
+                    items(3) { card ->
+                        Column(Modifier.width(NativeMediaCardMetrics.recentCoverWidth)) {
                             ShimmerBox(
-                                modifier = Modifier.width(cardWidth).aspectRatio(HERO_CARD_RATIO),
-                                shape = RoundedCornerShape(18.dp),
+                                modifier = Modifier
+                                    .width(NativeMediaCardMetrics.recentCoverWidth)
+                                    .aspectRatio(NativeMediaCardMetrics.recentCoverRatio),
+                                shape = NativeMediaCardMetrics.squareCoverShape,
+                            )
+                            Spacer(Modifier.height(NativeMediaCardMetrics.shelfCaptionGap))
+                            SkeletonLine(
+                                fraction = TitleWidths[card % TitleWidths.size], height = 13.dp,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            SkeletonLine(
+                                fraction = SubtitleWidths[card % SubtitleWidths.size], height = 11.dp,
                             )
                         }
                     }
@@ -308,18 +328,29 @@ fun LazyListScope.librarySkeleton() {
 /** The Play / Shuffle pair, which only appears once there is something to play. */
 @Composable
 private fun DetailActionsSkeleton(isArtist: Boolean) {
-    Row(
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val playWidth = if (isArtist) DetailActionLayoutMetrics.artistSkeletonPlay
+            else DetailActionLayoutMetrics.albumPlayWidth(maxWidth)
+        Row(
         modifier = Modifier
             .fillMaxWidth()
             // Matches the real pair's inset, height and corner, so the header
             // above them doesn't shift when the track list lands.
             .padding(horizontal = PAGE_GUTTER + 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(
+            DetailActionLayoutMetrics.albumGap, Alignment.CenterHorizontally,
+        ),
     ) {
-        ShimmerBox(Modifier.size(50.dp), CircleShape)
-        ShimmerBox(Modifier.width(130.dp).height(50.dp), CircleShape)
+        ShimmerBox(Modifier.size(DetailActionLayoutMetrics.albumSide), CircleShape)
+        ShimmerBox(
+            Modifier.width(playWidth)
+                .height(DetailActionLayoutMetrics.albumSide)
+                .testTag("detail-action-skeleton-play-pill"),
+            CircleShape,
+        )
         if (!isArtist) {
-            ShimmerBox(Modifier.size(50.dp), CircleShape)
+            ShimmerBox(Modifier.size(DetailActionLayoutMetrics.albumSide), CircleShape)
+        }
         }
     }
 }
@@ -328,7 +359,7 @@ private fun DetailActionsSkeleton(isArtist: Boolean) {
  * An album, playlist or artist page below its header — the header itself is
  * drawn from what the row that was tapped already knew, so it never waits.
  */
-fun LazyListScope.detailSkeleton(isArtist: Boolean) {
+fun LazyListScope.detailSkeleton(isArtist: Boolean, showActions: Boolean = true) {
     if (isArtist) {
         item(key = "skeleton:detail:actions") {
             Column(Modifier.graphicsLayer { alpha = 0.4f }) {
@@ -364,10 +395,15 @@ fun LazyListScope.detailSkeleton(isArtist: Boolean) {
         }
         return
     }
-    item(key = "skeleton:detail:actions") {
-        Column(Modifier.graphicsLayer { alpha = 0.4f }) {
-            DetailActionsSkeleton(isArtist = false)
-            Spacer(Modifier.height(20.dp))
+    // If the page header already painted the actual release controls, don't
+    // draw a second ghost Shuffle / Play / Plus row underneath while the
+    // catalog's track listing is still arriving.
+    if (showActions) {
+        item(key = "skeleton:detail:actions") {
+            Column(Modifier.graphicsLayer { alpha = 0.4f }) {
+                DetailActionsSkeleton(isArtist = false)
+                Spacer(Modifier.height(20.dp))
+            }
         }
     }
     songListSkeleton(count = 8, keyPrefix = "skeleton:detail:song", alpha = 0.4f)

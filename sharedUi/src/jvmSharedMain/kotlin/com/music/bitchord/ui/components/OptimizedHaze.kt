@@ -1,6 +1,13 @@
 package com.music.bitchord.ui.components
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import dev.chrisbanes.haze.HazeEffectScope
 import dev.chrisbanes.haze.HazeInputScale
@@ -30,3 +37,28 @@ fun Modifier.optimizedHazeEffect(
     inputScale = HazeInputScale.Fixed(0.33f)
     block?.invoke(this)
 }
+
+/**
+ * Shared neutral frosted material, owned by the *card*, never the page scrim.
+ * Source-backed Haze samples the real page even for separate dialog/popup
+ * windows when their owner supplies the same HazeState. The opaque neutral
+ * base remains the accessibility/failure fallback, never a fabricated blur.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun Modifier.neutralFrostedMaterial(
+    shape: Shape,
+    neutralColor: Color,
+    hazeState: HazeState?,
+    reduceBlur: Boolean,
+): Modifier = this
+    .clip(shape)
+    .background(neutralColor)
+    .then(
+        if (nativeNeutralOverlayCanBlur(hazeState != null, reduceBlur))
+            Modifier.optimizedHazeEffect(
+                state = requireNotNull(hazeState),
+                style = HazeMaterials.regular(neutralColor.copy(alpha = 0.58f)),
+            )
+        else Modifier,
+    )

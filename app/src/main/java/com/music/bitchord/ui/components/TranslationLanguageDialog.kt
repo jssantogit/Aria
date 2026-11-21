@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.appcompat.app.AppCompatDelegate
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -35,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +82,9 @@ fun TranslationLanguageDialog(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val selected by AppSettings.translationLanguage.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(ALERT_CORNER)
+    val neutralPlate = nativeContextPlateColor(
+        MaterialTheme.colorScheme.background.luminance() < 0.5f,
+    )
     val appLocale = AppCompatDelegate.getApplicationLocales().get(0) ?: Locale.getDefault()
     var query by remember { mutableStateOf("") }
 
@@ -117,16 +122,11 @@ fun TranslationLanguageDialog(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
+                .neutralFrostedMaterial(
+                    shape = shape,
+                    neutralColor = neutralPlate,
+                    hazeState = hazeState,
+                    reduceBlur = reduceDynamicBlur,
                 )
                 .clickable(
                     indication = null,
@@ -258,7 +258,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                cursorBrush = SolidColor(appleMusicKeyColor()),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -312,7 +312,7 @@ private fun LanguageChoiceRow(
             Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = appleMusicKeyColor(),
                 modifier = Modifier.size(19.dp),
             )
         }

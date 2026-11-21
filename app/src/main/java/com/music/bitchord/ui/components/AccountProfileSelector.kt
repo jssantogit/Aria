@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.background
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -128,7 +130,7 @@ fun AccountProfileSelector(
             Text(profile.handle.ifBlank { stringResource(if (profile.isBrandAccount) R.string.brand_account else R.string.personal) },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (selected && !managing) Icon(Icons.Rounded.Check, stringResource(R.string.selected_account), tint = MaterialTheme.colorScheme.primary)
+        if (selected && !managing) Icon(Icons.Rounded.Check, stringResource(R.string.selected_account), tint = appleMusicKeyColor())
         if (managing) Text(stringResource(R.string.sign_out), color = MaterialTheme.colorScheme.error)
     }
 }
@@ -136,6 +138,11 @@ fun AccountProfileSelector(
 @Composable private fun SelectorAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = Role.Button, onClick = onClick)
         .semantics { contentDescription = label }.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null); Spacer(Modifier.width(16.dp)); Text(label)
+        // Profile identity rows retain a leading avatar. Action rows inside
+        // this selector follow the native label-left, action-icon-right rule.
+        Text(label, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(16.dp))
+        Icon(icon, null, modifier = Modifier
+            .testTag("native-account-action-trailing-icon"))
     }
 }

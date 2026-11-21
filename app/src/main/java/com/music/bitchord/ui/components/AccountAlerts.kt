@@ -1,6 +1,21 @@
 package com.music.bitchord.ui.components
 
 import com.music.bitchord.R
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.semantics.Role
+import com.music.bitchord.ui.theme.appleMusicKeyColor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,10 +39,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +58,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -53,6 +71,58 @@ import kotlinx.coroutines.launch
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
+
+/**
+ * Single-action status fallback in the same native UIAlertController frame.
+ * The pending state is an actual spinner, not an unavailable verdict. Neither
+ * action nor layout is claimed as a measured Apple Music rating UI.
+ */
+@Composable
+fun NativeStatusAlert(
+    hazeState: HazeState?,
+    title: String,
+    description: String,
+    loading: Boolean,
+    dismissLabel: String,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(top = 12.dp).size(24.dp)
+                        .testTag("native-status-alert-loading"),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Text(
+                    text = description,
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        AlertRule()
+        AlertAction(label = dismissLabel, emphasised = false, onClick = onDismiss)
+    }
+}
 
 /**
  * Same UIAlertController shape as [UpdateAvailableDialog] — frosted card,
@@ -677,12 +747,18 @@ fun WebDavConflictAlert(
     }
 }
 
+/** The exact neutral expandable-menu surface token used by confirmations. */
+internal val FLOATING_CONFIRMATION_TREATMENT = NativeActionCardTreatment.FROSTED
+
 /**
- * A two-action confirmation using the same frosted UIAlertController shell as
- * the addon editor. Kept here so warnings opened from settings do not fall back
- * to a visually unrelated Material dialog.
+ * Confirmation actions are a floating *context menu*, not the old iOS system
+ * alert. Its neutral glass, 18dp corners, hairline and shadow are owned by
+ * NativeContextActionPlate — the same component as expandable action cards.
+ *
+ * The creator already lives in a full-screen Dialog, so do not open a second
+ * window here. Keep the host's source Haze state (or inherited source), and
+ * defer the destructive callback until the menu finishes its exit motion.
  */
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun ConfirmationAlert(
     hazeState: HazeState?,
@@ -694,39 +770,177 @@ fun ConfirmationAlert(
     dismissLabel: String? = null,
     destructive: Boolean = false,
 ) {
-    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 19.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = description,
-                modifier = Modifier.padding(top = 4.dp),
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
+    val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val visible = remember {
+        MutableTransitionState(false).apply { targetState = true }
+    }
+    val scrimOpacity = remember { Animatable(0f) }
+    var closing by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val closeWith: (() -> Unit) -> Unit = { action ->
+        if (!closing) {
+            closing = true
+            pendingAction = action
+            visible.targetState = false
         }
-        AlertRule()
-        AlertAction(
-            label = confirmLabel,
-            emphasised = true,
-            destructive = destructive,
-            onClick = onConfirm,
-        )
-        AlertRule()
-        AlertAction(
-            label = dismissLabel ?: stringResource(R.string.cancel),
-            emphasised = false,
-            onClick = onDismiss,
+    }
+    LaunchedEffect(visible.targetState, reduceMotion) {
+        val to = if (visible.targetState) 1f else 0f
+        if (reduceMotion) scrimOpacity.snapTo(to)
+        else scrimOpacity.animateTo(to, tween(durationMillis = 180))
+    }
+    LaunchedEffect(visible.isIdle, visible.currentState) {
+        if (closing && visible.isIdle && !visible.currentState) {
+            val action = pendingAction
+            pendingAction = null
+            action?.invoke()
+        }
+    }
+    // A second Back during the exit must not reach the wizard behind us.
+    BackHandler { if (!closing) closeWith(onDismiss) }
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SCRIM_COLOR.copy(alpha = SCRIM_COLOR.alpha * scrimOpacity.value))
+            .clickable(
+                enabled = !closing,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = { closeWith(onDismiss) },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        val menuWidth = (maxWidth - 48.dp).coerceAtMost(320.dp).coerceAtLeast(0.dp)
+        AnimatedVisibility(
+            visibleState = visible,
+            enter = if (reduceMotion) fadeIn(animationSpec = snap())
+                else fadeIn(tween(180)) + scaleIn(
+                    initialScale = 0.96f, animationSpec = tween(180),
+                ),
+            exit = if (reduceMotion) fadeOut(animationSpec = snap())
+                else fadeOut(tween(200)) + scaleOut(
+                    targetScale = 0.98f, animationSpec = tween(200),
+                ),
+        ) {
+            NativeContextActionPlate(
+                modifier = Modifier
+                    .width(menuWidth)
+                    .testTag("floating-confirmation-menu")
+                    // Taps in padding/dividers must never close the menu.
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = {},
+                    ),
+                hazeState = hazeState,
+                treatment = FLOATING_CONFIRMATION_TREATMENT,
+            ) {
+                Column(
+                    modifier = Modifier
+                        // Landscape, large fonts and IME: keep both choices
+                        // reachable without shifting the centered menu window.
+                        .heightIn(max = (maxHeight - 48.dp).coerceAtLeast(0.dp))
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 23.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp, fontWeight = FontWeight.W600,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (description.isNotBlank()) {
+                            Text(
+                                text = description,
+                                modifier = Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 14.sp, lineHeight = 19.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                    FloatingConfirmationRule()
+                    FloatingConfirmationAction(
+                        label = confirmLabel,
+                        destructive = destructive,
+                        primary = !destructive,
+                        tag = "floating-confirmation-confirm",
+                        enabled = !closing,
+                        onClick = { closeWith(onConfirm) },
+                    )
+                    FloatingConfirmationRule()
+                    FloatingConfirmationAction(
+                        label = dismissLabel ?: stringResource(R.string.cancel),
+                        destructive = false,
+                        primary = false,
+                        tag = "floating-confirmation-dismiss",
+                        enabled = !closing,
+                        onClick = { closeWith(onDismiss) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingConfirmationRule() {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Box(
+        Modifier.fillMaxWidth().height(0.5.dp)
+            .background(
+                (if (dark) Color.White else Color.Black)
+                    .copy(alpha = if (dark) 0.10f else 0.07f),
+            ),
+    )
+}
+
+@Composable
+private fun FloatingConfirmationAction(
+    label: String,
+    destructive: Boolean,
+    primary: Boolean,
+    tag: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)
+            .background(
+                if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                else Color.Transparent,
+            )
+            .clickable(
+                enabled = enabled,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .testTag(tag)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 16.sp,
+                fontWeight = if (primary || destructive) FontWeight.W600 else FontWeight.W500,
+            ),
+            color = (if (destructive) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface)
+                .copy(alpha = if (enabled) 1f else 0.48f),
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -833,7 +1047,7 @@ private fun ChoiceRow(
             Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = stringResource(R.string.selected),
-                tint = MaterialTheme.colorScheme.primary,
+                tint = appleMusicKeyColor(),
                 modifier = Modifier.size(19.dp),
             )
         }
@@ -849,8 +1063,9 @@ fun NativeAlertHost(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Dialog(
+    NeutralOverlayDialog(
         onDismissRequest = onDismiss,
+        hazeState = LocalNeutralOverlayHazeState.current,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
@@ -860,18 +1075,19 @@ fun NativeAlertHost(
     }
 }
 
-/** The scrim + frosted card frame shared by every UIAlertController-style dialog. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
+/**
+ * All account/status/choice alerts use the SAME neutral floating action plate
+ * as confirmation menus. Unlike the specialized ConfirmationAlert, these may
+ * include editable fields or lists and retain their original click handlers.
+ * Haze source and reduced-blur fallback are resolved by the shared plate.
+ */
 @Composable
 internal fun AlertScaffold(
     hazeState: HazeState?,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val shape = RoundedCornerShape(ALERT_CORNER)
-
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(SCRIM_COLOR)
@@ -882,30 +1098,20 @@ internal fun AlertScaffold(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
+        val plateWidth = (maxWidth - 48.dp).coerceAtMost(320.dp).coerceAtLeast(0.dp)
+        NativeContextActionPlate(
             modifier = Modifier
-                .width(ALERT_WIDTH)
-                .clip(shape)
+                .width(plateWidth)
                 .testTag("native-alert-scaffold")
-                .then(
-                    // A nested full-screen editor is its own dialog window and
-                    // cannot sample the Activity's haze source. Keep the exact
-                    // first-party alert metrics with a solid surface instead.
-                    if (reduceDynamicBlur || hazeState == null) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
-                )
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = {},
                 ),
-            content = content,
-        )
+            hazeState = hazeState,
+            treatment = FLOATING_CONFIRMATION_TREATMENT,
+        ) {
+            Column(content = content)
+        }
     }
 }
