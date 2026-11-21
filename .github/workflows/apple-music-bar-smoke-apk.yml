@@ -39,11 +39,32 @@ jobs:
       # The physical smoke APK must be generated only from a tested HEAD.
       # Do not weaken these gates to get an artifact if a motion regression fails.
       - name: Verify focused rating UI tests before the full suite
+        shell: bash
         run: |
-          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest \
-            --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest" \
-            --tests "com.music.bitchord.ui.screens.NativeFrostedRatingInteractionTest" \
+          set -o pipefail
+          chmod +x gradlew
+          focused_tests=(
+            ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+            --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest"
+            --tests "com.music.bitchord.ui.screens.NativeFrostedRatingInteractionTest"
             --tests "com.music.bitchord.ui.screens.CanonicalRecordingFeedbackControlsTest.numericRatingStyleShowsOneV3DigitPerSelectedStar"
+          )
+          # Haze 1.5.4 is published, but an Actions runner can intermittently
+          # fail to resolve its Maven metadata before any test starts. Retry
+          # ONLY that exact dependency-resolution failure, not failed tests,
+          # compilation errors or other faults. Every gate remains required.
+          if "${focused_tests[@]}" 2>&1 | tee focused-rating-gradle.log; then
+            exit 0
+          fi
+          if grep -Eq 'Could not find dev\\.chrisbanes\\.haze:haze(-materials)?:1\\.5\\.4' focused-rating-gradle.log &&
+             grep -q 'Could not resolve all files for configuration' focused-rating-gradle.log; then
+            echo "Retrying published Haze metadata resolution with Gradle refresh (once)."
+            sleep 10
+            "${focused_tests[@]}" --refresh-dependencies
+          else
+            echo "Focused test gate failed for a non-Haze reason; not retrying." >&2
+            exit 1
+          fi
       - name: Run Android unit tests
         run: |
           chmod +x gradlew
