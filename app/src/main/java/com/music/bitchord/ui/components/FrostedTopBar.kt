@@ -110,12 +110,9 @@ import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.roundToInt
 
 /**
- * The bar's own height, above whatever inset it is sitting under.
- *
- * The single source of truth for it: the bar lays itself out to this, and
- * everything that has to clear the bar — page content padding, either top
- * backdrop, fixed headers that sit directly beneath it — measures from here
- * rather than from a copy of the number.
+ * Base navigation row height, distinct from the real floating-control host.
+ * Every screen uses the same measured host and content-clearance geometry;
+ * an offset circle must never be drawn outside its parent hit-test bounds.
  */
 val TopBarContentHeight = 52.dp
 
@@ -251,7 +248,7 @@ fun FrostedTopBar(
     /** No empty action capsule on the Home root when its menu lives in the header. */
     showActions: Boolean = true,
     separateActions: Boolean = false,
-    /** Only root tabs with large in-list titles need the actions lowered to match. */
+    /** Displacement from the base row; one resting Y for all screens, Home scrolls. */
     rootActionsOffset: Dp = 0.dp,
     categoryBackButton: Boolean = false,
     backButtonOffset: Dp = 0.dp,
