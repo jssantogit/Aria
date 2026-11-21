@@ -85,10 +85,22 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
     suspend fun replaceCapability(
         capability: ProviderCapability,
         choices: List<ProviderChoice>,
+    ): Boolean = replaceCapabilities(mapOf(capability to choices))
+
+    /**
+     * Atomically persists a multi-capability reordering from Settings > Provedores.
+     * A failed, unreadable or newer document is left completely untouched.
+     * Unchanged capabilities (including unknown future ones) are preserved.
+     */
+    suspend fun replaceCapabilities(
+        changes: Map<ProviderCapability, List<ProviderChoice>>,
     ): Boolean {
-        require(choices.distinctBy { it.key }.size == choices.size) {
-            "Duplicate provider instance choice for $capability"
+        changes.forEach { (capability, choices) ->
+            require(choices.distinctBy(ProviderChoice::key).size == choices.size) {
+                "Duplicate provider instance choice for $capability"
+            }
         }
+        if (changes.isEmpty()) return true
         return withContext(Dispatchers.IO) {
             synchronized(WRITE_LOCK) {
                 val previous = when (val stored = decode()) {
@@ -96,23 +108,29 @@ class ProviderPreferenceStore(private val preferences: SharedPreferences) {
                     Decoded.Unreadable -> return@synchronized false
                     is Decoded.Parsed -> stored.document
                 }
+                val changedNames = changes.keys.map(ProviderCapability::name).toSet()
                 val next = StoredDocument(
-                    configuredCapabilities = (previous.configuredCapabilities +
-                        capability.name).distinct(),
-                    rows = previous.rows.filterNot { it.capability == capability.name } +
-                        choices.map { option ->
-                            StoredChoice(
-                                capability = capability.name,
-                                providerId = option.key.providerId,
-                                instanceId = option.key.instanceId,
-                                enabled = option.enabled,
-                                priority = option.order,
-                            )
+                    configuredCapabilities =
+                        (previous.configuredCapabilities + changedNames).distinct(),
+                    rows = previous.rows.filterNot { it.capability in changedNames } +
+                        changes.flatMap { (capability, choices) ->
+                            choices.map { choice ->
+                                StoredChoice(
+                                    capability = capability.name,
+                                    providerId = choice.key.providerId,
+                                    instanceId = choice.key.instanceId,
+                                    enabled = choice.enabled,
+                                    priority = choice.order,
+                                )
+                            }
                         },
                 )
-                preferences.edit()
-                    .putString(STORAGE_KEY, json.encodeToString(StoredDocument.serializer(), next))
-                    .commit()
+                if (next.rows.size > MAX_CHOICES ||
+                    next.configuredCapabilities.size > MAX_CHOICES
+                ) return@synchronized false
+                val payload = json.encodeToString(StoredDocument.serializer(), next)
+                if (payload.length > MAX_DOCUMENT_CHARS) return@synchronized false
+                preferences.edit().putString(STORAGE_KEY, payload).commit()
             }
         }
     }
