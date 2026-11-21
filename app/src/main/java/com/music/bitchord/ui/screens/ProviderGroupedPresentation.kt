@@ -35,9 +35,9 @@ internal fun providerSettingsDisplayName(entry: ProviderInventoryEntry): String 
     }
 
 internal fun groupProviderRows(rows: List<ProviderTabRowState>): List<ProviderDisplayGroup> =
-    rows.groupBy { it.entry.key }.map { (key, members) ->
+    rows.groupBy { it.entry.tab to it.entry.key }.map { (_, members) ->
         val first = members.first().entry
-        ProviderDisplayGroup(key, first.tab, providerSettingsDisplayName(first), members)
+        ProviderDisplayGroup(first.key, first.tab, providerSettingsDisplayName(first), members)
     }
 
 internal fun searchProviderGroups(
