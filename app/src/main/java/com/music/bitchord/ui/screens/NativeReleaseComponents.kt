@@ -53,6 +53,11 @@ internal val SLEEVE_SHAPE = RoundedCornerShape(12.dp)
 private val SLEEVE_SHADOW = 18.dp
 private val RELEASE_SIDE_BUTTON = 50.dp
 internal const val ALBUM_SLEEVE_FRACTION = 0.66f
+/** Identical album/playlist artwork framing, regardless of provider or route.
+ * Limit height in landscape, never derive a thumbnail size from its source. */
+internal fun nativeReleaseSleeveSize(viewportWidth: Dp, viewportHeight: Dp): Dp =
+    (viewportWidth * ALBUM_SLEEVE_FRACTION).coerceAtMost(viewportHeight * 0.6f)
+
 internal fun nativeReleaseSideButtonSize(compactForAlbum: Boolean): Dp =
     if (compactForAlbum) DetailActionLayoutMetrics.albumSide else RELEASE_SIDE_BUTTON
 private val RELEASE_ACTION_GAP = 14.dp
@@ -77,7 +82,11 @@ internal fun NativeReleaseActionRow(
     onTogglePin: (() -> Unit)? = null,
     compactForAlbum: Boolean = false,
 ) {
-    val compactAlbum = compactForAlbum && !isLocal
+    // Album and playlist details follow one three-control layout when the
+    // source owns the add/pin action. Local albums retain their genuine
+    // Play/Shuffle two-pill actions, at Library > Songs dimensions.
+    val compactRelease = compactForAlbum && !isLocal
+    val localCompactAlbum = compactForAlbum && isLocal
     val sideButton = nativeReleaseSideButtonSize(compactForAlbum)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val compactPlayWidth = DetailActionLayoutMetrics.albumPlayWidth(maxWidth)
@@ -85,14 +94,16 @@ internal fun NativeReleaseActionRow(
         modifier = Modifier
             .widthIn(max = RELEASE_ACTIONS_MAX_WIDTH)
             .fillMaxWidth()
-            .padding(horizontal = HEADER_GUTTER),
-        horizontalArrangement = if (compactAlbum) {
-            Arrangement.spacedBy(
+            .padding(horizontal = if (localCompactAlbum) PAGE_GUTTER else HEADER_GUTTER),
+        horizontalArrangement = when {
+            compactRelease -> Arrangement.spacedBy(
                 DetailActionLayoutMetrics.albumGap, Alignment.CenterHorizontally,
             )
-        } else Arrangement.spacedBy(
-            if (compactForAlbum) 12.dp else RELEASE_ACTION_GAP,
-        ),
+            localCompactAlbum -> Arrangement.spacedBy(
+                DetailActionLayoutMetrics.libraryCategoryGap, Alignment.CenterHorizontally,
+            )
+            else -> Arrangement.spacedBy(RELEASE_ACTION_GAP)
+        },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isLocal) {
@@ -103,7 +114,8 @@ internal fun NativeReleaseActionRow(
                 filled = true,
                 enabled = canPlay,
                 size = sideButton,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f)
+                    .let { if (localCompactAlbum) it.testTag("native-local-album-play-pill") else it },
             )
             ActionPill(
                 icon = BitChordIcons.Shuffle,
@@ -130,12 +142,14 @@ internal fun NativeReleaseActionRow(
                 filled = true,
                 enabled = canPlay,
                 size = sideButton,
-                // Align with the Library > Songs play pill, already visually
-                // matched to Apple Music. Use the exact same responsive width
-                // as the loading skeleton, not an unrelated fixed 130dp pill.
-                modifier = if (compactAlbum) {
-                    Modifier.width(compactPlayWidth)
-                        .testTag("native-compact-album-play-pill")
+                // One responsive play width for album and playlist heroes
+                // across online, offline, Navidrome and public discovery.
+                // Matches the Library > Songs pill when it fits beside circles.
+                modifier = if (compactRelease) {
+                    Modifier.width(compactPlayWidth).testTag(
+                        if (pinTargetLabel == "playlist") "native-compact-playlist-play-pill"
+                        else "native-compact-album-play-pill",
+                    )
                 } else Modifier.weight(1f),
             )
             CircleIconButton(
@@ -221,6 +235,7 @@ internal fun NativePlaylistHeroActions(
                 onPlay = onPlay,
                 onShuffle = onShuffle,
                 isLocal = false,
+                compactForAlbum = true,
                 reservePinAction = true,
                 pinTargetLabel = "playlist",
                 isPinnedInLibrary = isPinned,
