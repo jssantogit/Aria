@@ -38,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import com.music.bitchord.ui.components.appleSettingsSwitchColors
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -118,7 +120,7 @@ fun ProvidersScreen(
     // An unsaved reorder draft must not revive after process recreation.
     var editing by remember { mutableStateOf(false) }
     // Keep a single section open: the categories remain on one vertical screen.
-    var expandedTab by rememberSaveable { mutableStateOf(ProviderSettingsTab.CATALOG.name) }
+    var expandedTab by rememberSaveable { mutableStateOf("") }
     var tabBeforeOrganize by remember { mutableStateOf<String?>(null) }
     var connections by rememberSaveable { mutableStateOf(false) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
@@ -336,35 +338,44 @@ fun ProvidersScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        for (tab in ProviderSettingsTab.entries) {
-            val rows = visibleProviderRows(orderedForDisplay(grouped[tab].orEmpty()), editing)
-            if (rows.isEmpty()) continue
-            val isExpanded = expandedTab == tab.name
-            Spacer(Modifier.height(7.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .semantics { stateDescription = if (isExpanded) "Expandida" else "Recolhida" }
-                    .clickable(enabled = !saving) {
-                        expandedTab = if (isExpanded) "" else tab.name
-                    }
-                    .heightIn(min = 52.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    tab.providerTitle(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
+
+        Spacer(Modifier.height(20.dp))
+        // Reuse the actual Settings visual hierarchy: one inset surface
+        // with category rows and separators, not six floating headings.
+        SettingsGroupSurface {
+            var displayedCategories = 0
+            for (tab in ProviderSettingsTab.entries) {
+                val rows = visibleProviderRows(orderedForDisplay(grouped[tab].orEmpty()), editing)
+                if (rows.isEmpty()) continue
+                if (displayedCategories++ > 0) RowDivider()
+                val isExpanded = expandedTab == tab.name
+                SettingsRow(
+                    icon = tab.providerIcon(),
+                    title = tab.providerTitle(),
+                    onClick = {
+                        if (!saving) expandedTab = if (isExpanded) "" else tab.name
+                    },
+                    trailing = {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Rounded.KeyboardArrowUp
+                                else Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    enabled = !saving,
+                    reserveIconSpace = false,
+                    minHeight = 62.dp,
+                    modifier = Modifier
+                        .testTag("providers-category-${tab.name}")
+                        .semantics {
+                            stateDescription = if (isExpanded) "Expandida" else "Recolhida"
+                        },
                 )
-                Icon(
-                    if (isExpanded) Icons.Rounded.KeyboardArrowUp
-                    else Icons.Rounded.KeyboardArrowDown,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (isExpanded) {
+                if (!isExpanded) continue
+
+                RowDivider()
                 val hasMultipleReorderScopes = editing &&
                     rows.map { it.entry.capability }.distinct().size > 1
                 for ((index, row) in rows.withIndex()) {
@@ -372,13 +383,18 @@ fun ProvidersScreen(
                         rows[index - 1].entry.capability != row.entry.capability
                     if (hasMultipleReorderScopes && capabilityChanged) {
                         Text(
-                            row.entry.capability.organizeScopeTitle(),
-                            style = MaterialTheme.typography.labelLarge,
+                            text = row.entry.capability.organizeScopeTitle(),
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 5.dp),
+                            modifier = Modifier.padding(
+                                start = TEXT_INSET,
+                                end = ROW_INSET,
+                                top = 13.dp,
+                                bottom = 5.dp,
+                            ),
                         )
                     } else if (index > 0 && !capabilityChanged) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                        RowDivider()
                     } else if (index > 0) {
                         Spacer(Modifier.height(8.dp))
                     }
@@ -405,20 +421,20 @@ fun ProvidersScreen(
                 }
             }
         }
-        Spacer(Modifier.height(22.dp))
         if (!editing) {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { connections = true }
-                    .padding(vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.Settings, contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(14.dp))
-                Text("Conexões e bibliotecas", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(20.dp))
+            SettingsGroupSurface {
+                SettingsRow(
+                    icon = Icons.Rounded.Settings,
+                    title = "Conexões e bibliotecas",
+                    onClick = { connections = true },
+                    reserveIconSpace = false,
+                    minHeight = 62.dp,
+                    modifier = Modifier.testTag("providers-connections"),
+                )
             }
         }
+        Spacer(Modifier.height(12.dp))
     }
 
     info?.let { entry ->
@@ -622,7 +638,10 @@ private fun ProviderSettingRow(
     val density = LocalDensity.current
     val threshold = with(density) { 36.dp.toPx() }
     var dragY by remember(entry.key, editing) { mutableFloatStateOf(0f) }
-    Row(modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(horizontal = ROW_INSET),
         verticalAlignment = Alignment.CenterVertically) {
         if (isDraggable) {
             Box(
@@ -701,6 +720,7 @@ private fun ProviderSettingRow(
                 checked = savedEnabled,
                 onCheckedChange = onToggle,
                 enabled = !saving && entry.readiness == ProviderReadiness.READY,
+                colors = appleSettingsSwitchColors(),
                 modifier = Modifier.semantics {
                     contentDescription = entry.displayName + if (savedEnabled)
                         ", ativado" else ", desativado"
