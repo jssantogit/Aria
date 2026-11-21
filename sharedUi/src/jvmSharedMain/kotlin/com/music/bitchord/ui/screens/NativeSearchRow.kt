@@ -40,8 +40,6 @@ data class NativeSearchRowUi(
     val artworkUri: String?,
     val artistPortrait: Boolean,
     val downloadBadge: Boolean = false,
-    /** Optional source-native duration, never an inferred stream entitlement. */
-    val durationLabel: String? = null,
 )
 
 /**
