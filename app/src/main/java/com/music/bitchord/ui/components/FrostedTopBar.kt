@@ -291,7 +291,8 @@ fun FrostedTopBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .height(FloatingTopChromeHostHeight),
+                .height(FloatingTopChromeHostHeight)
+                .testTag("native-global-floating-chrome-host"),
         ) {
             /* Temporarily hidden: keep the scrolling center-title implementation
              * intact so it can be restored without rebuilding its transitions.
