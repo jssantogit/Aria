@@ -93,6 +93,7 @@ import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.NativeMediaCardMetrics
+import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.SignInBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
@@ -127,19 +128,18 @@ fun appleProminentArtworkOrNull(url: String?): String? {
     return url.takeIf { width >= 600 && height >= 600 }
 }
 
-/** How far the Listen now heading and feed sit above the shared top inset. */
-private val HOME_TITLE_LIFT = 28.dp
-
 /**
- * Home intentionally raises its large heading. Explore genre details have an
- * independent floating Back control, so they must use the FULL top-bar inset
- * instead of lifting the heading under that control.
+ * Root titles occupy the same height as Explore and Library. Pushed genre
+ * headings start BELOW the 40dp floating Back rather than behind its bottom.
  */
 internal fun homeTitleTopInset(
     topBarInset: Dp,
     reserveFloatingBackSpace: Boolean,
-): Dp = if (reserveFloatingBackSpace) topBarInset.coerceAtLeast(0.dp)
-else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
+): Dp = if (reserveFloatingBackSpace) {
+    topBarInset.coerceAtLeast(0.dp) + NativePageHeaderMetrics.pushedTitleClearance
+} else {
+    (topBarInset - NativePageHeaderMetrics.homeRootTitleLift).coerceAtLeast(0.dp)
+}
 
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
@@ -250,8 +250,8 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // The heading sits higher than the other tabs' first row: pull the
-            // whole feed up by [HOME_TITLE_LIFT] with it.
+            // Root heading matches the Explore/Library band; pushed genres clear
+            // the global Back puck before painting their own title.
             contentPadding = if (title != null) {
                 PaddingValues(
                     top = homeTitleTopInset(
@@ -266,7 +266,13 @@ fun HomeScreen(
         ) {
             if (title != null) {
                 item(key = "home-title") {
-                    HomeTitle(title, actions = headerActions, onBack = onBack, trailing = headerTrailing)
+                    HomeTitle(
+                        title = title,
+                        actions = headerActions,
+                        onBack = onBack,
+                        trailing = headerTrailing,
+                        pushedCategory = reserveFloatingBackSpace,
+                    )
                 }
             }
             if (!signedIn && onSignIn != null) {
@@ -658,18 +664,26 @@ fun HomeTitle(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    pushedCategory: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
         modifier = modifier.fillMaxWidth()
-            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+            .padding(
+                start = PAGE_GUTTER + if (pushedCategory) NativePageHeaderMetrics.pushedTitleStartInset else 0.dp,
+                end = PAGE_GUTTER,
+                top = 8.dp,
+                bottom = 8.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text = title,
             modifier = Modifier.weight(1f).testTag("home-title"),
-            style = MaterialTheme.typography.displayLarge,
+            style = if (pushedCategory) MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            ) else MaterialTheme.typography.displayLarge,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
