@@ -160,6 +160,53 @@ class ProviderCapabilitySession(
     }
 
     /**
+     * Single durable transaction for Settings > Provedores / Concluir.
+     * Never publishes a partial ordering when two capability groups are edited.
+     * Revocation happens before disk I/O; failed writes keep affected instances
+     * quarantined while unrelated capabilities remain eligible.
+     */
+    suspend fun updateAll(
+        nextByCapability: Map<ProviderCapability, List<ProviderChoice>>,
+    ): Boolean = lock.withLock {
+        if (!initialized) return@withLock false
+        nextByCapability.forEach { (capability, rows) ->
+            require(rows.distinctBy(ProviderChoice::key).size == rows.size) {
+                "Duplicate provider instance for $capability"
+            }
+        }
+        val changed = nextByCapability.filter { (capability, rows) ->
+            choices[capability] != rows ||
+                quarantinedSlots.any { it.first == capability } ||
+                storageFailure
+        }
+        if (changed.isEmpty()) return@withLock true
+
+        val revoked = changed.flatMap { (capability, next) ->
+            val enabled = next.filter(ProviderChoice::enabled)
+                .mapTo(HashSet()) { it.key }
+            gate.ordered(capability)
+                .map { capability to it.key }
+                .filter { (_, key) -> key !in enabled }
+        }
+        quarantinedSlots.addAll(revoked)
+        gate.replace(effectivePolicy())
+        publishSnapshot()
+
+        if (!store.replaceCapabilities(changed)) {
+            storageFailure = true
+            publishSnapshot()
+            return@withLock false
+        }
+
+        choices = choices + changed
+        quarantinedSlots.removeAll { (capability, _) -> capability in changed }
+        gate.replace(effectivePolicy())
+        if (quarantinedSlots.isEmpty()) storageFailure = false
+        publishSnapshot()
+        true
+    }
+
+    /**
      * Rebinds adapter descriptors after the legacy connection registry loads
      * (or adds/removes a server). Never changes persisted user choices.
      *
