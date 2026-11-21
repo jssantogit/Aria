@@ -91,6 +91,27 @@ class NativeAlbumHeroActionsTest {
             .assertDoesNotExist()
     }
 
+    @Test fun downloadsFolderKeepsItsRealTwoPillActionsAtLibrarySongsWidth() {
+        // Downloads' own root has BrowseType.OTHER; the route policy must
+        // select the same 16dp/12dp two-pill layout as Library > Songs.
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.width(393.dp)) {
+                    NativeReleaseActionRow(
+                        onPlay = {}, onShuffle = {}, isLocal = true,
+                        compactForAlbum = nativeReleaseUsesAlbumGeometry(
+                            "local:downloads", com.music.bitchord.data.model.BrowseType.OTHER,
+                        ),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("native-local-album-play-pill")
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.libraryCategoryPlayWidth(393.dp))
+        compose.onNodeWithContentDescription("Fixar álbum na Biblioteca")
+            .assertDoesNotExist()
+    }
+
     @Test fun canonicalPlaylistMatchesAlbumPlayWidthAndKeepsRealPin() {
         var pinTaps = 0
         compose.setContent {
