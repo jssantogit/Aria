@@ -191,25 +191,29 @@ class PlaylistLibraryVisualReuseTest {
     @Test fun discardPromptUsesNativeAlertAndPreservesBothActions() {
         var discarded = 0
         var continued = 0
+        val isOpen = mutableStateOf(true)
         compose.setContent {
-            com.music.bitchord.ui.components.ConfirmationAlert(
+            if (isOpen.value) com.music.bitchord.ui.components.ConfirmationAlert(
                 hazeState = null,
                 title = "Descartar alterações?",
                 description = "O rascunho desta playlist não será salvo.",
                 confirmLabel = "Descartar",
                 dismissLabel = "Continuar editando",
                 destructive = true,
-                onConfirm = { discarded++ },
-                onDismiss = { continued++ },
+                onConfirm = { discarded++; isOpen.value = false },
+                onDismiss = { continued++; isOpen.value = false },
             )
         }
-        compose.onNodeWithTag("native-alert-scaffold").assertExists()
+        compose.onNodeWithTag("floating-confirmation-menu").assertExists()
         compose.onNodeWithText("Continuar editando").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, continued); assertEquals(0, discarded) }
+        // A dismissed menu must be reopened; one modal cannot activate both
+        // mutually exclusive choices.
+        compose.runOnIdle { isOpen.value = true }
         compose.onNodeWithText("Descartar").performClick()
-        compose.runOnIdle {
-            assertEquals(1, continued)
-            assertEquals(1, discarded)
-        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, continued); assertEquals(1, discarded) }
     }
 
     @Test fun emptyPlaylistListDoesNotShowDuplicateHeaderCreationAction() {
