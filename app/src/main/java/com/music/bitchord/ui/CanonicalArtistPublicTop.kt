@@ -157,6 +157,7 @@ internal fun canonicalVerifiedArtistTopRows(
             // ListenBrainz CAA hints do not certify a storefront edition.
             // Only our separate Apple UPC + complete tracklist proof can add
             // promotional artwork, paired with its official product badge.
+            val officialEdition = verified.officialAudioReleaseMbid
             val store = verified.officialAudioAppleStoreUrl
             val badge = appleApprovedBadgeForStoreUrl(store)
             val cover = verified.officialAudioArtworkUri?.takeIf {
