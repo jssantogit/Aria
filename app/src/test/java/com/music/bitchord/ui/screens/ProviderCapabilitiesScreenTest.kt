@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityStatus
@@ -105,4 +107,68 @@ class ProviderCapabilitiesScreenTest {
             assertEquals(1, backCalls)
         }
     }
+    @Test fun discogsSettingsEmbedNativeMaskedInputAndSaveWithoutOpeningLegacyModal() {
+        val key = ProviderKey("discogs")
+        val capability = ProviderCapability.EDITION_METADATA
+        val entry = ProviderInventoryEntry(
+            key = key,
+            capability = capability,
+            tab = ProviderSettingsTab.CATALOG,
+            displayName = "Discogs (Edições)",
+            readiness = ProviderReadiness.NEEDS_CONFIGURATION,
+            supportsReordering = false,
+            notes = "",
+        )
+        val group = ProviderDisplayGroup(
+            key = key,
+            tab = ProviderSettingsTab.CATALOG,
+            title = "Discogs",
+            rows = listOf(ProviderTabRowState(
+                entry = entry,
+                status = ProviderCapabilityStatus(
+                    capability = capability,
+                    key = key,
+                    implemented = true,
+                    prerequisitesMet = false,
+                    userAuthorized = false,
+                    operationalHealth = ProviderOperationalHealth.UNKNOWN,
+                    effectiveEligible = false,
+                ),
+                order = 0,
+            )),
+        )
+        val credential = mutableStateOf("")
+        val saved = mutableListOf<String>()
+        compose.setContent {
+            BitChordTheme {
+                ProviderCapabilitiesScreen(
+                    group = group,
+                    configured = emptyMap(),
+                    saving = false,
+                    loading = false,
+                    error = null,
+                    contentPadding = PaddingValues(0.dp),
+                    onBack = {},
+                    onToggle = { _, _ -> },
+                    onConfigure = {},
+                    discogsToken = credential.value,
+                    onDiscogsTokenChange = { credential.value = it },
+                    onSaveDiscogsToken = { saved += credential.value },
+                )
+            }
+        }
+        compose.onAllNodesWithTag("native-settings-group-surface", useUnmergedTree = true)
+            .assertCountEquals(2)
+        compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onNodeWithTag("providers-discogs-token-input", useUnmergedTree = true)
+            .performTextInput("test-credential")
+        compose.onNodeWithTag("providers-discogs-token-save", useUnmergedTree = true)
+            .performClick()
+        compose.runOnIdle {
+            assertEquals("test-credential", credential.value)
+            assertEquals(listOf("test-credential"), saved)
+        }
+    }
+
 }
