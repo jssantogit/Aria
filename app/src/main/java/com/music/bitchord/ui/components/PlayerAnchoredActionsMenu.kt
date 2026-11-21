@@ -177,7 +177,13 @@ fun PlayerAnchoredActionsMenu(
         // never retain its normal colors. Only the masked Compose layer dims.
         val dialogView = LocalView.current
         DisposableEffect(dialogView) {
-            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            // HazeDialog may add a wrapper around the Compose view. Walk
+            // ancestors rather than assuming the first parent is the Dialog.
+            var ancestor: android.view.ViewParent? = dialogView.parent
+            while (ancestor != null && ancestor !is DialogWindowProvider) {
+                ancestor = ancestor.parent
+            }
+            val window = (ancestor as? DialogWindowProvider)?.window
             window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             onDispose { }
         }
