@@ -1,5 +1,7 @@
 package com.music.bitchord.ui.screens
 
+import com.music.bitchord.playlistLibraryHeadingExtraTopPadding
+
 import com.music.bitchord.R
 
 import androidx.compose.foundation.lazy.LazyColumn
@@ -333,7 +335,7 @@ internal fun UnifiedPlaylistLibraryShelf(
                 modifier = Modifier.padding(
                     start = PAGE_GUTTER + 16.dp,
                     end = PAGE_GUTTER,
-                    top = 8.dp + com.music.bitchord.ui.components.HomeFloatingActionRestOffset,
+                    top = playlistLibraryHeadingExtraTopPadding(),
                 ),
             )
         }
