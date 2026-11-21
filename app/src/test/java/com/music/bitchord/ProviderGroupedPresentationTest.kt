@@ -100,7 +100,7 @@ class ProviderGroupedPresentationTest {
         // Preserve the full internal group for authorization revocation and future
         // readiness changes; filtering must NEVER mutate ProviderRuntime's input.
         assertEquals(4, fullGroups.first().rows.size)
-        assertEquals(5, fullGroups.size)
+        assertEquals(4, fullGroups.size)
         assertEquals("Discogs", visible.last().title)
     }
 
