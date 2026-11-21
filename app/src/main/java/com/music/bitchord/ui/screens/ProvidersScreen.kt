@@ -40,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -171,13 +172,7 @@ fun ProvidersScreen(
     }
 
     fun orderedForDisplay(rows: List<ProviderTabRowState>): List<ProviderTabRowState> =
-        rows.groupBy { it.entry.capability }.values.flatMap { group ->
-            val draftOrder = if (editing) staged[group.first().entry.capability] else null
-            if (draftOrder == null) group
-            else group.sortedBy { row ->
-                draftOrder.indexOf(row.entry.key).takeIf { it >= 0 } ?: (1000 + row.order)
-            }
-        }
+        if (editing) previewProviderRows(rows, staged) else rows
 
     fun openEntry(entry: ProviderInventoryEntry) {
         when (entry.key.providerId) {
@@ -327,7 +322,8 @@ fun ProvidersScreen(
                 modifier = Modifier.padding(bottom = 9.dp))
             for ((index, row) in rows.withIndex()) {
                 if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                ProviderSettingRow(
+                key(row.entry.capability, row.entry.key) {
+                    ProviderSettingRow(
                     row = row,
                     editing = editing,
                     saving = saving || snapshot.status == ProviderSessionStatus.BOOTING,
@@ -339,7 +335,8 @@ fun ProvidersScreen(
                     onOpen = { openEntry(row.entry) },
                     onToggle = { enabled -> toggle(row.entry, enabled) },
                     onMove = { by -> move(row.entry.capability, row.entry.key, by) },
-                )
+                    )
+                }
             }
         }
         Spacer(Modifier.height(22.dp))
@@ -418,6 +415,30 @@ fun ProvidersScreen(
             },
             confirmButton = { TextButton(onClick = { info = null }) { Text("Fechar") } },
         )
+    }
+}
+
+/**
+ * Editing preview preserves fixed rows in their original slots. The UI must
+ * never show a rearrangement that the durable reorderCapabilityChoices()
+ * deliberately refuses to persist. Each capability remains independent.
+ */
+internal fun previewProviderRows(
+    rows: List<ProviderTabRowState>,
+    drafts: Map<ProviderCapability, List<ProviderKey>>,
+): List<ProviderTabRowState> = rows.groupBy { it.entry.capability }.values.flatMap { group ->
+    val requested = drafts[group.first().entry.capability]
+        ?.distinct()
+        ?.filter { key -> group.any { it.entry.key == key && it.entry.supportsReordering } }
+        .orEmpty()
+    if (requested.size < 2) group else {
+        val byKey = group.associateBy { it.entry.key }
+        val reordered = requested.mapNotNull(byKey::get)
+        val movable = reordered.mapTo(HashSet()) { it.entry.key }
+        var cursor = 0
+        group.map { row ->
+            if (row.entry.key in movable) reordered[cursor++] else row
+        }
     }
 }
 
