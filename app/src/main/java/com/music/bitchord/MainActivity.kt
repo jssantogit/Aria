@@ -4888,8 +4888,7 @@ private fun BitChordApp(
                     rootActionsOffset = nativeTopBarActionsOffset(
                         homeRootVisible = homeRootVisible,
                         homeSettingsOffset = homeSettingsOffset,
-                        libraryRootVisible = appleLibraryLandingChrome,
-                        exploreRootVisible = appleExploreRootChrome,
+                        searchRootVisible = appleSearchRootChrome,
                     ),
                     categoryBackButton = appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
                         appleExploreGenreChrome || appleDownloadsChrome,
