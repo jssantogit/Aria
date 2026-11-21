@@ -67,6 +67,7 @@ class ProviderCapabilitiesScreenTest {
             ),
         )
         val calls = mutableListOf<Pair<ProviderCapability, Boolean>>()
+        var backCalls = 0
         compose.setContent {
             BitChordTheme {
                 ProviderCapabilitiesScreen(
@@ -76,7 +77,7 @@ class ProviderCapabilitiesScreenTest {
                     loading = false,
                     error = null,
                     contentPadding = PaddingValues(0.dp),
-                    onBack = {},
+                    onBack = { backCalls++ },
                     onToggle = { entry, checked -> calls += entry.capability to checked },
                     onConfigure = {},
                 )
@@ -94,8 +95,11 @@ class ProviderCapabilitiesScreenTest {
         compose.onNodeWithText("Discografia").assertExists()
         compose.onNodeWithText("Identidade e ISRC").assertExists()
         compose.onNodeWithText("Busca").performClick()
+        compose.onNodeWithTag("apple-toolbar-back-button", useUnmergedTree = true)
+            .performClick()
         compose.runOnIdle {
             assertEquals(listOf(ProviderCapability.CATALOG_SEARCH to true), calls)
+            assertEquals(1, backCalls)
         }
     }
 }
