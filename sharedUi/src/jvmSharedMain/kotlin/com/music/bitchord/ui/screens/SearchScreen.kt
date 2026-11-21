@@ -146,6 +146,9 @@ data class CanonicalCatalogSearchRow(
     /** Title of the exact verified Official audio edition on a public artist
      * Recording. Display-only; never grants audio access or creates a ReleaseId. */
     val officialReleaseTitle: String? = null,
+    /** Exact-storefront artwork proof. Never infer this from names. */
+    val appleStoreUrl: String? = null,
+    val appleStoreBadgeUrl: String? = null,
 )
 
 /**
