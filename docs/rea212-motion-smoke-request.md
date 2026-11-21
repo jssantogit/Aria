@@ -252,3 +252,10 @@
 - **Mudança focalizada:** commit [`1a14c3bc`](https://github.com/jssantogit/BitChord/commit/1a14c3bc58faad2d3551388ea720dc2f881bbaea) deixa somente a `LazyColumn` do formulário controlar rolagem; as opções continuam dentro do card expansível, com o mesmo ID/callback, animação e visual. O teste continua realizando clique físico na conta B após `performScrollTo`, e exige exatamente `opensubsonic:account-b`.
 - **Gate:** repetir Android unit tests e sharedUi/Automix sem relaxar testes, compilar o APK universal apenas após GREEN, checksum SHA-256, sem merge nem inferir smoke físico.
 
+## Reexecução após RED de Maven/Haze — 21/11/2026
+
+- **Falha registrada:** [Smoke #44856893438](https://github.com/jssantogit/BitChord/actions/runs/44856893438) parou na etapa focada `Verify focused rating UI tests before the full suite`, durante `:app:checkDevDebugAarMetadata`, porque o Gradle não conseguiu resolver `haze:1.5.4` e `haze-materials:1.5.4` no Maven Central/JitPack. O erro antecedeu qualquer teste; não demonstra reprovação do teste de Navidrome na execução do smoke.
+- **Pacotes publicados:** os dois artefatos e a versão 1.5.4 constam em índice Maven Central público. Preservar versão e API do app, sem downgrade especulativo.
+- **Resiliência limitada:** commits [`f967ac5b`](https://github.com/jssantogit/BitChord/commit/f967ac5bea560155f1f9a3c6d7e14ebfc31a5ed5) e [`159f0c8d`](https://github.com/jssantogit/BitChord/commit/159f0c8d5a7e51217c4f3d359285acf3f76efedc) acrescentam apenas UMA segunda tentativa Gradle com `--refresh-dependencies` à etapa focada, condicionada estritamente ao erro identificável de resolução dessas dependências. Não recuperar falhas de teste, compilação ou erro diverso. Todos os gates originais permanecem obrigatórios.
+- **CI:** nova execução de smoke expressamente solicitada após RED, sem merge/release; aguardar resultado final e só publicar universal+SHA-256 após todas as etapas GREEN. Android CI [#44856898573](https://github.com/jssantogit/BitChord/actions/runs/44856898573) do HEAD anterior estava em progresso no último check.
+
