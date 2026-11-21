@@ -120,8 +120,8 @@ import kotlin.math.roundToInt
 val TopBarContentHeight = 52.dp
 
 /**
- * The breathing room between the bar's bottom edge and the first thing under
- * it, so content rests below the glass instead of against it.
+ * Breathing room after the actual BOTTOM of the lowered circular controls,
+ * not merely the base row of the top bar.
  */
 val TopBarContentGap = 12.dp
 
