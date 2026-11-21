@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -88,6 +89,8 @@ import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.player.AppleQueueVectors
 import com.music.bitchord.ui.components.ArtworkPageBackButton
 import com.music.bitchord.ui.components.FloatingLibraryTopBarCircle
+import com.music.bitchord.ui.components.NativeToolbarOverflowMenu
+import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.standaloneTopControlPadding
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -647,35 +650,42 @@ internal fun ProviderHeader(
                 hazeState = null,
             )
             if (showOrganize) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                var overflowOpen by remember { mutableStateOf(false) }
+                Box {
                     FloatingLibraryTopBarCircle(hazeState = null) {
                         IconButton(
-                            onClick = onConnections,
+                            onClick = { overflowOpen = true },
+                            enabled = !saving,
                             modifier = Modifier.size(40.dp)
-                                .testTag("providers-top-connections"),
+                                .testTag("providers-top-overflow"),
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Settings,
-                                contentDescription = "Conexões e bibliotecas",
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "Opções de provedores",
                                 modifier = Modifier.size(22.dp),
                             )
                         }
                     }
-                    FloatingLibraryTopBarCircle(hazeState = null) {
-                        IconButton(
-                            onClick = onOrganize,
-                            modifier = Modifier.size(40.dp)
-                                .testTag("providers-top-organize"),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Sort,
-                                contentDescription = "Organizar provedores",
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
+                    NativeToolbarOverflowMenu(
+                        expanded = overflowOpen,
+                        onDismissRequest = { overflowOpen = false },
+                    ) {
+                        NativeCompactMenuItem(
+                            label = "Organizar",
+                            icon = Icons.Rounded.Sort,
+                            onClick = {
+                                overflowOpen = false
+                                onOrganize()
+                            },
+                        )
+                        NativeCompactMenuItem(
+                            label = "Conexões",
+                            icon = Icons.Rounded.Settings,
+                            onClick = {
+                                overflowOpen = false
+                                onConnections()
+                            },
+                        )
                     }
                 }
             }
