@@ -67,7 +67,9 @@ internal fun searchProviderGroups(
     if (needle.isEmpty()) return groups
     return groups.filter { group ->
         group.title.contains(needle, ignoreCase = true) ||
-            group.rows.any { it.entry.displayName.contains(needle, ignoreCase = true) }
+            presentableProviderFunctions(group).any {
+                it.entry.displayName.contains(needle, ignoreCase = true)
+            }
     }
 }
 
