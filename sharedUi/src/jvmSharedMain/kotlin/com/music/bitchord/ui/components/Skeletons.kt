@@ -328,7 +328,10 @@ fun LazyListScope.librarySkeleton() {
 /** The Play / Shuffle pair, which only appears once there is something to play. */
 @Composable
 private fun DetailActionsSkeleton(isArtist: Boolean) {
-    Row(
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val playWidth = if (isArtist) DetailActionLayoutMetrics.artistSkeletonPlay
+            else DetailActionLayoutMetrics.albumPlayWidth(maxWidth)
+        Row(
         modifier = Modifier
             .fillMaxWidth()
             // Matches the real pair's inset, height and corner, so the header
@@ -340,13 +343,14 @@ private fun DetailActionsSkeleton(isArtist: Boolean) {
     ) {
         ShimmerBox(Modifier.size(DetailActionLayoutMetrics.albumSide), CircleShape)
         ShimmerBox(
-            Modifier.width(DetailActionLayoutMetrics.albumPlay)
+            Modifier.width(playWidth)
                 .height(DetailActionLayoutMetrics.albumSide)
                 .testTag("detail-action-skeleton-play-pill"),
             CircleShape,
         )
         if (!isArtist) {
             ShimmerBox(Modifier.size(DetailActionLayoutMetrics.albumSide), CircleShape)
+        }
         }
     }
 }
