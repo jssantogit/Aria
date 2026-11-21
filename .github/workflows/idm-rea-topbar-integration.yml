@@ -1,0 +1,118 @@
+# Temporary isolated integration of the CI-green REA top bar into IDM.
+# It updates only the PR #224 branch; main and PR #225 remain untouched.
+name: IDM + REA global toolbar integration (no main merge)
+
+on:
+  push:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - .github/workflows/idm-rea-topbar-integration.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: idm-rea-header-merge
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    name: Merge CI-green REA chrome onto IDM draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact branch, trigger-only commit and REA source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="8fac282fccb5bd14887f224156f0b5c52d37c67e"
+          expected_parent="6dd7e30e43aba64e08aa68852f55ee0855b7041e"
+          test "$(git rev-parse HEAD^)" = "$expected_parent"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/idm-rea-topbar-integration.yml"
+          git fetch --no-tags origin '+refs/heads/fix/rea-global-topbar-placement-20261121:refs/remotes/origin/rea-header-candidate'
+          test "$(git rev-parse refs/remotes/origin/rea-header-candidate)" = "$source_sha"
+          git config user.name "IDM/REA Integration Gate"
+          git config user.email "idm-rea-integrator@users.noreply.github.com"
+
+      - name: Merge reviewed REA global header geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          rea_sha="8fac282fccb5bd14887f224156f0b5c52d37c67e"
+          if ! git merge --no-ff --no-commit "$rea_sha"; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            if [[ "${#conflicts[@]}" -eq 0 ]]; then
+              echo "::error::Merge stopped without inspectable text conflicts"
+              exit 1
+            fi
+            for path in "${conflicts[@]}"; do
+              case "$path" in
+                sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/HomeScreen.kt|sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/HomeGenreFloatingBackClearanceTest.kt)
+                  # PR #225 owns the single root landing policy and its tests.
+                  git checkout --theirs -- "$path"
+                  git add "$path"
+                  ;;
+                app/src/main/java/com/music/bitchord/MainActivity.kt)
+                  # Preserve the IDM-specific global toolbar suppression.
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "::error::Unreviewed merge conflict: $path"
+                  exit 1
+                  ;;
+              esac
+            done
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/music/bitchord/MainActivity.kt')
+          s = p.read_text()
+          old = """rootActionsOffset = when {
+                          homeRootVisible -> homeSettingsOffset
+                          appleSearchRootChrome -> 0.dp
+                          else -> HomeFloatingActionRestOffset
+                      },"""
+          new = """rootActionsOffset = nativeTopBarActionsOffset(
+                          homeRootVisible = homeRootVisible,
+                          homeSettingsOffset = homeSettingsOffset,
+                      ),"""
+          if old in s:
+              s = s.replace(old, new, 1)
+          old_back = 'backButtonOffset = HomeFloatingActionRestOffset,'
+          if old_back in s:
+              s = s.replace(old_back, 'backButtonOffset = nativeTopBarBackOffset(),', 1)
+          # Never regress the IDM-specific suppression: Provedores owns its bar.
+          if 'showActions = !appleSearchRootChrome && !showSources,' not in s:
+              old_actions = 'showActions = !appleSearchRootChrome,'
+              if old_actions in s:
+                  s = s.replace(old_actions, 'showActions = !appleSearchRootChrome && !showSources,', 1)
+          for expected in (
+              'showActions = !appleSearchRootChrome && !showSources,',
+              'rootActionsOffset = nativeTopBarActionsOffset(',
+              'backButtonOffset = nativeTopBarBackOffset(),',
+              'if (!showSources) FrostedTopBar(',
+          ):
+              if expected not in s:
+                  raise SystemExit('Required combined header policy missing: ' + expected)
+          p.write_text(s)
+          PY
+
+          if git ls-files -u | grep -q .; then
+            echo "::error::Unresolved conflicts remain"
+            git ls-files -u
+            exit 1
+          fi
+          git add -A
+          git diff --cached --check
+          git commit -m "integration(rea): bring CI-green global toolbar geometry into IDM draft"
+          git push origin HEAD:refs/heads/integration/idm-providers-main-20261121
+          echo "Merged REA #225 exact source $rea_sha into IDM #224 isolated branch" >> "$GITHUB_STEP_SUMMARY"
+          echo "Integrated HEAD: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
