@@ -702,6 +702,77 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
     )
 }
 
+/**
+ * Transient native UI and dialog visibility flags formerly initialized directly
+ * in BitChordApp. Keeping the same remember / rememberSaveable semantics here
+ * prevents Compose's monolithic REA + IDM activity method from growing beyond
+ * JVM's fixed 64 KiB bytecode ceiling.
+ */
+private data class NativeMainVisibility(
+    val showSettings: androidx.compose.runtime.MutableState<Boolean>,
+    val showReplay: androidx.compose.runtime.MutableState<Boolean>,
+    val showReplayShare: androidx.compose.runtime.MutableState<Boolean>,
+    val showAccountScrobbling: androidx.compose.runtime.MutableState<Boolean>,
+    val showSources: androidx.compose.runtime.MutableState<Boolean>,
+    val showListenTogether: androidx.compose.runtime.MutableState<Boolean>,
+    val showWearOs: androidx.compose.runtime.MutableState<Boolean>,
+    val showEqualizer: androidx.compose.runtime.MutableState<Boolean>,
+    val showSpotifyCanvasAuth: androidx.compose.runtime.MutableState<Boolean>,
+    val confirmJioSaavn: androidx.compose.runtime.MutableState<Boolean>,
+    val editingPartyServer: androidx.compose.runtime.MutableState<Boolean>,
+    val editingSignatureApi: androidx.compose.runtime.MutableState<Boolean>,
+    val showHistory: androidx.compose.runtime.MutableState<Boolean>,
+    val showAllLocalRecentAdditions: androidx.compose.runtime.MutableState<Boolean>,
+    val librarySortMenuOpen: androidx.compose.runtime.MutableState<Boolean>,
+    val showLyricsSources: androidx.compose.runtime.MutableState<Boolean>,
+    val showAppLanguage: androidx.compose.runtime.MutableState<Boolean>,
+    val showTranslationLanguage: androidx.compose.runtime.MutableState<Boolean>,
+    val showAccountSelector: androidx.compose.runtime.MutableState<Boolean>,
+    val showListenBrainzLogin: androidx.compose.runtime.MutableState<Boolean>,
+    val showLastfmLogin: androidx.compose.runtime.MutableState<Boolean>,
+    val showWebDavEditor: androidx.compose.runtime.MutableState<Boolean>,
+    val showSmbEditor: androidx.compose.runtime.MutableState<Boolean>,
+    val showDownloadManager: androidx.compose.runtime.MutableState<Boolean>,
+    val showDiscord: androidx.compose.runtime.MutableState<Boolean>,
+    val showSpotify: androidx.compose.runtime.MutableState<Boolean>,
+    val showDiscordLogin: androidx.compose.runtime.MutableState<Boolean>,
+    val showSpotifyLogin: androidx.compose.runtime.MutableState<Boolean>,
+    val showLyricsOffset: androidx.compose.runtime.MutableState<Boolean>,
+)
+
+@Composable
+private fun rememberNativeMainVisibility(): NativeMainVisibility = NativeMainVisibility(
+    showSettings = rememberSaveable { mutableStateOf(false) },
+    showReplay = rememberSaveable { mutableStateOf(false) },
+    showReplayShare = rememberSaveable { mutableStateOf(false) },
+    showAccountScrobbling = rememberSaveable { mutableStateOf(false) },
+    showSources = rememberSaveable { mutableStateOf(false) },
+    showListenTogether = rememberSaveable { mutableStateOf(false) },
+    showWearOs = rememberSaveable { mutableStateOf(false) },
+    showEqualizer = rememberSaveable { mutableStateOf(false) },
+    showSpotifyCanvasAuth = remember { mutableStateOf(false) },
+    confirmJioSaavn = remember { mutableStateOf(false) },
+    editingPartyServer = remember { mutableStateOf(false) },
+    editingSignatureApi = remember { mutableStateOf(false) },
+    showHistory = remember { mutableStateOf(false) },
+    showAllLocalRecentAdditions = rememberSaveable { mutableStateOf(false) },
+    librarySortMenuOpen = remember { mutableStateOf(false) },
+    showLyricsSources = remember { mutableStateOf(false) },
+    showAppLanguage = remember { mutableStateOf(false) },
+    showTranslationLanguage = remember { mutableStateOf(false) },
+    showAccountSelector = remember { mutableStateOf(false) },
+    showListenBrainzLogin = remember { mutableStateOf(false) },
+    showLastfmLogin = remember { mutableStateOf(false) },
+    showWebDavEditor = remember { mutableStateOf(false) },
+    showSmbEditor = remember { mutableStateOf(false) },
+    showDownloadManager = remember { mutableStateOf(false) },
+    showDiscord = remember { mutableStateOf(false) },
+    showSpotify = remember { mutableStateOf(false) },
+    showDiscordLogin = remember { mutableStateOf(false) },
+    showSpotifyLogin = remember { mutableStateOf(false) },
+    showLyricsOffset = remember { mutableStateOf(false) },
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BitChordApp(
@@ -795,30 +866,31 @@ private fun BitChordApp(
      * What the in-app browser is open for, or null while it is closed —
      * signing in, or picking a channel in YouTube Music's own Accounts list.
      */
-    var showSettings by rememberSaveable { mutableStateOf(false) }
+    val mainVisibility = rememberNativeMainVisibility()
+    var showSettings by mainVisibility.showSettings
     var settingsSection by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
     // Replay: the page, the stories over it, and the share sheet over those.
     // Three states rather than one enum because they stack — the stories are
     // opened from the page and the share sheet from either, and closing one
     // has to reveal what it was opened from.
-    var showReplay by rememberSaveable { mutableStateOf(false) }
+    var showReplay by mainVisibility.showReplay
     // Library cards use the same Replay page as every other entry point, but
     // category cards ask it to start at their matching ranked section.
     var replayLandingPage by rememberSaveable { mutableStateOf(ReplayStoryPage.INTRO) }
     var replayStory by rememberSaveable { mutableStateOf<ReplayStoryPage?>(null) }
-    var showReplayShare by rememberSaveable { mutableStateOf(false) }
+    var showReplayShare by mainVisibility.showReplayShare
     /** Which story card the share sheet is for, or null for the whole Replay. */
     var replaySharePage by rememberSaveable { mutableStateOf<ReplayStoryPage?>(null) }
     // Track which sub-screen was opened from Settings so AnimatedContent keeps
     // SettingsSheet mounted underneath and back navigation restores scroll.
     // null = no sub-screen overlay; non-null = that key is rendered as overlay.
     var settingsSubScreen by rememberSaveable { mutableStateOf<String?>(null) }
-    var showAccountScrobbling by rememberSaveable { mutableStateOf(false) }
-    var showSources by rememberSaveable { mutableStateOf(false) }
-    var showListenTogether by rememberSaveable { mutableStateOf(false) }
-    var showWearOs by rememberSaveable { mutableStateOf(false) }
-    var showEqualizer by rememberSaveable { mutableStateOf(false) }
-    var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
+    var showAccountScrobbling by mainVisibility.showAccountScrobbling
+    var showSources by mainVisibility.showSources
+    var showListenTogether by mainVisibility.showListenTogether
+    var showWearOs by mainVisibility.showWearOs
+    var showEqualizer by mainVisibility.showEqualizer
+    var showSpotifyCanvasAuth by mainVisibility.showSpotifyCanvasAuth
 
     // Hosted here rather than inside SourcesScreen so its frosted card has
     // something to blur: that screen is drawn inside the `hazeSource` subtree,
@@ -826,24 +898,24 @@ private fun BitChordApp(
     // background at all. Hosting it here also puts the scrim over the tab bar
     // and the mini player, like every other alert in the app.
     var editingSource by remember { mutableStateOf<SourceConfig?>(null) }
-    var confirmJioSaavn by remember { mutableStateOf(false) }
-    var editingPartyServer by remember { mutableStateOf(false) }
-    var editingSignatureApi by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
+    var confirmJioSaavn by mainVisibility.confirmJioSaavn
+    var editingPartyServer by mainVisibility.editingPartyServer
+    var editingSignatureApi by mainVisibility.editingSignatureApi
+    var showHistory by mainVisibility.showHistory
     // A Library shelf's "Show all" — the shelf it was opened from, so its own
     // cards can be laid out again as a full-screen grid. See [LibraryGridPage].
     var libraryShowAll by remember { mutableStateOf<HomeShelf?>(null) }
-    var showAllLocalRecentAdditions by rememberSaveable { mutableStateOf(false) }
+    var showAllLocalRecentAdditions by mainVisibility.showAllLocalRecentAdditions
     var detailActiveShelf by remember { mutableStateOf<HomeShelf?>(null) }
-    var librarySortMenuOpen by remember { mutableStateOf(false) }
-    var showLyricsSources by remember { mutableStateOf(false) }
-    var showAppLanguage by remember { mutableStateOf(false) }
-    var showTranslationLanguage by remember { mutableStateOf(false) }
-    var showAccountSelector by remember { mutableStateOf(false) }
-    var showListenBrainzLogin by remember { mutableStateOf(false) }
-    var showLastfmLogin by remember { mutableStateOf(false) }
-    var showWebDavEditor by remember { mutableStateOf(false) }
-    var showSmbEditor by remember { mutableStateOf(false) }
+    var librarySortMenuOpen by mainVisibility.librarySortMenuOpen
+    var showLyricsSources by mainVisibility.showLyricsSources
+    var showAppLanguage by mainVisibility.showAppLanguage
+    var showTranslationLanguage by mainVisibility.showTranslationLanguage
+    var showAccountSelector by mainVisibility.showAccountSelector
+    var showListenBrainzLogin by mainVisibility.showListenBrainzLogin
+    var showLastfmLogin by mainVisibility.showLastfmLogin
+    var showWebDavEditor by mainVisibility.showWebDavEditor
+    var showSmbEditor by mainVisibility.showSmbEditor
     /**
      * Whether the download manager is open.
      *
@@ -851,15 +923,15 @@ private fun BitChordApp(
      * either (see [com.music.bitchord.download.DownloadSession]), and a sheet
      * restored over an empty one would be a manager with nothing to manage.
      */
-    var showDownloadManager by remember { mutableStateOf(false) }
+    var showDownloadManager by mainVisibility.showDownloadManager
     // Discord Rich Presence: its own page under Account & integrations, its own
     // full-screen sign-in, and one slot for whichever of its alerts is open.
     // The alerts live out here rather than on the page because their scrim has
     // to cover the tab bar and mini player, which are drawn after it.
-    var showDiscord by remember { mutableStateOf(false) }
-    var showSpotify by remember { mutableStateOf(false) }
-    var showDiscordLogin by remember { mutableStateOf(false) }
-    var showSpotifyLogin by remember { mutableStateOf(false) }
+    var showDiscord by mainVisibility.showDiscord
+    var showSpotify by mainVisibility.showSpotify
+    var showDiscordLogin by mainVisibility.showDiscordLogin
+    var showSpotifyLogin by mainVisibility.showSpotifyLogin
     var discordDialog by remember { mutableStateOf<DiscordDialog?>(null) }
     var songActions by remember { mutableStateOf<Song?>(null) }
     // Transient UI-only handoff: reuse the Now Playing image already rendered
@@ -867,7 +939,7 @@ private fun BitChordApp(
     var openedPlayerArtwork by remember {
         mutableStateOf<Pair<com.music.bitchord.ui.player.CanonicalPlaybackArtworkIdentity, Any>?>(null)
     }
-    var showLyricsOffset by remember { mutableStateOf(false) }
+    var showLyricsOffset by mainVisibility.showLyricsOffset
     /**
      * Whether the track menu that is up was opened from the player.
      *
