@@ -56,7 +56,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -336,6 +338,12 @@ fun ProvidersScreen(
                             it.entry.supportsReordering } > 1,
                     onOpen = { openEntry(row.entry) },
                     onToggle = { enabled -> toggle(row.entry, enabled) },
+                    canMoveUp = staged[row.entry.capability].orEmpty()
+                        .indexOf(row.entry.key) > 0,
+                    canMoveDown = staged[row.entry.capability].orEmpty().let { order ->
+                        val position = order.indexOf(row.entry.key)
+                        position >= 0 && position < order.lastIndex
+                    },
                     onMove = { by -> move(row.entry.capability, row.entry.key, by) },
                     )
                 }
@@ -522,6 +530,8 @@ private fun ProviderSettingRow(
     isDraggable: Boolean,
     onOpen: () -> Unit,
     onToggle: (Boolean) -> Unit,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     onMove: (Int) -> Unit,
 ) {
     val entry = row.entry
@@ -533,7 +543,21 @@ private fun ProviderSettingRow(
         verticalAlignment = Alignment.CenterVertically) {
         if (isDraggable) {
             Box(
-                modifier = Modifier.size(48.dp).pointerInput(entry.key, editing) {
+                modifier = Modifier.size(48.dp)
+                    .semantics {
+                        contentDescription = "Reorganizar " + entry.displayName
+                        customActions = buildList {
+                            if (canMoveUp) add(CustomAccessibilityAction("Mover para cima") {
+                                onMove(-1)
+                                true
+                            })
+                            if (canMoveDown) add(CustomAccessibilityAction("Mover para baixo") {
+                                onMove(1)
+                                true
+                            })
+                        }
+                    }
+                    .pointerInput(entry.key, editing) {
                     detectDragGestures(onDragEnd = { dragY = 0f },
                         onDragCancel = { dragY = 0f }) { change, amount ->
                         change.consume()
@@ -548,7 +572,7 @@ private fun ProviderSettingRow(
             ) {
                 Icon(
                     imageVector = AppleQueueVectors.DragHandle,
-                    contentDescription = "Arrastar para reorganizar " + entry.displayName,
+                    contentDescription = null, // The drag target owns TalkBack actions.
                     modifier = Modifier.size(22.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
