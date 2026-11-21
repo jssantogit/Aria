@@ -38,6 +38,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Text
 import com.music.bitchord.ui.components.NativeInlineTextAction
+import com.music.bitchord.ui.components.NativePageHeaderMetrics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -202,9 +204,17 @@ internal fun SettingsDetailHeader(
     // Rendering another arrow here would duplicate that navigation control.
     Text(
         text = stringResource(section.titleRes),
-        style = MaterialTheme.typography.displayLarge,
+        // The global Back circle occupies the previous title band.
+        // Match Library category headings rather than drawing behind it.
+        style = MaterialTheme.typography.headlineLarge,
+        fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+        modifier = Modifier.padding(
+            start = 32.dp,
+            end = 20.dp,
+            top = NativePageHeaderMetrics.settingsPushedTitleTopPadding,
+            bottom = 14.dp,
+        ).testTag("native-settings-detail-title"),
     )
     if (filteredQuery.isNotBlank()) {
         Row(
