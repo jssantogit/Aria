@@ -118,6 +118,7 @@ fun SourcesScreen(
     modifier: Modifier = Modifier,
     /** Connection editor only; canonical provider switches live in Provedores. */
     connectionsOnly: Boolean = false,
+    providerCredentials: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val storedConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
@@ -201,21 +202,12 @@ fun SourcesScreen(
         }
 
         if (connectionsOnly) {
-            SettingsGroup(header = "Extensões") {
-                configs.filter { it.kind == SourceKind.ADDON ||
-                    it.kind == SourceKind.CUSTOM_MODULE }.forEach { config ->
-                    SettingsRow(
-                        icon = Icons.Rounded.Extension,
-                        title = config.displayName,
-                        subtitle = config.baseUrl.ifBlank { "Configurar" },
-                        onClick = { onEditSource(config) },
-                    )
-                }
-                AddSourceRow(
-                    onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
-                )
-            }
-        } else SettingsGroup(
+            // Credentials are the only providers-specific content here.
+            // Extension installation/editing belongs to the source editor,
+            // not to provider Connections.
+            providerCredentials?.invoke()
+        }
+        if (!connectionsOnly) SettingsGroup(
             header = stringResource(R.string.sources_order_header),
             footer = buildString {
                 append(stringResource(R.string.sources_order_footer))
