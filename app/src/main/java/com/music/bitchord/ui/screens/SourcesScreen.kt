@@ -126,13 +126,6 @@ fun SourcesScreen(
     val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
     val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
-    val webdavUrl by AppSettings.webdavUrl.collectAsStateWithLifecycle()
-    val webdavUsername by AppSettings.webdavUsername.collectAsStateWithLifecycle()
-    val webdavPassword by AppSettings.webdavPassword.collectAsStateWithLifecycle()
-    val smbHost by AppSettings.smbHost.collectAsStateWithLifecycle()
-    val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
-    val smbUsername by AppSettings.smbUsername.collectAsStateWithLifecycle()
-    val smbPassword by AppSettings.smbPassword.collectAsStateWithLifecycle()
 
     /** Last known reachability per source, filled in as the probes come back. */
     val health = remember { mutableStateMapOf<String, SourceHealth>() }
@@ -296,10 +289,46 @@ fun SourcesScreen(
             )
         }
 
-        // A personal library rather than a catalogue in the order above: it
-        // holds the listener's own files instead of answering for YouTube's,
-        // so it takes no part in the ranking and gets its own group. The
-        // editor is raised to the activity like every other alert.
+        // Remote libraries are configured from their own provider pages. They
+        // must never reappear in the Connections credential-only view.
+        if (!connectionsOnly) {
+            ProviderRemoteLibraryTarget.entries.forEach { target ->
+                ProviderRemoteLibrarySettings(
+                    target = target,
+                    onEditWebDav = onEditWebDav,
+                    onEditSmb = onEditSmb,
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+
+}
+
+
+/**
+ * Provider-category destinations, not new Provider Engine capabilities.
+ * WebDAV and SMB remain legacy remote-library connections; OpenSubsonic has
+ * independent PERSONAL_LIBRARY and AUDIO_PLAYBACK capabilities after setup.
+ */
+internal enum class ProviderRemoteLibraryTarget(val displayName: String) {
+    WEBDAV("WebDAV"),
+    SMB("SMB"),
+    OPEN_SUBSONIC("Navidrome / OpenSubsonic"),
+}
+
+/** Reuse the existing test, edit, sync and disconnect flows, without copies. */
+@Composable
+internal fun ProviderRemoteLibrarySettings(
+    target: ProviderRemoteLibraryTarget,
+    onEditWebDav: () -> Unit,
+    onEditSmb: () -> Unit,
+) {
+    when (target) {
+        ProviderRemoteLibraryTarget.WEBDAV -> {
+            val webdavUrl by AppSettings.webdavUrl.collectAsStateWithLifecycle()
+            val webdavUsername by AppSettings.webdavUsername.collectAsStateWithLifecycle()
+            val webdavPassword by AppSettings.webdavPassword.collectAsStateWithLifecycle()
         RemoteLibrarySection(
             icon = Icons.Rounded.Cloud,
             groupHeader = stringResource(R.string.library),
@@ -322,10 +351,12 @@ fun SourcesScreen(
             },
             onDisconnect = { AppSettings.clearWebDav() },
         )
-
-        // A personal library on a file share, filed next to the WebDAV one
-        // for the same reason: it holds the listener's own files instead of
-        // answering for YouTube's, so it takes no part in the ranking above.
+        }
+        ProviderRemoteLibraryTarget.SMB -> {
+            val smbHost by AppSettings.smbHost.collectAsStateWithLifecycle()
+            val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
+            val smbUsername by AppSettings.smbUsername.collectAsStateWithLifecycle()
+            val smbPassword by AppSettings.smbPassword.collectAsStateWithLifecycle()
         RemoteLibrarySection(
             icon = Icons.Rounded.Storage,
             title = stringResource(R.string.smb),
@@ -353,17 +384,10 @@ fun SourcesScreen(
             },
             onDisconnect = { AppSettings.clearSmb() },
         )
-
-        // OpenSubsonic/Navidrome is another remote library. It deliberately
-        // stays outside the ordered playback-source list above until the
-        // PlaybackResolver learns how to resolve its logical MediaAssets.
-        OpenSubsonicRemoteLibrarySection()
-
-        Spacer(Modifier.height(32.dp))
+        }
+        ProviderRemoteLibraryTarget.OPEN_SUBSONIC -> OpenSubsonicRemoteLibrarySection()
     }
-
 }
-
 
 /**
  * A personal library section: the server row, plus test and disconnect rows
