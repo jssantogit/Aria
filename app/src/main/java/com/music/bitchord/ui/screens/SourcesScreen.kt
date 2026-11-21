@@ -116,6 +116,8 @@ fun SourcesScreen(
     /** Opens the full-window warning before JioSaavn is opted into. */
     onConfirmJioSaavn: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Connection editor only; canonical provider switches live in Provedores. */
+    connectionsOnly: Boolean = false,
 ) {
     val context = LocalContext.current
     val storedConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
@@ -189,14 +191,31 @@ fun SourcesScreen(
             .verticalScroll(rememberScrollState())
             .padding(contentPadding),
     ) {
-        Text(
-            text = stringResource(R.string.source),
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
-        )
+        if (!connectionsOnly) {
+            Text(
+                text = stringResource(R.string.source),
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+            )
+        }
 
-        SettingsGroup(
+        if (connectionsOnly) {
+            SettingsGroup(header = "Extensões") {
+                configs.filter { it.kind == SourceKind.ADDON ||
+                    it.kind == SourceKind.CUSTOM_MODULE }.forEach { config ->
+                    SettingsRow(
+                        icon = Icons.Rounded.Extension,
+                        title = config.displayName,
+                        subtitle = config.baseUrl.ifBlank { "Configurar" },
+                        onClick = { onEditSource(config) },
+                    )
+                }
+                AddSourceRow(
+                    onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
+                )
+            }
+        } else SettingsGroup(
             header = stringResource(R.string.sources_order_header),
             footer = buildString {
                 append(stringResource(R.string.sources_order_footer))
