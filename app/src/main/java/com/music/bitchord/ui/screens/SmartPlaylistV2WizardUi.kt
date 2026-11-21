@@ -750,13 +750,13 @@ internal fun SmartPlaylistV2WizardUi(
                             onClick = { creatorMoreOpen = true },
                             size = 40.dp,
                         )
-                        com.music.bitchord.ui.components.NativeCompactOverflowMenu(
+                        // Same compact plate as root ⋯ Settings: width, row
+                        // height, corner radius, trailing icons and motion.
+                        // Long explanatory labels made this popup much wider
+                        // than the app's other top-bar menus.
+                        com.music.bitchord.ui.components.NativeToolbarOverflowMenu(
                             expanded = creatorMoreOpen,
                             onDismissRequest = { creatorMoreOpen = false },
-                            // Match the 208dp/18dp compact top-bar menu family
-                            // instead of the oversized 320dp/62dp held plate.
-                            maxMenuWidth = 260.dp,
-                            homePlateStyle = false,
                         ) {
                             com.music.bitchord.ui.components.NativeCompactMenuItem(
                                 label = "Seus filtros",
@@ -769,8 +769,8 @@ internal fun SmartPlaylistV2WizardUi(
                             if (!normalMode && !filterMode) {
                                 com.music.bitchord.ui.components.NativeCompactMenuItem(
                                     label = if (hasExportedFilter)
-                                        "Atualizar filtro reutilizável"
-                                    else "Salvar como filtro reutilizável",
+                                        "Atualizar filtro"
+                                    else "Salvar filtro",
                                     icon = PlaylistEditorIcons.Add,
                                     enabled = canReview && !loading,
                                     onClick = {
@@ -1304,7 +1304,7 @@ internal fun SmartPlaylistV2WizardUi(
                                                         icon = PlaylistEditorIcons.More,
                                                         onClick = { actionsOpen = true },
                                                     )
-                                                    com.music.bitchord.ui.components.NativeCompactOverflowMenu(
+                                                    com.music.bitchord.ui.components.NativeToolbarOverflowMenu(
                                                         expanded = actionsOpen,
                                                         onDismissRequest = { actionsOpen = false },
                                                     ) {

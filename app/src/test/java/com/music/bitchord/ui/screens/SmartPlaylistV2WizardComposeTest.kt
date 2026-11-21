@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -722,6 +723,34 @@ class SmartPlaylistV2WizardComposeTest {
     }
 
 
+    @Test fun playlistCreatorThreeDotsUsesRootToolbarPlateAndKeepsFilterActions() {
+        var manageCalls = 0
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "",
+                rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, emptyList()),
+                hasConfiguredRules = false,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null,
+                savedDefinitions = emptyList(),
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {},
+                onPreviewAction = null, currentPreviewQuery = null,
+                onManage = { manageCalls++ }, onBack = {},
+            )
+        }
+        compose.onNodeWithContentDescription("Mais opções").performClick()
+        compose.onNodeWithTag("native-compact-overflow")
+            .assertWidthIsEqualTo(com.music.bitchord.ui.components.APPLE_SETTINGS_SINGLE_ACTION_WIDTH)
+        compose.onNodeWithText("Seus filtros").assertExists()
+        compose.onNodeWithText("Salvar filtro").assertExists()
+        compose.onNodeWithText("Salvar como filtro reutilizável").assertDoesNotExist()
+        compose.onNodeWithText("Seus filtros").performClick()
+        compose.runOnIdle { assertEquals(1, manageCalls) }
+    }
+
     @Test fun existingSmartPlaylistCanExportReusableFilterWithoutLeavingEditFlow() {
         var exports = 0
         compose.setContent {
@@ -744,7 +773,9 @@ class SmartPlaylistV2WizardComposeTest {
         }
         compose.onNodeWithText("Editar playlist").assertExists()
         compose.onNodeWithContentDescription("Mais opções").performClick()
-        compose.onNodeWithText("Salvar como filtro reutilizável").performClick()
+        compose.onNodeWithTag("native-compact-overflow")
+            .assertWidthIsEqualTo(com.music.bitchord.ui.components.APPLE_SETTINGS_SINGLE_ACTION_WIDTH)
+        compose.onNodeWithText("Salvar filtro").performClick()
         compose.runOnIdle { assertEquals(1, exports) }
         compose.onNodeWithText("Editar playlist").assertExists()
     }

@@ -561,12 +561,9 @@ private fun AppleSettingsPopup(
     // The root ⋯ has no private presentation anymore. A single compact card
     // provides the same neutral surface, geometry, anchored animation, action
     // spacing and outside/back dismissal used by other overflow launchers.
-    NativeCompactOverflowMenu(
+    NativeToolbarOverflowMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        minMenuWidth = APPLE_SETTINGS_SINGLE_ACTION_WIDTH,
-        maxMenuWidth = APPLE_SETTINGS_SINGLE_ACTION_WIDTH,
-        homePlateStyle = APPLE_SETTINGS_SINGLE_ACTION_USES_LARGE_ROWS,
     ) {
         NativeCompactMenuItem(
             label = stringResource(R.string.settings),
