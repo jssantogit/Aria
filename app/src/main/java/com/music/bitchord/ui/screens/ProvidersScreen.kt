@@ -128,6 +128,7 @@ fun ProvidersScreen(
     var categorySearch by rememberSaveable { mutableStateOf("") }
     var connections by rememberSaveable { mutableStateOf(false) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
+    var initialStaged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
     var groupDrafts by remember { mutableStateOf<Map<ProviderSettingsTab, List<ProviderKey>>>(emptyMap()) }
     var detailGroupKey by remember { mutableStateOf<ProviderKey?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -139,6 +140,7 @@ fun ProvidersScreen(
     fun cancelEdit() {
         editing = false
         staged = emptyMap()
+        initialStaged = emptyMap()
         groupDrafts = emptyMap()
         tabBeforeOrganize?.let { selectedTabName = it }
         tabBeforeOrganize = null
@@ -288,6 +290,7 @@ fun ProvidersScreen(
             .filter { it.entry.supportsReordering }
             .groupBy { it.entry.capability }
             .mapValues { (_, rows) -> rows.map { it.entry.key } }
+        initialStaged = staged
         tabBeforeOrganize = selectedTabName
         val currentTab = ProviderSettingsTab.entries.firstOrNull { it.name == selectedTabName }
         if (currentTab == null || visibleProviderRows(grouped[currentTab].orEmpty(), editing = true).isEmpty()) {
@@ -314,7 +317,9 @@ fun ProvidersScreen(
 
     fun commitEdit() {
         if (!editing || saving) return
-        val changes = staged.mapNotNull { (capability, draftOrder) ->
+        val changes = staged.filter { (capability, draft) ->
+            draft != initialStaged[capability]
+        }.mapNotNull { (capability, draftOrder) ->
             val configured = snapshot.configured[capability].orEmpty()
             val reordered = reorderCapabilityChoices(configured, draftOrder)
             if (configured != reordered) capability to reordered else null
