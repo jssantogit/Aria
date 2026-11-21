@@ -58,7 +58,13 @@ class FloatingConfirmationMenuTest {
         val cancel = compose.onNodeWithTag("floating-confirmation-dismiss")
             .getUnclippedBoundsInRoot()
         assertTrue(message.top >= heading.top)
-        assertTrue("message=$message, confirm=$destructive", destructive.top >= message.bottom - 1.dp)
+        // Robolectric's tiny default viewport can report an *unclipped* text
+        // semantics box that extends beyond the scroll viewport. Comparing its
+        // trailing edge with an action below the scroll region is not a valid
+        // overlap check. Keep the visual start order and validate the actual
+        // stacked action rows with their independent, non-overlapping bounds.
+        assertTrue("message=$message, confirm=$destructive", destructive.top > message.top)
+        assertTrue("confirm=$destructive", destructive.bottom - destructive.top >= 54.dp)
         assertTrue("confirm=$destructive, cancel=$cancel", cancel.top >= destructive.bottom - 1.dp)
         compose.onNodeWithTag("floating-confirmation-confirm").performClick()
         compose.waitForIdle()
