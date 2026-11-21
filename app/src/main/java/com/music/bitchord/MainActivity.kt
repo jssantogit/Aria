@@ -4883,16 +4883,17 @@ private fun BitChordApp(
                     // The global ⋮ owns Settings rather than an account avatar.
                     showActions = !appleSearchRootChrome,
                     separateActions = appleLibraryRoundChrome,
-                    // All non-Search pages use Home's resting Y for top
-                    // circles. Home alone retracts its launcher on scroll.
-                    rootActionsOffset = when {
-                        homeRootVisible -> homeSettingsOffset
-                        appleSearchRootChrome -> 0.dp
-                        else -> HomeFloatingActionRestOffset
-                    },
+                    // Root Home, Library and Explore may lower their launchers
+                    // beside in-list titles; pushed routes use the compact lane.
+                    rootActionsOffset = nativeTopBarActionsOffset(
+                        homeRootVisible = homeRootVisible,
+                        homeSettingsOffset = homeSettingsOffset,
+                        libraryRootVisible = appleLibraryLandingChrome,
+                        exploreRootVisible = appleExploreRootChrome,
+                    ),
                     categoryBackButton = appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
                         appleExploreGenreChrome || appleDownloadsChrome,
-                    backButtonOffset = HomeFloatingActionRestOffset,
+                    backButtonOffset = nativeTopBarBackOffset(),
                     // The generic top bar scroll flag flips after 24px,
                     // while the large Home heading is still fully legible.
                     // Only show its compact replacement when item 0 has left
