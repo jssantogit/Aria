@@ -1,0 +1,101 @@
+name: IDM main integration candidate (no merge to main)
+
+on:
+  push:
+    branches:
+      - architecture/provider-engine-catalog-integration-20261116
+    paths:
+      - .github/workflows/idm-main-integration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: idm-main-candidate
+  cancel-in-progress: false
+
+jobs:
+  create-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact IDM source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Capture main and merge diagnostics without modifying main
+        shell: bash
+        run: |
+          set -euo pipefail
+          idm_sha="$(git rev-parse HEAD)"
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          echo "IDM_SOURCE_SHA=$idm_sha" >> "$GITHUB_ENV"
+          echo "MAIN_BASE_SHA=$main_sha" >> "$GITHUB_ENV"
+          git config user.name "IDM Integration Gate"
+          git config user.email "idm-integration@users.noreply.github.com"
+          git switch -C idm-main-candidate "$main_sha"
+
+          if git merge --no-ff --no-commit "$idm_sha" > /tmp/initial-merge.log 2>&1; then
+            echo "No overlapping conflicts" >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat /tmp/initial-merge.log
+            git diff --name-only --diff-filter=U > /tmp/idm-conflicts.txt
+            if ! test -s /tmp/idm-conflicts.txt; then
+              echo "::error::Merge failed without inspectable conflict files"
+              exit 1
+            fi
+            # Keep this exact allowlist closed; a newly changed surface must be
+            # explicitly reviewed, never silently resolved by -X ours.
+            python3 - <<'PY'
+          from pathlib import Path
+          allowed = {
+              "app/src/main/java/com/music/bitchord/MainActivity.kt",
+              "app/src/main/java/com/music/bitchord/data/catalog/metadata/CanonicalMetadataEnrichment.kt",
+              "app/src/main/java/com/music/bitchord/ui/CanonicalArtistPublicTop.kt",
+              "app/src/main/java/com/music/bitchord/ui/components/HeldContextMenu.kt",
+              "app/src/main/java/com/music/bitchord/ui/screens/DetailScreen.kt",
+              "app/src/main/java/com/music/bitchord/ui/screens/NativeArtistPublicTopSection.kt",
+              "app/src/test/java/com/music/bitchord/ui/screens/NativeArtistPublicTopSectionTest.kt",
+              "sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/components/LongPressOrigin.kt",
+              "sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/NativeSearchRow.kt",
+              "sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/SearchScreen.kt",
+          }
+          seen = set(Path("/tmp/idm-conflicts.txt").read_text().splitlines())
+          print("Conflicting paths:", *sorted(seen), sep="\n- ")
+          unknown = seen - allowed
+          if unknown:
+              raise SystemExit(f"Unreviewed conflicts: {sorted(unknown)}")
+          PY
+            git diff --cc > /tmp/idm-merge-conflicts.diff
+            git merge --abort
+            # Keep REA main only for colliding lines; automatically merge the
+            # remaining IDM contributions. Compilers/tests are the next gate.
+            git merge -s ort -X ours --no-ff --no-commit "$idm_sha"
+          fi
+
+          git diff --cached --check
+          git commit -m "integration(idm): combine canonical REA main and provider engine candidate"
+          echo "### Integration candidate only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- REA main: \`$main_sha\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- IDM source: \`$idm_sha\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Merge keeps REA on colliding lines; **not approved** without semantic audits and CI." >> "$GITHUB_STEP_SUMMARY"
+          echo "Exact integrated HEAD: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          git diff HEAD^1 --stat | tail -60
+
+      - name: Push isolated integration branch (never main)
+        run: |
+          set -euo pipefail
+          git push origin HEAD:refs/heads/integration/idm-providers-main-20261121
+
+      - name: Preserve conflicting hunks as diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-main-conflict-hunks
+          path: /tmp/idm-merge-conflicts.diff
+          if-no-files-found: ignore
+          retention-days: 7
