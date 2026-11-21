@@ -569,14 +569,11 @@ internal fun PlaylistWizardExpandableSourceSelector(
             color = MaterialTheme.colorScheme.onBackground,
         )
         SettingsGroupSurface(
-            modifier = Modifier
-                .border(
-                    0.5.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
-                    RoundedCornerShape(18.dp),
-                )
-                // The group's own test tag is supplied by SettingsGroupSurface.
-                ,
+            modifier = Modifier.border(
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
+                shape = GroupShape,
+            ),
         ) {
             Row(
                 modifier = Modifier
