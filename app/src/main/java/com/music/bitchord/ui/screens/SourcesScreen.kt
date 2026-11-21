@@ -120,6 +120,18 @@ fun SourcesScreen(
     connectionsOnly: Boolean = false,
     providerCredentials: (@Composable () -> Unit)? = null,
 ) {
+    if (connectionsOnly) {
+        // Credential-only screens must not probe unrelated add-on servers or
+        // initialize the legacy source list just to display a token form.
+        Column(
+            modifier = modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(contentPadding),
+        ) {
+            providerCredentials?.invoke()
+        }
+        return
+    }
     val context = LocalContext.current
     val storedConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val configs = SourceRegistry.displayConfigs(storedConfigs)
@@ -194,12 +206,6 @@ fun SourcesScreen(
             )
         }
 
-        if (connectionsOnly) {
-            // Credentials are the only providers-specific content here.
-            // Extension installation/editing belongs to the source editor,
-            // not to provider Connections.
-            providerCredentials?.invoke()
-        }
         if (!connectionsOnly) SettingsGroup(
             header = stringResource(R.string.sources_order_header),
             footer = buildString {
@@ -297,6 +303,7 @@ fun SourcesScreen(
                     target = target,
                     onEditWebDav = onEditWebDav,
                     onEditSmb = onEditSmb,
+                    showLibraryHeader = true,
                 )
             }
             Spacer(Modifier.height(32.dp))
@@ -323,6 +330,7 @@ internal fun ProviderRemoteLibrarySettings(
     target: ProviderRemoteLibraryTarget,
     onEditWebDav: () -> Unit,
     onEditSmb: () -> Unit,
+    showLibraryHeader: Boolean = false,
 ) {
     when (target) {
         ProviderRemoteLibraryTarget.WEBDAV -> {
@@ -331,7 +339,7 @@ internal fun ProviderRemoteLibrarySettings(
             val webdavPassword by AppSettings.webdavPassword.collectAsStateWithLifecycle()
         RemoteLibrarySection(
             icon = Icons.Rounded.Cloud,
-            groupHeader = stringResource(R.string.library),
+            groupHeader = if (showLibraryHeader) stringResource(R.string.library) else null,
             title = stringResource(R.string.webdav),
             description = stringResource(R.string.webdav_description),
             subtitle = if (webdavUrl.isBlank()) {
