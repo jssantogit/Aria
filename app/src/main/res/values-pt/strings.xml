@@ -321,6 +321,8 @@
     <string name="stereo">Estéreo</string>
     <string name="history">Histórico</string>
     <string name="sources">Fontes</string>
+    <string name="providers_settings">Provedores</string>
+    <string name="providers_settings_subtitle">Gerencie catálogo, capas, letras, estatísticas, áudio e downloads</string>
     <string name="wifi">Wi-Fi</string>
     <string name="mobile_data">Dados móveis</string>
     <string name="couldnt_load_tracks">Não foi possível carregar essas faixas</string>
