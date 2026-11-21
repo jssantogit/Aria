@@ -76,6 +76,7 @@ import com.music.bitchord.data.catalog.provider.opensubsonic.SharedPrefsOpenSubs
 import com.music.bitchord.data.listening.SavedSmartPlaylistV2Definition
 import com.music.bitchord.data.listening.SavedCanonicalStaticPlaylist
 import com.music.bitchord.data.listening.CanonicalStaticPlaylistRepository
+import com.music.bitchord.ui.components.standaloneTopControlPadding
 import com.music.bitchord.data.listening.SavedSmartPlaylistV2Filter
 import com.music.bitchord.data.listening.SmartPlaylistV2FilterRepository
 import com.music.bitchord.data.listening.applySavedFilterToDraft
@@ -1267,7 +1268,13 @@ internal fun SmartPlaylistV2BuilderScreen(
                 modifier = Modifier.fillMaxSize().hazeSource(savedFilterHaze),
                 color = MaterialTheme.colorScheme.background,
             ) {
-                Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Column(
+                    Modifier.fillMaxSize()
+                        .statusBarsPadding()
+                        .then(if (embeddedInLibrary) Modifier else
+                            Modifier.padding(top = standaloneTopControlPadding(40.dp)))
+                        .navigationBarsPadding(),
+                ) {
                     PlaylistManagerChrome(
                         onBack = { showWizard = true },
                         onCreateFilter = {

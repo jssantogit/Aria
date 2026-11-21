@@ -304,6 +304,8 @@ import com.music.bitchord.sharedui.resources.search_library_hint
 import com.music.bitchord.ui.components.TopBarDownloadButton
 import com.music.bitchord.ui.components.shouldBlurHeldContextBackdrop
 import com.music.bitchord.ui.components.optimizedHazeEffect
+import com.music.bitchord.ui.components.HomeFloatingActionRestOffset
+import com.music.bitchord.ui.components.standaloneTopControlPadding
 import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.AppLanguageDialog
 import com.music.bitchord.ui.components.TranslationLanguageDialog
@@ -4881,19 +4883,16 @@ private fun BitChordApp(
                     // The global ⋮ owns Settings rather than an account avatar.
                     showActions = !appleSearchRootChrome,
                     separateActions = appleLibraryRoundChrome,
+                    // All non-Search pages use Home's resting Y for top
+                    // circles. Home alone retracts its launcher on scroll.
                     rootActionsOffset = when {
                         homeRootVisible -> homeSettingsOffset
-                        appleExploreRootChrome -> 20.dp
-                        appleExploreGenreChrome -> 12.dp
-                        appleLibraryLandingChrome -> 10.dp
-                        appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
-                            appleDownloadsChrome -> 12.dp
-                        else -> 0.dp
+                        appleSearchRootChrome -> 0.dp
+                        else -> HomeFloatingActionRestOffset
                     },
                     categoryBackButton = appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
                         appleExploreGenreChrome || appleDownloadsChrome,
-                    backButtonOffset = if (appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
-                        appleExploreGenreChrome || appleDownloadsChrome) 12.dp else 0.dp,
+                    backButtonOffset = HomeFloatingActionRestOffset,
                     // The generic top bar scroll flag flips after 24px,
                     // while the large Home heading is still fully legible.
                     // Only show its compact replacement when item 0 has left
@@ -6980,7 +6979,8 @@ private fun ExternalAccountLoginOverlays(
                     Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp)
+                        .padding(top = standaloneTopControlPadding(48.dp), bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = { onDismissDiscord() }) {
@@ -7017,7 +7017,8 @@ private fun ExternalAccountLoginOverlays(
                     Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp)
+                        .padding(top = standaloneTopControlPadding(48.dp), bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = { onDismissSpotify() }) {
@@ -9233,7 +9234,7 @@ internal fun homeSettingsOverflowOffsetDp(
     firstItemIndex: Int,
     scrollOffsetDp: Float,
 ): Float = if (homeVisible && firstItemIndex == 0) {
-    (34f - scrollOffsetDp).coerceAtLeast(0f)
+    (HomeFloatingActionRestOffset.value - scrollOffsetDp).coerceAtLeast(0f)
 } else 0f
 
 /** Library category transitions must not expose the retiring landing page. */

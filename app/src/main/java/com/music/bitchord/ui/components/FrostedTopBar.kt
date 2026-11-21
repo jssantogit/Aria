@@ -126,6 +126,21 @@ val TopBarContentHeight = 52.dp
 val TopBarContentGap = 12.dp
 
 /**
+ * Home's resting Settings button is the vertical reference for top corner
+ * controls throughout the app. Status bar insets stay device-dependent.
+ */
+internal val HomeFloatingActionRestOffset = 34.dp
+
+/**
+ * Used by full-screen headers without FrostedTopBar. Position their 40dp
+ * controls at the same screen Y as the resting Home circles, after the
+ * caller has applied the system status bar inset exactly once.
+ */
+internal fun standaloneTopControlPadding(rowHeight: Dp): Dp =
+    (HomeFloatingActionRestOffset.value +
+        (TopBarContentHeight.value - rowHeight.value) / 2f).dp
+
+/**
  * How much of each end of the bar is spoken for, so a long title truncates
  * instead of running under what sits there.
  *

@@ -71,6 +71,7 @@ import com.music.bitchord.data.listening.allowedOperators
 import com.music.bitchord.data.listening.isTextField
 import com.music.bitchord.data.listening.moveChild
 import com.music.bitchord.ui.icons.PlaylistEditorIcons
+import com.music.bitchord.ui.components.standaloneTopControlPadding
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.CoverPlaceholder
 import com.music.bitchord.ui.components.ArtworkPageBackButton
@@ -733,7 +734,9 @@ internal fun SmartPlaylistV2WizardUi(
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             Modifier.fillMaxSize()
-                .then(if (embeddedInLibrary) Modifier else Modifier.statusBarsPadding())
+                .then(if (embeddedInLibrary) Modifier else
+                    Modifier.statusBarsPadding()
+                        .padding(top = standaloneTopControlPadding(56.dp)))
                 .imePadding(),
         ) {
             Box(
