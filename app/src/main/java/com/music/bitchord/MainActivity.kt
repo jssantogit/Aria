@@ -360,6 +360,7 @@ import com.music.bitchord.ui.screens.CanonicalRediscoveryRecordingDetailsScreen
 import com.music.bitchord.ui.screens.CanonicalRediscoveryRecordingContent
 import com.music.bitchord.ui.screens.CanonicalRediscoveryRecordingState
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import com.music.bitchord.ui.screens.CanonicalServerSearchRow
 import com.music.bitchord.ui.screens.CanonicalPublicPlaylistSearchRow
 import com.music.bitchord.ui.screens.CanonicalSearchHeldMenus
 import com.music.bitchord.ui.canonicalExistingHomeShelves
