@@ -5,9 +5,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HomeGenreFloatingBackClearanceTest {
-    @Test fun pushedExploreGenreStartsBelowFullFloatingTopChrome() {
-        assertEquals(108.dp, homeTitleTopInset(108.dp, reserveFloatingBackSpace = true))
-        assertEquals(92.dp, homeTitleTopInset(92.dp, reserveFloatingBackSpace = true))
+    @Test fun pushedExploreGenreMatchesNativeLibraryCategoryHeadingBand() {
+        assertEquals(134.dp, homeTitleTopInset(108.dp, reserveFloatingBackSpace = true))
+        assertEquals(118.dp, homeTitleTopInset(92.dp, reserveFloatingBackSpace = true))
+        val safe = 108.dp
+        val genreTextTop = homeTitleTopInset(safe, reserveFloatingBackSpace = true) + 8.dp
+        val libraryCategoryTextTop = safe + 8.dp +
+            com.music.bitchord.ui.components.NativePageHeaderMetrics.floatingActionsRestOffset
+        assertEquals(libraryCategoryTextTop, genreTextTop)
     }
 
     @Test fun rootHomeTitleSharesTheSameBaselineAsLibraryAndExplore() {
