@@ -136,6 +136,7 @@ fun ProvidersScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<ProviderInventoryEntry?>(null) }
     var discogsToken by remember { mutableStateOf("") }
+    var listenBrainzTokenInput by remember { mutableStateOf("") }
     var credentialSaving by remember { mutableStateOf(false) }
 
     fun cancelEdit() {
@@ -151,7 +152,11 @@ fun ProvidersScreen(
     fun back() {
         when {
             saving || credentialSaving -> Unit
-            connections -> connections = false
+            connections -> {
+                discogsToken = ""
+                listenBrainzTokenInput = ""
+                connections = false
+            }
             detailGroupKey != null -> {
                 discogsToken = ""
                 detailGroupKey = null
@@ -161,33 +166,6 @@ fun ProvidersScreen(
         }
     }
     BackHandler(enabled = connections || editing || detailGroupKey != null) { back() }
-
-    if (connections) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()
-            .padding(horizontal = 20.dp)) {
-            ProviderHeader(
-                title = "Conexões",
-                editing = false,
-                saving = false,
-                onBack = ::back,
-                onOrganize = {},
-                showOrganize = false,
-                onConnections = {},
-                onCancel = {},
-                onDone = {},
-            )
-            SourcesScreen(
-                contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
-                modifier = Modifier.weight(1f),
-                onEditSource = onEditSource,
-                onEditWebDav = onEditWebDav,
-                onEditSmb = onEditSmb,
-                onConfirmJioSaavn = onConfirmJioSaavn,
-                connectionsOnly = true,
-            )
-        }
-        return
-    }
 
     // Runtime, not this UI, defines which adapters and accounts are installed.
     val inventory = ProviderRuntime.inventoryForSettings()
@@ -212,8 +190,8 @@ fun ProvidersScreen(
                 configs.firstOrNull { it.id == entry.key.instanceId }?.let(onEditSource)
                     ?: run { info = entry }
             "opensubsonic", "local" -> connections = true
-            "lastfm", "listenbrainz" -> onOpenAccounts()
-            "soulseek" -> onOpenSoulseek()
+            "lastfm", "listenbrainz", "discogs" -> connections = true
+            "soulseek" -> connections = true
             else -> info = entry
         }
     }
@@ -288,7 +266,7 @@ fun ProvidersScreen(
 
     fun saveDiscogsToken() {
         if (saving || credentialSaving ||
-            detailGroupKey?.providerId != "discogs" || discogsToken.isBlank()
+            !connections || discogsToken.isBlank()
         ) return
         credentialSaving = true
         message = null
@@ -307,6 +285,87 @@ fun ProvidersScreen(
                 credentialSaving = false
             }
         }
+    }
+
+    fun saveListenBrainzToken() {
+        if (!connections || saving || credentialSaving || listenBrainzTokenInput.isBlank()) return
+        credentialSaving = true
+        message = null
+        val secret = listenBrainzTokenInput.trim()
+        scope.launch {
+            try {
+                // Reuse the existing ListenBrainz account preference and only
+                // refresh readiness; saving a credential must not enable a
+                // provider capability which the user previously disabled.
+                withContext(Dispatchers.IO) {
+                    AppSettings.setListenBrainzToken(secret)
+                    ProviderRuntime.refreshListeningCredentialsFromLegacyUi()
+                }
+                listenBrainzTokenInput = ""
+            } catch (_: Exception) {
+                message = "Não foi possível salvar o token ListenBrainz."
+            } finally {
+                credentialSaving = false
+            }
+        }
+    }
+
+    if (connections) {
+        val available = ProviderRuntime.inventoryForSettings()
+            .filter { it.readiness != ProviderReadiness.NOT_IMPLEMENTED }
+            .map { it.key.providerId }.toSet()
+        val discogsReady = available.contains("discogs") &&
+            ProviderRuntime.inventoryForSettings().any {
+                it.key.providerId == "discogs" &&
+                    it.readiness == ProviderReadiness.READY
+            }
+        Column(
+            modifier = Modifier.fillMaxSize().statusBarsPadding()
+                .padding(horizontal = 20.dp),
+        ) {
+            ProviderHeader(
+                title = "Conexões",
+                editing = false,
+                saving = false,
+                onBack = ::back,
+                onOrganize = {},
+                showOrganize = false,
+                onConnections = {},
+                onCancel = {},
+                onDone = {},
+            )
+            SourcesScreen(
+                contentPadding = PaddingValues(
+                    bottom = contentPadding.calculateBottomPadding(),
+                ),
+                modifier = Modifier.weight(1f),
+                onEditSource = onEditSource,
+                onEditWebDav = onEditWebDav,
+                onEditSmb = onEditSmb,
+                onConfirmJioSaavn = onConfirmJioSaavn,
+                connectionsOnly = true,
+                providerCredentials = {
+                    ProviderConnectionsCredentials(
+                        showDiscogs = "discogs" in available,
+                        showListenBrainz = "listenbrainz" in available,
+                        showLastFm = "lastfm" in available,
+                        showSoulseek = "soulseek" in available,
+                        discogsConfigured = discogsReady,
+                        listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                        discogsToken = discogsToken,
+                        listenBrainzToken = listenBrainzTokenInput,
+                        saving = credentialSaving || saving,
+                        onDiscogsTokenChange = { discogsToken = it },
+                        onListenBrainzTokenChange = { listenBrainzTokenInput = it },
+                        onSaveDiscogsToken = ::saveDiscogsToken,
+                        onSaveListenBrainzToken = ::saveListenBrainzToken,
+                        onOpenAccounts = onOpenAccounts,
+                        onOpenSoulseek = onOpenSoulseek,
+                    )
+                },
+            )
+        }
+        return
     }
 
     fun enterEdit() {
@@ -390,9 +449,6 @@ fun ProvidersScreen(
             onBack = ::back,
             onToggle = ::toggle,
             onConfigure = ::openEntry,
-            discogsToken = discogsToken,
-            onDiscogsTokenChange = { discogsToken = it },
-            onSaveDiscogsToken = ::saveDiscogsToken,
         )
     } else {
     Column(
