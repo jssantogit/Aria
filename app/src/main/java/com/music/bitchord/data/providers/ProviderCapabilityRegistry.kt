@@ -368,18 +368,29 @@ internal object ProviderCapabilityRegistry {
         snapshot: ProviderSessionSnapshot,
         policy: ProviderCapabilityPolicy,
     ): List<ProviderTabRowState> {
-        val tabEntries = entries.filter { it.tab == tab }
-        return tabEntries.mapIndexed { defaultIdx, entry ->
-            val savedChoices = snapshot.configured[entry.capability].orEmpty()
-            val saved = savedChoices.firstOrNull { it.key == entry.key }
-            val order = saved?.order ?: (1000 + defaultIdx)
-            val quarantined = (entry.capability to entry.key) in snapshot.quarantinedProviders
-            val status = policy.status(entry.capability, entry.key, quarantined = quarantined)
-            ProviderTabRowState(
-                entry = entry,
-                status = status,
-                order = order,
-            )
-        }.sortedWith(compareBy<ProviderTabRowState> { it.order }.thenBy { it.entry.displayName.lowercase(Locale.ROOT) })
+        // A Settings category is a visual grouping, never a priority domain.
+        // Preserve the inventory's first-seen capability order and sort only
+        // inside each capability; a drag in Catalog Search must never reorder
+        // Identity, Discography or Edition Metadata.
+        return entries.asSequence()
+            .filter { it.tab == tab }
+            .groupBy { it.capability }
+            .values
+            .flatMap { group ->
+                group.mapIndexed { defaultIdx, entry ->
+                    val savedChoices = snapshot.configured[entry.capability].orEmpty()
+                    val saved = savedChoices.firstOrNull { it.key == entry.key }
+                    val order = saved?.order ?: (1000 + defaultIdx)
+                    val quarantined =
+                        (entry.capability to entry.key) in snapshot.quarantinedProviders
+                    val status = policy.status(
+                        entry.capability, entry.key, quarantined = quarantined,
+                    )
+                    ProviderTabRowState(entry = entry, status = status, order = order)
+                }.sortedWith(
+                    compareBy<ProviderTabRowState> { it.order }
+                        .thenBy { it.entry.displayName.lowercase(Locale.ROOT) },
+                )
+            }
     }
 }
