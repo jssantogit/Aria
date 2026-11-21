@@ -1411,4 +1411,6 @@
     <string name="apple_player_share_song">曲を共有</string>
     <string name="apple_player_share_lyrics">歌詞を共有…</string>
     <string name="apple_library_search_in_category">%1$sを検索</string>
+    <string name="providers_settings">プロバイダー</string>
+    <string name="providers_settings_subtitle">カタログ、アートワーク、歌詞、統計、オーディオ、ダウンロードのプロバイダーを管理</string>
 </resources>
