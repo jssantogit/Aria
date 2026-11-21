@@ -670,7 +670,7 @@ fun HomeTitle(
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(
-                start = PAGE_GUTTER + if (pushedCategory) NativePageHeaderMetrics.pushedTitleStartInset else 0.dp,
+                start = PAGE_GUTTER + (if (pushedCategory) NativePageHeaderMetrics.pushedTitleStartInset else 0.dp),
                 end = PAGE_GUTTER,
                 top = 8.dp,
                 bottom = 8.dp,
@@ -688,8 +688,8 @@ fun HomeTitle(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        // A genre page must line up with Home/Explore, not indent the title
-        // by the back button's width. Keep Back reachable at the right.
+        // Any legacy in-list Back remains actionable, while the real genre
+        // route uses only the globally owned floating Back control.
         if (onBack != null) {
             NativeHomeHeaderIconAction(
                 icon = PlaylistEditorIcons.Back,
