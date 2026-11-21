@@ -103,8 +103,8 @@ import com.music.bitchord.ui.performance.RuntimePerformanceUiContext
 import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.MeshPalette
 
-/** How far the Listen now heading and feed sit above the shared top inset. */
-private val HOME_TITLE_LIFT = 28.dp
+/** The Home title remains beside its resting actions after safe-content clearance. */
+private val HOME_TITLE_LIFT = 56.dp
 
 /**
  * Home intentionally raises its large heading. Explore genre details have an
@@ -115,10 +115,9 @@ internal fun homeTitleTopInset(
     topBarInset: Dp,
     reserveFloatingBackSpace: Boolean,
 ): Dp = if (reserveFloatingBackSpace) {
-    // At Home-aligned Y, Back's 40dp puck extends 16dp below the
-    // ordinary 52dp top-bar bottom. The title has 8dp of its own top
-    // padding; add 12dp here for a 4dp clearance, not an overlap.
-    (topBarInset + 12.dp).coerceAtLeast(0.dp)
+    // The shared inset now lands BELOW the floating Back circle, so a
+    // detail genre must not add another route-specific lift or offset.
+    topBarInset.coerceAtLeast(0.dp)
 } else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
 
 private const val RECENTS_TITLE = "Recents"
