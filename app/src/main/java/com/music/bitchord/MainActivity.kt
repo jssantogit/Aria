@@ -196,7 +196,7 @@ import com.music.bitchord.ui.screens.SignatureApiEditor
 import com.music.bitchord.ui.screens.SettingsScreen
 import com.music.bitchord.ui.screens.SettingsSection
 import com.music.bitchord.ui.screens.SourceEditorAlert
-import com.music.bitchord.ui.screens.SourcesScreen
+import com.music.bitchord.ui.screens.ProvidersScreen
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.ui.screens.SpotifyCanvasAuthScreen
 import com.music.bitchord.ui.screens.SpotifyLibraryScreen
@@ -3800,12 +3800,25 @@ private fun BitChordApp(
                             contentPadding = listPadding,
                         )
                     } else if (key == "sources") {
-                        SourcesScreen(
+                        ProvidersScreen(
                             contentPadding = listPadding,
                             onEditSource = { editingSource = it },
                             onEditWebDav = { showWebDavEditor = true },
                             onEditSmb = { showSmbEditor = true },
                             onConfirmJioSaavn = { confirmJioSaavn = true },
+                            onBack = {
+                                showSources = false
+                                if (settingsSubScreen == "sources") settingsSubScreen = null
+                            },
+                            onOpenAccounts = {
+                                showSources = false
+                                settingsSubScreen = "account_scrobbling"
+                                showAccountScrobbling = true
+                            },
+                            onOpenSoulseek = {
+                                showSources = false
+                                settingsSubScreen = "soulseek"
+                            },
                         )
                     } else if (key == "wear_os") {
                         WearOsScreen(contentPadding = listPadding)
@@ -4877,12 +4890,25 @@ private fun BitChordApp(
                             modifier = Modifier.fillMaxSize(),
                             color = MaterialTheme.colorScheme.background,
                         ) {
-                            SourcesScreen(
+                            ProvidersScreen(
                                 contentPadding = listPadding,
                                 onEditSource = { editingSource = it },
                                 onEditWebDav = { showWebDavEditor = true },
                                 onEditSmb = { showSmbEditor = true },
                                 onConfirmJioSaavn = { confirmJioSaavn = true },
+                            onBack = {
+                                showSources = false
+                                if (settingsSubScreen == "sources") settingsSubScreen = null
+                            },
+                            onOpenAccounts = {
+                                showSources = false
+                                settingsSubScreen = "account_scrobbling"
+                                showAccountScrobbling = true
+                            },
+                            onOpenSoulseek = {
+                                showSources = false
+                                settingsSubScreen = "soulseek"
+                            },
                             )
                         }
                     }
@@ -5095,7 +5121,7 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY ->
                             openedCanonicalPlaylist?.title ?: "Playlists"
                         showAccountScrobbling -> stringResource(R.string.account_scrobbling)
-                        showSources -> stringResource(R.string.sources)
+                        showSources -> ""
                         showListenTogether -> stringResource(R.string.listen_together)
                         showWearOs -> stringResource(R.string.wear_os_page_title)
                         showEqualizer -> stringResource(R.string.equalizer)
@@ -5122,7 +5148,7 @@ private fun BitChordApp(
                     // Root and detail toolbar actions share independent circular
                     // surfaces; only Search's editable root field uses this slot.
                     // The global ⋮ owns Settings rather than an account avatar.
-                    showActions = !appleSearchRootChrome,
+                    showActions = !appleSearchRootChrome && !showSources,
                     separateActions = appleLibraryRoundChrome,
                     // All non-Search pages use Home's resting Y for top
                     // circles. Home alone retracts its launcher on scroll.
@@ -5197,10 +5223,7 @@ private fun BitChordApp(
                             showAccountScrobbling = false
                             if (settingsSubScreen == "account_scrobbling") settingsSubScreen = null
                         })
-                        showSources -> ({
-                            showSources = false
-                            if (settingsSubScreen == "sources") settingsSubScreen = null
-                        })
+                        showSources -> null // Provedores draws its own REA-style back button
                         showListenTogether -> ({
                             showListenTogether = false
                             if (settingsSubScreen == "listen_together") settingsSubScreen = null
