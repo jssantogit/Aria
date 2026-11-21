@@ -17,6 +17,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
@@ -30,7 +31,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import android.view.WindowManager
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -52,7 +56,9 @@ import dev.chrisbanes.haze.HazeState
  * second glyph/puck at guessed offsets (which creates double dots on devices
  * with different window insets or magnification).
  *
- * All coordinates are measured in window pixels, not screen dp.
+ * Both the launcher and the overlay are measured in SCREEN pixels; their
+ * Compose Dialogs have independent window coordinate origins. Do not mix
+ * boundsInWindow from the player with positionInWindow from the menu.
  */
 internal fun playerOverflowScrimCutout(
     anchor: IntRect?,
@@ -165,18 +171,28 @@ fun PlayerAnchoredActionsMenu(
             decorFitsSystemWindows = false,
         ),
     ) {
+        // A second platform dialog must NOT dim the entire player behind its
+        // own Compose scrim. Android's FLAG_DIM_BEHIND would darken even the
+        // transparent spotlight cutout, so the selected original icon could
+        // never retain its normal colors. Only the masked Compose layer dims.
+        val dialogView = LocalView.current
+        DisposableEffect(dialogView) {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            onDispose { }
+        }
         Box(
             Modifier.fillMaxSize()
                 .onSizeChanged { rootSize = it }
                 .onGloballyPositioned { coords ->
-                    val pos = coords.positionInWindow()
+                    val pos = coords.positionOnScreen()
                     rootOrigin = IntOffset(pos.x.toInt(), pos.y.toInt())
                 },
             contentAlignment = Alignment.TopStart,
         ) {
             Box(
                 Modifier.matchParentSize()
-                    // Punch the scrim out around the ACTUAL 40dp launcher.
+                    // Punch the scrim out around the actual 34dp visible puck.
                     // The original glyph and puck retain their exact tint,
                     // geometry, alpha and position; never draw a second copy.
                     .drawBehind {
