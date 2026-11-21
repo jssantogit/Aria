@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
  * The Compose SVG painter throws on Android; ImageVector works in both hosts.
  * Preserve fill alpha, path fill rules and 28-unit geometry exactly.
  */
-internal object AppleQueueVectors {
+object AppleQueueVectors {
 
     // These are the EXACT star contours within the expanded player's icons.
     // Sharing the path strings keeps a five-star editor from accidentally
