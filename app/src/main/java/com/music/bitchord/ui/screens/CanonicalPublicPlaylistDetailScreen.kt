@@ -197,6 +197,11 @@ internal fun CanonicalPublicPlaylistDetailScreen(
         heldMetadataTrack = null
         heldMetadataOrigin = null
     }
+    // Measure once against the actual detail viewport, as canonical albums do.
+    // A LazyColumn item has unbounded height, so its own BoxWithConstraints
+    // cannot reliably enforce the landscape artwork-height limit.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val releaseSleeve = nativeReleaseSleeveSize(maxWidth, maxHeight)
     NativePlaylistDetailFrame(
         palette = palette,
         listState = listState,
@@ -239,7 +244,7 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                     palette = palette,
                     rating = rating,
                     onRate = if (ratingTarget != null) ({ editingRating = true }) else null,
-                    sleeveSize = maxWidth * .76f,
+                    sleeveSize = releaseSleeve,
                     artwork = {
                         // The Library's custom-cover branch clips its whole
                         // sleeve, not just the fallback underneath the image.
@@ -264,6 +269,8 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                             onPlay = {},
                             onShuffle = {},
                             isLocal = false,
+                            compactForAlbum = true,
+                            pinTargetLabel = "playlist",
                             canPlay = false,
                             canShuffle = false,
                             reservePinAction = true,
@@ -399,4 +406,5 @@ internal fun CanonicalPublicPlaylistDetailScreen(
             }
         }
     }
+    } // End common viewport scope.
 }
