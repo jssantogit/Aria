@@ -40,6 +40,26 @@ internal fun groupProviderRows(rows: List<ProviderTabRowState>): List<ProviderDi
         ProviderDisplayGroup(first.key, first.tab, providerSettingsDisplayName(first), members)
     }
 
+/**
+ * Omit only capabilities that do not have an implementation. A provider with
+ * some implemented and some unimplemented functions stays in the list, but
+ * its unavailable function is not presented on the details page. Keep the
+ * original group rows for safe revocation of any previously persisted grant.
+ *
+ * NEEDS_CONFIGURATION remains visible: the user can supply its prerequisites.
+ */
+internal fun presentableProviderGroups(
+    groups: List<ProviderDisplayGroup>,
+): List<ProviderDisplayGroup> = groups.filter { group ->
+    group.rows.any { it.entry.readiness != ProviderReadiness.NOT_IMPLEMENTED }
+}
+
+internal fun presentableProviderFunctions(
+    group: ProviderDisplayGroup,
+): List<ProviderTabRowState> = group.rows.filter {
+    it.entry.readiness != ProviderReadiness.NOT_IMPLEMENTED
+}
+
 internal fun searchProviderGroups(
     groups: List<ProviderDisplayGroup>, query: String,
 ): List<ProviderDisplayGroup> {
