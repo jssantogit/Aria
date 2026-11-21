@@ -508,7 +508,7 @@ internal fun SettingsScreen(
                 onSearchNavigate = if (selectedSection == null) {
                     _: String -> onSelectSection(SettingsSection.SOURCES)
                 } else null,
-                header = stringResource(R.string.sources),
+                header = stringResource(R.string.providers_settings),
             ) {
             val sourceTitle = stringResource(R.string.source)
             val sourceSubtitle = stringResource(R.string.sources_subtitle)
