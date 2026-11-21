@@ -468,11 +468,20 @@ internal fun LandscapeCredits(
             )
         }
         Spacer(Modifier.width(10.dp))
-        CircleGlyph(
-            icon = nativeLandscapePlayerOverflowGlyph(),
-            contentDescription = stringResource(Res.string.more),
-            onClick = onOpenMenu,
-        )
+        if (showPlayerRatingStar) {
+            // Same single Apple-original puck as the portrait and queue headers.
+            AppleQueueHeaderAction(
+                imageVector = nativePortraitAppleQueueOverflowGlyph(),
+                description = stringResource(Res.string.more),
+                onClick = onOpenMenu,
+            )
+        } else {
+            CircleGlyph(
+                icon = nativeLandscapePlayerOverflowGlyph(),
+                contentDescription = stringResource(Res.string.more),
+                onClick = onOpenMenu,
+            )
+        }
     }
 }
 
