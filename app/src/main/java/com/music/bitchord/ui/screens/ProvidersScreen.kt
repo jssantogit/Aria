@@ -90,6 +90,7 @@ import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.player.AppleQueueVectors
 import com.music.bitchord.ui.components.ArtworkPageBackButton
 import com.music.bitchord.ui.components.FloatingLibraryTopBarCircle
+import com.music.bitchord.ui.components.standaloneTopControlPadding
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -592,7 +593,10 @@ private fun ProviderHeader(
     onDone: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 22.dp),
+        modifier = Modifier.fillMaxWidth().padding(
+            top = standaloneTopControlPadding(40.dp),
+            bottom = 22.dp,
+        ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
