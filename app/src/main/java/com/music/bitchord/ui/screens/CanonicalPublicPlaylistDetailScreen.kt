@@ -270,7 +270,6 @@ internal fun CanonicalPublicPlaylistDetailScreen(
                             onShuffle = {},
                             isLocal = false,
                             compactForAlbum = true,
-                            pinTargetLabel = "playlist",
                             canPlay = false,
                             canShuffle = false,
                             reservePinAction = true,
