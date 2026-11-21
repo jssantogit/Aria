@@ -746,6 +746,9 @@ fun WebDavConflictAlert(
     }
 }
 
+/** The exact neutral expandable-menu surface token used by confirmations. */
+internal val FLOATING_CONFIRMATION_TREATMENT = NativeActionCardTreatment.FROSTED
+
 /**
  * Confirmation actions are a floating *context menu*, not the old iOS system
  * alert. Its neutral glass, 18dp corners, hairline and shadow are owned by
@@ -828,7 +831,7 @@ fun ConfirmationAlert(
                         onClick = {},
                     ),
                 hazeState = hazeState,
-                treatment = NativeActionCardTreatment.FROSTED,
+                treatment = FLOATING_CONFIRMATION_TREATMENT,
             ) {
                 Column {
                     Column(
@@ -1064,22 +1067,19 @@ fun NativeAlertHost(
     }
 }
 
-/** The scrim + frosted card frame shared by every UIAlertController-style dialog. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
+/**
+ * All account/status/choice alerts use the SAME neutral floating action plate
+ * as confirmation menus. Unlike the specialized ConfirmationAlert, these may
+ * include editable fields or lists and retain their original click handlers.
+ * Haze source and reduced-blur fallback are resolved by the shared plate.
+ */
 @Composable
 internal fun AlertScaffold(
     hazeState: HazeState?,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val shape = RoundedCornerShape(ALERT_CORNER)
-    val source = hazeState ?: LocalNeutralOverlayHazeState.current
-    val neutral = nativeContextPlateColor(
-        MaterialTheme.colorScheme.background.luminance() < 0.5f,
-    )
-
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(SCRIM_COLOR)
@@ -1090,24 +1090,20 @@ internal fun AlertScaffold(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
+        val plateWidth = (maxWidth - 48.dp).coerceAtMost(320.dp).coerceAtLeast(0.dp)
+        NativeContextActionPlate(
             modifier = Modifier
-                .width(ALERT_WIDTH)
-                // Haze's shared source capture supports Dialog subcompositions;
-                // explicit null from legacy Settings callers is not an opt-out.
-                .neutralFrostedMaterial(
-                    shape = shape,
-                    neutralColor = neutral,
-                    hazeState = source,
-                    reduceBlur = reduceDynamicBlur,
-                )
+                .width(plateWidth)
                 .testTag("native-alert-scaffold")
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = {},
                 ),
-            content = content,
-        )
+            hazeState = hazeState,
+            treatment = FLOATING_CONFIRMATION_TREATMENT,
+        ) {
+            Column(content = content)
+        }
     }
 }
