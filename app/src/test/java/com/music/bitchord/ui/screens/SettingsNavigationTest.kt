@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -26,6 +28,12 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class SettingsNavigationTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun pushedSettingsTitleClearsTheGlobalFloatingBackControl() {
+        assertEquals(36.dp, NativePageHeaderMetrics.settingsPushedTitleTopPadding)
+        assertEquals(28.dp, NativePageHeaderMetrics.pushedTitleClearance)
+        assertEquals(16.dp, NativePageHeaderMetrics.pushedTitleStartInset)
+    }
 
     @Test fun lyricsSummaryCountIsUnambiguousForSingularAndPlural() {
         assertEquals(null, lyricsSourcesCountValue(0))
