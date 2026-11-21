@@ -12,6 +12,8 @@ import com.music.bitchord.data.providers.ProviderTabRowState
 import com.music.bitchord.ui.screens.groupProviderRows
 import com.music.bitchord.ui.screens.orderProviderGroups
 import com.music.bitchord.ui.screens.planProviderGroupToggle
+import com.music.bitchord.ui.screens.presentableProviderGroups
+import com.music.bitchord.ui.screens.presentableProviderFunctions
 import com.music.bitchord.ui.screens.providerGroupAllEnabled
 import com.music.bitchord.ui.screens.providerGroupDraftOrders
 import com.music.bitchord.ui.screens.providerGroupWarning
@@ -79,6 +81,27 @@ class ProviderGroupedPresentationTest {
         assertEquals(groups.take(2), searchProviderGroups(groups, "busca"))
         assertEquals(groups, searchProviderGroups(groups, ""))
         assertEquals(catalog.size, groups.sumOf { it.rows.size })
+    }
+
+    @Test fun unimplementedOnlyProvidersAreHiddenButConfigurableSourcesRemainVisible() {
+        val acoustid = ProviderKey("acoustid")
+        val rows = catalog + listOf(
+            row(acoustid, ProviderCapability.ACOUSTIC_IDENTIFICATION,
+                "AcoustID", readiness = ProviderReadiness.NOT_IMPLEMENTED),
+            row(mb, ProviderCapability.ACOUSTIC_IDENTIFICATION,
+                "MusicBrainz (Identificação)", readiness = ProviderReadiness.NOT_IMPLEMENTED),
+        )
+        val fullGroups = groupProviderRows(rows)
+        val visible = presentableProviderGroups(fullGroups)
+        assertEquals(listOf("MusicBrainz", "Apple / iTunes", "Discogs"),
+            visible.map { it.title })
+        assertEquals(listOf(search, discography, identity),
+            presentableProviderFunctions(visible.first()).map { it.entry.capability })
+        // Preserve the full internal group for authorization revocation and future
+        // readiness changes; filtering must NEVER mutate ProviderRuntime's input.
+        assertEquals(4, fullGroups.first().rows.size)
+        assertEquals(5, fullGroups.size)
+        assertEquals("Discogs", visible.last().title)
     }
 
     @Test fun onlyWithinSameTabAndExactProviderInstanceAreCapabilitiesGrouped() {
