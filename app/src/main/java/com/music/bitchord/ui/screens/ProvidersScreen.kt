@@ -151,11 +151,12 @@ fun ProvidersScreen(
         when {
             saving || credentialSaving -> Unit
             connections -> connections = false
+            detailGroupKey != null -> detailGroupKey = null
             editing -> cancelEdit()
             else -> onBack()
         }
     }
-    BackHandler(enabled = connections || editing) { back() }
+    BackHandler(enabled = connections || editing || detailGroupKey != null) { back() }
 
     if (connections) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()
@@ -342,6 +343,26 @@ fun ProvidersScreen(
         }
     }
 
+    val selectedDetailTab = ProviderSettingsTab.entries
+        .firstOrNull { it.name == selectedTabName } ?: ProviderSettingsTab.CATALOG
+    val selectedDetail = detailGroupKey?.let { key ->
+        groupProviderRows(grouped[selectedDetailTab].orEmpty()).firstOrNull {
+            it.key == key
+        }
+    }
+    if (selectedDetail != null) {
+        ProviderCapabilitiesScreen(
+            group = selectedDetail,
+            configured = snapshot.configured,
+            saving = saving || credentialSaving,
+            loading = snapshot.status == ProviderSessionStatus.BOOTING,
+            error = message,
+            contentPadding = contentPadding,
+            onBack = ::back,
+            onToggle = ::toggle,
+            onConfigure = ::openEntry,
+        )
+    } else {
     Column(
         modifier = Modifier.fillMaxWidth()
             .statusBarsPadding()
@@ -420,10 +441,7 @@ fun ProvidersScreen(
                     saving = saving || snapshot.status == ProviderSessionStatus.BOOTING,
                     savedEnabled = providerGroupAllEnabled(group, snapshot.configured),
                     warning = providerGroupWarning(group, snapshot.configured),
-                    onOpen = {
-                        if (group.rows.size == 1) openEntry(group.rows.first().entry)
-                        else detailGroupKey = group.key
-                    },
+                    onOpen = { detailGroupKey = group.key },
                     onToggle = { enabled -> toggleGroup(group, enabled) },
                     canMoveUp = groupDrafts[selectedTab].orEmpty().indexOf(group.key) > 0,
                     canMoveDown = groupDrafts[selectedTab].orEmpty().let { order ->
@@ -444,60 +462,7 @@ fun ProvidersScreen(
         Spacer(Modifier.height(12.dp))
     }
 
-    // Capability details stay accessible on demand. A simple vendor switch
-    // operates an atomic batch, but independent advanced authorizations are
-    // neither erased nor silently inferred from the one-row presentation.
-    detailGroupKey?.let { key ->
-        val group = groupProviderRows(grouped[ProviderSettingsTab.entries.firstOrNull { it.name == selectedTabName } ?: ProviderSettingsTab.CATALOG].orEmpty())
-            .firstOrNull { it.key == key && it.tab.name == selectedTabName }
-        if (group == null) {
-            detailGroupKey = null
-        } else {
-            AlertDialog(
-                onDismissRequest = { if (!saving) detailGroupKey = null },
-                title = { Text(group.title) },
-                text = {
-                    Column {
-                        group.rows.forEach { row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Text(
-                                    row.entry.capability.organizeScopeTitle(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Switch(
-                                    checked = snapshot.configured[row.entry.capability].orEmpty()
-                                        .any { it.key == row.entry.key && it.enabled },
-                                    onCheckedChange = { enabled -> toggle(row.entry, enabled) },
-                                    enabled = !saving && row.entry.readiness == ProviderReadiness.READY,
-                                    colors = appleSettingsSwitchColors(),
-                                    modifier = Modifier.semantics {
-                                        contentDescription = row.entry.displayName
-                                    },
-                                )
-                            }
-                        }
-                        if (group.rows.any {
-                            it.entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION
-                        }) {
-                            TextButton(onClick = {
-                                detailGroupKey = null
-                                openEntry(group.rows.first { it.entry.readiness ==
-                                    ProviderReadiness.NEEDS_CONFIGURATION }.entry)
-                            }) { Text("Configurar") }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { detailGroupKey = null }) { Text("Fechar") }
-                },
-            )
-        }
-    }
+    } // Main provider list; capability page replaces it when selected.
 
     info?.let { entry ->
         if (entry.key.providerId == "discogs") {
@@ -669,7 +634,7 @@ private fun ProviderSettingsTab.providerTitle(): String = when (this) {
 }
 
 @Composable
-private fun ProviderHeader(
+internal fun ProviderHeader(
     title: String,
     editing: Boolean,
     saving: Boolean,
