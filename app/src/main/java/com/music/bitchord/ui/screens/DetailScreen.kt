@@ -205,6 +205,19 @@ private const val SLEEVE_FRACTION = 0.76f
 /** ...and of its height, so a landscape window still shows the title under it. */
 private const val SLEEVE_MAX_HEIGHT = 0.5f
 
+/**
+ * Downloads is a device FOLDER (BrowseType.OTHER), but its hero presents
+ * playable songs and the same release-style artwork/actions as album pages.
+ * Downloaded albums/playlists each have a typed page; grouping by album tags
+ * also resolves to BrowseType.ALBUM. Keep Local Music, Cache and other folders
+ * unchanged rather than globally treating every local: path as a release.
+ */
+internal fun nativeReleaseUsesAlbumGeometry(browseId: String, type: BrowseType): Boolean =
+    type == BrowseType.ALBUM ||
+        type == BrowseType.PLAYLIST ||
+        browseId == "local:downloads" ||
+        browseId.startsWith(com.music.bitchord.download.Downloads.PLAYLIST_PREFIX) ||
+        com.music.bitchord.data.LocalGroups.typeOf(browseId) == BrowseType.ALBUM
 
 /** Shuffle and Add to Library either side of the release page's Play pill. */
 
@@ -676,9 +689,8 @@ fun DetailScreen(
                 // math honest once the width it's fed is no longer guaranteed to be
                 // the narrow one it was written for.
                 val artHeight = (maxWidth / ARTIST_PHOTO_RATIO).coerceAtMost(maxHeight * 0.6f)
-                val sleeveSize = if (page.type == BrowseType.ALBUM ||
-                    page.type == BrowseType.PLAYLIST
-                ) nativeReleaseSleeveSize(maxWidth, maxHeight)
+                val sleeveSize = if (nativeReleaseUsesAlbumGeometry(page.browseId, page.type))
+                    nativeReleaseSleeveSize(maxWidth, maxHeight)
                 else (maxWidth * SLEEVE_FRACTION)
                     .coerceAtMost(maxHeight * SLEEVE_MAX_HEIGHT)
                 // A folder's grid view: the same column count the Library's
@@ -1395,8 +1407,9 @@ private fun ReleaseHeader(
                     // Playlists keep identical header controls across sources.
                     isLocal = page.type != BrowseType.PLAYLIST &&
                         page.browseId.startsWith("local:"),
-                    compactForAlbum = page.type == BrowseType.ALBUM ||
-                        page.type == BrowseType.PLAYLIST,
+                    compactForAlbum = nativeReleaseUsesAlbumGeometry(
+                        page.browseId, page.type,
+                    ),
                     pinTargetLabel = if (page.type == BrowseType.PLAYLIST)
                         "playlist" else "álbum",
                     canShuffle = songs.isNotEmpty(),
