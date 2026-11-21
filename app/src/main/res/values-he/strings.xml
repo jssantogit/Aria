@@ -1438,4 +1438,6 @@
     <string name="apple_player_share_song">שיתוף שיר</string>
     <string name="apple_player_share_lyrics">שיתוף מילים…</string>
     <string name="apple_library_search_in_category">חיפוש ב%1$s</string>
+    <string name="providers_settings">ספקים</string>
+    <string name="providers_settings_subtitle">ניהול ספקי קטלוג, עטיפות, מילות שירים, נתונים סטטיסטיים, שמע והורדות</string>
 </resources>
