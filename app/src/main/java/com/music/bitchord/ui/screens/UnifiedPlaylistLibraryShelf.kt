@@ -1,5 +1,7 @@
 package com.music.bitchord.ui.screens
 
+import com.music.bitchord.playlistLibraryHeadingExtraTopPadding
+
 import com.music.bitchord.R
 
 import androidx.compose.foundation.lazy.LazyColumn
@@ -335,7 +337,7 @@ internal fun UnifiedPlaylistLibraryShelf(
                     end = PAGE_GUTTER,
                     // The global bar owns the floating action lane. Do not
                     // apply Home's 34dp button offset a second time to this title.
-                    top = 8.dp,
+                    top = playlistLibraryHeadingExtraTopPadding(),
                 ),
             )
         }
