@@ -676,8 +676,10 @@ fun DetailScreen(
                 // math honest once the width it's fed is no longer guaranteed to be
                 // the narrow one it was written for.
                 val artHeight = (maxWidth / ARTIST_PHOTO_RATIO).coerceAtMost(maxHeight * 0.6f)
-                val sleeveSize = (maxWidth *
-                    (if (page.type == BrowseType.ALBUM) ALBUM_SLEEVE_FRACTION else SLEEVE_FRACTION))
+                val sleeveSize = if (page.type == BrowseType.ALBUM ||
+                    page.type == BrowseType.PLAYLIST
+                ) nativeReleaseSleeveSize(maxWidth, maxHeight)
+                else (maxWidth * SLEEVE_FRACTION)
                     .coerceAtMost(maxHeight * SLEEVE_MAX_HEIGHT)
                 // A folder's grid view: the same column count the Library's
                 // "Show all" grids reach at this width.
@@ -1393,7 +1395,10 @@ private fun ReleaseHeader(
                     // Playlists keep identical header controls across sources.
                     isLocal = page.type != BrowseType.PLAYLIST &&
                         page.browseId.startsWith("local:"),
-                    compactForAlbum = page.type == BrowseType.ALBUM,
+                    compactForAlbum = page.type == BrowseType.ALBUM ||
+                        page.type == BrowseType.PLAYLIST,
+                    pinTargetLabel = if (page.type == BrowseType.PLAYLIST)
+                        "playlist" else "álbum",
                     canShuffle = songs.isNotEmpty(),
                     isSaved = library?.saved,
                     onToggleLibrary = if (library == null) null else onToggleLibrary,
