@@ -60,6 +60,54 @@ class ProviderCapabilitySessionTest {
 
     @Before fun clear() { prefs.edit().clear().commit() }
 
+    @Test fun organizePersistsTwoIndependentCapabilitiesAsOneTransaction(): Unit = runBlocking {
+        val original = mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, true, 0)),
+            ProviderCapability.RELEASE_ARTWORK to listOf(
+                ProviderChoice(apple, true, 0),
+                ProviderChoice(covers, false, 1),
+            ),
+        )
+        val candidate = session()
+        assertTrue(candidate.initialize(original))
+        val edits = mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, false, 0)),
+            ProviderCapability.RELEASE_ARTWORK to listOf(
+                ProviderChoice(covers, true, 0),
+                ProviderChoice(apple, true, 1),
+            ),
+        )
+        assertTrue(candidate.updateAll(edits))
+        assertEquals(edits[ProviderCapability.CATALOG_SEARCH],
+            candidate.state.value.configured[ProviderCapability.CATALOG_SEARCH])
+        assertEquals(edits[ProviderCapability.RELEASE_ARTWORK],
+            candidate.state.value.configured[ProviderCapability.RELEASE_ARTWORK])
+        assertEquals((store.read() as ProviderPreferenceStore.Read.Loaded).choices,
+            candidate.state.value.configured)
+        assertTrue(candidate.gate.open(ProviderCapability.CATALOG_SEARCH, musicBrainz) == null)
+        assertTrue(candidate.gate.open(ProviderCapability.RELEASE_ARTWORK, covers) != null)
+    }
+
+    @Test fun organizeWriteFailureCannotCommitOneCapabilityWhileDroppingAnother(): Unit = runBlocking {
+        val candidate = session()
+        assertTrue(candidate.initialize(mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, true, 0)),
+            ProviderCapability.RELEASE_ARTWORK to listOf(ProviderChoice(apple, true, 0)),
+        )))
+        val previous = candidate.state.value.configured
+        prefs.edit().putString(ProviderPreferenceStore.STORAGE_KEY, "{broken").commit()
+        val edits = mapOf(
+            ProviderCapability.CATALOG_SEARCH to listOf(ProviderChoice(musicBrainz, false, 0)),
+            ProviderCapability.RELEASE_ARTWORK to listOf(ProviderChoice(apple, false, 0)),
+        )
+        assertFalse(candidate.updateAll(edits))
+        assertEquals(previous, candidate.state.value.configured)
+        assertEquals(ProviderSessionStatus.STORAGE_ERROR, candidate.state.value.status)
+        assertTrue(candidate.gate.open(ProviderCapability.CATALOG_SEARCH, musicBrainz) == null)
+        assertTrue(candidate.gate.open(ProviderCapability.RELEASE_ARTWORK, apple) == null)
+        assertEquals("{broken", prefs.getString(ProviderPreferenceStore.STORAGE_KEY, null))
+    }
+
     @Test fun scrobblingConsentNeverImplicitlyEnablesPersonalRecommendations(): Unit = runBlocking {
         val provider = BuiltInProviderKeys.LISTENBRAINZ
         val first = ProviderCapabilitySession(store, emptyList())
