@@ -311,14 +311,14 @@ fun ProvidersScreen(
     }
 
     if (connections) {
-        val available = ProviderRuntime.inventoryForSettings()
-            .filter { it.readiness != ProviderReadiness.NOT_IMPLEMENTED }
-            .map { it.key.providerId }.toSet()
-        val discogsReady = available.contains("discogs") &&
-            ProviderRuntime.inventoryForSettings().any {
-                it.key.providerId == "discogs" &&
-                    it.readiness == ProviderReadiness.READY
-            }
+        val credentialInventory = inventory.filter {
+            it.readiness != ProviderReadiness.NOT_IMPLEMENTED
+        }
+        val available = credentialInventory.map { it.key.providerId }.toSet()
+        val discogsReady = credentialInventory.any {
+            it.key.providerId == "discogs" &&
+                it.readiness == ProviderReadiness.READY
+        }
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding()
                 .padding(horizontal = 20.dp),
@@ -334,6 +334,14 @@ fun ProvidersScreen(
                 onCancel = {},
                 onDone = {},
             )
+            message?.let { explanation ->
+                Text(
+                    text = explanation,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+            }
             SourcesScreen(
                 contentPadding = PaddingValues(
                     bottom = contentPadding.calculateBottomPadding(),
