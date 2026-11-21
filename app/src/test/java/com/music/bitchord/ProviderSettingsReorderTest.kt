@@ -11,6 +11,7 @@ import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.ui.screens.reorderCapabilityChoices
 import com.music.bitchord.ui.screens.previewProviderRows
+import com.music.bitchord.ui.screens.visibleProviderRows
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -86,6 +87,45 @@ class ProviderSettingsReorderTest {
             previewProviderRows(before, mapOf(
                 ProviderCapability.CATALOG_SEARCH to listOf(musicBrainz, apple),
             )).takeLast(2).map { it.entry.key })
+    }
+
+    @Test fun organizeShowsOnlyActionableScopesAndNormalModeKeepsInventory() {
+        fun row(key: ProviderKey, capability: ProviderCapability, draggable: Boolean) =
+            ProviderTabRowState(
+                entry = ProviderInventoryEntry(
+                    key = key,
+                    capability = capability,
+                    tab = ProviderSettingsTab.CATALOG,
+                    displayName = key.providerId,
+                    readiness = ProviderReadiness.READY,
+                    supportsReordering = draggable,
+                    notes = "",
+                ),
+                status = ProviderCapabilityStatus(
+                    capability = capability,
+                    key = key,
+                    implemented = true,
+                    prerequisitesMet = true,
+                    userAuthorized = true,
+                    operationalHealth = ProviderOperationalHealth.UNKNOWN,
+                    effectiveEligible = true,
+                ),
+                order = 0,
+            )
+        val fixed = ProviderKey("catalog", "fixed")
+        val standalone = ProviderKey("catalog", "standalone")
+        val rows = listOf(
+            row(apple, ProviderCapability.CATALOG_SEARCH, true),
+            row(fixed, ProviderCapability.CATALOG_SEARCH, false),
+            row(musicBrainz, ProviderCapability.CATALOG_SEARCH, true),
+            row(standalone, ProviderCapability.IDENTITY, false),
+            row(ProviderKey("itunes"), ProviderCapability.RELEASE_ARTWORK, true),
+        )
+        assertEquals(rows, visibleProviderRows(rows, editing = false))
+        assertEquals(listOf(apple, musicBrainz),
+            visibleProviderRows(rows, editing = true).map { it.entry.key })
+        assertEquals(emptyList<ProviderTabRowState>(),
+            visibleProviderRows(rows.take(1), editing = true))
     }
 
     @Test fun missingOrRepeatedKeysCannotInventAProvider() {
