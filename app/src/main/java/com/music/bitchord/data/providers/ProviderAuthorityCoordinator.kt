@@ -316,6 +316,16 @@ internal class ProviderAuthorityCoordinator(
         }
     }
 
+    /** Credentials change readiness only; never override persisted consent. */
+    suspend fun onDiscogsCredentialChanged(configured: Boolean) {
+        discogsTokenReady = configured
+        session.refreshDescriptors(
+            ProviderCapabilityRegistry.descriptorsFrom(
+                inventoryForSettings(com.music.bitchord.data.sources.SourceRegistry.configs.value),
+            ),
+        )
+    }
+
     /** Read-only registry view, matching the descriptors installed into the gate. */
     fun inventoryForSettings(sources: List<SourceConfig>): List<ProviderInventoryEntry> {
         val account = currentOpenSubsonicAccount()
