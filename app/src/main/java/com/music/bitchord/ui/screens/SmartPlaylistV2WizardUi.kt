@@ -589,6 +589,9 @@ internal fun SmartPlaylistV2WizardUi(
     var negated by remember { mutableStateOf(false) }
     var returnAfterEditor by remember { mutableStateOf(WizardStep.GROUP) }
     var picker by remember { mutableStateOf<String?>(null) }
+    // Source choices are an inline grouped card, not a separate bottom sheet.
+    // Entering another wizard step or switching playlist kind resets it.
+    var sourceExpanded by remember(page, normalMode) { mutableStateOf(false) }
     var creatorMoreOpen by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmDeleteNormal by remember { mutableStateOf(false) }
@@ -627,6 +630,10 @@ internal fun SmartPlaylistV2WizardUi(
         } else WizardStep.RULES
 
     fun back() {
+        if (sourceExpanded) {
+            sourceExpanded = false
+            return
+        }
         page = when (page) {
             WizardStep.EDIT -> {
                 confirmDiscard = true
@@ -950,13 +957,25 @@ internal fun SmartPlaylistV2WizardUi(
                             val selected = if (normalMode) normalSourceProviderKey
                                 else if (hasConfiguredRules) smartRuleGlobalSource(rule)
                                 else null
-                            PlaylistWizardSourceSummary(
+                            PlaylistWizardExpandableSourceSelector(
                                 choice = playlistWizardSelectedSourceChoice(
                                     normalMode = normalMode,
                                     availableSourceKeys = availableSourceKeys,
                                     selectedValue = selected,
                                 ),
-                                onClick = { picker = "source" },
+                                options = playlistWizardSourceChoices(
+                                    normalMode = normalMode,
+                                    availableSourceKeys = availableSourceKeys,
+                                ),
+                                selectedValue = selected,
+                                expanded = sourceExpanded,
+                                onToggle = { sourceExpanded = !sourceExpanded },
+                                onChoose = { source ->
+                                    if (normalMode) onNormalSourceChange(source)
+                                    else onSmartSourceChange(source)
+                                    sourceExpanded = false
+                                },
+                                reduceMotion = com.music.bitchord.ui.LocalReduceAnimations.current,
                             )
                             if (normalMode && selected != null && selected !in availableSourceKeys) {
                                 Text(
@@ -1953,37 +1972,6 @@ internal fun SmartPlaylistV2WizardUi(
             },
             onDismiss = { confirmDeleteSmart = false },
         )
-    }
-    if (picker == "source") {
-        PlaylistWizardSheetChrome(
-            title = "Fontes de origem",
-            onClose = { picker = null },
-            groupContent = false,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "Escolha as bibliotecas de áudio usadas nesta playlist.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
-                )
-                SettingsGroupSurface(modifier = Modifier.padding(horizontal = PAGE_GUTTER)) {
-                    PlaylistWizardSourceChoices(
-                        options = playlistWizardSourceChoices(
-                            normalMode = normalMode,
-                            availableSourceKeys = availableSourceKeys,
-                        ),
-                        selectedValue = if (normalMode) normalSourceProviderKey
-                            else smartRuleGlobalSource(rule),
-                        onChoose = { source ->
-                            if (normalMode) onNormalSourceChange(source)
-                            else onSmartSourceChange(source)
-                            picker = null
-                        },
-                    )
-                }
-            }
-        }
     }
     if (picker == "sort") {
         WizardChoiceDialog("Ordenar músicas", SmartPlaylistV2Sort.entries, ::sortUiLabel,

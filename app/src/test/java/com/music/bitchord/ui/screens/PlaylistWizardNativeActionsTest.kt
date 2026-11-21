@@ -211,27 +211,52 @@ class PlaylistWizardNativeActionsTest {
             playlistWizardSelectedSourceChoice(true, connected, null).title)
     }
 
-    @Test fun sourceSummaryDisplaysProviderIdentityAndAccessibleChangeAction() {
-        var opened = 0
+    @Test fun sourceCardUsesNativeGroupedSurfaceAndRevealsExactProvidersInline() {
+        val providers = listOf(
+            "local-mediastore", "opensubsonic:alpha", "opensubsonic:beta",
+        )
+        val selected = androidx.compose.runtime.mutableStateOf<String?>("opensubsonic:beta")
+        val expanded = androidx.compose.runtime.mutableStateOf(false)
         compose.setContent {
             MaterialTheme {
-                PlaylistWizardSourceSummary(
+                PlaylistWizardExpandableSourceSelector(
                     choice = playlistWizardSelectedSourceChoice(
                         normalMode = true,
-                        availableSourceKeys = listOf(
-                            "local-mediastore", "opensubsonic:alpha", "opensubsonic:beta",
-                        ),
-                        selectedValue = "opensubsonic:beta",
+                        availableSourceKeys = providers,
+                        selectedValue = selected.value,
                     ),
-                    onClick = { opened++ },
+                    options = playlistWizardSourceChoices(true, providers),
+                    selectedValue = selected.value,
+                    expanded = expanded.value,
+                    onToggle = { expanded.value = !expanded.value },
+                    onChoose = {
+                        selected.value = it
+                        expanded.value = false
+                    },
+                    reduceMotion = true,
                 )
             }
         }
+        compose.onNodeWithTag("playlist-source-expandable-card").assertExists()
+        compose.onNodeWithTag("native-settings-group-surface").assertExists()
         compose.onNodeWithText("Navidrome 2").assertExists()
         compose.onNodeWithContentDescription("Fonte selecionada: Navidrome 2").assertExists()
         compose.onNodeWithTag("playlist-source-selector").assertHasClickAction()
-        compose.onNodeWithText("Alterar").performClick()
-        compose.runOnIdle { assertEquals(1, opened) }
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
+        compose.onNodeWithTag("playlist-source-selector").performClick()
+        compose.onNodeWithTag("playlist-source-option-opensubsonic-beta").assertIsSelected()
+        compose.onNodeWithTag("playlist-source-option-local-mediastore").performClick()
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Fonte selecionada: Música local").assertExists()
+        compose.runOnIdle {
+            assertEquals("local-mediastore", selected.value)
+            assertEquals(false, expanded.value)
+        }
+        // Tapping the same field again reopens it; no modal dismiss/route step.
+        compose.onNodeWithTag("playlist-source-selector").performClick()
+        compose.onNodeWithTag("playlist-source-option-local-mediastore").assertIsSelected()
+        compose.onNodeWithTag("playlist-source-selector").performClick()
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
     }
 
     @Test fun sourceSelectionRowsKeepDescriptionsAndExplicitCheckStates() {

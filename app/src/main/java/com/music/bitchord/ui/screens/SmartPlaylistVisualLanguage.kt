@@ -1,5 +1,13 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +53,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import com.music.bitchord.ui.icons.PlaylistEditorIcons
@@ -532,17 +541,24 @@ private fun PlaylistWizardKindCard(
     }
 }
 
-/** Present the chosen audio scope as editable metadata, rather than a
- * generic Settings navigation row. The exact provider contract lives in the
- * wizard: this never claims MusicBrainz/iTunes metadata is playable. */
+/**
+ * Source selection expands INSIDE the existing native grouped card.
+ *
+ * No ModalBottomSheet, second window, screen dim or extra navigation route.
+ * A single native surface owns the summary, chevron and selected source rows.
+ * Only the choices animate (short vertical reveal and quiet fade); the
+ * header, keyboard/focus owners and the rest of the wizard stay mounted.
+ */
 @Composable
-internal fun PlaylistWizardSourceSummary(
+internal fun PlaylistWizardExpandableSourceSelector(
     choice: PlaylistWizardSourceChoice,
-    onClick: () -> Unit,
+    options: List<PlaylistWizardSourceChoice>,
+    selectedValue: String?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onChoose: (String?) -> Unit,
+    reduceMotion: Boolean = false,
 ) {
-    // The creator is a new BitChord surface. It follows the AM-DECOMP
-    // grouped-list + labeled-form language, not a claimed Apple editor layout.
-    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(9.dp),
@@ -552,49 +568,80 @@ internal fun PlaylistWizardSourceSummary(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+        SettingsGroupSurface(
+            modifier = Modifier
                 .border(
                     0.5.dp,
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
-                    shape,
+                    RoundedCornerShape(18.dp),
                 )
-                .clickable(role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = "Fonte selecionada: ${choice.title}" }
-                .testTag("playlist-source-selector")
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .testTag("playlist-source-expandable-card"),
         ) {
-            Icon(
-                imageVector = choice.icon,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button, onClick = onToggle)
+                    .semantics {
+                        contentDescription = "Fonte selecionada: ${choice.title}"
+                        stateDescription = if (expanded) "Expandido" else "Recolhido"
+                    }
+                    .testTag("playlist-source-selector")
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    text = choice.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                Icon(
+                    imageVector = choice.icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    text = choice.caption,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = choice.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = choice.caption,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) PlaylistEditorIcons.ChevronUp
+                        else PlaylistEditorIcons.ChevronDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
                 )
             }
-            Text(
-                "Alterar",
-                style = MaterialTheme.typography.labelLarge,
-                color = appleMusicKeyColor(),
-            )
+            AnimatedVisibility(
+                visible = expanded,
+                enter = if (reduceMotion) EnterTransition.None else
+                    expandVertically(expandFrom = Alignment.Top, animationSpec = tween(180)) +
+                        fadeIn(initialAlpha = 0.88f, animationSpec = tween(145)),
+                exit = if (reduceMotion) ExitTransition.None else
+                    shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(155)) +
+                        fadeOut(animationSpec = tween(110)),
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    PlaylistWizardSourceChoices(
+                        options = options,
+                        selectedValue = selectedValue,
+                        onChoose = onChoose,
+                    )
+                }
+            }
         }
     }
 }

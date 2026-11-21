@@ -751,6 +751,40 @@ class SmartPlaylistV2WizardComposeTest {
         compose.runOnIdle { assertEquals(1, manageCalls) }
     }
 
+    @Test fun sourceSelectorIsInlineOnCreationPageAndPreservesExactNavidromeId() {
+        val selected = androidx.compose.runtime.mutableStateOf<String?>(null)
+        val available = listOf(
+            "local-mediastore", "opensubsonic:account-a", "opensubsonic:account-b",
+        )
+        compose.setContent {
+            SmartPlaylistV2WizardUi(
+                name = "Nova", rule = SmartPlaylistRule.Group(SmartPlaylistRuleJoin.ALL, emptyList()),
+                hasConfiguredRules = false, normalMode = true,
+                sort = SmartPlaylistV2Sort.TITLE_ASC, limit = "100", seed = "0",
+                preview = null, loading = false, error = null,
+                editingId = null, editingFilterId = null, savedDefinitions = emptyList(),
+                availableSourceKeys = available,
+                normalSourceProviderKey = selected.value,
+                onNormalSourceChange = { selected.value = it },
+                onNameChange = {}, onRuleChange = {}, onSortChange = {},
+                onLimitChange = {}, onSeedChange = {}, onPreview = {},
+                onSave = {}, onSaveFilter = {}, onPreviewAction = null,
+                currentPreviewQuery = null, onManage = {}, onBack = {},
+            )
+        }
+        compose.onNodeWithTag("smart-playlist-wizard-list").performScrollToIndex(4)
+        compose.onNodeWithTag("playlist-source-selector").assertExists()
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
+        compose.onNodeWithTag("playlist-source-selector").performClick()
+        compose.onNodeWithTag("playlist-source-option-opensubsonic-account-b")
+            .performClick()
+        compose.runOnIdle {
+            assertEquals("opensubsonic:account-b", selected.value)
+        }
+        compose.onNodeWithTag("playlist-source-choice-list").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Fonte selecionada: Navidrome 2").assertExists()
+    }
+
     @Test fun existingSmartPlaylistCanExportReusableFilterWithoutLeavingEditFlow() {
         var exports = 0
         compose.setContent {
