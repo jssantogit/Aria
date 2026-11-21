@@ -146,7 +146,7 @@ internal fun NativeArtistDetailFrame(
 ) {
     // The top bar floats over the artist photo. The moving text/buttons fade
     // smoothly beneath it instead of meeting a visible clip boundary.
-    val topBarClearancePx = with(LocalDensity.current) { topBarContentPadding().toPx() }
+    val topBarClearancePx = with(LocalDensity.current) { nativeCollectionTopChromeInset().toPx() }
     Box(modifier.fillMaxSize().background(palette.wash)) {
         PageBackground(
             palette = palette,
