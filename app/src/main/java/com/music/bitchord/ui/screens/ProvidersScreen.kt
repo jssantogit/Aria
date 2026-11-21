@@ -221,7 +221,7 @@ fun ProvidersScreen(
     }
 
     fun toggle(entry: ProviderInventoryEntry, enabled: Boolean) {
-        if (saving || snapshot.status != ProviderSessionStatus.READY) return
+        if (saving || snapshot.status == ProviderSessionStatus.BOOTING) return
         saving = true
         message = null
         scope.launch {
@@ -243,7 +243,7 @@ fun ProvidersScreen(
     }
 
     fun enterEdit() {
-        if (saving || snapshot.status != ProviderSessionStatus.READY) return
+        if (saving || snapshot.status == ProviderSessionStatus.BOOTING) return
         staged = grouped.values.flatten()
             .filter { it.entry.supportsReordering }
             .groupBy { it.entry.capability }
@@ -314,7 +314,7 @@ fun ProvidersScreen(
                 style = MaterialTheme.typography.bodyMedium)
         }
         if (snapshot.status == ProviderSessionStatus.STORAGE_ERROR) {
-            Text("As preferências não puderam ser lidas com segurança.",
+            Text("As preferências não puderam ser gravadas. Você pode tentar novamente.",
                 color = MaterialTheme.colorScheme.error)
         }
         for (tab in ProviderSettingsTab.entries) {
@@ -330,7 +330,9 @@ fun ProvidersScreen(
                 ProviderSettingRow(
                     row = row,
                     editing = editing,
-                    saving = saving || snapshot.status != ProviderSessionStatus.READY,
+                    saving = saving || snapshot.status == ProviderSessionStatus.BOOTING,
+                    savedEnabled = snapshot.configured[row.entry.capability].orEmpty()
+                        .any { it.key == row.entry.key && it.enabled },
                     isDraggable = editing && row.entry.supportsReordering &&
                         rows.count { it.entry.capability == row.entry.capability &&
                             it.entry.supportsReordering } > 1,
@@ -492,6 +494,8 @@ private fun ProviderSettingRow(
     row: ProviderTabRowState,
     editing: Boolean,
     saving: Boolean,
+    /** The switch reflects durable user choice, not runtime eligibility. */
+    savedEnabled: Boolean,
     isDraggable: Boolean,
     onOpen: () -> Unit,
     onToggle: (Boolean) -> Unit,
@@ -556,11 +560,11 @@ private fun ProviderSettingRow(
         }
         if (!editing) {
             Switch(
-                checked = status.userAuthorized,
+                checked = savedEnabled,
                 onCheckedChange = onToggle,
                 enabled = !saving && entry.readiness == ProviderReadiness.READY,
                 modifier = Modifier.semantics {
-                    contentDescription = entry.displayName + if (status.userAuthorized)
+                    contentDescription = entry.displayName + if (savedEnabled)
                         ", ativado" else ", desativado"
                 },
             )
