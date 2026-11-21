@@ -4,14 +4,16 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 class NowPlayingNativeOverflowGlyphTest {
-    @Test fun portraitAppleQueueOverflowUsesOriginalAmDecompDotsWithoutBakedCircle() {
-        assertSame(AppleQueueVectors.MorePlain, nativePortraitAppleQueueOverflowGlyph())
-        assertSame(originalNowPlayingOverflowGlyph(), originalPortraitNowPlayingOverflowGlyph())
-        org.junit.Assert.assertEquals(0.18f, portraitOverflowPuckColor(selected = false).alpha, 0.005f)
-        org.junit.Assert.assertEquals(0.38f, portraitOverflowPuckColor(selected = true).alpha, 0.005f)
+    @Test fun portraitAppleQueueOverflowUsesOneCompleteOriginalVector() {
+        assertSame(AppleQueueVectors.More, nativePortraitAppleQueueOverflowGlyph())
+        assertSame(AppleQueueVectors.More, originalPortraitNowPlayingOverflowGlyph())
+        // The complete original has the puck path and the dots path.
+        // MorePlain is only for the legacy CircleGlyph with its own puck.
+        org.junit.Assert.assertEquals(2, nativePortraitAppleQueueOverflowGlyph().root.size)
+        org.junit.Assert.assertEquals(1, AppleQueueVectors.MorePlain.root.size)
     }
 
-    @Test fun landscapePlayerOverflowHasNoInnerPlatterOrMaterialVariant() {
+    @Test fun legacyLandscapeCircleUsesOnlyUnplatteredDots() {
         assertSame(AppleQueueVectors.MorePlain, nativeLandscapePlayerOverflowGlyph())
     }
 
