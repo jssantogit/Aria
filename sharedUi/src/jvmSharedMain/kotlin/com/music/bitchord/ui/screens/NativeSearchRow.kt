@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +40,8 @@ data class NativeSearchRowUi(
     val artworkUri: String?,
     val artistPortrait: Boolean,
     val downloadBadge: Boolean = false,
+    /** Optional source-native duration, never an inferred stream entitlement. */
+    val durationLabel: String? = null,
 )
 
 /**
