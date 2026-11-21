@@ -126,7 +126,7 @@ internal fun ProviderCapabilitiesScreen(
             it.entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION
         }?.entry ?: group.rows.firstOrNull {
             it.entry.key.providerId in setOf(
-                "discogs", "opensubsonic", "local", "lastfm",
+                "discogs", "opensubsonic", "lastfm",
                 "listenbrainz", "addon", "custom_module", "soulseek",
             )
         }?.entry
@@ -135,8 +135,11 @@ internal fun ProviderCapabilitiesScreen(
             SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
                 SettingsRow(
                     icon = Icons.Rounded.Settings,
-                    title = "Conexões",
-                    subtitle = "Gerenciar credenciais e contas deste provedor.",
+                    title = if (configurationEntry.key.providerId == "opensubsonic")
+                        "Servidor" else "Conexões",
+                    subtitle = if (configurationEntry.key.providerId == "opensubsonic")
+                        "Configurar, testar e sincronizar a biblioteca remota."
+                    else "Gerenciar credenciais e contas deste provedor.",
                     onClick = if (!saving && !loading) {
                         { onConfigure(configurationEntry) }
                     } else null,
