@@ -175,10 +175,27 @@ fun topBarHeight(): Dp =
     WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarContentHeight
 
 /**
- * Where page content should start: clear of the bar, plus [TopBarContentGap].
+ * Reserve space below the ACTUAL floating controls, not the 52dp layout row
+ * from which they are visually offset. The approved Home position adds 34dp
+ * to the row centre; a 40dp circle then reaches 28dp below the row. The old
+ * row-bottom + 12dp calculation put headings/artwork 16dp underneath controls.
+ *
+ * Keep this calculation pure so JVM contracts can enforce it independently
+ * of the device's variable status-bar inset.
  */
+internal fun floatingTopChromeContentPadding(statusBarInset: Dp): Dp =
+    statusBarInset +
+        TopBarContentHeight / 2 +
+        HomeFloatingActionRestOffset +
+        AppleFloatingControlMetrics.libraryDiameter / 2 +
+        TopBarContentGap
+
+/** The first unoccluded content Y, measured from the real status-bar inset. */
 @Composable
-fun topBarContentPadding(): Dp = topBarHeight() + TopBarContentGap
+fun topBarContentPadding(): Dp =
+    floatingTopChromeContentPadding(
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+    )
 
 /**
  * The top bar's content — title, back affordance, actions — over no blur of its
