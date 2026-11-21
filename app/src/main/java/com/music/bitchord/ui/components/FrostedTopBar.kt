@@ -126,7 +126,7 @@ val TopBarContentGap = 12.dp
  * Home's resting Settings button is the vertical reference for top corner
  * controls throughout the app. Status bar insets stay device-dependent.
  */
-internal val HomeFloatingActionRestOffset = 26.dp
+internal val HomeFloatingActionRestOffset = NativePageHeaderMetrics.floatingActionsRestOffset
 
 /**
  * Used by full-screen headers without FrostedTopBar. Position their 40dp
