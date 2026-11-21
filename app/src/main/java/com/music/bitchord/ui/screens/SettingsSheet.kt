@@ -510,8 +510,8 @@ internal fun SettingsScreen(
                 } else null,
                 header = stringResource(R.string.providers_settings),
             ) {
-            val sourceTitle = stringResource(R.string.source)
-            val sourceSubtitle = stringResource(R.string.sources_subtitle)
+            val sourceTitle = stringResource(R.string.providers_settings)
+            val sourceSubtitle = stringResource(R.string.providers_settings_subtitle)
             row(sourceTitle, sourceSubtitle, "addon", "lossless") {
                 SettingsRow(
                     icon = Icons.Rounded.Extension,
