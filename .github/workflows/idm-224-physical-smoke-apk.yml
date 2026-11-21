@@ -1,5 +1,5 @@
 # Temporary branch-local physical smoke build for IDM PR #224.
-# The trigger commit may add ONLY this workflow; app code is the CI-green source.
+# The trigger commit may add ONLY this workflow; the application tree remains the reviewed combined source.
 name: IDM #224 — Physical smoke APK
 
 on:
@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          approved="1b937fbf265db932dfcdec8a5639b0deec3fd2eb"
+          approved="035f932159d54897f29d923ddd02500444062d79"
           trigger=".github/workflows/idm-224-physical-smoke-apk.yml"
           actual_parent="$(git rev-parse HEAD^)"
           if [[ "$actual_parent" != "$approved" ]]; then
@@ -44,7 +44,7 @@ jobs:
             printf '%s\n' "$changed"
             exit 1
           fi
-          echo "Source verified against Android CI-green $approved" >> "$GITHUB_STEP_SUMMARY"
+          echo "Application source identity verified against $approved" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           {
             echo "pr=224"
-            echo "approved_android_source=1b937fbf265db932dfcdec8a5639b0deec3fd2eb"
+            echo "approved_android_source=035f932159d54897f29d923ddd02500444062d79"
             echo "workflow_trigger_commit=$(git rev-parse HEAD)"
             find app/build/outputs/apk/dev/debug -maxdepth 1 -type f -name '*.apk' -print -exec sha256sum '{}' \;
           } > idm-224-apk-manifest.txt
