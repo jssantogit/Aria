@@ -84,7 +84,7 @@ internal fun NativeCanonicalAlbumContent(
     onCreditClick: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().background(palette.background)) {
-        val sleeve = (maxWidth * ALBUM_SLEEVE_FRACTION).coerceAtMost(maxHeight * 0.6f)
+        val sleeve = nativeReleaseSleeveSize(maxWidth, maxHeight)
         // An album refresh keeps its place; opening a different ReleaseId
         // starts at its own header instead of inheriting the previous scroll.
         val releaseListState = rememberNativeAlbumDetailListState(releaseIdentity)
