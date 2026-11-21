@@ -5,29 +5,26 @@ import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.HomeFloatingActionRestOffset
 
 /**
- * A compact global toolbar has one default vertical lane for pushed routes.
- * Only the large-heading root tabs deliberately lower their floating actions.
+ * Home at rest is the established canonical Y for all round top controls.
+ * Preserve it on nested routes too; only Search's inline field owns the
+ * compact base lane, and Home retracts its launcher while scrolling.
  *
- * Status bar insets belong to FrostedTopBar and are applied exactly once there;
- * this policy computes only the additional page-specific Y displacement.
+ * FrostedTopBar owns the status-bar inset; this policy adds only the
+ * page-specific offset and must never add system insets a second time.
  */
 internal fun nativeTopBarActionsOffset(
     homeRootVisible: Boolean,
     homeSettingsOffset: Dp,
-    libraryRootVisible: Boolean,
-    exploreRootVisible: Boolean,
+    searchRootVisible: Boolean,
 ): Dp = when {
     homeRootVisible -> homeSettingsOffset
-    libraryRootVisible || exploreRootVisible -> HomeFloatingActionRestOffset
-    else -> 0.dp
+    searchRootVisible -> 0.dp
+    else -> HomeFloatingActionRestOffset
 }
 
-/**
- * The playlist library LazyColumn already receives the global toolbar inset.
- * Only the inner title breathing room belongs here; never add Home's
- * floating-action displacement to a pushed page heading.
- */
-internal fun playlistLibraryHeadingExtraTopPadding(): Dp = 8.dp
+/** The Back circle shares the approved Home Y with trailing top actions. */
+internal fun nativeTopBarBackOffset(): Dp = HomeFloatingActionRestOffset
 
-/** Back buttons identify pushed pages and must align with their own actions. */
-internal fun nativeTopBarBackOffset(): Dp = 0.dp
+/** Playlists still reserve clearance below the floating Home-aligned Back. */
+internal fun playlistLibraryHeadingExtraTopPadding(): Dp =
+    8.dp + HomeFloatingActionRestOffset
