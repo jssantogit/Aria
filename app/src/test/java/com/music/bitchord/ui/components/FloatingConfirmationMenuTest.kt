@@ -110,7 +110,7 @@ class FloatingConfirmationMenuTest {
             }
         }
         compose.onNodeWithText("Aplicar").assertExists()
-        compose.onNodeWithText(RuntimeEnvironment.getApplication<Application>()
+        compose.onNodeWithText(RuntimeEnvironment.getApplication()
             .getString(R.string.cancel)).assertExists()
         compose.onNodeWithText("O rascunho desta playlist não será salvo.").assertDoesNotExist()
     }
