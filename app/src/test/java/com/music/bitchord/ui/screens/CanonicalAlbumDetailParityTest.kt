@@ -16,6 +16,15 @@ class CanonicalAlbumDetailParityTest {
         assertEquals(50.dp, nativeReleaseSideButtonSize(false))
     }
 
+    @Test fun albumAndPlaylistCoverUseTheExactSameNativeViewportSizing() {
+        // Every source adapter supplies the same viewport width/height to
+        // nativeReleaseSleeveSize; this function never reads a provider key.
+        // Portrait is width-limited, landscape is height-limited.
+        assertEquals(360.dp * 0.66f, nativeReleaseSleeveSize(360.dp, 800.dp))
+        assertEquals(180.dp, nativeReleaseSleeveSize(800.dp, 300.dp))
+        assertEquals(360.dp * 0.66f, nativeReleaseSleeveSize(360.dp, 500.dp))
+    }
+
     @Test fun albumHeaderCaptionRequiresVerifiedReleaseYearAndSourceGenre() {
         val known = canonicalAlbumFooterMetadata("2017-09-15", listOf(track("id", "Song")))
         assertEquals("2017", known.year)
