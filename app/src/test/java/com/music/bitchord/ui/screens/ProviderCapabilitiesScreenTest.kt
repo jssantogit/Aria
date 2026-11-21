@@ -193,13 +193,12 @@ class ProviderCapabilitiesScreenTest {
         val discogs = mutableStateOf("")
         val listen = mutableStateOf("")
         val saved = mutableListOf<String>()
-        var openedAccounts = 0
         compose.setContent {
             BitChordTheme {
                 ProviderConnectionsCredentials(
                     showDiscogs = true,
                     showListenBrainz = true,
-                    showLastFm = true,
+                    showLastFm = false,
                     showSoulseek = false,
                     discogsConfigured = false,
                     listenBrainzConfigured = true,
@@ -210,7 +209,7 @@ class ProviderCapabilitiesScreenTest {
                     onListenBrainzTokenChange = { listen.value = it },
                     onSaveDiscogsToken = { saved += "discogs" },
                     onSaveListenBrainzToken = { saved += "listenbrainz" },
-                    onOpenAccounts = { openedAccounts++ },
+                    onOpenAccounts = {},
                     onOpenSoulseek = {},
                 )
             }
@@ -223,15 +222,71 @@ class ProviderCapabilitiesScreenTest {
             .performClick()
         compose.onNodeWithTag("providers-listenbrainz-token-save", useUnmergedTree = true)
             .performClick()
-        compose.onNodeWithTag("providers-connections-lastfm", useUnmergedTree = true)
-            .performClick()
         compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
             .assertCountEquals(0)
         compose.runOnIdle {
             assertEquals("discogs-test-token", discogs.value)
             assertEquals("listen-test-token", listen.value)
             assertEquals(listOf("discogs", "listenbrainz"), saved)
-            assertEquals(1, openedAccounts)
         }
+    }
+
+    @Test fun lastFmAuthenticationOpensDedicatedAccountFlow() {
+        var opened = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderConnectionsCredentials(
+                    showDiscogs = false,
+                    showListenBrainz = false,
+                    showLastFm = true,
+                    showSoulseek = false,
+                    discogsConfigured = false,
+                    listenBrainzConfigured = false,
+                    discogsToken = "",
+                    listenBrainzToken = "",
+                    saving = false,
+                    onDiscogsTokenChange = {},
+                    onListenBrainzTokenChange = {},
+                    onSaveDiscogsToken = {},
+                    onSaveListenBrainzToken = {},
+                    onOpenAccounts = { opened++ },
+                    onOpenSoulseek = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-connections-lastfm", useUnmergedTree = true)
+            .performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
+    }
+
+    @Test fun remoteLibrariesAreAudioDestinationsNotFakeCapabilitySwitches() {
+        assertEquals(
+            listOf(
+                ProviderRemoteLibraryTarget.WEBDAV,
+                ProviderRemoteLibraryTarget.SMB,
+                ProviderRemoteLibraryTarget.OPEN_SUBSONIC,
+            ),
+            providerRemoteLibraryEntries(hasOpenSubsonicProvider = false),
+        )
+        assertEquals(
+            listOf(ProviderRemoteLibraryTarget.WEBDAV, ProviderRemoteLibraryTarget.SMB),
+            providerRemoteLibraryEntries(hasOpenSubsonicProvider = true),
+        )
+        var opened = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderRemoteLibraryRow(
+                    target = ProviderRemoteLibraryTarget.WEBDAV,
+                    number = 1,
+                    configured = false,
+                    onOpen = { opened++ },
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-remote-webdav", useUnmergedTree = true)
+            .performClick()
+        compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.runOnIdle { assertEquals(1, opened) }
     }
 }
