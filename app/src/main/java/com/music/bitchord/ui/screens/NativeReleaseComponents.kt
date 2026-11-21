@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -78,7 +79,9 @@ internal fun NativeReleaseActionRow(
 ) {
     val compactAlbum = compactForAlbum && !isLocal
     val sideButton = nativeReleaseSideButtonSize(compactForAlbum)
-    Row(
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val compactPlayWidth = DetailActionLayoutMetrics.albumPlayWidth(maxWidth)
+        Row(
         modifier = Modifier
             .widthIn(max = RELEASE_ACTIONS_MAX_WIDTH)
             .fillMaxWidth()
@@ -127,11 +130,11 @@ internal fun NativeReleaseActionRow(
                 filled = true,
                 enabled = canPlay,
                 size = sideButton,
-                // The loading placeholder already displays the intended
-                // 130dp Apple-style pill. Do not expand it to consume all
-                // remaining width when this online album finishes loading.
+                // Align with the Library > Songs play pill, already visually
+                // matched to Apple Music. Use the exact same responsive width
+                // as the loading skeleton, not an unrelated fixed 130dp pill.
                 modifier = if (compactAlbum) {
-                    Modifier.width(DetailActionLayoutMetrics.albumPlay)
+                    Modifier.width(compactPlayWidth)
                         .testTag("native-compact-album-play-pill")
                 } else Modifier.weight(1f),
             )
@@ -169,6 +172,7 @@ internal fun NativeReleaseActionRow(
                     else -> onToggleLibrary != null
                 },
             )
+        }
         }
     }
 }
