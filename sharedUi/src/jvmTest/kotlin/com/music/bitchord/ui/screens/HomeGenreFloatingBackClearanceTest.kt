@@ -7,8 +7,8 @@ import org.junit.Test
 /** The in-list genre heading must start BELOW the independent global Back puck. */
 class HomeGenreFloatingBackClearanceTest {
     @Test fun pushedExploreGenresKeepTheFullTopBarInset() {
-        assertEquals(116.dp, homeTitleTopInset(116.dp, reserveFloatingBackSpace = true))
-        assertEquals(92.dp, homeTitleTopInset(92.dp, reserveFloatingBackSpace = true))
+        assertEquals(128.dp, homeTitleTopInset(116.dp, reserveFloatingBackSpace = true))
+        assertEquals(104.dp, homeTitleTopInset(92.dp, reserveFloatingBackSpace = true))
     }
 
     @Test fun regularHomeTitleKeepsItsApprovedRaisedPosition() {
