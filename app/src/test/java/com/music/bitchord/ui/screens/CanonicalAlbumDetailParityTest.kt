@@ -2,6 +2,9 @@ package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.catalog.CanonicalBrowseTrack
 import com.music.bitchord.data.settings.SongSort
+import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.LocalGroups
+import com.music.bitchord.download.Downloads
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -23,6 +26,26 @@ class CanonicalAlbumDetailParityTest {
         assertEquals(360.dp * 0.66f, nativeReleaseSleeveSize(360.dp, 800.dp))
         assertEquals(180.dp, nativeReleaseSleeveSize(800.dp, 300.dp))
         assertEquals(360.dp * 0.66f, nativeReleaseSleeveSize(360.dp, 500.dp))
+    }
+
+    @Test fun downloadsFolderAndAllItsReleaseRoutesUseTheAlbumHeroGeometry() {
+        // local:downloads is a folder, not a playlist or album type. Its
+        // downloaded release pages use the typed id or an album tag grouping.
+        assertTrue(nativeReleaseUsesAlbumGeometry("local:downloads", BrowseType.OTHER))
+        assertTrue(nativeReleaseUsesAlbumGeometry(
+            Downloads.pageIdFor("release-id"), BrowseType.OTHER,
+        ))
+        assertTrue(nativeReleaseUsesAlbumGeometry(
+            LocalGroups.albumPageId("local:downloads", "Live: 2026"), BrowseType.OTHER,
+        ))
+        assertTrue(nativeReleaseUsesAlbumGeometry("catalog:RELEASE:example", BrowseType.ALBUM))
+        assertTrue(nativeReleaseUsesAlbumGeometry("local:owned-playlist", BrowseType.PLAYLIST))
+        // Do not turn the Local Music/Cache folders and artist groups into albums.
+        assertFalse(nativeReleaseUsesAlbumGeometry("local:all", BrowseType.OTHER))
+        assertFalse(nativeReleaseUsesAlbumGeometry("local:cache", BrowseType.OTHER))
+        assertFalse(nativeReleaseUsesAlbumGeometry(
+            LocalGroups.artistPageId("local:downloads", "Singer"), BrowseType.ARTIST,
+        ))
     }
 
     @Test fun albumHeaderCaptionRequiresVerifiedReleaseYearAndSourceGenre() {
