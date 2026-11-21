@@ -516,6 +516,8 @@
     <string name="stereo">Stereo</string>
     <string name="history">History</string>
     <string name="sources">Sources</string>
+    <string name="providers_settings">Providers</string>
+    <string name="providers_settings_subtitle">Manage catalog, artwork, lyrics, statistics, audio and download providers</string>
     <string name="wifi">Wi-Fi</string>
     <string name="mobile_data">Mobile data</string>
     <string name="couldnt_load_tracks">Could not load these tracks</string>
