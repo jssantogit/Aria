@@ -5,26 +5,19 @@ import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.HomeFloatingActionRestOffset
 
 /**
- * Home at rest is the established canonical Y for all round top controls.
- * Preserve it on nested routes too; only Search's inline field owns the
- * compact base lane, and Home retracts its launcher while scrolling.
+ * One physical toolbar lane for the complete app: circular Back/actions and
+ * Search's editable field all rest at Home's +34dp Y. Only the Home overflow
+ * retracts to the toolbar's base lane when its large heading scrolls away.
  *
- * FrostedTopBar owns the status-bar inset; this policy adds only the
- * page-specific offset and must never add system insets a second time.
+ * FrostedTopBar owns the status-bar inset; callers must never apply it twice.
  */
 internal fun nativeTopBarActionsOffset(
     homeRootVisible: Boolean,
     homeSettingsOffset: Dp,
-    searchRootVisible: Boolean,
-): Dp = when {
-    homeRootVisible -> homeSettingsOffset
-    searchRootVisible -> 0.dp
-    else -> HomeFloatingActionRestOffset
-}
+): Dp = if (homeRootVisible) homeSettingsOffset else HomeFloatingActionRestOffset
 
-/** The Back circle shares the approved Home Y with trailing top actions. */
+/** Back circles share the same Y as their trailing actions. */
 internal fun nativeTopBarBackOffset(): Dp = HomeFloatingActionRestOffset
 
-/** Playlists still reserve clearance below the floating Home-aligned Back. */
-internal fun playlistLibraryHeadingExtraTopPadding(): Dp =
-    8.dp + HomeFloatingActionRestOffset
+/** The playlist list starts beneath the floating circles already. */
+internal fun playlistLibraryHeadingExtraTopPadding(): Dp = 8.dp
