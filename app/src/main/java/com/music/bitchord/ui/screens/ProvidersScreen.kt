@@ -719,25 +719,21 @@ private fun ProviderHeader(
 
 @Composable
 private fun ProviderSettingRow(
-    row: ProviderTabRowState,
+    group: ProviderDisplayGroup,
     number: Int,
     editing: Boolean,
     saving: Boolean,
-    /** The switch reflects durable user choice, not runtime eligibility. */
     savedEnabled: Boolean,
-    isDraggable: Boolean,
-    compactScopeLabel: Boolean,
+    warning: String?,
     onOpen: () -> Unit,
     onToggle: (Boolean) -> Unit,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMove: (Int) -> Unit,
 ) {
-    val entry = row.entry
-    val status = row.status
     val density = LocalDensity.current
     val threshold = with(density) { 36.dp.toPx() }
-    var dragY by remember(entry.key, editing) { mutableFloatStateOf(0f) }
+    var dragY by remember(group.key, editing) { mutableFloatStateOf(0f) }
     Row(
         modifier = Modifier.fillMaxWidth()
             .heightIn(min = 68.dp)
@@ -746,11 +742,11 @@ private fun ProviderSettingRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (isDraggable) {
+        if (editing) {
             Box(
                 modifier = Modifier.size(48.dp)
                     .semantics {
-                        contentDescription = "Reorganizar " + entry.displayName
+                        contentDescription = "Reorganizar " + group.title
                         customActions = buildList {
                             if (canMoveUp) add(CustomAccessibilityAction("Mover para cima") {
                                 onMove(-1)
@@ -762,7 +758,7 @@ private fun ProviderSettingRow(
                             })
                         }
                     }
-                    .pointerInput(entry.capability, entry.key, editing) {
+                    .pointerInput(group.tab, group.key, editing) {
                         detectDragGestures(
                             onDragEnd = { dragY = 0f },
                             onDragCancel = { dragY = 0f },
@@ -802,35 +798,37 @@ private fun ProviderSettingRow(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                if (compactScopeLabel) entry.displayName.substringBeforeLast(" (")
-                else entry.displayName,
+                text = group.title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            val warning = when {
-                entry.readiness == ProviderReadiness.NOT_IMPLEMENTED -> "Não implementado"
-                entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION -> "Configuração necessária"
-                entry.readiness == ProviderReadiness.BLOCKED -> "Bloqueado"
-                status.operationalHealth ==
-                    com.music.bitchord.data.providers.ProviderOperationalHealth.UNAVAILABLE -> "Indisponível"
-                else -> null
-            }
             warning?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
             }
         }
         if (!editing) {
+            val available = group.rows.any {
+                it.entry.readiness == ProviderReadiness.READY
+            }
             Switch(
                 checked = savedEnabled,
                 onCheckedChange = onToggle,
-                enabled = !saving && entry.readiness == ProviderReadiness.READY,
+                enabled = !saving && available,
                 colors = appleSettingsSwitchColors(),
                 modifier = Modifier.semantics {
-                    contentDescription = entry.displayName + if (savedEnabled)
-                        ", ativado" else ", desativado"
+                    contentDescription = group.title
+                    stateDescription = when {
+                        warning == "Parcialmente ativado" -> "Parcialmente ativado"
+                        savedEnabled -> "Ativado"
+                        else -> "Desativado"
+                    }
                 },
             )
         }
