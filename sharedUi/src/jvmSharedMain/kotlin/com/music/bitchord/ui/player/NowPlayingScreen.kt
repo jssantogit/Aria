@@ -696,10 +696,13 @@ internal fun AppleQueueHeaderAction(
                     alpha = pressAlpha
                 }
                 .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
-                    val bounds = coords.boundsInWindow()
+                    // The menu opens in another Dialog with a different window
+                    // origin. Publish screen coordinates, matching its scrim.
+                    val origin = coords.positionOnScreen()
                     onBoundsChanged(androidx.compose.ui.unit.IntRect(
-                        bounds.left.toInt(), bounds.top.toInt(),
-                        bounds.right.toInt(), bounds.bottom.toInt(),
+                        origin.x.toInt(), origin.y.toInt(),
+                        (origin.x + coords.size.width).toInt(),
+                        (origin.y + coords.size.height).toInt(),
                     ))
                 }),
         )
