@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -109,7 +110,8 @@ fun ProvidersScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    var editing by rememberSaveable { mutableStateOf(false) }
+    // An unsaved reorder draft must not revive after process recreation.
+    var editing by remember { mutableStateOf(false) }
     var connections by rememberSaveable { mutableStateOf(false) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
     var saving by remember { mutableStateOf(false) }
@@ -527,11 +529,11 @@ private fun ProviderSettingRow(
     val density = LocalDensity.current
     val threshold = with(density) { 36.dp.toPx() }
     var dragY by remember(entry.key, editing) { mutableFloatStateOf(0f) }
-    Row(modifier = Modifier.fillMaxWidth().height(60.dp),
+    Row(modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
         verticalAlignment = Alignment.CenterVertically) {
         if (isDraggable) {
             Box(
-                modifier = Modifier.size(44.dp).pointerInput(entry.key, editing) {
+                modifier = Modifier.size(48.dp).pointerInput(entry.key, editing) {
                     detectDragGestures(onDragEnd = { dragY = 0f },
                         onDragCancel = { dragY = 0f }) { change, amount ->
                         change.consume()
@@ -552,12 +554,15 @@ private fun ProviderSettingRow(
                 )
             }
         } else if (editing) {
-            Spacer(Modifier.width(44.dp))
+            Spacer(Modifier.width(48.dp))
         } else {
-            Icon(entry.tab.providerIcon(), contentDescription = null,
-                modifier = Modifier.size(21.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(14.dp))
+            // Match the drag-handle slot so entering Organizar does not jump
+            // the provider name sideways; retain the small original glyph.
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterStart) {
+                Icon(entry.tab.providerIcon(), contentDescription = null,
+                    modifier = Modifier.size(21.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         Column(
             modifier = Modifier.weight(1f)
@@ -565,7 +570,7 @@ private fun ProviderSettingRow(
                 .padding(vertical = 11.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(entry.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            Text(entry.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
             val warning = when {
                 entry.readiness == ProviderReadiness.NOT_IMPLEMENTED -> "Não implementado"
                 entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION -> "Configuração necessária"
