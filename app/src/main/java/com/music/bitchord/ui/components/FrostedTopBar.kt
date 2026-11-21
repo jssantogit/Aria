@@ -129,7 +129,7 @@ val TopBarContentGap = 12.dp
  * Home's resting Settings button is the vertical reference for top corner
  * controls throughout the app. Status bar insets stay device-dependent.
  */
-internal val HomeFloatingActionRestOffset = 34.dp
+internal val HomeFloatingActionRestOffset = 26.dp
 
 /**
  * Used by full-screen headers without FrostedTopBar. Position their 40dp
@@ -170,9 +170,28 @@ private fun leadingInset(hasBack: Boolean): Dp = if (hasBack) BackInset else Wor
  * too tight and content is clipped under the bar, too loose and every page
  * opens on a band of empty space.
  */
+/**
+ * This is the physical hit-test host height. The controls are visually
+ * centred in a 52dp navigation row, then shifted toward the large title.
+ * A 52dp parent clips hit testing to the old row even while children paint
+ * below it. Reserve the entire last circle and the normal content gap.
+ */
+internal val FloatingTopChromeHostHeight: Dp
+    get() = TopBarContentHeight / 2 +
+        HomeFloatingActionRestOffset +
+        AppleFloatingControlMetrics.libraryDiameter / 2 + TopBarContentGap
+
+/**
+ * The host grows downward, but the original 52dp toolbar remains the
+ * positioning reference. Keep child Y exactly unchanged while allowing
+ * the full circle to participate in pointer hit testing.
+ */
+internal fun topChromeChildOffset(requestedOffset: Dp): Dp =
+    requestedOffset - (FloatingTopChromeHostHeight - TopBarContentHeight) / 2
+
 @Composable
 fun topBarHeight(): Dp =
-    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarContentHeight
+    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + FloatingTopChromeHostHeight
 
 /**
  * Reserve space below the ACTUAL floating controls, not the 52dp layout row
@@ -184,11 +203,7 @@ fun topBarHeight(): Dp =
  * of the device's variable status-bar inset.
  */
 internal fun floatingTopChromeContentPadding(statusBarInset: Dp): Dp =
-    statusBarInset +
-        TopBarContentHeight / 2 +
-        HomeFloatingActionRestOffset +
-        AppleFloatingControlMetrics.libraryDiameter / 2 +
-        TopBarContentGap
+    statusBarInset + FloatingTopChromeHostHeight
 
 /** The first unoccluded content Y, measured from the real status-bar inset. */
 @Composable
@@ -279,7 +294,7 @@ fun FrostedTopBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .height(TopBarContentHeight),
+                .height(FloatingTopChromeHostHeight),
         ) {
             /* Temporarily hidden: keep the scrolling center-title implementation
              * intact so it can be restored without rebuilding its transitions.
@@ -363,6 +378,7 @@ fun FrostedTopBar(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .align(Alignment.Center)
+                        .offset(y = topChromeChildOffset(0.dp))
                         .padding(horizontal = max(leadingInset(false), ActionsInset))
                         .graphicsLayer { alpha = titleAlpha }
                         .testTag("home-compact-title"),
@@ -381,7 +397,7 @@ fun FrostedTopBar(
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = BAR_GUTTER)
-                            .offset(y = backButtonOffset),
+                            .offset(y = topChromeChildOffset(backButtonOffset)),
                     )
                 } else {
                     // Preserve the old 48dp accessible hit target in this
@@ -391,6 +407,7 @@ fun FrostedTopBar(
                         reducedMotion = reduceMotion,
                         modifier = Modifier
                             .align(Alignment.CenterStart)
+                            .offset(y = topChromeChildOffset(0.dp))
                             .padding(start = 4.dp)
                             .size(48.dp)
                             .clip(CircleShape)
@@ -414,7 +431,7 @@ fun FrostedTopBar(
                 Row(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .offset(y = rootActionsOffset)
+                        .offset(y = topChromeChildOffset(rootActionsOffset))
                         .then(if (accessory != null) Modifier.fillMaxWidth().padding(start = edge) else Modifier)
                         .padding(end = edge),
                     verticalAlignment = Alignment.CenterVertically,
