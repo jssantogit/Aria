@@ -82,9 +82,6 @@ class ProviderCapabilitiesScreenTest {
                     onBack = { backCalls++ },
                     onToggle = { entry, checked -> calls += entry.capability to checked },
                     onConfigure = {},
-                    discogsToken = "",
-                    onDiscogsTokenChange = {},
-                    onSaveDiscogsToken = {},
                 )
             }
         }
@@ -107,12 +104,13 @@ class ProviderCapabilitiesScreenTest {
             assertEquals(1, backCalls)
         }
     }
-    @Test fun discogsSettingsEmbedNativeMaskedInputAndSaveWithoutOpeningLegacyModal() {
+
+    @Test fun discogsCapabilityPageLinksToConnectionsInsteadOfContainingASecondToken() {
         val key = ProviderKey("discogs")
-        val capability = ProviderCapability.EDITION_METADATA
+        val cap = ProviderCapability.EDITION_METADATA
         val entry = ProviderInventoryEntry(
             key = key,
-            capability = capability,
+            capability = cap,
             tab = ProviderSettingsTab.CATALOG,
             displayName = "Discogs (Edições)",
             readiness = ProviderReadiness.NEEDS_CONFIGURATION,
@@ -126,49 +124,77 @@ class ProviderCapabilitiesScreenTest {
             rows = listOf(ProviderTabRowState(
                 entry = entry,
                 status = ProviderCapabilityStatus(
-                    capability = capability,
-                    key = key,
-                    implemented = true,
-                    prerequisitesMet = false,
-                    userAuthorized = false,
+                    capability = cap, key = key, implemented = true,
+                    prerequisitesMet = false, userAuthorized = false,
                     operationalHealth = ProviderOperationalHealth.UNKNOWN,
                     effectiveEligible = false,
-                ),
-                order = 0,
+                ), order = 0,
             )),
         )
-        val credential = mutableStateOf("")
-        val saved = mutableListOf<String>()
+        var connections = 0
         compose.setContent {
             BitChordTheme {
                 ProviderCapabilitiesScreen(
                     group = group,
                     configured = emptyMap(),
-                    saving = false,
-                    loading = false,
-                    error = null,
+                    saving = false, loading = false, error = null,
                     contentPadding = PaddingValues(0.dp),
                     onBack = {},
                     onToggle = { _, _ -> },
-                    onConfigure = {},
-                    discogsToken = credential.value,
-                    onDiscogsTokenChange = { credential.value = it },
-                    onSaveDiscogsToken = { saved += credential.value },
+                    onConfigure = { connections++ },
                 )
             }
         }
-        compose.onAllNodesWithTag("native-settings-group-surface", useUnmergedTree = true)
-            .assertCountEquals(2)
-        compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
+        compose.onAllNodesWithTag("providers-discogs-token-input", useUnmergedTree = true)
             .assertCountEquals(0)
-        compose.onNodeWithTag("providers-discogs-token-input", useUnmergedTree = true)
-            .performTextInput("test-credential")
-        compose.onNodeWithTag("providers-discogs-token-save", useUnmergedTree = true)
+        compose.onNodeWithTag("providers-function-configure", useUnmergedTree = true)
             .performClick()
-        compose.runOnIdle {
-            assertEquals("test-credential", credential.value)
-            assertEquals(listOf("test-credential"), saved)
-        }
+        compose.runOnIdle { assertEquals(1, connections) }
     }
 
+    @Test fun connectionsHaveTwoIndependentNativeTokenFieldsAndNoExtensionsSection() {
+        val discogs = mutableStateOf("")
+        val listen = mutableStateOf("")
+        val saved = mutableListOf<String>()
+        var openedAccounts = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderConnectionsCredentials(
+                    showDiscogs = true,
+                    showListenBrainz = true,
+                    showLastFm = true,
+                    showSoulseek = false,
+                    discogsConfigured = false,
+                    listenBrainzConfigured = true,
+                    discogsToken = discogs.value,
+                    listenBrainzToken = listen.value,
+                    saving = false,
+                    onDiscogsTokenChange = { discogs.value = it },
+                    onListenBrainzTokenChange = { listen.value = it },
+                    onSaveDiscogsToken = { saved += "discogs" },
+                    onSaveListenBrainzToken = { saved += "listenbrainz" },
+                    onOpenAccounts = { openedAccounts++ },
+                    onOpenSoulseek = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-discogs-token-input", useUnmergedTree = true)
+            .performTextInput("discogs-test-token")
+        compose.onNodeWithTag("providers-listenbrainz-token-input", useUnmergedTree = true)
+            .performTextInput("listen-test-token")
+        compose.onNodeWithTag("providers-discogs-token-save", useUnmergedTree = true)
+            .performClick()
+        compose.onNodeWithTag("providers-listenbrainz-token-save", useUnmergedTree = true)
+            .performClick()
+        compose.onNodeWithTag("providers-connections-lastfm", useUnmergedTree = true)
+            .performClick()
+        compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.runOnIdle {
+            assertEquals("discogs-test-token", discogs.value)
+            assertEquals("listen-test-token", listen.value)
+            assertEquals(listOf("discogs", "listenbrainz"), saved)
+            assertEquals(1, openedAccounts)
+        }
+    }
 }
