@@ -17,6 +17,7 @@ import com.music.bitchord.data.canvas.DEFAULT_SAVED_MOTION_BYTES
 import com.music.bitchord.data.canvas.normalizedVisualStillCacheBytes
 import com.music.bitchord.data.canvas.normalizedVisualMotionCacheBytes
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
@@ -1364,7 +1365,10 @@ object AppSettings {
     }
 
     fun setLyricsSources(value: Set<LyricsSource>) {
+        val committed = ProviderRuntime.updateLyricsFromLegacyUi(lyricsSourceOrder.value, value)
+        if (committed == false) return
         lyricsSources.value = value
+        if (committed == true) return // canonical provider document is the sole authority
         prefs.edit()
             .putString(KEY_LYRICS_SOURCES, value.joinToString(",") { it.name })
             // Everything that was on the list this choice was made from, so a
@@ -1419,7 +1423,10 @@ object AppSettings {
     )
 
     fun setLyricsSourceOrder(value: List<LyricsSource>) {
+        val committed = ProviderRuntime.updateLyricsFromLegacyUi(value, lyricsSources.value)
+        if (committed == false) return
         lyricsSourceOrder.value = value
+        if (committed == true) return
         prefs.edit().putString(KEY_LYRICS_SOURCE_ORDER, value.joinToString(",") { it.name }).apply()
     }
 

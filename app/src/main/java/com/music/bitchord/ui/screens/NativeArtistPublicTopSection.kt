@@ -28,7 +28,6 @@ import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import android.content.Intent
 import android.net.Uri
@@ -48,6 +47,22 @@ import com.music.bitchord.ui.components.RowMoreButton
 import com.music.bitchord.ui.components.NativeCompactOverflowMenu
 import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.theme.ArtworkPalette
+import com.music.bitchord.data.catalog.metadata.safeAppleArtwork
+import com.music.bitchord.data.catalog.metadata.appleApprovedBadgeForStoreUrl
+
+/**
+ * Artist-top artwork must be certified by the exact Apple edition resolver,
+ * not discovered through CAA, ListenBrainz image hints or fuzzy titles.
+ */
+internal fun nativePublicTopVerifiedAppleArtwork(
+    row: CanonicalCatalogSearchRow,
+): String? {
+    val approved = appleApprovedBadgeForStoreUrl(row.appleStoreUrl)
+    return row.artworkUri?.takeIf {
+        safeAppleArtwork(it) != null &&
+            approved != null && approved == row.appleStoreBadgeUrl
+    }
+}
 
 /** Only a confirmed Release MBID can supply the front for a recording.
  * A title/artist match would risk showing the wrong edition's cover. */
@@ -162,8 +177,7 @@ internal fun NativeArtistPublicTopSection(
                         .background(palette.onBackground.copy(alpha = 0.08f)),
                 ) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
-                    (recording.artworkUri?.takeIf(String::isNotBlank)
-                        ?: recoveredCovers[recording.coverReleaseMbid])?.let { art ->
+                    nativePublicTopVerifiedAppleArtwork(recording)?.let { art ->
                         AsyncImage(
                             model = art.artworkAt(ROW_ART_PX),
                             contentDescription = null,

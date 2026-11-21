@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.ProviderCapability
+
 import androidx.room.Ignore
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
@@ -168,7 +170,15 @@ private val MEMBER_PRACTICE_VERSION = Regex(
 
 internal class MusicBrainzCatalogSearch(
     private val client: MusicBrainzClient = MusicBrainzClient(),
+    private val capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
 ) {
+    init {
+        require(capability == ProviderCapability.CATALOG_SEARCH ||
+            capability == ProviderCapability.EDITORIAL_DISCOGRAPHY) {
+            "MusicBrainz search supports only catalog or editorial reads"
+        }
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun searchArtists(
@@ -335,6 +345,54 @@ internal class MusicBrainzCatalogSearch(
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseHit> =
         searchReleasesInternal(query, limit, offset)
 
+    /**
+     * Barcode is an exact *candidate index* only. A UPC can identify multiple
+     * editions, so every returned MB Release still needs a complete, distinct
+     * Release graph and an exact Apple tracklist match before a crosswalk.
+     */
+    suspend fun searchReleasesByBarcode(
+        barcode: String, limit: Int = 12, offset: Int = 0,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseHit> {
+        if (!Regex("^[0-9]{8,14}$").matches(barcode) || limit !in 1..100 ||
+            offset < 0
+        ) {
+            return MusicBrainzCatalogSearchResult.Failure(
+                MusicBrainzCatalogSearchFailure.INVALID_QUERY,
+            )
+        }
+        return searchReleasesInternal(
+            "barcode:$barcode", limit, offset, fieldedQuery = true,
+        )
+    }
+
+    /**
+     * Release and credited artist are official Lucene search fields. Escaping
+     * both as literal quoted phrases prevents untrusted Apple display text
+     * from becoming a query operator or borrowing an unrelated artist result.
+     * This finds candidates only; exact edition identity still requires graph,
+     * UPC association and complete tracklist proof.
+     */
+    suspend fun searchOfficialReleasesForTitleArtist(
+        title: String,
+        artist: String,
+        limit: Int = 12,
+        offset: Int = 0,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseHit> {
+        if (title.length !in 2..100 || artist.length !in 1..100 ||
+            title.isBlank() || artist.isBlank() || limit !in 1..12 || offset < 0 ||
+            title.any(Char::isISOControl) || artist.any(Char::isISOControl)
+        ) return MusicBrainzCatalogSearchResult.Failure(
+            MusicBrainzCatalogSearchFailure.INVALID_QUERY,
+        )
+        fun quote(value: String): String =
+            "\"" + value.trim().replace("\\", "\\\\")
+                .replace("\"", "\\\"") + "\""
+        return searchReleasesInternal(
+            "release:${quote(title)} AND artist:${quote(artist)} AND status:official",
+            limit, offset, fieldedQuery = true,
+        )
+    }
+
     suspend fun searchReleasesForArtistMbid(
         artistMbid: String,
         limit: Int = 25,
@@ -455,7 +513,7 @@ internal class MusicBrainzCatalogSearch(
                 "dismax" to if (fieldedQuery) "false" else "true",
                 "limit" to limit.toString(),
                 "offset" to offset.toString(),
-            ))
+            ), capability = capability)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

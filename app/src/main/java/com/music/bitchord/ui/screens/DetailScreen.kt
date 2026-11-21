@@ -95,6 +95,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -110,6 +111,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.music.bitchord.ui.components.ResilientAppleCover
 import coil3.compose.LocalPlatformContext
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
@@ -280,6 +282,25 @@ private fun String.looksLikeCredit() = CREDIT_SEPARATOR.containsMatchIn(this)
  * the tint — since that picture runs edge to edge up under the bar. Nothing in
  * either is re-blurred while the page scrolls.
  */
+/**
+ * Source-neutral, non-playable track metadata. Apple/iTunes and other catalogs
+ * must not invent a Song, RecordingId or a MusicBrainz identity to render the
+ * very same numbered rows used by the existing complete DetailScreen.
+ */
+data class NativeMetadataTrack(
+    val key: String,
+    val title: String,
+    val credit: String?,
+    val trackNumber: Int?,
+    val discNumber: Int?,
+)
+
+internal data class NativeDetailAttribution(
+    val text: String,
+    val url: String?,
+    val disclaimer: String?,
+)
+
 @Composable
 fun DetailScreen(
     page: DetailPage,
@@ -303,6 +324,8 @@ fun DetailScreen(
      * wherever it is seen rather than only from its own page.
      */
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
+    /** Artist cards only: Group MBID -> exact promotional artwork and store URL. */
+    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
     /**
      * Whether the filter box is open under the header. Owned by the caller
      * because the control that opens it sits in the top bar, beside the sort
@@ -346,6 +369,12 @@ fun DetailScreen(
     folder: LocalFolder? = null,
     /** Public tracklist metadata; never manufactured as a playable Song. */
     canonicalTracks: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** Generic non-playable tracks rendered through the original numbered list. */
+    metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    /** Exact artist photo if the source has an independently proven identity. */
+    artistHeroOverride: String? = null,
+    /** Source-specific supplemental content inside this single native list. */
+    footerContent: LazyListScope.(ArtworkPalette) -> Unit = {},
     onCanonicalTrackPlay: ((String) -> Unit)? = null,
     /** Full-screen lifted metadata menu owned by the root, not an M3 dropdown. */
     onCanonicalTrackHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
@@ -492,8 +521,12 @@ fun DetailScreen(
     LaunchedEffect(topReleaseId) { topReleaseId?.let { onLoadReleaseLibrary?.invoke(it) } }
     // Apple Music's hero photo and title logo for this artist, found by name.
     // Null until (and unless) it arrives; the YouTube header stands in meanwhile.
+    val exactAppleArtist = isArtist && page.browseId.startsWith("itunes:")
     var appleArt by remember(page.browseId) {
-        mutableStateOf(if (isArtist) AppleArtistArtRepository.cached(page.title) else null)
+        mutableStateOf(
+            if (isArtist && !exactAppleArtist) AppleArtistArtRepository.cached(page.title)
+            else null
+        )
     }
     // Secondary provider: handwritten signature from the user's own
     // artist-signature API. Drawn only when Apple has no title logo.
@@ -507,7 +540,8 @@ fun DetailScreen(
     // other name starts the moment the page opens.
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
     LaunchedEffect(page.browseId, page.title, nameSettled) {
-        if (isArtist && nameSettled) appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
+        if (isArtist && !exactAppleArtist && nameSettled)
+            appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
     }
     LaunchedEffect(page.browseId, page.title, nameSettled, signatureEnabled, signatureBaseUrl, signatureUpdates) {
         if (!isArtist || !nameSettled) return@LaunchedEffect
@@ -530,7 +564,7 @@ fun DetailScreen(
         }
     }
     val palette = rememberArtworkPalette(
-        imageUrl = appleArt?.heroUrl ?: page.thumbnailUrl,
+        imageUrl = artistHeroOverride ?: appleArt?.heroUrl ?: page.thumbnailUrl,
         keyColors = appleArt?.keyColors(),
     )
 
@@ -560,6 +594,11 @@ fun DetailScreen(
     // an album's track numbers stay the album's rather than becoming positions
     // in the filtered list.
     val matches = remember(songs, query) { songs.matching(query) }
+    val metadataVisibleTrackIndices = remember(metadataTracks, query, songSort) {
+        canonicalMetadataAlbumVisibleIndices(
+            metadataTracks.map { it.title to it.credit }, query, songSort,
+        )
+    }
     // What a tap plays: the filtered set of tracks currently standing in the
     // list. When no filter is active, matches contains the full running order
     // and plays the complete release/playlist from the tapped position.
@@ -716,6 +755,7 @@ fun DetailScreen(
                         offlinePoster = offlineAlbumPoster,
                         songs = songs,
                         canonicalTracks = canonicalTracks,
+                        metadataTracks = metadataTracks,
                         onPlay = {
                             if (songs.isNotEmpty()) onSongClick(songs, 0)
                             else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
@@ -801,6 +841,10 @@ fun DetailScreen(
                         onClick = { onSectionItemClick(topRelease) },
                         onLongPress = onSectionItemLongPress?.let { { it(topRelease) } },
                         saved = topRelease.browseId?.let { releaseLibrary[it]?.saved },
+                        applePromotion = appleGroupCardBadgeFor(
+                            topRelease.browseId, topRelease.thumbnailUrl,
+                            appleGroupCardPromotions,
+                        ),
                         onToggleSaved = onToggleReleaseLibrary?.let { toggle ->
                             topRelease.browseId?.let { id -> { toggle(id) } }
                         },
@@ -1077,7 +1121,11 @@ fun DetailScreen(
                     }) canonicalTracks.sumOf { it.durationMs ?: 0L }
                     else null
                     val minutes = total?.let { ((it + 30_000L) / 60_000L).coerceAtLeast(1L) }
-                    val count = if (songs.isNotEmpty()) songs.size else canonicalTracks.size
+                    val count = when {
+                        songs.isNotEmpty() -> songs.size
+                        metadataTracks.isNotEmpty() -> metadataTracks.size
+                        else -> canonicalTracks.size
+                    }
                     val summary = count.takeIf { it > 0 }?.let {
                         "$it ${if (it == 1) "música" else "músicas"}" +
                             (minutes?.let { min ->
@@ -1141,6 +1189,9 @@ fun DetailScreen(
                             palette = palette,
                             onClick = { onSectionItemClick(item) },
                             onLongPress = onSectionItemLongPress?.let { { it(item) } },
+                            applePromotion = appleGroupCardBadgeFor(
+                                item.browseId, item.thumbnailUrl, appleGroupCardPromotions,
+                            ),
                         )
                 }
             }
@@ -1178,6 +1229,7 @@ fun DetailScreen(
                 }
             }
             if (isArtist) aboutItem()
+            footerContent(palette)
         }
 
                 if (isArtist) {
@@ -1191,7 +1243,7 @@ fun DetailScreen(
                         canvas = canvas,
                         // Preserve the legacy cover fallback at this adapter
                         // boundary; the shared native frame only sees artwork.
-                        heroUrl = appleArt?.heroUrl
+                        heroUrl = artistHeroOverride ?: appleArt?.heroUrl
                             ?: page.thumbnailUrl?.artworkAt(HEADER_ART_PX),
                         content = detailListItems,
                     )
@@ -1230,11 +1282,12 @@ fun DetailScreen(
     }
 } else {
     ArtistShelfGridPage(
-        shelf = targetShelf,
+        shelf = nativeLiveArtistShelf(targetShelf, page.sections),
         palette = palette,
         onItemClick = onSectionItemClick,
         onItemLongPress = onSectionItemLongPress,
         contentPadding = contentPadding,
+        appleGroupCardPromotions = appleGroupCardPromotions,
     )
 }
 }
@@ -1288,6 +1341,7 @@ private fun ReleaseHeader(
     offlinePoster: String?,
     songs: List<Song>,
     canonicalTracks: List<CanonicalCatalogSearchRow>,
+    metadataTracks: List<NativeMetadataTrack> = emptyList(),
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onArtistClick: ((String, String) -> Unit)?,
@@ -1313,7 +1367,11 @@ private fun ReleaseHeader(
         )
     }
     val (credit, originalMeta) = page.headerLines(
-        if (songs.isNotEmpty()) songs.size else canonicalTracks.size,
+        when {
+            songs.isNotEmpty() -> songs.size
+            metadataTracks.isNotEmpty() -> metadataTracks.size
+            else -> canonicalTracks.size
+        },
         if (songs.isNotEmpty()) songs.playtime() else canonicalTime,
     )
     val meta = if (page.type == BrowseType.ALBUM) "" else metaOverride ?: originalMeta
@@ -1377,7 +1435,7 @@ private fun ReleaseHeader(
                     modifier = Modifier.matchParentSize(),
                 )
             }
-            AsyncImage(
+            ResilientAppleCover(
                 model = (offlinePoster ?: page.thumbnailUrl).artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
@@ -1760,9 +1818,9 @@ private fun TopReleaseCard(
     onLongPress: (() -> Unit)?,
     saved: Boolean?,
     onToggleSaved: (() -> Unit)?,
+    applePromotion: AppleGroupCardBadge? = null,
 ) {
     val haptics = rememberHaptics()
-    val observeCaaCover = rememberCaaCoverLoadObserver(item.thumbnailUrl)
     NativeArtistTopReleaseCard(
         title = item.title,
         subtitle = item.subtitle,
@@ -1770,14 +1828,7 @@ private fun TopReleaseCard(
         palette = palette,
         onClick = onClick,
         onLongPress = onLongPress,
-        artwork = {
-            AsyncImage(
-                model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                contentDescription = null,
-                onState = observeCaaCover,
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
+        artwork = { ArtistCardArtwork(item, applePromotion) },
         trailing = if (onToggleSaved != null && saved != null) {
             {
                 Spacer(Modifier.width(10.dp))
@@ -1922,8 +1973,8 @@ private fun SectionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
     onLongPress: (() -> Unit)? = null,
+    applePromotion: AppleGroupCardBadge? = null,
 ) {
-    val observeCaaCover = rememberCaaCoverLoadObserver(item.thumbnailUrl)
     NativeArtistReleaseCard(
         title = item.title,
         // A release in an artist's carousel needs its YEAR, not that artist
@@ -1934,14 +1985,25 @@ private fun SectionCard(
         onClick = onClick,
         modifier = modifier,
         onLongPress = onLongPress,
-        artwork = {
-            AsyncImage(
-                model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                contentDescription = null,
-                onState = observeCaaCover,
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
+        artwork = { ArtistCardArtwork(item, applePromotion) },
+    )
+}
+
+/** Only album artwork is rendered, with verified Apple provenance kept internal. */
+@Composable
+private fun ArtistCardArtwork(
+    item: ShelfItem,
+    applePromotion: AppleGroupCardBadge?,
+) {
+    val observer = rememberCaaCoverLoadObserver(item.thumbnailUrl)
+    ResilientAppleCover(
+        // Proof is retained solely to avoid rewriting an Apple CDN image
+        // into an unverified resolution. No store emblem is rendered.
+        model = if (applePromotion != null) item.thumbnailUrl
+            else item.thumbnailUrl.artworkAt(CARD_ART_PX),
+        contentDescription = null,
+        onState = observer,
+        modifier = Modifier.fillMaxSize(),
     )
 }
 
@@ -1953,6 +2015,7 @@ private fun ArtistShelfGridPage(
     onItemLongPress: ((ShelfItem) -> Unit)?,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
 ) {
     val gridState = rememberLazyGridState()
     BoxWithConstraints(modifier.fillMaxSize().background(palette.background)) {
@@ -1977,6 +2040,9 @@ private fun ArtistShelfGridPage(
                     onClick = { onItemClick(item) },
                     onLongPress = onItemLongPress?.let { { it(item) } },
                     modifier = Modifier.fillMaxWidth(),
+                    applePromotion = appleGroupCardBadgeFor(
+                        item.browseId, item.thumbnailUrl, appleGroupCardPromotions,
+                    ),
                 )
             }
         }
