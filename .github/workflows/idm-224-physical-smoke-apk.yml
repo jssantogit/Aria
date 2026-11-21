@@ -1,0 +1,88 @@
+# Temporary branch-local physical smoke build for IDM PR #224.
+# The trigger commit may add ONLY this workflow; app code is the CI-green source.
+name: IDM #224 — Physical smoke APK
+
+on:
+  push:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - .github/workflows/idm-224-physical-smoke-apk.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: idm-224-physical-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-dev-apk:
+    name: IDM PR #224 · installable devDebug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact PR candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify immutable CI-green application sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          approved="1b937fbf265db932dfcdec8a5639b0deec3fd2eb"
+          trigger=".github/workflows/idm-224-physical-smoke-apk.yml"
+          actual_parent="$(git rev-parse HEAD^)"
+          if [[ "$actual_parent" != "$approved" ]]; then
+            echo "::error::Unexpected source parent: $actual_parent (approved: $approved)"
+            exit 1
+          fi
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          if [[ "$changed" != "$trigger" ]]; then
+            echo "::error::APK trigger changed files beyond its own workflow"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          echo "Source verified against Android CI-green $approved" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless Android dev build
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+
+      - name: Assemble installable Android devDebug APK
+        run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+
+      - name: Record exact source identity and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "pr=224"
+            echo "approved_android_source=1b937fbf265db932dfcdec8a5639b0deec3fd2eb"
+            echo "workflow_trigger_commit=$(git rev-parse HEAD)"
+            find app/build/outputs/apk/dev/debug -maxdepth 1 -type f -name '*.apk' -print -exec sha256sum '{}' \;
+          } > idm-224-apk-manifest.txt
+          grep -q '\.apk' idm-224-apk-manifest.txt
+          cat idm-224-apk-manifest.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish phone smoke APK and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitchord-idm-pr224-dev-debug-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/dev/debug/*.apk
+            idm-224-apk-manifest.txt
+          if-no-files-found: error
+          retention-days: 14
