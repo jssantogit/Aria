@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -659,11 +658,11 @@ private fun ProviderSettingRow(
             .padding(vertical = 12.dp, horizontal = 8.dp)
             .testTag("providers-field-row"),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (isDraggable) {
             Box(
-                modifier = Modifier.size(width = 24.dp, height = 40.dp)
+                modifier = Modifier.size(48.dp)
                     .semantics {
                         contentDescription = "Reorganizar " + entry.displayName
                         customActions = buildList {
@@ -700,16 +699,19 @@ private fun ProviderSettingRow(
                 )
             }
         } else {
-            Text(
-                text = "${number}.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(width = 24.dp, height = 28.dp),
-                textAlign = TextAlign.Center,
-            )
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "${number}.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(width = 24.dp, height = 28.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
         Column(
             modifier = Modifier.weight(1f)
+                .heightIn(min = 48.dp)
                 .clickable(enabled = !editing && !saving, onClick = onOpen),
             verticalArrangement = Arrangement.Center,
         ) {
