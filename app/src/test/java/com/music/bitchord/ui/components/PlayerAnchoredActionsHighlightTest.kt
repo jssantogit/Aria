@@ -39,15 +39,18 @@ class PlayerAnchoredActionsHighlightTest {
     }
 
     @Test fun playerMenuSpotlightUsesOriginalLauncherWithoutRepaintingItsGlyph() {
-        // The menu window only masks its scrim. The one real MorePlain icon is
-        // owned by NowPlayingScreen; no second icon or tinted puck is drawn.
+        // The menu window only masks its scrim. The original player vector
+        // (circle + dots) stays in place, with no duplicated overlay glyph.
         val launched = originalPortraitNowPlayingOverflowGlyph()
-        val shared = originalNowPlayingOverflowGlyph()
-        assertEquals(launched.name, shared.name)
-        assertEquals(launched.defaultWidth, shared.defaultWidth)
-        assertEquals(launched.defaultHeight, shared.defaultHeight)
-        assertEquals(launched.viewportWidth, shared.viewportWidth, 0.0001f)
-        assertEquals(launched.viewportHeight, shared.viewportHeight, 0.0001f)
+        val legacyPlain = originalNowPlayingOverflowGlyph()
+        assertEquals("apple_queue_more", launched.name)
+        assertEquals(2, launched.root.size)
+        assertEquals("apple_queue_more_plain", legacyPlain.name)
+        assertEquals(1, legacyPlain.root.size)
+        assertEquals(launched.defaultWidth, legacyPlain.defaultWidth)
+        assertEquals(launched.defaultHeight, legacyPlain.defaultHeight)
+        assertEquals(launched.viewportWidth, legacyPlain.viewportWidth, 0.0001f)
+        assertEquals(launched.viewportHeight, legacyPlain.viewportHeight, 0.0001f)
         assertEquals(
             androidx.compose.ui.geometry.Rect(318f, 64f, 358f, 104f),
             playerOverflowScrimCutout(
