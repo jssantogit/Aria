@@ -257,6 +257,14 @@ internal object ProviderRuntime {
         choices: List<ProviderChoice>,
     ): Boolean = session?.update(capability, choices) ?: false
 
+    suspend fun notifyDiscogsCredentialChanged(configured: Boolean): Boolean {
+        val current = session ?: return false
+        if (current.state.value.status == ProviderSessionStatus.BOOTING) return false
+        val authority = coordinator ?: return false
+        authority.onDiscogsCredentialChanged(configured)
+        return true
+    }
+
     /** Organizar commits all edited capability groups together or none. */
     suspend fun setChoicesBatch(
         changes: Map<ProviderCapability, List<ProviderChoice>>,
