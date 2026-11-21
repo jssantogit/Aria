@@ -4883,8 +4883,8 @@ private fun BitChordApp(
                     // The global ⋮ owns Settings rather than an account avatar.
                     showActions = !appleSearchRootChrome,
                     separateActions = appleLibraryRoundChrome,
-                    // Root Home, Library and Explore may lower their launchers
-                    // beside in-list titles; pushed routes use the compact lane.
+                    // Home alone retracts on scroll. At rest, every route
+                    // (including Search's field) shares the same floating Y.
                     rootActionsOffset = nativeTopBarActionsOffset(
                         homeRootVisible = homeRootVisible,
                         homeSettingsOffset = homeSettingsOffset,
