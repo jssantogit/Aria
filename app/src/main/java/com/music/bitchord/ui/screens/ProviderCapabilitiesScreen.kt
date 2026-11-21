@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -55,6 +56,9 @@ internal fun ProviderCapabilitiesScreen(
     onBack: () -> Unit,
     onToggle: (ProviderInventoryEntry, Boolean) -> Unit,
     onConfigure: (ProviderInventoryEntry) -> Unit,
+    discogsToken: String,
+    onDiscogsTokenChange: (String) -> Unit,
+    onSaveDiscogsToken: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
@@ -88,7 +92,7 @@ internal fun ProviderCapabilitiesScreen(
 
         Spacer(Modifier.height(18.dp))
         SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-            group.rows.forEachIndexed { index, row ->
+            presentableProviderFunctions(group).forEachIndexed { index, row ->
                 if (index > 0) RowDivider()
                 val capability = row.entry.capability
                 val choiceEnabled = configured[capability].orEmpty().any {
@@ -122,6 +126,29 @@ internal fun ProviderCapabilitiesScreen(
             }
         }
 
+        if (group.key.providerId == "discogs") {
+            Spacer(Modifier.height(22.dp))
+            SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+                SettingsRow(
+                    icon = Icons.Rounded.Key,
+                    title = "Token pessoal",
+                    subtitle = "Credencial do Discogs. Salva somente no cofre criptografado do aparelho.",
+                    minHeight = 68.dp,
+                )
+                NativeProviderSecretField(
+                    value = discogsToken,
+                    onValueChange = onDiscogsTokenChange,
+                    enabled = !saving && !loading,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                NativeProviderCredentialSaveAction(
+                    enabled = !saving && !loading && discogsToken.isNotBlank(),
+                    onClick = onSaveDiscogsToken,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                )
+            }
+        }
+
         val configurationEntry = group.rows.firstOrNull {
             it.entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION
         }?.entry ?: group.rows.firstOrNull {
@@ -130,7 +157,7 @@ internal fun ProviderCapabilitiesScreen(
                 "listenbrainz", "addon", "custom_module", "soulseek",
             )
         }?.entry
-        if (configurationEntry != null) {
+        if (configurationEntry != null && group.key.providerId != "discogs") {
             Spacer(Modifier.height(22.dp))
             SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
                 SettingsRow(
