@@ -3,23 +3,21 @@ package com.music.bitchord.ui.components
 import androidx.compose.ui.unit.dp
 
 /**
- * Shared positions for large in-page headings beneath floating top controls.
- * The global top bar owns its 40dp circles; these offsets apply only to the
- * scrollable heading, never to the status bar or the action hit targets.
- *
- * Physical video review (21 Nov 2026): the old Home title was lower than
- * Explore/Library, while pushed Settings/Genre titles touched the Back puck.
+ * A single geometry contract for the lowered floating actions and large
+ * headings. The root tab title band is owned by RootLandingHeaderPolicy;
+ * pushed Settings/Genre headings add the SAME resting action offset as the
+ * native Library category headings, after the safe floating-control inset.
  */
 object NativePageHeaderMetrics {
-    /** Bring Home's resting title into the same root band as Explore/Library. */
-    val homeRootTitleLift = 48.dp
+    /** Home, Back, Search and the independent actions share this resting Y. */
+    val floatingActionsRestOffset = 26.dp
 
-    /** Extra clearance for the title beneath a pushed page's floating Back. */
-    val pushedTitleClearance = 28.dp
+    /** Relative to the fully safe top-chrome inset, never the status bar. */
+    val pushedTitleClearance = floatingActionsRestOffset
 
-    /** Indent a pushed category title to the native Library category gutter. */
+    /** Match the native Library category heading's extra leading inset. */
     val pushedTitleStartInset = 16.dp
 
-    /** Standard title top padding inside a pushed Settings page. */
+    /** Text's inner top margin plus the common pushed-category displacement. */
     val settingsPushedTitleTopPadding = 8.dp + pushedTitleClearance
 }
