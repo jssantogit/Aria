@@ -30,8 +30,8 @@ class SettingsNavigationTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun pushedSettingsTitleClearsTheGlobalFloatingBackControl() {
-        assertEquals(36.dp, NativePageHeaderMetrics.settingsPushedTitleTopPadding)
-        assertEquals(28.dp, NativePageHeaderMetrics.pushedTitleClearance)
+        assertEquals(34.dp, NativePageHeaderMetrics.settingsPushedTitleTopPadding)
+        assertEquals(26.dp, NativePageHeaderMetrics.pushedTitleClearance)
         assertEquals(16.dp, NativePageHeaderMetrics.pushedTitleStartInset)
     }
 
