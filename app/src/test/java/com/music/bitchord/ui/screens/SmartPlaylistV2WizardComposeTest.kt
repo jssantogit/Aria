@@ -618,10 +618,12 @@ class SmartPlaylistV2WizardComposeTest {
     @Test fun deletingSavedPlaylistRequiresExplicitConfirmation() {
         var confirmed = 0
         var cancelled = 0
+        val isOpen = mutableStateOf(true)
         compose.setContent {
-            SmartPlaylistDeletionConfirmation(
+            if (isOpen.value) SmartPlaylistDeletionConfirmation(
                 name = "Favoritas", isFilter = false,
-                onCancel = { cancelled++ }, onConfirm = { confirmed++ },
+                onCancel = { cancelled++; isOpen.value = false },
+                onConfirm = { confirmed++; isOpen.value = false },
             )
         }
         compose.onNodeWithText("Excluir playlist?").assertExists()
@@ -630,9 +632,12 @@ class SmartPlaylistV2WizardComposeTest {
             org.robolectric.RuntimeEnvironment.getApplication()
                 .getString(com.music.bitchord.R.string.cancel),
         ).performClick()
+        compose.waitForIdle()
         compose.runOnIdle { assertEquals(0, confirmed); assertEquals(1, cancelled) }
+        compose.runOnIdle { isOpen.value = true }
         compose.onNodeWithText("Excluir definitivamente").performClick()
-        compose.runOnIdle { assertEquals(1, confirmed) }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, confirmed); assertEquals(1, cancelled) }
     }
 
     @Test fun existingNormalPlaylistOpensDedicatedEditPageInsteadOfNewPlaylistWizard() {
