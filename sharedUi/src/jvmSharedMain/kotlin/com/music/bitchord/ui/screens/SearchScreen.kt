@@ -885,7 +885,6 @@ private fun LazyListScope.appleEditorialTrackRows(
                     subtitle = track.artistName,
                     artworkUri = track.artworkUri,
                     artistPortrait = false,
-                    durationLabel = canonicalDurationLabel(track.durationMs),
                 ),
                 onClick = if (track.albumBrowseId != null) {
                     { onAlbumOpen(track) }
