@@ -83,13 +83,13 @@ fun ExploreScreen(
             val columns = moodColumns(maxWidth)
             LazyColumn(
                 state = listState,
-                // Match the observed Apple genre grid position under the large
-                // heading; this 40dp correction is screenshot-informed, not a
-                // statically verified Apple layout dimension.
+                // This title is level with the Home-resting top actions. Since the
+                // shared inset now clears their full circles, lift only the
+                // ROOT heading; detail categories keep their own Back clearance.
                 contentPadding = PaddingValues(
                     start = contentPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
                     end = contentPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
-                    top = (contentPadding.calculateTopPadding() - if (showTitle) 40.dp else 0.dp)
+                    top = (contentPadding.calculateTopPadding() - if (showTitle) 60.dp else 0.dp)
                         .coerceAtLeast(0.dp),
                     bottom = contentPadding.calculateBottomPadding(),
                 ),
