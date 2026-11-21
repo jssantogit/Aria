@@ -654,6 +654,53 @@ private fun CanonicalHomeEditorialEffects(
     }
 }
 
+/**
+ * The native REA root delegates capability-scoped catalog subscriptions to
+ * a small Compose boundary. This is a code-size extraction, not a second
+ * provider authority or a cached snapshot.
+ */
+private data class CanonicalCatalogRuntime(
+    val discovery: UiState<List<CanonicalCatalogSearchRow>>,
+    val localPicks: List<Song>,
+    val remotePicks: List<CanonicalServerSearchRow>,
+    val trendingMbids: List<String>,
+    val trendingSongs: List<Song>,
+    val editorialOrder: List<com.music.bitchord.data.providers.ProviderKey>,
+    val worldwideReleases: List<CanonicalCatalogSearchRow>,
+    val appleHome: UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>,
+    val worldwideLoading: Boolean,
+    val genreResults: UiState<List<CanonicalCatalogSearchRow>>,
+    val appleGenres: Map<String, UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>>,
+)
+
+@Composable
+private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalCatalogRuntime {
+    val discovery by viewModel.canonicalDiscoveryCatalog.collectAsStateWithLifecycle()
+    val localPicks by viewModel.canonicalHomeLocalPicks.collectAsStateWithLifecycle()
+    val remotePicks by viewModel.canonicalHomeRemotePicks.collectAsStateWithLifecycle()
+    val trendingMbids by viewModel.canonicalTrendingRecordingMbids.collectAsStateWithLifecycle()
+    val trendingSongs by viewModel.canonicalTrendingLocalSongs.collectAsStateWithLifecycle()
+    val editorialOrder by viewModel.catalogEditorialOrder.collectAsStateWithLifecycle()
+    val worldwideReleases by viewModel.canonicalWorldwideReleases.collectAsStateWithLifecycle()
+    val appleHome by viewModel.appleHomeReleases.collectAsStateWithLifecycle()
+    val worldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
+    val genreResults by viewModel.canonicalGenreResults.collectAsStateWithLifecycle()
+    val appleGenres by viewModel.appleGenreReleases.collectAsStateWithLifecycle()
+    return CanonicalCatalogRuntime(
+        discovery = discovery,
+        localPicks = localPicks,
+        remotePicks = remotePicks,
+        trendingMbids = trendingMbids,
+        trendingSongs = trendingSongs,
+        editorialOrder = editorialOrder,
+        worldwideReleases = worldwideReleases,
+        appleHome = appleHome,
+        worldwideLoading = worldwideLoading,
+        genreResults = genreResults,
+        appleGenres = appleGenres,
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BitChordApp(
@@ -945,19 +992,20 @@ private fun BitChordApp(
         dark = !darkTheme && !showNowPlaying && !showReplay && replayStory == null && !onboardingVisible,
     )
 
-    val canonicalDiscoveryCatalog by viewModel.canonicalDiscoveryCatalog.collectAsStateWithLifecycle()
-    val canonicalHomeLocalPicks by viewModel.canonicalHomeLocalPicks.collectAsStateWithLifecycle()
-    val canonicalHomeRemotePicks by viewModel.canonicalHomeRemotePicks.collectAsStateWithLifecycle()
-    val canonicalTrendingMbids by viewModel.canonicalTrendingRecordingMbids.collectAsStateWithLifecycle()
-    val canonicalTrendingLocalSongs by viewModel.canonicalTrendingLocalSongs.collectAsStateWithLifecycle()
+    val catalogRuntime = collectCanonicalCatalogRuntime(viewModel)
+    val canonicalDiscoveryCatalog = catalogRuntime.discovery
+    val canonicalHomeLocalPicks = catalogRuntime.localPicks
+    val canonicalHomeRemotePicks = catalogRuntime.remotePicks
+    val canonicalTrendingMbids = catalogRuntime.trendingMbids
+    val canonicalTrendingLocalSongs = catalogRuntime.trendingSongs
+    val catalogEditorialOrder = catalogRuntime.editorialOrder
+    val canonicalWorldwideReleases = catalogRuntime.worldwideReleases
+    val appleHomeReleases = catalogRuntime.appleHome
+    val canonicalWorldwideLoading = catalogRuntime.worldwideLoading
+    val canonicalGenreResults = catalogRuntime.genreResults
+    val appleGenreReleases = catalogRuntime.appleGenres
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
-    val catalogEditorialOrder by viewModel.catalogEditorialOrder.collectAsStateWithLifecycle()
-    val canonicalWorldwideReleases by viewModel.canonicalWorldwideReleases.collectAsStateWithLifecycle()
-    val appleHomeReleases by viewModel.appleHomeReleases.collectAsStateWithLifecycle()
-    val canonicalWorldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
-    val canonicalGenreResults by viewModel.canonicalGenreResults.collectAsStateWithLifecycle()
-    val appleGenreReleases by viewModel.appleGenreReleases.collectAsStateWithLifecycle()
     var activeCanonicalGenre by remember {
         mutableStateOf<com.music.bitchord.ui.CanonicalExploreGenre?>(null)
     }
