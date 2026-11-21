@@ -80,6 +80,9 @@ class ProviderCapabilitiesScreenTest {
                     onBack = { backCalls++ },
                     onToggle = { entry, checked -> calls += entry.capability to checked },
                     onConfigure = {},
+                    discogsToken = "",
+                    onDiscogsTokenChange = {},
+                    onSaveDiscogsToken = {},
                 )
             }
         }
