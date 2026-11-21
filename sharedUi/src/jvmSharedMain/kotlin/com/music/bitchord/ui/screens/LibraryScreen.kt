@@ -144,11 +144,11 @@ fun LibraryScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // The Apple Library heading shares the vertical band of the
-            // floating root actions. The generic page inset placed it an
-            // entire toolbar-height too low in device comparisons.
+            // The shared content inset clears the physically lowered buttons.
+            // Lift the large ROOT heading into the same band as their circles,
+            // without lifting the category rows under those buttons.
             contentPadding = if (navigationHome) PaddingValues(
-                top = (contentPadding.calculateTopPadding() - 48.dp).coerceAtLeast(0.dp),
+                top = (contentPadding.calculateTopPadding() - 56.dp).coerceAtLeast(0.dp),
                 bottom = contentPadding.calculateBottomPadding(),
             ) else contentPadding,
         ) {
