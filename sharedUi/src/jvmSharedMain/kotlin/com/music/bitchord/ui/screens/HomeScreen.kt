@@ -91,6 +91,7 @@ import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.NativeMediaCardMetrics
+import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.SignInBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
@@ -114,9 +115,9 @@ internal fun homeTitleTopInset(
     topBarInset: Dp,
     reserveFloatingBackSpace: Boolean,
 ): Dp = if (reserveFloatingBackSpace) {
-    // The shared inset now lands BELOW the floating Back circle, so a
-    // detail genre must not add another route-specific lift or offset.
-    topBarInset.coerceAtLeast(0.dp)
+    // Pushed categories share the heading Y of the native Library category:
+    // safe chrome inset + resting action offset + the 8dp Text inner margin.
+    topBarInset.coerceAtLeast(0.dp) + NativePageHeaderMetrics.pushedTitleClearance
 } else rootLandingTitleListTopInset(topBarInset, titleInnerTop = 8.dp)
 
 private const val RECENTS_TITLE = "Recents"
@@ -244,7 +245,13 @@ fun HomeScreen(
         ) {
             if (title != null) {
                 item(key = "home-title") {
-                    HomeTitle(title, actions = headerActions, onBack = onBack, trailing = headerTrailing)
+                    HomeTitle(
+                        title = title,
+                        actions = headerActions,
+                        onBack = onBack,
+                        trailing = headerTrailing,
+                        pushedCategory = reserveFloatingBackSpace,
+                    )
                 }
             }
             if (!signedIn && onSignIn != null) {
@@ -636,24 +643,32 @@ fun HomeTitle(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    pushedCategory: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
         modifier = modifier.fillMaxWidth()
-            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+            .padding(
+                start = PAGE_GUTTER + (if (pushedCategory) NativePageHeaderMetrics.pushedTitleStartInset else 0.dp),
+                end = PAGE_GUTTER,
+                top = 8.dp,
+                bottom = 8.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text = title,
             modifier = Modifier.weight(1f).testTag("home-title"),
-            style = MaterialTheme.typography.displayLarge,
+            style = if (pushedCategory) MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            ) else MaterialTheme.typography.displayLarge,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        // A genre page must line up with Home/Explore, not indent the title
-        // by the back button's width. Keep Back reachable at the right.
+        // The pushed genre uses the same native category gutter as Library.
+        // An optional in-feed Back remains supported for legacy callers.
         if (onBack != null) {
             NativeHomeHeaderIconAction(
                 icon = PlaylistEditorIcons.Back,
