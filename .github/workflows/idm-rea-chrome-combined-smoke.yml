@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          approved="81d57aaf978ad8fc0972b33f54bb538dbbc66b6f"
+          approved="eea62075d428d0f8cba21c399e09a180208ae73a"
           trigger=".github/workflows/idm-rea-chrome-combined-smoke.yml"
           git merge-base --is-ancestor "$approved" HEAD
           changed="$(git diff --name-only "$approved" HEAD)"
@@ -59,6 +59,9 @@ jobs:
 
       - name: Test combined IDM and REA presentation contracts
         run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests "com.music.bitchord.NativeTopBarPlacementPolicyTest" --tests "com.music.bitchord.ProviderSettingsReorderTest"
+      - name: Test shared genre clearance regression
+        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest --tests "com.music.bitchord.ui.screens.HomeGenreFloatingBackClearanceTest"
+
       - name: Build installable Android dev debug APK
         run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
 
@@ -66,7 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'prs=224,225\ncombined_code_source=81d57aaf978ad8fc0972b33f54bb538dbbc66b6f\nsmoke_commit=%s\ncredentials_embedded=no\n' "$(git rev-parse HEAD)" > idm-224-apk-manifest.txt
+          printf 'prs=224,225\ncombined_code_source=eea62075d428d0f8cba21c399e09a180208ae73a\nsmoke_commit=%s\ncredentials_embedded=no\n' "$(git rev-parse HEAD)" > idm-224-apk-manifest.txt
           find app/build/outputs/apk/dev/debug -name '*.apk' -type f -print -exec sha256sum '{}' \; >> idm-224-apk-manifest.txt
           grep -q '\.apk' idm-224-apk-manifest.txt
 
