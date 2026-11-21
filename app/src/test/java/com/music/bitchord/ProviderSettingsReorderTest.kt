@@ -12,6 +12,7 @@ import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.ui.screens.reorderCapabilityChoices
 import com.music.bitchord.ui.screens.previewProviderRows
 import com.music.bitchord.ui.screens.visibleProviderRows
+import com.music.bitchord.ui.screens.searchProviderRows
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -126,6 +127,40 @@ class ProviderSettingsReorderTest {
             visibleProviderRows(rows, editing = true).map { it.entry.key })
         assertEquals(emptyList<ProviderTabRowState>(),
             visibleProviderRows(rows.take(1), editing = true))
+    }
+
+    @Test fun searchWithinCategoryPreservesVisibleOrderAndNeverMutatesRows() {
+        fun row(name: String, key: ProviderKey) = ProviderTabRowState(
+            entry = ProviderInventoryEntry(
+                key = key,
+                capability = ProviderCapability.CATALOG_SEARCH,
+                tab = ProviderSettingsTab.CATALOG,
+                displayName = name,
+                readiness = ProviderReadiness.READY,
+                supportsReordering = true,
+                notes = "",
+            ),
+            status = ProviderCapabilityStatus(
+                capability = ProviderCapability.CATALOG_SEARCH,
+                key = key,
+                implemented = true,
+                prerequisitesMet = true,
+                userAuthorized = true,
+                operationalHealth = ProviderOperationalHealth.UNKNOWN,
+                effectiveEligible = true,
+            ),
+            order = 0,
+        )
+        val all = listOf(
+            row("MusicBrainz (Busca)", musicBrainz),
+            row("Apple / iTunes (Busca)", apple),
+            row("AcoustID", ProviderKey("acoustid")),
+        )
+        assertEquals(all, searchProviderRows(all, ""))
+        assertEquals(all.take(2), searchProviderRows(all, " BUSCA "))
+        assertEquals(listOf(all[1]), searchProviderRows(all, "itunes"))
+        assertEquals(emptyList<ProviderTabRowState>(), searchProviderRows(all, "sem resultado"))
+        assertEquals(3, all.size)
     }
 
     @Test fun missingOrRepeatedKeysCannotInventAProvider() {
