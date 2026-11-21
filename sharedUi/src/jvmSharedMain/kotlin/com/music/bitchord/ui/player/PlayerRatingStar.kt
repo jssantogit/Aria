@@ -8,7 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -46,8 +46,14 @@ internal fun PlayerRatingStar(
             .size(40.dp)
             .testTag("now-playing-rating-star")
             .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coordinates ->
-                val b = coordinates.boundsInWindow()
-                onBoundsChanged(IntRect(b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt()))
+                // Same screen-space anchor convention as the overflow icon:
+                // both rating and menu live in distinct Compose dialog windows.
+                val origin = coordinates.positionOnScreen()
+                onBoundsChanged(IntRect(
+                    origin.x.toInt(), origin.y.toInt(),
+                    (origin.x + coordinates.size.width).toInt(),
+                    (origin.y + coordinates.size.height).toInt(),
+                ))
             })
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
