@@ -3,7 +3,6 @@ package com.music.bitchord.ui.screens
 import android.app.Application
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
