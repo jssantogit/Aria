@@ -316,6 +316,24 @@ internal class ProviderAuthorityCoordinator(
         }
     }
 
+    /** Read-only registry view, matching the descriptors installed into the gate. */
+    fun inventoryForSettings(sources: List<SourceConfig>): List<ProviderInventoryEntry> {
+        val account = currentOpenSubsonicAccount()
+        return ProviderCapabilityRegistry.inventory(
+            sources = sources.filterNot {
+                it.kind == SourceKind.JIOSAAVN || it.kind == SourceKind.YOUTUBE
+            },
+            lastfmConfigured = lastfmReady,
+            listenBrainzConfigured = listenBrainzReady,
+            soulseekConfigured = soulseekReady,
+            itunesImplemented = itunesReady,
+            discogsImplemented = discogsReady,
+            discogsTokenConfigured = discogsTokenReady,
+            openSubsonicAccountId = account?.accountId,
+            openSubsonicConfigured = account?.credentialAvailable == true,
+        )
+    }
+
     fun currentLyricsProjection(
         fallbackOrder: List<LyricsSource>,
         fallbackEnabled: Set<LyricsSource>,
