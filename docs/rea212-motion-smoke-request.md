@@ -231,3 +231,11 @@
 - **Gate inalterado:** testes de rating focados, suíte Android completa, shared Automix e `sharedUi:jvmTest` antes de `assembleDevDebug` e publicação do universal/checksum. Se houver falha, bloquear APK; não forçar GREEN.
 - **Smoke físico posterior:** verificar o ícone original único do ⋮ antes/depois de expandir o menu, igualdade de cores e transparências no recorte com fundo escurecido, ausência de halo/duplicação, comportamento em tela de letras e fila, tamanhos de fonte e Reduce animations. Publicar APK não é prova de validação visual.
 - **Escopo:** somente CI/APK de smoke da REA; PR permanece Draft, sem merge ou release.
+
+## Nova tentativa de smoke — Actions reativadas — 20/11/2026
+
+- **Pedido explícito do usuário:** “As actions estavam desativadas por algum motivo. Tente novamente”.
+- **Escopo:** reacionar `apple-music-smoke` na PR #212, sem alterações de código, fontes, testes ou configurações do workflow.
+- **Código de referência:** `c84ebaf2674655caf833080968ca086d93d9bac6`; a branch estava em `b6e7a856b8f0b8c39498ae61111621c3f4fb57d5` antes desta tentativa. Este registro documental é o único delta adicional solicitado pelo gatilho `push`.
+- **Gate obrigatório inalterado:** testes Android focados/completos, Automix e sharedUi; só criar o APK universal e SHA-256 após sucesso de todos. Não declarar smoke físico, GREEN ou merge antes de evidências.
+
