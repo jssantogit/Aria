@@ -89,8 +89,10 @@ fun ExploreScreen(
                 contentPadding = PaddingValues(
                     start = contentPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
                     end = contentPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
-                    top = (contentPadding.calculateTopPadding() - if (showTitle) 60.dp else 0.dp)
-                        .coerceAtLeast(0.dp),
+                    top = if (showTitle) rootLandingTitleListTopInset(
+                        contentPadding.calculateTopPadding(),
+                        titleInnerTop = 8.dp,
+                    ) else contentPadding.calculateTopPadding(),
                     bottom = contentPadding.calculateBottomPadding(),
                 ),
                 modifier = Modifier.fillMaxSize(),
