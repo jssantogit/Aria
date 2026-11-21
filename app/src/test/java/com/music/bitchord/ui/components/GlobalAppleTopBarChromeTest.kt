@@ -277,6 +277,53 @@ class GlobalAppleTopBarChromeTest {
             .assertWidthIsEqualTo(40.dp)
     }
 
+    @Test fun pushedDetailBackAndActionsStayAlignedInsideRealFloatingHost() {
+        var backClicks = 0
+        var actionClicks = 0
+        compose.setContent {
+            BitChordTheme {
+                FrostedTopBar(
+                    title = "Álbum, artista ou playlist",
+                    scrolled = false,
+                    artworkPageChrome = true,
+                    transparentBackdrop = true,
+                    onBack = { backClicks++ },
+                    backButtonOffset = HomeFloatingActionRestOffset,
+                    rootActionsOffset = HomeFloatingActionRestOffset,
+                    separateActions = true,
+                    actions = {
+                        FloatingLibraryTopBarCircle(hazeState = null) {
+                            IconButton(
+                                onClick = { actionClicks++ },
+                                modifier = Modifier.testTag("test-detail-toolbar-action"),
+                            ) {
+                                Icon(Icons.Rounded.Search, contentDescription = "Pesquisa do detalhe")
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        val host = compose.onNodeWithTag(
+            "native-global-floating-chrome-host", useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val back = compose.onNodeWithTag(
+            "apple-toolbar-back-button", useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val action = compose.onNodeWithTag(
+            "test-detail-toolbar-action", useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        assertEquals(back.center.y, action.center.y, 1.5f)
+        assertTrue(back.bottom <= host.bottom)
+        assertTrue(action.bottom <= host.bottom)
+        compose.onNodeWithTag("apple-toolbar-back-button", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("test-detail-toolbar-action", useUnmergedTree = true).performClick()
+        compose.runOnIdle {
+            assertEquals(1, backClicks)
+            assertEquals(1, actionClicks)
+        }
+    }
+
     @Test fun reducedMotionMiniLoadingIsIndeterminateToScreenReader() {
         compose.setContent {
             BitChordTheme {

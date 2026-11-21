@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.PAGE_GUTTER
-import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.trackColumnWidth
 import com.music.bitchord.data.canvas.CanvasArtwork
 import com.music.bitchord.ui.theme.ArtworkPalette
@@ -146,7 +145,7 @@ internal fun NativeArtistDetailFrame(
 ) {
     // The top bar floats over the artist photo. The moving text/buttons fade
     // smoothly beneath it instead of meeting a visible clip boundary.
-    val topBarClearancePx = with(LocalDensity.current) { topBarContentPadding().toPx() }
+    val topBarClearancePx = with(LocalDensity.current) { nativeCollectionTopChromeInset().toPx() }
     Box(modifier.fillMaxSize().background(palette.wash)) {
         PageBackground(
             palette = palette,
