@@ -36,7 +36,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import com.music.bitchord.ui.components.appleSettingsSwitchColors
 import androidx.compose.material3.Text
@@ -58,7 +57,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
@@ -151,7 +149,10 @@ fun ProvidersScreen(
         when {
             saving || credentialSaving -> Unit
             connections -> connections = false
-            detailGroupKey != null -> detailGroupKey = null
+            detailGroupKey != null -> {
+                discogsToken = ""
+                detailGroupKey = null
+            }
             editing -> cancelEdit()
             else -> onBack()
         }
@@ -198,7 +199,7 @@ fun ProvidersScreen(
 
     fun displayedGroups(tab: ProviderSettingsTab): List<ProviderDisplayGroup> {
         val rows = visibleProviderRows(grouped[tab].orEmpty(), editing)
-        val groups = groupProviderRows(rows)
+        val groups = presentableProviderGroups(groupProviderRows(rows))
         return if (editing) orderProviderGroups(groups, groupDrafts[tab].orEmpty()) else groups
     }
 
@@ -282,10 +283,35 @@ fun ProvidersScreen(
         }
     }
 
+    fun saveDiscogsToken() {
+        if (saving || credentialSaving ||
+            detailGroupKey?.providerId != "discogs" || discogsToken.isBlank()
+        ) return
+        credentialSaving = true
+        message = null
+        val secret = discogsToken.trim()
+        scope.launch {
+            try {
+                val stored = withContext(Dispatchers.IO) {
+                    DiscogsSearchTokenVault(context).store(secret)
+                }
+                if (stored && ProviderRuntime.notifyDiscogsCredentialChanged(true)) {
+                    discogsToken = ""
+                } else {
+                    message = "Não foi possível salvar a credencial Discogs com segurança."
+                }
+            } finally {
+                credentialSaving = false
+            }
+        }
+    }
+
     fun enterEdit() {
         if (saving || snapshot.status == ProviderSessionStatus.BOOTING) return
         groupDrafts = grouped.mapValues { (_, rows) ->
-            groupProviderRows(visibleProviderRows(rows, editing = true)).map { it.key }
+            presentableProviderGroups(
+                groupProviderRows(visibleProviderRows(rows, editing = true)),
+            ).map { it.key }
         }
         staged = grouped.values.flatten()
             .filter { it.entry.supportsReordering }
@@ -361,6 +387,9 @@ fun ProvidersScreen(
             onBack = ::back,
             onToggle = ::toggle,
             onConfigure = ::openEntry,
+            discogsToken = discogsToken,
+            onDiscogsTokenChange = { discogsToken = it },
+            onSaveDiscogsToken = ::saveDiscogsToken,
         )
     } else {
     Column(
@@ -465,53 +494,9 @@ fun ProvidersScreen(
     } // Main provider list; capability page replaces it when selected.
 
     info?.let { entry ->
-        if (entry.key.providerId == "discogs") {
-            AlertDialog(
-                onDismissRequest = {
-                    if (!credentialSaving) {
-                        discogsToken = ""
-                        info = null
-                    }
-                },
-                title = { Text("Discogs") },
-                text = {
-                    Column {
-                        Text("Credencial pessoal de busca. Armazenada somente no cofre criptografado do aparelho.")
-                        OutlinedTextField(
-                            value = discogsToken,
-                            onValueChange = { discogsToken = it },
-                            label = { Text("Token") },
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            enabled = !credentialSaving,
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(enabled = !credentialSaving && discogsToken.isNotBlank(),
-                        onClick = {
-                            credentialSaving = true
-                            scope.launch {
-                                val saved = withContext(Dispatchers.IO) {
-                                    DiscogsSearchTokenVault(context).store(discogsToken)
-                                }
-                                discogsToken = ""
-                                if (saved && ProviderRuntime.notifyDiscogsCredentialChanged(true)) {
-                                    info = null
-                                } else message = "Não foi possível guardar a credencial Discogs com segurança."
-                                credentialSaving = false
-                            }
-                        },
-                    ) { Text("Salvar") }
-                },
-                dismissButton = {
-                    TextButton(enabled = !credentialSaving, onClick = {
-                        discogsToken = ""
-                        info = null
-                    }) { Text("Cancelar") }
-                },
-            )
-        } else AlertDialog(
+        // Credential entry is part of Discogs' native Settings page now.
+        // Other providers retain their existing informational fallback.
+        AlertDialog(
             onDismissRequest = { info = null },
             title = { Text(entry.displayName) },
             text = {
@@ -719,8 +704,8 @@ private fun ProviderSettingRow(
     var dragY by remember(group.key, editing) { mutableFloatStateOf(0f) }
     Row(
         modifier = Modifier.fillMaxWidth()
-            .heightIn(min = 68.dp)
-            .padding(vertical = 12.dp, horizontal = 8.dp)
+            .heightIn(min = 60.dp)
+            .padding(vertical = 6.dp, horizontal = 8.dp)
             .testTag("providers-field-row"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
