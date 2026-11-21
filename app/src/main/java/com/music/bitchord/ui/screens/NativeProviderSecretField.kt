@@ -48,6 +48,8 @@ internal fun NativeProviderSecretField(
     value: String,
     onValueChange: (String) -> Unit,
     enabled: Boolean,
+    providerId: String = "discogs",
+    providerLabel: String = "Discogs",
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(12.dp)
@@ -73,8 +75,8 @@ internal fun NativeProviderSecretField(
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
             .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .testTag("providers-discogs-token-input")
-            .semantics { contentDescription = "Token do Discogs" }
+            .testTag("providers-${providerId}-token-input")
+            .semantics { contentDescription = "Token do ${providerLabel}" }
             .padding(start = 14.dp, end = 4.dp),
         decorationBox = { inner ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -91,7 +93,8 @@ internal fun NativeProviderSecretField(
                 IconButton(
                     onClick = { revealed = !revealed },
                     enabled = enabled,
-                    modifier = Modifier.size(40.dp).testTag("providers-discogs-token-visibility"),
+                    modifier = Modifier.size(40.dp)
+                        .testTag("providers-${providerId}-token-visibility"),
                 ) {
                     Icon(
                         if (revealed) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
@@ -110,6 +113,7 @@ internal fun NativeProviderSecretField(
 internal fun NativeProviderCredentialSaveAction(
     enabled: Boolean,
     onClick: () -> Unit,
+    providerId: String = "discogs",
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(12.dp)
@@ -123,7 +127,7 @@ internal fun NativeProviderCredentialSaveAction(
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
             )
             .clickable(enabled = enabled, onClick = onClick)
-            .testTag("providers-discogs-token-save"),
+            .testTag("providers-${providerId}-token-save"),
         contentAlignment = Alignment.Center,
     ) {
         Text(
