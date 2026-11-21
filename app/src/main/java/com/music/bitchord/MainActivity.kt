@@ -910,6 +910,10 @@ private fun BitChordApp(
     val libraryState by viewModel.library.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
+    val canonicalGroupCardApplePromotions by
+        viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
+    val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
+    val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
     val selectedSearchProviderKey by viewModel.selectedSearchProviderKey.collectAsStateWithLifecycle()
     val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()
     val unfilteredLocalSearchSongs by viewModel.availableLocalSongs.collectAsStateWithLifecycle()
@@ -1009,6 +1013,7 @@ private fun BitChordApp(
             (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
         AppleNativeDetailKind.NONE -> null
     }
+    val visualDetail = detail ?: appleSharedVisual?.page
     // Local Music, Downloads and the other device folders draw as release
     // pages, but they have no artwork to wash the top inset in, so they keep
     // the plain bar; their top bar trades the overflow for a sort-and-view
