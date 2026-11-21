@@ -2279,7 +2279,11 @@ internal fun NativeUnifiedLibraryCategoryHeader(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            .padding(top = topBarContentPadding() + 8.dp, bottom = 12.dp),
+            // Back/action circles now rest at Home's Y, so the category
+            // title must remain below their 40dp visual bounds.
+            .padding(top = topBarContentPadding() + 8.dp +
+                com.music.bitchord.ui.components.HomeFloatingActionRestOffset,
+                bottom = 12.dp),
     ) {
         Text(
             text = title,

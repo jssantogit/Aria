@@ -333,7 +333,7 @@ internal fun UnifiedPlaylistLibraryShelf(
                 modifier = Modifier.padding(
                     start = PAGE_GUTTER + 16.dp,
                     end = PAGE_GUTTER,
-                    top = 8.dp,
+                    top = 8.dp + com.music.bitchord.ui.components.HomeFloatingActionRestOffset,
                 ),
             )
         }
