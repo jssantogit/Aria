@@ -253,6 +253,11 @@ internal object ProviderRuntime {
         capability: ProviderCapability,
         choices: List<ProviderChoice>,
     ): Boolean = session?.update(capability, choices) ?: false
+
+    /** Organizar commits all edited capability groups together or none. */
+    suspend fun setChoicesBatch(
+        changes: Map<ProviderCapability, List<ProviderChoice>>,
+    ): Boolean = session?.updateAll(changes) ?: false
 }
 
 /** Denial is not a transient error and must never trigger a secret fallback. */
