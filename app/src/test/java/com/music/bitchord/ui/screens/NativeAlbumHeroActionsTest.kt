@@ -47,10 +47,30 @@ class NativeAlbumHeroActionsTest {
             }
         }
         compose.onNodeWithTag("native-compact-album-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlay)
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(360.dp))
         compose.onNodeWithTag("detail-action-skeleton-play-pill")
-            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlay)
+            .assertWidthIsEqualTo(DetailActionLayoutMetrics.albumPlayWidth(360.dp))
+        // The 360dp viewport produces the SAME width as the tested Library
+        // Songs ActionPill: (360 - 2 * PAGE_GUTTER - 12) / 2.
+        assertEquals(
+            DetailActionLayoutMetrics.libraryCategoryPlayWidth(360.dp),
+            DetailActionLayoutMetrics.albumPlayWidth(360.dp),
+        )
         org.junit.Assert.assertEquals(50.dp, nativeReleaseSideButtonSize(true))
+    }
+
+    @Test fun albumPlayMatchesLibrarySongsAcrossPhoneAndNarrowScreenWidths() {
+        // The shared metric retains Library > Songs' exact responsive width
+        // while it fits beside Shuffle/+; no oversized fixed width on phones.
+        for (screenWidth in listOf(320.dp, 360.dp, 393.dp)) {
+            assertEquals(
+                DetailActionLayoutMetrics.libraryCategoryPlayWidth(screenWidth),
+                DetailActionLayoutMetrics.albumPlayWidth(screenWidth),
+            )
+        }
+        // Wide screens preserve the 420dp capped album header, while the
+        // Library Songs' two-button row is free to grow independently.
+        assertEquals(252.dp, DetailActionLayoutMetrics.albumPlayWidth(600.dp))
     }
 
     @Test fun albumWithPaintedControlsDoesNotShowSecondLoadingActionRow() {
