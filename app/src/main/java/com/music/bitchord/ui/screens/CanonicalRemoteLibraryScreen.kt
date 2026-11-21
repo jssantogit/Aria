@@ -2308,7 +2308,9 @@ internal fun NativeUnifiedLibraryCategoryHeader(
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = PAGE_GUTTER)
                     .testTag("canonical-library-category-play-actions"),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(
+                    com.music.bitchord.ui.components.DetailActionLayoutMetrics.libraryCategoryGap,
+                ),
             ) {
                 ActionPill(
                     icon = BitChordIcons.Play,
