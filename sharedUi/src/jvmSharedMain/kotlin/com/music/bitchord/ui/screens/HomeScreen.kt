@@ -228,8 +228,8 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // The heading sits higher than the other tabs' first row: pull the
-            // whole feed up by [HOME_TITLE_LIFT] with it.
+            // The three landing-page titles share one visual baseline
+            // while content below them clears the floating top controls.
             contentPadding = if (title != null) {
                 PaddingValues(
                     top = homeTitleTopInset(
