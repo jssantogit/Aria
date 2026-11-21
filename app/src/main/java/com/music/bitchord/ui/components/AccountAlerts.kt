@@ -1,6 +1,19 @@
 package com.music.bitchord.ui.components
 
 import com.music.bitchord.R
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.semantics.Role
 import com.music.bitchord.ui.theme.appleMusicKeyColor
 
 import androidx.compose.foundation.background
@@ -30,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -733,11 +747,14 @@ fun WebDavConflictAlert(
 }
 
 /**
- * A two-action confirmation using the same frosted UIAlertController shell as
- * the addon editor. Kept here so warnings opened from settings do not fall back
- * to a visually unrelated Material dialog.
+ * Confirmation actions are a floating *context menu*, not the old iOS system
+ * alert. Its neutral glass, 18dp corners, hairline and shadow are owned by
+ * NativeContextActionPlate — the same component as expandable action cards.
+ *
+ * The creator already lives in a full-screen Dialog, so do not open a second
+ * window here. Keep the host's source Haze state (or inherited source), and
+ * defer the destructive callback until the menu finishes its exit motion.
  */
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun ConfirmationAlert(
     hazeState: HazeState?,
@@ -749,39 +766,170 @@ fun ConfirmationAlert(
     dismissLabel: String? = null,
     destructive: Boolean = false,
 ) {
-    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 19.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = description,
-                modifier = Modifier.padding(top = 4.dp),
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
+    val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val visible = remember {
+        MutableTransitionState(false).apply { targetState = true }
+    }
+    val scrimOpacity = remember { Animatable(0f) }
+    var closing by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val closeWith: (() -> Unit) -> Unit = { action ->
+        if (!closing) {
+            closing = true
+            pendingAction = action
+            visible.targetState = false
         }
-        AlertRule()
-        AlertAction(
-            label = confirmLabel,
-            emphasised = true,
-            destructive = destructive,
-            onClick = onConfirm,
-        )
-        AlertRule()
-        AlertAction(
-            label = dismissLabel ?: stringResource(R.string.cancel),
-            emphasised = false,
-            onClick = onDismiss,
+    }
+    LaunchedEffect(visible.targetState, reduceMotion) {
+        val to = if (visible.targetState) 1f else 0f
+        if (reduceMotion) scrimOpacity.snapTo(to)
+        else scrimOpacity.animateTo(to, tween(durationMillis = 180))
+    }
+    LaunchedEffect(visible.isIdle, visible.currentState) {
+        if (closing && visible.isIdle && !visible.currentState) {
+            val action = pendingAction
+            pendingAction = null
+            action?.invoke()
+        }
+    }
+    BackHandler(enabled = !closing) { closeWith(onDismiss) }
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SCRIM_COLOR.copy(alpha = SCRIM_COLOR.alpha * scrimOpacity.value))
+            .clickable(
+                enabled = !closing,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = { closeWith(onDismiss) },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        val menuWidth = (maxWidth - 48.dp).coerceAtMost(320.dp).coerceAtLeast(0.dp)
+        AnimatedVisibility(
+            visibleState = visible,
+            enter = if (reduceMotion) fadeIn(animationSpec = snap())
+                else fadeIn(tween(180)) + scaleIn(
+                    initialScale = 0.96f, animationSpec = tween(180),
+                ),
+            exit = if (reduceMotion) fadeOut(animationSpec = snap())
+                else fadeOut(tween(200)) + scaleOut(
+                    targetScale = 0.98f, animationSpec = tween(200),
+                ),
+        ) {
+            NativeContextActionPlate(
+                modifier = Modifier
+                    .width(menuWidth)
+                    .testTag("floating-confirmation-menu")
+                    // Taps in padding/dividers must never close the menu.
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = {},
+                    ),
+                hazeState = hazeState,
+                treatment = NativeActionCardTreatment.FROSTED,
+            ) {
+                Column {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 23.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp, fontWeight = FontWeight.W600,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (description.isNotBlank()) {
+                            Text(
+                                text = description,
+                                modifier = Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 14.sp, lineHeight = 19.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                    FloatingConfirmationRule()
+                    FloatingConfirmationAction(
+                        label = confirmLabel,
+                        destructive = destructive,
+                        primary = !destructive,
+                        tag = "floating-confirmation-confirm",
+                        enabled = !closing,
+                        onClick = { closeWith(onConfirm) },
+                    )
+                    FloatingConfirmationRule()
+                    FloatingConfirmationAction(
+                        label = dismissLabel ?: stringResource(R.string.cancel),
+                        destructive = false,
+                        primary = false,
+                        tag = "floating-confirmation-dismiss",
+                        enabled = !closing,
+                        onClick = { closeWith(onDismiss) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingConfirmationRule() {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Box(
+        Modifier.fillMaxWidth().height(0.5.dp)
+            .background(
+                (if (dark) Color.White else Color.Black)
+                    .copy(alpha = if (dark) 0.10f else 0.07f),
+            ),
+    )
+}
+
+@Composable
+private fun FloatingConfirmationAction(
+    label: String,
+    destructive: Boolean,
+    primary: Boolean,
+    tag: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)
+            .background(
+                if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                else Color.Transparent,
+            )
+            .clickable(
+                enabled = enabled,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .testTag(tag)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 16.sp,
+                fontWeight = if (primary || destructive) FontWeight.W600 else FontWeight.W500,
+            ),
+            color = (if (destructive) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface)
+                .copy(alpha = if (enabled) 1f else 0.48f),
+            textAlign = TextAlign.Center,
         )
     }
 }
