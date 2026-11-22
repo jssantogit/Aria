@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.catalog.metadata.AppleChartTerritory
 import com.music.bitchord.data.catalog.metadata.AppleCountryChart
+import com.music.bitchord.data.catalog.metadata.AppleCountryAlbumChart
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.components.ArtworkPageBackButton
 
@@ -95,6 +96,71 @@ internal fun AppleCountryChartScreen(
 }
 
 
+/** Verified Apple album positions, never a curated essentials claim. */
+@Composable
+internal fun AppleCountryAlbumChartScreen(
+    territory: AppleChartTerritory,
+    state: UiState<AppleCountryAlbumChart>,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+    contentPadding: PaddingValues,
+) {
+    BackHandler(onBack = onBack)
+    val uriHandler = LocalUriHandler.current
+    Column(modifier = Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ArtworkPageBackButton(onClick = onBack, hazeState = null, isCategory = true)
+        }
+        Text(
+            text = "Top 100 álbuns · ${territory.displayName}",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 10.dp),
+        )
+        Text(
+            text = "Apple Music · Álbuns mais tocados",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 18.dp),
+        )
+        when (state) {
+            UiState.Loading -> Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 50.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) { CircularProgressIndicator() }
+            is UiState.Error -> Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(state.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.size(14.dp))
+                Button(onClick = onRetry) { Text("Tentar novamente") }
+            }
+            is UiState.Success -> LazyColumn(
+                contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(state.data.albums, key = { "album-chart:${it.country}:${it.songId}" }) { album ->
+                    NativeSearchResultRow(
+                        row = NativeSearchRowUi(
+                            title = "${album.position}. ${album.title}",
+                            subtitle = "${album.artistName} · Abrir no Apple Music",
+                            artworkUri = album.artworkUrl,
+                            artistPortrait = false,
+                        ),
+                        onClick = { uriHandler.openUri(album.officialUrl) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+
 // This is a separate composable boundary so BitChordApp never inlines an
 // additional chart navigation branch into its JVM-limited main Compose method.
 @Composable
@@ -102,16 +168,28 @@ internal fun AppleCountryHomeRoute(
     chartAuthorized: Boolean,
     navigation: com.music.bitchord.ui.CanonicalCountryChartNavigation,
     charts: Map<String, UiState<AppleCountryChart>>,
+    albumCharts: Map<String, UiState<AppleCountryAlbumChart>>,
+    onAlbumRetry: (String) -> Unit,
     onRetry: (String) -> Unit,
     contentPadding: PaddingValues,
     home: @Composable () -> Unit,
 ) {
     val active = navigation.active.takeIf { chartAuthorized }
-    if (active == null) home() else AppleCountryChartScreen(
-        territory = active,
-        state = charts[active.code] ?: UiState.Loading,
-        onBack = navigation::close,
-        onRetry = { onRetry(active.code) },
-        contentPadding = contentPadding,
-    )
+    when {
+        active == null -> home()
+        navigation.albumActive -> AppleCountryAlbumChartScreen(
+            territory = active,
+            state = albumCharts[active.code] ?: UiState.Loading,
+            onBack = navigation::close,
+            onRetry = { onAlbumRetry(active.code) },
+            contentPadding = contentPadding,
+        )
+        else -> AppleCountryChartScreen(
+            territory = active,
+            state = charts[active.code] ?: UiState.Loading,
+            onBack = navigation::close,
+            onRetry = { onRetry(active.code) },
+            contentPadding = contentPadding,
+        )
+    }
 }

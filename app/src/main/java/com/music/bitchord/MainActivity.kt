@@ -1098,6 +1098,7 @@ private fun BitChordApp(
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     // World charts own their provider permissions and their own Home route.
     val countryCharts by viewModel.appleCountryCharts.collectAsStateWithLifecycle()
+    val countryAlbumCharts by viewModel.appleCountryAlbumCharts.collectAsStateWithLifecycle()
     val chartAuthorized = com.music.bitchord.ui.rememberAppleCountryChartAccess()
     val chartNavigation = com.music.bitchord.ui.rememberCountryChartNavigation(
         chartAuthorized, selectedTab == TAB_HOME,
@@ -2473,6 +2474,13 @@ private fun BitChordApp(
     }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
+        com.music.bitchord.data.catalog.metadata.parseAppleAlbumChartBrowseId(item.browseId)?.let { territory ->
+            if (chartAuthorized) {
+                chartNavigation.openAlbums(territory)
+                viewModel.loadAppleCountryAlbumChart(territory.code)
+            }
+            return@click
+        }
         com.music.bitchord.data.catalog.metadata.parseAppleChartBrowseId(item.browseId)?.let { territory ->
             if (chartAuthorized) {
                 chartNavigation.open(territory)
@@ -4407,6 +4415,10 @@ private fun BitChordApp(
                             chartAuthorized = chartAuthorized,
                             navigation = chartNavigation,
                             charts = countryCharts,
+                            albumCharts = countryAlbumCharts,
+                            onAlbumRetry = { country ->
+                                viewModel.loadAppleCountryAlbumChart(country, force = true)
+                            },
                             onRetry = { country ->
                                 viewModel.loadAppleCountryChart(country, force = true)
                             },

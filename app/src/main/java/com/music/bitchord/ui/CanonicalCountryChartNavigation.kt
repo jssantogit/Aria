@@ -10,12 +10,22 @@ internal class CanonicalCountryChartNavigation {
     var active by mutableStateOf<AppleChartTerritory?>(null)
         private set
 
+    var albumActive by mutableStateOf(false)
+        private set
+
     fun open(territory: AppleChartTerritory) {
+        albumActive = false
+        active = territory
+    }
+
+    fun openAlbums(territory: AppleChartTerritory) {
+        albumActive = true
         active = territory
     }
 
     fun close() {
         active = null
+        albumActive = false
     }
 }
 

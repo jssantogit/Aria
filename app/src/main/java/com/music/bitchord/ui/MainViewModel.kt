@@ -361,6 +361,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun loadAppleCountryChart(code: String, force: Boolean = false) =
         countryChartsController.load(code, force)
 
+    private val albumChartsController = CanonicalCountryAlbumChartController(viewModelScope)
+    internal val appleCountryAlbumCharts = albumChartsController.snapshots
+    fun loadAppleCountryAlbumChart(code: String, force: Boolean = false) =
+        albumChartsController.load(code, force)
+
     private val _canonicalTrendingRecordingMbids = MutableStateFlow<List<String>>(emptyList())
     val canonicalTrendingRecordingMbids: StateFlow<List<String>> =
         _canonicalTrendingRecordingMbids.asStateFlow()
