@@ -457,7 +457,8 @@ fun DetailScreen(
     } else emptyList()
     val artistTrackOrigin = nativeArtistTrackOrigin(
         hasAppleMetadata = isArtist && appleArtistTracks.isNotEmpty(),
-        hasVerifiedCatalog = isArtist && publicTopRows.isNotEmpty(),
+        hasVerifiedCatalog = isArtist && publicTopRows.isNotEmpty() &&
+            onCanonicalPublicTopOpen != null,
         hasScopedCatalog = isArtist && scopedCanonicalArtistTracks.isNotEmpty(),
         hasOwnedAudio = isArtist && songs.isNotEmpty(),
     )
