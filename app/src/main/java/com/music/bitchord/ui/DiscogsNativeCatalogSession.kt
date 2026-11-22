@@ -56,6 +56,19 @@ internal data class DiscogsNativePage(
     val attributionUrl: String? = null,
 )
 
+/** Native loading skeleton, just like a MusicBrainz DetailPage pushed from Search. */
+internal fun discogsNativeLoadingPage(
+    browseId: String,
+    title: String,
+    subtitle: String,
+    type: BrowseType,
+): DiscogsNativePage = DiscogsNativePage(
+    page = DetailPage(
+        browseId = browseId, title = title, subtitle = subtitle,
+        thumbnailUrl = null, songs = UiState.Loading, type = type,
+    ),
+)
+
 /**
  * One per Android ViewModel. Independent from MusicBrainz and Apple. Search
  * and discography use separate persisted capability choices and revoke leases.
@@ -277,7 +290,9 @@ internal class DiscogsNativeCatalogSession(
         backAll()
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.RELEASE
-        _detail.value = UiState.Loading
+        _detail.value = UiState.Success(discogsNativeLoadingPage(
+            selected.browseId, selected.title, "Lançamento · Discogs", BrowseType.ALBUM,
+        ))
         val job = scope.launch(Dispatchers.IO) {
             val response = try { editionClient.fetchRelease(selected.releaseId) }
             catch (cancelled: CancellationException) { throw cancelled }
@@ -303,7 +318,9 @@ internal class DiscogsNativeCatalogSession(
         artist = selected
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.ARTIST
-        _detail.value = UiState.Loading
+        _detail.value = UiState.Success(discogsNativeLoadingPage(
+            selected.browseId, selected.name, "Artista · Discogs", BrowseType.ARTIST,
+        ))
         loadNextArtistPage()
     }
 
@@ -359,7 +376,9 @@ internal class DiscogsNativeCatalogSession(
         detailJob?.cancel()
         _browseId.value = release.browseId
         _route.value = DiscogsNativeRoute.RELEASE
-        _detail.value = UiState.Loading
+        _detail.value = UiState.Success(discogsNativeLoadingPage(
+            release.browseId, release.title, parent.name, BrowseType.ALBUM,
+        ))
         val job = scope.launch(Dispatchers.IO) {
             val response = try { editionClient.fetchRelease(release.releaseId) }
             catch (cancelled: CancellationException) { throw cancelled }
