@@ -93,3 +93,25 @@ internal fun AppleCountryChartScreen(
         }
     }
 }
+
+
+// This is a separate composable boundary so BitChordApp never inlines an
+// additional chart navigation branch into its JVM-limited main Compose method.
+@Composable
+internal fun AppleCountryHomeRoute(
+    chartAuthorized: Boolean,
+    navigation: com.music.bitchord.ui.CanonicalCountryChartNavigation,
+    charts: Map<String, UiState<AppleCountryChart>>,
+    onRetry: (String) -> Unit,
+    contentPadding: PaddingValues,
+    home: @Composable () -> Unit,
+) {
+    val active = navigation.active.takeIf { chartAuthorized }
+    if (active == null) home() else AppleCountryChartScreen(
+        territory = active,
+        state = charts[active.code] ?: UiState.Loading,
+        onBack = navigation::close,
+        onRetry = { onRetry(active.code) },
+        contentPadding = contentPadding,
+    )
+}

@@ -18,3 +18,17 @@ internal class CanonicalCountryChartNavigation {
         active = null
     }
 }
+
+
+// Keep these navigation effects out of the bytecode-limited BitChordApp root.
+@androidx.compose.runtime.Composable
+internal fun rememberCountryChartNavigation(
+    authorized: Boolean,
+    homeSelected: Boolean,
+): CanonicalCountryChartNavigation {
+    val navigation = androidx.compose.runtime.remember { CanonicalCountryChartNavigation() }
+    androidx.compose.runtime.LaunchedEffect(authorized, homeSelected) {
+        if (!authorized || !homeSelected) navigation.close()
+    }
+    return navigation
+}

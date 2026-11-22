@@ -1098,11 +1098,10 @@ private fun BitChordApp(
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     // World charts own their provider permissions and their own Home route.
     val countryCharts by viewModel.appleCountryCharts.collectAsStateWithLifecycle()
-    val chartNavigation = remember { com.music.bitchord.ui.CanonicalCountryChartNavigation() }
     val chartAuthorized = com.music.bitchord.ui.rememberAppleCountryChartAccess()
-    LaunchedEffect(chartAuthorized, selectedTab) {
-        if (!chartAuthorized || selectedTab != TAB_HOME) chartNavigation.close()
-    }
+    val chartNavigation = com.music.bitchord.ui.rememberCountryChartNavigation(
+        chartAuthorized, selectedTab == TAB_HOME,
+    )
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
     // The pushed genre stack lives outside BitChordApp's large Compose method.
     // Each callback reads its latest tab/provider state without rebuilding routes.
@@ -4430,16 +4429,15 @@ private fun BitChordApp(
                         when (key.removePrefix(TAB_KEY).toIntOrNull()) {
                         // Home keeps its native feed. Explore's root reuses the
                         // existing native category grid, never Home shelves.
-                        TAB_HOME -> if (chartAuthorized && chartNavigation.active != null) {
-                            val territory = chartNavigation.active!!
-                            com.music.bitchord.ui.screens.AppleCountryChartScreen(
-                                territory = territory,
-                                state = countryCharts[territory.code] ?: UiState.Loading,
-                                onBack = chartNavigation::close,
-                                onRetry = { viewModel.loadAppleCountryChart(territory.code, true) },
-                                contentPadding = listPadding,
-                            )
-                        } else HomeScreen(
+                        TAB_HOME -> com.music.bitchord.ui.screens.AppleCountryHomeRoute(
+                            chartAuthorized = chartAuthorized,
+                            navigation = chartNavigation,
+                            charts = countryCharts,
+                            onRetry = { country ->
+                                viewModel.loadAppleCountryChart(country, force = true)
+                            },
+                            contentPadding = listPadding,
+                        ) { HomeScreen(
                             state = canonicalHomeState,
                             listState = homeListState,
                             onItemClick = { item, heading ->
@@ -4469,7 +4467,7 @@ private fun BitChordApp(
                             leadHero = true,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
-                        )
+                        ) }
                         TAB_EXPLORE -> com.music.bitchord.ui.components.ExploreCategoryContentTransition(
                             category = activeCanonicalGenre,
                             reduceMotion = reducePlayerMotion,
