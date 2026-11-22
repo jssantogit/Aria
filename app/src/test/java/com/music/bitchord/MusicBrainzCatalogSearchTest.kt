@@ -203,6 +203,35 @@ class MusicBrainzCatalogSearchTest {
             "firstreleasedate:[2026-10-01 TO 2026-11-05]"))
     }
 
+    @Test fun verifiedMultiwordGenreTagsUseQuotedFieldedQueriesWithoutLuceneInjection() = runBlocking {
+        val requests = mutableListOf<String>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    requests += parameters["query"].orEmpty()
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchReleaseGroupsForTag("death metal")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(source.searchRecentReleaseGroupsForTag(
+            "jazz fusion", "2026-01-01", "2026-11-22",
+        ) is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(source.searchAlbumReleaseGroupsForTag("contemporary r&b")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(requests[0].contains("tag:\\"death metal\\""))
+        assertTrue(requests[1].contains("tag:\\"jazz fusion\\""))
+        assertTrue(requests[2].contains("tag:\\"contemporary r&b\\""))
+        assertTrue(source.searchReleaseGroupsForTag("metal\\" OR artist:*")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(source.searchAlbumReleaseGroupsForTag("death metal AND type:album")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(3, requests.size)
+    }
+
     @Test fun genreAlbumQueryPinsOfficialTagAndAlbumType() = runBlocking {
         val requests = mutableListOf<String>()
         val search = MusicBrainzCatalogSearch(MusicBrainzClient(

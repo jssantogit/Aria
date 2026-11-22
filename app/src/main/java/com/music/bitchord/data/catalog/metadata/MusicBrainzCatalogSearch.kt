@@ -235,22 +235,34 @@ internal class MusicBrainzCatalogSearch(
         )
     }
 
+    /**
+     * MusicBrainz's tag field accepts multiword genre names. Only ordinary
+     * letters/digits, spaces, hyphens and ampersands are legal here; quotes,
+     * wildcards, field separators and Lucene operators cannot be injected.
+     * This is query escaping, NOT an authorization or a taxonomy assertion.
+     */
+    private fun safeMusicBrainzGenreTag(tag: String): String? {
+        val normalized = tag.trim().lowercase(Locale.ROOT)
+        if (!Regex("^[a-z][a-z0-9 &-]{1,48}$").matches(normalized) ||
+            normalized.contains("  ") || normalized.contains("&&") ||
+            normalized.endsWith("-") || normalized.endsWith("&")
+        ) return null
+        return when (normalized) {
+            "rnb" -> "r&b"
+            "hip-hop" -> "hip hop"
+            else -> normalized
+        }
+    }
+
     /** Genre is a known MusicBrainz release-group tag, never arbitrary UI text. */
     suspend fun searchReleaseGroupsForTag(
         tag: String,
         limit: Int = 40,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
-        val normalized = tag.lowercase(Locale.ROOT)
-        if (!Regex("^[a-z][a-z0-9-]{1,30}$").matches(normalized)) {
-            return MusicBrainzCatalogSearchResult.Failure(MusicBrainzCatalogSearchFailure.INVALID_QUERY)
-        }
-        // Keep stable, URL-safe browse IDs separate from authoritative tag
-        // spelling in MusicBrainz's release-group search index.
-        val musicBrainzTag = when (normalized) {
-            "rnb" -> "r&b"
-            "hip-hop" -> "hip hop"
-            else -> normalized
-        }
+        val musicBrainzTag = safeMusicBrainzGenreTag(tag)
+            ?: return MusicBrainzCatalogSearchResult.Failure(
+                MusicBrainzCatalogSearchFailure.INVALID_QUERY,
+            )
         return searchReleaseGroupsInternal(
             "tag:\"$musicBrainzTag\" AND " +
                 "(primarytype:album OR primarytype:ep OR primarytype:single)",
@@ -269,19 +281,14 @@ internal class MusicBrainzCatalogSearch(
         throughIsoDate: String,
         limit: Int = 40,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
-        val normalized = tag.lowercase(Locale.ROOT)
+        val musicBrainzTag = safeMusicBrainzGenreTag(tag)
         val date = Regex("^\\d{4}-\\d{2}-\\d{2}$")
-        if (!Regex("^[a-z][a-z0-9-]{1,30}$").matches(normalized) ||
+        if (musicBrainzTag == null ||
             !date.matches(fromIsoDate) || !date.matches(throughIsoDate) ||
             fromIsoDate > throughIsoDate
         ) return MusicBrainzCatalogSearchResult.Failure(
             MusicBrainzCatalogSearchFailure.INVALID_QUERY,
         )
-        val musicBrainzTag = when (normalized) {
-            "rnb" -> "r&b"
-            "hip-hop" -> "hip hop"
-            else -> normalized
-        }
         return searchReleaseGroupsInternal(
             "tag:\"$musicBrainzTag\" AND " +
                 "firstreleasedate:[$fromIsoDate TO $throughIsoDate] AND " +
@@ -299,17 +306,10 @@ internal class MusicBrainzCatalogSearch(
         tag: String,
         limit: Int = 24,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
-        val normalized = tag.lowercase(Locale.ROOT)
-        if (!Regex("^[a-z][a-z0-9-]{1,30}$").matches(normalized)) {
-            return MusicBrainzCatalogSearchResult.Failure(
+        val musicBrainzTag = safeMusicBrainzGenreTag(tag)
+            ?: return MusicBrainzCatalogSearchResult.Failure(
                 MusicBrainzCatalogSearchFailure.INVALID_QUERY,
             )
-        }
-        val musicBrainzTag = when (normalized) {
-            "rnb" -> "r&b"
-            "hip-hop" -> "hip hop"
-            else -> normalized
-        }
         return searchReleaseGroupsInternal(
             "tag:\"$musicBrainzTag\" AND primarytype:album",
             limit, 0, fieldedQuery = true,
