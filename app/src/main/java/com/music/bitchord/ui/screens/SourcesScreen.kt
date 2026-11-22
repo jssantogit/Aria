@@ -321,7 +321,7 @@ fun SourcesScreen(
 internal enum class ProviderRemoteLibraryTarget(val displayName: String) {
     WEBDAV("WebDAV"),
     SMB("SMB"),
-    OPEN_SUBSONIC("Navidrome / OpenSubsonic"),
+    OPEN_SUBSONIC("Navidrome"),
 }
 
 /** Reuse the existing test, edit, sync and disconnect flows, without copies. */
