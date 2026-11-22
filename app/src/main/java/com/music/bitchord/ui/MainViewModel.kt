@@ -611,6 +611,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var catalogMusicBrainzQuery: String? = null
     private var canonicalSearchJobProvider: ProviderKey? = null
 
+    /** Discogs owns source IDs and pages independently of MusicBrainz. */
+    internal val discogsNativeCatalog by lazy {
+        DiscogsNativeCatalogSession(getApplication(), viewModelScope)
+    }
     private val _catalogSearchMusicBrainzVisible = MutableStateFlow(false)
     val catalogSearchMusicBrainzVisible: StateFlow<Boolean> =
         _catalogSearchMusicBrainzVisible.asStateFlow()
@@ -618,7 +622,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun eligibleCatalogSearchProviders() = orderedCatalogProviders(
         ProviderRuntime.gateOrNull(),
         ProviderCapability.CATALOG_SEARCH,
-        setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES),
+        setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES,
+            BuiltInProviderKeys.DISCOGS),
     )
 
     private fun eligibleEditorialProviders() = orderedCatalogProviders(
@@ -4169,6 +4174,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
                 ) != null
                 snapshots.collect {
+                    discogsNativeCatalog.purgeRevoked()
                     val nextEditorial = eligibleEditorialProviders()
                     val nextDiscogs = ProviderRuntime.gateOrNull()?.open(
                         ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
@@ -5584,13 +5590,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun runCanonicalCatalogSearch(query: String) {
         val providers = eligibleCatalogSearchProviders()
         when (providers.firstOrNull()) {
+            BuiltInProviderKeys.DISCOGS -> {
+                canonicalSearchJob?.cancel()
+                canonicalTypeaheadJob?.cancel()
+                appleEditorialSearchJob?.cancel()
+                appleArtistSearchJob?.cancel()
+                appleTrackSearchJob?.cancel()
+                resetCanonicalSearchPagination()
+                resetApplePublicSearchPaging()
+                clearCanonicalCatalogNavigation()
+                _searchScrollReset.value += 1
+                _catalogSearchMusicBrainzVisible.value = false
+                _canonicalResults.value = null
+                _appleEditorialResults.value = null
+                _appleEditorialArtists.value = null
+                _appleEditorialTracks.value = null
+                discogsNativeCatalog.search(query)
+            }
             BuiltInProviderKeys.MUSICBRAINZ -> {
+                discogsNativeCatalog.clearSearch()
+                discogsNativeCatalog.backAll()
                 _catalogSearchMusicBrainzVisible.value = true
                 runMusicBrainzCatalogSearch(
                     query, allowAppleFallback = BuiltInProviderKeys.ITUNES in providers,
                 )
             }
             BuiltInProviderKeys.ITUNES -> {
+                discogsNativeCatalog.clearSearch()
+                discogsNativeCatalog.backAll()
                 canonicalSearchJobProvider = BuiltInProviderKeys.ITUNES
                 canonicalSearchJob?.cancel()
                 canonicalTypeaheadJob?.cancel()
@@ -5630,6 +5657,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             else -> {
+                discogsNativeCatalog.clearSearch()
+                discogsNativeCatalog.backAll()
                 canonicalSearchJob?.cancel()
                 canonicalTypeaheadJob?.cancel()
                 appleEditorialSearchJob?.cancel()
