@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.screens
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -126,7 +127,9 @@ internal fun ProviderCapabilitiesScreen(
         // provider, below its independent engine capability switch.
         if (group.key.providerId == "local") {
             Spacer(Modifier.height(14.dp))
-            ProviderLocalLibrarySettings()
+            Box(Modifier.testTag("providers-local-library-settings")) {
+                ProviderLocalLibrarySettings()
+            }
         }
 
         // Credential management belongs exclusively to Provedores ⋮ →
