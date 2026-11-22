@@ -4202,7 +4202,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     if (BuiltInProviderKeys.ITUNES in previousEditorial &&
                         BuiltInProviderKeys.ITUNES !in nextEditorial
-                    ) backAppleEditorialAlbum()
+                    ) {
+                        // Revocation must close the source-native ARTIST route
+                        // as well as the ALBUM route. Neither may keep a stale
+                        // page shell after iTunes discography consent is lost.
+                        backAppleEditorialAlbum()
+                        backAppleEditorialArtist()
+                    }
                     if (nextEditorial != previousEditorial) {
                         val restoreMbCache = BuiltInProviderKeys.MUSICBRAINZ !in
                             previousEditorial &&
