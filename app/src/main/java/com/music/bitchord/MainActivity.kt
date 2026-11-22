@@ -4790,6 +4790,16 @@ private fun BitChordApp(
                                 detailActiveShelf = null
                                 viewModel.discogsNativeCatalog.openArtist(row)
                             },
+                            discogsReleaseResults = viewModel.discogsNativeCatalog.releaseSearch
+                                .collectAsStateWithLifecycle().value,
+                            discogsReleaseHasMore = viewModel.discogsNativeCatalog.releaseSearchHasMore
+                                .collectAsStateWithLifecycle().value,
+                            onDiscogsReleaseLoadMore =
+                                viewModel.discogsNativeCatalog::loadNextReleaseSearchPage,
+                            onDiscogsReleaseOpen = { row ->
+                                detailActiveShelf = null
+                                viewModel.discogsNativeCatalog.openReleaseFromSearch(row)
+                            },
                             canonicalPublicPlaylists = com.music.bitchord.ui.rememberCanonicalPublicPlaylistSearchUi(
                                 viewModel = viewModel,
                                 query = query,
