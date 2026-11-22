@@ -613,7 +613,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Discogs owns source IDs and pages independently of MusicBrainz. */
     internal val discogsNativeCatalog by lazy {
-        DiscogsNativeCatalogSession(getApplication(), viewModelScope)
+        DiscogsNativeCatalogSession(getApplication<Application>(), viewModelScope)
     }
     private val _catalogSearchMusicBrainzVisible = MutableStateFlow(false)
     val catalogSearchMusicBrainzVisible: StateFlow<Boolean> =
