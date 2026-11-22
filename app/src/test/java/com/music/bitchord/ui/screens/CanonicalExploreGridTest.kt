@@ -2,7 +2,6 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,14 +44,46 @@ class CanonicalExploreGridTest {
         val opened = mutableListOf<String>()
         compose.setContent {
             MaterialTheme {
-                LazyColumn {
-                    canonicalCategorySearchRows(
-                        categories = listOf(
-                            ShelfItem("Death Metal", "Subgênero", null, null, "catalog:GENRE:death metal"),
-                        ),
-                        onOpen = { opened += it.browseId.orEmpty() },
-                    )
-                }
+                SearchScreen(
+                    query = "death metal",
+                    onQueryChange = {},
+                    filter = SearchFilter.ALL,
+                    currentSong = null,
+                    isPlaying = false,
+                    onFilterChange = {},
+                    results = null,
+                    loadingMore = false,
+                    onLoadMore = {},
+                    listState = rememberLazyListState(),
+                    scrollResetTrigger = 0,
+                    focusRequested = false,
+                    onFocusHandled = {},
+                    onSongClick = { _, _ -> },
+                    onSongLongPress = {},
+                    onSongSwipe = {},
+                    onTopResultPlay = {},
+                    onTopResultPlaylist = {},
+                    onBrowseClick = {},
+                    history = emptyList(),
+                    suggestions = emptyList(),
+                    typeaheadResults = emptyList(),
+                    onSubmit = {},
+                    onSuggestionClick = {},
+                    onHistoryClick = {},
+                    onHistoryRemove = {},
+                    onHistoryClear = {},
+                    contentPadding = PaddingValues(0.dp),
+                    topPadding = 0.dp,
+                    showField = false,
+                    searchingCanonical = true,
+                    canonicalResults = UiState.Success(emptyList<CanonicalCatalogSearchRow>()),
+                    searchCommitted = true,
+                    appleResultTabs = true,
+                    categorySearchResults = listOf(
+                        ShelfItem("Death Metal", "Subgênero", null, null, "catalog:GENRE:death metal"),
+                    ),
+                    onCategoryOpen = { opened += it.browseId.orEmpty() },
+                )
             }
         }
         compose.onNodeWithTag("genre-search-artwork").assertExists()
