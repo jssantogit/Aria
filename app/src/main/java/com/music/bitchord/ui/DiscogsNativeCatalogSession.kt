@@ -173,8 +173,7 @@ internal class DiscogsNativeCatalogSession(
                     releases = (releases + response.releases).distinctBy { it.releaseId }
                     artistPage = page
                     artistHasMore = response.hasMore
-                    artistIncomplete = artistIncomplete || response.incomplete ||
-                        response.hasMore
+                    artistIncomplete = artistIncomplete || response.incomplete
                     val result = discogsArtistPage(current, releases,
                         artistHasMore, artistIncomplete)
                     cachedArtistPage = result
