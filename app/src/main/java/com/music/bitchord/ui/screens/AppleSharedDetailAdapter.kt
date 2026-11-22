@@ -52,6 +52,7 @@ internal data class AppleSharedDetail(
     val verifiedArtistMbid: String? = null,
     /** Exact source-owned album credit route, never an MBID. */
     val albumArtistBrowseId: String? = null,
+    val albumArtistDisplayName: String? = null,
     val artistHeroUrl: String? = null,
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
@@ -147,6 +148,9 @@ internal fun appleAlbumAsSharedDetail(
     return AppleSharedDetail(
         albumArtistBrowseId = sourceArtistRoute?.let {
             "itunes:${it.storefront}:artist:${it.id}"
+        },
+        albumArtistDisplayName = source.album.artistName.takeIf {
+            sourceArtistRoute != null && it.isNotBlank()
         },
         page = DetailPage(
             browseId = source.album.browseId,

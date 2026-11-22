@@ -72,6 +72,8 @@ class DiscogsNativeCatalogPresentationTest {
         )
         assertEquals("discogs:artist:8303009",
             discogsReleasePage("Artist", verified).albumArtistBrowseId)
+        assertEquals("Artist",
+            discogsReleasePage("Artist", verified).albumArtistDisplayName)
         assertNull(discogsReleasePage("Artist", verified.copy(
             artistIds = listOf(8303009L, 92L),
         )).albumArtistBrowseId)

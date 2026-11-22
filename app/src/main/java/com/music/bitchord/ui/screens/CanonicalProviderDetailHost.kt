@@ -157,6 +157,8 @@ internal fun CanonicalProviderDetailHost(
         metadataTracks = discogsPage?.tracks ?: applePage?.metadataTracks.orEmpty(),
         sourceAlbumArtistBrowseId = discogsPage?.albumArtistBrowseId
             ?: applePage?.albumArtistBrowseId,
+        sourceAlbumArtistDisplayName = discogsPage?.albumArtistDisplayName
+            ?: applePage?.albumArtistDisplayName,
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,

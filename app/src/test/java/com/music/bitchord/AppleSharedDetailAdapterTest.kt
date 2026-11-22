@@ -103,6 +103,7 @@ class AppleSharedDetailAdapterTest {
         )
         val adapted = requireNotNull(appleAlbumAsSharedDetail(source))
         assertEquals("itunes:br:artist:1656329288", adapted.albumArtistBrowseId)
+        assertEquals("NewJeans", adapted.albumArtistDisplayName)
         assertNull(requireNotNull(appleAlbumAsSharedDetail(source.copy(
             album = selected.copy(artistBrowseId = "itunes:us:artist:1656329288"),
         ))).albumArtistBrowseId)

@@ -115,5 +115,6 @@ internal fun appleNativeDetailDisplayAllowed(
         detail.artistHeroUrl == null &&
         detail.verifiedArtistMbid == null &&
         detail.albumArtistBrowseId == null &&
+        detail.albumArtistDisplayName == null &&
         detail.attribution == null
     )
