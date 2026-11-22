@@ -634,7 +634,9 @@ private fun CanonicalHomeEditorialEffects(
             // Apple's native genre lookup is intentionally restricted to verified
             // primaryGenreName values. A known subgenre may still be browsed by
             // the separately authorized MusicBrainz tag source.
-            if (mb in catalogEditorialOrder) viewModel.loadCanonicalGenre(tag)
+            if (mb in catalogEditorialOrder &&
+                viewModel.canonicalGenreResultTag != tag
+            ) viewModel.loadCanonicalGenre(tag)
         } else if (first == apple) {
             viewModel.loadAppleGenreEditorial(tag, emptyList())
             val result = appleGenreReleases[tag]
