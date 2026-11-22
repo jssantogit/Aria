@@ -134,6 +134,8 @@ class ProviderCapabilitiesScreenTest {
         for (capability in group.rows.map { it.entry.capability }) {
             compose.onNodeWithTag("providers-function-${capability.name}", useUnmergedTree = true)
                 .assertExists()
+            compose.onNodeWithTag("providers-function-switch-${capability.name}", useUnmergedTree = true)
+                .assertExists()
         }
         compose.onNodeWithText("MusicBrainz").assertExists()
         compose.onNodeWithText("Discografia").assertExists()
@@ -192,6 +194,8 @@ class ProviderCapabilitiesScreenTest {
         compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
             .assertCountEquals(0)
         compose.onAllNodesWithTag("providers-function-server", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithTag("providers-function-switch-EDITION_METADATA", useUnmergedTree = true)
             .assertCountEquals(0)
         compose.onAllNodesWithText("Conexões", useUnmergedTree = true)
             .assertCountEquals(0)
@@ -421,6 +425,41 @@ class ProviderCapabilitiesScreenTest {
         compose.onAllNodesWithText("Configurar", useUnmergedTree = true)
             .assertCountEquals(0)
         compose.onNodeWithText("Configuração necessária").assertExists()
+        compose.runOnIdle { assertEquals(1, opened) }
+    }
+
+    @Test fun configuredWebDavExposesRealSwitchButUnconfiguredOneDoesNot() {
+        var toggles = mutableListOf<Boolean>()
+        var opened = 0
+        val configured = mutableStateOf(false)
+        val enabled = mutableStateOf(true)
+        compose.setContent {
+            BitChordTheme {
+                ProviderRemoteLibraryRow(
+                    target = ProviderRemoteLibraryTarget.WEBDAV,
+                    number = 1,
+                    configured = configured.value,
+                    enabled = enabled.value,
+                    onToggle = {
+                        toggles.add(it)
+                        enabled.value = it
+                    },
+                    onOpen = { opened++ },
+                )
+            }
+        }
+        compose.onAllNodesWithTag("providers-remote-switch-webdav", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.runOnIdle { configured.value = true }
+        compose.onNodeWithTag("providers-remote-switch-webdav", useUnmergedTree = true)
+            .assertExists()
+            .performClick()
+        compose.runOnIdle {
+            assertEquals(listOf(false), toggles)
+            assertEquals(0, opened)
+        }
+        compose.onNodeWithTag("providers-remote-webdav", useUnmergedTree = true)
+            .performClick()
         compose.runOnIdle { assertEquals(1, opened) }
     }
 
