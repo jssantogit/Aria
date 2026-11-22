@@ -153,13 +153,13 @@ internal class DiscogsNativeArtistSearchClient(
         if (query.length !in 1..120 || query.any(Character::isISOControl) ||
             page !in 1..3) return DiscogsNativeArtistSearchResult.InvalidQuery
         if (!enabled || !admission.permitted(
-            ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
+            ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS,
         )) return DiscogsNativeArtistSearchResult.Disabled
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return DiscogsNativeArtistSearchResult.AuthenticationRequired
         val response = try {
             admission.execute(
-                capability = ProviderCapability.EDITION_METADATA,
+                capability = ProviderCapability.CATALOG_SEARCH,
                 provider = BuiltInProviderKeys.DISCOGS,
                 scheduleLimited = { block -> limiter.runHttpLimited { block() } },
                 networkCall = { transport.search(query, page, token, userAgent) },
