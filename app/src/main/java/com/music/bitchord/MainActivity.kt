@@ -4456,12 +4456,13 @@ private fun BitChordApp(
                             // Keep live playhead state inside HomeScreen, not BitChordApp.
                             continuePosition = player.position,
                             continueDurationMs = player.durationMs,
-                            onContinue = {
-                                // A stale click may never pause a new song.
-                                if (!player.isPlaying &&
-                                    controller?.currentMediaItem?.mediaId == player.song?.videoId
+                            onContinue = if (!partyState.inParty) ({ expectedId: String ->
+                                // The card may have become stale while a new queue arrived.
+                                // Never resume an unrelated player or override a party host.
+                                if (!player.isPlaying && expectedId.isNotBlank() &&
+                                    controller?.currentMediaItem?.mediaId == expectedId
                                 ) togglePlayPause()
-                            },
+                            }) else null,
                         ) }
                         TAB_EXPLORE -> com.music.bitchord.ui.components.ExploreCategoryContentTransition(
                             category = activeCanonicalGenre,

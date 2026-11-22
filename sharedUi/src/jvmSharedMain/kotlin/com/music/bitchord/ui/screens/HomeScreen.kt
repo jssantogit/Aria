@@ -220,7 +220,7 @@ fun HomeScreen(
     continuePosition: PlaybackPosition? = null,
     continueDurationMs: Long = 0L,
     /** Resume the *existing* player; never manufacture a Song or a new queue. */
-    onContinue: (() -> Unit)? = null,
+    onContinue: ((String) -> Unit)? = null,
     /** Native account access while the floating Home actions are hidden. */
     headerTrailing: (@Composable () -> Unit)? = null,
     /** An honest empty/loading result, not a synthetic playlist card. */
@@ -362,7 +362,8 @@ fun HomeScreen(
                         onItemClick = { item, shelfTitle ->
                             if (item.browseId == CONTINUE_LISTENING_BROWSE_ID &&
                                 shelfTitle == CONTINUE_LISTENING_TITLE
-                            ) onContinue?.invoke() else onItemClick(item, shelfTitle)
+                            ) onContinue?.invoke(currentSong?.videoId.orEmpty())
+                            else onItemClick(item, shelfTitle)
                         },
                         onItemLongPress = onItemLongPress?.let { hold ->
                             { item: ShelfItem ->
@@ -427,6 +428,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
+            val cardLongPress = if (shelf.title == CONTINUE_LISTENING_TITLE &&
+                shelf.items.singleOrNull()?.browseId == CONTINUE_LISTENING_BROWSE_ID
+            ) null else onItemLongPress
             val presentation = homeShelfPresentation(shelf.title, index, firstIsHero)
             if (shelf.title == "Playlists" && shelf.items.isEmpty() &&
                 emptyPlaylistNotice != null
@@ -446,7 +450,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
+                    onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                     viewType = recentsViewType,
@@ -456,7 +460,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 HeroShelf(
                     shelf = shelf,
                     onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
+                    onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                 )
@@ -464,7 +468,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 Shelf(
                     shelf = shelf,
                     onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
+                    onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                 )
