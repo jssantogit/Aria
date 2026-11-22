@@ -6,6 +6,7 @@ import com.music.bitchord.data.catalog.metadata.ListenBrainzPopularityEvidence
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRelease
+import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
 import com.music.bitchord.data.catalog.metadata.ListenBrainzSitewideRecording
 import com.music.bitchord.data.catalog.metadata.publicListenBrainzRecordingRanking
 import com.music.bitchord.data.catalog.metadata.canonicalStreamingTitleIsSafe
