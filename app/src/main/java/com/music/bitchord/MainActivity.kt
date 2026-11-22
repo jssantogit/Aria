@@ -5493,9 +5493,9 @@ private fun BitChordApp(
                             detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
                         appleNativeKind == AppleNativeDetailKind.ALBUM ->
-                            (appleAlbumDetail as? UiState.Success)?.data?.album?.title.orEmpty()
+                            appleSharedVisual?.page?.title ?: appleAlbumNavigation?.title.orEmpty()
                         appleNativeKind == AppleNativeDetailKind.ARTIST ->
-                            (appleArtistDetail as? UiState.Success)?.data?.artist?.title.orEmpty()
+                            appleSharedVisual?.page?.title ?: appleArtistNavigation?.title.orEmpty()
                         discogsRoute != null ->
                             discogsNativeVisual?.page?.title ?: "Discogs"
 
