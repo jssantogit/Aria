@@ -165,6 +165,7 @@ internal sealed interface DiscogsLookupResult {
 internal class DiscogsClient(
     private val transport: DiscogsTransport = KtorDiscogsTransport(),
     private val enabled: Boolean = false,
+    private val capability: ProviderCapability = ProviderCapability.EDITION_METADATA,
     private val limiter: DiscogsRateLimiter = DiscogsRequestBudget.limiter,
     private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
     private val userAgent: String =
@@ -176,7 +177,7 @@ internal class DiscogsClient(
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
         val response = try {
             admission.execute(
-                capability = ProviderCapability.EDITION_METADATA,
+                capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
                 scheduleLimited = { block -> limiter.runHttpLimited { block() } },
                 networkCall = { transport.get("masters/$id", userAgent) },
@@ -213,7 +214,7 @@ internal class DiscogsClient(
         if (id !in 1..999_999_999_999L) return DiscogsMasterVersionsResult.Malformed
         val response = try {
             admission.execute(
-                capability = ProviderCapability.EDITION_METADATA,
+                capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
                 scheduleLimited = { block -> limiter.runHttpLimited { block() } },
                 networkCall = { transport.get("masters/$id/versions?page=1&per_page=8", userAgent) },
@@ -263,7 +264,7 @@ internal class DiscogsClient(
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
         val response = try {
             admission.execute(
-                capability = ProviderCapability.EDITION_METADATA,
+                capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
                 scheduleLimited = { block -> limiter.runHttpLimited { block() } },
                 networkCall = { transport.get("releases/$id", userAgent) },
