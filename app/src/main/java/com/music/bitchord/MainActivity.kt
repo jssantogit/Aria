@@ -4033,7 +4033,6 @@ private fun BitChordApp(
                                 settingsSubScreen = "sources"
                                 showSources = true
                             },
-                            onSoulseek = { settingsSubScreen = "soulseek" },
                             onWearOs = {
                                 settingsSubScreen = "wear_os"
                                 showWearOs = true
