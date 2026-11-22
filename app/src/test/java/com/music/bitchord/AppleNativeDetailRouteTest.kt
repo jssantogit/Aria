@@ -46,12 +46,8 @@ class AppleNativeDetailRouteTest {
             row(2, AppleEditorialReleaseCategory.EP),
         )
         val grouped = appleNativeArtistSections(rows)
-        assertEquals(listOf(
-            AppleEditorialReleaseCategory.ALBUM,
-            AppleEditorialReleaseCategory.EP,
-            AppleEditorialReleaseCategory.SINGLE,
-            AppleEditorialReleaseCategory.UNCLASSIFIED,
-        ), grouped.map { it.first })
+        assertEquals(listOf("Álbuns", "Singles e EPs", "Outros lançamentos"),
+            grouped.map { it.first })
         assertEquals(listOf("itunes:br:album:1", "itunes:br:album:2",
             "itunes:br:album:3", "itunes:br:album:4"),
             grouped.flatMap { it.second }.map { it.browseId })

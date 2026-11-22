@@ -27,17 +27,22 @@ internal fun appleNativeDetailKind(
     else -> AppleNativeDetailKind.NONE
 }
 
+/** One classification source for both the native artist UI and its tests. */
 internal fun appleNativeArtistSections(
     albums: List<AppleEditorialSearchRow>,
-): List<Pair<AppleEditorialReleaseCategory, List<AppleEditorialSearchRow>>> =
+): List<Pair<String, List<AppleEditorialSearchRow>>> =
     listOf(
-        AppleEditorialReleaseCategory.ALBUM,
-        AppleEditorialReleaseCategory.EP,
-        AppleEditorialReleaseCategory.SINGLE,
-        AppleEditorialReleaseCategory.UNCLASSIFIED,
-    ).mapNotNull { kind ->
-        albums.filter { it.category == kind }.takeIf { it.isNotEmpty() }
-            ?.let { kind to it }
+        "Álbuns" to setOf(AppleEditorialReleaseCategory.ALBUM),
+        "Singles e EPs" to setOf(
+            AppleEditorialReleaseCategory.SINGLE, AppleEditorialReleaseCategory.EP,
+        ),
+        "Outros lançamentos" to setOf(AppleEditorialReleaseCategory.UNCLASSIFIED),
+    ).mapNotNull { (label, categories) ->
+        albums.filter { it.category in categories }.takeIf { it.isNotEmpty() }
+            ?.sortedWith(compareByDescending<AppleEditorialSearchRow> {
+                it.releaseDate.orEmpty()
+            }.thenBy { it.browseId })
+            ?.let { label to it }
     }
 
 internal data class AppleSharedDetail(
@@ -67,26 +72,16 @@ internal fun appleArtistAsSharedDetail(
     // Native Apple Music-style sections. EP and Single are one rail, while
     // "live", "compilation" and "featured on" require independent evidence:
     // names and artwork cannot prove such a relationship or release class.
-    val groups = listOf(
-        "Álbuns" to setOf(AppleEditorialReleaseCategory.ALBUM),
-        "Singles e EPs" to setOf(
-            AppleEditorialReleaseCategory.EP, AppleEditorialReleaseCategory.SINGLE,
-        ),
-        "Outros lançamentos" to setOf(AppleEditorialReleaseCategory.UNCLASSIFIED),
-    ).mapNotNull { (title, categories) ->
-        releases.filter { it.category in categories }.takeIf { it.isNotEmpty() }
-            ?.sortedWith(compareByDescending<AppleEditorialSearchRow> {
-                it.releaseDate.orEmpty()
-            }.thenBy { it.browseId })
-            ?.map { album ->
-                ShelfItem(
-                    title = album.title,
-                    subtitle = album.releaseDate?.take(4).orEmpty(),
-                    thumbnailUrl = appleProminentArtworkOrNull(album.artworkUri),
-                    browseId = album.browseId,
-                    videoId = null,
-                )
-            }?.let { HomeShelf(title = title, items = it) }
+    val groups = appleNativeArtistSections(releases).map { (title, albums) ->
+        HomeShelf(title = title, items = albums.map { album ->
+            ShelfItem(
+                title = album.title,
+                subtitle = album.releaseDate?.take(4).orEmpty(),
+                thumbnailUrl = appleProminentArtworkOrNull(album.artworkUri),
+                browseId = album.browseId,
+                videoId = null,
+            )
+        })
     }
     return AppleSharedDetail(
         page = DetailPage(
