@@ -390,10 +390,9 @@ fun ProvidersScreen(
             it.readiness != ProviderReadiness.NOT_IMPLEMENTED
         }
         val available = credentialInventory.map { it.key.providerId }.toSet()
-        val discogsReady = credentialInventory.any {
-            it.key.providerId == "discogs" &&
-                it.readiness == ProviderReadiness.READY
-        }
+        // Discography is public and READY without credentials; only a valid
+        // encrypted search token may turn the credential indicator on.
+        val discogsReady = discogsSavedHint != null
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 ProviderHeader(
