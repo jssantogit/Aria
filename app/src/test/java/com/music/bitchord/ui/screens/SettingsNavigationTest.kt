@@ -30,9 +30,10 @@ class SettingsNavigationTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun pushedSettingsTitleClearsTheGlobalFloatingBackControl() {
-        assertEquals(34.dp, NativePageHeaderMetrics.settingsPushedTitleTopPadding)
-        assertEquals(26.dp, NativePageHeaderMetrics.pushedTitleClearance)
+        assertEquals(8.dp, NativePageHeaderMetrics.settingsPushedTitleTopPadding)
+        assertEquals(0.dp, NativePageHeaderMetrics.pushedTitleClearance)
         assertEquals(16.dp, NativePageHeaderMetrics.pushedTitleStartInset)
+        assertEquals(108.dp, NativePageHeaderMetrics.categoryTitleTopInset(100.dp))
     }
 
     @Test fun lyricsSummaryCountIsUnambiguousForSingularAndPlural() {
