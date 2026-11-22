@@ -44,6 +44,7 @@ internal data class AppleSharedDetail(
     val page: DetailPage,
     val metadataTracks: List<NativeMetadataTrack> = emptyList(),
     val artistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
+    val verifiedArtistMbid: String? = null,
     val artistHeroUrl: String? = null,
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
@@ -98,6 +99,9 @@ internal fun appleArtistAsSharedDetail(
             sections = groups,
         ),
         artistHeroUrl = source.artist.artworkUri,
+        verifiedArtistMbid = source.verifiedMusicBrainzArtistMbid?.takeIf {
+            Regex("^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
+        },
         artistTracks = source.tracks.filter { track ->
             val trackRoute = AppleCatalogBrowseRoute.parse(track.key)
             trackRoute?.kind == ItunesCatalogItemType.TRACK &&

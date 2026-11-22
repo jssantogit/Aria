@@ -95,6 +95,29 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
+    @Test fun artistRelationCanOnlyBePublishedAsValidatedCanonicalId() {
+        val linked = "13dd61c7-ce73-4e97-9f0c-9f0e53144411"
+        val verified = requireNotNull(appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist, albums = emptyList(), possiblyTruncated = false,
+                verifiedMusicBrainzArtistMbid = linked,
+            ),
+        ))
+        assertEquals(linked, verified.verifiedArtistMbid)
+        val notAnId = requireNotNull(appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist, albums = emptyList(), possiblyTruncated = false,
+                verifiedMusicBrainzArtistMbid = "namesake",
+            ),
+        ))
+        assertNull(notAnId.verifiedArtistMbid)
+        assertNull(requireNotNull(appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist, albums = emptyList(), possiblyTruncated = false,
+            ),
+        )).verifiedArtistMbid)
+    }
+
     @Test fun artistDisplaysOnlyValidatedAppleTrackIdentitiesWithoutPlayableAssets() {
         val track = com.music.bitchord.ui.screens.AppleEditorialTrackSearchRow(
             key = "itunes:br:track:123", title = "Magnetic",

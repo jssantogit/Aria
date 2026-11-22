@@ -69,6 +69,8 @@ data class AppleEditorialArtistDetailPage(
     val possiblyTruncated: Boolean,
     /** Official exact-ID Apple artist songs; order does not imply popularity. */
     val tracks: List<AppleEditorialTrackSearchRow> = emptyList(),
+    /** Verified Apple artist URL → MusicBrainz relation; never a name match. */
+    val verifiedMusicBrainzArtistMbid: String? = null,
 )
 
 /** Apple song search is catalog metadata only, not a playable Song or MediaAsset. */

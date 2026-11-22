@@ -656,6 +656,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _appleEditorialArtistDetail.asStateFlow()
     private var appleArtistSearchJob: Job? = null
     private var appleArtistDetailJob: Job? = null
+    private var appleArtistRelationJob: Job? = null
+    private var activeAppleArtistLinkedMbid: String? = null
     private var appleArtistPagingJob: Job? = null
     private var appleArtistArtworkJob: Job? = null
     private val appleArtistArtworkQueueLock = Any()
@@ -5049,6 +5051,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleArtistPagingJob?.cancel()
         resetAppleArtistArtworkQueue()
         appleArtistHeroJob?.cancel()
+        appleArtistRelationJob?.cancel()
+        activeAppleArtistLinkedMbid = null
         activeAppleArtistHeroArt = row.artworkUri
         // Only the Apple search record for THIS exact artist route can supply
         // a candidate store URL. A stage name, album title, or external page
@@ -5056,7 +5060,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val appleArtistUrl = appleExactArtistStoreUrl(
             applePublicPagers[AppleSearchSection.ARTISTS]?.snapshot()?.visible.orEmpty(),
             row,
-        )
+        ) ?: row.appleStoreUrl
         val pager = AppleArtistDiscographyPager(
             artistId = route.id,
             artistName = row.title,
@@ -5075,6 +5079,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleArtistPager = pager
         activeAppleArtistId = row.browseId
         _appleEditorialArtistDetail.value = UiState.Loading
+        // Bridge optional artist relation shelves only when the user enabled
+        // MusicBrainz identity and the official URL resolves unambiguously.
+        // The lookup runs in parallel, never blocks the first Apple paint.
+        val relationLease = ProviderReadLease.acquire(
+            ProviderRuntime.gateOrNull(),
+            listOf(ProviderCapability.IDENTITY to BuiltInProviderKeys.MUSICBRAINZ),
+        )
+        if (appleArtistUrl != null && relationLease != null) {
+            appleArtistRelationJob = viewModelScope.launch(Dispatchers.IO) {
+                val relatedMbid = try {
+                    com.music.bitchord.data.catalog.metadata
+                        .MusicBrainzAppleArtistUrlResolver().resolve(
+                            route.id, route.storefront, appleArtistUrl,
+                        )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) { null }
+                if (relatedMbid != null && relationLease.isCurrent() &&
+                    activeAppleArtistId == row.browseId &&
+                    _searchSource.value == SearchSource.CANONICAL
+                ) {
+                    activeAppleArtistLinkedMbid = relatedMbid
+                    _appleEditorialArtistDetail.update { state ->
+                        if (state !is UiState.Success ||
+                            state.data.artist.browseId != row.browseId
+                        ) state else UiState.Success(state.data.copy(
+                            verifiedMusicBrainzArtistMbid = relatedMbid,
+                        ))
+                    }
+                }
+            }.also { job ->
+                val unregister = relationLease.cancelJobOnRevoke(job)
+                job.invokeOnCompletion { unregister() }
+            }
+        }
         appleArtistHeroJob = viewModelScope.launch(Dispatchers.IO) {
             val portrait = AppleArtistArtRepository.artForExactStoreArtist(
                 row.browseId, row.appleStoreUrl,
@@ -5258,6 +5296,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 tracks = current?.takeIf {
                     it.artist.browseId == browseId
                 }?.tracks.orEmpty(),
+                verifiedMusicBrainzArtistMbid = activeAppleArtistLinkedMbid,
                 hasMore = snapshot.hasMore,
                 loadingMore = loading,
                 pageError = error,
@@ -5343,7 +5382,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun backAppleEditorialArtist() {
         activeAppleArtistId = null
+        activeAppleArtistLinkedMbid = null
         activeAppleArtistHeroArt = null
+        appleArtistRelationJob?.cancel()
         appleArtistHeroJob?.cancel()
         appleArtistDetailJob?.cancel()
         appleArtistPagingJob?.cancel()

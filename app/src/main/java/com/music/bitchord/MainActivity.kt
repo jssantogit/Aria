@@ -4108,6 +4108,7 @@ private fun BitChordApp(
                                 onShuffle = {},
                                 onArtistClick = { _, _ -> },
                                 onAddSuggested = {},
+                                onCanonicalFeaturedReleaseOpen = viewModel::openCanonicalNativeDetail,
                                 onSectionItemClick = { item ->
                                     val matched = (
                                         artistState?.data?.albums.orEmpty() +
@@ -4123,6 +4124,7 @@ private fun BitChordApp(
                                 onSearchingChange = { detailSearching = it },
                                 metadataTracks = unified.metadataTracks,
                                 appleArtistTracks = unified.artistTracks,
+                                verifiedAppleArtistMbid = unified.verifiedArtistMbid,
                                 artistHeroOverride = unified.artistHeroUrl,
                                 songSort = songSort,
                                 footerContent = { palette ->

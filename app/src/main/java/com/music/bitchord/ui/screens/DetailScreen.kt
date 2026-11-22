@@ -373,6 +373,8 @@ fun DetailScreen(
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
     /** Apple artist ID-confirmed recordings, metadata only and never a top chart. */
     appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
+    /** Explicit Apple Music URL → MusicBrainz artist relation; never inferred. */
+    verifiedAppleArtistMbid: String? = null,
     /** Exact artist photo if the source has an independently proven identity. */
     artistHeroOverride: String? = null,
     /** Source-specific supplemental content inside this single native list. */
@@ -418,7 +420,10 @@ fun DetailScreen(
         nativeArtistLegacyRankedFeed(page.browseId)
     val publicArtistMbid = page.browseId.takeIf {
         isArtist && it.startsWith("catalog:ARTIST:")
-    }?.removePrefix("catalog:ARTIST:")
+    }?.removePrefix("catalog:ARTIST:") ?: verifiedAppleArtistMbid?.takeIf {
+        isArtist && page.browseId.startsWith("itunes:") &&
+            Regex("^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
+    }
     val publicTopRows = if (publicArtistMbid != null &&
         onCanonicalPublicTopOpen != null
     ) canonicalPublicTopTracks.filter {
@@ -821,6 +826,10 @@ fun DetailScreen(
 
             // The first release on the shelves below, pulled out as a card of its own.
             val topRelease = if (isLocalArtist) localArtistRecent
+                // Verified Apple/MusicBrainz relation supplements the Apple
+                // storefront page; it must never hide Apple's own top album.
+                else if (isArtist && page.browseId.startsWith("itunes:"))
+                    page.sections.topRelease()
                 else if (isArtist && publicArtistMbid == null) page.sections.topRelease()
                 else null
             if (isArtist && publicArtistMbid != null && canonicalFeaturedRelease != null &&
