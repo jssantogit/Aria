@@ -893,11 +893,9 @@ internal fun ProviderRemoteLibraryRow(
                 maxLines = 1,
             )
         }
-        Text(
-            if (configured) "Gerenciar" else "Configurar",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // The subtitle already explains readiness. The entire row is a
+        // clickable setup/management destination, so no redundant trailing
+        // “Configurar” / “Gerenciar” label and no fake capability switch.
     }
 }
 
