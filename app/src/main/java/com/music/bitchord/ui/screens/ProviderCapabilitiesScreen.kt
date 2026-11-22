@@ -122,6 +122,13 @@ internal fun ProviderCapabilitiesScreen(
             }
         }
 
+        // Local library configuration belongs to the actual MediaStore
+        // provider, below its independent engine capability switch.
+        if (group.key.providerId == "local") {
+            Spacer(Modifier.height(14.dp))
+            ProviderLocalLibrarySettings()
+        }
+
         // Credential management belongs exclusively to Provedores ⋮ →
         // Conexões, which reuses the shared token vault. Never render a
         // second Discogs/ListenBrainz/Last.fm/Soulseek connection row here.
