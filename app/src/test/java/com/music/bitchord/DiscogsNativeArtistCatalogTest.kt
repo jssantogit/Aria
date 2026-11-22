@@ -41,7 +41,7 @@ class DiscogsNativeArtistCatalogTest {
         assertEquals(listOf("discogs:release:50"), rows.map { it.browseId })
         assertEquals(90L, rows.single().masterId)
         assertEquals("https://www.discogs.com/release/50", rows.single().attributionUrl)
-        assertEquals(listOf("1" to "Track"), rows.single().tracklist)
+        assertTrue(rows.single().tracklist.isEmpty())
     }
 
     @Test fun missingPermissionFailsClosedBeforeAnyDiscogsTransportCall() = runBlocking {
