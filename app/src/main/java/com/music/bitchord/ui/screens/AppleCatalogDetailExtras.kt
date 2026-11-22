@@ -4,7 +4,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.ui.text.style.TextOverflow
+import coil3.compose.AsyncImage
+import com.music.bitchord.data.catalog.metadata.safeAppleArtwork
+import com.music.bitchord.ui.components.CoverPlaceholder
+import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -97,26 +110,56 @@ internal fun AppleArtistMetadataTracksSection(
     palette: ArtworkPalette,
 ) {
     if (tracks.isEmpty()) return
-    Column(Modifier.fillMaxWidth()) {
-        SectionHeading("Músicas", palette)
-        tracks.take(12).forEach { track ->
-            Column(Modifier.fillMaxWidth().padding(
-                horizontal = PAGE_GUTTER, vertical = 10.dp,
-            )) {
+    NativeArtistTracksShelf(
+        title = "Músicas",
+        tracks = tracks.take(16),
+        palette = palette,
+        horizontalPadding = PAGE_GUTTER,
+        itemKey = { it.key },
+    ) { track ->
+        // Identical native row geometry as canonical/local artist songs, but
+        // without fake play, rating or overflow actions on metadata-only rows.
+        NativeDetailTrackRowLayout(
+            onClick = null,
+            onLongPress = null,
+            onMore = null,
+            horizontalInset = 0.dp,
+            leading = {
+                Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
+                    .background(palette.onBackground.copy(alpha = 0.08f))) {
+                    CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
+                    safeAppleArtwork(track.artworkUri)?.let { verified ->
+                        AsyncImage(
+                            model = verified,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            },
+            title = {
                 Text(
                     track.title,
                     style = MaterialTheme.typography.titleMedium,
                     color = palette.onBackground,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+            },
+            subtitle = {
                 Text(
                     track.artistName,
                     style = MaterialTheme.typography.bodyMedium,
                     color = palette.onBackgroundVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            }
-        }
+            },
+            rating = {},
+            showRatingSlot = false,
+            actions = {},
+        )
     }
 }
 

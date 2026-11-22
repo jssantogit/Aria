@@ -63,13 +63,20 @@ internal fun appleArtistAsSharedDetail(
         sameId.singleOrNull() ?: sameId.firstOrNull()
             ?.takeIf { first -> sameId.all { it == first } }
     }
+    // Native Apple Music-style sections. EP and Single are one rail, while
+    // "live", "compilation" and "featured on" require independent evidence:
+    // names and artwork cannot prove such a relationship or release class.
     val groups = listOf(
-        AppleEditorialReleaseCategory.ALBUM to "Álbuns",
-        AppleEditorialReleaseCategory.EP to "EPs",
-        AppleEditorialReleaseCategory.SINGLE to "Singles",
-        AppleEditorialReleaseCategory.UNCLASSIFIED to "Outros lançamentos",
-    ).mapNotNull { (category, title) ->
-        releases.filter { it.category == category }.takeIf { it.isNotEmpty() }
+        "Álbuns" to setOf(AppleEditorialReleaseCategory.ALBUM),
+        "Singles e EPs" to setOf(
+            AppleEditorialReleaseCategory.EP, AppleEditorialReleaseCategory.SINGLE,
+        ),
+        "Outros lançamentos" to setOf(AppleEditorialReleaseCategory.UNCLASSIFIED),
+    ).mapNotNull { (title, categories) ->
+        releases.filter { it.category in categories }.takeIf { it.isNotEmpty() }
+            ?.sortedWith(compareByDescending<AppleEditorialSearchRow> {
+                it.releaseDate.orEmpty()
+            }.thenBy { it.browseId })
             ?.map { album ->
                 ShelfItem(
                     title = album.title,

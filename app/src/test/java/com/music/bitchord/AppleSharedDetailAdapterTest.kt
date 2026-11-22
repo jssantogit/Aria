@@ -43,7 +43,7 @@ class AppleSharedDetailAdapterTest {
         val adapted = requireNotNull(appleArtistAsSharedDetail(page))
         assertEquals(BrowseType.ARTIST, adapted.page.type)
         assertEquals("itunes:br:artist:1656329288", adapted.page.browseId)
-        assertEquals(listOf("Álbuns", "EPs", "Singles", "Outros lançamentos"),
+        assertEquals(listOf("Álbuns", "Singles e EPs", "Outros lançamentos"),
             adapted.page.sections.map { it.title })
         assertEquals(listOf("itunes:br:album:10", "itunes:br:album:20",
             "itunes:br:album:30", "itunes:br:album:40"),
@@ -51,6 +51,28 @@ class AppleSharedDetailAdapterTest {
         assertEquals(artist.artworkUri, adapted.artistHeroUrl)
         assertTrue((adapted.page.songs as UiState.Success).data.isEmpty())
         assertTrue(adapted.metadataTracks.isEmpty())
+    }
+
+    @Test fun appleArtistSinglesAndEpsAreCombinedAndSortedByVerifiedDates() {
+        val older = album(11, AppleEditorialReleaseCategory.SINGLE)
+            .copy(releaseDate = "2023-01-01")
+        val newer = album(12, AppleEditorialReleaseCategory.EP)
+            .copy(releaseDate = "2026-08-01")
+        val page = requireNotNull(appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist,
+                albums = listOf(older, newer),
+                possiblyTruncated = false,
+            ),
+        )).page
+        assertEquals(listOf("Singles e EPs"), page.sections.map { it.title })
+        assertEquals(listOf(newer.browseId, older.browseId),
+            page.sections.single().items.map { it.browseId })
+        assertTrue(page.sections.single().items.all { it.videoId == null })
+        assertTrue(page.sections.none {
+            it.title == "Videoclipes" || it.title == "Álbuns ao vivo" ||
+                it.title == "Coletâneas"
+        })
     }
 
     @Test fun albumUsesNativeDetailPageWithNonPlayableNumberedMetadata() {
