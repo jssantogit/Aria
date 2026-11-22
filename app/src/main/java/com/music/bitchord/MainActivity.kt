@@ -2520,7 +2520,7 @@ private fun BitChordApp(
             }
         }
         com.music.bitchord.ui.canonicalExploreGenreForBrowseId(item.browseId)?.let { genre ->
-            navigateToCanonicalGenre(genre, fromSearch = false)
+            navigateToCanonicalGenre(genre, false)
             return@click
         }
         // Storefront-scoped Apple cards cannot fall through to old MB browse
@@ -4683,7 +4683,7 @@ private fun BitChordApp(
                             onCategoryOpen = { item ->
                                 com.music.bitchord.ui.canonicalExploreGenreForBrowseId(
                                     item.browseId,
-                                )?.let { navigateToCanonicalGenre(it, fromSearch = true) }
+                                )?.let { navigateToCanonicalGenre(it, true) }
                             },
                             sourceSwitcher = {
                                 com.music.bitchord.ui.screens.AppleSearchOriginTabs(
