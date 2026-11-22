@@ -14,6 +14,8 @@ import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.DiscogsNativePage
 import com.music.bitchord.ui.DiscogsNativeRoute
 import com.music.bitchord.ui.MainViewModel
+import com.music.bitchord.ui.AppleCatalogBrowseRoute
+import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
 import com.music.bitchord.ui.components.MessageState
 
 /**
@@ -94,7 +96,39 @@ internal fun CanonicalProviderDetailHost(
         onSongLongPress = {},
         onSongSwipe = {},
         onShuffle = {},
-        onArtistClick = { _, _ -> },
+        onArtistClick = { targetId, artistName ->
+            // Only an exact provider-owned credit ID can open an artist page.
+            // Do not search by a similar title or cast to a MusicBrainz ID.
+            if (isDiscogs) {
+                val artistId = discogsNativeDetailRouteKey(
+                    DiscogsNativeRoute.ARTIST, targetId,
+                )?.removePrefix("discogs:artist:")?.toLongOrNull()
+                if (targetId == discogsPage?.albumArtistBrowseId &&
+                    artistId != null && artistName.isNotBlank()
+                ) {
+                    viewModel.discogsNativeCatalog.openArtist(
+                        DiscogsNativeArtistSearchRow(artistId, artistName),
+                    )
+                }
+            } else {
+                val route = AppleCatalogBrowseRoute.parse(targetId)
+                if (targetId == applePage?.albumArtistBrowseId &&
+                    route?.kind == ItunesCatalogItemType.ARTIST &&
+                    artistName.isNotBlank()
+                ) {
+                    viewModel.openAppleEditorialEntry(
+                        AppleEditorialSearchRow(
+                            browseId = targetId,
+                            title = artistName,
+                            artistName = artistName,
+                            artworkUri = null,
+                            releaseDate = null,
+                            kind = AppleEditorialSearchKind.ARTIST,
+                        ),
+                    )
+                }
+            }
+        },
         onAddSuggested = {},
         onCanonicalFeaturedReleaseOpen = if (isDiscogs) null
             else viewModel::openCanonicalNativeDetail,
@@ -121,6 +155,8 @@ internal fun CanonicalProviderDetailHost(
         searching = searching,
         onSearchingChange = onSearchingChange,
         metadataTracks = discogsPage?.tracks ?: applePage?.metadataTracks.orEmpty(),
+        sourceAlbumArtistBrowseId = discogsPage?.albumArtistBrowseId
+            ?: applePage?.albumArtistBrowseId,
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,

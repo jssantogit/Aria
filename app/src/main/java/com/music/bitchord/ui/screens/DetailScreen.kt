@@ -381,6 +381,8 @@ fun DetailScreen(
     verifiedAppleArtistMbid: String? = null,
     /** Exact artist photo if the source has an independently proven identity. */
     artistHeroOverride: String? = null,
+    /** Source-owned album credit ID, supplied only after provider verification. */
+    sourceAlbumArtistBrowseId: String? = null,
     /** Source-specific supplemental content inside this single native list. */
     footerContent: LazyListScope.(ArtworkPalette) -> Unit = {},
     onCanonicalTrackPlay: ((String) -> Unit)? = null,
@@ -792,6 +794,7 @@ fun DetailScreen(
                         songs = songs,
                         canonicalTracks = canonicalTracks,
                         metadataTracks = metadataTracks,
+                        sourceAlbumArtistBrowseId = sourceAlbumArtistBrowseId,
                         onPlay = {
                             if (songs.isNotEmpty()) onSongClick(songs, 0)
                             else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
@@ -1455,6 +1458,7 @@ private fun ReleaseHeader(
     songs: List<Song>,
     canonicalTracks: List<CanonicalCatalogSearchRow>,
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    sourceAlbumArtistBrowseId: String? = null,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onArtistClick: ((String, String) -> Unit)?,
@@ -1517,7 +1521,7 @@ private fun ReleaseHeader(
     }
     val creditArtistId = artist?.let { song ->
         detailAlbumArtistBrowseId(page.browseId, song.artistId, song.artist)
-    } ?: albumArtistRoute
+    } ?: albumArtistRoute ?: sourceAlbumArtistBrowseId
     val creditName = artist?.artist?.takeIf(String::isNotBlank) ?: credit
     val onCreditClick: (() -> Unit)? =
         if (creditArtistId != null && creditName.isNotBlank() && onArtistClick != null) {

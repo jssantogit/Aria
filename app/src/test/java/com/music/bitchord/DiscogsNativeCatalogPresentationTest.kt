@@ -61,6 +61,23 @@ class DiscogsNativeCatalogPresentationTest {
         assertTrue((page.page.songs as UiState.Success).data.isEmpty())
     }
 
+    @Test fun discogsAlbumCreditOnlyNavigatesWithOneProvenArtist() {
+        val verified = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 456L),
+            title = "Edition", artistNames = listOf("Artist"),
+            country = "BR", year = 2024, labels = emptyList(),
+            barcodes = emptyList(), formats = listOf("CD"),
+            tracklist = emptyList(), unofficial = false,
+            artistIds = listOf(8303009L),
+        )
+        assertEquals("discogs:artist:8303009",
+            discogsReleasePage("Artist", verified).albumArtistBrowseId)
+        assertNull(discogsReleasePage("Artist", verified.copy(
+            artistIds = listOf(8303009L, 92L),
+        )).albumArtistBrowseId)
+        assertNull(discogsReleasePage("Unrelated", verified).albumArtistBrowseId)
+    }
+
     @Test fun sourceReleaseTracklistIsNonPlayableAndHasNoSyntheticMusicBrainzIdentity() {
         val record = DiscogsRecord(
             link = DiscogsLink(DiscogsKind.RELEASE, 456L),

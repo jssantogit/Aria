@@ -95,6 +95,22 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
+    @Test fun albumArtistCreditUsesOnlyExactMatchingStorefrontArtistId() {
+        val selected = album(20, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = "itunes:br:artist:1656329288")
+        val source = AppleEditorialAlbumDetailPage(
+            album = selected, tracks = emptyList(), partialTracklist = false,
+        )
+        val adapted = requireNotNull(appleAlbumAsSharedDetail(source))
+        assertEquals("itunes:br:artist:1656329288", adapted.albumArtistBrowseId)
+        assertNull(requireNotNull(appleAlbumAsSharedDetail(source.copy(
+            album = selected.copy(artistBrowseId = "itunes:us:artist:1656329288"),
+        ))).albumArtistBrowseId)
+        assertNull(requireNotNull(appleAlbumAsSharedDetail(source.copy(
+            album = selected.copy(artistBrowseId = "catalog:ARTIST:1656329288"),
+        ))).albumArtistBrowseId)
+    }
+
     @Test fun artistRelationCanOnlyBePublishedAsValidatedCanonicalId() {
         val linked = "13dd61c7-ce73-4e97-9f0c-9f0e53144411"
         val verified = requireNotNull(appleArtistAsSharedDetail(

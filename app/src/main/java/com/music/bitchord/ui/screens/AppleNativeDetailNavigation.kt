@@ -114,5 +114,6 @@ internal fun appleNativeDetailDisplayAllowed(
         detail.artistTracks.isEmpty() &&
         detail.artistHeroUrl == null &&
         detail.verifiedArtistMbid == null &&
+        detail.albumArtistBrowseId == null &&
         detail.attribution == null
     )
