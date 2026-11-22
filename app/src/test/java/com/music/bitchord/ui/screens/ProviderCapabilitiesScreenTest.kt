@@ -379,6 +379,63 @@ class ProviderCapabilitiesScreenTest {
         compose.runOnIdle { assertEquals(1, opened) }
     }
 
+    @Test fun localLibraryCapabilityPageKeepsRealFolderAndFilteringSettings() {
+        val key = ProviderKey("local", "mediastore")
+        val capability = ProviderCapability.PERSONAL_LIBRARY
+        val entry = ProviderInventoryEntry(
+            key = key,
+            capability = capability,
+            tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+            displayName = "Biblioteca Local (MediaStore)",
+            readiness = ProviderReadiness.READY,
+            supportsReordering = false,
+            notes = "",
+        )
+        val group = ProviderDisplayGroup(
+            key = key,
+            tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+            title = "Biblioteca local",
+            rows = listOf(
+                ProviderTabRowState(
+                    entry = entry,
+                    status = ProviderCapabilityStatus(
+                        capability = capability,
+                        key = key,
+                        implemented = true,
+                        prerequisitesMet = true,
+                        userAuthorized = false,
+                        operationalHealth = ProviderOperationalHealth.UNKNOWN,
+                        effectiveEligible = false,
+                    ),
+                    order = 0,
+                ),
+            ),
+        )
+        compose.setContent {
+            BitChordTheme {
+                ProviderCapabilitiesScreen(
+                    group = group,
+                    configured = emptyMap(),
+                    saving = false,
+                    loading = false,
+                    error = null,
+                    contentPadding = PaddingValues(0.dp),
+                    onBack = {},
+                    onToggle = { _, _ -> },
+                    onConfigure = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-local-library-settings", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithTag("providers-local-folder-picker", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithTag("providers-local-filter-nonmusic", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithTag("providers-function-PERSONAL_LIBRARY", useUnmergedTree = true)
+            .assertExists()
+    }
+
     @Test fun audioRemoteLibraryUsesCleanNavidromeNameAndNoTrailingSetupLabel() {
         assertEquals("Navidrome", ProviderRemoteLibraryTarget.OPEN_SUBSONIC.displayName)
         var opened = 0
