@@ -179,6 +179,8 @@ data class CanonicalCatalogDetailPage(
     val totalCount: Int? = null,
     /** Exact editions of the opened ReleaseGroup, separate from track recordings. */
     val editionRows: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** MusicBrainz groups from one exact artist scope, not title matches. */
+    val artistRelatedRows: List<CanonicalCatalogSearchRow> = emptyList(),
 )
 
 /** A verified public playlist row is metadata, not a playable Song. */

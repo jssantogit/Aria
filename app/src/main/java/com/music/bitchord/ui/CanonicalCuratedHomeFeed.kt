@@ -4,6 +4,7 @@ import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.catalog.metadata.LISTENBRAINZ_PUBLIC_TTL_MS
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPopularityEvidence
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
+import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRelease
 import com.music.bitchord.data.catalog.metadata.ListenBrainzSitewideRecording
 import com.music.bitchord.data.catalog.metadata.publicListenBrainzRecordingRanking
@@ -115,6 +116,70 @@ internal fun canonicalReleaseGroupEditionRows(
         )
     }
     .toList()
+
+
+/**
+ * Source-scoped artist browse only: an album title is never artist evidence.
+ * MusicBrainz authorizes the relation, not our UI, Apple or string matching.
+ */
+internal fun canonicalAlbumArtistRelatedRows(
+    artistMbid: String?,
+    openedGroupMbid: String,
+    scopedGroups: List<MusicBrainzReleaseGroupHit>,
+    limit: Int = 12,
+): List<CanonicalCatalogSearchRow> {
+    val artist = artistMbid?.trim()?.lowercase(java.util.Locale.ROOT)
+        ?.takeIf { Regex("^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$").matches(it) }
+        ?: return emptyList()
+    if (limit <= 0) return emptyList()
+    return scopedGroups.asSequence()
+        .filter { !it.musicBrainzId.equals(openedGroupMbid, ignoreCase = true) }
+        .filter(::isCuratedMusicBrainzReleaseGroup)
+        .map { group ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = group.musicBrainzId,
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = group.title,
+                subtitle = group.artistDisplay,
+                artistScopeMbid = artist,
+                releaseKind = group.primaryType,
+                releaseDate = group.firstReleaseDate,
+                secondaryTypes = group.secondaryTypes,
+                artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(group.artworkUri),
+            )
+        }
+        .filter { canonicalEditorialReleaseType(it) != null }
+        .distinctBy { it.musicBrainzId.lowercase(java.util.Locale.ROOT) }
+        .sortedWith(compareByDescending<CanonicalCatalogSearchRow> {
+            it.releaseDate.orEmpty()
+        }.thenBy { it.musicBrainzId })
+        .take(limit.coerceAtMost(24))
+        .toList()
+}
+
+/** Existing DetailScreen shelf, with verified MBIDs and no playable Song. */
+internal fun canonicalAlbumArtistRelatedShelf(
+    rows: List<CanonicalCatalogSearchRow>,
+    verifiedArtistName: String?,
+): HomeShelf? {
+    if (rows.isEmpty()) return null
+    val heading = verifiedArtistName?.trim()?.takeIf {
+        it.isNotEmpty() && it.length <= 80 && '·' !in it &&
+            !it.equals("Various Artists", ignoreCase = true)
+    }?.let { "Mais de $it" } ?: "Mais do artista"
+    return HomeShelf(heading, rows.map { row ->
+        val kind = canonicalEditorialReleaseType(row)
+        val year = row.releaseDate?.take(4)
+            ?.takeIf { it.length == 4 && it.all(Char::isDigit) }
+        ShelfItem(
+            title = row.title,
+            subtitle = listOfNotNull(kind, year).joinToString(" · "),
+            thumbnailUrl = row.artworkUri,
+            videoId = null,
+            browseId = canonicalNativeBrowseId(row),
+        )
+    })
+}
 
 /** Native DetailScreen accepts real browse shelves without synthetic Song.videoId. */
 internal fun canonicalNativeSections(

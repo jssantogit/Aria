@@ -1187,7 +1187,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openCanonicalNativeShelfItem(browseId: String): Boolean {
         if (!browseId.startsWith("catalog:")) return false
         val current = (_canonicalDetail.value as? UiState.Success)?.data
-        val currentRows = current?.rows.orEmpty() + current?.editionRows.orEmpty()
+        val currentRows = current?.rows.orEmpty() + current?.editionRows.orEmpty() +
+            current?.artistRelatedRows.orEmpty()
         val fromCatalog = (_canonicalDiscoveryCatalog.value as? UiState.Success)?.data.orEmpty()
         val row = (currentRows + fromCatalog).firstOrNull {
             canonicalNativeBrowseId(it) == browseId
@@ -1592,6 +1593,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 releaseDate = hit.firstReleaseDate,
                                 releaseKind = hit.primaryType?.takeUnless { it.equals("Other", true) },
                                 secondaryTypes = hit.secondaryTypes,
+                                artistScopeMbid = entry.musicBrainzId,
                                 artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(
                                     verifiedGroups[hit.musicBrainzId]?.artworkUri,
                                 ),
@@ -1620,6 +1622,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 releaseDate = hit.firstReleaseDate,
                                 releaseKind = hit.primaryType?.takeUnless { it.equals("Other", true) },
                                 secondaryTypes = hit.secondaryTypes,
+                                artistScopeMbid = entry.musicBrainzId,
                                 artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(
                                     hit.artworkUri,
                                 ),
@@ -1921,6 +1924,59 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+
+            // Album first paint (tracks and exact editions) happened above.
+            // This optional second-stage browse only adds proven work by the
+            // source artist and never blocks or replaces canonical track rows.
+            if (entry.kind == CanonicalSearchKind.RELEASE_GROUP &&
+                output is UiState.Success &&
+                lease.isCurrent() && _searchSource.value == SearchSource.CANONICAL &&
+                canonicalPath.lastOrNull() == entry
+            ) {
+                var artistMbid = entry.artistCreditMbids?.singleOrNull()
+                    ?: entry.artistScopeMbid
+                var artistName = entry.subtitle?.takeIf {
+                    it.isNotBlank() && '·' !in it
+                }
+                if (artistMbid == null) {
+                    val sourceGroup = musicBrainzGraph.lookupReleaseGroup(entry.musicBrainzId)
+                    if (sourceGroup is MusicBrainzCatalogGraphResult.Success) {
+                        artistMbid = sourceGroup.value.artistCreditMbids?.singleOrNull()
+                        artistName = sourceGroup.value.artistDisplay
+                    }
+                }
+                val sourceArtist = artistMbid
+                if (sourceArtist != null) {
+                    val relatedBrowse = retryTransientArtistDiscography(
+                        fetch = {
+                            musicBrainzGraph.browseReleaseGroupsForArtist(
+                                sourceArtist, limit = 45,
+                            )
+                        },
+                    )
+                    if (relatedBrowse is MusicBrainzCatalogGraphResult.Success) {
+                        val related = canonicalAlbumArtistRelatedRows(
+                            sourceArtist, entry.musicBrainzId, relatedBrowse.value.items,
+                        )
+                        val shelf = canonicalAlbumArtistRelatedShelf(related, artistName)
+                        if (shelf != null && lease.isCurrent() &&
+                            _searchSource.value == SearchSource.CANONICAL &&
+                            canonicalPath.lastOrNull() == entry
+                        ) {
+                            _canonicalDetail.update { state ->
+                                if (state is UiState.Success)
+                                    UiState.Success(state.data.copy(artistRelatedRows = related))
+                                else state
+                            }
+                            val nativeId = canonicalNativeBrowseId(entry)
+                            _detailStack.update { pages -> pages.map { page ->
+                                if (page.browseId != nativeId) page
+                                else page.copy(sections = page.sections + shelf)
+                            } }
+                        }
+                    }
+                }
+            }
             // Publish the first artist page immediately. Complete the next
             // four pages progressively, still respecting MusicBrainz's global
             // rate limiter and the same cancellation/navigation boundary.
@@ -1969,6 +2025,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                             it.equals("Other", true)
                                         },
                                         secondaryTypes = hit.secondaryTypes,
+                                        artistScopeMbid = entry.musicBrainzId,
                                         artworkUri = previous?.artworkUri ?:
                                             artworkById[hit.musicBrainzId],
                                     )

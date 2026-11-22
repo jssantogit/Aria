@@ -128,7 +128,7 @@ internal class MusicBrainzCatalogGraph(
                     primaryType = root.string("primary-type"),
                     firstReleaseDate = root.string("first-release-date"),
                     artistDisplay = root.artistDisplay(),
-                ))
+                ).also { it.artistCreditMbids = root.completeGraphArtistCreditMbids() })
             }
         } catch (_: Exception) {
             MusicBrainzCatalogGraphResult.Failure(
@@ -595,6 +595,17 @@ internal class MusicBrainzCatalogGraph(
                 runCatching { credit["joinphrase"]?.jsonPrimitive?.contentOrNull }
                     .getOrNull().orEmpty()
         }.trim().takeIf(String::isNotEmpty)
+
+    /** All or nothing: malformed credit cannot identify album's artist. */
+    private fun JsonObject.completeGraphArtistCreditMbids(): List<String>? {
+        val credits = this["artist-credit"] as? JsonArray ?: return null
+        if (credits.isEmpty()) return null
+        return credits.map { raw ->
+            val credit = raw as? JsonObject ?: return null
+            val artist = credit["artist"] as? JsonObject ?: return null
+            artist.string("id").validMbid() ?: return null
+        }
+    }
 
     /** Structured MB credit identities, never split a visible joined name. */
     private fun JsonObject.artistCreditNames(): List<String> {

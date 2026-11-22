@@ -44,6 +44,40 @@ class CanonicalCuratedHomeFeedTest {
         trendingHeading = "Em alta", todayIsoDate = "2026-10-25",
     )
 
+
+    @Test fun albumRelatedRailIsBoundToExactArtistAndCanonicalGroupIds() {
+        val artist = "12345678-1234-4234-8234-123456789abc"
+        val current = "11111111-1111-4111-8111-111111111111"
+        fun group(id: String, title: String, type: String) =
+            com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit(
+                musicBrainzId = id, title = title, primaryType = type,
+                firstReleaseDate = "2025-09-02", artistDisplay = "ILLIT",
+            )
+        val other = group("22222222-2222-4222-8222-222222222222",
+            "Verified second album", "Album")
+        val untyped = group("33333333-3333-4333-8333-333333333333",
+            "Unclassified", "Other")
+        val rows = com.music.bitchord.ui.canonicalAlbumArtistRelatedRows(
+            artist, current, listOf(group(current, "Opened", "Album"),
+                other, other, untyped),
+        )
+        assertEquals(listOf(other.musicBrainzId), rows.map { it.musicBrainzId })
+        assertEquals(artist, rows.single().artistScopeMbid)
+        val shelf = com.music.bitchord.ui.canonicalAlbumArtistRelatedShelf(rows, "ILLIT")!!
+        assertEquals("Mais de ILLIT", shelf.title)
+        assertEquals("catalog:RELEASE_GROUP:${other.musicBrainzId}",
+            shelf.items.single().browseId)
+        assertEquals(null, shelf.items.single().videoId)
+        assertTrue(com.music.bitchord.ui.canonicalAlbumArtistRelatedRows(
+            null, current, listOf(other),
+        ).isEmpty())
+        assertTrue(com.music.bitchord.ui.canonicalAlbumArtistRelatedRows(
+            "not-a-valid-id", current, listOf(other),
+        ).isEmpty())
+        assertEquals("Mais do artista",
+            com.music.bitchord.ui.canonicalAlbumArtistRelatedShelf(rows, "Various Artists")?.title)
+    }
+
     @Test fun albumVersionsUseProvenGroupLinksAndAreNeverPlayableSongs() {
         val group = "11111111-1111-4111-8111-111111111111"
         val selected = com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(
