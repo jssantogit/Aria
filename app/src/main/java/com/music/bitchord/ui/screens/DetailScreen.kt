@@ -421,9 +421,10 @@ fun DetailScreen(
     val appleIdentityAuthorized = if (isArtist && page.browseId.startsWith("itunes:")) {
         // A disabled identity provider cannot keep publishing a previously
         // resolved Apple→MB crosswalk or its related-artist shelves.
-        com.music.bitchord.data.providers.ProviderRuntime.state
-            ?.collectAsStateWithLifecycle()
-        com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
+        val identitySnapshot = com.music.bitchord.data.providers.ProviderRuntime.state
+            ?.collectAsStateWithLifecycle()?.value
+        identitySnapshot != null &&
+            com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
             com.music.bitchord.data.providers.ProviderCapability.IDENTITY,
             com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
         ) != null
