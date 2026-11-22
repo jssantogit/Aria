@@ -3968,7 +3968,6 @@ private fun BitChordApp(
                             },
                             onSignOut = { viewModel.signOut() },
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
-                            onOpenLastfmLogin = { showLastfmLogin = true },
                             onOpenDiscord = { showDiscord = true },
                             onOpenSpotify = { showSpotify = true },
                             contentPadding = listPadding,
@@ -5021,8 +5020,7 @@ private fun BitChordApp(
                                 },
                                 onSignOut = { viewModel.signOut() },
                                 onOpenListenBrainzLogin = { showListenBrainzLogin = true },
-                                onOpenLastfmLogin = { showLastfmLogin = true },
-                                onOpenDiscord = { showDiscord = true },
+                                    onOpenDiscord = { showDiscord = true },
                                 onOpenSpotify = { showSpotify = true },
                                 contentPadding = listPadding,
                             )
