@@ -12,6 +12,7 @@ import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderReadLease
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
+import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.NativeMetadataTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -42,10 +43,16 @@ internal class DiscogsNativeCatalogSession(
     private val scope: CoroutineScope,
 ) {
     private val appContext = context.applicationContext
+    private val tokenVault by lazy { DiscogsSearchTokenVault(appContext) }
     private val searchClient by lazy {
         DiscogsNativeArtistSearchClient(
             enabled = true,
-            tokenProvider = { DiscogsSearchTokenVault(appContext).readForSearch() },
+            tokenProvider = { tokenVault.readForSearch() },
+        )
+    }
+    private val releaseSearchClient by lazy {
+        DiscogsNativeReleaseSearchClient(
+            enabled = true, tokenProvider = { tokenVault.readForSearch() },
         )
     }
     private val artistClient by lazy { DiscogsNativeArtistCatalog(enabled = true) }
@@ -58,6 +65,12 @@ internal class DiscogsNativeCatalogSession(
 
     private val _artists = MutableStateFlow<UiState<List<DiscogsNativeArtistSearchRow>>?>(null)
     val artists: StateFlow<UiState<List<DiscogsNativeArtistSearchRow>>?> = _artists.asStateFlow()
+    private val _releasesSearch =
+        MutableStateFlow<UiState<List<DiscogsNativeReleaseSearchRow>>?>(null)
+    val releaseSearch: StateFlow<UiState<List<DiscogsNativeReleaseSearchRow>>?> =
+        _releasesSearch.asStateFlow()
+    private val _releaseSearchHasMore = MutableStateFlow(false)
+    val releaseSearchHasMore: StateFlow<Boolean> = _releaseSearchHasMore.asStateFlow()
     private val _searchHasMore = MutableStateFlow(false)
     val searchHasMore: StateFlow<Boolean> = _searchHasMore.asStateFlow()
     private val _route = MutableStateFlow<DiscogsNativeRoute?>(null)
@@ -67,7 +80,9 @@ internal class DiscogsNativeCatalogSession(
 
     private var query = ""
     private var searchPage = 0
+    private var releaseSearchPage = 0
     private var searchJob: Job? = null
+    private var releaseSearchJob: Job? = null
     private var detailJob: Job? = null
     private var artist: DiscogsNativeArtistSearchRow? = null
     private var releases: List<DiscogsNativeArtistRelease> = emptyList()
@@ -88,11 +103,16 @@ internal class DiscogsNativeCatalogSession(
 
     fun clearSearch() {
         searchJob?.cancel()
+        releaseSearchJob?.cancel()
         searchJob = null
+        releaseSearchJob = null
         query = ""
         searchPage = 0
+        releaseSearchPage = 0
         _searchHasMore.value = false
+        _releaseSearchHasMore.value = false
         _artists.value = null
+        _releasesSearch.value = null
     }
 
     fun search(raw: String) {
@@ -101,7 +121,9 @@ internal class DiscogsNativeCatalogSession(
         query = raw.trim()
         if (query.isBlank()) return
         _artists.value = UiState.Loading
+        _releasesSearch.value = UiState.Loading
         loadNextSearchPage()
+        loadNextReleaseSearchPage()
     }
 
     fun loadNextSearchPage() {
@@ -139,6 +161,74 @@ internal class DiscogsNativeCatalogSession(
             }
         }
         searchJob = job
+        val unregister = authorization.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+    }
+
+    fun loadNextReleaseSearchPage() {
+        if (query.isBlank() || releaseSearchJob?.isActive == true) return
+        if (releaseSearchPage != 0 && !_releaseSearchHasMore.value) return
+        val subject = query
+        val page = releaseSearchPage + 1
+        val authorization = lease(ProviderCapability.CATALOG_SEARCH)
+        if (authorization == null) {
+            _releasesSearch.value = UiState.Error("discogs_search_disabled")
+            return
+        }
+        val job = scope.launch(Dispatchers.IO) {
+            val result = try { releaseSearchClient.search(subject, page) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsNativeReleaseSearchResult.Unavailable }
+            if (query != subject || !authorization.isCurrent()) return@launch
+            when (result) {
+                is DiscogsNativeReleaseSearchResult.Success -> {
+                    val rows = result.page.releases.map {
+                        DiscogsNativeReleaseSearchRow(it.releaseId, it.title)
+                    }
+                    val previous = (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
+                    _releasesSearch.value = UiState.Success(
+                        (previous + rows).distinctBy { it.releaseId },
+                    )
+                    releaseSearchPage = page
+                    _releaseSearchHasMore.value = result.page.nextPage != null
+                }
+                DiscogsNativeReleaseSearchResult.AuthenticationRequired ->
+                    _releasesSearch.value = UiState.Error("discogs_token_required")
+                DiscogsNativeReleaseSearchResult.Disabled ->
+                    _releasesSearch.value = UiState.Error("discogs_search_disabled")
+                else -> _releasesSearch.value = UiState.Error("discogs_catalog_unavailable")
+            }
+        }
+        releaseSearchJob = job
+        val unregister = authorization.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+    }
+
+    /**
+     * Exact typed Discogs Release search selection. Hydrate the chosen source
+     * ID directly, with no artist page or MusicBrainz requirement.
+     */
+    fun openReleaseFromSearch(selected: DiscogsNativeReleaseSearchRow) {
+        if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
+        val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
+        backAll()
+        _route.value = DiscogsNativeRoute.RELEASE
+        _detail.value = UiState.Loading
+        val job = scope.launch(Dispatchers.IO) {
+            val response = try { editionClient.fetchRelease(selected.releaseId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsLookupResult.Unavailable }
+            if (!authorization.isCurrent() || artist != null ||
+                _route.value != DiscogsNativeRoute.RELEASE) return@launch
+            val record = (response as? DiscogsLookupResult.Found)?.record
+            _detail.value = if (record != null &&
+                record.link.kind == DiscogsKind.RELEASE &&
+                record.link.id == selected.releaseId
+            ) UiState.Success(discogsReleasePage(
+                record.artistNames.joinToString(", "), record,
+            )) else UiState.Error("discogs_release_unavailable")
+        }
+        detailJob = job
         val unregister = authorization.cancelJobOnRevoke(job)
         job.invokeOnCompletion { unregister() }
     }
@@ -225,7 +315,7 @@ internal class DiscogsNativeCatalogSession(
     fun back() {
         detailJob?.cancel()
         detailJob = null
-        if (_route.value == DiscogsNativeRoute.RELEASE) {
+        if (_route.value == DiscogsNativeRoute.RELEASE && artist != null) {
             _route.value = DiscogsNativeRoute.ARTIST
             _detail.value = cachedArtistPage?.let { UiState.Success(it) }
                 ?: UiState.Error("discogs_catalog_unavailable")
@@ -303,11 +393,20 @@ internal fun discogsArtistPage(
 internal fun discogsReleasePage(
     artist: DiscogsNativeArtistSearchRow,
     record: DiscogsRecord,
+): DiscogsNativePage = discogsReleasePage(artist.name, record)
+
+internal fun discogsReleasePage(
+    artistCredit: String,
+    record: DiscogsRecord,
 ): DiscogsNativePage = DiscogsNativePage(
     page = DetailPage(
         browseId = "discogs:release:${record.link.id}",
         title = record.title,
-        subtitle = listOfNotNull(artist.name, record.year?.toString()).joinToString(" · "),
+        subtitle = listOfNotNull(
+            artistCredit.takeIf(String::isNotBlank),
+            record.year?.toString(),
+            "Edição não oficial".takeIf { record.unofficial },
+        ).joinToString(" · "),
         thumbnailUrl = null,
         type = BrowseType.ALBUM,
         songs = UiState.Success(emptyList()),
@@ -317,7 +416,7 @@ internal fun discogsReleasePage(
         NativeMetadataTrack(
             key = "discogs:track:${record.link.id}:$index",
             title = title,
-            credit = artist.name,
+            credit = artistCredit.takeIf(String::isNotBlank),
             discNumber = null,
             trackNumber = position.toIntOrNull()?.takeIf { it > 0 },
         )
