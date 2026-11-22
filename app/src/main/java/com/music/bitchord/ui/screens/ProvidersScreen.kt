@@ -42,6 +42,7 @@ import com.music.bitchord.ui.components.appleSettingsSwitchColors
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -74,6 +75,7 @@ import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderCapabilityPolicy
 import com.music.bitchord.data.providers.ProviderCapabilityRegistry
 import com.music.bitchord.data.providers.ProviderChoice
+import com.music.bitchord.data.providers.maskedProviderCredentialHint
 import com.music.bitchord.data.providers.ProviderInventoryEntry
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderReadiness
@@ -98,6 +100,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 
 /**
  * REA-native presentation for the IDM capability engine.
@@ -117,6 +120,11 @@ fun ProvidersScreen(
     val configs by SourceRegistry.configs.collectAsState()
     val providerFlow = remember { ProviderRuntime.state ?: MutableStateFlow(ProviderSessionSnapshot()) }
     val snapshot by providerFlow.collectAsState()
+    // Collect only a masked projection; raw stored ListenBrainz data never
+    // becomes a Compose input value or a saved UI state entry.
+    val persistedListenBrainzHint by remember {
+        AppSettings.listenBrainzToken.map(::maskedProviderCredentialHint)
+    }.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -138,7 +146,18 @@ fun ProvidersScreen(
     var info by remember { mutableStateOf<ProviderInventoryEntry?>(null) }
     var discogsToken by remember { mutableStateOf("") }
     var listenBrainzTokenInput by remember { mutableStateOf("") }
+    var discogsSavedHint by remember { mutableStateOf<String?>(null) }
     var credentialSaving by remember { mutableStateOf(false) }
+
+    // The encrypted vault exposes only a four-character display hint.
+    // Re-read it on every entrance to Connections (including process restore).
+    LaunchedEffect(connections) {
+        discogsSavedHint = if (connections) {
+            withContext(Dispatchers.IO) {
+                DiscogsSearchTokenVault(context).maskedHint()
+            }
+        } else null
+    }
 
     fun cancelEdit() {
         editing = false
@@ -291,6 +310,7 @@ fun ProvidersScreen(
                     DiscogsSearchTokenVault(context).store(secret)
                 }
                 if (stored && ProviderRuntime.notifyDiscogsCredentialChanged(true)) {
+                    discogsSavedHint = maskedProviderCredentialHint(secret)
                     discogsToken = ""
                 } else {
                     message = "Não foi possível salvar a credencial Discogs com segurança."
@@ -400,7 +420,9 @@ fun ProvidersScreen(
                     showLastFm = "lastfm" in available,
                     showSoulseek = "soulseek" in available,
                     discogsConfigured = discogsReady,
-                    listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                    listenBrainzConfigured = persistedListenBrainzHint != null,
+                    discogsSavedHint = discogsSavedHint,
+                    listenBrainzSavedHint = persistedListenBrainzHint,
                     discogsToken = discogsToken,
                     listenBrainzToken = listenBrainzTokenInput,
                     saving = credentialSaving || saving,
