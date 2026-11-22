@@ -408,6 +408,9 @@ import com.music.bitchord.ui.screens.ExploreScreen
 import com.music.bitchord.ui.screens.SearchScreen
 import com.music.bitchord.ui.screens.AppleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailKind
+import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
+import com.music.bitchord.ui.screens.appleNativePendingDetail
+import com.music.bitchord.ui.screens.appleNativeDetailDisplayAllowed
 import com.music.bitchord.ui.screens.appleAlbumAsSharedDetail
 import com.music.bitchord.ui.screens.appleArtistAsSharedDetail
 import com.music.bitchord.ui.screens.AppleArtistCatalogExtras
@@ -1165,6 +1168,8 @@ private fun BitChordApp(
         viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
     val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
     val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
+    val appleAlbumNavigation by viewModel.appleAlbumNavigation.collectAsStateWithLifecycle()
+    val appleArtistNavigation by viewModel.appleArtistNavigation.collectAsStateWithLifecycle()
     val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
     val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
@@ -1274,12 +1279,34 @@ private fun BitChordApp(
         appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
         else AppleNativeDetailKind.NONE
     val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
-    val appleSharedVisual = when (appleNativeKind) {
+    val appleNativeRouteKey = appleNativeDetailRouteKey(
+        appleNativeKind, appleArtistNavigation, appleAlbumNavigation,
+    )
+    val appleGate = com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()
+    val appleReadAllowed = appleGate?.open(
+        com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES,
+    ) != null
+    val appleSearchAllowed = appleGate?.open(
+        com.music.bitchord.data.providers.ProviderCapability.CATALOG_SEARCH,
+        com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES,
+    ) != null
+    val appleSharedVisual = (when (appleNativeKind) {
         AppleNativeDetailKind.ALBUM ->
             (appleAlbumDetail as? UiState.Success)?.data?.let(::appleAlbumAsSharedDetail)
+                ?: appleAlbumNavigation?.let { entry ->
+                    appleNativePendingDetail(entry, AppleNativeDetailKind.ALBUM,
+                        appleAlbumDetail is UiState.Error)
+                }
         AppleNativeDetailKind.ARTIST ->
             (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
+                ?: appleArtistNavigation?.let { entry ->
+                    appleNativePendingDetail(entry, AppleNativeDetailKind.ARTIST,
+                        appleArtistDetail is UiState.Error)
+                }
         AppleNativeDetailKind.NONE -> null
+    })?.takeIf {
+        appleNativeDetailDisplayAllowed(it, appleReadAllowed, appleSearchAllowed)
     }
     val visualDetail = detail ?: appleSharedVisual?.page ?: discogsNativeVisual?.page
     // Local Music, Downloads and the other device folders draw as release
@@ -1361,7 +1388,9 @@ private fun BitChordApp(
             viewModel.loadAccount()
         }
     }
-    LaunchedEffect(detail?.browseId, appleSharedVisual?.page?.browseId) {
+    LaunchedEffect(
+        detail?.browseId, appleNativeRouteKey, discogsBrowseId,
+    ) {
         detailActiveShelf = null
     }
     LaunchedEffect(showSettings) {
@@ -3524,6 +3553,10 @@ private fun BitChordApp(
                 // provider-owned browseId, never by a generic source screen.
                 selectedTab == TAB_SEARCH && discogsPageRouteKey != null ->
                     discogsPageRouteKey
+                // Exact iTunes storefront identity, matching MB and Discogs
+                // canonical DetailPage routes (including while loading).
+                selectedTab == TAB_SEARCH && appleNativeRouteKey != null ->
+                    appleNativeRouteKey
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
