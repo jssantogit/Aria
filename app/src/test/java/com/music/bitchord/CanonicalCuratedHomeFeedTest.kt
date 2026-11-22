@@ -127,11 +127,12 @@ class CanonicalCuratedHomeFeedTest {
             listOf(
                 com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit(
                     group, "Current work", primaryType = "Album",
-                    artistDisplay = "Verified artist",
+                    firstReleaseDate = "2025-01-01", artistDisplay = "Verified artist",
                 ),
                 com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit(
                     "66666666-6666-4666-8666-666666666666", "Other artist work",
-                    primaryType = "EP", artistDisplay = "Verified artist",
+                    primaryType = "EP", firstReleaseDate = "2025-04-01",
+                    artistDisplay = "Verified artist",
                 ),
             ),
         )
