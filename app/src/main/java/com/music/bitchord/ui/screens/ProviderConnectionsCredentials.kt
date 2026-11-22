@@ -33,6 +33,9 @@ internal fun ProviderConnectionsCredentials(
     showSoulseek: Boolean,
     discogsConfigured: Boolean,
     listenBrainzConfigured: Boolean,
+    // Display-only hints. Never populate the editable fields with saved tokens.
+    discogsSavedHint: String? = null,
+    listenBrainzSavedHint: String? = null,
     discogsToken: String,
     listenBrainzToken: String,
     saving: Boolean,
@@ -66,6 +69,7 @@ internal fun ProviderConnectionsCredentials(
                     value = discogsToken,
                     onValueChange = onDiscogsTokenChange,
                     enabled = !saving,
+                    savedHint = discogsSavedHint,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
                 NativeProviderCredentialSaveAction(
@@ -91,6 +95,7 @@ internal fun ProviderConnectionsCredentials(
                     value = listenBrainzToken,
                     onValueChange = onListenBrainzTokenChange,
                     enabled = !saving,
+                    savedHint = listenBrainzSavedHint,
                     providerId = "listenbrainz",
                     providerLabel = "ListenBrainz",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
