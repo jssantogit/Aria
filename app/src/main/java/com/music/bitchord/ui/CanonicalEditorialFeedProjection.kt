@@ -97,6 +97,7 @@ internal fun projectCanonicalGenreState(
     releasesHeading: String,
     /** The exact requested tag, never inferred from an old MBID row. */
     musicBrainzResultTag: String? = tag,
+    genreArtists: CanonicalGenreArtistSnapshot? = null,
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -133,7 +134,11 @@ internal fun projectCanonicalGenreState(
         BuiltInProviderKeys.ITUNES to appleState,
     ))
     val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
-    val all = releases + listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
+    val knownArtists = genreArtists?.takeIf {
+        it.tag == tag && BuiltInProviderKeys.MUSICBRAINZ in ordered
+    }?.let(::canonicalGenreArtistsShelf)
+    val all = releases + listOfNotNull(knownArtists) +
+        listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
     return when {
         all.isNotEmpty() -> UiState.Success(all)
         chosen.state is UiState.Loading -> UiState.Loading

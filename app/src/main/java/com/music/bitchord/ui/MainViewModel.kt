@@ -457,6 +457,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         MutableStateFlow<UiState<List<CanonicalCatalogSearchRow>>>(UiState.Loading)
     val canonicalGenreResults: StateFlow<UiState<List<CanonicalCatalogSearchRow>>> =
         _canonicalGenreResults.asStateFlow()
+    private val _canonicalGenreArtists =
+        MutableStateFlow<CanonicalGenreArtistSnapshot?>(null)
+    internal val canonicalGenreArtists = _canonicalGenreArtists.asStateFlow()
     private var canonicalGenreJob: Job? = null
     private val canonicalGenreEpoch = DiscoveryRequestEpoch()
     // Verified Cover Art Archive art for the original Explore category tiles.
@@ -3599,6 +3602,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (ticket == null) {
             canonicalGenreJob?.cancel()
             canonicalGenreEpoch.invalidateAndNext()
+            _canonicalGenreArtists.value = null
             _canonicalGenreResults.value = UiState.Success(emptyList())
             return
         }
@@ -3607,6 +3611,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleGenreActiveTag = tag
         val generation = canonicalGenreEpoch.next()
         canonicalGenreJob?.cancel()
+        _canonicalGenreArtists.value = null
         _canonicalGenreResults.value = UiState.Loading
         canonicalGenreJob = viewModelScope.launch(Dispatchers.IO) {
             val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
@@ -3662,6 +3667,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         _canonicalGenreResults.value = UiState.Success(rows)
                     }
                 }
+            }
+            // Artist-to-genre membership is sourced from this exact MusicBrainz
+            // tag query, never inferred from an album title or artist spelling.
+            val artists = try {
+                musicBrainzEditorialSearch.searchArtistsForTag(selected.tag, 18)
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (gate.accept(ticket) && canonicalGenreEpoch.isCurrent(generation)) {
+                val rowsForGenre = (artists as? MusicBrainzCatalogSearchResult.Success)
+                    ?.page?.items.orEmpty()
+                    .distinctBy { it.musicBrainzId }
+                    .map { hit ->
+                        CanonicalCatalogSearchRow(
+                            hit.musicBrainzId, CanonicalSearchKind.ARTIST, hit.name,
+                            hit.disambiguation ?: hit.country,
+                        )
+                    }
+                _canonicalGenreArtists.value =
+                    CanonicalGenreArtistSnapshot(selected.tag, rowsForGenre)
             }
             // These MB tag results are editorial search seeds only.
             // The user-facing Explore genre tiles and album shelves are

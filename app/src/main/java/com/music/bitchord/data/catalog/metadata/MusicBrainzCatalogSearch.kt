@@ -186,7 +186,27 @@ internal class MusicBrainzCatalogSearch(
         limit: Int = 25,
         offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> =
-        search("artist", query, limit, offset) { raw ->
+        searchArtistsInternal(query, limit, offset)
+
+    /** A known genre tag is fielded source evidence, not a guessed artist rank. */
+    suspend fun searchArtistsForTag(
+        tag: String,
+        limit: Int = 18,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> {
+        val safe = safeMusicBrainzGenreTag(tag)
+            ?: return MusicBrainzCatalogSearchResult.Failure(
+                MusicBrainzCatalogSearchFailure.INVALID_QUERY,
+            )
+        return searchArtistsInternal("tag:\"$safe\"", limit, 0, fieldedQuery = true)
+    }
+
+    private suspend fun searchArtistsInternal(
+        query: String,
+        limit: Int,
+        offset: Int,
+        fieldedQuery: Boolean = false,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> =
+        search("artist", query, limit, offset, fieldedQuery) { raw ->
             val result = json.decodeFromString<ArtistSearchEnvelope>(raw)
             result.pageOrNull(result.artists?.size, MusicBrainzArtistHit::musicBrainzId) {
                 result.artists?.mapNotNull { artist ->
