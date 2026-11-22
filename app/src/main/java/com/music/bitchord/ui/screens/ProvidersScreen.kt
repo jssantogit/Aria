@@ -118,6 +118,11 @@ fun ProvidersScreen(
     onConfirmJioSaavn: () -> Unit,
 ) {
     val configs by SourceRegistry.configs.collectAsState()
+    val webdavUrl by AppSettings.webdavUrl.collectAsState()
+    val webdavEnabled by AppSettings.webdavEnabled.collectAsState()
+    val smbHost by AppSettings.smbHost.collectAsState()
+    val smbShare by AppSettings.smbShare.collectAsState()
+    val smbEnabled by AppSettings.smbEnabled.collectAsState()
     val providerFlow = remember { ProviderRuntime.state ?: MutableStateFlow(ProviderSessionSnapshot()) }
     val snapshot by providerFlow.collectAsState()
     // Collect only a masked projection; raw stored ListenBrainz data never
@@ -671,16 +676,27 @@ fun ProvidersScreen(
         remoteLibraries.forEachIndexed { index, target ->
             key(selectedTab, target) {
                 val configured = when (target) {
-                    ProviderRemoteLibraryTarget.WEBDAV -> AppSettings.webdavUrl.value.isNotBlank()
+                    ProviderRemoteLibraryTarget.WEBDAV -> webdavUrl.isNotBlank()
                     ProviderRemoteLibraryTarget.SMB ->
-                        AppSettings.smbHost.value.isNotBlank() &&
-                            AppSettings.smbShare.value.isNotBlank()
+                        smbHost.isNotBlank() && smbShare.isNotBlank()
                     ProviderRemoteLibraryTarget.OPEN_SUBSONIC -> false
                 }
                 ProviderRemoteLibraryRow(
                     target = target,
                     number = displayed.size + index + 1,
                     configured = configured,
+                    enabled = when (target) {
+                        ProviderRemoteLibraryTarget.WEBDAV -> webdavEnabled
+                        ProviderRemoteLibraryTarget.SMB -> smbEnabled
+                        ProviderRemoteLibraryTarget.OPEN_SUBSONIC -> false
+                    },
+                    onToggle = { allowed ->
+                        when (target) {
+                            ProviderRemoteLibraryTarget.WEBDAV -> AppSettings.setWebDavEnabled(allowed)
+                            ProviderRemoteLibraryTarget.SMB -> AppSettings.setSmbEnabled(allowed)
+                            ProviderRemoteLibraryTarget.OPEN_SUBSONIC -> Unit
+                        }
+                    },
                     onOpen = { remoteLibraryDetail = target },
                 )
             }
@@ -920,6 +936,8 @@ internal fun ProviderRemoteLibraryRow(
     target: ProviderRemoteLibraryTarget,
     number: Int,
     configured: Boolean,
+    enabled: Boolean = false,
+    onToggle: (Boolean) -> Unit = {},
     onOpen: () -> Unit,
 ) {
     Row(
@@ -955,9 +973,16 @@ internal fun ProviderRemoteLibraryRow(
                 maxLines = 1,
             )
         }
-        // The subtitle already explains readiness. The entire row is a
-        // clickable setup/management destination, so no redundant trailing
-        // “Configurar” / “Gerenciar” label and no fake capability switch.
+        // A real persisted source gate exists for WebDAV/SMB. The switch
+        // appears only AFTER configuration, and does not erase credentials.
+        if (configured && target != ProviderRemoteLibraryTarget.OPEN_SUBSONIC) {
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                colors = appleSettingsSwitchColors(),
+                modifier = Modifier.testTag("providers-remote-switch-${target.name.lowercase()}"),
+            )
+        }
     }
 }
 
@@ -1057,10 +1082,10 @@ private fun ProviderSettingRow(
                 )
             }
         }
-        if (!editing) {
-            val available = group.rows.any {
-                it.entry.readiness == ProviderReadiness.READY
-            }
+        val available = group.rows.any {
+            it.entry.readiness == ProviderReadiness.READY
+        }
+        if (!editing && available) {
             Switch(
                 checked = savedEnabled,
                 onCheckedChange = onToggle,
