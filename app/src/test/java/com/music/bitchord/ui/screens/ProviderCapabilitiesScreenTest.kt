@@ -58,6 +58,10 @@ class ProviderCapabilitiesScreenTest {
             .assertCountEquals(0)
         compose.onNodeWithTag("providers-top-overflow", useUnmergedTree = true)
             .performClick()
+        // The provider command plate inherits the native frosted, rounded
+        // expandable-card treatment, rather than a default Material3 menu.
+        compose.onNodeWithTag("native-compact-neutral-material", useUnmergedTree = true)
+            .assertExists()
         compose.onNodeWithText("Conexões").performClick()
         compose.runOnIdle {
             assertEquals(0, organizeCalls)
@@ -142,7 +146,7 @@ class ProviderCapabilitiesScreenTest {
         }
     }
 
-    @Test fun discogsCapabilityPageLinksToConnectionsInsteadOfContainingASecondToken() {
+    @Test fun discogsCapabilityPageNeverDuplicatesGlobalConnections() {
         val key = ProviderKey("discogs")
         val cap = ProviderCapability.EDITION_METADATA
         val entry = ProviderInventoryEntry(
@@ -184,9 +188,59 @@ class ProviderCapabilitiesScreenTest {
         }
         compose.onAllNodesWithTag("providers-discogs-token-input", useUnmergedTree = true)
             .assertCountEquals(0)
-        compose.onNodeWithTag("providers-function-configure", useUnmergedTree = true)
+        compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithTag("providers-function-server", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithText("Conexões", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.runOnIdle { assertEquals(0, connections) }
+    }
+
+    @Test fun openSubsonicStillHasItsActualRemoteServerSettings() {
+        val key = ProviderKey("opensubsonic")
+        val entry = ProviderInventoryEntry(
+            key = key,
+            capability = ProviderCapability.PERSONAL_LIBRARY,
+            tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+            displayName = "Navidrome",
+            readiness = ProviderReadiness.READY,
+            supportsReordering = false,
+            notes = "",
+        )
+        val group = ProviderDisplayGroup(
+            key = key,
+            tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+            title = "Navidrome",
+            rows = listOf(ProviderTabRowState(
+                entry = entry,
+                status = ProviderCapabilityStatus(
+                    capability = entry.capability, key = key, implemented = true,
+                    prerequisitesMet = true, userAuthorized = false,
+                    operationalHealth = ProviderOperationalHealth.UNKNOWN,
+                    effectiveEligible = false,
+                ),
+                order = 0,
+            )),
+        )
+        var serverOpens = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderCapabilitiesScreen(
+                    group = group, configured = emptyMap(),
+                    saving = false, loading = false, error = null,
+                    contentPadding = PaddingValues(0.dp),
+                    onBack = {},
+                    onToggle = { _, _ -> },
+                    onConfigure = { serverOpens++ },
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-function-server", useUnmergedTree = true)
             .performClick()
-        compose.runOnIdle { assertEquals(1, connections) }
+        compose.onAllNodesWithText("Conexões", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.runOnIdle { assertEquals(1, serverOpens) }
     }
 
     @Test fun connectionsHaveTwoIndependentNativeTokenFieldsAndNoExtensionsSection() {
