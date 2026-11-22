@@ -87,27 +87,33 @@ internal fun ProviderRemoteServerInlineForm(target: ProviderRemoteLibraryTarget)
         testing = true
         status = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                if (target == ProviderRemoteLibraryTarget.WEBDAV) {
-                    WebDavRepository.testConnection(address.trim(), username.trim(), password)
-                } else {
-                    SmbRepository.testConnection(
-                        address.trim(), share.trim(), folder.trim(),
-                        username.trim(), password,
-                    )
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    if (target == ProviderRemoteLibraryTarget.WEBDAV) {
+                        WebDavRepository.testConnection(address.trim(), username.trim(), password)
+                    } else {
+                        SmbRepository.testConnection(
+                            address.trim(), share.trim(), folder.trim(),
+                            username.trim(), password,
+                        )
+                    }
                 }
+                result.fold(
+                    onSuccess = {
+                        failed = false
+                        status = "Conexão confirmada"
+                    },
+                    onFailure = {
+                        failed = true
+                        status = "Não foi possível conectar ao servidor"
+                    },
+                )
+            } catch (_: Exception) {
+                failed = true
+                status = "Não foi possível conectar ao servidor"
+            } finally {
+                testing = false
             }
-            result.fold(
-                onSuccess = {
-                    failed = false
-                    status = "Conexão confirmada"
-                },
-                onFailure = {
-                    failed = true
-                    status = "Não foi possível conectar ao servidor"
-                },
-            )
-            testing = false
         }
     }
 
