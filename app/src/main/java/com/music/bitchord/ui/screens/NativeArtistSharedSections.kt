@@ -258,7 +258,7 @@ internal fun NativeArtistInformationalTrackRow(
         onMore = null,
         modifier = modifier,
         horizontalInset = 0.dp,
-        leading = leading,
+        leading = { leading() },
         title = {
             Text(title, style = MaterialTheme.typography.titleMedium,
                 color = palette.onBackground, maxLines = 1,

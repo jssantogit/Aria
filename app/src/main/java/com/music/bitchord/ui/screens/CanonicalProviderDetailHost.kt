@@ -13,6 +13,7 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.DiscogsNativePage
 import com.music.bitchord.ui.DiscogsNativeRoute
+import com.music.bitchord.ui.discogsNativeDetailRouteKey
 import com.music.bitchord.ui.MainViewModel
 import com.music.bitchord.ui.AppleCatalogBrowseRoute
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
