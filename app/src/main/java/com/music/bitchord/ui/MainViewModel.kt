@@ -5038,7 +5038,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?: return
         openAppleEditorialAlbum(AppleEditorialSearchRow(
             browseId = albumId,
-            title = track.title,
+            // The selected row is a TRACK, not an album title. The exact
+            // collection lookup replaces this neutral loading title later.
+            title = "Álbum",
             artistName = track.artistName,
             artworkUri = track.artworkUri,
             releaseDate = null,
@@ -5656,6 +5658,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             BuiltInProviderKeys.MUSICBRAINZ -> {
                 discogsNativeCatalog.clearSearch()
                 discogsNativeCatalog.backAll()
+                // The previous Apple artist/album must not remain a visible
+                // native route after MusicBrainz takes over Search.
+                backAppleEditorialAlbum()
+                backAppleEditorialArtist()
                 _catalogSearchMusicBrainzVisible.value = true
                 runMusicBrainzCatalogSearch(
                     query, allowAppleFallback = BuiltInProviderKeys.ITUNES in providers,
@@ -5705,6 +5711,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             else -> {
                 discogsNativeCatalog.clearSearch()
                 discogsNativeCatalog.backAll()
+                backAppleEditorialAlbum()
+                backAppleEditorialArtist()
                 canonicalSearchJob?.cancel()
                 canonicalTypeaheadJob?.cancel()
                 appleEditorialSearchJob?.cancel()
