@@ -1,15 +1,16 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.DiscogsNativePage
+import com.music.bitchord.ui.icons.BitChordIcons
 
 /**
  * Source-owned footer items for the ONE existing native DetailScreen.
@@ -23,11 +24,14 @@ internal fun LazyListScope.discogsNativeDetailExtras(
     onOpenSource: (String) -> Unit,
 ) {
     if (page.hasMore) item(key = "discogs:artist:more") {
-        OutlinedButton(
-            onClick = onLoadMore,
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-        ) { Text("Carregar mais lançamentos") }
+        Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            ActionPill(
+                icon = BitChordIcons.Plus,
+                label = "Carregar mais lançamentos",
+                onClick = onLoadMore,
+                filled = false,
+            )
+        }
     }
     if (page.incomplete) item(key = "discogs:artist:partial") {
         Text(

@@ -639,7 +639,11 @@ fun DetailScreen(
     // entering LazyListScope; that builder is not a composition context.
     // Keep one credit source for both canonical and Song-backed rows.
     val albumRowCredit = if (page.type == BrowseType.ALBUM) {
-        val sourceCount = if (songs.isNotEmpty()) songs.size else canonicalTracks.size
+        val sourceCount = when {
+            songs.isNotEmpty() -> songs.size
+            canonicalTracks.isNotEmpty() -> canonicalTracks.size
+            else -> metadataTracks.size
+        }
         val sourceDuration = if (songs.isNotEmpty()) songs.playtime() else null
         page.headerLines(sourceCount, sourceDuration).first
     } else null
@@ -1061,6 +1065,69 @@ fun DetailScreen(
 
                         )
                         if (index < canonicalVisibleTrackIndices.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = NUMBERED_ROW_DIVIDER_INSET),
+                                thickness = 0.5.dp,
+                                color = palette.divider,
+                            )
+                        }
+                    }
+                } else if (!isArtist && metadataTracks.isNotEmpty()) {
+                    // iTunes and Discogs have a real source tracklist without a
+                    // RecordingId or playable asset. This is the SAME native
+                    // numbered album list used for MusicBrainz, not another
+                    // screen, Song queue, or pretend playback affordance.
+                    if (metadataVisibleTrackIndices.isEmpty()) {
+                        item(key = "metadata:track:no-matches") {
+                            MessageState(stringResource(R.string.nothing_matches, query))
+                        }
+                    }
+                    itemsIndexed(
+                        items = metadataVisibleTrackIndices,
+                        key = { _, original ->
+                            "metadata:track:${metadataTracks[original].key}:$original"
+                        },
+                    ) { visibleIndex, originalIndex ->
+                        val track = metadataTracks[originalIndex]
+                        val subtitle = nativeMetadataAlbumTrackSubtitle(
+                            track, albumRowCredit.orEmpty(),
+                        )
+                        NativeDetailTrackRowLayout(
+                            onClick = null,
+                            onLongPress = null,
+                            onMore = null,
+                            textGap = PAGE_GUTTER,
+                            leading = {
+                                NativeDetailTrackNumber(
+                                    number = nativeMetadataAlbumTrackNumber(track, originalIndex),
+                                    color = palette.onBackgroundVariant,
+                                )
+                            },
+                            title = {
+                                Text(
+                                    text = track.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = palette.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            subtitle = {
+                                if (subtitle != null) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = palette.onBackgroundVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            rating = {},
+                            showRatingSlot = false,
+                            actions = {},
+                        )
+                        if (visibleIndex < metadataVisibleTrackIndices.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = NUMBERED_ROW_DIVIDER_INSET),
                                 thickness = 0.5.dp,
@@ -1687,12 +1754,12 @@ private fun CompactSongRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(48.dp)) {
+        Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)) {
             AsyncImage(
                 model = com.music.bitchord.ui.player.rememberPlaybackArtworkImageModel(song, ROW_ART_PX),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(NATIVE_ARTIST_TRACK_COVER_SIZE)
                     .clip(RoundedCornerShape(7.dp))
                     .thumbnailBorder(RoundedCornerShape(7.dp))
                     .background(palette.elevated),

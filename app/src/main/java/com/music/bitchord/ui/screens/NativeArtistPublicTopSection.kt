@@ -171,9 +171,9 @@ internal fun NativeArtistPublicTopSection(
             modifier = Modifier.testTag("artist-top-row-${recording.musicBrainzId}"),
             horizontalInset = 0.dp,
             leading = {
-                val shape = RoundedCornerShape(8.dp)
+                val shape = RoundedCornerShape(7.dp)
                 Box(
-                    Modifier.size(52.dp).clip(shape)
+                    Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE).clip(shape)
                         .background(palette.onBackground.copy(alpha = 0.08f)),
                 ) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())

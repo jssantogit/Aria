@@ -40,6 +40,9 @@ import com.music.bitchord.ui.theme.ArtworkPalette
  * Navidrome are Library contexts; MusicBrainz and future metadata providers
  * are online catalog contexts. A source can have some capabilities absent.
  */
+/** All artist-context tracks, whether playable or not, use one compact cover size. */
+internal val NATIVE_ARTIST_TRACK_COVER_SIZE = 48.dp
+
 internal enum class NativeArtistContext { LIBRARY, ONLINE_CATALOG }
 
 /**

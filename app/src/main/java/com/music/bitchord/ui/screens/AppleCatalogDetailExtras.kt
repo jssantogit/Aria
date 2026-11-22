@@ -125,7 +125,7 @@ internal fun AppleArtistMetadataTracksSection(
             onMore = null,
             horizontalInset = 0.dp,
             leading = {
-                Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
+                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE).clip(RoundedCornerShape(7.dp))
                     .background(palette.onBackground.copy(alpha = 0.08f))) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
                     safeAppleArtwork(track.artworkUri)?.let { verified ->

@@ -25,3 +25,18 @@ internal fun canonicalMetadataAlbumVisibleIndices(
         else -> kept
     }
 }
+
+/** The source track position survives user search and sorting, including multi-disc albums. */
+internal fun nativeMetadataAlbumTrackNumber(
+    track: NativeMetadataTrack,
+    originalIndex: Int,
+): Int = track.trackNumber?.takeIf { it > 0 } ?: originalIndex + 1
+
+/** Display only verified source credit and disc information, never inferred artists. */
+internal fun nativeMetadataAlbumTrackSubtitle(
+    track: NativeMetadataTrack,
+    albumCredit: String,
+): String? = listOfNotNull(
+    nativeAlbumTrackSecondaryLine(track.credit.orEmpty(), albumCredit),
+    track.discNumber?.takeIf { it > 1 }?.let { "Disco $it" },
+).joinToString(" · ").takeIf(String::isNotBlank)
