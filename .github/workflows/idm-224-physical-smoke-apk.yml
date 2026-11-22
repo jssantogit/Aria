@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          approved="bbb78136a47d6a5429b2e8d89814c387cc1c6e24"
+          approved="2821b22d8dd0f71819983ddf415796be9077ab58"
           trigger=".github/workflows/idm-224-physical-smoke-apk.yml"
           actual_parent="$(git rev-parse HEAD^)"
           if [[ "$actual_parent" != "$approved" ]]; then
@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           {
             echo "pr=224"
-            echo "approved_android_source=bbb78136a47d6a5429b2e8d89814c387cc1c6e24"
+            echo "approved_android_source=2821b22d8dd0f71819983ddf415796be9077ab58"
             echo "workflow_trigger_commit=$(git rev-parse HEAD)"
             find app/build/outputs/apk/dev/debug -maxdepth 1 -type f -name '*.apk' -print -exec sha256sum '{}' \;
           } > idm-224-apk-manifest.txt
