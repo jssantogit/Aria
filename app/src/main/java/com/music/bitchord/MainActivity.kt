@@ -411,6 +411,7 @@ import com.music.bitchord.ui.screens.appleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
 import com.music.bitchord.ui.screens.appleNativePendingDetail
 import com.music.bitchord.ui.screens.appleNativeDetailDisplayAllowed
+import com.music.bitchord.ui.screens.appleNativeShelfEntry
 import com.music.bitchord.ui.screens.appleAlbumAsSharedDetail
 import com.music.bitchord.ui.screens.appleArtistAsSharedDetail
 import com.music.bitchord.ui.screens.AppleArtistCatalogExtras
@@ -4234,11 +4235,12 @@ private fun BitChordApp(
                                                 viewModel.discogsNativeCatalog.openRelease(releaseId)
                                             }
                                     } else {
-                                        val matched = (
+                                        val matched = appleNativeShelfEntry(
+                                            item.browseId,
                                             artistState?.data?.albums.orEmpty() +
                                                 (appleAlbumDetail as? UiState.Success)
-                                                    ?.data?.relatedAlbums.orEmpty()
-                                        ).singleOrNull { it.browseId == item.browseId }
+                                                    ?.data?.relatedAlbums.orEmpty(),
+                                        )
                                         if (matched != null) {
                                             detailActiveShelf = null
                                             viewModel.openAppleEditorialEntry(matched)
