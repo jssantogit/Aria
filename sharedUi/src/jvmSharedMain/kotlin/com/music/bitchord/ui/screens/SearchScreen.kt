@@ -78,6 +78,7 @@ import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.SearchResult
+import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.playingRowMatcher
 import com.music.bitchord.data.model.UiState
@@ -297,6 +298,9 @@ fun SearchScreen(
     /** Mirrors the actual ViewModel submit state; Local remains live while typing. */
     searchCommitted: Boolean = false,
     appleResultTabs: Boolean = false,
+    /** Provider-neutral genre/subgenre navigation; it is not a fake catalog hit. */
+    categorySearchResults: List<ShelfItem> = emptyList(),
+    onCategoryOpen: (ShelfItem) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -401,6 +405,9 @@ fun SearchScreen(
         ) {
             when {
                 searchingCanonical -> {
+                    if (filter == SearchFilter.ALL && query.isNotBlank() && canonicalDetail == null) {
+                        canonicalCategorySearchRows(categorySearchResults, onCategoryOpen)
+                    }
                     if (canonicalSearchEditing(query, searchCommitted, canonicalDetail != null)) {
                         // Only locally known text, not invented Apple/server completions:
                         // an explicit action for the typed query plus matching history.
@@ -798,6 +805,24 @@ fun SearchScreen(
  * undisplayed Apple results already fetched or another bounded search with
  * documented attributes. We never claim total result completeness.
  */
+/** Genre categories are first-class Search results; never Song or BrowseType.ALBUM. */
+internal fun LazyListScope.canonicalCategorySearchRows(
+    categories: List<ShelfItem>,
+    onOpen: (ShelfItem) -> Unit,
+) {
+    items(categories, key = { "genre-result:" + it.browseId }) { category ->
+        NativeSearchResultRow(
+            row = NativeSearchRowUi(
+                title = category.title,
+                subtitle = category.subtitle,
+                artworkUri = null,
+                artistPortrait = false,
+            ),
+            onClick = { onOpen(category) },
+        )
+    }
+}
+
 private fun LazyListScope.appleSearchPagingFooter(
     section: AppleSearchSection,
     state: AppleSearchPageStatus?,

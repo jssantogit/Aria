@@ -2,6 +2,7 @@ package com.music.bitchord.ui.screens
 
 import android.app.Application
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,6 +39,27 @@ import org.robolectric.annotation.ConscryptMode
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class CanonicalExploreGridTest {
     @get:Rule val compose = createComposeRule()
+
+
+    @Test fun searchCategoryRowsUseNativePresentationAndOpenActualCategoryId() {
+        val opened = mutableListOf<String>()
+        compose.setContent {
+            MaterialTheme {
+                LazyColumn {
+                    canonicalCategorySearchRows(
+                        categories = listOf(
+                            ShelfItem("Death Metal", "Subgênero", null, null, "catalog:GENRE:death metal"),
+                        ),
+                        onOpen = { opened += it.browseId.orEmpty() },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("Death Metal").assertExists().performClick()
+        compose.runOnIdle {
+            assertEquals(listOf("catalog:GENRE:death metal"), opened)
+        }
+    }
 
     @Test fun searchResultsDelegateHoldWithoutMoreButtonOrDurationText() {
         var held = 0

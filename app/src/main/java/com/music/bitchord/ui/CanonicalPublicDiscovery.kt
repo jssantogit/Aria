@@ -121,7 +121,7 @@ internal fun canonicalDailyPublicPicks(
         }.toList()
 
 /** Static taxonomy is navigation, not invented audio, release, or chart rows. */
-internal data class CanonicalExploreGenre(val tag: String, val title: String)
+internal data class CanonicalExploreGenre(val tag: String, val title: String, val parentTag: String? = null)
 
 internal val canonicalExploreGenres = listOf(
     CanonicalExploreGenre("pop", "Pop"),
@@ -139,7 +139,7 @@ internal val canonicalExploreGenres = listOf(
 )
 
 internal fun canonicalExploreGenreForBrowseId(browseId: String?): CanonicalExploreGenre? =
-    canonicalExploreGenres.firstOrNull { browseId == "catalog:GENRE:${it.tag}" }
+    canonicalAllExploreGenres.firstOrNull { browseId == canonicalGenreBrowseId(it) }
 
 internal fun canonicalExploreGenreShelf(
     heading: String,

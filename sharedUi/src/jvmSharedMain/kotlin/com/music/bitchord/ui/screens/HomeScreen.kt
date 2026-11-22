@@ -221,6 +221,8 @@ fun HomeScreen(
     publicPlaylistNotice: String? = null,
     /** Pushed Explore categories keep the full inset below the floating Back. */
     reserveFloatingBackSpace: Boolean = false,
+    /** Genre/subgenre navigation is a square-card shelf, never the hero. */
+    categoryNavigationShelf: HomeShelf? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
 
@@ -294,9 +296,27 @@ fun HomeScreen(
                     } else {
                         feedSkeleton(firstIsHero = leadHero)
                     }
+                    categoryNavigationShelf?.let { categoryShelf ->
+                        item(key = "genre-navigation-loading") {
+                            Shelf(
+                                shelf = categoryShelf,
+                                onItemClick = { onItemClick(it, categoryShelf.title) },
+                            )
+                        }
+                    }
                 }
-                is UiState.Error -> item {
-                    MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+                is UiState.Error -> {
+                    item {
+                        MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+                    }
+                    categoryNavigationShelf?.let { categoryShelf ->
+                        item(key = "genre-navigation-error") {
+                            Shelf(
+                                shelf = categoryShelf,
+                                onItemClick = { onItemClick(it, categoryShelf.title) },
+                            )
+                        }
+                    }
                 }
                 is UiState.Success -> {
                     if (recentlyPlayedLoading) {
@@ -310,14 +330,20 @@ fun HomeScreen(
                     ) state.data.toMutableList().apply {
                         add(minOf(2, size), HomeShelf("Playlists", emptyList()))
                     } else state.data
+                    val visibleShelves = if (categoryNavigationShelf == null) displayShelves
+                        else displayShelves.toMutableList().apply {
+                            // Keep the existing launch hero first, then a horizontal
+                            // row of square styles; no fabricated editorial hero.
+                            add(if (isEmpty()) 0 else 1, categoryNavigationShelf)
+                        }
                     itemsIndexedShelves(
-                        shelves = displayShelves,
+                        shelves = visibleShelves,
                         emptyPlaylistNotice = publicPlaylistNotice,
                         onItemClick = onItemClick,
                         onItemLongPress = onItemLongPress,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
-                        firstIsHero = leadHero && !recentlyPlayedLoading,
+                        firstIsHero = leadHero && !recentlyPlayedLoading && displayShelves.isNotEmpty(),
                         recentsViewType = recentsViewType,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
