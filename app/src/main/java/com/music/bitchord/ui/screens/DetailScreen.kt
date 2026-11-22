@@ -418,10 +418,20 @@ fun DetailScreen(
     // locally available recordings never constitute ranking evidence.
     val legacyRankedArtistFeed = isArtist &&
         nativeArtistLegacyRankedFeed(page.browseId)
+    val appleIdentityAuthorized = if (isArtist && page.browseId.startsWith("itunes:")) {
+        // A disabled identity provider cannot keep publishing a previously
+        // resolved Apple→MB crosswalk or its related-artist shelves.
+        com.music.bitchord.data.providers.ProviderRuntime.state
+            ?.collectAsStateWithLifecycle()
+        com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
+            com.music.bitchord.data.providers.ProviderCapability.IDENTITY,
+            com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
+        ) != null
+    } else false
     val publicArtistMbid = page.browseId.takeIf {
         isArtist && it.startsWith("catalog:ARTIST:")
     }?.removePrefix("catalog:ARTIST:") ?: verifiedAppleArtistMbid?.takeIf {
-        isArtist && page.browseId.startsWith("itunes:") &&
+        appleIdentityAuthorized &&
             Regex("^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
     }
     val publicTopRows = if (publicArtistMbid != null &&
@@ -1220,6 +1230,8 @@ fun DetailScreen(
                 item(key = "artist-included-in") {
                     NativeArtistIncludedInShelf(
                         artistMbid = publicArtistMbid,
+                        title = if (page.browseId.startsWith("itunes:"))
+                            "Com participação em" else "Incluído em",
                         palette = palette,
                         onOpen = onCanonicalFeaturedReleaseOpen,
                         onLongPress = onCanonicalArtistEntityHold,

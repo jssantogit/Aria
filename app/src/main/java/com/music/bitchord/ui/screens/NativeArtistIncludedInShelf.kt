@@ -115,6 +115,7 @@ internal suspend fun resolveNativeIncludedInCovers(
 internal fun NativeArtistIncludedInShelf(
     artistMbid: String,
     palette: ArtworkPalette,
+    title: String = "Incluído em",
     onOpen: (CanonicalCatalogSearchRow) -> Unit,
     onLongPress: ((CanonicalCatalogSearchRow) -> Unit)? = null,
 ) {
@@ -166,7 +167,7 @@ internal fun NativeArtistIncludedInShelf(
     }
     if (visibleTracks.isEmpty()) return
     NativeArtistReleaseShelf(
-        title = "Incluído em",
+        title = title,
         releases = visibleTracks,
         palette = palette,
         horizontalPadding = PAGE_GUTTER,
