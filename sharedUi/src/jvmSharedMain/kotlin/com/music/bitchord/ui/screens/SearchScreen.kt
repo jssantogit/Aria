@@ -295,6 +295,11 @@ fun SearchScreen(
     onAppleTrackOpen: (AppleEditorialTrackSearchRow) -> Unit = {},
     applePaging: Map<AppleSearchSection, AppleSearchPageStatus> = emptyMap(),
     onAppleLoadMore: (AppleSearchSection) -> Unit = {},
+    /** Discogs Artist IDs are separate provider-native metadata identities. */
+    discogsArtistResults: UiState<List<DiscogsNativeArtistSearchRow>>? = null,
+    onDiscogsArtistOpen: (DiscogsNativeArtistSearchRow) -> Unit = {},
+    discogsHasMore: Boolean = false,
+    onDiscogsLoadMore: () -> Unit = {},
     /** Mirrors the actual ViewModel submit state; Local remains live while typing. */
     searchCommitted: Boolean = false,
     appleResultTabs: Boolean = false,
@@ -383,7 +388,8 @@ fun SearchScreen(
                 (!searchingCanonical || canonicalDetail == null) &&
                 (results != null || (searchingCanonical &&
                     (canonicalResults != null || appleResults != null ||
-                        appleArtistResults != null || appleTrackResults != null)))
+                        appleArtistResults != null || appleTrackResults != null ||
+                        discogsArtistResults != null)))
             ) {
                 SearchFilterTabs(
                     appleStyle = appleResultTabs,
@@ -530,6 +536,17 @@ fun SearchScreen(
                             onCanonicalPlay, onCanonicalAddToQueue,
                             onCanonicalRecordingInfo, appleResultTabs,
                         )
+                    } else if (discogsArtistResults != null && canonicalDetail == null) {
+                        if (filter == SearchFilter.ALL || filter == SearchFilter.ARTISTS) {
+                            discogsNativeArtistRows(
+                                discogsArtistResults, onDiscogsArtistOpen,
+                                discogsHasMore, onDiscogsLoadMore,
+                            )
+                        } else {
+                            item(key = "discogs:search:artist-only") {
+                                MessageState("A busca Discogs independente exibe artistas. Abra um artista para ver seus lançamentos.")
+                            }
+                        }
                     } else if (filter == SearchFilter.ARTISTS && canonicalDetail == null) {
                         appleEditorialArtistRows(
                             appleArtistResults, onAppleOpen,
@@ -954,6 +971,78 @@ private fun LazyListScope.appleEditorialTrackRows(
     appleSearchPagingFooter(
         AppleSearchSection.TRACKS, paging, onLoadMore,
     )
+}
+
+
+/**
+ * Uses native Apple/BitChord search row geometry while preserving the exact
+ * Discogs artist ID. No record is ever playable or converted into an MBID.
+ */
+private fun LazyListScope.discogsNativeArtistRows(
+    results: UiState<List<DiscogsNativeArtistSearchRow>>?,
+    onOpen: (DiscogsNativeArtistSearchRow) -> Unit,
+    hasMore: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    when (results) {
+        null -> Unit
+        UiState.Loading -> songListSkeleton(keyPrefix = "discogs:artists")
+        is UiState.Error -> item(key = "discogs:artists:error") {
+            MessageState(
+                if (results.message == "discogs_token_required")
+                    "Conecte seu token Discogs em Provedores → Conexões para pesquisar artistas."
+                else "Não foi possível carregar a busca Discogs. Verifique a conexão e as permissões do provider.",
+            )
+        }
+        is UiState.Success -> {
+            if (results.data.isEmpty()) {
+                item(key = "discogs:artists:empty") {
+                    MessageState("Nenhum artista encontrado no Discogs.")
+                }
+            } else {
+                item(key = "discogs:artists:heading") {
+                    Text(
+                        text = stringResource(Res.string.artists),
+                        modifier = Modifier.padding(
+                            start = PAGE_GUTTER, end = PAGE_GUTTER,
+                            top = 16.dp, bottom = 6.dp,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+                itemsIndexed(
+                    items = results.data,
+                    key = { _, artist -> "discogs:artist:search:${artist.artistId}" },
+                ) { index, artist ->
+                    NativeSearchResultRow(
+                        row = NativeSearchRowUi(
+                            title = artist.name,
+                            subtitle = "Artista · Discogs",
+                            artworkUri = null,
+                            artistPortrait = true,
+                        ),
+                        onClick = { onOpen(artist) },
+                        onLongPress = null,
+                    )
+                    if (index < results.data.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+            }
+            if (hasMore) item(key = "discogs:artists:more") {
+                OutlinedButton(
+                    onClick = onLoadMore,
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = PAGE_GUTTER, vertical = 12.dp,
+                    ),
+                ) { Text("Carregar mais artistas") }
+            }
+        }
+    }
 }
 
 private fun LazyListScope.appleEditorialArtistRows(
