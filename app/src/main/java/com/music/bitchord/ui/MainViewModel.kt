@@ -3714,12 +3714,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Full MB fallback owns artist/popularity rows exclusively. A slower
         // Apple-primary supplement from another tag must not overwrite them.
         clearCanonicalGenreSupplement()
-        canonicalGenreResultTag = tag
         val gate = ProviderRuntime.gateOrNull()
         val ticket = gate?.open(
             ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
         )
         if (ticket == null) {
+            canonicalGenreResultTag = null
             canonicalGenreJob?.cancel()
             canonicalGenreEpoch.invalidateAndNext()
             _canonicalGenreArtists.value = null
@@ -3727,6 +3727,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _canonicalGenreResults.value = UiState.Success(emptyList())
             return
         }
+        canonicalGenreResultTag = tag
         appleGenreJob?.cancel()
         appleGenreEpoch.invalidateAndNext()
         appleGenreActiveTag = tag
