@@ -89,6 +89,7 @@ internal interface DiscogsNativeArtistSearchTransport {
 }
 
 internal class KtorDiscogsNativeArtistSearchTransport(
+    private val entity: String = "artist",
     private val client: HttpClient = HttpClient(OkHttp) {
         expectSuccess = false
         followRedirects = false
@@ -102,12 +103,13 @@ internal class KtorDiscogsNativeArtistSearchTransport(
     override suspend fun search(
         term: String, page: Int, token: String, agent: String,
     ): DiscogsHttpResponse {
-        require(page in 1..3 && term.length in 1..120 && isValidDiscogsSearchToken(token))
+        require(entity in setOf("artist", "release") &&
+            page in 1..3 && term.length in 1..120 && isValidDiscogsSearchToken(token))
         val response = client.get("https://api.discogs.com/database/search") {
             header(HttpHeaders.UserAgent, agent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
             header(HttpHeaders.Authorization, "Discogs token=$token")
-            parameter("type", "artist")
+            parameter("type", entity)
             parameter("q", term)
             parameter("page", page)
             parameter("per_page", 20)
