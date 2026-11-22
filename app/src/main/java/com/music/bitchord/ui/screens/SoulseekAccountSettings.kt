@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.music.bitchord.BuildConfig
 import com.music.bitchord.acquisition.a0.SoulseekAccountProbe
 import com.music.bitchord.acquisition.a0.SoulseekCredentialVault
+import com.music.bitchord.data.providers.ProviderRuntime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -121,7 +122,15 @@ internal fun SoulseekAccountSettingsScreen(
                 }
                 if (success) {
                     savedUsername = requestedUser
-                    status = "Conta autenticada e salva com Android Keystore."
+                    // Publishing a credential does not opt the user into
+                    // DOWNLOAD. Recompute only prerequisite readiness; the
+                    // independently persisted engine switch stays untouched.
+                    val refresh = withContext(Dispatchers.IO) {
+                        ProviderRuntime.refreshSoulseekAccountReadiness(true)
+                    }
+                    status = if (refresh == false)
+                        "Conta salva, mas não foi possível atualizar o provedor."
+                    else "Conta autenticada e salva."
                 } else {
                     status = "Autenticação ou rede indisponível. Nenhuma credencial alterada."
                 }
@@ -237,6 +246,9 @@ internal fun SoulseekAccountSettingsScreen(
                 destructive = true,
                 onConfirm = {
                     vault.forget()
+                    scope.launch(Dispatchers.IO) {
+                        ProviderRuntime.refreshSoulseekAccountReadiness(false)
+                    }
                     savedUsername = null
                     username = ""
                     password = ""
