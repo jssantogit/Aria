@@ -32,8 +32,8 @@ class DiscogsNativeArtistSearchTest {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
-                setOf(ProviderCapability.EDITION_METADATA), ProviderReadiness.READY)),
-            choices = mapOf(ProviderCapability.EDITION_METADATA to listOf(
+                setOf(ProviderCapability.CATALOG_SEARCH), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(
                 ProviderChoice(provider, false, 0))),
         ))
         var calls = 0
@@ -54,8 +54,8 @@ class DiscogsNativeArtistSearchTest {
         assertEquals(0, calls)
         val allowed = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
-                setOf(ProviderCapability.EDITION_METADATA), ProviderReadiness.READY)),
-            choices = mapOf(ProviderCapability.EDITION_METADATA to listOf(
+                setOf(ProviderCapability.CATALOG_SEARCH), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(
                 ProviderChoice(provider, true, 0))),
         ))
         val noToken = DiscogsNativeArtistSearchClient(
@@ -71,8 +71,8 @@ class DiscogsNativeArtistSearchTest {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
-                setOf(ProviderCapability.EDITION_METADATA), ProviderReadiness.READY)),
-            choices = mapOf(ProviderCapability.EDITION_METADATA to listOf(
+                setOf(ProviderCapability.CATALOG_SEARCH), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.CATALOG_SEARCH to listOf(
                 ProviderChoice(provider, true, 0))),
         ))
         var sent: String? = null
