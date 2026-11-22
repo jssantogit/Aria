@@ -32,6 +32,7 @@ class NativeSourceAlbumComposeTest {
                         browseId = route,
                         title = "Album",
                         subtitle = "Artist · 2024",
+                        thumbnailUrl = null,
                         type = BrowseType.ALBUM,
                         songs = UiState.Success(emptyList()),
                     ),
