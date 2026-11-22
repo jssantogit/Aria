@@ -43,9 +43,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.ui.components.NativeSettingsPrimaryAction
 import com.music.bitchord.ui.components.NativeSettingsSecondaryAction
 import com.music.bitchord.ui.components.appleSettingsSwitchColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 /** Routes live inside the Providers navigation stack, never in Settings. */
@@ -160,6 +163,14 @@ internal fun ProviderLastFmAccountForm() {
                         AppSettings.setLastfmSessionKey(auth.session.key)
                         AppSettings.setLastfmUsername(auth.session.name)
                         AppSettings.setLastfmEnabled(true)
+                        // Login supplies readiness, never silently rewrites
+                        // the Provider Engine's independent opt-in choice.
+                        val refreshed = withContext(Dispatchers.IO) {
+                            ProviderRuntime.refreshListeningCredentialsFromLegacyUi()
+                        }
+                        if (refreshed == false) {
+                            feedback = "Conta salva; a disponibilidade do provedor não pôde ser atualizada."
+                        }
                         username = ""
                     }
                     .onFailure { error ->
@@ -192,6 +203,9 @@ internal fun ProviderLastFmAccountForm() {
                         AppSettings.setLastfmEnabled(false)
                         AppSettings.setLastfmScrobbleEnabled(false)
                         AppSettings.setLastfmNowPlaying(false)
+                        scope.launch(Dispatchers.IO) {
+                            ProviderRuntime.refreshListeningCredentialsFromLegacyUi()
+                        }
                     },
                     enabled = !busy,
                 )
