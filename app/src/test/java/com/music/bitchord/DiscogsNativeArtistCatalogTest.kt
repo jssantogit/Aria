@@ -119,6 +119,38 @@ class DiscogsNativeArtistCatalogTest {
         assertEquals(listOf("artist:17:1", "master:90", "release:50", "release:51"), visited)
     }
 
+    @Test fun unverifiedArtistCreditMustNotLookLikeCompleteDiscography() = runBlocking {
+        val key = BuiltInProviderKeys.DISCOGS
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(key,
+                setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
+                ProviderChoice(key, true, 0))),
+        ))
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true,
+            admission = RateLimitedProviderTransport { gate },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int,
+                    userAgent: String): DiscogsHttpResponse =
+                    DiscogsHttpResponse(200, """
+                        {"pagination":{"page":1,"pages":1},"releases":[
+                            {"id":42,"role":"Main","type":"release","title":"Wrong Artist"}
+                        ]}""")
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long) =
+                    DiscogsLookupResult.Found(release(id, artistId = 999L))
+            },
+        )
+        val result = source.load(17) as DiscogsNativeArtistLoad.Success
+        assertTrue(result.releases.isEmpty())
+        assertTrue(result.incomplete)
+        assertFalse(result.hasMore)
+    }
+
     @Test fun coverageIsExplicitlyIncompleteAfterHundredPageBound() = runBlocking {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
