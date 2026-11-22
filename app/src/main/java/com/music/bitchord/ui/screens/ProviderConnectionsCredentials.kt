@@ -47,14 +47,8 @@ internal fun ProviderConnectionsCredentials(
 
     Column(
         modifier = Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp)
             .testTag("providers-connections-credentials"),
     ) {
-        Text(
-            "Credenciais dos provedores",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(start = 8.dp, bottom = 10.dp),
-        )
         SettingsGroupSurface {
             var rowShown = false
             if (showDiscogs) {
