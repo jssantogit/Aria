@@ -289,6 +289,51 @@ class ProviderCapabilitiesScreenTest {
         }
     }
 
+    @Test fun savedTokenHintsStayMaskedAndNeverBecomeEditableValues() {
+        val discogsInput = mutableStateOf("")
+        val listenInput = mutableStateOf("")
+        compose.setContent {
+            BitChordTheme {
+                ProviderConnectionsCredentials(
+                    showDiscogs = true,
+                    showListenBrainz = true,
+                    showLastFm = false,
+                    showSoulseek = false,
+                    discogsConfigured = true,
+                    listenBrainzConfigured = true,
+                    discogsSavedHint = "••••••••A19z",
+                    listenBrainzSavedHint = "••••••••B28x",
+                    discogsToken = discogsInput.value,
+                    listenBrainzToken = listenInput.value,
+                    saving = false,
+                    onDiscogsTokenChange = { discogsInput.value = it },
+                    onListenBrainzTokenChange = { listenInput.value = it },
+                    onSaveDiscogsToken = {},
+                    onSaveListenBrainzToken = {},
+                    onOpenAccounts = {},
+                    onOpenSoulseek = {},
+                )
+            }
+        }
+        compose.onNodeWithText("••••••••A19z", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("••••••••B28x", useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithText("full-secret-discogs-A19z", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithText("full-secret-listen-B28x", useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        // Entering a replacement hides the mask; the saved suffix is not the
+        // actual value and must never be submitted as a replacement token.
+        compose.onNodeWithTag("providers-discogs-token-input", useUnmergedTree = true)
+            .performTextInput("replacement")
+        compose.onAllNodesWithText("••••••••A19z", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.runOnIdle {
+            assertEquals("replacement", discogsInput.value)
+            assertEquals("", listenInput.value)
+        }
+    }
+
     @Test fun lastFmAuthenticationOpensDedicatedAccountFlow() {
         var opened = 0
         compose.setContent {
