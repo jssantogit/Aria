@@ -79,9 +79,19 @@ internal fun DiscogsNativeDetailPane(
                 )
             }
             displayed.attributionUrl?.let { url ->
+                item(key = "discogs:source:disclaimer") {
+                    Text(
+                        "This application uses Discogs’ API but is not affiliated with, sponsored or endorsed by Discogs. ‘Discogs’ is a trademark of Zink Media, LLC.",
+                        modifier = Modifier.fillMaxWidth().padding(
+                            horizontal = 20.dp, vertical = 12.dp,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 item(key = "discogs:source:attribution") {
                     Text(
-                        "Metadados: Discogs · Abrir fonte",
+                        "Data provided by Discogs. · Abrir fonte",
                         modifier = Modifier.fillMaxWidth()
                             .clickable { uriHandler.openUri(url) }
                             .padding(horizontal = 20.dp, vertical = 16.dp),
