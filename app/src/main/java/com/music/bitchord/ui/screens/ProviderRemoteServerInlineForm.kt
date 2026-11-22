@@ -33,7 +33,6 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun ProviderRemoteServerInlineForm(target: ProviderRemoteLibraryTarget) {
     require(target != ProviderRemoteLibraryTarget.OPEN_SUBSONIC)
-    ProviderSecureEntryWindow()
     val scope = rememberCoroutineScope()
 
     val storedWebUrl by AppSettings.webdavUrl.collectAsStateWithLifecycle()
