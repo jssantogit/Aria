@@ -3,6 +3,7 @@ package com.music.bitchord.ui.screens
 import android.app.Activity
 import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,15 +55,16 @@ internal fun ProviderInlineField(
     secret: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    PillTextField(
-        value = value,
-        onValueChange = onValueChange,
-        placeholder = label,
-        enabled = enabled,
-        isPassword = secret,
-        accessibilityLabel = label,
-        modifier = modifier.fillMaxWidth().testTag("providers-inline-field-${label.lowercase().replace(" ", "-")}"),
-    )
+    Box(modifier.fillMaxWidth().testTag("providers-inline-field-${label.lowercase().replace(" ", "-")}")) {
+        PillTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = label,
+            enabled = enabled,
+            isPassword = secret,
+            accessibilityLabel = label,
+        )
+    }
 }
 
 /** Do not expose typed credentials through screenshots or Android Recents. */
