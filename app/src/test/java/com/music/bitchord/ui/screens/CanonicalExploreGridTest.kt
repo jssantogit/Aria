@@ -86,8 +86,12 @@ class CanonicalExploreGridTest {
                 )
             }
         }
-        compose.onNodeWithTag("genre-search-artwork").assertExists()
-        compose.onNodeWithText("Death Metal").assertExists().performClick()
+        // The clickable native row merges child semantics: the category
+        // artwork tag lives in the *unmerged* tree, by design.
+        compose.onNodeWithTag("genre-search-artwork", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithText("Death Metal").assertExists()
+        compose.onNodeWithTag("native-search-result-row").performClick()
         compose.runOnIdle {
             assertEquals(listOf("catalog:GENRE:death metal"), opened)
         }
