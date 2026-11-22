@@ -33,7 +33,6 @@ import kotlinx.coroutines.launch
  */
 @Composable
 internal fun ProviderNavidromeInlineForm() {
-    ProviderSecureEntryWindow()
     val context = LocalContext.current
     val session = remember(context.applicationContext) {
         AndroidOpenSubsonicAccountSession(context.applicationContext)
