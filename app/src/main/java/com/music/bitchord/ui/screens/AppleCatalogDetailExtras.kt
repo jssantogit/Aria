@@ -119,46 +119,24 @@ internal fun AppleArtistMetadataTracksSection(
     ) { track ->
         // Identical native row geometry as canonical/local artist songs, but
         // without fake play, rating or overflow actions on metadata-only rows.
-        NativeDetailTrackRowLayout(
-            onClick = null,
-            onLongPress = null,
-            onMore = null,
-            horizontalInset = 0.dp,
+        NativeArtistInformationalTrackRow(
+            title = track.title,
+            subtitle = track.artistName,
+            palette = palette,
             leading = {
-                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE).clip(RoundedCornerShape(7.dp))
+                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
+                    .clip(RoundedCornerShape(7.dp))
                     .background(palette.onBackground.copy(alpha = 0.08f))) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
                     safeAppleArtwork(track.artworkUri)?.let { verified ->
                         AsyncImage(
-                            model = verified,
-                            contentDescription = null,
+                            model = verified, contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
             },
-            title = {
-                Text(
-                    track.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = palette.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            subtitle = {
-                Text(
-                    track.artistName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.onBackgroundVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            rating = {},
-            showRatingSlot = false,
-            actions = {},
         )
     }
 }

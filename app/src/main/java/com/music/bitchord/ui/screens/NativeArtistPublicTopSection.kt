@@ -160,22 +160,19 @@ internal fun NativeArtistPublicTopSection(
         horizontalPadding = PAGE_GUTTER,
         itemKey = { it.musicBrainzId },
     ) { recording ->
-        NativeDetailTrackRowLayout(
-            // A public Recording MBID is not a playable RecordingId. Unlike
-            // the old metadata-only navigation there is no tap destination.
+        NativeArtistInformationalTrackRow(
+            title = recording.title,
+            subtitle = canonicalArtistPublicTrackReleaseCaption(recording, releaseCaptions),
+            palette = palette,
             onClick = if (onRecordingOpen != null &&
                 (recording.hasCatalogedAsset || recording.hasVerifiedLocalAsset))
                 ({ onRecordingOpen(recording) }) else null,
             onLongPress = onRecordingHold?.let { hold -> { hold(recording) } },
-            onMore = null,
             modifier = Modifier.testTag("artist-top-row-${recording.musicBrainzId}"),
-            horizontalInset = 0.dp,
             leading = {
                 val shape = RoundedCornerShape(7.dp)
-                Box(
-                    Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE).clip(shape)
-                        .background(palette.onBackground.copy(alpha = 0.08f)),
-                ) {
+                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE).clip(shape)
+                    .background(palette.onBackground.copy(alpha = 0.08f))) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
                     nativePublicTopVerifiedAppleArtwork(recording)?.let { art ->
                         AsyncImage(
@@ -187,33 +184,6 @@ internal fun NativeArtistPublicTopSection(
                     }
                 }
             },
-            title = {
-                Text(
-                    text = recording.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = palette.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            subtitle = {
-                val caption = canonicalArtistPublicTrackReleaseCaption(
-                    recording, releaseCaptions,
-                )
-                if (!caption.isNullOrBlank()) {
-                    Text(
-                        text = caption,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = palette.onBackgroundVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            },
-            rating = {},
-            showRatingSlot = false,
-            actions = {},
-
         )
     }
 }

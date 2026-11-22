@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.style.TextOverflow
+import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -42,6 +44,24 @@ import com.music.bitchord.ui.theme.ArtworkPalette
  */
 /** All artist-context tracks, whether playable or not, use one compact cover size. */
 internal val NATIVE_ARTIST_TRACK_COVER_SIZE = 48.dp
+internal val NATIVE_ARTIST_RELEASE_ITEM_SPACING = 14.dp
+internal val NATIVE_ARTIST_RELEASE_TOP_SPACING = 22.dp
+
+/** Exactly one leading track rail is eligible on the shared artist detail. */
+internal enum class NativeArtistTrackOrigin { APPLE_METADATA, VERIFIED_CATALOG, SCOPED_CATALOG, OWNED_AUDIO, NONE }
+
+internal fun nativeArtistTrackOrigin(
+    hasAppleMetadata: Boolean,
+    hasVerifiedCatalog: Boolean,
+    hasScopedCatalog: Boolean,
+    hasOwnedAudio: Boolean,
+): NativeArtistTrackOrigin = when {
+    hasAppleMetadata -> NativeArtistTrackOrigin.APPLE_METADATA
+    hasVerifiedCatalog -> NativeArtistTrackOrigin.VERIFIED_CATALOG
+    hasScopedCatalog -> NativeArtistTrackOrigin.SCOPED_CATALOG
+    hasOwnedAudio -> NativeArtistTrackOrigin.OWNED_AUDIO
+    else -> NativeArtistTrackOrigin.NONE
+}
 
 internal enum class NativeArtistContext { LIBRARY, ONLINE_CATALOG }
 
@@ -218,6 +238,44 @@ internal fun <T> NativeArtistTracksShelf(
     )
 }
 
+/**
+ * All provider-only artist rows share the same native row as Library's
+ * CanonicalTrackRow and the existing DetailScreen. Only data and actions differ.
+ */
+@Composable
+internal fun NativeArtistInformationalTrackRow(
+    title: String,
+    subtitle: String?,
+    palette: ArtworkPalette,
+    leading: @Composable () -> Unit,
+    onClick: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    NativeDetailTrackRowLayout(
+        onClick = onClick,
+        onLongPress = onLongPress,
+        onMore = null,
+        modifier = modifier,
+        horizontalInset = 0.dp,
+        leading = leading,
+        title = {
+            Text(title, style = MaterialTheme.typography.titleMedium,
+                color = palette.onBackground, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+        },
+        subtitle = {
+            if (!subtitle.isNullOrBlank()) Text(
+                subtitle, style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+        },
+        rating = {},
+        showRatingSlot = false,
+        actions = {},
+    )
+}
+
 private const val ARTIST_TRACK_LIMIT = 20
 private const val ARTIST_TRACK_ROWS_PER_COLUMN = 4
 
@@ -276,7 +334,7 @@ internal fun <T> NativeArtistTracksCarousel(
 internal fun <T> NativeArtistReleaseCarousel(
     releases: List<T>,
     horizontalPadding: Dp = PAGE_GUTTER,
-    itemSpacing: Dp = 14.dp,
+    itemSpacing: Dp = NATIVE_ARTIST_RELEASE_ITEM_SPACING,
     itemKey: ((T) -> Any)? = null,
     card: @Composable (T) -> Unit,
 ) {
@@ -303,7 +361,7 @@ internal fun <T> NativeArtistReleaseShelf(
     palette: ArtworkPalette,
     horizontalPadding: Dp = PAGE_GUTTER,
     topPadding: Dp = 0.dp,
-    itemSpacing: Dp = 14.dp,
+    itemSpacing: Dp = NATIVE_ARTIST_RELEASE_ITEM_SPACING,
     onShowAll: (() -> Unit)? = null,
     itemKey: ((T) -> Any)? = null,
     card: @Composable (T) -> Unit,
