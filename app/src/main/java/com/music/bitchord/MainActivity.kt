@@ -136,6 +136,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalUriHandler
+import com.music.bitchord.ui.screens.discogsNativeDetailExtras
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
@@ -4089,44 +4091,39 @@ private fun BitChordApp(
                             onEditSignatureApi = { editingSignatureApi = true },
                             contentPadding = listPadding,
                         )
-                    } else if (key == "discogs_native_artist" ||
-                        key == "discogs_native_release"
-                    ) {
-                        com.music.bitchord.ui.screens.DiscogsNativeDetailPane(
-                            state = discogsDetail,
-                            listState = pageDetailListState,
-                            contentPadding = listPadding,
-                            activeShelf = detailActiveShelf,
-                            onActiveShelfChange = { detailActiveShelf = it },
-                            onReleaseOpen = { id ->
-                                detailActiveShelf = null
-                                viewModel.discogsNativeCatalog.openRelease(id)
-                            },
-                            onLoadMore = viewModel.discogsNativeCatalog::loadNextArtistPage,
-                            searching = detailSearching,
-                            onSearchingChange = { detailSearching = it },
-                        )
                     } else if (key == "apple_native_album" ||
-                        key == "apple_native_artist"
+                        key == "apple_native_artist" ||
+                        key.startsWith("discogs:artist:") ||
+                        key.startsWith("discogs:release:")
                     ) {
-                        // The Apple ID changes only the data adapter, never the
-                        // whole-screen compositor. This is exactly the same
-                        // DetailScreen used for MusicBrainz, local, Library,
-                        // artist, album and playlist. No second Apple screen.
+                        // MusicBrainz, iTunes and Discogs all render the SAME
+                        // DetailScreen. The provider only supplies DetailPage,
+                        // source-scoped tracks and optional evidence footers.
+                        // No Discogs-only screen, ID reinterpretation or parallel
+                        // composition path is allowed.
+                        val isDiscogs = key.startsWith("discogs:")
                         val artistState = appleArtistDetail as? UiState.Success
-                        val unified = appleSharedVisual
-                        if (unified == null) {
+                        val unified = if (isDiscogs) null else appleSharedVisual
+                        val discogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
+                            it.page.browseId == key
+                        } else null
+                        val unifiedPage = discogsPage?.page ?: unified?.page
+                        if (unifiedPage == null) {
                             com.music.bitchord.ui.components.MessageState(
-                                if ((if (key == "apple_native_album") appleAlbumDetail
+                                if ((if (isDiscogs) discogsDetail
+                                    else if (key == "apple_native_album") appleAlbumDetail
                                     else appleArtistDetail) is UiState.Error
                                 ) "Não foi possível carregar os detalhes."
                                 else "Carregando…",
                             )
                         } else {
-                            val unifiedPage = unified.page
-                            val unifiedListState = detailListStates.getOrPut(
-                                "apple:${unifiedPage.browseId}"
-                            ) { LazyListState() }
+                            // The native list is keyed by the exact Discogs ID
+                            // rather than an artist/release category string.
+                            val unifiedListState = if (isDiscogs) pageDetailListState
+                                else detailListStates.getOrPut(
+                                    "apple:${unifiedPage.browseId}"
+                                ) { LazyListState() }
+                            val sourceUriHandler = LocalUriHandler.current
                             DetailScreen(
                                 page = unifiedPage,
                                 currentSong = null,
@@ -4142,27 +4139,45 @@ private fun BitChordApp(
                                 onShuffle = {},
                                 onArtistClick = { _, _ -> },
                                 onAddSuggested = {},
-                                onCanonicalFeaturedReleaseOpen = viewModel::openCanonicalNativeDetail,
+                                onCanonicalFeaturedReleaseOpen = if (isDiscogs) null
+                                    else viewModel::openCanonicalNativeDetail,
                                 onSectionItemClick = { item ->
-                                    val matched = (
-                                        artistState?.data?.albums.orEmpty() +
-                                            (appleAlbumDetail as? UiState.Success)
-                                                ?.data?.relatedAlbums.orEmpty()
-                                    ).singleOrNull { it.browseId == item.browseId }
-                                    if (matched != null) {
-                                        detailActiveShelf = null
-                                        viewModel.openAppleEditorialEntry(matched)
+                                    if (isDiscogs) {
+                                        item.browseId?.takeIf { it.startsWith("discogs:release:") }
+                                            ?.let { releaseId ->
+                                                detailActiveShelf = null
+                                                viewModel.discogsNativeCatalog.openRelease(releaseId)
+                                            }
+                                    } else {
+                                        val matched = (
+                                            artistState?.data?.albums.orEmpty() +
+                                                (appleAlbumDetail as? UiState.Success)
+                                                    ?.data?.relatedAlbums.orEmpty()
+                                        ).singleOrNull { it.browseId == item.browseId }
+                                        if (matched != null) {
+                                            detailActiveShelf = null
+                                            viewModel.openAppleEditorialEntry(matched)
+                                        }
                                     }
                                 },
                                 searching = detailSearching,
                                 onSearchingChange = { detailSearching = it },
-                                metadataTracks = unified.metadataTracks,
-                                appleArtistTracks = unified.artistTracks,
-                                verifiedAppleArtistMbid = unified.verifiedArtistMbid,
-                                artistHeroOverride = unified.artistHeroUrl,
+                                metadataTracks = discogsPage?.tracks
+                                    ?: unified?.metadataTracks.orEmpty(),
+                                appleArtistTracks = unified?.artistTracks.orEmpty(),
+                                verifiedAppleArtistMbid = unified?.verifiedArtistMbid,
+                                artistHeroOverride = unified?.artistHeroUrl,
                                 songSort = songSort,
                                 footerContent = { palette ->
-                                    if (key == "apple_native_artist") {
+                                    if (isDiscogs) {
+                                        discogsPage?.let { detail ->
+                                            discogsNativeDetailExtras(
+                                                page = detail,
+                                                onLoadMore = viewModel.discogsNativeCatalog::loadNextArtistPage,
+                                                onOpenSource = sourceUriHandler::openUri,
+                                            )
+                                        }
+                                    } else if (key == "apple_native_artist") {
                                         artistState?.data?.let { artistPage ->
                                             item(key = "apple:source:paging") {
                                                 AppleArtistCatalogExtras(
@@ -4173,9 +4188,9 @@ private fun BitChordApp(
                                                 )
                                             }
                                         }
-                                    } else if (unified.notice != null ||
-                                        unified.attribution != null
-                                    ) {
+                                    } else if (unified != null && (
+                                        unified.notice != null || unified.attribution != null
+                                    )) {
                                         item(key = "apple:source:notes") {
                                             NativeCatalogDetailNotes(
                                                 notice = unified.notice,
