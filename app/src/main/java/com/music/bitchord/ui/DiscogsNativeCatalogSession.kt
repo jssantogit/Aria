@@ -70,6 +70,24 @@ internal fun discogsNativeLoadingPage(
 )
 
 /**
+ * A revoked discography cannot keep painting its source-owned metadata.
+ * If Catalog Search remains authorized, a metadata-free error page is still
+ * allowed to explain which capability the listener needs to enable.
+ */
+internal fun discogsNativePageDisplayAllowed(
+    page: DiscogsNativePage,
+    discographyAuthorized: Boolean,
+    catalogSearchAuthorized: Boolean,
+): Boolean = discographyAuthorized || (
+    catalogSearchAuthorized &&
+        page.page.songs is UiState.Error &&
+        page.page.sections.isEmpty() &&
+        page.tracks.isEmpty() &&
+        page.attributionUrl == null &&
+        page.page.thumbnailUrl == null
+    )
+
+/**
  * One per Android ViewModel. Independent from MusicBrainz and Apple. Search
  * and discography use separate persisted capability choices and revoke leases.
  * The only source identities stored here are Discogs Artist/Release numbers.
