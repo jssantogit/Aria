@@ -152,7 +152,10 @@ internal class DiscogsNativeCatalogSession(
         val page = searchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
-            _artists.value = UiState.Error("discogs_search_disabled")
+            _artists.value = UiState.Error(
+                if (!tokenVault.configured()) "discogs_token_required"
+                else "discogs_search_disabled",
+            )
             return
         }
         val job = scope.launch(Dispatchers.IO) {
@@ -176,7 +179,13 @@ internal class DiscogsNativeCatalogSession(
                     _artists.value = UiState.Error("discogs_token_required")
                 DiscogsNativeArtistSearchResult.Disabled ->
                     _artists.value = UiState.Error("discogs_search_disabled")
-                else -> _artists.value = UiState.Error("discogs_catalog_unavailable")
+                else -> {
+                    // A page-two outage cannot erase successful page-one IDs;
+                    // keep the next-page affordance available for manual retry.
+                    if (page > 1 && _artists.value is UiState.Success) {
+                        _searchHasMore.value = true
+                    } else _artists.value = UiState.Error("discogs_catalog_unavailable")
+                }
             }
         }
         searchJob = job
@@ -191,7 +200,10 @@ internal class DiscogsNativeCatalogSession(
         val page = releaseSearchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
-            _releasesSearch.value = UiState.Error("discogs_search_disabled")
+            _releasesSearch.value = UiState.Error(
+                if (!tokenVault.configured()) "discogs_token_required"
+                else "discogs_search_disabled",
+            )
             return
         }
         val job = scope.launch(Dispatchers.IO) {
@@ -215,7 +227,12 @@ internal class DiscogsNativeCatalogSession(
                     _releasesSearch.value = UiState.Error("discogs_token_required")
                 DiscogsNativeReleaseSearchResult.Disabled ->
                     _releasesSearch.value = UiState.Error("discogs_search_disabled")
-                else -> _releasesSearch.value = UiState.Error("discogs_catalog_unavailable")
+                else -> {
+                    if (page > 1 && _releasesSearch.value is UiState.Success) {
+                        _releaseSearchHasMore.value = true
+                    } else _releasesSearch.value =
+                        UiState.Error("discogs_catalog_unavailable")
+                }
             }
         }
         releaseSearchJob = job
