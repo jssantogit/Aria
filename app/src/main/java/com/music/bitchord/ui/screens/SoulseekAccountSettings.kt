@@ -4,11 +4,8 @@ import com.music.bitchord.ui.components.ConfirmationAlert
 import com.music.bitchord.ui.components.NativeAlertHost
 import com.music.bitchord.ui.components.NativeSettingsSecondaryAction
 import com.music.bitchord.ui.components.NativeSettingsPrimaryAction
-import com.music.bitchord.ui.components.PillTextField
 import com.music.bitchord.ui.theme.appleMusicKeyColor
 
-import android.app.Activity
-import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,7 +20,6 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,25 +72,19 @@ internal fun SoulseekAccountSettingsScreen(
     }
     val pilot = BuildConfig.FLAVOR == "dev" && BuildConfig.DEBUG
 
-    // Prevent screenshots and Android recents thumbnails while a password can be typed.
-    val activity = context as? Activity
-    DisposableEffect(activity) {
-        val window = activity?.window
-        val previouslySecure = window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
-        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose {
-            if (!previouslySecure) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
+    // Screenshots are permitted in provider forms. The native password field
+    // still uses PasswordVisualTransformation and never prints the secret.
 
-    fun testAndMaybeSave(save: Boolean) {
+    fun connectAndSave() {
         if (busy) return
         if (!pilot) {
-            status = "Integração indisponível nesta variante; nenhum download será iniciado."
+            status = "Autenticação disponível somente na variante devDebug."
             return
         }
+        // The primary action can be pressed after filling the account;
+        // consent is still mandatory before ANY credential leaves the device.
         if (!acknowledged) {
-            status = "Confirme o aviso de transmissão TCP sem TLS antes de continuar."
+            status = "Marque a autorização de autenticação TCP sem TLS para conectar."
             return
         }
         val requestedUser = username.trim()
@@ -103,40 +93,43 @@ internal fun SoulseekAccountSettingsScreen(
             status = "Informe o usuário da conta dedicada."
             return
         }
-        // Clear transient UI input before network I/O. Saved credentials are only
-        // reusable for the SAME username; account A never authenticates account B.
         password = ""
         busy = true
-        status = "Testando autenticação, sem iniciar downloads..."
+        status = "Autenticando…"
         scope.launch {
-            val success = withContext(Dispatchers.IO) {
-                val existing = if (typed.isEmpty() && savedUsername == requestedUser) {
-                    vault.read()
-                } else null
-                val secret = if (existing?.username == requestedUser) {
-                    existing.password.copyOf()
-                } else typed.toCharArray()
-                existing?.erase()
-                try {
-                    if (secret.isEmpty()) false
-                    else {
-                        val connected = SoulseekAccountProbe.test(requestedUser, secret)
-                        if (connected && save) vault.save(requestedUser, secret)
-                        connected
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    val existing = if (typed.isEmpty() && savedUsername == requestedUser) {
+                        vault.read()
+                    } else null
+                    val secret = if (existing?.username == requestedUser) {
+                        existing.password.copyOf()
+                    } else typed.toCharArray()
+                    existing?.erase()
+                    try {
+                        if (secret.isEmpty()) false
+                        else {
+                            val connected = SoulseekAccountProbe.test(requestedUser, secret)
+                            if (connected) vault.save(requestedUser, secret)
+                            connected
+                        }
+                    } catch (_: Exception) {
+                        false
+                    } finally {
+                        secret.fill('\u0000')
                     }
-                } catch (_: Exception) {
-                    false
-                } finally {
-                    secret.fill('\u0000')
                 }
+                if (success) {
+                    savedUsername = requestedUser
+                    status = "Conta autenticada e salva com Android Keystore."
+                } else {
+                    status = "Autenticação ou rede indisponível. Nenhuma credencial alterada."
+                }
+            } catch (_: Exception) {
+                status = "Não foi possível autenticar. Nenhuma credencial alterada."
+            } finally {
+                busy = false
             }
-            if (success) {
-                if (save) savedUsername = requestedUser
-                status = if (save) {
-                    "Conta salva com Android Keystore. Login testado; socket encerrado."
-                } else "Login confirmado; socket de teste encerrado, sem download."
-            } else status = "Autenticação ou rede indisponível. Nenhum arquivo transferido."
-            busy = false
         }
     }
 
@@ -177,7 +170,10 @@ internal fun SoulseekAccountSettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                androidx.compose.foundation.layout.Row {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
                     Checkbox(
                         checked = acknowledged,
                         onCheckedChange = { acknowledged = it },
@@ -189,7 +185,6 @@ internal fun SoulseekAccountSettingsScreen(
                     )
                     Text(
                         "Autorizo testar autenticação sem TLS",
-                        modifier = Modifier.padding(top = 12.dp),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -199,16 +194,12 @@ internal fun SoulseekAccountSettingsScreen(
                     Text(status, style = MaterialTheme.typography.bodySmall)
                 }
                 NativeSettingsPrimaryAction(
-                    label = "Conectar e salvar",
-                    onClick = { testAndMaybeSave(true) },
-                    enabled = !busy && acknowledged && username.isNotBlank(),
+                    label = "Conectar",
+                    onClick = ::connectAndSave,
+                    enabled = !busy && username.isNotBlank() &&
+                        (password.isNotBlank() || savedUsername == username.trim()),
                     loading = busy,
                     tag = "providers-soulseek-save",
-                )
-                NativeSettingsSecondaryAction(
-                    label = "Testar conexão",
-                    onClick = { testAndMaybeSave(false) },
-                    enabled = !busy && acknowledged && username.isNotBlank(),
                 )
                 if (savedUsername != null) {
                     NativeSettingsSecondaryAction(
