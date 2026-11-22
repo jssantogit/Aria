@@ -1087,6 +1087,13 @@ private fun BitChordApp(
     val canonicalGenreResults = catalogRuntime.genreResults
     val appleGenreReleases = catalogRuntime.appleGenres
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
+    // World charts own their provider permissions and their own Home route.
+    val countryCharts by viewModel.appleCountryCharts.collectAsStateWithLifecycle()
+    val chartNavigation = remember { com.music.bitchord.ui.CanonicalCountryChartNavigation() }
+    val chartAuthorized = com.music.bitchord.ui.rememberAppleCountryChartAccess()
+    LaunchedEffect(chartAuthorized, selectedTab) {
+        if (!chartAuthorized || selectedTab != TAB_HOME) chartNavigation.close()
+    }
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
     // The pushed genre stack lives outside BitChordApp's large Compose method.
     // Each callback reads its latest tab/provider state without rebuilding routes.
@@ -1510,6 +1517,9 @@ private fun BitChordApp(
     ) {
         canonicalWeeklyCommunityShelf?.copy(title = canonicalTrendingHeading)
     }
+    val authorizedCountryChartShelf = remember(chartAuthorized) {
+        com.music.bitchord.ui.canonicalCountryChartShelf(chartAuthorized)
+    }
     val canonicalHomePublicPlaylists = publicPlaylistUi.homeShelf
     val canonicalHomePlaylistNotice = publicPlaylistUi.homeNotice
     // Provider-neutral selection owns editorial precedence. Native source
@@ -1529,9 +1539,11 @@ private fun BitChordApp(
     }
     val canonicalHomeDisplayShelves = remember(
         canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
+        authorizedCountryChartShelf,
     ) {
         com.music.bitchord.ui.projectCanonicalHomeDisplay(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
+            authorizedCountryChartShelf,
         )
     }
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
@@ -2494,6 +2506,13 @@ private fun BitChordApp(
     }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
+        com.music.bitchord.data.catalog.metadata.parseAppleChartBrowseId(item.browseId)?.let { territory ->
+            if (chartAuthorized) {
+                chartNavigation.open(territory)
+                viewModel.loadAppleCountryChart(territory.code)
+            }
+            return@click
+        }
         com.music.bitchord.data.catalog.metadata.publicPlaylistMbid(item.browseId)?.let { id ->
             val candidate = canonicalPublicPlaylists.values.asSequence()
                 .flatMap { it.asSequence() }.firstOrNull { it.mbid == id }
@@ -4415,7 +4434,16 @@ private fun BitChordApp(
                         when (key.removePrefix(TAB_KEY).toIntOrNull()) {
                         // Home keeps its native feed. Explore's root reuses the
                         // existing native category grid, never Home shelves.
-                        TAB_HOME -> HomeScreen(
+                        TAB_HOME -> if (chartAuthorized && chartNavigation.active != null) {
+                            val territory = chartNavigation.active!!
+                            com.music.bitchord.ui.screens.AppleCountryChartScreen(
+                                territory = territory,
+                                state = countryCharts[territory.code] ?: UiState.Loading,
+                                onBack = chartNavigation::close,
+                                onRetry = { viewModel.loadAppleCountryChart(territory.code, true) },
+                                contentPadding = listPadding,
+                            )
+                        } else HomeScreen(
                             state = canonicalHomeState,
                             listState = homeListState,
                             onItemClick = { item, heading ->
