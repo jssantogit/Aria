@@ -85,17 +85,23 @@ internal fun ProviderNavidromeInlineForm() {
         testing = true
         status = null
         scope.launch {
-            session.testConnection(draft()).fold(
-                onSuccess = {
-                    status = "Conexão confirmada"
-                    failed = false
-                },
-                onFailure = {
-                    status = it.message ?: "Não foi possível conectar ao servidor"
-                    failed = true
-                },
-            )
-            testing = false
+            try {
+                session.testConnection(draft()).fold(
+                    onSuccess = {
+                        status = "Conexão confirmada"
+                        failed = false
+                    },
+                    onFailure = {
+                        status = it.message ?: "Não foi possível conectar ao servidor"
+                        failed = true
+                    },
+                )
+            } catch (_: Exception) {
+                status = "Não foi possível conectar ao servidor"
+                failed = true
+            } finally {
+                testing = false
+            }
         }
     }
 
@@ -167,8 +173,16 @@ internal fun ProviderNavidromeInlineForm() {
                         if (busy) return@NativeSettingsSecondaryAction
                         syncing = true
                         scope.launch {
-                            session.syncNow()
-                            syncing = false
+                            try {
+                                session.syncNow()
+                                status = "Sincronização solicitada"
+                                failed = false
+                            } catch (_: Exception) {
+                                status = "Não foi possível sincronizar a biblioteca"
+                                failed = true
+                            } finally {
+                                syncing = false
+                            }
                         }
                     },
                 )
