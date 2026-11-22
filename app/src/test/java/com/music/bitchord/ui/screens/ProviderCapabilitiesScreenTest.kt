@@ -487,7 +487,10 @@ class ProviderCapabilitiesScreenTest {
             .assertExists()
         compose.onNodeWithTag("providers-soulseek-folder-settings", useUnmergedTree = true)
             .assertExists()
-        compose.onNodeWithText("Pasta de downloads Soulseek").assertExists()
+        // The provider itself supplies the Soulseek context; no repeated
+        // provider name in the folder label or Account-navigation shortcut.
+        compose.onAllNodesWithTag("providers-soulseek-folder-settings", useUnmergedTree = true)
+            .assertCountEquals(1)
         compose.onAllNodesWithTag("providers-connections-soulseek", useUnmergedTree = true)
             .assertCountEquals(0)
     }
