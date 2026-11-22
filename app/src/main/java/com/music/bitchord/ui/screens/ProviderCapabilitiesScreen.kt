@@ -103,17 +103,20 @@ internal fun ProviderCapabilitiesScreen(
                     title = details.title,
                     subtitle = if (warning == null) details.description
                         else "${details.description}\n${warning}",
-                    trailing = {
+                    // Prerequisites first: do not show a grey, inoperable
+                    // switch until the credential/server makes this exact
+                    // capability eligible. An existing opt-out is preserved.
+                    trailing = if (ready) ({
                         Switch(
                             checked = choiceEnabled,
                             onCheckedChange = { onToggle(row.entry, it) },
-                            enabled = ready && !saving && !loading,
+                            enabled = !saving && !loading,
                             colors = appleSettingsSwitchColors(),
                             modifier = Modifier.semantics {
                                 contentDescription = "${group.title}: ${details.title}"
                             },
                         )
-                    },
+                    }) else null,
                     onClick = if (ready && !saving && !loading) {
                         { onToggle(row.entry, !choiceEnabled) }
                     } else null,
