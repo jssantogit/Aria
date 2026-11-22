@@ -865,7 +865,7 @@ fun SearchScreen(
  * documented attributes. We never claim total result completeness.
  */
 /** Only submitted category results navigate; typing previews submit text search. */
-internal fun submitCanonicalGenrePreview(
+fun submitCanonicalGenrePreview(
     category: ShelfItem,
     searchFor: (String) -> Unit,
 ) {

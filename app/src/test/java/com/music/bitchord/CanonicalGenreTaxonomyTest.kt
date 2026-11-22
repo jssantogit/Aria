@@ -15,7 +15,7 @@ class CanonicalGenreTaxonomyTest {
         val metal = canonicalExploreGenreSearchHits("metal").first()
         com.music.bitchord.ui.screens.submitCanonicalGenrePreview(metal, submitted::add)
         assertEquals(listOf("K-pop", "Metal"), submitted)
-        assertTrue(metal.browseId.startsWith("catalog:GENRE:"))
+        assertTrue(metal.browseId?.startsWith("catalog:GENRE:") == true)
     }
 
     @Test fun exploreIndexRemainsGenreOnlyWhileSubgenresHaveUniqueCanonicalIds() {
