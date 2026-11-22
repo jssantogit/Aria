@@ -132,6 +132,21 @@ internal fun ProviderCapabilitiesScreen(
             }
         }
 
+        // Soulseek's optional A1 destination is a DOWNLOAD setting, not
+        // another account/credential field. Keep the original persisted
+        // SAF read/write grant and reset flow; the download publisher remains
+        // governed independently by its existing feature gates.
+        if (group.key.providerId == "soulseek" &&
+            group.rows.any { it.entry.capability == ProviderCapability.DOWNLOAD }
+        ) {
+            Spacer(Modifier.height(14.dp))
+            Box(Modifier.testTag("providers-soulseek-folder-settings")) {
+                SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    A1AcquisitionDestinationSettingsRow()
+                }
+            }
+        }
+
         // Credential management belongs exclusively to Provedores ⋮ →
         // Conexões, which reuses the shared token vault. Never render a
         // second Discogs/ListenBrainz/Last.fm/Soulseek connection row here.
