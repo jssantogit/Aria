@@ -56,9 +56,9 @@ internal fun ProviderConnectionsCredentials(
                     icon = Icons.Rounded.Key,
                     title = "Discogs",
                     subtitle = if (discogsConfigured) {
-                        "Token configurado · compartilhado entre as funções Discogs"
+                        "Token configurado"
                     } else {
-                        "Token pessoal usado pelas funções Discogs compatíveis"
+                        "Token pessoal"
                     },
                     minHeight = 60.dp,
                 )
@@ -81,9 +81,9 @@ internal fun ProviderConnectionsCredentials(
                     icon = Icons.Rounded.Cloud,
                     title = "ListenBrainz",
                     subtitle = if (listenBrainzConfigured) {
-                        "Token configurado · reutilizado nas funções ListenBrainz"
+                        "Token configurado"
                     } else {
-                        "Token pessoal para os recursos compatíveis do ListenBrainz"
+                        "Token pessoal"
                     },
                     minHeight = 60.dp,
                 )
@@ -108,7 +108,7 @@ internal fun ProviderConnectionsCredentials(
                 SettingsRow(
                     icon = Icons.Rounded.Lock,
                     title = "Last.fm",
-                    subtitle = "Autorizar a conta no fluxo de login existente",
+                    subtitle = "Autenticação e scrobbling",
                     onClick = onOpenAccounts,
                     minHeight = 60.dp,
                     modifier = Modifier.testTag("providers-connections-lastfm"),
@@ -120,7 +120,7 @@ internal fun ProviderConnectionsCredentials(
                 SettingsRow(
                     icon = Icons.Rounded.Settings,
                     title = "Soulseek",
-                    subtitle = "Gerenciar a autenticação da conta",
+                    subtitle = "Autenticação da conta",
                     onClick = onOpenSoulseek,
                     minHeight = 60.dp,
                     modifier = Modifier.testTag("providers-connections-soulseek"),
