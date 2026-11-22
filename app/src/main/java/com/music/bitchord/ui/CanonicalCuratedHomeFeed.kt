@@ -3,6 +3,8 @@ package com.music.bitchord.ui
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.catalog.metadata.LISTENBRAINZ_PUBLIC_TTL_MS
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPopularityEvidence
+import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit
+import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRelease
 import com.music.bitchord.data.catalog.metadata.ListenBrainzSitewideRecording
 import com.music.bitchord.data.catalog.metadata.publicListenBrainzRecordingRanking
 import com.music.bitchord.data.catalog.metadata.canonicalStreamingTitleIsSafe
@@ -83,6 +85,36 @@ internal fun canonicalArtistAlbumShelfKind(
         else -> CanonicalArtistAlbumShelfKind.ALBUM
     }
 }
+
+/** An exact ReleaseGroup relation, not a same-title guess, authorizes edition cards. */
+internal fun canonicalReleaseGroupEditionRows(
+    groupMbid: String,
+    editions: List<MusicBrainzReleaseHit>,
+    displayedReleaseMbid: String?,
+): List<CanonicalCatalogSearchRow> = editions.asSequence()
+    .filter { row ->
+        row.releaseGroupMbid?.equals(groupMbid, ignoreCase = true) == true &&
+            isCuratedMusicBrainzRelease(row) &&
+            !row.musicBrainzId.equals(displayedReleaseMbid, ignoreCase = true)
+    }
+    .distinctBy { it.musicBrainzId.lowercase(java.util.Locale.ROOT) }
+    .take(24)
+    .map { row ->
+        CanonicalCatalogSearchRow(
+            musicBrainzId = row.musicBrainzId,
+            kind = CanonicalSearchKind.RELEASE,
+            title = row.title,
+            subtitle = listOfNotNull(
+                row.artistDisplay?.takeIf(String::isNotBlank),
+                row.country?.takeIf(String::isNotBlank),
+                row.releaseDate?.takeIf(String::isNotBlank),
+            ).joinToString(" · "),
+            releaseDate = row.releaseDate,
+            releaseKind = row.releaseGroupPrimaryType,
+            artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(row.artworkUri),
+        )
+    }
+    .toList()
 
 /** Native DetailScreen accepts real browse shelves without synthetic Song.videoId. */
 internal fun canonicalNativeSections(

@@ -44,6 +44,46 @@ class CanonicalCuratedHomeFeedTest {
         trendingHeading = "Em alta", todayIsoDate = "2026-10-25",
     )
 
+    @Test fun albumVersionsUseProvenGroupLinksAndAreNeverPlayableSongs() {
+        val group = "11111111-1111-4111-8111-111111111111"
+        val selected = com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(
+            musicBrainzId = "22222222-2222-4222-8222-222222222222",
+            title = "Current edition", country = "BR",
+            releaseDate = "2026-11-01", artistDisplay = "Artist",
+            status = "Official", releaseGroupMbid = group,
+        )
+        val jp = selected.copy(
+            musicBrainzId = "33333333-3333-4333-8333-333333333333",
+            title = "Japanese edition", country = "JP",
+        )
+        val unrelated = jp.copy(
+            musicBrainzId = "44444444-4444-4444-8444-444444444444",
+            releaseGroupMbid = "55555555-5555-4555-8555-555555555555",
+        )
+        val unofficial = jp.copy(
+            musicBrainzId = "66666666-6666-4666-8666-666666666666",
+            status = "Unofficial",
+        )
+        val editions = com.music.bitchord.ui.canonicalReleaseGroupEditionRows(
+            group, listOf(selected, jp, jp, unrelated, unofficial),
+            displayedReleaseMbid = selected.musicBrainzId,
+        )
+        assertEquals(listOf(jp.musicBrainzId), editions.map { it.musicBrainzId })
+        assertEquals(CanonicalSearchKind.RELEASE, editions.single().kind)
+        assertEquals(null, editions.single().artworkUri)
+        assertTrue(editions.single().subtitle.orEmpty().contains("JP"))
+        val section = com.music.bitchord.ui.canonicalNativeSections(
+            CanonicalSearchKind.RELEASE_GROUP, editions, "Outras versões",
+        )
+        assertEquals(listOf("Outras versões"), section.map { it.title })
+        assertEquals("catalog:RELEASE:${jp.musicBrainzId}",
+            section.single().items.single().browseId)
+        assertEquals(null, section.single().items.single().videoId)
+        assertTrue(com.music.bitchord.ui.canonicalReleaseGroupEditionRows(
+            group, listOf(selected), selected.musicBrainzId,
+        ).isEmpty())
+    }
+
     @Test fun largerRealMusicBrainzFeedDistributesDistinctTypedReleasesAcrossShelves() {
         val base = release.copy(releaseKind = "Album")
         val rows = (1..12).map { i ->

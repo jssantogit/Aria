@@ -1186,7 +1186,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openCanonicalNativeShelfItem(browseId: String): Boolean {
         if (!browseId.startsWith("catalog:")) return false
-        val currentRows = (_canonicalDetail.value as? UiState.Success)?.data?.rows.orEmpty()
+        val current = (_canonicalDetail.value as? UiState.Success)?.data
+        val currentRows = current?.rows.orEmpty() + current?.editionRows.orEmpty()
         val fromCatalog = (_canonicalDiscoveryCatalog.value as? UiState.Success)?.data.orEmpty()
         val row = (currentRows + fromCatalog).firstOrNull {
             canonicalNativeBrowseId(it) == browseId
@@ -1670,6 +1671,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                         initialArtwork,
                                         inheritedFromGroup = true,
                                     ),
+                                    editionRows = canonicalReleaseGroupEditionRows(
+                                        entry.musicBrainzId, editions, cached.musicBrainzId,
+                                    ),
                                 )
                             }
                         }
@@ -1689,8 +1693,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 songs = UiState.Success(emptyList()),
                                 sections = canonicalNativeSections(
                                     parentKind = entry.kind,
-                                    rows = cachedPreview.rows,
-                                    heading = getApplication<Application>().getString(R.string.albums),
+                                    rows = cachedPreview.editionRows,
+                                    heading = "Outras versões",
                                 ),
                             )
                         } }
@@ -1788,7 +1792,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // cancellable decoration, never a tracklist prerequisite.
                         if (page != null) {
                             displayedGroupReleaseMbid = detail.musicBrainzId
-                            UiState.Success(page)
+                            UiState.Success(page.copy(
+                                editionRows = canonicalReleaseGroupEditionRows(
+                                    entry.musicBrainzId, versions, detail.musicBrainzId,
+                                ),
+                            ))
                         } else UiState.Error(getApplication<Application>().getString(
                             R.string.canonical_discovery_cache_empty,
                         ))
@@ -1885,8 +1893,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             songs = UiState.Success(emptyList()),
                             sections = canonicalNativeSections(
                                 parentKind = entry.kind,
-                                rows = output.data.rows,
-                                heading = getApplication<Application>().getString(
+                                rows = if (entry.kind == CanonicalSearchKind.RELEASE_GROUP)
+                                    output.data.editionRows else output.data.rows,
+                                heading = if (entry.kind == CanonicalSearchKind.RELEASE_GROUP)
+                                    "Outras versões" else getApplication<Application>().getString(
                                     if (entry.kind == CanonicalSearchKind.ARTIST) R.string.shelf_new_albums_singles
                                     else R.string.albums,
                                 ),

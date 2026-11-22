@@ -177,6 +177,8 @@ data class CanonicalCatalogDetailPage(
     /** Next MusicBrainz browse offset, which must use returned row count. */
     val nextOffset: Int? = null,
     val totalCount: Int? = null,
+    /** Exact editions of the opened ReleaseGroup, separate from track recordings. */
+    val editionRows: List<CanonicalCatalogSearchRow> = emptyList(),
 )
 
 /** A verified public playlist row is metadata, not a playable Song. */
