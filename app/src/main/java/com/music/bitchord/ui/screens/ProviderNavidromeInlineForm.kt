@@ -26,6 +26,20 @@ import com.music.bitchord.ui.components.NativeSettingsSecondaryAction
 import kotlinx.coroutines.launch
 
 /**
+ * A valid editor needs a server and a credential for the selected mode.
+ * Existing secrets can only be kept in the same server/authentication realm.
+ */
+internal fun navidromeAccountReady(
+    url: String,
+    mode: OpenSubsonicAuthMode,
+    username: String,
+    secret: String,
+    canKeepCredential: Boolean,
+): Boolean = url.trim().isNotEmpty() &&
+    (mode != OpenSubsonicAuthMode.PASSWORD || username.trim().isNotEmpty()) &&
+    (secret.isNotEmpty() || canKeepCredential)
+
+/**
  * Inline Navidrome editor in Providers → Audio. This uses the original
  * AndroidOpenSubsonicAccountSession, auth-mode rules, encrypted credential
  * handling, live connection probe, sync and forget methods — no parallel
@@ -47,15 +61,17 @@ internal fun ProviderNavidromeInlineForm() {
     }
     var username by remember(account?.accountId) { mutableStateOf(account?.username.orEmpty()) }
     var secret by remember(account?.accountId) { mutableStateOf("") }
-    var testing by remember { mutableStateOf(false) }
+    var connecting by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf(false) }
-    val busy = testing || syncing
-    val valid = url.isNotBlank()
+    val busy = connecting || syncing
     val canKeepCredential = account != null && hasCredential &&
-        mode == account?.authMode && url.trim().trimEnd('/') == account?.serverUrl
+        mode == account?.authMode &&
+        url.trim().trimEnd('/') == account?.serverUrl &&
+        (mode != OpenSubsonicAuthMode.PASSWORD || username.trim() == account?.username)
+    val valid = navidromeAccountReady(url, mode, username, secret, canKeepCredential)
 
     fun draft() = OpenSubsonicAccountDraft(
         serverUrl = url,
@@ -64,42 +80,43 @@ internal fun ProviderNavidromeInlineForm() {
         secretReplacement = secret.takeIf(String::isNotEmpty),
     )
 
-    fun save() {
+    // One main action: authenticate against the server, then persist only
+    // verified credentials in the existing encrypted OpenSubsonic session.
+    // Never claim login success from a local save alone.
+    fun connect() {
         if (busy || !valid) return
-        session.save(draft()).fold(
-            onSuccess = {
-                secret = ""
-                status = "Servidor salvo"
-                failed = false
-            },
-            onFailure = {
-                failed = true
-                status = it.message ?: "Não foi possível salvar este servidor"
-            },
-        )
-    }
-
-    fun test() {
-        if (busy || !valid) return
-        testing = true
-        status = null
+        val attempted = draft()
+        connecting = true
+        status = "Conectando…"
+        failed = false
         scope.launch {
             try {
-                session.testConnection(draft()).fold(
+                session.testConnection(attempted).fold(
                     onSuccess = {
-                        status = "Conexão confirmada"
-                        failed = false
+                        session.save(attempted).fold(
+                            onSuccess = {
+                                secret = ""
+                                status = "Conectado ao Navidrome"
+                                failed = false
+                            },
+                            onFailure = {
+                                status = "Não foi possível salvar a conexão"
+                                failed = true
+                            },
+                        )
                     },
                     onFailure = {
-                        status = it.message ?: "Não foi possível conectar ao servidor"
+                        status = "Servidor indisponível ou credenciais inválidas"
                         failed = true
                     },
                 )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
-                status = "Não foi possível conectar ao servidor"
+                status = "Não foi possível conectar ao Navidrome"
                 failed = true
             } finally {
-                testing = false
+                connecting = false
             }
         }
     }
@@ -153,16 +170,11 @@ internal fun ProviderNavidromeInlineForm() {
                     style = MaterialTheme.typography.bodySmall)
             }
             NativeSettingsPrimaryAction(
-                label = "Salvar",
+                label = if (account == null) "Conectar" else "Salvar conexão",
                 enabled = valid && !busy,
-                loading = busy,
-                onClick = ::save,
+                loading = connecting,
+                onClick = ::connect,
                 tag = "providers-navidrome-save",
-            )
-            NativeSettingsSecondaryAction(
-                label = "Testar conexão",
-                onClick = ::test,
-                enabled = valid && !busy,
             )
             if (account != null) {
                 NativeSettingsSecondaryAction(
