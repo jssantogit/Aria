@@ -1168,7 +1168,20 @@ private fun BitChordApp(
     val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
     val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
-    val discogsNativeVisual = (discogsDetail as? UiState.Success)?.data
+    val discogsGate = com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()
+    val discogsReadAllowed = discogsGate?.open(
+        com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
+    ) != null
+    val discogsSearchAllowed = discogsGate?.open(
+        com.music.bitchord.data.providers.ProviderCapability.CATALOG_SEARCH,
+        com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
+    ) != null
+    val discogsNativeVisual = (discogsDetail as? UiState.Success)?.data?.takeIf {
+        com.music.bitchord.ui.discogsNativePageDisplayAllowed(
+            it, discogsReadAllowed, discogsSearchAllowed,
+        )
+    }
     val selectedSearchProviderKey by viewModel.selectedSearchProviderKey.collectAsStateWithLifecycle()
     val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()
     val unfilteredLocalSearchSongs by viewModel.availableLocalSongs.collectAsStateWithLifecycle()
@@ -4120,16 +4133,8 @@ private fun BitChordApp(
                         if (liveDiscogsPage != null) {
                             previousDiscogsPage.value = liveDiscogsPage
                         }
-                        val discogsAuthorized = isDiscogs &&
-                            com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
-                                com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY,
-                                com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
-                            ) != null
-                        val discogsPage = if (discogsAuthorized) {
-                            liveDiscogsPage ?: previousDiscogsPage.value.takeIf {
-                                discogsRoute != null
-                            }
-                        } else null
+                        val discogsPage = liveDiscogsPage ?: previousDiscogsPage.value
+                            .takeIf { isDiscogs && discogsReadAllowed && discogsRoute != null }
                         val unifiedPage = discogsPage?.page ?: unified?.page
                         if (unifiedPage == null) {
                             com.music.bitchord.ui.components.MessageState(
