@@ -1163,6 +1163,9 @@ private fun BitChordApp(
         viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
     val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
     val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
+    val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
+    val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
+    val discogsNativeVisual = (discogsDetail as? UiState.Success)?.data
     val selectedSearchProviderKey by viewModel.selectedSearchProviderKey.collectAsStateWithLifecycle()
     val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()
     val unfilteredLocalSearchSongs by viewModel.availableLocalSongs.collectAsStateWithLifecycle()
@@ -1262,7 +1265,7 @@ private fun BitChordApp(
             (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
         AppleNativeDetailKind.NONE -> null
     }
-    val visualDetail = detail ?: appleSharedVisual?.page
+    val visualDetail = detail ?: appleSharedVisual?.page ?: discogsNativeVisual?.page
     // Local Music, Downloads and the other device folders draw as release
     // pages, but they have no artwork to wash the top inset in, so they keep
     // the plain bar; their top bar trades the overflow for a sort-and-view
@@ -1282,6 +1285,7 @@ private fun BitChordApp(
     // across visits.
     val detailSongSorts by AppSettings.detailSongSorts.collectAsStateWithLifecycle()
     val activeDetailSortId = detail?.browseId ?: appleSharedVisual?.page?.browseId
+        ?: discogsNativeVisual?.page?.browseId
     val songSort = activeDetailSortId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
     var songSortMenuOpen by remember { mutableStateOf(false) }
     var detailSortMenuAnchor by remember {
@@ -3427,6 +3431,14 @@ private fun BitChordApp(
                     !showSmartPlaylistBuilder && appleAlbumDetail == null &&
                     appleArtistDetail != null,
             ) { viewModel.backAppleEditorialArtist() }
+            BackHandler(
+                enabled = selectedTab == TAB_SEARCH && detail == null &&
+                    !showSettings && !showReplay && !showSources &&
+                    !showSmartPlaylistBuilder && discogsRoute != null,
+            ) {
+                detailActiveShelf = null
+                viewModel.discogsNativeCatalog.back()
+            }
 
         }
         routeBackHandlers()
@@ -3489,6 +3501,12 @@ private fun BitChordApp(
                 communityMetadataRecording != null -> "community_recording:" + communityMetadataRecording!!.musicBrainzId
                 openedPublicPlaylist != null -> "public_playlist:" + openedPublicPlaylist!!.mbid
                 detail != null -> detail.browseId
+                selectedTab == TAB_SEARCH &&
+                    discogsRoute == com.music.bitchord.ui.DiscogsNativeRoute.ARTIST ->
+                    "discogs_native_artist"
+                selectedTab == TAB_SEARCH &&
+                    discogsRoute == com.music.bitchord.ui.DiscogsNativeRoute.RELEASE ->
+                    "discogs_native_release"
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
@@ -4071,6 +4089,23 @@ private fun BitChordApp(
                             onAppLanguage = { showAppLanguage = true },
                             onEditSignatureApi = { editingSignatureApi = true },
                             contentPadding = listPadding,
+                        )
+                    } else if (key == "discogs_native_artist" ||
+                        key == "discogs_native_release"
+                    ) {
+                        com.music.bitchord.ui.screens.DiscogsNativeDetailPane(
+                            state = discogsDetail,
+                            listState = pageDetailListState,
+                            contentPadding = listPadding,
+                            activeShelf = detailActiveShelf,
+                            onActiveShelfChange = { detailActiveShelf = it },
+                            onReleaseOpen = { id ->
+                                detailActiveShelf = null
+                                viewModel.discogsNativeCatalog.openRelease(id)
+                            },
+                            onLoadMore = viewModel.discogsNativeCatalog::loadNextArtistPage,
+                            searching = detailSearching,
+                            onSearchingChange = { detailSearching = it },
                         )
                     } else if (key == "apple_native_album" ||
                         key == "apple_native_artist"
@@ -4746,6 +4781,15 @@ private fun BitChordApp(
                             onAppleTrackOpen = viewModel::openAppleEditorialTrackAlbum,
                             applePaging = viewModel.appleSearchPaging.collectAsStateWithLifecycle().value,
                             onAppleLoadMore = viewModel::loadMoreApplePublicSearch,
+                            discogsArtistResults = viewModel.discogsNativeCatalog.artists
+                                .collectAsStateWithLifecycle().value,
+                            discogsHasMore = viewModel.discogsNativeCatalog.searchHasMore
+                                .collectAsStateWithLifecycle().value,
+                            onDiscogsLoadMore = viewModel.discogsNativeCatalog::loadNextSearchPage,
+                            onDiscogsArtistOpen = { row ->
+                                detailActiveShelf = null
+                                viewModel.discogsNativeCatalog.openArtist(row)
+                            },
                             canonicalPublicPlaylists = com.music.bitchord.ui.rememberCanonicalPublicPlaylistSearchUi(
                                 viewModel = viewModel,
                                 query = query,
@@ -5351,6 +5395,8 @@ private fun BitChordApp(
                             (appleAlbumDetail as? UiState.Success)?.data?.album?.title.orEmpty()
                         appleNativeKind == AppleNativeDetailKind.ARTIST ->
                             (appleArtistDetail as? UiState.Success)?.data?.artist?.title.orEmpty()
+                        discogsRoute != null ->
+                            discogsNativeVisual?.page?.title ?: "Discogs"
 
                         selectedTab == TAB_HOME -> stringResource(R.string.home)
                         else -> tabs[selectedTab].label
@@ -5409,6 +5455,10 @@ private fun BitChordApp(
                             (detailListStates["public_playlist:${openedPublicPlaylist!!.mbid}"]
                                 ?.firstVisibleItemIndex ?: 0) > 0
                         detail != null -> detailScrolled
+                        discogsNativeVisual != null -> {
+                            val list = detailListStates[pageRouteKey]
+                            (list?.firstVisibleItemIndex ?: 0) > 0
+                        }
                         appleSharedVisual != null -> {
                             val list = detailListStates["apple:${appleSharedVisual.page.browseId}"]
                             (list?.firstVisibleItemIndex ?: 0) > 0 ||
@@ -5458,6 +5508,10 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
+                        discogsRoute != null -> ({
+                            detailActiveShelf = null
+                            viewModel.discogsNativeCatalog.back()
+                        })
                         appleExploreGenreChrome -> ({ genreNavigation.back() })
 
                         else -> null
