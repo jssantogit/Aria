@@ -78,7 +78,7 @@ internal object BuiltInProviderDescriptors {
         implemented: Boolean = false,
     ): ProviderDescriptor = ProviderDescriptor(
         key = BuiltInProviderKeys.DISCOGS,
-        capabilities = setOf(ProviderCapability.EDITION_METADATA),
+        capabilities = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY, ProviderCapability.EDITION_METADATA),
         readiness = when {
             !implemented -> ProviderReadiness.NOT_IMPLEMENTED
             !tokenConfigured -> ProviderReadiness.NEEDS_CONFIGURATION
