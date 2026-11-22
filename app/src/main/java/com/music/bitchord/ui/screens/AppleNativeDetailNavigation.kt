@@ -39,6 +39,29 @@ internal fun appleNativeDetailRouteKey(
 }
 
 /**
+ * Artist and album rails can both contain the SAME exact iTunes collection.
+ * Distinct sources of presentation artwork do not make it two albums.
+ * Conflicting source credits for one ID fail closed instead of guessing.
+ */
+internal fun appleNativeShelfEntry(
+    browseId: String?,
+    candidates: List<AppleEditorialSearchRow>,
+): AppleEditorialSearchRow? {
+    val matches = candidates.filter {
+        it.browseId == browseId &&
+            appleNativeDetailRouteKey(AppleNativeDetailKind.ALBUM, null, it) != null
+    }
+    val first = matches.firstOrNull() ?: return null
+    if (matches.any {
+        it.title != first.title || it.artistName != first.artistName ||
+            it.kind != first.kind
+    }) return null
+    return matches.firstOrNull {
+        appleProminentArtworkOrNull(it.artworkUri) != null
+    } ?: first
+}
+
+/**
  * Tapping a source result paints the SAME native DetailScreen immediately.
  * Network failure stays within its native artist/album shell; no extra page.
  */
