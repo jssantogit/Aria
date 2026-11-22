@@ -112,9 +112,11 @@ internal fun ProviderCapabilitiesScreen(
                             onCheckedChange = { onToggle(row.entry, it) },
                             enabled = !saving && !loading,
                             colors = appleSettingsSwitchColors(),
-                            modifier = Modifier.semantics {
-                                contentDescription = "${group.title}: ${details.title}"
-                            },
+                            modifier = Modifier
+                                .testTag("providers-function-switch-${capability.name}")
+                                .semantics {
+                                    contentDescription = "${group.title}: ${details.title}"
+                                },
                         )
                     }) else null,
                     onClick = if (ready && !saving && !loading) {
