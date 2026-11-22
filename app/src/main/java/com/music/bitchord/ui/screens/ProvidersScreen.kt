@@ -1091,7 +1091,8 @@ private fun ProviderSettingRow(
                 onCheckedChange = onToggle,
                 enabled = !saving && available,
                 colors = appleSettingsSwitchColors(),
-                modifier = Modifier.semantics {
+                modifier = Modifier.testTag("providers-group-switch-${group.key.providerId}")
+                    .semantics {
                     contentDescription = group.title
                     stateDescription = when {
                         warning == "Parcialmente ativado" -> "Parcialmente ativado"
