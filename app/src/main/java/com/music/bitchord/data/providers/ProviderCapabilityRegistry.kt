@@ -256,6 +256,18 @@ internal object ProviderCapabilityRegistry {
         )
         add(
             ProviderInventoryEntry(
+                key = BuiltInProviderKeys.ITUNES,
+                capability = ProviderCapability.CHART_MOST_PLAYED,
+                tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
+                displayName = "Apple Music (Rankings por País)",
+                readiness = if (itunesImplemented) ProviderReadiness.READY
+                    else ProviderReadiness.NOT_IMPLEMENTED,
+                supportsReordering = true,
+                notes = "Apple Marketing Tools: rankings públicos most-played por território; sem playback",
+            ),
+        )
+        add(
+            ProviderInventoryEntry(
                 key = ProviderKey("store_charts"),
                 capability = ProviderCapability.CHART_SALES,
                 tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,

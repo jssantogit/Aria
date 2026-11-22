@@ -64,7 +64,10 @@ internal object ProviderRuntime {
                     ProviderCapability.PERSONAL_RECOMMENDATIONS to listOf(
                         ProviderChoice(listenbrainz, enabled = true, order = 0)),
                     ProviderCapability.PUBLIC_PLAYLISTS to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
-                    ProviderCapability.CHART_MOST_PLAYED to listOf(ProviderChoice(listenbrainz, enabled = true, order = 0)),
+                    ProviderCapability.CHART_MOST_PLAYED to listOf(
+                        ProviderChoice(listenbrainz, enabled = true, order = 0),
+                        ProviderChoice(itunes, enabled = false, order = 1),
+                    ),
                 ),
             ),
         )

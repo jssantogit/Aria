@@ -109,6 +109,9 @@ internal class ProviderAuthorityCoordinator(
         // every explicitly saved disabled/empty choice on subsequent boots.
         imported[ProviderCapability.CHART_MOST_PLAYED] = listOf(
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = true, order = 0),
+            // Distinct Apple chart data requires an independent opt-in. Existing
+            // persisted choices (including an empty list) always win.
+            ProviderChoice(BuiltInProviderKeys.ITUNES, enabled = false, order = 1),
         )
         imported[ProviderCapability.PUBLIC_PLAYLISTS] = listOf(
             ProviderChoice(BuiltInProviderKeys.LISTENBRAINZ, enabled = true, order = 0),

@@ -52,6 +52,7 @@ internal object BuiltInProviderDescriptors {
             ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY,
             ProviderCapability.RELEASE_ARTWORK,
+            ProviderCapability.CHART_MOST_PLAYED,
         ),
         readiness = readiness,
     )
