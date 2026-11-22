@@ -101,11 +101,11 @@ internal class DiscogsNativeArtistCatalog(
         if (artistId !in 1..999_999_999_999L || page !in 1..3)
             return DiscogsNativeArtistLoad.InvalidArtist
         if (!enabled || !admission.permitted(
-            ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
         )) return DiscogsNativeArtistLoad.Disabled
         val response = try {
             admission.execute(
-                capability = ProviderCapability.EDITION_METADATA,
+                capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                 provider = BuiltInProviderKeys.DISCOGS,
                 scheduleLimited = { block -> limiter.runHttpLimited { block() } },
                 networkCall = { transport.list(artistId, page, userAgent) },
