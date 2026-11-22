@@ -3506,8 +3506,11 @@ private fun BitChordApp(
                 detail != null -> detail.browseId
                 // Exactly like MusicBrainz's native DetailPage, route by
                 // provider-owned browseId, never by a generic source screen.
-                selectedTab == TAB_SEARCH && discogsRoute != null &&
-                    discogsBrowseId != null -> discogsBrowseId!!
+                selectedTab == TAB_SEARCH && com.music.bitchord.ui
+                    .discogsNativeDetailRouteKey(discogsRoute, discogsBrowseId) != null ->
+                    com.music.bitchord.ui.discogsNativeDetailRouteKey(
+                        discogsRoute, discogsBrowseId,
+                    )!!
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
