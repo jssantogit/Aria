@@ -35,6 +35,10 @@ import org.robolectric.annotation.ConscryptMode
 class ProviderCapabilitiesScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun providerTabsUseSearchScreenSpacingAfterSearchField() {
+        assertEquals(4.dp, ProviderSearchTabsGap)
+    }
+
     @Test fun providerToolbarUsesOneOverflowWithOrganizeAndConnections() {
         var organizeCalls = 0
         var connectionsCalls = 0
