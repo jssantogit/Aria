@@ -66,7 +66,9 @@ internal fun discogsNativeArtistReleases(
             title = release.title,
             year = release.year,
             formats = release.formats,
-            tracklist = release.tracklist,
+            // Artist shelves retain IDs and format evidence only; the exact
+            // Release tracklist is fetched again when the user opens its page.
+            tracklist = emptyList(),
         )
     }.distinctBy { it.releaseId }.toList()
 }
