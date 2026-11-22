@@ -119,7 +119,7 @@ class DiscogsNativeArtistCatalogTest {
         assertEquals(listOf("artist:17:1", "master:90", "release:50", "release:51"), visited)
     }
 
-    @Test fun coverageIsExplicitlyIncompleteAfterThreePageBound() = runBlocking {
+    @Test fun coverageIsExplicitlyIncompleteAfterHundredPageBound() = runBlocking {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
@@ -135,10 +135,10 @@ class DiscogsNativeArtistCatalogTest {
                 override suspend fun list(artistId: Long, page: Int,
                     userAgent: String): DiscogsHttpResponse =
                     DiscogsHttpResponse(200,
-                        """{"pagination":{"page":3,"pages":100},"releases":[]}""")
+                        """{"pagination":{"page":100,"pages":101},"releases":[]}""")
             },
         )
-        val result = source.load(17, 3) as DiscogsNativeArtistLoad.Success
+        val result = source.load(17, 100) as DiscogsNativeArtistLoad.Success
         assertFalse(result.hasMore)
         assertTrue(result.incomplete)
     }
