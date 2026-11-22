@@ -13,6 +13,7 @@ import com.music.bitchord.ui.screens.appleNativeDetailDisplayAllowed
 import com.music.bitchord.ui.screens.appleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
 import com.music.bitchord.ui.screens.appleNativePendingDetail
+import com.music.bitchord.ui.screens.appleNativeShelfEntry
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -118,6 +119,26 @@ class AppleNativeDetailNavigationTest {
             )))
         assertEquals(hit.browseId, appleNativeDetailRouteKey(
             AppleNativeDetailKind.ARTIST, hit, null,
+        ))
+    }
+
+    @Test fun nestedArtistAndRelatedAlbumShelvesOpenSameExactAppleProduct() {
+        val artistShelfRow = album()
+        val relatedRow = artistShelfRow.copy(
+            artworkUri = "https://is1-ssl.mzstatic.com/image/thumb/Music/abc/600x600bb.jpg",
+        )
+        assertEquals(relatedRow, appleNativeShelfEntry(
+            artistShelfRow.browseId, listOf(artistShelfRow, relatedRow),
+        ))
+        assertNull(appleNativeShelfEntry(
+            artistShelfRow.browseId, listOf(artistShelfRow,
+                relatedRow.copy(title = "Conflicting Release")),
+        ))
+        assertNull(appleNativeShelfEntry(
+            "itunes:br:artist:17", listOf(artistShelfRow, relatedRow),
+        ))
+        assertNull(appleNativeShelfEntry(
+            "discogs:release:500", listOf(artistShelfRow, relatedRow),
         ))
     }
 
