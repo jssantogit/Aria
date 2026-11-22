@@ -3437,9 +3437,9 @@ private fun BitChordApp(
             BackHandler(
                 enabled = selectedTab == TAB_SEARCH && detail == null &&
                     !showSettings && !showReplay && !showSources &&
-                    !showSmartPlaylistBuilder && discogsRoute != null,
+                    !showSmartPlaylistBuilder && discogsRoute != null &&
+                    detailActiveShelf == null,
             ) {
-                detailActiveShelf = null
                 viewModel.discogsNativeCatalog.back()
             }
 
