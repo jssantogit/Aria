@@ -33,6 +33,29 @@ class AppleEditorialCatalogRepositoryTest {
             "artistName":"Artist","artistId":77,"trackName":"Song $id",
             "discNumber":1,"trackNumber":1}"""
 
+    @Test fun artistTracksAreStrictlyScopedToExactAppleIdAndNeverIncludeVideos() =
+        runBlocking {
+            val source = Source("""{"resultCount":4,"results":[
+                {"wrapperType":"artist","artistId":77,"artistName":"Artist"},
+                ${track(101, 20)},
+                {"wrapperType":"track","kind":"song","trackId":102,
+                 "collectionId":21,"artistId":88,"artistName":"Namesake",
+                 "trackName":"Unrelated"},
+                {"wrapperType":"track","kind":"music-video","trackId":103,
+                 "collectionId":22,"artistId":77,"artistName":"Artist",
+                 "trackName":"Not a song"}
+            ]}""")
+            val result = AppleEditorialCatalogRepository(ItunesCatalogClient(source))
+                .artistTracks(77, limit = 40)
+            assertEquals("song", source.parameters["entity"])
+            assertEquals("77", source.parameters["id"])
+            assertTrue(result is com.music.bitchord.data.catalog.metadata.AppleEditorialTrackLoad.Success)
+            val songs = (result as
+                com.music.bitchord.data.catalog.metadata.AppleEditorialTrackLoad.Success).tracks
+            assertEquals(listOf(101L), songs.map { it.id })
+            assertTrue(songs.all { !it.isPlayable && it.musicBrainzId == null })
+        }
+
     @Test fun searchApiSupportsOfficialTwoHundredResultLimitAndReportsPossibleTruncation() =
         runBlocking {
             val rows = (1..200).joinToString(",") { album(it) }
