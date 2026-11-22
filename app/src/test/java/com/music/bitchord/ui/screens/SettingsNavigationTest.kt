@@ -7,6 +7,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.ui.components.NativePageHeaderMetrics
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -42,11 +44,29 @@ class SettingsNavigationTest {
         assertEquals("8", lyricsSourcesCountValue(8))
     }
 
-    @Test fun everyExistingGroupHasExactlyOneDestination() {
+    @Test fun onlyCurrentDestinationsAreShownExactlyOnce() {
         val allSections = SettingsNavigation.groups.flatMap { it.sections }
-        assertEquals(SettingsSection.entries.size, allSections.size)
-        assertEquals(SettingsSection.entries.toSet(), allSections.toSet())
+        val current = SettingsSection.entries.toSet() - SettingsNavigation.hiddenSections
+        assertEquals(current.size, allSections.size)
+        assertEquals(current, allSections.toSet())
         assertTrue(SettingsNavigation.groups.all { it.sections.isNotEmpty() })
+        assertTrue(SettingsNavigation.groups.none {
+            it.titleRes == com.music.bitchord.R.string.settings_nav_group_account
+        })
+    }
+
+    @Test fun retiredAccountQualityAndLocalShortcutsAreAbsentFromSettings() {
+        compose.setContent {
+            MaterialTheme {
+                Column(androidx.compose.ui.Modifier.verticalScroll(rememberScrollState())) {
+                    SettingsHome(onSelect = {})
+                }
+            }
+        }
+        listOf("ACCOUNT", "AUDIO_QUALITY", "LOCAL_MUSIC", "LISTEN_TOGETHER").forEach {
+            compose.onAllNodesWithTag("settings-category-$it", useUnmergedTree = true)
+                .assertCountEquals(0)
+        }
     }
 
     @Test fun destinationPagesDoNotDuplicateTheirHeadingAsGroupCaption() {
