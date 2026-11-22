@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -341,6 +342,33 @@ class ProviderCapabilitiesScreenTest {
             .performClick()
         compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
             .assertCountEquals(0)
+        compose.onAllNodesWithText("Configurar", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onNodeWithText("Configuração necessária").assertExists()
+        compose.runOnIdle { assertEquals(1, opened) }
+    }
+
+    @Test fun audioRemoteLibraryUsesCleanNavidromeNameAndNoTrailingSetupLabel() {
+        assertEquals("Navidrome", ProviderRemoteLibraryTarget.OPEN_SUBSONIC.displayName)
+        var opened = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderRemoteLibraryRow(
+                    target = ProviderRemoteLibraryTarget.OPEN_SUBSONIC,
+                    number = 4,
+                    configured = false,
+                    onOpen = { opened++ },
+                )
+            }
+        }
+        compose.onNodeWithText("Navidrome").assertExists()
+        compose.onNodeWithText("Configuração necessária").assertExists()
+        compose.onAllNodesWithText("Configurar", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodesWithText("Navidrome / OpenSubsonic", useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onNodeWithTag("providers-remote-open_subsonic", useUnmergedTree = true)
+            .performClick()
         compose.runOnIdle { assertEquals(1, opened) }
     }
 }
