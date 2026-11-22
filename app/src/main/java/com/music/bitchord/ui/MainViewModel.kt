@@ -355,6 +355,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _canonicalHomeRemotePicks.asStateFlow()
 
     /** Ranked by actual recent local listening starts, not public MusicBrainz popularity. */
+    /** On-demand Apple most-played chart reads, with capability-scoped admission. */
+    private val countryChartsController = CanonicalCountryChartController(viewModelScope)
+    internal val appleCountryCharts = countryChartsController.snapshots
+    fun loadAppleCountryChart(code: String, force: Boolean = false) =
+        countryChartsController.load(code, force)
+
     private val _canonicalTrendingRecordingMbids = MutableStateFlow<List<String>>(emptyList())
     val canonicalTrendingRecordingMbids: StateFlow<List<String>> =
         _canonicalTrendingRecordingMbids.asStateFlow()

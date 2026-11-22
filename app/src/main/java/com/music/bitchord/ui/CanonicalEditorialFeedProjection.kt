@@ -66,8 +66,10 @@ internal fun projectCanonicalHomeDisplay(
     canonicalHomeShelves: List<HomeShelf>,
     selection: CatalogEditorialSelection,
     publicPlaylistShelf: HomeShelf?,
+    countryChartShelf: HomeShelf? = null,
 ): List<HomeShelf> =
-    (selection.state as? UiState.Success)?.data.orEmpty() +
+    listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
+        (selection.state as? UiState.Success)?.data.orEmpty() +
         personalHomeShelves(canonicalHomeShelves) +
         listOfNotNull(publicPlaylistShelf?.takeIf { it.items.isNotEmpty() })
 
