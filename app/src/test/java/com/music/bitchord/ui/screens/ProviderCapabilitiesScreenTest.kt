@@ -279,6 +279,9 @@ class ProviderCapabilitiesScreenTest {
             .performClick()
         compose.onAllNodesWithTag("providers-function-configure", useUnmergedTree = true)
             .assertCountEquals(0)
+        // Connections has exactly one page title, never a second card header.
+        compose.onAllNodesWithText("Credenciais dos provedores", useUnmergedTree = true)
+            .assertCountEquals(0)
         compose.runOnIdle {
             assertEquals("discogs-test-token", discogs.value)
             assertEquals("listen-test-token", listen.value)
@@ -310,6 +313,34 @@ class ProviderCapabilitiesScreenTest {
             }
         }
         compose.onNodeWithTag("providers-connections-lastfm", useUnmergedTree = true)
+            .performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
+    }
+
+    @Test fun soulseekConnectionUsesProvidersOwnedNavigationCallback() {
+        var opened = 0
+        compose.setContent {
+            BitChordTheme {
+                ProviderConnectionsCredentials(
+                    showDiscogs = false,
+                    showListenBrainz = false,
+                    showLastFm = false,
+                    showSoulseek = true,
+                    discogsConfigured = false,
+                    listenBrainzConfigured = false,
+                    discogsToken = "",
+                    listenBrainzToken = "",
+                    saving = false,
+                    onDiscogsTokenChange = {},
+                    onListenBrainzTokenChange = {},
+                    onSaveDiscogsToken = {},
+                    onSaveListenBrainzToken = {},
+                    onOpenAccounts = {},
+                    onOpenSoulseek = { opened++ },
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-connections-soulseek", useUnmergedTree = true)
             .performClick()
         compose.runOnIdle { assertEquals(1, opened) }
     }
