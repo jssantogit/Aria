@@ -45,7 +45,7 @@ internal fun appleNativeDetailRouteKey(
 internal fun appleNativePendingDetail(
     row: AppleEditorialSearchRow,
     kind: AppleNativeDetailKind,
-    failed: Boolean,
+    errorCode: String? = null,
 ): AppleSharedDetail? {
     if (appleNativeDetailRouteKey(
             kind, if (kind == AppleNativeDetailKind.ARTIST) row else null,
@@ -53,19 +53,23 @@ internal fun appleNativePendingDetail(
         ) == null) return null
     val artist = kind == AppleNativeDetailKind.ARTIST
     val label = if (artist) "Artista" else row.artistName
+    val errorMessage = when (errorCode) {
+        null -> null
+        "itunes_discography_disabled" -> "Ative a Discografia do iTunes em Provedores."
+        else -> "Não foi possível carregar este catálogo do iTunes."
+    }
     return AppleSharedDetail(
         page = DetailPage(
             browseId = row.browseId,
             title = row.title,
             subtitle = label,
-            thumbnailUrl = if (failed) null else
+            thumbnailUrl = if (errorMessage != null) null else
                 appleProminentArtworkOrNull(row.artworkUri),
             type = if (artist) BrowseType.ARTIST else BrowseType.ALBUM,
-            songs = if (failed)
-                UiState.Error("Não foi possível carregar este catálogo do iTunes.")
+            songs = if (errorMessage != null) UiState.Error(errorMessage)
             else UiState.Loading,
         ),
-        artistHeroUrl = if (artist && !failed) row.artworkUri else null,
+        artistHeroUrl = if (artist && errorMessage == null) row.artworkUri else null,
     )
 }
 
