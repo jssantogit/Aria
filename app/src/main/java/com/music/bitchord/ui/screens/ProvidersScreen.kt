@@ -113,8 +113,6 @@ fun ProvidersScreen(
     onEditWebDav: () -> Unit,
     onEditSmb: () -> Unit,
     onConfirmJioSaavn: () -> Unit,
-    onOpenAccounts: () -> Unit,
-    onOpenSoulseek: () -> Unit,
 ) {
     val configs by SourceRegistry.configs.collectAsState()
     val providerFlow = remember { ProviderRuntime.state ?: MutableStateFlow(ProviderSessionSnapshot()) }
