@@ -6,6 +6,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CanonicalGenreArtistShelfTest {
+    @Test fun pseudoArtistsCannotPolluteGenreDiscovery() {
+        val rows = listOf("[unknown]", "Various Artists", "[no artist]", "Unknown Artist")
+            .mapIndexed { i, name ->
+                CanonicalCatalogSearchRow("unrelated-$i", CanonicalSearchKind.ARTIST, name, null)
+            } + CanonicalCatalogSearchRow(
+                "77777777-7777-4777-8777-777777777777",
+                CanonicalSearchKind.ARTIST, "Metallica", null,
+            )
+        val shelf = requireNotNull(canonicalGenreArtistsShelf(
+            CanonicalGenreArtistSnapshot("metal", rows),
+        ))
+        assertEquals(listOf("Metallica"), shelf.items.map { it.title })
+    }
+
     @Test fun onlyExactArtistIdentitiesAppearAndNothingIsLabeledTrending() {
         val mbid = "11111111-1111-4111-8111-111111111111"
         val artist = CanonicalCatalogSearchRow(mbid, CanonicalSearchKind.ARTIST, "Artista A", "Brasil")

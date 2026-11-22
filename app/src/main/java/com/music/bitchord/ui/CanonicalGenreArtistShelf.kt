@@ -14,11 +14,18 @@ internal data class CanonicalGenreArtistSnapshot(
     val rows: List<CanonicalCatalogSearchRow>,
 )
 
+/** MusicBrainz pseudo-artists identify aggregate credits, not a musical act. */
+internal fun canonicalGenreArtistIsDisplayable(row: CanonicalCatalogSearchRow): Boolean {
+    val name = row.title.trim().lowercase(java.util.Locale.ROOT)
+    return row.kind == CanonicalSearchKind.ARTIST && name.isNotBlank() &&
+        name !in setOf("[unknown]", "various artists", "[no artist]", "unknown artist")
+}
+
 internal fun canonicalGenreArtistsShelf(
     snapshot: CanonicalGenreArtistSnapshot,
 ): HomeShelf? {
     val cards = snapshot.rows.asSequence()
-        .filter { it.kind == CanonicalSearchKind.ARTIST && it.title.isNotBlank() }
+        .filter(::canonicalGenreArtistIsDisplayable)
         .distinctBy { it.musicBrainzId }
         .take(18)
         .map { row ->
