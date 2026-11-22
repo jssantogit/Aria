@@ -49,8 +49,8 @@ class DiscogsNativeArtistCatalogTest {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
-                setOf(ProviderCapability.EDITION_METADATA), ProviderReadiness.READY)),
-            choices = mapOf(ProviderCapability.EDITION_METADATA to listOf(
+                setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
                 ProviderChoice(provider, false, 0))),
         ))
         val source = DiscogsNativeArtistCatalog(
@@ -73,8 +73,8 @@ class DiscogsNativeArtistCatalogTest {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
-                setOf(ProviderCapability.EDITION_METADATA), ProviderReadiness.READY)),
-            choices = mapOf(ProviderCapability.EDITION_METADATA to listOf(
+                setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
                 ProviderChoice(provider, true, 0))),
         ))
         val visited = mutableListOf<String>()
@@ -123,8 +123,8 @@ class DiscogsNativeArtistCatalogTest {
         val provider = BuiltInProviderKeys.DISCOGS
         val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
             descriptors = listOf(ProviderDescriptor(provider,
-                setOf(ProviderCapability.EDITION_METADATA), ProviderReadiness.READY)),
-            choices = mapOf(ProviderCapability.EDITION_METADATA to listOf(
+                setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY), ProviderReadiness.READY)),
+            choices = mapOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
                 ProviderChoice(provider, true, 0))),
         ))
         val source = DiscogsNativeArtistCatalog(
