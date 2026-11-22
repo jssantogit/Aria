@@ -4017,10 +4017,6 @@ private fun BitChordApp(
                                 showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
                             },
                             onSignOut = { viewModel.signOut() },
-                            onAccountScrobbling = {
-                                settingsSubScreen = "account_scrobbling"
-                                showAccountScrobbling = true
-                            },
                             onEqualizer = {
                                 settingsSubScreen = "equalizer"
                                 showEqualizer = true
@@ -4038,10 +4034,6 @@ private fun BitChordApp(
                                 showSources = true
                             },
                             onSoulseek = { settingsSubScreen = "soulseek" },
-                            onListenTogether = {
-                                settingsSubScreen = "listen_together"
-                                showListenTogether = true
-                            },
                             onWearOs = {
                                 settingsSubScreen = "wear_os"
                                 showWearOs = true
