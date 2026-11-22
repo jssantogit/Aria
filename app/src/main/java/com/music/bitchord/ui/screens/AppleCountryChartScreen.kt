@@ -143,7 +143,7 @@ internal fun AppleCountryAlbumChartScreen(
                 contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 16.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                items(state.data.albums, key = { "album-chart:${it.country}:${it.songId}" }) { album ->
+                items(state.data.albums, key = { "album-chart:${it.country}:${it.albumId}" }) { album ->
                     NativeSearchResultRow(
                         row = NativeSearchRowUi(
                             title = "${album.position}. ${album.title}",
