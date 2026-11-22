@@ -77,7 +77,9 @@ internal interface DiscogsNativeEditionReader {
 }
 
 internal class DiscogsNativeEditionClient(
-    private val source: DiscogsClient = DiscogsClient(),
+    private val source: DiscogsClient = DiscogsClient(
+        enabled = true, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+    ),
 ) : DiscogsNativeEditionReader {
     override suspend fun release(id: Long): DiscogsLookupResult = source.fetchRelease(id)
     override suspend fun master(id: Long): DiscogsLookupResult = source.fetchMaster(id)
