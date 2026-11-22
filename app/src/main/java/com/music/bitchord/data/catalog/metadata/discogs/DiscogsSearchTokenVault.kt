@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.music.bitchord.data.providers.maskedProviderCredentialHint
 
 /**
  * Optional personal Discogs search credential, device-bound and excluded from
@@ -32,13 +33,21 @@ internal class DiscogsSearchTokenVault(context: Context) {
         }
     }
 
-    fun configured(): Boolean = readForSearch() != null
+    fun configured(): Boolean = validatedToken() != null
 
     /**
-     * Called by search client only. This value must not enter any observable
-     * state, exported backup, exception, log or analytics metadata.
+     * Only a short, non-editable indicator leaves the vault for Settings.
+     * No raw token enters Compose state, saved state, logs or navigation.
      */
-    fun readForSearch(): String? = try {
+    fun maskedHint(): String? = validatedToken()?.let(::maskedProviderCredentialHint)
+
+    /**
+     * Called by the authorized search adapter for network requests only.
+     * Never put its return value in UI, diagnostics or exported backup.
+     */
+    fun readForSearch(): String? = validatedToken()
+
+    private fun validatedToken(): String? = try {
         preferences?.getString(TOKEN_KEY, null)?.takeIf(::isValidDiscogsSearchToken)
     } catch (_: Exception) {
         null
