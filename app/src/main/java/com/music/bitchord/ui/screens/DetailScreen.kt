@@ -194,6 +194,10 @@ import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlin.math.roundToInt
 import java.util.Locale
 
+/** A source-scoped Discogs artist never acquires a portrait by matching a name. */
+internal fun nativeArtistAllowsNameBasedAuxiliaryVisuals(browseId: String): Boolean =
+    !browseId.startsWith("discogs:")
+
 private const val MAX_ARTIST_SONGS = 20
 private const val SONGS_PER_COLUMN = 4
 private const val ARTIST_ROW_MAX_ITEMS = 5
@@ -540,9 +544,16 @@ fun DetailScreen(
     // Apple Music's hero photo and title logo for this artist, found by name.
     // Null until (and unless) it arrives; the YouTube header stands in meanwhile.
     val exactAppleArtist = isArtist && page.browseId.startsWith("itunes:")
+    // A Discogs Artist ID proves neither an Apple portrait nor a
+    // name-matched handwritten signature. Homonyms must not leak visuals
+    // from another artist into this source-native catalog page.
+    val allowAuxiliaryNameVisuals = nativeArtistAllowsNameBasedAuxiliaryVisuals(
+        page.browseId,
+    )
     var appleArt by remember(page.browseId) {
         mutableStateOf(
-            if (isArtist && !exactAppleArtist) AppleArtistArtRepository.cached(page.title)
+            if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals)
+                AppleArtistArtRepository.cached(page.title)
             else null
         )
     }
@@ -558,11 +569,14 @@ fun DetailScreen(
     // other name starts the moment the page opens.
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
     LaunchedEffect(page.browseId, page.title, nameSettled) {
-        if (isArtist && !exactAppleArtist && nameSettled)
+        if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals && nameSettled)
             appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
     }
     LaunchedEffect(page.browseId, page.title, nameSettled, signatureEnabled, signatureBaseUrl, signatureUpdates) {
-        if (!isArtist || !nameSettled) return@LaunchedEffect
+        if (!isArtist || !nameSettled || !allowAuxiliaryNameVisuals) {
+            signature = null
+            return@LaunchedEffect
+        }
         val base = ArtistSignatureRepository.effectiveBaseUrl(signatureEnabled, signatureBaseUrl)
         if (base == null) {
             signature = null
