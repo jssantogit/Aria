@@ -76,15 +76,28 @@ internal object BuiltInProviderDescriptors {
     fun discogs(
         tokenConfigured: Boolean,
         implemented: Boolean = false,
-    ): ProviderDescriptor = ProviderDescriptor(
-        key = BuiltInProviderKeys.DISCOGS,
-        capabilities = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY, ProviderCapability.EDITION_METADATA),
-        readiness = when {
+    ): ProviderDescriptor {
+        val tokenReadiness = when {
             !implemented -> ProviderReadiness.NOT_IMPLEMENTED
             !tokenConfigured -> ProviderReadiness.NEEDS_CONFIGURATION
             else -> ProviderReadiness.READY
-        },
-    )
+        }
+        return ProviderDescriptor(
+            key = BuiltInProviderKeys.DISCOGS,
+            capabilities = setOf(
+                ProviderCapability.CATALOG_SEARCH,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                ProviderCapability.EDITION_METADATA,
+            ),
+            readiness = ProviderReadiness.NOT_IMPLEMENTED,
+            capabilityReadiness = mapOf(
+                ProviderCapability.CATALOG_SEARCH to tokenReadiness,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to
+                    if (implemented) ProviderReadiness.READY else ProviderReadiness.NOT_IMPLEMENTED,
+                ProviderCapability.EDITION_METADATA to tokenReadiness,
+            ),
+        )
+    }
 
     fun offeredLyrics(
         readiness: ProviderReadiness = ProviderReadiness.READY,
