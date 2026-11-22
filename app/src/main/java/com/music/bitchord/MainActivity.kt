@@ -261,6 +261,7 @@ import com.music.bitchord.playback.retryCanonicalFailure
 import com.music.bitchord.ui.components.PlaybackRecoveryBanner
 import com.music.bitchord.playback.setQueueDragActive
 import com.music.bitchord.ui.MainViewModel
+import com.music.bitchord.ui.rememberNativeCatalogProviderState
 import com.music.bitchord.ui.availableSearchProviderTabs
 import com.music.bitchord.ui.SearchSource
 import com.music.bitchord.ui.SearchOrigin
@@ -1166,27 +1167,17 @@ private fun BitChordApp(
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
     val canonicalGroupCardApplePromotions by
         viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
-    val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
-    val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
-    val appleAlbumNavigation by viewModel.appleAlbumNavigation.collectAsStateWithLifecycle()
-    val appleArtistNavigation by viewModel.appleArtistNavigation.collectAsStateWithLifecycle()
-    val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
-    val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
-    val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
-    val discogsGate = com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()
-    val discogsReadAllowed = discogsGate?.open(
-        com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY,
-        com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
-    ) != null
-    val discogsSearchAllowed = discogsGate?.open(
-        com.music.bitchord.data.providers.ProviderCapability.CATALOG_SEARCH,
-        com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
-    ) != null
-    val discogsNativeVisual = (discogsDetail as? UiState.Success)?.data?.takeIf {
-        com.music.bitchord.ui.discogsNativePageDisplayAllowed(
-            it, discogsReadAllowed, discogsSearchAllowed,
-        )
-    }
+    val nativeProviderState = rememberNativeCatalogProviderState(viewModel)
+    val appleAlbumDetail = nativeProviderState.appleAlbumDetail
+    val appleArtistDetail = nativeProviderState.appleArtistDetail
+    val appleAlbumNavigation = nativeProviderState.appleAlbumNavigation
+    val appleArtistNavigation = nativeProviderState.appleArtistNavigation
+    val discogsRoute = nativeProviderState.discogsRoute
+    val discogsBrowseId = nativeProviderState.discogsBrowseId
+    val discogsDetail = nativeProviderState.discogsDetail
+    val discogsReadAllowed = nativeProviderState.discogsReadAllowed
+    val discogsNativeVisual = nativeProviderState.discogsNativeVisual
+    val appleReadAllowed = nativeProviderState.appleReadAllowed
     val selectedSearchProviderKey by viewModel.selectedSearchProviderKey.collectAsStateWithLifecycle()
     val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()
     val unfilteredLocalSearchSongs by viewModel.availableLocalSongs.collectAsStateWithLifecycle()
@@ -1275,40 +1266,13 @@ private fun BitChordApp(
     val detail = detailStack.lastOrNull()
     // Storefront-scoped IDs render through the same first-party native detail
     // building blocks. They never enter the MusicBrainz/YouTube detail stack.
-    val appleNativeKind = if (selectedTab == TAB_SEARCH && detail == null &&
-        discogsRoute == null
-    ) appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
-        else AppleNativeDetailKind.NONE
-    val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
-    val appleNativeRouteKey = appleNativeDetailRouteKey(
-        appleNativeKind, appleArtistNavigation, appleAlbumNavigation,
+    val appleNativeSelection = nativeProviderState.appleDetail(
+        selectedTab == TAB_SEARCH && detail == null,
     )
-    val appleGate = com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()
-    val appleReadAllowed = appleGate?.open(
-        com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY,
-        com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES,
-    ) != null
-    val appleSearchAllowed = appleGate?.open(
-        com.music.bitchord.data.providers.ProviderCapability.CATALOG_SEARCH,
-        com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES,
-    ) != null
-    val appleSharedVisual = (when (appleNativeKind) {
-        AppleNativeDetailKind.ALBUM ->
-            (appleAlbumDetail as? UiState.Success)?.data?.let(::appleAlbumAsSharedDetail)
-                ?: appleAlbumNavigation?.let { entry ->
-                    appleNativePendingDetail(entry, AppleNativeDetailKind.ALBUM,
-                        (appleAlbumDetail as? UiState.Error)?.message)
-                }
-        AppleNativeDetailKind.ARTIST ->
-            (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
-                ?: appleArtistNavigation?.let { entry ->
-                    appleNativePendingDetail(entry, AppleNativeDetailKind.ARTIST,
-                        (appleArtistDetail as? UiState.Error)?.message)
-                }
-        AppleNativeDetailKind.NONE -> null
-    })?.takeIf {
-        appleNativeDetailDisplayAllowed(it, appleReadAllowed, appleSearchAllowed)
-    }
+    val appleNativeKind = appleNativeSelection.kind
+    val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
+    val appleNativeRouteKey = appleNativeSelection.browseId
+    val appleSharedVisual = appleNativeSelection.visual
     val visualDetail = detail ?: appleSharedVisual?.page ?: discogsNativeVisual?.page
     // Local Music, Downloads and the other device folders draw as release
     // pages, but they have no artwork to wash the top inset in, so they keep
