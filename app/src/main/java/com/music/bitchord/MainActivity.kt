@@ -3984,15 +3984,6 @@ private fun BitChordApp(
                                 showSources = false
                                 if (settingsSubScreen == "sources") settingsSubScreen = null
                             },
-                            onOpenAccounts = {
-                                showSources = false
-                                settingsSubScreen = "account_scrobbling"
-                                showAccountScrobbling = true
-                            },
-                            onOpenSoulseek = {
-                                showSources = false
-                                settingsSubScreen = "soulseek"
-                            },
                         )
                     } else if (key == "wear_os") {
                         WearOsScreen(contentPadding = listPadding)
@@ -5073,15 +5064,6 @@ private fun BitChordApp(
                             onBack = {
                                 showSources = false
                                 if (settingsSubScreen == "sources") settingsSubScreen = null
-                            },
-                            onOpenAccounts = {
-                                showSources = false
-                                settingsSubScreen = "account_scrobbling"
-                                showAccountScrobbling = true
-                            },
-                            onOpenSoulseek = {
-                                showSources = false
-                                settingsSubScreen = "soulseek"
                             },
                             )
                         }
