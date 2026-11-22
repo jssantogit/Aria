@@ -100,6 +100,15 @@ internal class ProviderAuthorityCoordinator(
         if (discogsImplemented) {
             // Public legal/credential gate is independent from implementation:
             // no Discogs request is implicitly enabled.
+            for (capability in listOf(
+                ProviderCapability.CATALOG_SEARCH,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            )) {
+                val existing = imported[capability].orEmpty()
+                imported[capability] = existing + ProviderChoice(
+                    BuiltInProviderKeys.DISCOGS, enabled = false, order = existing.size,
+                )
+            }
             imported[ProviderCapability.EDITION_METADATA] = listOf(
                 ProviderChoice(BuiltInProviderKeys.DISCOGS, enabled = false, order = 0),
             )
