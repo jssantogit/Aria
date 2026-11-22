@@ -32,6 +32,8 @@ data class AppleEditorialSearchRow(
     val appleStoreUrl: String? = null,
     /** Unmodified official badge only when appleStoreUrl passed validation. */
     val appleStoreBadgeUrl: String? = null,
+    /** Exact storefront artist ID supplied by the album, not a title match. */
+    val artistBrowseId: String? = null,
 )
 
 data class AppleEditorialTrackRow(

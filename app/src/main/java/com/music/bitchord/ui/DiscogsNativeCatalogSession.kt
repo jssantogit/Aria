@@ -54,6 +54,8 @@ internal data class DiscogsNativePage(
     val hasMore: Boolean = false,
     val incomplete: Boolean = false,
     val attributionUrl: String? = null,
+    /** Exact release artist, omitted for multi-artist or unproved credits. */
+    val albumArtistBrowseId: String? = null,
 )
 
 /** Native loading skeleton, just like a MusicBrainz DetailPage pushed from Search. */
@@ -84,6 +86,7 @@ internal fun discogsNativePageDisplayAllowed(
         page.page.sections.isEmpty() &&
         page.tracks.isEmpty() &&
         page.attributionUrl == null &&
+        page.albumArtistBrowseId == null &&
         page.page.thumbnailUrl == null
     )
 
@@ -551,4 +554,10 @@ internal fun discogsReleasePage(
         )
     },
     attributionUrl = record.attributionUrl,
+    albumArtistBrowseId = record.artistIds.singleOrNull()
+        ?.takeIf { it in 1..999_999_999_999L &&
+            record.artistNames.singleOrNull()?.equals(
+                artistCredit.trim(), ignoreCase = true,
+            ) == true
+        }?.let { "discogs:artist:$it" },
 )

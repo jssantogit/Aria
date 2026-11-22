@@ -70,6 +70,9 @@ private fun ItunesEditorialRelease.asNativeSearchRow(): AppleEditorialSearchRow?
         },
         appleStoreUrl = exactLink?.takeIf { badge != null },
         appleStoreBadgeUrl = badge,
+        artistBrowseId = artistId?.takeIf { it > 0L }?.let {
+            "itunes:$storefront:artist:$it"
+        },
     )
 }
 

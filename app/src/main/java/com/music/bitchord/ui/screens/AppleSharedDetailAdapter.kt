@@ -50,6 +50,8 @@ internal data class AppleSharedDetail(
     val metadataTracks: List<NativeMetadataTrack> = emptyList(),
     val artistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     val verifiedArtistMbid: String? = null,
+    /** Exact source-owned album credit route, never an MBID. */
+    val albumArtistBrowseId: String? = null,
     val artistHeroUrl: String? = null,
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
@@ -137,7 +139,15 @@ internal fun appleAlbumAsSharedDetail(
                 browseId = candidate.browseId,
             )
         }.toList()
+    val sourceArtistRoute = AppleCatalogBrowseRoute.parse(source.album.artistBrowseId)
+        ?.takeIf {
+            it.kind == ItunesCatalogItemType.ARTIST &&
+                it.storefront == route.storefront
+        }
     return AppleSharedDetail(
+        albumArtistBrowseId = sourceArtistRoute?.let {
+            "itunes:${it.storefront}:artist:${it.id}"
+        },
         page = DetailPage(
             browseId = source.album.browseId,
             title = source.album.title,
