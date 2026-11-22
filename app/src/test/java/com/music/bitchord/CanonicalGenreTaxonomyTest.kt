@@ -7,6 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CanonicalGenreTaxonomyTest {
+    @Test fun genrePreviewRunsTextSearchRatherThanJumpingToCategory() {
+        val kpop = canonicalExploreGenreSearchHits("k-pop").first()
+        val submitted = mutableListOf<String>()
+        com.music.bitchord.ui.screens.submitCanonicalGenrePreview(kpop, submitted::add)
+        assertEquals(listOf("K-pop"), submitted)
+        val metal = canonicalExploreGenreSearchHits("metal").first()
+        com.music.bitchord.ui.screens.submitCanonicalGenrePreview(metal, submitted::add)
+        assertEquals(listOf("K-pop", "Metal"), submitted)
+        assertTrue(metal.browseId.startsWith("catalog:GENRE:"))
+    }
+
     @Test fun exploreIndexRemainsGenreOnlyWhileSubgenresHaveUniqueCanonicalIds() {
         assertEquals(12, canonicalExploreGenres.size)
         assertTrue(canonicalExploreGenres.all { it.parentTag == null })

@@ -1509,6 +1509,11 @@ private fun BitChordApp(
             canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
             canonicalWorldwideLoading, canonicalReleasesHeading,
             canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
+            musicBrainzRows = cachedCanonicalRows + canonicalWorldwideReleases,
+            picksHeading = canonicalPicksHeading,
+            albumsHeading = canonicalPublicAlbumsHeading,
+            singlesHeading = canonicalPublicSinglesHeading,
+            moreHeading = canonicalPublicMoreHeading,
         )
     val canonicalHomeDisplayShelves =
         com.music.bitchord.ui.rememberCanonicalHomeDisplayShelves(
@@ -1550,6 +1555,7 @@ private fun BitChordApp(
         genreArtists = canonicalGenreArtists,
         genrePopular = canonicalGenrePopular,
         genrePopularityAuthorized = genrePopularityAuthorized,
+        todayIsoDate = canonicalFeedDate,
     )
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded

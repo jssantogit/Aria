@@ -439,7 +439,8 @@ fun SearchScreen(
                                     isQueryAction = true,
                                     onFill = null,
                                     onClick = {
-                                        onCategoryOpen(category)
+                                        // Preview is a query suggestion, not category navigation.
+                                        submitCanonicalGenrePreview(category, onSuggestionClick)
                                         focusManager.clearFocus()
                                         keyboardController?.hide()
                                     },
@@ -861,6 +862,14 @@ fun SearchScreen(
  * undisplayed Apple results already fetched or another bounded search with
  * documented attributes. We never claim total result completeness.
  */
+/** Only submitted category results navigate; typing previews submit text search. */
+internal fun submitCanonicalGenrePreview(
+    category: ShelfItem,
+    searchFor: (String) -> Unit,
+) {
+    category.title.trim().takeIf(String::isNotEmpty)?.let(searchFor)
+}
+
 /** Genre categories are first-class Search results; never Song or BrowseType.ALBUM. */
 internal fun LazyListScope.canonicalCategorySearchRows(
     categories: List<ShelfItem>,

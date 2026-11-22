@@ -129,6 +129,67 @@ class CanonicalEditorialFeedProjectionTest {
         assertEquals(UiState.Loading, selection.state)
     }
 
+    @Test fun musicBrainzHomePublishesFullEvidenceBackedShelves() {
+        val rows = (1..20).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "%08d-1111-4111-8111-111111111111".format(index),
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = "Verified $index", subtitle = "Artist $index",
+                releaseDate = "2026-11-%02d".format((index % 18) + 1),
+                releaseKind = if (index % 4 == 0) "Single" else "Album",
+            )
+        }
+        val hero = HomeShelf("Lançamentos", rows.take(8).map { row ->
+            ShelfItem(row.title, row.subtitle.orEmpty(), null, null,
+                "catalog:RELEASE_GROUP:${row.musicBrainzId}")
+        })
+        val selection = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = listOf(hero),
+            appleHomeReleases = UiState.Success(emptyList()),
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos",
+            discoveryHeading = "Descobrir",
+            todayIsoDate = "2026-11-22",
+            musicBrainzRows = rows,
+        )
+        assertEquals(mb, selection.provider)
+        val shelves = (selection.state as UiState.Success).data
+        assertTrue(shelves.size >= 4)
+        assertTrue(shelves.any { it.title == "Álbuns" })
+        assertTrue(shelves.any { it.title == "Singles e EPs" })
+        assertTrue(shelves.any { it.title == "Escolha a dedo" })
+        val ids = shelves.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
+    }
+
+    @Test fun musicBrainzGenreKeepsMultiShelfMusicBrainzEvidence() {
+        val rows = (1..30).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "%08d-2222-4222-8222-222222222222".format(index),
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = "K-pop verified $index", subtitle = "Artist $index",
+                releaseDate = "2026-11-%02d".format((index % 19) + 1),
+                releaseKind = if (index % 3 == 0) "Single" else "Album",
+            )
+        }
+        val state = projectCanonicalGenreState(
+            tag = "k-pop", genrePlaylists = emptyList(),
+            playlistHeading = "Playlists", appleByTag = emptyMap(),
+            musicBrainzRows = UiState.Success(rows), ordered = listOf(mb),
+            releasesHeading = "Lançamentos", musicBrainzResultTag = "k-pop",
+            todayIsoDate = "2026-11-22",
+        )
+        val shelves = (state as UiState.Success).data
+        assertTrue(shelves.size >= 4)
+        assertTrue(shelves.any { it.title == "Álbuns" })
+        assertTrue(shelves.any { it.title == "Singles e EPs" })
+        val ids = shelves.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
+    }
+
     @Test fun switchingGenreNeverDisplaysPreviousMusicBrainzTagResults() {
         val previousRows = UiState.Success(listOf(CanonicalCatalogSearchRow(
             musicBrainzId = "11111111-1111-4111-8111-111111111111",

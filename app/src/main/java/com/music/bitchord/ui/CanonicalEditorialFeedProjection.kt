@@ -23,6 +23,11 @@ internal fun projectCanonicalHomeEditorial(
     releasesHeading: String,
     discoveryHeading: String,
     todayIsoDate: String,
+    musicBrainzRows: List<CanonicalCatalogSearchRow> = emptyList(),
+    picksHeading: String = "Escolha a dedo",
+    albumsHeading: String = "Álbuns",
+    singlesHeading: String = "Singles e EPs",
+    moreHeading: String = "Mais",
 ): CatalogEditorialSelection {
     val mb = BuiltInProviderKeys.MUSICBRAINZ
     val apple = BuiltInProviderKeys.ITUNES
@@ -40,6 +45,28 @@ internal fun projectCanonicalHomeEditorial(
             }
             shelf.copy(items = items).takeIf { items.isNotEmpty() }
         }
+    // Reuse the existing full native Home composer, retaining real MB IDs.
+    // Earlier the projection discarded discovery/album/more shelves even when
+    // typed release evidence was already present in the catalog snapshot.
+    val verifiedPublicRows = musicBrainzRows.asSequence()
+        .filter { canonicalEditorialReleaseType(it) != null }
+        .filter { it.releaseDate == null || it.releaseDate.take(10) <= todayIsoDate }
+        .distinctBy { it.kind to it.musicBrainzId }
+        .toList()
+    val nativeMusicBrainzShelves = if (musicBrainzShelves.isNotEmpty() &&
+        verifiedPublicRows.size >= 5
+    ) canonicalHomeWithWorldwideEditorial(
+        localShelves = emptyList(),
+        worldwideReleases = verifiedPublicRows,
+        releasesHeading = releasesHeading,
+        picksHeading = picksHeading,
+        trendingHeading = "Em alta",
+        worldwideTrending = null,
+        todayIsoDate = todayIsoDate,
+        albumsHeading = albumsHeading,
+        singlesHeading = singlesHeading,
+        moreHeading = moreHeading,
+    ) else musicBrainzShelves + musicBrainzExtraShelves
     val nativeAppleState: UiState<List<HomeShelf>> = when (val source = appleHomeReleases) {
         is UiState.Success -> UiState.Success(
             appleFirstHomeShelves(
@@ -67,7 +94,7 @@ internal fun projectCanonicalHomeEditorial(
         catalogEditorialOrder, mapOf(
             mb to if (canonicalWorldwideLoading && musicBrainzShelves.isEmpty())
                 UiState.Loading else UiState.Success(
-                    musicBrainzShelves + musicBrainzExtraShelves,
+                    nativeMusicBrainzShelves,
                 ),
             apple to appleState,
         ),
@@ -139,6 +166,7 @@ internal fun projectCanonicalGenreState(
     genreArtists: CanonicalGenreArtistSnapshot? = null,
     genrePopular: CanonicalGenrePopularSnapshot? = null,
     genrePopularityAuthorized: Boolean = false,
+    todayIsoDate: String = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -163,7 +191,9 @@ internal fun projectCanonicalGenreState(
         val source = if (musicBrainzResultTag == tag) musicBrainzRows else UiState.Loading
     ) {
         is UiState.Success -> UiState.Success(
-            musicBrainzGenreEditorialShelves(source.data, releasesHeading),
+            canonicalExploreGenreForBrowseId("catalog:GENRE:$tag")?.let { genre ->
+                canonicalGenreEditorialShelves(genre, source.data, todayIsoDate)
+            } ?: musicBrainzGenreEditorialShelves(source.data, releasesHeading),
         )
         UiState.Loading -> UiState.Loading
         is UiState.Error -> source
