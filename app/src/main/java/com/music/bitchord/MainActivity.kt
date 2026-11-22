@@ -1275,8 +1275,9 @@ private fun BitChordApp(
     val detail = detailStack.lastOrNull()
     // Storefront-scoped IDs render through the same first-party native detail
     // building blocks. They never enter the MusicBrainz/YouTube detail stack.
-    val appleNativeKind = if (selectedTab == TAB_SEARCH && detail == null)
-        appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
+    val appleNativeKind = if (selectedTab == TAB_SEARCH && detail == null &&
+        discogsRoute == null
+    ) appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
         else AppleNativeDetailKind.NONE
     val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
     val appleNativeRouteKey = appleNativeDetailRouteKey(
