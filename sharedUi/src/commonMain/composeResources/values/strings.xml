@@ -330,4 +330,6 @@
     <string name="apple_queue_continue">Continue Playing</string>
     <string name="apple_queue_empty">No songs in the queue</string>
     <string name="apple_queue_similar">Autoplay of similar songs</string>
+    <string name="shelf_continue_listening">Continue listening</string>
+    <string name="shelf_resume_from">Resume from</string>
 </resources>

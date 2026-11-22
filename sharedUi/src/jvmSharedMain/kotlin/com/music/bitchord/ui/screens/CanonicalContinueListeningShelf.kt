@@ -29,6 +29,8 @@ internal fun canonicalContinueListeningShelf(
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
+    heading: String = CONTINUE_LISTENING_TITLE,
+    resumeLabel: String = "Retomar em",
 ): HomeShelf? {
     if (song == null || isPlaying || song.videoId.isBlank() ||
         song.title.isBlank() || song.artist.isBlank() ||
@@ -37,10 +39,10 @@ internal fun canonicalContinueListeningShelf(
         positionMs > durationMs - MIN_TIME_REMAINING_MS
     ) return null
     return HomeShelf(
-        title = CONTINUE_LISTENING_TITLE,
+        title = heading,
         items = listOf(ShelfItem(
             title = song.title,
-            subtitle = "${song.artist} · Retomar em ${resumeClock(positionMs)}",
+            subtitle = "${song.artist} · $resumeLabel ${resumeClock(positionMs)}",
             thumbnailUrl = song.thumbnailUrl,
             videoId = null,
             browseId = CONTINUE_LISTENING_BROWSE_ID,

@@ -231,15 +231,19 @@ fun HomeScreen(
     categoryNavigationShelf: HomeShelf? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
+    val continueHeading = stringResource(Res.string.shelf_continue_listening)
+    val resumeLabel = stringResource(Res.string.shelf_resume_from)
     // Read the rapidly changing playhead only in Home's own Compose scope.
     // Never pass positionMs up through BitChordApp: that invalidates every tab.
     val pausedResumePosition = if (!isPlaying && onContinue != null)
         continuePosition?.positionMs ?: 0L else 0L
     val continueShelf = remember(
-        currentSong, isPlaying, pausedResumePosition, continueDurationMs, onContinue != null,
+        currentSong, isPlaying, pausedResumePosition, continueDurationMs,
+        onContinue != null, continueHeading, resumeLabel,
     ) {
         if (onContinue == null) null else canonicalContinueListeningShelf(
             currentSong, isPlaying, pausedResumePosition, continueDurationMs,
+            heading = continueHeading, resumeLabel = resumeLabel,
         )
     }
 
@@ -360,9 +364,8 @@ fun HomeScreen(
                         shelves = visibleShelves,
                         emptyPlaylistNotice = publicPlaylistNotice,
                         onItemClick = { item, shelfTitle ->
-                            if (item.browseId == CONTINUE_LISTENING_BROWSE_ID &&
-                                shelfTitle == CONTINUE_LISTENING_TITLE
-                            ) onContinue?.invoke(currentSong?.videoId.orEmpty())
+                            if (item.browseId == CONTINUE_LISTENING_BROWSE_ID)
+                                onContinue?.invoke(currentSong?.videoId.orEmpty())
                             else onItemClick(item, shelfTitle)
                         },
                         onItemLongPress = onItemLongPress?.let { hold ->
@@ -428,8 +431,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            val cardLongPress = if (shelf.title == CONTINUE_LISTENING_TITLE &&
-                shelf.items.singleOrNull()?.browseId == CONTINUE_LISTENING_BROWSE_ID
+            val cardLongPress = if (shelf.items.singleOrNull()?.browseId ==
+                CONTINUE_LISTENING_BROWSE_ID
             ) null else onItemLongPress
             val presentation = homeShelfPresentation(shelf.title, index, firstIsHero)
             if (shelf.title == "Playlists" && shelf.items.isEmpty() &&

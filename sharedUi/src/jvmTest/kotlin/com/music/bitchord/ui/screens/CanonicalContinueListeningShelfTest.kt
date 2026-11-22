@@ -22,6 +22,15 @@ class CanonicalContinueListeningShelfTest {
         assertNull(item.videoId)
     }
 
+    @Test fun titlesCanBeLocalizedWithoutChangingNativeResumeIdentity() {
+        val item = canonicalContinueListeningShelf(
+            track, false, 70_000L, 240_000L,
+            heading = "Continue listening", resumeLabel = "Resume from",
+        )!!.items.single()
+        assertEquals("Artista real · Resume from 1:10", item.subtitle)
+        assertEquals(CONTINUE_LISTENING_BROWSE_ID, item.browseId)
+    }
+
     @Test fun noResumeCardForPlayingUnstartedCompletedOrInvalidPlayback() {
         assertNull(canonicalContinueListeningShelf(track, true, 70_000L, 240_000L))
         assertNull(canonicalContinueListeningShelf(track, false, 0L, 240_000L))

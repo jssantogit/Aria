@@ -323,4 +323,6 @@
     <string name="apple_queue_continue">Continuar Reproduzindo</string>
     <string name="apple_queue_empty">Não há músicas na fila</string>
     <string name="apple_queue_similar">Reprodução automática de músicas similares</string>
+    <string name="shelf_continue_listening">Continue ouvindo</string>
+    <string name="shelf_resume_from">Retomar em</string>
 </resources>
