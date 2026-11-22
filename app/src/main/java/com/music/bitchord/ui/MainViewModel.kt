@@ -1550,6 +1550,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Exact Release providing the Group page's displayed tracklist.
             // Never reuse Apple artwork from a different Release of that group.
             var displayedGroupReleaseMbid: String? = null
+            // A directly opened Release also knows its own exact ReleaseGroup.
+            // Use this relation for optional native "Outras versões" and
+            // "Mais do artista" shelves, without guessing from title/artist.
+            var displayedEditionGroupMbid: String? = null
             val output: UiState<CanonicalCatalogDetailPage> = when (entry.kind) {
                 CanonicalSearchKind.ARTIST -> when (
                     // A single transient MB 503/rate-limit must not discard
@@ -1810,6 +1814,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ) {
                     is MusicBrainzCatalogGraphResult.Success -> {
                         val details = result.value
+                        displayedEditionGroupMbid = details.groupMbid
                         val page = try {
                             withContext(Dispatchers.IO) {
                                 val db = CanonicalCatalogDatabase.get(getApplication<Application>())
@@ -1852,6 +1857,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             throw cancelled
                         } catch (_: Exception) { null to emptySet<String>() }
                         val details = cached.first
+                        displayedEditionGroupMbid = details?.groupMbid
                         if (details == null) UiState.Error("Não foi possível carregar as faixas desta edição.")
                         else UiState.Success(CanonicalCatalogDetailPage(
                             title = details.title,
@@ -1925,28 +1931,72 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // Album first paint (tracks and exact editions) happened above.
-            // This optional second-stage browse only adds proven work by the
-            // source artist and never blocks or replaces canonical track rows.
-            if (entry.kind == CanonicalSearchKind.RELEASE_GROUP &&
-                output is UiState.Success &&
+            // Album first paint (tracks and any group editions) happened above.
+            // Both exact editions and grouped works use the same native detail
+            // shelves. Only a MusicBrainz-supplied group MBID permits related
+            // edition/artist requests; titles cannot establish this relation.
+            val albumGroupMbid = when (entry.kind) {
+                CanonicalSearchKind.RELEASE_GROUP -> entry.musicBrainzId
+                CanonicalSearchKind.RELEASE -> displayedEditionGroupMbid
+                else -> null
+            }
+            if (albumGroupMbid != null && output is UiState.Success &&
                 lease.isCurrent() && _searchSource.value == SearchSource.CANONICAL &&
                 canonicalPath.lastOrNull() == entry
             ) {
-                var artistMbid = entry.artistCreditMbids?.singleOrNull()
-                    ?: entry.artistScopeMbid
-                var artistName = entry.subtitle?.takeIf {
-                    it.isNotBlank() && '·' !in it
+                // Direct edition pages previously stopped after tracks. The
+                // same "Outras versões" native shelf used by ReleaseGroup
+                // pages can be filled from an exact release-group browse.
+                if (entry.kind == CanonicalSearchKind.RELEASE) {
+                    val siblingBrowse = musicBrainzGraph.browseGroupReleases(
+                        albumGroupMbid, limit = 75,
+                    )
+                    if (siblingBrowse is MusicBrainzCatalogGraphResult.Success &&
+                        lease.isCurrent() && _searchSource.value == SearchSource.CANONICAL &&
+                        canonicalPath.lastOrNull() == entry
+                    ) {
+                        val editions = canonicalReleaseGroupEditionRows(
+                            albumGroupMbid, siblingBrowse.value.items, entry.musicBrainzId,
+                        )
+                        val nativeSections = canonicalNativeSections(
+                            CanonicalSearchKind.RELEASE_GROUP, editions, "Outras versões",
+                        )
+                        if (nativeSections.isNotEmpty()) {
+                            _canonicalDetail.update { state ->
+                                if (state is UiState.Success)
+                                    UiState.Success(state.data.copy(editionRows = editions))
+                                else state
+                            }
+                            val nativeId = canonicalNativeBrowseId(entry)
+                            _detailStack.update { pages -> pages.map { page ->
+                                if (page.browseId != nativeId) page else page.copy(
+                                    sections = page.sections + nativeSections,
+                                )
+                            } }
+                        }
+                    }
                 }
+                // Do not borrow the edition's display credit as proof of
+                // group ownership: only a verified, single-artist Group credit
+                // can authorize the scoped "Mais do artista" browse.
+                var artistMbid = if (entry.kind == CanonicalSearchKind.RELEASE_GROUP)
+                    entry.artistCreditMbids?.singleOrNull() ?: entry.artistScopeMbid
+                    else null
+                var artistName = if (entry.kind == CanonicalSearchKind.RELEASE_GROUP)
+                    entry.subtitle?.takeIf { it.isNotBlank() && '·' !in it }
+                    else null
                 if (artistMbid == null) {
-                    val sourceGroup = musicBrainzGraph.lookupReleaseGroup(entry.musicBrainzId)
+                    val sourceGroup = musicBrainzGraph.lookupReleaseGroup(albumGroupMbid)
                     if (sourceGroup is MusicBrainzCatalogGraphResult.Success) {
                         artistMbid = sourceGroup.value.artistCreditMbids?.singleOrNull()
                         artistName = sourceGroup.value.artistDisplay
                     }
                 }
                 val sourceArtist = artistMbid
-                if (sourceArtist != null) {
+                if (sourceArtist != null && lease.isCurrent() &&
+                    _searchSource.value == SearchSource.CANONICAL &&
+                    canonicalPath.lastOrNull() == entry
+                ) {
                     val relatedBrowse = retryTransientArtistDiscography(
                         fetch = {
                             musicBrainzGraph.browseReleaseGroupsForArtist(
@@ -1956,7 +2006,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     if (relatedBrowse is MusicBrainzCatalogGraphResult.Success) {
                         val related = canonicalAlbumArtistRelatedRows(
-                            sourceArtist, entry.musicBrainzId, relatedBrowse.value.items,
+                            sourceArtist, albumGroupMbid, relatedBrowse.value.items,
                         )
                         val shelf = canonicalAlbumArtistRelatedShelf(related, artistName)
                         if (shelf != null && lease.isCurrent() &&
