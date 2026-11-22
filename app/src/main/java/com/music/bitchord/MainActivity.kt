@@ -4107,8 +4107,28 @@ private fun BitChordApp(
                         val isDiscogs = key.startsWith("discogs:")
                         val artistState = appleArtistDetail as? UiState.Success
                         val unified = if (isDiscogs) null else appleSharedVisual
-                        val discogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
+                        val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
                             it.page.browseId == key
+                        } else null
+                        // AnimatedContent keeps the outgoing artist slot
+                        // mounted while a selected release begins loading.
+                        // Retain its own native DetailPage until exit finishes,
+                        // but never retain it after the source was revoked.
+                        val previousDiscogsPage = remember(key) {
+                            mutableStateOf<com.music.bitchord.ui.DiscogsNativePage?>(null)
+                        }
+                        if (liveDiscogsPage != null) {
+                            previousDiscogsPage.value = liveDiscogsPage
+                        }
+                        val discogsAuthorized = isDiscogs &&
+                            com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
+                                com.music.bitchord.data.providers.ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                                com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
+                            ) != null
+                        val discogsPage = if (discogsAuthorized) {
+                            liveDiscogsPage ?: previousDiscogsPage.value.takeIf {
+                                discogsRoute != null
+                            }
                         } else null
                         val unifiedPage = discogsPage?.page ?: unified?.page
                         if (unifiedPage == null) {
