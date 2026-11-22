@@ -295,13 +295,17 @@ internal class DiscogsNativeCatalogSession(
      */
     fun openReleaseFromSearch(selected: DiscogsNativeReleaseSearchRow) {
         if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
-        val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
         backAll()
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.RELEASE
         _detail.value = UiState.Success(discogsNativeLoadingPage(
             selected.browseId, selected.title, "Lançamento · Discogs", BrowseType.ALBUM,
         ))
+        val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        if (authorization == null) {
+            failDetail("Ative a Discografia do Discogs em Provedores.")
+            return
+        }
         val job = scope.launch(Dispatchers.IO) {
             val response = try { editionClient.fetchRelease(selected.releaseId) }
             catch (cancelled: CancellationException) { throw cancelled }
