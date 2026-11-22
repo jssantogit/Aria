@@ -5060,6 +5060,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?: return
         if (_searchSource.value != SearchSource.CANONICAL) return
         clearCanonicalCatalogNavigation()
+        // A previously pushed MB DetailPage must not outrank the iTunes
+        // Search artist's own native route when providers are reordered.
+        _detailStack.update { stack ->
+            stack.filterNot { it.browseId.startsWith("catalog:") }
+        }
         backAppleEditorialAlbum()
         appleArtistDetailJob?.cancel()
         appleArtistPagingJob?.cancel()
@@ -5454,6 +5459,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?: return
         if (_searchSource.value != SearchSource.CANONICAL) return
         clearCanonicalCatalogNavigation()
+        _detailStack.update { stack ->
+            stack.filterNot { it.browseId.startsWith("catalog:") }
+        }
         appleEditorialDetailJob?.cancel()
         activeAppleAlbumId = row.browseId
         _appleAlbumNavigation.value = row
