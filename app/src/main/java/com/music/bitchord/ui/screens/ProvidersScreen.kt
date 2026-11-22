@@ -102,6 +102,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
+/** Spacing below the search field, matching SearchScreen's 4dp bottom gap. */
+internal val ProviderSearchTabsGap = 4.dp
+
 /**
  * REA-native presentation for the IDM capability engine.
  *
@@ -601,7 +604,9 @@ fun ProvidersScreen(
                 placeholder = "Buscar nesta categoria",
             )
         }
-        Spacer(Modifier.height(20.dp))
+        // Match SearchScreen's 4dp search-field-to-tab rhythm. The old
+        // 20dp spacer made Providers' tabs float too far below the field.
+        Spacer(Modifier.height(ProviderSearchTabsGap))
         // Exact blue search tabs used inside the playlist filter categories.
         AppleSearchOriginTabs(
             options = tabs.map { it.providerTitle() },
