@@ -27,7 +27,7 @@ class NativeTopBarPlacementPolicyTest {
     }
 
     @Test fun allOtherRoutesAndSearchFieldRestAtHomeY() {
-        assertEquals(26.dp, HomeFloatingActionRestOffset)
+        assertEquals(18.dp, HomeFloatingActionRestOffset)
         assertEquals(
             HomeFloatingActionRestOffset,
             nativeTopBarActionsOffset(
@@ -39,16 +39,16 @@ class NativeTopBarPlacementPolicyTest {
     }
 
     @Test fun contentClearsEntireFloatingPuckAndHas12DpGap() {
-        // 52dp toolbar, +26dp offset, 40dp circle = bottom at 72dp.
-        // Its content starts at 84dp, or 108dp after a 24dp status bar.
-        assertEquals(84.dp, floatingTopChromeContentPadding(0.dp))
-        assertEquals(108.dp, floatingTopChromeContentPadding(24.dp))
+        // 52dp toolbar, +18dp offset, 40dp circle = bottom at 64dp.
+        // Its content starts at 76dp, or 100dp after a 24dp status bar.
+        assertEquals(76.dp, floatingTopChromeContentPadding(0.dp))
+        assertEquals(100.dp, floatingTopChromeContentPadding(24.dp))
     }
 
     @Test fun playlistHeadingDoesNotAddASecondFloatingOffset() {
         assertEquals(8.dp, playlistLibraryHeadingExtraTopPadding())
-        assertEquals(84.dp, FloatingTopChromeHostHeight)
-        assertEquals(10.dp, topChromeChildOffset(26.dp))
-        assertEquals((-16).dp, topChromeChildOffset(0.dp))
+        assertEquals(76.dp, FloatingTopChromeHostHeight)
+        assertEquals(6.dp, topChromeChildOffset(18.dp))
+        assertEquals((-12).dp, topChromeChildOffset(0.dp))
     }
 }
