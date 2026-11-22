@@ -4314,13 +4314,12 @@ private fun BitChordApp(
                             },
                             songSort = songSort,
                             folder = folder,
-                            canonicalTracks = if (
-                                page.browseId.startsWith("catalog:RELEASE:") ||
-                                page.browseId.startsWith("catalog:RELEASE_GROUP:")
-                            ) {
-                                (viewModel.canonicalDetail.collectAsStateWithLifecycle().value
-                                    as? UiState.Success)?.data?.rows.orEmpty()
-                            } else emptyList(),
+                            canonicalTracks = com.music.bitchord.ui
+                                .canonicalNativeDetailTracksForPage(
+                                    page.browseId,
+                                    artistPublicTop,
+                                    viewModel.canonicalDetail.collectAsStateWithLifecycle().value,
+                                ),
                             onCanonicalTrackPlay = { mbid ->
                                 executeMusicBrainzCatalog(mbid, CanonicalCollectionIntent.PLAY_NOW)
                             },

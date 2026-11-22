@@ -2998,6 +2998,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             else emptyList()
             // For artists outside the top-100 sitewide, the bounded recording
             // popularity sample is still explicitly partial, never Spotify.
+            var unrankedRows = emptyList<CanonicalCatalogSearchRow>()
             val sampledRanking = if (original.isEmpty() && allTimeRanking.isEmpty() &&
                 _detailStack.value.lastOrNull()?.browseId
                     ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
@@ -3006,7 +3007,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // up to four pages before asking ListenBrainz to sort the
                 // independently verified Recording MBIDs by actual listens.
                 // A one-page sample produced obscure BTS titles on the smoke.
-                val candidates = mutableListOf<String>()
+                val candidates = mutableListOf<com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit>()
                 withTimeoutOrNull(18_000L) {
                     var offset = 0
                     for (pageIndex in 0 until 4) {
@@ -3016,12 +3017,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         val page = (result as? MusicBrainzCatalogSearchResult.Success)?.page
                             ?: break
                         candidates += page.items.filter(::isCuratedMusicBrainzRecording)
-                            .map { it.musicBrainzId }
-                        if (candidates.distinct().size >= 100) break
+                        if (candidates.distinctBy { it.musicBrainzId }.size >= 100) break
                         offset = page.nextOffset ?: break
                     }
                 }
-                val distinctCandidates = candidates.distinct().take(100)
+                val distinctHits = candidates.distinctBy { it.musicBrainzId }.take(100)
+                unrankedRows = canonicalUnrankedArtistRecordingRows(id, distinctHits)
+                val distinctCandidates = distinctHits.map { it.musicBrainzId }
                 val popularityBatch = if (distinctCandidates.isNotEmpty())
                     listenBrainzPopularityClient.recordingPopularity(distinctCandidates)
                 else null
@@ -3050,6 +3052,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ) {
                 _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                     artistMbid = id, fetchedAtMs = success.fetchedAtMs,
+                    fallbackRows = unrankedRows,
                 )
             }
             val verified = mutableMapOf<String, RecordingMetadataEnrichment>()
@@ -3172,9 +3175,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     artistMbid = id,
                     rows = rows,
                     sampled = sampled,
+                    fallbackRows = if (rows.isEmpty()) unrankedRows else emptyList(),
                     // Empty metadata after a nonempty public chart can reflect
                     // a transient MusicBrainz outage, so allow a later retry.
-                    fetchedAtMs = if (rows.isNotEmpty() && sampled)
+                    fetchedAtMs = if ((rows.isNotEmpty() && sampled) ||
+                        (rows.isEmpty() && unrankedRows.isNotEmpty()))
                         System.currentTimeMillis()
                     else success?.fetchedAtMs?.takeIf { rows.isNotEmpty() },
                 )

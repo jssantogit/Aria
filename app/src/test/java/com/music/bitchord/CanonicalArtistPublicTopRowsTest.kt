@@ -29,6 +29,56 @@ class CanonicalArtistPublicTopRowsTest {
     private val second = "22ad712e-ce73-9f0c-4e97-9f0e53144411"
     private val officialRelease = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
+    @Test fun unrankedFallbackUsesOnlyExactArtistScopedMusicBrainzMetadata() {
+        val eligible = com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit(
+            musicBrainzId = first,
+            title = "Official track", artistDisplay = "Artist", durationMs = 181_000L,
+            hasOfficialAudioRelease = true, isVideo = false,
+        )
+        val video = eligible.copy(
+            musicBrainzId = second, title = "Video only", isVideo = true,
+        )
+        val withoutProof = eligible.copy(
+            musicBrainzId = officialRelease, hasOfficialAudioRelease = null,
+        )
+        val accepted = com.music.bitchord.ui.canonicalUnrankedArtistRecordingRows(
+            artist, listOf(eligible, eligible, video, withoutProof),
+        )
+        assertEquals(listOf(first), accepted.map { it.musicBrainzId })
+        assertEquals(artist, accepted.single().artistScopeMbid)
+        assertFalse(accepted.single().hasCatalogedAsset)
+        assertTrue(com.music.bitchord.ui.canonicalUnrankedArtistRecordingRows(
+            "not-an-artist-mbid", listOf(eligible),
+        ).isEmpty())
+    }
+
+    @Test fun artistFallbackCannotLeakAcrossDifferentArtistPagesOrAlbums() {
+        val recording = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+            musicBrainzId = first,
+            kind = CanonicalSearchKind.RECORDING,
+            title = "Scoped song", subtitle = "Artist",
+            artistScopeMbid = artist,
+        )
+        val artistState = CanonicalArtistPublicTopState(
+            artistMbid = artist, fallbackRows = listOf(recording),
+        )
+        val page = com.music.bitchord.ui.screens.CanonicalCatalogDetailPage(
+            title = "Album", summary = null, rows = listOf(recording),
+        )
+        val catalog = com.music.bitchord.data.model.UiState.Success(page)
+        assertEquals(listOf(recording),
+            com.music.bitchord.ui.canonicalNativeDetailTracksForPage(
+                "catalog:ARTIST:$artist", artistState, catalog,
+            ))
+        assertTrue(com.music.bitchord.ui.canonicalNativeDetailTracksForPage(
+            "catalog:ARTIST:$otherArtist", artistState, catalog,
+        ).isEmpty())
+        assertEquals(listOf(recording),
+            com.music.bitchord.ui.canonicalNativeDetailTracksForPage(
+                "catalog:RELEASE:$officialRelease", artistState, catalog,
+            ))
+    }
+
     @Test fun artistPublicRankIsFreshOnlyWithinSameArtistAndSixHourWindow() {
         val row = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
             musicBrainzId = first,

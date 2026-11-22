@@ -1,6 +1,10 @@
 package com.music.bitchord.ui
 
 import com.music.bitchord.data.catalog.metadata.ListenBrainzArtistTopRecording
+import com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit
+import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording
+import com.music.bitchord.data.model.UiState
+import com.music.bitchord.ui.screens.CanonicalCatalogDetailPage
 import com.music.bitchord.data.catalog.metadata.ListenBrainzSitewideRecording
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPopularityEvidence
 import com.music.bitchord.data.catalog.metadata.publicListenBrainzRecordingRanking
@@ -22,6 +26,8 @@ import kotlinx.coroutines.sync.withPermit
 internal data class CanonicalArtistPublicTopState(
     val artistMbid: String? = null,
     val rows: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** Membership evidence only. No popularity or owned-audio claims. */
+    val fallbackRows: List<CanonicalCatalogSearchRow> = emptyList(),
     /** Successful public fetch time, including a verified empty upstream chart. */
     val fetchedAtMs: Long? = null,
     /** True for a limited MusicBrainz candidate sample, not a complete chart. */
@@ -49,6 +55,51 @@ private val PUBLIC_ARTIST_CHART_NON_STUDIO = Regex(
     """(?i)(?:\s[-–—]\s*(?:live|karaoke|demo|rehearsal|fan[- ]?edit|bootleg)(?:\b|$)|\((?:live|karaoke|demo|rehearsal|fan[- ]?edit|bootleg)(?:\W|$))"""
 )
 
+
+/**
+ * A Recording returned by an exact artist-MBID MusicBrainz query is a valid
+ * metadata row even when ListenBrainz has no usable rank (401 or no sample).
+ * No listen counts, playback or artist identity are invented.
+ */
+internal fun canonicalUnrankedArtistRecordingRows(
+    artistMbid: String,
+    hits: List<MusicBrainzRecordingHit>,
+): List<CanonicalCatalogSearchRow> {
+    val artist = artistMbid.lowercase(Locale.ROOT)
+    if (!PUBLIC_ARTIST_MBID.matches(artist)) return emptyList()
+    return hits.asSequence()
+        .filter(::isCuratedMusicBrainzRecording)
+        .filter { PUBLIC_ARTIST_MBID.matches(it.musicBrainzId.lowercase(Locale.ROOT)) }
+        .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
+        .take(8)
+        .map { hit ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = hit.musicBrainzId,
+                kind = CanonicalSearchKind.RECORDING,
+                title = hit.title,
+                subtitle = hit.artistDisplay,
+                artistScopeMbid = artist,
+                hasCatalogedAsset = false,
+            )
+        }
+        .toList()
+}
+
+/** Only the open artist may receive its own unranked fallback rows. */
+internal fun canonicalNativeDetailTracksForPage(
+    browseId: String,
+    artistTop: CanonicalArtistPublicTopState,
+    catalogDetail: UiState<CanonicalCatalogDetailPage>?,
+): List<CanonicalCatalogSearchRow> = when {
+    browseId.startsWith("catalog:ARTIST:") &&
+        artistTop.artistMbid?.equals(
+            browseId.removePrefix("catalog:ARTIST:"), ignoreCase = true,
+        ) == true -> artistTop.fallbackRows
+    browseId.startsWith("catalog:RELEASE:") ||
+        browseId.startsWith("catalog:RELEASE_GROUP:") ->
+        (catalogDetail as? UiState.Success)?.data?.rows.orEmpty()
+    else -> emptyList()
+}
 
 /**
  * When the per-artist popularity endpoint is temporarily unavailable (401),
