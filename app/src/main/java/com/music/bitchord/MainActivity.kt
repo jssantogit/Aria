@@ -1559,38 +1559,16 @@ private fun BitChordApp(
     val downloadIdFor: (String?) -> String? = { id ->
         id?.let { Downloads.recordIdOf(it) ?: it }?.takeIf { it in savedCollections }
     }
-    LaunchedEffect(savedDownloads, savedCollections, detail?.browseId) {
-        val openPage = detail ?: return@LaunchedEffect
-        val open = openPage.browseId
-        // A downloaded playlist's page is a snapshot of the same folder and goes
-        // stale for the same reasons — and it is the one page a delete can empty
-        // out entirely, which is worth saying rather than leaving rows behind
-        // that play nothing.
-        // An album or artist out of one of those folders goes stale with it.
-        val folder = LocalGroups.folderOf(open) ?: open
-        if (openPage.songs !is UiState.Loading &&
-            (folder == "local:downloads" || folder == CACHE_FOLDER_BROWSE_ID || Downloads.recordIdOf(open) != null ||
-                com.music.bitchord.data.spotify.LocalPlaylistStore.getPlaylist(open) != null)
-        ) {
-            viewModel.reloadLocalDetail(open)
-        }
-    }
-    LaunchedEffect(localMusicFolderUri, filterNonMusicAudio) {
-        val open = detail?.browseId
-        if (open == "local:all" || LocalGroups.folderOf(open) == "local:all") {
-            viewModel.reloadLocalDetail(open!!)
-        }
-    }
-    LaunchedEffect(webdavUrl) {
-        if (detail?.browseId == com.music.bitchord.data.webdav.WebDavConfig.BROWSE_ID) {
-            viewModel.reloadLocalDetail(com.music.bitchord.data.webdav.WebDavConfig.BROWSE_ID)
-        }
-    }
-    LaunchedEffect(smbHost) {
-        if (detail?.browseId == com.music.bitchord.data.smb.SmbConfig.BROWSE_ID) {
-            viewModel.reloadLocalDetail(com.music.bitchord.data.smb.SmbConfig.BROWSE_ID)
-        }
-    }
+    com.music.bitchord.ui.LocalDetailFreshnessEffects(
+        viewModel = viewModel,
+        detail = detail,
+        savedDownloads = savedDownloads,
+        savedCollections = savedCollections,
+        localMusicFolderUri = localMusicFolderUri,
+        filterNonMusicAudio = filterNonMusicAudio,
+        webdavUrl = webdavUrl,
+        smbHost = smbHost,
+    )
     val controller = rememberMediaController()
     val executeSmartCollection = rememberSmartCollectionBatchAction(controller)
     val executeMusicBrainzCatalog = rememberMusicBrainzCatalogAction(controller)
