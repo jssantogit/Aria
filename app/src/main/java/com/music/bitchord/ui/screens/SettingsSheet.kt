@@ -210,7 +210,6 @@ internal fun SettingsScreen(
     onLyricsSources: () -> Unit,
     onTranslationLanguage: () -> Unit,
     onSources: () -> Unit,
-    onSoulseek: () -> Unit,
     onWearOs: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
@@ -491,8 +490,9 @@ internal fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Rounded.Download,
                     title = downloadQualityTitle,
-                    subtitle = stringResource(R.string.download_quality_subtitle, downloadQuality.perTrack) +
-                        " · " + stringResource(R.string.acquisition_quality_separate),
+                    // The selected value already states the quality; only
+                    // the approximate file size adds useful context here.
+                    subtitle = stringResource(R.string.download_quality_subtitle, downloadQuality.perTrack),
                     value = downloadQuality.localizedLabel(),
                     onClick = { pickingDownloadQuality = true },
                 )
@@ -517,13 +517,6 @@ internal fun SettingsScreen(
                     onCheckedChange = AppSettings::setExportDownloads,
                     subtitle = "Music/BitChord".takeIf { exportDownloads },
                 )
-            }
-            // A1 only reserves the destination for a FUTURE Soulseek publisher.
-            // It must not change the existing offline download save path.
-            val acquisitionDestinationTitle =
-                stringResource(R.string.acquisition_destination_title)
-            row(acquisitionDestinationTitle, "soulseek", "folder", "pasta") {
-                A1AcquisitionDestinationSettingsRow()
             }
         }
         }
