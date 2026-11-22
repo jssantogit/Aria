@@ -74,7 +74,7 @@ internal fun ProviderInlineField(
     secret: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(11.dp)
     var focused by remember { mutableStateOf(false) }
     val foreground = MaterialTheme.colorScheme.onSurface
     val accent = MaterialTheme.colorScheme.primary
@@ -100,13 +100,13 @@ internal fun ProviderInlineField(
         cursorBrush = SolidColor(accent),
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 50.dp)
+            .heightIn(min = 48.dp)
             .clip(shape)
             .background(background)
-            .border(1.dp, outline, shape)
+            .border(if (focused) 1.dp else 0.5.dp, outline, shape)
             .onFocusChanged { focused = it.isFocused }
             .testTag("providers-inline-field-${label.lowercase().replace(" ", "-")}")
-            .padding(horizontal = 16.dp, vertical = 13.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         decorationBox = { innerTextField ->
             Box(contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty()) {
