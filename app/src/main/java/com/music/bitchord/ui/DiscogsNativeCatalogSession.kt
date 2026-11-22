@@ -26,6 +26,28 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal enum class DiscogsNativeRoute { ARTIST, RELEASE }
 
+/**
+ * Exact provider-scoped entity route. Rejects historical generic screen keys
+ * and refuses to reinterpret an Apple/MusicBrainz ID as a Discogs artist.
+ */
+internal fun discogsNativeDetailRouteKey(
+    route: DiscogsNativeRoute?,
+    browseId: String?,
+): String? {
+    val prefix = when (route) {
+        DiscogsNativeRoute.ARTIST -> "discogs:artist:"
+        DiscogsNativeRoute.RELEASE -> "discogs:release:"
+        null -> return null
+    }
+    val id = browseId?.takeIf { it.startsWith(prefix) }
+        ?.removePrefix(prefix)
+        ?.takeIf { it.matches(Regex("[1-9][0-9]{0,11}")) }
+        ?.toLongOrNull()
+        ?.takeIf { it in 1..999_999_999_999L }
+        ?: return null
+    return "$prefix$id"
+}
+
 internal data class DiscogsNativePage(
     val page: DetailPage,
     val tracks: List<NativeMetadataTrack> = emptyList(),
