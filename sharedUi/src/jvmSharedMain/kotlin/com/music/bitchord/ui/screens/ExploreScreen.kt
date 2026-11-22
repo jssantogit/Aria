@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -233,7 +234,9 @@ internal fun NativeGenreSearchArtwork(
             color = Color.White,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(5.dp),
+            // Only the row's title is spoken; the decorative thumbnail
+            // must not announce the same category a second time.
+            modifier = Modifier.padding(5.dp).clearAndSetSemantics {},
         )
     }
 }
