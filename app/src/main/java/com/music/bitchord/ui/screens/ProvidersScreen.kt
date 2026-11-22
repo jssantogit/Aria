@@ -89,7 +89,8 @@ import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.player.AppleQueueVectors
 import com.music.bitchord.ui.components.ArtworkPageBackButton
 import com.music.bitchord.ui.components.FloatingLibraryTopBarCircle
-import com.music.bitchord.ui.components.NativeToolbarOverflowMenu
+import com.music.bitchord.ui.components.NativeCompactOverflowMenu
+import com.music.bitchord.ui.components.NativeCompactMenuDivider
 import com.music.bitchord.ui.components.NativeCompactMenuItem
 import com.music.bitchord.ui.components.standaloneTopControlPadding
 import kotlin.math.abs
@@ -776,7 +777,7 @@ internal fun ProviderHeader(
     Row(
         modifier = Modifier.fillMaxWidth().padding(
             top = standaloneTopControlPadding(40.dp),
-            bottom = 22.dp,
+            bottom = 10.dp,
         ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -806,9 +807,14 @@ internal fun ProviderHeader(
                             )
                         }
                     }
-                    NativeToolbarOverflowMenu(
+                    // Use the same larger neutral frosted action plate as the
+                    // app's expandable cards, not the one-action Settings plate.
+                    NativeCompactOverflowMenu(
                         expanded = overflowOpen,
                         onDismissRequest = { overflowOpen = false },
+                        minMenuWidth = 224.dp,
+                        maxMenuWidth = 224.dp,
+                        homePlateStyle = true,
                     ) {
                         NativeCompactMenuItem(
                             label = "Organizar",
@@ -818,6 +824,7 @@ internal fun ProviderHeader(
                                 onOrganize()
                             },
                         )
+                        NativeCompactMenuDivider()
                         NativeCompactMenuItem(
                             label = "Conexões",
                             icon = Icons.Rounded.Settings,
