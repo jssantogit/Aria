@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="acquisition_destination_title">Soulseek download folder</string>
-    <string name="acquisition_destination_default">Default: Music/BitChord. Approved Soulseek files are saved here as ordinary local music.</string>
-    <string name="acquisition_destination_chosen">Custom folder selected for Soulseek downloads. Storage permission is checked again before every save.</string>
+    <string name="acquisition_destination_title">Download folder</string>
+    <string name="acquisition_destination_default">Default: Music/BitChord</string>
+    <string name="acquisition_destination_chosen">Custom folder selected</string>
     <string name="acquisition_destination_revoked">Folder permission is missing or the location changed. Select a folder again before downloading.</string>
     <string name="acquisition_destination_reset">Use Music/BitChord</string>
     <string name="acquisition_destination_reset_subtitle">Reset Soulseek downloads to Music/BitChord. Existing files are not moved.</string>
