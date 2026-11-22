@@ -65,10 +65,17 @@ internal fun rememberCanonicalHomeEditorialSelection(
     releasesHeading: String,
     discoveryHeading: String,
     date: String,
+    musicBrainzRows: List<CanonicalCatalogSearchRow> = emptyList(),
+    picksHeading: String = "Escolha a dedo",
+    albumsHeading: String = "Álbuns",
+    singlesHeading: String = "Singles e EPs",
+    moreHeading: String = "Mais",
 ): CatalogEditorialSelection = remember(
     base, apple, priority, worldwideLoading, releasesHeading, discoveryHeading, date,
+    musicBrainzRows, picksHeading, albumsHeading, singlesHeading, moreHeading,
 ) {
     projectCanonicalHomeEditorial(
         base, apple, priority, worldwideLoading, releasesHeading, discoveryHeading, date,
+        musicBrainzRows, picksHeading, albumsHeading, singlesHeading, moreHeading,
     )
 }

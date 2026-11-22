@@ -50,7 +50,9 @@ internal fun projectCanonicalHomeEditorial(
     // typed release evidence was already present in the catalog snapshot.
     val verifiedPublicRows = musicBrainzRows.asSequence()
         .filter { canonicalEditorialReleaseType(it) != null }
-        .filter { it.releaseDate == null || it.releaseDate.take(10) <= todayIsoDate }
+        .filter { row ->
+            row.releaseDate?.let { date -> date.take(10) <= todayIsoDate } ?: true
+        }
         .distinctBy { it.kind to it.musicBrainzId }
         .toList()
     val nativeMusicBrainzShelves = if (musicBrainzShelves.isNotEmpty() &&
