@@ -88,7 +88,7 @@ internal object DiscogsPublicArtistParsing {
     }
 
     fun page(raw: String, requestedPage: Int): DiscogsArtistIndexPage? {
-        if (raw.length > 131_072 || requestedPage !in 1..3) return null
+        if (raw.length > 131_072 || requestedPage !in 1..100) return null
         val obj = try {
             json.parseToJsonElement(raw) as? JsonObject
         } catch (_: Exception) { null } ?: return null
@@ -131,6 +131,7 @@ internal interface DiscogsPublicArtistTransport {
 
 /** Fixed public endpoint; token, image URLs and redirects are never used. */
 internal class KtorDiscogsPublicArtistTransport(
+    private val perPage: Int = 12,
     private val client: HttpClient = HttpClient(OkHttp) {
         expectSuccess = false
         followRedirects = false
@@ -144,12 +145,12 @@ internal class KtorDiscogsPublicArtistTransport(
     override suspend fun list(
         artistId: Long, page: Int, userAgent: String,
     ): DiscogsHttpResponse {
-        require(artistId in 1..999_999_999_999L && page in 1..3)
+        require(artistId in 1..999_999_999_999L && page in 1..100 && perPage in 1..12)
         val response = client.get("https://api.discogs.com/artists/$artistId/releases") {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
             parameter("page", page)
-            parameter("per_page", 12)
+            parameter("per_page", perPage)
             parameter("sort", "year")
             parameter("sort_order", "desc")
         }
