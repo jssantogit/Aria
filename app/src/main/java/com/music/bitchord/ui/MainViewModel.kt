@@ -470,6 +470,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val canonicalGenrePopular = _canonicalGenrePopular.asStateFlow()
     private var canonicalGenreJob: Job? = null
     private val canonicalGenreEpoch = DiscoveryRequestEpoch()
+    /** MusicBrainz tag evidence supplements an Apple-primary genre without
+     * cancelling or overwriting Apple's own editorial release discovery. */
+    private var genreSupplementJob: Job? = null
+    private val genreSupplementEpoch = DiscoveryRequestEpoch()
+    private var genreSupplementFingerprint: String? = null
+    private var genreSupplementAttemptMs = 0L
     // Verified Cover Art Archive art for the original Explore category tiles.
     // These are optional image previews, not metadata or playable identities.
     private val _canonicalExploreGenreCovers = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -3591,6 +3597,99 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }.also { job ->
             val unregister = lease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
+        }
+    }
+
+    /**
+     * Apple remains the release authority while a *separately authorized*
+     * MusicBrainz tag query supplies artists and recording membership. An
+     * independent ListenBrainz chart ticket supplies popularity; neither one
+     * creates Apple identity links or playable audio.
+     */
+    fun loadCanonicalGenreSupplement(tag: String, force: Boolean = false) {
+        val selected = canonicalAllExploreGenres.firstOrNull { it.tag == tag } ?: return
+        val gate = ProviderRuntime.gateOrNull()
+        val ticket = gate?.open(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
+        )
+        if (ticket == null) {
+            genreSupplementJob?.cancel()
+            genreSupplementEpoch.invalidateAndNext()
+            genreSupplementFingerprint = null
+            _canonicalGenreArtists.value = null
+            _canonicalGenrePopular.value = null
+            return
+        }
+        val chartTicket = gate.open(
+            ProviderCapability.CHART_MOST_PLAYED, BuiltInProviderKeys.LISTENBRAINZ,
+        )
+        val fingerprint = "$tag:popular=${chartTicket != null}"
+        val now = System.currentTimeMillis()
+        if (!force && genreSupplementFingerprint == fingerprint &&
+            (genreSupplementJob?.isActive == true ||
+                now >= genreSupplementAttemptMs &&
+                    now - genreSupplementAttemptMs < 6L * 60L * 60L * 1_000L)
+        ) return
+        genreSupplementJob?.cancel()
+        val generation = genreSupplementEpoch.next()
+        genreSupplementFingerprint = fingerprint
+        genreSupplementAttemptMs = now
+        _canonicalGenreArtists.value = null
+        _canonicalGenrePopular.value = null
+        genreSupplementJob = viewModelScope.launch(Dispatchers.IO) {
+            val artists = try {
+                musicBrainzEditorialSearch.searchArtistsForTag(selected.tag, 18)
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (!gate.accept(ticket) || !genreSupplementEpoch.isCurrent(generation))
+                return@launch
+            val taggedArtists = (artists as? MusicBrainzCatalogSearchResult.Success)
+                ?.page?.items.orEmpty().distinctBy { it.musicBrainzId }
+                .map { hit ->
+                    CanonicalCatalogSearchRow(
+                        hit.musicBrainzId, CanonicalSearchKind.ARTIST, hit.name,
+                        hit.disambiguation ?: hit.country,
+                    )
+                }
+            _canonicalGenreArtists.value =
+                CanonicalGenreArtistSnapshot(selected.tag, taggedArtists)
+
+            if (chartTicket == null) return@launch
+            val tagged = try {
+                musicBrainzEditorialSearch.searchRecordingsForTag(selected.tag, 40)
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (!gate.accept(ticket) || !gate.accept(chartTicket) ||
+                !genreSupplementEpoch.isCurrent(generation)
+            ) return@launch
+            val recordings = (tagged as? MusicBrainzCatalogSearchResult.Success)
+                ?.page?.items.orEmpty()
+                .filter(::isCuratedMusicBrainzRecording)
+                .distinctBy { it.musicBrainzId }
+                .map { hit ->
+                    CanonicalCatalogSearchRow(
+                        hit.musicBrainzId, CanonicalSearchKind.RECORDING,
+                        hit.title, hit.artistDisplay, artworkUri = null,
+                    )
+                }
+            val popularity = if (recordings.isEmpty()) null else try {
+                listenBrainzPopularityClient.recordingPopularity(
+                    recordings.map { it.musicBrainzId },
+                )
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { ListenBrainzPopularityFetchResult.Unavailable }
+            if (gate.accept(ticket) && gate.accept(chartTicket) &&
+                genreSupplementEpoch.isCurrent(generation)
+            ) {
+                _canonicalGenrePopular.value = CanonicalGenrePopularSnapshot(
+                    selected.tag, recordings,
+                    (popularity as? ListenBrainzPopularityFetchResult.Success)
+                        ?.observations.orEmpty(),
+                )
+            }
+        }.also { job ->
+            val unregister = gate.onRevoke(ticket) { job.cancel() }
             job.invokeOnCompletion { unregister() }
         }
     }

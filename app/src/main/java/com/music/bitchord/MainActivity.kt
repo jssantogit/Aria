@@ -592,6 +592,7 @@ private fun CanonicalHomeEditorialEffects(
     activeCanonicalGenre: com.music.bitchord.ui.CanonicalExploreGenre?,
     canonicalGenreResults: UiState<List<CanonicalCatalogSearchRow>>,
     appleGenreReleases: Map<String, UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>>,
+    genrePopularityAuthorized: Boolean,
     canonicalWorldwideLoading: Boolean,
     canonicalHomeShelves: List<HomeShelf>,
     canonicalReleasesHeading: String,
@@ -622,7 +623,7 @@ private fun CanonicalHomeEditorialEffects(
     }
 
     LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults,
-        appleGenreReleases, catalogEditorialOrder,
+        appleGenreReleases, catalogEditorialOrder, genrePopularityAuthorized,
     ) {
         val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
         val first = catalogEditorialOrder.firstOrNull()
@@ -643,7 +644,13 @@ private fun CanonicalHomeEditorialEffects(
             if (mb in catalogEditorialOrder &&
                 (result is UiState.Error ||
                     result is UiState.Success && result.data.isEmpty())
-            ) viewModel.loadCanonicalGenre(tag)
+            ) {
+                viewModel.loadCanonicalGenre(tag)
+            } else if (com.music.bitchord.ui.shouldSupplementAppleGenre(
+                    tag, catalogEditorialOrder, result,
+                )) {
+                viewModel.loadCanonicalGenreSupplement(tag)
+            }
         } else if (first == mb) {
             if (apple in catalogEditorialOrder &&
                 (canonicalGenreResults is UiState.Error ||
@@ -1431,6 +1438,7 @@ private fun BitChordApp(
         activeCanonicalGenre = activeCanonicalGenre,
         canonicalGenreResults = canonicalGenreResults,
         appleGenreReleases = appleGenreReleases,
+        genrePopularityAuthorized = genrePopularityAuthorized,
         canonicalWorldwideLoading = canonicalWorldwideLoading,
         canonicalHomeShelves = canonicalHomeShelves,
         canonicalReleasesHeading = canonicalReleasesHeading,
@@ -1521,8 +1529,11 @@ private fun BitChordApp(
             catalogMb -> viewModel.loadCanonicalGenre(tag)
             catalogApple -> if (com.music.bitchord.data.catalog.metadata
                     .AppleExploreGenrePolicy.supports(tag)
-            ) viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
-            else if (catalogMb in catalogEditorialOrder) viewModel.loadCanonicalGenre(tag)
+            ) {
+                viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
+                if (catalogMb in catalogEditorialOrder)
+                    viewModel.loadCanonicalGenreSupplement(tag, force)
+            } else if (catalogMb in catalogEditorialOrder) viewModel.loadCanonicalGenre(tag)
             else -> Unit
         }
     }
@@ -4499,9 +4510,9 @@ private fun BitChordApp(
                                     item, heading, canonicalEditorialPlaybackSource(explore = true),
                                 )
                             },
-                            onRetry = { viewModel.loadCanonicalGenre(visibleGenre.tag) },
+                            onRetry = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
-                            onRefresh = { viewModel.loadCanonicalGenre(visibleGenre.tag) },
+                            onRefresh = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
                             pullState = explorePull,
                             contentPadding = listPadding,
                             title = visibleGenre.title,
