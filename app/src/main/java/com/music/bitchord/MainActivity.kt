@@ -1296,13 +1296,13 @@ private fun BitChordApp(
             (appleAlbumDetail as? UiState.Success)?.data?.let(::appleAlbumAsSharedDetail)
                 ?: appleAlbumNavigation?.let { entry ->
                     appleNativePendingDetail(entry, AppleNativeDetailKind.ALBUM,
-                        appleAlbumDetail is UiState.Error)
+                        (appleAlbumDetail as? UiState.Error)?.message)
                 }
         AppleNativeDetailKind.ARTIST ->
             (appleArtistDetail as? UiState.Success)?.data?.let(::appleArtistAsSharedDetail)
                 ?: appleArtistNavigation?.let { entry ->
                     appleNativePendingDetail(entry, AppleNativeDetailKind.ARTIST,
-                        appleArtistDetail is UiState.Error)
+                        (appleArtistDetail as? UiState.Error)?.message)
                 }
         AppleNativeDetailKind.NONE -> null
     })?.takeIf {
