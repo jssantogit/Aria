@@ -3468,13 +3468,14 @@ private fun BitChordApp(
             BackHandler(
                 enabled = selectedTab == TAB_SEARCH && detail == null &&
                     !showSettings && !showReplay && !showSources &&
-                    !showSmartPlaylistBuilder && appleAlbumDetail != null,
+                    !showSmartPlaylistBuilder && appleAlbumDetail != null &&
+                    detailActiveShelf == null,
             ) { backAppleAlbum() }
             BackHandler(
                 enabled = selectedTab == TAB_SEARCH && detail == null &&
                     !showSettings && !showReplay && !showSources &&
                     !showSmartPlaylistBuilder && appleAlbumDetail == null &&
-                    appleArtistDetail != null,
+                    appleArtistDetail != null && detailActiveShelf == null,
             ) { viewModel.backAppleEditorialArtist() }
             BackHandler(
                 enabled = selectedTab == TAB_SEARCH && detail == null &&
@@ -5608,6 +5609,12 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
+                        appleNativeRouteKey != null &&
+                            appleNativeKind == AppleNativeDetailKind.ALBUM ->
+                            ({ backAppleAlbum() })
+                        appleNativeRouteKey != null &&
+                            appleNativeKind == AppleNativeDetailKind.ARTIST ->
+                            ({ viewModel.backAppleEditorialArtist() })
                         discogsRoute != null -> ({
                             detailActiveShelf = null
                             viewModel.discogsNativeCatalog.back()
