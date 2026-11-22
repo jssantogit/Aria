@@ -1472,42 +1472,19 @@ private fun BitChordApp(
         snapshot = canonicalExploreSitewide,
         onExpiry = viewModel::loadCanonicalExploreSitewide,
     )
-    val canonicalWeeklyCommunityShelf = remember(
-        cachedCanonicalRows, canonicalExploreSitewide, canonicalCommunityHeading,
-        sitewideFreshnessNowMs,
-    ) {
-        if (canonicalSitewideDiscoveryIsFresh(
-                canonicalExploreSitewide, sitewideFreshnessNowMs,
-            )
-        ) canonicalSitewideCommunityShelf(
-            rows = cachedCanonicalRows + canonicalExploreSitewide.verifiedRows,
-            rankings = canonicalExploreSitewide.recordings,
-            heading = canonicalCommunityHeading,
-        ) else null
-    }
-    val canonicalCommunityShelf = remember(
-        cachedCanonicalRows, canonicalExplorePublicPopularity,
-        canonicalWeeklyCommunityShelf, canonicalCommunityHeading, genrePopularityAuthorized,
-    ) {
-        if (!genrePopularityAuthorized) null else
-            canonicalWeeklyCommunityShelf ?: canonicalPublicPopularityShelf(
-                rows = cachedCanonicalRows,
-                evidence = canonicalExplorePublicPopularity,
-                heading = canonicalCommunityHeading,
-            )
-    }
-    val weeklyArtistShelf = remember(
-        cachedCanonicalRows, canonicalExploreSitewide, sitewideFreshnessNowMs,
-        genrePopularityAuthorized,
-    ) {
-        if (genrePopularityAuthorized && canonicalSitewideDiscoveryIsFresh(
-                canonicalExploreSitewide, sitewideFreshnessNowMs,
-            )
-        ) com.music.bitchord.ui.canonicalWeeklyChartArtistsShelf(
-            rows = cachedCanonicalRows,
-            rankings = canonicalExploreSitewide.recordings,
-        ) else null
-    }
+    // Small composable projection, not more bytecode inside BitChordApp.
+    val homeCommunity = com.music.bitchord.ui.rememberCanonicalHomeCommunityShelves(
+        cachedRows = cachedCanonicalRows,
+        publicPopularity = canonicalExplorePublicPopularity,
+        sitewide = canonicalExploreSitewide,
+        nowMs = sitewideFreshnessNowMs,
+        authorized = genrePopularityAuthorized,
+        communityHeading = canonicalCommunityHeading,
+        trendingHeading = canonicalTrendingHeading,
+    )
+    val canonicalCommunityShelf = homeCommunity.community
+    val weeklyArtistShelf = homeCommunity.weeklyArtists
+    val worldwideTrendingShelf = homeCommunity.weeklyTrending
     // The same HomeScreen shelf compositor displays private recommendations;
     // their MBIDs and per-user scores never contaminate public popularity.
     // Tick on expiration so the section disappears even if Explore stays open.
@@ -1534,11 +1511,6 @@ private fun BitChordApp(
             heading = canonicalPersonalHeading,
         ) else null
     }
-    val worldwideTrendingShelf = remember(
-        canonicalWeeklyCommunityShelf, canonicalTrendingHeading,
-    ) {
-        canonicalWeeklyCommunityShelf?.copy(title = canonicalTrendingHeading)
-    }
     val authorizedCountryChartShelf = remember(chartAuthorized) {
         com.music.bitchord.ui.canonicalCountryChartShelf(chartAuthorized)
     }
@@ -1559,17 +1531,12 @@ private fun BitChordApp(
             canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
         )
     }
-    val canonicalHomeDisplayShelves = remember(
-        canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
-        authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
-        weeklyArtistShelf,
-    ) {
-        com.music.bitchord.ui.projectCanonicalHomeDisplay(
+    val canonicalHomeDisplayShelves =
+        com.music.bitchord.ui.rememberCanonicalHomeDisplayShelves(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
             authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
             weeklyArtistShelf,
         )
-    }
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
         canonicalHomeDisplayShelves, canonicalHomeEditorialSelection,
     )
