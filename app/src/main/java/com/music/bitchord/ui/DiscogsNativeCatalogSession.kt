@@ -76,6 +76,11 @@ internal class DiscogsNativeCatalogSession(
     val searchHasMore: StateFlow<Boolean> = _searchHasMore.asStateFlow()
     private val _route = MutableStateFlow<DiscogsNativeRoute?>(null)
     val route: StateFlow<DiscogsNativeRoute?> = _route.asStateFlow()
+    // The root navigator uses the same exact browseId route key as a
+    // MusicBrainz native DetailPage. Never reuse a generic artist/release slot
+    // for two distinct Discogs identities.
+    private val _browseId = MutableStateFlow<String?>(null)
+    val browseId: StateFlow<String?> = _browseId.asStateFlow()
     private val _detail = MutableStateFlow<UiState<DiscogsNativePage>?>(null)
     val detail: StateFlow<UiState<DiscogsNativePage>?> = _detail.asStateFlow()
 
@@ -248,6 +253,7 @@ internal class DiscogsNativeCatalogSession(
         if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
         val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
         backAll()
+        _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.RELEASE
         _detail.value = UiState.Loading
         val job = scope.launch(Dispatchers.IO) {
@@ -273,6 +279,7 @@ internal class DiscogsNativeCatalogSession(
         if (selected.artistId !in 1..999_999_999_999L || selected.name.isBlank()) return
         backAll()
         artist = selected
+        _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.ARTIST
         _detail.value = UiState.Loading
         loadNextArtistPage()
@@ -328,6 +335,7 @@ internal class DiscogsNativeCatalogSession(
         val release = releases.singleOrNull { it.browseId == browseId } ?: return
         val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
         detailJob?.cancel()
+        _browseId.value = release.browseId
         _route.value = DiscogsNativeRoute.RELEASE
         _detail.value = UiState.Loading
         val job = scope.launch(Dispatchers.IO) {
@@ -352,6 +360,7 @@ internal class DiscogsNativeCatalogSession(
         detailJob?.cancel()
         detailJob = null
         if (_route.value == DiscogsNativeRoute.RELEASE && artist != null) {
+            _browseId.value = artist?.browseId
             _route.value = DiscogsNativeRoute.ARTIST
             _detail.value = cachedArtistPage?.let { UiState.Success(it) }
                 ?: UiState.Error("discogs_catalog_unavailable")
@@ -362,6 +371,7 @@ internal class DiscogsNativeCatalogSession(
         detailJob?.cancel()
         detailJob = null
         _route.value = null
+        _browseId.value = null
         _detail.value = null
         artist = null
         releases = emptyList()
