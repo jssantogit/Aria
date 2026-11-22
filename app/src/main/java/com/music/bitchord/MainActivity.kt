@@ -1164,6 +1164,7 @@ private fun BitChordApp(
     val appleAlbumDetail by viewModel.appleEditorialDetail.collectAsStateWithLifecycle()
     val appleArtistDetail by viewModel.appleEditorialArtistDetail.collectAsStateWithLifecycle()
     val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
+    val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
     val discogsNativeVisual = (discogsDetail as? UiState.Success)?.data
     val selectedSearchProviderKey by viewModel.selectedSearchProviderKey.collectAsStateWithLifecycle()
@@ -3501,12 +3502,10 @@ private fun BitChordApp(
                 communityMetadataRecording != null -> "community_recording:" + communityMetadataRecording!!.musicBrainzId
                 openedPublicPlaylist != null -> "public_playlist:" + openedPublicPlaylist!!.mbid
                 detail != null -> detail.browseId
-                selectedTab == TAB_SEARCH &&
-                    discogsRoute == com.music.bitchord.ui.DiscogsNativeRoute.ARTIST ->
-                    "discogs_native_artist"
-                selectedTab == TAB_SEARCH &&
-                    discogsRoute == com.music.bitchord.ui.DiscogsNativeRoute.RELEASE ->
-                    "discogs_native_release"
+                // Exactly like MusicBrainz's native DetailPage, route by
+                // provider-owned browseId, never by a generic source screen.
+                selectedTab == TAB_SEARCH && discogsRoute != null &&
+                    discogsBrowseId != null -> discogsBrowseId!!
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
