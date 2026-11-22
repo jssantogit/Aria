@@ -4183,6 +4183,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ) != null
                 snapshots.collect {
                     discogsNativeCatalog.purgeRevoked()
+                    // iTunes artist pages survive without MusicBrainz. If
+                    // the optional verified crosswalk loses consent, remove
+                    // only its MB identity evidence, never Apple releases.
+                    if (ProviderRuntime.gateOrNull()?.open(
+                            ProviderCapability.IDENTITY, BuiltInProviderKeys.MUSICBRAINZ,
+                        ) == null
+                    ) {
+                        appleArtistRelationJob?.cancel()
+                        activeAppleArtistLinkedMbid = null
+                        _appleEditorialArtistDetail.update { state ->
+                            if (state !is UiState.Success ||
+                                state.data.verifiedMusicBrainzArtistMbid == null
+                            ) state else UiState.Success(state.data.copy(
+                                verifiedMusicBrainzArtistMbid = null,
+                            ))
+                        }
+                    }
                     val nextEditorial = eligibleEditorialProviders()
                     val nextDiscogs = ProviderRuntime.gateOrNull()?.open(
                         ProviderCapability.EDITION_METADATA, BuiltInProviderKeys.DISCOGS,
