@@ -5603,6 +5603,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 resetCanonicalSearchPagination()
                 resetApplePublicSearchPaging()
                 clearCanonicalCatalogNavigation()
+                // A MusicBrainz DetailPage still present in the shared stack
+                // must never outrank a subsequently selected Discogs artist
+                // route. Keep other device/library pages untouched.
+                _detailStack.update { pages ->
+                    pages.filterNot { it.browseId.startsWith("catalog:") }
+                }
                 _searchScrollReset.value += 1
                 _catalogSearchMusicBrainzVisible.value = false
                 _canonicalResults.value = null
