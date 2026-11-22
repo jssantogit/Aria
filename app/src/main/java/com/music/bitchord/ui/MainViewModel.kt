@@ -649,6 +649,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var appleEditorialSearchJob: Job? = null
     private var appleEditorialDetailJob: Job? = null
     private var activeAppleAlbumId: String? = null
+    // The exact clicked Apple product survives Loading/Error, so the native
+    // route never falls back to a generic artist/album screen key.
+    private val _appleAlbumNavigation = MutableStateFlow<AppleEditorialSearchRow?>(null)
+    val appleAlbumNavigation = _appleAlbumNavigation.asStateFlow()
     /** Immutable Apple-only snapshot; external proofs never overwrite this. */
     private var appleAlbumNativeBaseline: AppleEditorialAlbumDetailPage? = null
     private val _appleEditorialArtists =
@@ -671,6 +675,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val appleArtistArtworkQueued = mutableSetOf<String>()
     private var appleArtistPager: AppleArtistDiscographyPager? = null
     private var activeAppleArtistId: String? = null
+    private val _appleArtistNavigation = MutableStateFlow<AppleEditorialSearchRow?>(null)
+    val appleArtistNavigation = _appleArtistNavigation.asStateFlow()
     private val _appleEditorialTracks =
         MutableStateFlow<UiState<List<AppleEditorialTrackSearchRow>>?>(null)
     val appleEditorialTracks: StateFlow<UiState<List<AppleEditorialTrackSearchRow>>?> =
@@ -1335,6 +1341,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _appleEditorialArtistDetail.value = null
         activeAppleAlbumId = null
         activeAppleArtistId = null
+        _appleAlbumNavigation.value = null
+        _appleArtistNavigation.value = null
         newestRequestId.incrementAndGet()
         searchSession = null
         searchPagingJob?.cancel()
@@ -5084,6 +5092,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
         appleArtistPager = pager
         activeAppleArtistId = row.browseId
+        _appleArtistNavigation.value = row
         _appleEditorialArtistDetail.value = UiState.Loading
         // Bridge optional artist relation shelves only when the user enabled
         // MusicBrainz identity and the official URL resolves unambiguously.
@@ -5387,6 +5396,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun backAppleEditorialArtist() {
+        _appleArtistNavigation.value = null
         activeAppleArtistId = null
         activeAppleArtistLinkedMbid = null
         activeAppleArtistHeroArt = null
@@ -5437,6 +5447,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         clearCanonicalCatalogNavigation()
         appleEditorialDetailJob?.cancel()
         activeAppleAlbumId = row.browseId
+        _appleAlbumNavigation.value = row
         appleAlbumNativeBaseline = null
         _appleEditorialDetail.value = UiState.Loading
         appleEditorialDetailJob = viewModelScope.launch(Dispatchers.IO) {
@@ -5576,6 +5587,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun backAppleEditorialAlbum() {
+        _appleAlbumNavigation.value = null
         activeAppleAlbumId = null
         appleAlbumNativeBaseline = null
         appleEditorialDetailJob?.cancel()
