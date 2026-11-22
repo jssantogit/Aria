@@ -4453,6 +4453,15 @@ private fun BitChordApp(
                             leadHero = true,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
+                            // Keep live playhead state inside HomeScreen, not BitChordApp.
+                            continuePosition = player.position,
+                            continueDurationMs = player.durationMs,
+                            onContinue = {
+                                // A stale click may never pause a new song.
+                                if (!player.isPlaying &&
+                                    controller?.currentMediaItem?.mediaId == player.song?.videoId
+                                ) togglePlayPause()
+                            },
                         ) }
                         TAB_EXPLORE -> com.music.bitchord.ui.components.ExploreCategoryContentTransition(
                             category = activeCanonicalGenre,

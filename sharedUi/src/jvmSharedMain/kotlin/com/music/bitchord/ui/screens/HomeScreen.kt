@@ -80,6 +80,7 @@ import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.playback.PlaybackPosition
 import com.music.bitchord.data.model.UiState
 import java.util.Locale
 import com.music.bitchord.data.model.artworkAt
@@ -215,6 +216,11 @@ fun HomeScreen(
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    /** The live Media3 playhead (including a position restored from a real queue snapshot). */
+    continuePosition: PlaybackPosition? = null,
+    continueDurationMs: Long = 0L,
+    /** Resume the *existing* player; never manufacture a Song or a new queue. */
+    onContinue: (() -> Unit)? = null,
     /** Native account access while the floating Home actions are hidden. */
     headerTrailing: (@Composable () -> Unit)? = null,
     /** An honest empty/loading result, not a synthetic playlist card. */
@@ -225,6 +231,17 @@ fun HomeScreen(
     categoryNavigationShelf: HomeShelf? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
+    // Read the rapidly changing playhead only in Home's own Compose scope.
+    // Never pass positionMs up through BitChordApp: that invalidates every tab.
+    val pausedResumePosition = if (!isPlaying && onContinue != null)
+        continuePosition?.positionMs ?: 0L else 0L
+    val continueShelf = remember(
+        currentSong, isPlaying, pausedResumePosition, continueDurationMs, onContinue != null,
+    ) {
+        if (onContinue == null) null else canonicalContinueListeningShelf(
+            currentSong, isPlaying, pausedResumePosition, continueDurationMs,
+        )
+    }
 
     if (RuntimePerformanceUiContext.enabled) {
         val runtimePerformanceOwner = remember { Any() }
@@ -330,17 +347,28 @@ fun HomeScreen(
                     ) state.data.toMutableList().apply {
                         add(minOf(2, size), HomeShelf("Playlists", emptyList()))
                     } else state.data
-                    val visibleShelves = if (categoryNavigationShelf == null) displayShelves
-                        else displayShelves.toMutableList().apply {
-                            // Keep the existing launch hero first, then a horizontal
-                            // row of square styles; no fabricated editorial hero.
-                            add(if (isEmpty()) 0 else 1, categoryNavigationShelf)
+                    val visibleShelves = displayShelves.toMutableList().apply {
+                        // Retained paused playback is an actual Media3 playhead,
+                        // not guessed listening history. Keep the editorial hero
+                        // in the first slot, then insert one native square card.
+                        continueShelf?.let { add(if (isEmpty()) 0 else 1, it) }
+                        categoryNavigationShelf?.let {
+                            add(if (isEmpty()) 0 else 1, it)
                         }
+                    }
                     itemsIndexedShelves(
                         shelves = visibleShelves,
                         emptyPlaylistNotice = publicPlaylistNotice,
-                        onItemClick = onItemClick,
-                        onItemLongPress = onItemLongPress,
+                        onItemClick = { item, shelfTitle ->
+                            if (item.browseId == CONTINUE_LISTENING_BROWSE_ID &&
+                                shelfTitle == CONTINUE_LISTENING_TITLE
+                            ) onContinue?.invoke() else onItemClick(item, shelfTitle)
+                        },
+                        onItemLongPress = onItemLongPress?.let { hold ->
+                            { item: ShelfItem ->
+                                if (item.browseId != CONTINUE_LISTENING_BROWSE_ID) hold(item)
+                            }
+                        },
                         currentSong = currentSong,
                         isPlaying = isPlaying,
                         firstIsHero = leadHero && !recentlyPlayedLoading && displayShelves.isNotEmpty(),
