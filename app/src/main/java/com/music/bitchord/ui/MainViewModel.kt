@@ -5094,6 +5094,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         activeAppleArtistId = row.browseId
         _appleArtistNavigation.value = row
         _appleEditorialArtistDetail.value = UiState.Loading
+        // Search permission does not implicitly grant public discography.
+        // Show the native artist page with a useful error instead of a dead tap.
+        if (ProviderRuntime.gateOrNull()?.open(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.ITUNES,
+            ) == null
+        ) {
+            _appleEditorialArtistDetail.value = UiState.Error("itunes_discography_disabled")
+            return
+        }
         // Bridge optional artist relation shelves only when the user enabled
         // MusicBrainz identity and the official URL resolves unambiguously.
         // The lookup runs in parallel, never blocks the first Apple paint.
@@ -5450,6 +5459,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _appleAlbumNavigation.value = row
         appleAlbumNativeBaseline = null
         _appleEditorialDetail.value = UiState.Loading
+        if (ProviderRuntime.gateOrNull()?.open(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.ITUNES,
+            ) == null
+        ) {
+            _appleEditorialDetail.value = UiState.Error("itunes_discography_disabled")
+            return
+        }
         appleEditorialDetailJob = viewModelScope.launch(Dispatchers.IO) {
             val response = try {
                 appleEditorialRepository.albumDetail(route.id, route.storefront)
