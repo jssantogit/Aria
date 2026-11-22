@@ -9,10 +9,18 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.discogsArtistPage
 import com.music.bitchord.ui.discogsReleasePage
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
+import com.music.bitchord.ui.screens.nativeArtistAllowsNameBasedAuxiliaryVisuals
 import org.junit.Assert.*
 import org.junit.Test
 
 class DiscogsNativeCatalogPresentationTest {
+    @Test fun discogsArtistCannotInheritUnverifiedAppleArtOrNameBasedSignature() {
+        assertFalse(nativeArtistAllowsNameBasedAuxiliaryVisuals("discogs:artist:123"))
+        assertFalse(nativeArtistAllowsNameBasedAuxiliaryVisuals("discogs:release:456"))
+        assertTrue(nativeArtistAllowsNameBasedAuxiliaryVisuals(
+            "catalog:ARTIST:00000000-0000-4000-8000-000000000001"))
+    }
+
     private val artist = DiscogsNativeArtistSearchRow(8303009L, "Artist")
 
     private fun release(
