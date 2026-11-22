@@ -1088,15 +1088,18 @@ private fun BitChordApp(
     val appleGenreReleases = catalogRuntime.appleGenres
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
-    var activeCanonicalGenre by remember {
-        mutableStateOf<com.music.bitchord.ui.CanonicalExploreGenre?>(null)
-    }
-    // A subgenre/detail can return to its parent, or to Search when opened
-    // from an actual genre result. Never turn these navigation IDs into audio.
-    var canonicalGenreHistory by remember {
-        mutableStateOf<List<com.music.bitchord.ui.CanonicalExploreGenre>>(emptyList())
-    }
-    var canonicalGenreSearchOrigin by remember { mutableStateOf(false) }
+    // The pushed genre stack lives outside BitChordApp's large Compose method.
+    // Each callback reads its latest tab/provider state without rebuilding routes.
+    val genreNavigation = rememberCanonicalGenreNavigation(
+        onShowExplore = { selectedTab = TAB_EXPLORE },
+        onReturnSearch = { selectedTab = TAB_SEARCH },
+        loadMusicBrainz = { tag ->
+            if (catalogEditorialOrder.firstOrNull() ==
+                com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+            ) viewModel.loadCanonicalGenre(tag)
+        },
+    )
+    val activeCanonicalGenre = genreNavigation.current
     val publicPlaylistUi = com.music.bitchord.ui.rememberCanonicalPublicPlaylistUi(
         viewModel = viewModel,
         homeSelected = selectedTab == TAB_HOME,
@@ -2489,37 +2492,6 @@ private fun BitChordApp(
             selectedTab = origin
         }
     }
-    val navigateToCanonicalGenre: (com.music.bitchord.ui.CanonicalExploreGenre, Boolean) -> Unit =
-        { genre, fromSearch ->
-            if (fromSearch) {
-                canonicalGenreHistory = emptyList()
-                canonicalGenreSearchOrigin = true
-                selectedTab = TAB_EXPLORE
-            } else if (activeCanonicalGenre != null && activeCanonicalGenre?.tag != genre.tag) {
-                canonicalGenreHistory = canonicalGenreHistory + activeCanonicalGenre!!
-            } else if (activeCanonicalGenre == null) {
-                canonicalGenreHistory = emptyList()
-                canonicalGenreSearchOrigin = false
-            }
-            activeCanonicalGenre = genre
-            if (catalogEditorialOrder.firstOrNull() == catalogMb) {
-                viewModel.loadCanonicalGenre(genre.tag)
-            }
-        }
-    val backFromCanonicalGenre: () -> Unit = {
-        val previous = canonicalGenreHistory.lastOrNull()
-        if (previous != null) {
-            canonicalGenreHistory = canonicalGenreHistory.dropLast(1)
-            activeCanonicalGenre = previous
-            if (catalogEditorialOrder.firstOrNull() == catalogMb) {
-                viewModel.loadCanonicalGenre(previous.tag)
-            }
-        } else {
-            activeCanonicalGenre = null
-            if (canonicalGenreSearchOrigin) selectedTab = TAB_SEARCH
-            canonicalGenreSearchOrigin = false
-        }
-    }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
         com.music.bitchord.data.catalog.metadata.publicPlaylistMbid(item.browseId)?.let { id ->
@@ -2532,7 +2504,7 @@ private fun BitChordApp(
             }
         }
         com.music.bitchord.ui.canonicalExploreGenreForBrowseId(item.browseId)?.let { genre ->
-            navigateToCanonicalGenre(genre, false)
+            genreNavigation.open(genre, fromSearch = false)
             return@click
         }
         // Storefront-scoped Apple cards cannot fall through to old MB browse
@@ -3416,7 +3388,7 @@ private fun BitChordApp(
             BackHandler(enabled = communityMetadataRecording != null) { communityMetadataRecording = null }
             BackHandler(enabled = activeCanonicalGenre != null && selectedTab == TAB_EXPLORE &&
                 detail == null && communityMetadataRecording == null && openedPublicPlaylist == null
-            ) { backFromCanonicalGenre() }
+            ) { genreNavigation.back() }
             BackHandler(enabled = openedPublicPlaylist != null) { openedPublicPlaylist = null }
             BackHandler(enabled = showCanonicalMyRatings) { showCanonicalMyRatings = false }
             BackHandler(enabled = unifiedLibraryCategory != null) {
@@ -4695,7 +4667,7 @@ private fun BitChordApp(
                             onCategoryOpen = { item ->
                                 com.music.bitchord.ui.canonicalExploreGenreForBrowseId(
                                     item.browseId,
-                                )?.let { navigateToCanonicalGenre(it, true) }
+                                )?.let { genreNavigation.open(it, fromSearch = true) }
                             },
                             sourceSwitcher = {
                                 com.music.bitchord.ui.screens.AppleSearchOriginTabs(
@@ -5446,7 +5418,7 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
-                        appleExploreGenreChrome -> ({ backFromCanonicalGenre() })
+                        appleExploreGenreChrome -> ({ genreNavigation.back() })
 
                         else -> null
                     },
@@ -5799,9 +5771,7 @@ private fun BitChordApp(
                     publicPlaylistSearching = false
                     publicPlaylistSortOpen = false
                     publicPlaylistOptionsOpen = false
-                    activeCanonicalGenre = null
-                    canonicalGenreHistory = emptyList()
-                    canonicalGenreSearchOrigin = false
+                    genreNavigation.clear()
 
                     // All Library routes, whether entered from a category,
                     // pinned entity, recent additions or a playlist detail.
