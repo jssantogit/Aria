@@ -90,6 +90,36 @@ internal fun AppleArtistCatalogExtras(
     }
 }
 
+/** Apple returned these exact artist tracks, but no public popularity rank. */
+@Composable
+internal fun AppleArtistMetadataTracksSection(
+    tracks: List<AppleEditorialTrackSearchRow>,
+    palette: ArtworkPalette,
+) {
+    if (tracks.isEmpty()) return
+    Column(Modifier.fillMaxWidth()) {
+        SectionHeading("Músicas", palette)
+        tracks.take(12).forEach { track ->
+            Column(Modifier.fillMaxWidth().padding(
+                horizontal = PAGE_GUTTER, vertical = 10.dp,
+            )) {
+                Text(
+                    track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.onBackground,
+                    maxLines = 1,
+                )
+                Text(
+                    track.artistName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.onBackgroundVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 internal fun NativeCatalogDetailNotes(
     notice: String?,

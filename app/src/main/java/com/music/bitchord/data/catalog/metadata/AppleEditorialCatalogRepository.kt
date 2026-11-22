@@ -180,6 +180,25 @@ internal class AppleEditorialCatalogRepository(
         }
     }
 
+    /** Metadata-only artist song lookup; source order is not a popularity chart. */
+    suspend fun artistTracks(
+        artistId: Long,
+        storefront: String = "br",
+        limit: Int = 40,
+    ): AppleEditorialTrackLoad = when (val response = itunes.lookupArtistTracks(
+        artistId, country = storefront, limit = limit,
+    )) {
+        is ItunesCatalogResult.Failure ->
+            AppleEditorialTrackLoad.Failure(response.reason)
+        is ItunesCatalogResult.Success -> AppleEditorialTrackLoad.Success(
+            tracks = response.items.filter {
+                it.type == ItunesCatalogItemType.TRACK &&
+                    it.artistId == artistId && it.storefront == storefront
+            },
+            possiblyTruncated = response.possiblyTruncated,
+        )
+    }
+
     suspend fun albumDetail(
         collectionId: Long,
         storefront: String = "br",

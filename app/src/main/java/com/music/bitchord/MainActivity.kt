@@ -4122,6 +4122,7 @@ private fun BitChordApp(
                                 searching = detailSearching,
                                 onSearchingChange = { detailSearching = it },
                                 metadataTracks = unified.metadataTracks,
+                                appleArtistTracks = unified.artistTracks,
                                 artistHeroOverride = unified.artistHeroUrl,
                                 songSort = songSort,
                                 footerContent = { palette ->

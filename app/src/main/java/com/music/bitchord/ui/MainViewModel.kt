@@ -5117,6 +5117,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 upgradeAppleArtistCardArtwork(
                     row.browseId, displayed.albums, featuredCount = 4,
                 )
+            // An exact Apple Artist ID can show real track metadata even if no
+            // MusicBrainz identity or listen count exists. Never call this a
+            // popularity ranking, and never map its IDs to playable Songs.
+            if (displayed?.artist?.browseId == row.browseId) {
+                val sourceTracks = try {
+                    appleEditorialRepository.artistTracks(
+                        route.id, route.storefront, limit = 40,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    AppleEditorialTrackLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
+                }
+                if (sourceTracks is AppleEditorialTrackLoad.Success &&
+                    activeAppleArtistId == row.browseId &&
+                    appleArtistPager === pager &&
+                    _searchSource.value == SearchSource.CANONICAL
+                ) {
+                    val actual = appleNativeTrackSearchRows(sourceTracks)
+                        .distinctBy { it.key }
+                        .take(16)
+                    _appleEditorialArtistDetail.update { state ->
+                        if (state !is UiState.Success ||
+                            state.data.artist.browseId != row.browseId
+                        ) state else UiState.Success(state.data.copy(tracks = actual))
+                    }
+                }
+            }
         }
     }
 
@@ -5227,6 +5255,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             fresh.copy(
                 artist = fresh.artist.copy(artworkUri = activeAppleArtistHeroArt),
                 albums = restored,
+                tracks = current?.takeIf {
+                    it.artist.browseId == browseId
+                }?.tracks.orEmpty(),
                 hasMore = snapshot.hasMore,
                 loadingMore = loading,
                 pageError = error,

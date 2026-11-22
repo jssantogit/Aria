@@ -303,6 +303,21 @@ internal class ItunesCatalogClient(
         ), storefront, artistId = artistId)
     }
 
+    /** Apple storefront tracks for ONE exact artist ID; never rank by title. */
+    suspend fun lookupArtistTracks(
+        artistId: Long,
+        country: String = "br",
+        limit: Int = 40,
+    ): ItunesCatalogResult {
+        val storefront = normalizedStorefront(country)
+        if (artistId <= 0L || storefront == null || limit !in 1..200)
+            return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
+        return request("lookup", linkedMapOf(
+            "id" to artistId.toString(), "country" to storefront,
+            "entity" to "song", "limit" to limit.toString(),
+        ), storefront, artistId = artistId, expectedType = ItunesCatalogItemType.TRACK)
+    }
+
     /** UPC is only a candidate identity signal; never silently claim an MBID. */
     suspend fun lookupUpc(upc: String, country: String = "br"): ItunesCatalogResult {
         val storefront = normalizedStorefront(country)
@@ -347,7 +362,8 @@ internal class ItunesCatalogClient(
                 }
                 .filter { artistId == null ||
                     (it.type == ItunesCatalogItemType.ARTIST && it.id == artistId) ||
-                    (it.type == ItunesCatalogItemType.ALBUM && it.artistId == artistId)
+                    (it.type == ItunesCatalogItemType.ALBUM && it.artistId == artistId) ||
+                    (it.type == ItunesCatalogItemType.TRACK && it.artistId == artistId)
                 }
             // First-wins dedup must never hide conflicting commercial identity
             // from a single Apple response. Optional enrichment differences

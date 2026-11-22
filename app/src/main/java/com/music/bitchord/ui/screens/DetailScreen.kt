@@ -371,6 +371,8 @@ fun DetailScreen(
     canonicalTracks: List<CanonicalCatalogSearchRow> = emptyList(),
     /** Generic non-playable tracks rendered through the original numbered list. */
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    /** Apple artist ID-confirmed recordings, metadata only and never a top chart. */
+    appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     /** Exact artist photo if the source has an independently proven identity. */
     artistHeroOverride: String? = null,
     /** Source-specific supplemental content inside this single native list. */
@@ -904,6 +906,14 @@ fun DetailScreen(
                 }
             }
             if (!isArtist) aboutItem()
+            if (isArtist && appleArtistTracks.isNotEmpty()) {
+                item(key = "apple-artist-tracks") {
+                    AppleArtistMetadataTracksSection(
+                        tracks = appleArtistTracks,
+                        palette = palette,
+                    )
+                }
+            }
 
             // An already verified catalog shelf is not hidden while an
             // unrelated legacy Song feed is loading or failed. Both online

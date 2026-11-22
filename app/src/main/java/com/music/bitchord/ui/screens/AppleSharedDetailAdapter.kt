@@ -43,6 +43,7 @@ internal fun appleNativeArtistSections(
 internal data class AppleSharedDetail(
     val page: DetailPage,
     val metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    val artistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     val artistHeroUrl: String? = null,
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
@@ -90,6 +91,12 @@ internal fun appleArtistAsSharedDetail(
             sections = groups,
         ),
         artistHeroUrl = source.artist.artworkUri,
+        artistTracks = source.tracks.filter { track ->
+            val trackRoute = AppleCatalogBrowseRoute.parse(track.key)
+            trackRoute?.kind == ItunesCatalogItemType.TRACK &&
+                trackRoute.storefront == route.storefront &&
+                track.artistName.isNotBlank() && track.title.isNotBlank()
+        }.distinctBy { it.key }.take(16),
     )
 }
 

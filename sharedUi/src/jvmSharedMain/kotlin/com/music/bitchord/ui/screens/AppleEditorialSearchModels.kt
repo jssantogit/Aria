@@ -67,6 +67,8 @@ data class AppleEditorialArtistDetailPage(
     val noAdditionalResults: Boolean = false,
     /** A capped endpoint never proves that every Apple edition was found. */
     val possiblyTruncated: Boolean,
+    /** Official exact-ID Apple artist songs; order does not imply popularity. */
+    val tracks: List<AppleEditorialTrackSearchRow> = emptyList(),
 )
 
 /** Apple song search is catalog metadata only, not a playable Song or MediaAsset. */

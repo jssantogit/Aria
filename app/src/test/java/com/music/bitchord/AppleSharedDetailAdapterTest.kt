@@ -73,6 +73,24 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
+    @Test fun artistDisplaysOnlyValidatedAppleTrackIdentitiesWithoutPlayableAssets() {
+        val track = com.music.bitchord.ui.screens.AppleEditorialTrackSearchRow(
+            key = "itunes:br:track:123", title = "Magnetic",
+            artistName = "ILLIT", artworkUri = null, albumBrowseId = null,
+            durationMs = 180000,
+        )
+        val wrongStore = track.copy(key = "itunes:us:track:456")
+        val invalid = track.copy(key = "catalog:RECORDING:not-an-apple-track")
+        val adapted = requireNotNull(appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist, albums = emptyList(), possiblyTruncated = false,
+                tracks = listOf(track, track, wrongStore, invalid),
+            ),
+        ))
+        assertEquals(listOf(track), adapted.artistTracks)
+        assertTrue((adapted.page.songs as UiState.Success).data.isEmpty())
+    }
+
     @Test fun albumMoreFromArtistUsesOnlyExactAppleStorefrontSiblingIDs() {
         val selected = album(20, AppleEditorialReleaseCategory.EP)
         val sibling = album(21, AppleEditorialReleaseCategory.ALBUM)
