@@ -5591,6 +5591,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val providers = eligibleCatalogSearchProviders()
         when (providers.firstOrNull()) {
             BuiltInProviderKeys.DISCOGS -> {
+                // Source-native pages must not inherit a previous Apple detail
+                // route when a provider is switched or reordered.
+                backAppleEditorialAlbum()
+                backAppleEditorialArtist()
                 canonicalSearchJob?.cancel()
                 canonicalTypeaheadJob?.cancel()
                 appleEditorialSearchJob?.cancel()
