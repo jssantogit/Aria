@@ -1487,13 +1487,26 @@ private fun BitChordApp(
     }
     val canonicalCommunityShelf = remember(
         cachedCanonicalRows, canonicalExplorePublicPopularity,
-        canonicalWeeklyCommunityShelf, canonicalCommunityHeading,
+        canonicalWeeklyCommunityShelf, canonicalCommunityHeading, genrePopularityAuthorized,
     ) {
-        canonicalWeeklyCommunityShelf ?: canonicalPublicPopularityShelf(
+        if (!genrePopularityAuthorized) null else
+            canonicalWeeklyCommunityShelf ?: canonicalPublicPopularityShelf(
+                rows = cachedCanonicalRows,
+                evidence = canonicalExplorePublicPopularity,
+                heading = canonicalCommunityHeading,
+            )
+    }
+    val weeklyArtistShelf = remember(
+        cachedCanonicalRows, canonicalExploreSitewide, sitewideFreshnessNowMs,
+        genrePopularityAuthorized,
+    ) {
+        if (genrePopularityAuthorized && canonicalSitewideDiscoveryIsFresh(
+                canonicalExploreSitewide, sitewideFreshnessNowMs,
+            )
+        ) com.music.bitchord.ui.canonicalWeeklyChartArtistsShelf(
             rows = cachedCanonicalRows,
-            evidence = canonicalExplorePublicPopularity,
-            heading = canonicalCommunityHeading,
-        )
+            rankings = canonicalExploreSitewide.recordings,
+        ) else null
     }
     // The same HomeScreen shelf compositor displays private recommendations;
     // their MBIDs and per-user scores never contaminate public popularity.
@@ -1549,10 +1562,12 @@ private fun BitChordApp(
     val canonicalHomeDisplayShelves = remember(
         canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
         authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
+        weeklyArtistShelf,
     ) {
         com.music.bitchord.ui.projectCanonicalHomeDisplay(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
             authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
+            weeklyArtistShelf,
         )
     }
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(

@@ -69,11 +69,13 @@ internal fun projectCanonicalHomeDisplay(
     countryChartShelf: HomeShelf? = null,
     communityShelf: HomeShelf? = null,
     personalRecommendationShelf: HomeShelf? = null,
+    chartArtistsShelf: HomeShelf? = null,
 ): List<HomeShelf> =
     listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         (selection.state as? UiState.Success)?.data.orEmpty() +
         listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(personalRecommendationShelf?.takeIf { it.items.isNotEmpty() }) +
+        listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() }) +
         personalHomeShelves(canonicalHomeShelves) +
         listOfNotNull(publicPlaylistShelf?.takeIf { it.items.isNotEmpty() })
 
