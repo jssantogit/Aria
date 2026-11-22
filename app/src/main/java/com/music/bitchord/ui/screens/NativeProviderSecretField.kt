@@ -55,7 +55,9 @@ internal fun NativeProviderSecretField(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(12.dp)
-    var revealed by remember { mutableStateOf(false) }
+    // Reset visibility whenever input is emptied/saved so the next token
+    // can never inherit a previously enabled plaintext reveal state.
+    var revealed by remember(value.isEmpty()) { mutableStateOf(false) }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
