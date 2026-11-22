@@ -681,6 +681,7 @@ private data class CanonicalCatalogRuntime(
     val worldwideLoading: Boolean,
     val genreResults: UiState<List<CanonicalCatalogSearchRow>>,
     val genreArtists: com.music.bitchord.ui.CanonicalGenreArtistSnapshot?,
+    val genrePopular: com.music.bitchord.ui.CanonicalGenrePopularSnapshot?,
     val appleGenres: Map<String, UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>>,
 )
 
@@ -697,6 +698,7 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
     val worldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
     val genreResults by viewModel.canonicalGenreResults.collectAsStateWithLifecycle()
     val genreArtists by viewModel.canonicalGenreArtists.collectAsStateWithLifecycle()
+    val genrePopular by viewModel.canonicalGenrePopular.collectAsStateWithLifecycle()
     val appleGenres by viewModel.appleGenreReleases.collectAsStateWithLifecycle()
     return CanonicalCatalogRuntime(
         discovery = discovery,
@@ -710,6 +712,7 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
         worldwideLoading = worldwideLoading,
         genreResults = genreResults,
         genreArtists = genreArtists,
+        genrePopular = genrePopular,
         appleGenres = appleGenres,
     )
 }
@@ -1089,6 +1092,8 @@ private fun BitChordApp(
     val canonicalWorldwideLoading = catalogRuntime.worldwideLoading
     val canonicalGenreResults = catalogRuntime.genreResults
     val canonicalGenreArtists = catalogRuntime.genreArtists
+    val canonicalGenrePopular = catalogRuntime.genrePopular
+    val genrePopularityAuthorized = com.music.bitchord.ui.rememberGenrePopularityAccess()
     val appleGenreReleases = catalogRuntime.appleGenres
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     // World charts own their provider permissions and their own Home route.
@@ -1579,6 +1584,8 @@ private fun BitChordApp(
         releasesHeading = canonicalReleasesHeading,
         musicBrainzResultTag = viewModel.canonicalGenreResultTag,
         genreArtists = canonicalGenreArtists,
+        genrePopular = canonicalGenrePopular,
+        genrePopularityAuthorized = genrePopularityAuthorized,
     )
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
@@ -2572,6 +2579,7 @@ private fun BitChordApp(
                     canonicalExploreSitewide.verifiedRows + cachedCanonicalRows
                 else -> (canonicalGenreResults as? UiState.Success)?.data.orEmpty() +
                     canonicalGenreArtists?.rows.orEmpty() +
+                    canonicalGenrePopular?.rows.orEmpty() +
                     canonicalWorldwideReleases + cachedCanonicalRows
             },
             item.browseId,

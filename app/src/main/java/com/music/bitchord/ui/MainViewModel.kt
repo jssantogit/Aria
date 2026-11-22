@@ -460,6 +460,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _canonicalGenreArtists =
         MutableStateFlow<CanonicalGenreArtistSnapshot?>(null)
     internal val canonicalGenreArtists = _canonicalGenreArtists.asStateFlow()
+    private val _canonicalGenrePopular =
+        MutableStateFlow<CanonicalGenrePopularSnapshot?>(null)
+    internal val canonicalGenrePopular = _canonicalGenrePopular.asStateFlow()
     private var canonicalGenreJob: Job? = null
     private val canonicalGenreEpoch = DiscoveryRequestEpoch()
     // Verified Cover Art Archive art for the original Explore category tiles.
@@ -3603,6 +3606,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             canonicalGenreJob?.cancel()
             canonicalGenreEpoch.invalidateAndNext()
             _canonicalGenreArtists.value = null
+            _canonicalGenrePopular.value = null
             _canonicalGenreResults.value = UiState.Success(emptyList())
             return
         }
@@ -3612,6 +3616,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val generation = canonicalGenreEpoch.next()
         canonicalGenreJob?.cancel()
         _canonicalGenreArtists.value = null
+        _canonicalGenrePopular.value = null
         _canonicalGenreResults.value = UiState.Loading
         canonicalGenreJob = viewModelScope.launch(Dispatchers.IO) {
             val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
@@ -3635,21 +3640,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val recentHits = (recent as? MusicBrainzCatalogSearchResult.Success)
                 ?.page?.items
             if (!gate.accept(ticket)) return@launch
-            if (historicalHits == null && recentHits == null) {
+            val releasesUnavailable = historicalHits == null && recentHits == null
+            if (releasesUnavailable) {
                 _canonicalGenreResults.value = UiState.Error(
-                    "Não foi possível carregar o gênero. Tente novamente.",
+                    "Não foi possível carregar os lançamentos deste gênero.",
                 )
-                return@launch
             }
             val hits = (historicalHits.orEmpty() + recentHits.orEmpty())
                 .distinctBy { it.musicBrainzId }
             var rows = canonicalPublicGenreRows(hits, todayIso)
             if (!gate.accept(ticket)) return@launch
-            _canonicalGenreResults.value = UiState.Success(rows)
+            if (!releasesUnavailable) _canonicalGenreResults.value = UiState.Success(rows)
             // A relevance-ranked MusicBrainz tag result can be all EPs/singles.
             // Publish those immediately, then fetch Album-typed tag evidence
             // separately instead of making the Album shelf disappear.
-            if (rows.none { canonicalEditorialReleaseType(it) == "Album" }) {
+            if (!releasesUnavailable && rows.none {
+                    canonicalEditorialReleaseType(it) == "Album"
+                }) {
                 val additional = try {
                     musicBrainzEditorialSearch.searchAlbumReleaseGroupsForTag(selected.tag, 24)
                 } catch (cancelled: CancellationException) { throw cancelled }
@@ -3686,6 +3693,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 _canonicalGenreArtists.value =
                     CanonicalGenreArtistSnapshot(selected.tag, rowsForGenre)
+            }
+            // MusicBrainz verifies membership of tagged recordings. ListenBrainz
+            // independently verifies popularity (listeners + listens); no
+            // recording is ranked from a search score or from a release date.
+            val chartTicket = gate.open(
+                ProviderCapability.CHART_MOST_PLAYED, BuiltInProviderKeys.LISTENBRAINZ,
+            )
+            if (chartTicket != null) {
+                val tagged = try {
+                    musicBrainzEditorialSearch.searchRecordingsForTag(selected.tag, 40)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) { null }
+                if (!gate.accept(ticket) || !gate.accept(chartTicket) ||
+                    !canonicalGenreEpoch.isCurrent(generation)
+                ) return@launch
+                val recordings = (tagged as? MusicBrainzCatalogSearchResult.Success)
+                    ?.page?.items.orEmpty()
+                    .filter(::isCuratedMusicBrainzRecording)
+                    .distinctBy { it.musicBrainzId }
+                    .map { hit ->
+                        CanonicalCatalogSearchRow(
+                            hit.musicBrainzId, CanonicalSearchKind.RECORDING,
+                            hit.title, hit.artistDisplay, artworkUri = null,
+                        )
+                    }
+                val measured = if (recordings.isEmpty()) null else try {
+                    listenBrainzPopularityClient.recordingPopularity(
+                        recordings.map { it.musicBrainzId },
+                    )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) { ListenBrainzPopularityFetchResult.Unavailable }
+                if (gate.accept(ticket) && gate.accept(chartTicket) &&
+                    canonicalGenreEpoch.isCurrent(generation)
+                ) {
+                    val evidence = (measured as? ListenBrainzPopularityFetchResult.Success)
+                        ?.observations.orEmpty()
+                    _canonicalGenrePopular.value =
+                        CanonicalGenrePopularSnapshot(selected.tag, recordings, evidence)
+                }
             }
             // These MB tag results are editorial search seeds only.
             // The user-facing Explore genre tiles and album shelves are

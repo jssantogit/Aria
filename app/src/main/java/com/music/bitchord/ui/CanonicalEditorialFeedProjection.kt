@@ -98,6 +98,8 @@ internal fun projectCanonicalGenreState(
     /** The exact requested tag, never inferred from an old MBID row. */
     musicBrainzResultTag: String? = tag,
     genreArtists: CanonicalGenreArtistSnapshot? = null,
+    genrePopular: CanonicalGenrePopularSnapshot? = null,
+    genrePopularityAuthorized: Boolean = false,
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -137,7 +139,12 @@ internal fun projectCanonicalGenreState(
     val knownArtists = genreArtists?.takeIf {
         it.tag == tag && BuiltInProviderKeys.MUSICBRAINZ in ordered
     }?.let(::canonicalGenreArtistsShelf)
-    val all = releases + listOfNotNull(knownArtists) +
+    val popular = genrePopular?.takeIf {
+        genrePopularityAuthorized && it.tag == tag &&
+            BuiltInProviderKeys.MUSICBRAINZ in ordered
+    }?.let(::canonicalGenrePopularShelf)
+    val all = releases + listOfNotNull(popular) +
+        listOfNotNull(knownArtists) +
         listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
     return when {
         all.isNotEmpty() -> UiState.Success(all)

@@ -450,6 +450,23 @@ internal class MusicBrainzCatalogSearch(
     ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> =
         searchRecordingsInternal(query, limit, offset)
 
+    /**
+     * A recording's exact MusicBrainz tag is genre membership evidence, not
+     * evidence of popularity. The ListenBrainz chart capability is separate.
+     */
+    suspend fun searchRecordingsForTag(
+        tag: String,
+        limit: Int = 40,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> {
+        val safe = safeMusicBrainzGenreTag(tag)
+            ?: return MusicBrainzCatalogSearchResult.Failure(
+                MusicBrainzCatalogSearchFailure.INVALID_QUERY,
+            )
+        return searchRecordingsInternal(
+            "tag:\"$safe\" AND status:official", limit, 0, fieldedQuery = true,
+        )
+    }
+
     suspend fun searchRecordingsForArtistMbid(
         artistMbid: String,
         limit: Int = 25,
