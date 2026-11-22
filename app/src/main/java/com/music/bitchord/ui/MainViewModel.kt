@@ -3607,6 +3607,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * independent ListenBrainz chart ticket supplies popularity; neither one
      * creates Apple identity links or playable audio.
      */
+    fun clearCanonicalGenreSupplement() {
+        if (genreSupplementFingerprint == null && genreSupplementJob == null) return
+        genreSupplementJob?.cancel()
+        genreSupplementEpoch.invalidateAndNext()
+        genreSupplementJob = null
+        genreSupplementFingerprint = null
+        _canonicalGenreArtists.value = null
+        _canonicalGenrePopular.value = null
+    }
+
     fun loadCanonicalGenreSupplement(tag: String, force: Boolean = false) {
         val selected = canonicalAllExploreGenres.firstOrNull { it.tag == tag } ?: return
         val gate = ProviderRuntime.gateOrNull()
@@ -3701,6 +3711,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadCanonicalGenre(tag: String) {
         val selected = canonicalAllExploreGenres.firstOrNull { it.tag == tag } ?: return
+        // Full MB fallback owns artist/popularity rows exclusively. A slower
+        // Apple-primary supplement from another tag must not overwrite them.
+        clearCanonicalGenreSupplement()
         canonicalGenreResultTag = tag
         val gate = ProviderRuntime.gateOrNull()
         val ticket = gate?.open(

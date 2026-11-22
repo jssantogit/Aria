@@ -639,13 +639,18 @@ private fun CanonicalHomeEditorialEffects(
                 viewModel.canonicalGenreResultTag != tag
             ) viewModel.loadCanonicalGenre(tag)
         } else if (first == apple) {
+            if (mb !in catalogEditorialOrder)
+                viewModel.clearCanonicalGenreSupplement()
             viewModel.loadAppleGenreEditorial(tag, emptyList())
             val result = appleGenreReleases[tag]
             if (mb in catalogEditorialOrder &&
                 (result is UiState.Error ||
                     result is UiState.Success && result.data.isEmpty())
             ) {
-                viewModel.loadCanonicalGenre(tag)
+                // This is a completed Apple miss. Do not repeatedly restart
+                // the same fallback when the MB Loading/Success state changes.
+                if (viewModel.canonicalGenreResultTag != tag)
+                    viewModel.loadCanonicalGenre(tag)
             } else if (com.music.bitchord.ui.shouldSupplementAppleGenre(
                     tag, catalogEditorialOrder, result,
                 )) {
