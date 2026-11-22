@@ -122,29 +122,26 @@ internal fun ProviderCapabilitiesScreen(
             }
         }
 
-        val configurationEntry = group.rows.firstOrNull {
-            it.entry.readiness == ProviderReadiness.NEEDS_CONFIGURATION
-        }?.entry ?: group.rows.firstOrNull {
-            it.entry.key.providerId in setOf(
-                "discogs", "opensubsonic", "lastfm",
-                "listenbrainz", "addon", "custom_module", "soulseek",
-            )
+        // Credential management belongs exclusively to Provedores ⋮ →
+        // Conexões, which reuses the shared token vault. Never render a
+        // second Discogs/ListenBrainz/Last.fm/Soulseek connection row here.
+        // OpenSubsonic is different: configuring its remote server is part of
+        // its actual Audio provider, not a duplicate credential editor.
+        val serverEntry = group.rows.firstOrNull {
+            it.entry.key.providerId == "opensubsonic"
         }?.entry
-        if (configurationEntry != null) {
+        if (serverEntry != null) {
             Spacer(Modifier.height(22.dp))
             SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
                 SettingsRow(
                     icon = Icons.Rounded.Settings,
-                    title = if (configurationEntry.key.providerId == "opensubsonic")
-                        "Servidor" else "Conexões",
-                    subtitle = if (configurationEntry.key.providerId == "opensubsonic")
-                        "Configurar, testar e sincronizar a biblioteca remota."
-                    else "Gerenciar credenciais e contas deste provedor.",
+                    title = "Servidor",
+                    subtitle = "Configurar, testar e sincronizar a biblioteca remota.",
                     onClick = if (!saving && !loading) {
-                        { onConfigure(configurationEntry) }
+                        { onConfigure(serverEntry) }
                     } else null,
                     minHeight = 68.dp,
-                    modifier = Modifier.testTag("providers-function-configure"),
+                    modifier = Modifier.testTag("providers-function-server"),
                 )
             }
         }
