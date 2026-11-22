@@ -129,6 +129,7 @@ fun ProvidersScreen(
     var tabBeforeOrganize by remember { mutableStateOf<String?>(null) }
     var categorySearch by rememberSaveable { mutableStateOf("") }
     var connections by rememberSaveable { mutableStateOf(false) }
+    var accountDetail by remember { mutableStateOf<ProviderAccountDetail?>(null) }
     var remoteLibraryDetail by remember { mutableStateOf<ProviderRemoteLibraryTarget?>(null) }
     var staged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
     var initialStaged by remember { mutableStateOf<Map<ProviderCapability, List<ProviderKey>>>(emptyMap()) }
@@ -154,6 +155,9 @@ fun ProvidersScreen(
     fun back() {
         when {
             saving || credentialSaving -> Unit
+            // A nested account page returns to Connections, never to
+            // Accounts & Integrations outside the Provider navigation tree.
+            accountDetail != null -> accountDetail = null
             connections -> {
                 discogsToken = ""
                 listenBrainzTokenInput = ""
@@ -168,7 +172,8 @@ fun ProvidersScreen(
             else -> onBack()
         }
     }
-    BackHandler(enabled = connections || editing || detailGroupKey != null || remoteLibraryDetail != null) { back() }
+    BackHandler(enabled = connections || editing || detailGroupKey != null ||
+        remoteLibraryDetail != null || accountDetail != null) { back() }
 
     // Runtime, not this UI, defines which adapters and accounts are installed.
     val inventory = ProviderRuntime.inventoryForSettings()
@@ -194,8 +199,15 @@ fun ProvidersScreen(
                     ?: run { info = entry }
             "opensubsonic" -> remoteLibraryDetail = ProviderRemoteLibraryTarget.OPEN_SUBSONIC
             "local" -> info = entry
-            "lastfm", "listenbrainz", "discogs" -> connections = true
-            "soulseek" -> connections = true
+            "lastfm" -> {
+                connections = true
+                accountDetail = ProviderAccountDetail.LASTFM
+            }
+            "soulseek" -> {
+                connections = true
+                accountDetail = ProviderAccountDetail.SOULSEEK
+            }
+            "listenbrainz", "discogs" -> connections = true
             else -> info = entry
         }
     }
@@ -314,6 +326,39 @@ fun ProvidersScreen(
         }
     }
 
+    if (accountDetail != null) {
+        val target = requireNotNull(accountDetail)
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                ProviderHeader(
+                    title = target.title,
+                    editing = false,
+                    saving = false,
+                    onBack = ::back,
+                    onOrganize = {},
+                    showOrganize = false,
+                    onConnections = {},
+                    onCancel = {},
+                    onDone = {},
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth().weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = contentPadding.calculateBottomPadding() + 20.dp),
+            ) {
+                when (target) {
+                    ProviderAccountDetail.LASTFM -> ProviderLastFmAccountForm()
+                    ProviderAccountDetail.SOULSEEK -> SoulseekAccountSettingsScreen(
+                        contentPadding = PaddingValues(0.dp),
+                        embeddedInProviders = true,
+                    )
+                }
+            }
+        }
+        return
+    }
+
     if (connections) {
         val credentialInventory = inventory.filter {
             it.readiness != ProviderReadiness.NOT_IMPLEMENTED
@@ -323,59 +368,52 @@ fun ProvidersScreen(
             it.key.providerId == "discogs" &&
                 it.readiness == ProviderReadiness.READY
         }
-        Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding()
-                .padding(horizontal = 20.dp),
-        ) {
-            ProviderHeader(
-                title = "Conexões",
-                editing = false,
-                saving = false,
-                onBack = ::back,
-                onOrganize = {},
-                showOrganize = false,
-                onConnections = {},
-                onCancel = {},
-                onDone = {},
-            )
-            message?.let { explanation ->
-                Text(
-                    text = explanation,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                ProviderHeader(
+                    title = "Conexões",
+                    editing = false,
+                    saving = false,
+                    onBack = ::back,
+                    onOrganize = {},
+                    showOrganize = false,
+                    onConnections = {},
+                    onCancel = {},
+                    onDone = {},
                 )
             }
-            SourcesScreen(
-                contentPadding = PaddingValues(
-                    bottom = contentPadding.calculateBottomPadding(),
-                ),
-                modifier = Modifier.weight(1f),
-                onEditSource = onEditSource,
-                onEditWebDav = onEditWebDav,
-                onEditSmb = onEditSmb,
-                onConfirmJioSaavn = onConfirmJioSaavn,
-                connectionsOnly = true,
-                providerCredentials = {
-                    ProviderConnectionsCredentials(
-                        showDiscogs = "discogs" in available,
-                        showListenBrainz = "listenbrainz" in available,
-                        showLastFm = "lastfm" in available,
-                        showSoulseek = "soulseek" in available,
-                        discogsConfigured = discogsReady,
-                        listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
-                        discogsToken = discogsToken,
-                        listenBrainzToken = listenBrainzTokenInput,
-                        saving = credentialSaving || saving,
-                        onDiscogsTokenChange = { discogsToken = it },
-                        onListenBrainzTokenChange = { listenBrainzTokenInput = it },
-                        onSaveDiscogsToken = ::saveDiscogsToken,
-                        onSaveListenBrainzToken = ::saveListenBrainzToken,
-                        onOpenAccounts = onOpenAccounts,
-                        onOpenSoulseek = onOpenSoulseek,
+            Column(
+                modifier = Modifier.fillMaxWidth().weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = contentPadding.calculateBottomPadding() + 20.dp),
+            ) {
+                message?.let { explanation ->
+                    Text(
+                        text = explanation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                     )
-                },
-            )
+                }
+                ProviderConnectionsCredentials(
+                    showDiscogs = "discogs" in available,
+                    showListenBrainz = "listenbrainz" in available,
+                    showLastFm = "lastfm" in available,
+                    showSoulseek = "soulseek" in available,
+                    discogsConfigured = discogsReady,
+                    listenBrainzConfigured = AppSettings.listenBrainzToken.value.isNotBlank(),
+                    discogsToken = discogsToken,
+                    listenBrainzToken = listenBrainzTokenInput,
+                    saving = credentialSaving || saving,
+                    onDiscogsTokenChange = { discogsToken = it },
+                    onListenBrainzTokenChange = { listenBrainzTokenInput = it },
+                    onSaveDiscogsToken = ::saveDiscogsToken,
+                    onSaveListenBrainzToken = ::saveListenBrainzToken,
+                    onOpenAccounts = { accountDetail = ProviderAccountDetail.LASTFM },
+                    onOpenSoulseek = { accountDetail = ProviderAccountDetail.SOULSEEK },
+                )
+            }
         }
         return
     }
@@ -402,11 +440,13 @@ fun ProvidersScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = contentPadding.calculateBottomPadding() + 20.dp),
             ) {
-                ProviderRemoteLibrarySettings(
-                    target = target,
-                    onEditWebDav = onEditWebDav,
-                    onEditSmb = onEditSmb,
-                )
+                when (target) {
+                    ProviderRemoteLibraryTarget.WEBDAV,
+                    ProviderRemoteLibraryTarget.SMB ->
+                        ProviderRemoteServerInlineForm(target)
+                    ProviderRemoteLibraryTarget.OPEN_SUBSONIC ->
+                        ProviderNavidromeInlineForm()
+                }
             }
         }
         return
