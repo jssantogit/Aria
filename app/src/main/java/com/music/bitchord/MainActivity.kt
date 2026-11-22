@@ -1179,38 +1179,16 @@ private fun BitChordApp(
     val discogsNativeVisual = nativeProviderState.discogsNativeVisual
     val appleReadAllowed = nativeProviderState.appleReadAllowed
     val selectedSearchProviderKey by viewModel.selectedSearchProviderKey.collectAsStateWithLifecycle()
-    val configuredSearchApis by SourceRegistry.configs.collectAsStateWithLifecycle()
-    val unfilteredLocalSearchSongs by viewModel.availableLocalSongs.collectAsStateWithLifecycle()
-    val indexedSearchProviderKeys by produceState(initialValue = emptyList<String>()) {
-        val accounts = com.music.bitchord.data.catalog.provider.opensubsonic
-            .SharedPrefsOpenSubsonicAccountPersistence(context.applicationContext)
-        accounts.observe().collectLatest {
-            value = withContext(Dispatchers.IO) {
-                com.music.bitchord.ui.screens.canonicalAvailablePlaylistSourceKeys(
-                    context.applicationContext,
-                )
-            }
-        }
-    }
-    LaunchedEffect(selectedTab) {
-        if (selectedTab == TAB_SEARCH) viewModel.loadLibrarySongs()
-    }
-    val visibleSearchSources = availableSearchProviderTabs(
-        configs = configuredSearchApis,
-        remoteProviderKeys = indexedSearchProviderKeys,
-        hasLocalTracks = (unfilteredLocalSearchSongs as? UiState.Success)?.data?.isNotEmpty() == true,
+    // Preserve the existing origins and search validation, but collect their
+    // Compose state outside this near-64-KiB activity method.
+    val visibleSearchSources = com.music.bitchord.ui.rememberNativeSearchProviderTabs(
+        viewModel = viewModel,
+        searchTabSelected = selectedTab == TAB_SEARCH,
+        searchSource = searchSource,
+        selectedSearchProviderKey = selectedSearchProviderKey,
         catalogLabel = stringResource(R.string.search_origin_general),
         localLabel = stringResource(R.string.search_origin_local),
     )
-    LaunchedEffect(visibleSearchSources, searchSource, selectedSearchProviderKey, selectedTab) {
-        if (selectedTab != TAB_SEARCH) return@LaunchedEffect
-        val validSelection = visibleSearchSources.any { tab -> when (searchSource) {
-            SearchSource.CANONICAL, SearchSource.YOUTUBE -> tab.key == "catalog"
-            SearchSource.LIBRARY -> tab.key == "local"
-            SearchSource.ADDONS -> tab.key == selectedSearchProviderKey
-        } }
-        if (!validSelection) viewModel.setSearchSource(SearchSource.CANONICAL)
-    }
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
     val addonResults by viewModel.addonResults.collectAsStateWithLifecycle()
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
