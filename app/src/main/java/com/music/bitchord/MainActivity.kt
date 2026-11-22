@@ -1408,35 +1408,14 @@ private fun BitChordApp(
     // Rendering Now Playing and the mini-player must not rehash and sort hundreds
     // of media URIs. Recompute the native Home shelves only when their input
     // snapshot, date, or the user's locale actually changes.
-    val canonicalHomeShelves = remember(
-        downloadedReleases, cachedCanonicalRows, canonicalWorldwideReleases,
-        canonicalHomeLocalPicks, canonicalHomeRemotePicks,
-        canonicalTrendingMbids, canonicalTrendingLocalSongs,
-        canonicalReleasesHeading, canonicalPicksHeading, canonicalTrendingHeading,
-        canonicalFeedDate,
-    ) {
-        canonicalCuratedHomeShelves(
-            savedReleases = downloadedReleases.filter { !it.playlist }.map { collection ->
-                ShelfItem(
-                    title = collection.title,
-                    subtitle = collection.subtitle,
-                    thumbnailUrl = collection.thumbnailUrl,
-                    videoId = null,
-                    browseId = Downloads.pageIdFor(collection.id),
-                )
-            },
-            metadata = (cachedCanonicalRows + canonicalWorldwideReleases)
-                .distinctBy { it.kind to it.musicBrainzId },
-            localPicks = canonicalHomeLocalPicks,
-            remotePicks = canonicalHomeRemotePicks,
-            trendingRecordingMbids = canonicalTrendingMbids,
-            trendingLocalPicks = canonicalTrendingLocalSongs,
-            releasesHeading = canonicalReleasesHeading,
-            picksHeading = canonicalPicksHeading,
-            trendingHeading = canonicalTrendingHeading,
-            todayIsoDate = canonicalFeedDate,
+    val canonicalHomeShelves =
+        com.music.bitchord.ui.rememberCanonicalCuratedHomeShelves(
+            downloadedReleases, cachedCanonicalRows, canonicalWorldwideReleases,
+            canonicalHomeLocalPicks, canonicalHomeRemotePicks,
+            canonicalTrendingMbids, canonicalTrendingLocalSongs,
+            canonicalReleasesHeading, canonicalPicksHeading, canonicalTrendingHeading,
+            canonicalFeedDate,
         )
-    }
     // Compose-side editorial effects are isolated so the merged REA/IDM
     // activity does not overflow the 64-KiB JVM limit on a single method.
     CanonicalHomeEditorialEffects(
@@ -1519,17 +1498,12 @@ private fun BitChordApp(
     // adapters own their own cards and IDs; local/server media stays separate.
     val catalogMb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
     val catalogApple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
-    val canonicalHomeEditorialSelection = remember(
-        canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
-        canonicalWorldwideLoading, canonicalWorldwideReleases,
-        canonicalReleasesHeading, canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
-    ) {
-        com.music.bitchord.ui.projectCanonicalHomeEditorial(
+    val canonicalHomeEditorialSelection =
+        com.music.bitchord.ui.rememberCanonicalHomeEditorialSelection(
             canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
             canonicalWorldwideLoading, canonicalReleasesHeading,
             canonicalHomeGlobalDiscoveryHeading, canonicalFeedDate,
         )
-    }
     val canonicalHomeDisplayShelves =
         com.music.bitchord.ui.rememberCanonicalHomeDisplayShelves(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
