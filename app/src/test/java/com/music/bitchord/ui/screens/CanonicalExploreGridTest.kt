@@ -55,6 +55,7 @@ class CanonicalExploreGridTest {
                 }
             }
         }
+        compose.onNodeWithTag("genre-search-artwork").assertExists()
         compose.onNodeWithText("Death Metal").assertExists().performClick()
         compose.runOnIdle {
             assertEquals(listOf("catalog:GENRE:death metal"), opened)

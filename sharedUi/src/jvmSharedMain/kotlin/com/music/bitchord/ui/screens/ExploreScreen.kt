@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -213,6 +214,28 @@ fun MoodGenreSleeve(
 ) {
     val tone = remember(item.stripeColor, item.title) { moodTone(item) }
     NativeExploreCategorySleeve(item.title, item.thumbnailUrl, tone, modifier, titleStyle)
+}
+
+/** A small version of the existing genre tile for Search's category results. */
+@Composable
+internal fun NativeGenreSearchArtwork(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    val tone = remember(title) { moodToneFor(title, null) }
+    Box(
+        modifier = modifier.background(tone.stripe).testTag("genre-search-artwork"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(5.dp),
+        )
+    }
 }
 
 /** Catalog genres reuse the same native sleeve, not a parallel Search screen. */

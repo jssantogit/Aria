@@ -53,6 +53,7 @@ fun NativeSearchResultRow(
     onClick: (() -> Unit)?,
     onLongPress: (() -> Unit)? = null,
     horizontalPadding: androidx.compose.ui.unit.Dp = PAGE_GUTTER,
+    genreCategoryArtworkTitle: String? = null,
 ) {
     // The same geometry, held capture and touch behavior as SongRow, but
     // without claiming a playable Song, rating or source-specific queue.
@@ -65,15 +66,22 @@ fun NativeSearchResultRow(
         leading = {
             NativeDetailTrackArtwork {
                 val shape = if (row.artistPortrait) CircleShape else RoundedCornerShape(8.dp)
-                AsyncImage(
-                    model = row.artworkUri.artworkAt(ROW_ART_PX),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(shape)
-                        .thumbnailBorder(shape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
+                if (genreCategoryArtworkTitle != null) {
+                    NativeGenreSearchArtwork(
+                        title = genreCategoryArtworkTitle,
+                        modifier = Modifier.matchParentSize().clip(shape),
+                    )
+                } else {
+                    AsyncImage(
+                        model = row.artworkUri.artworkAt(ROW_ART_PX),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clip(shape)
+                            .thumbnailBorder(shape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    )
+                }
                 if (row.downloadBadge && !row.artistPortrait) {
                     Box(
                         modifier = Modifier.align(Alignment.BottomEnd)

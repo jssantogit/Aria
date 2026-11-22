@@ -819,6 +819,7 @@ internal fun LazyListScope.canonicalCategorySearchRows(
                 artistPortrait = false,
             ),
             onClick = { onOpen(category) },
+            genreCategoryArtworkTitle = category.title,
         )
     }
 }
