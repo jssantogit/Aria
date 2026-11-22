@@ -454,6 +454,12 @@ fun DetailScreen(
         it.kind == CanonicalSearchKind.RECORDING &&
             it.artistScopeMbid?.equals(publicArtistMbid, ignoreCase = true) == true
     } else emptyList()
+    val artistTrackOrigin = nativeArtistTrackOrigin(
+        hasAppleMetadata = isArtist && appleArtistTracks.isNotEmpty(),
+        hasVerifiedCatalog = isArtist && publicTopRows.isNotEmpty(),
+        hasScopedCatalog = isArtist && scopedCanonicalArtistTracks.isNotEmpty(),
+        hasOwnedAudio = isArtist && songs.isNotEmpty(),
+    )
     val artistVisibleSections = nativeArtistVisibleSections(
         NativeArtistSectionEvidence(
             context = if (isLocalArtist) NativeArtistContext.LIBRARY
@@ -947,7 +953,7 @@ fun DetailScreen(
                 }
             }
             if (!isArtist) aboutItem()
-            if (isArtist && appleArtistTracks.isNotEmpty()) {
+            if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.APPLE_METADATA) {
                 item(key = "apple-artist-tracks") {
                     AppleArtistMetadataTracksSection(
                         tracks = appleArtistTracks,
@@ -959,8 +965,8 @@ fun DetailScreen(
             // An already verified catalog shelf is not hidden while an
             // unrelated legacy Song feed is loading or failed. Both online
             // and Library artists use the native track shelf geometry.
-            if (isArtist && publicArtistMbid != null &&
-                publicTopRows.isNotEmpty() && onCanonicalPublicTopOpen != null
+            if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.VERIFIED_CATALOG &&
+                publicArtistMbid != null && onCanonicalPublicTopOpen != null
             ) {
                 item(key = "canonical-artist-public-top") {
                     NativeArtistPublicTopSection(
@@ -972,8 +978,8 @@ fun DetailScreen(
                         onRecordingHold = onCanonicalTrackHold,
                     )
                 }
-            } else if (isArtist && publicArtistMbid != null &&
-                scopedCanonicalArtistTracks.isNotEmpty()
+            } else if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SCOPED_CATALOG &&
+                publicArtistMbid != null
             ) {
                 item(key = "canonical-artist-recordings") {
                     NativeArtistPublicTopSection(
@@ -987,6 +993,10 @@ fun DetailScreen(
                         onRecordingHold = onCanonicalTrackHold,
                     )
                 }
+            } else if (isArtist &&
+                artistTrackOrigin == NativeArtistTrackOrigin.APPLE_METADATA) {
+                // Apple source track shelf was painted above; never draw a
+                // second MusicBrainz or Song rail by enrichment fallback.
             } else when (val state = page.songs) {
                 is UiState.Loading -> detailSkeleton(
                     isArtist = isArtist,
@@ -1295,7 +1305,8 @@ fun DetailScreen(
                     releases = displayItems,
                     palette = palette,
                     horizontalPadding = ARTIST_CONTENT_GUTTER,
-                    topPadding = 22.dp,
+                    topPadding = NATIVE_ARTIST_RELEASE_TOP_SPACING,
+                    itemSpacing = NATIVE_ARTIST_RELEASE_ITEM_SPACING,
                     onShowAll = if (canShowAll) { { onActiveShelfChange(shelf) } } else null,
                 ) { item ->
                         SectionCard(
@@ -1740,6 +1751,7 @@ private fun StatChip(icon: ImageVector, text: String, palette: ArtworkPalette) {
 /** "Signed by **Name**" — the artist's name in bold, whatever order the language puts it in. */
 /** Compact row used inside the artist song grid; no swipe, to keep the
  *  horizontal pager's gestures unambiguous. */
+/** All artist track rows use the same native layout, with source-owned actions. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CompactSongRow(
@@ -1751,56 +1763,55 @@ private fun CompactSongRow(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)) {
-            AsyncImage(
-                model = com.music.bitchord.ui.player.rememberPlaybackArtworkImageModel(song, ROW_ART_PX),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(NATIVE_ARTIST_TRACK_COVER_SIZE)
-                    .clip(RoundedCornerShape(7.dp))
-                    .thumbnailBorder(RoundedCornerShape(7.dp))
-                    .background(palette.elevated),
-            )
-            if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+    NativeDetailTrackRowLayout(
+        onClick = onClick,
+        onLongPress = onLongPress,
+        onMore = null,
+        horizontalInset = 0.dp,
+        textGap = 12.dp,
+        leading = {
+            Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)) {
+                AsyncImage(
+                    model = com.music.bitchord.ui.player.rememberPlaybackArtworkImageModel(
+                        song, ROW_ART_PX,
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
+                        .clip(RoundedCornerShape(7.dp))
+                        .thumbnailBorder(RoundedCornerShape(7.dp))
+                        .background(palette.elevated),
+                )
+                if (isCurrent && isPlaying)
+                    SearchPlayingBars(Modifier.align(Alignment.Center))
+            }
+        },
+        title = {
             ExplicitSongTitle(
                 song = song,
                 style = MaterialTheme.typography.titleMedium,
                 color = if (isCurrent) palette.accent else palette.onBackground,
             )
-            // An artist page already identifies the performer. Display the
-            // actual album tag on this legacy local song, never a guessed one.
+        },
+        subtitle = {
             song.albumName?.trim()?.takeIf(String::isNotBlank)?.let { album ->
                 Text(
-                    text = album,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = album, style = MaterialTheme.typography.bodyMedium,
                     color = palette.onBackgroundVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        // The weighted title/album block truncates before trailing stars.
-        CanonicalSongRatingStars(
-            song = song,
-            modifier = Modifier.padding(start = 8.dp),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        if (downloadedTint != null) {
-            DownloadedBadge(song.videoId, downloadedTint)
-        }
-        // Artist detail tracks open their lifted menu by holding the row.
-        // The old trailing three-dot icon is intentionally retired here.
-    }
+        },
+        rating = {
+            CanonicalSongRatingStars(
+                song = song,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        showRatingSlot = true,
+        actions = {
+            if (downloadedTint != null) DownloadedBadge(song.videoId, downloadedTint)
+        },
+    )
 }
 
 /**

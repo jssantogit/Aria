@@ -2081,7 +2081,7 @@ internal fun CanonicalTrackRow(
                 )
             } else {
                 CanonicalUnifiedArtwork(
-                    track, artworkLoader, Modifier.size(if (compactForArtist) 48.dp else 52.dp),
+                    track, artworkLoader, Modifier.size(if (compactForArtist) NATIVE_ARTIST_TRACK_COVER_SIZE else 52.dp),
                 )
             }
         },

@@ -256,7 +256,7 @@ internal fun NativeCanonicalArtistContent(
                         releases = releases,
                         palette = palette,
                         horizontalPadding = PAGE_GUTTER,
-                        topPadding = 22.dp,
+                        topPadding = NATIVE_ARTIST_RELEASE_TOP_SPACING,
                         itemKey = { it.id },
                     ) { release ->
                         NativeArtistReleaseCard(
