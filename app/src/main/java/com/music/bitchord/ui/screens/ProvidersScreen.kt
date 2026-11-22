@@ -877,6 +877,7 @@ internal fun ProviderHeader(
                         minMenuWidth = 208.dp,
                         maxMenuWidth = 208.dp,
                         homePlateStyle = false,
+                        compactRows = true,
                     ) {
                         NativeCompactMenuItem(
                             label = "Organizar",
