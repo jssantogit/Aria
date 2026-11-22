@@ -3568,7 +3568,9 @@ private fun BitChordApp(
             }
         // AnimatedContent is the route authority. Remembered Library
         // and Playlist navigation states cannot both draw controls.
-        val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, detail?.browseId)
+        // iTunes and Discogs share the same native catalog top-bar owner as
+        // MusicBrainz. The source changes identity/data, not screen chrome.
+        val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, visualDetail?.browseId)
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // Show the destination on the first frame, already nearly
