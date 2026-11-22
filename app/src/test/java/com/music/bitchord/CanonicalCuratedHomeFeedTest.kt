@@ -660,4 +660,68 @@ class CanonicalCuratedHomeFeedTest {
             corrected, mapOf(release.musicBrainzId to (low250 to "Old name")),
         ))
     }
+
+    @Test fun artistLiveAndCompilationRailsNeedRealMusicBrainzSecondaryTypeEvidence() {
+        val base = release.copy(
+            releaseKind = "Album", secondaryTypes = null,
+            musicBrainzId = "00000000-0000-0000-0000-000000000031",
+        )
+        val live = base.copy(
+            musicBrainzId = "00000000-0000-0000-0000-000000000032",
+            title = "Recorded in Concert", secondaryTypes = "Live",
+        )
+        val compilation = base.copy(
+            musicBrainzId = "00000000-0000-0000-0000-000000000033",
+            title = "Collected Works", secondaryTypes = "Compilation",
+        )
+        val ambiguous = base.copy(
+            musicBrainzId = "00000000-0000-0000-0000-000000000034",
+            title = "Two secondary types", secondaryTypes = "Live|Compilation",
+        )
+        val ep = base.copy(
+            musicBrainzId = "00000000-0000-0000-0000-000000000035",
+            title = "EP with live tracks", releaseKind = "EP", secondaryTypes = "Live",
+        )
+        val untyped = base.copy(
+            musicBrainzId = "00000000-0000-0000-0000-000000000036",
+            title = "Unclassified live", releaseKind = "Other", secondaryTypes = "Live",
+        )
+        val titleOnly = base.copy(
+            musicBrainzId = "00000000-0000-0000-0000-000000000037",
+            title = "Greatest Hits Live", secondaryTypes = null,
+        )
+        val shelves = com.music.bitchord.ui.canonicalNativeSections(
+            parentKind = CanonicalSearchKind.ARTIST,
+            rows = listOf(base, live, compilation, ambiguous, ep, untyped, titleOnly),
+            heading = "Lançamentos", albumsHeading = "Álbuns",
+            singlesHeading = "Singles e EPs",
+        )
+        assertEquals(listOf("Álbuns", "Singles e EPs", "Álbuns ao vivo", "Coletâneas"),
+            shelves.map { it.title })
+        assertEquals(setOf(base.musicBrainzId, ambiguous.musicBrainzId, titleOnly.musicBrainzId),
+            shelves[0].items.mapNotNull { it.browseId?.removePrefix("catalog:RELEASE_GROUP:") }.toSet())
+        assertEquals(listOf(ep.musicBrainzId),
+            shelves[1].items.mapNotNull { it.browseId?.removePrefix("catalog:RELEASE_GROUP:") })
+        assertEquals(listOf(live.musicBrainzId),
+            shelves[2].items.mapNotNull { it.browseId?.removePrefix("catalog:RELEASE_GROUP:") })
+        assertEquals(listOf(compilation.musicBrainzId),
+            shelves[3].items.mapNotNull { it.browseId?.removePrefix("catalog:RELEASE_GROUP:") })
+        val cards = shelves.flatMap { it.items }
+        assertEquals(6, cards.size)
+        assertEquals(cards.size, cards.map { it.browseId }.distinct().size)
+        assertTrue(cards.all { it.videoId == null })
+        assertTrue(cards.none { it.browseId?.contains(untyped.musicBrainzId) == true })
+        assertTrue(shelves[0].items.any {
+            it.title == "Two secondary types" &&
+                it.subtitle.contains("Live") && it.subtitle.contains("Compilation")
+        })
+        assertEquals(
+            com.music.bitchord.ui.CanonicalArtistAlbumShelfKind.ALBUM,
+            com.music.bitchord.ui.canonicalArtistAlbumShelfKind(untyped),
+        )
+        assertEquals(
+            com.music.bitchord.ui.CanonicalArtistAlbumShelfKind.ALBUM,
+            com.music.bitchord.ui.canonicalArtistAlbumShelfKind(ep),
+        )
+    }
 }
