@@ -87,16 +87,21 @@ internal data class SettingsSectionGroup(
 
 /** Every accessible group occurs once. No parallel registry of preference state. */
 internal object SettingsNavigation {
+    // Keep legacy enum values for old saved navigation state, but neither the
+    // home screen nor global Settings search exposes these retired destinations.
+    val hiddenSections: Set<SettingsSection> = setOf(
+        SettingsSection.ACCOUNT,
+        SettingsSection.AUDIO_QUALITY,
+        SettingsSection.LOCAL_MUSIC,
+    )
+
     val groups = listOf(
-        SettingsSectionGroup(R.string.settings_nav_group_account, listOf(SettingsSection.ACCOUNT)),
         SettingsSectionGroup(
             R.string.settings_nav_group_music,
             listOf(
                 SettingsSection.SOURCES,
-                SettingsSection.AUDIO_QUALITY,
                 SettingsSection.PLAYBACK,
                 SettingsSection.MISCELLANEOUS,
-                SettingsSection.LOCAL_MUSIC,
             ),
         ),
         SettingsSectionGroup(
@@ -123,7 +128,6 @@ internal object SettingsNavigation {
 internal fun SettingsHome(
     onSelect: (SettingsSection) -> Unit,
     showWear: Boolean = true,
-    onListenTogether: (() -> Unit)? = null,
 ) {
     SettingsNavigation.groups.forEach { group ->
         val visible = group.sections.filter { it != SettingsSection.WEAR || showWear }
@@ -137,16 +141,6 @@ internal fun SettingsHome(
                         subtitle = stringResource(section.subtitleRes),
                         onClick = { onSelect(section) },
                         testTag = "settings-category-${section.name}",
-                    )
-                }
-                if (group.titleRes == R.string.settings_nav_group_account && onListenTogether != null) {
-                    RowDivider()
-                    SettingsCategoryRow(
-                        icon = Icons.Rounded.Groups,
-                        title = stringResource(R.string.listen_together),
-                        subtitle = stringResource(R.string.listen_together_subtitle),
-                        onClick = onListenTogether,
-                        testTag = "settings-category-LISTEN_TOGETHER",
                     )
                 }
             }
