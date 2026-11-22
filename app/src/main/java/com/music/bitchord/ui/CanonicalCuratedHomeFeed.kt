@@ -58,6 +58,32 @@ internal fun canonicalEditorialReleaseType(row: CanonicalCatalogSearchRow): Stri
     ).format
 }
 
+/**
+ * Secondary classifications are explicit ReleaseGroup evidence, NOT title
+ * heuristics. Only Albums qualify; unknown types, Singles and EPs cannot
+ * acquire a new format from a secondary tag. Ambiguous multi-tag groups stay
+ * in the regular Album rail, retaining both secondary labels on their cards.
+ */
+internal enum class CanonicalArtistAlbumShelfKind { ALBUM, LIVE, COMPILATION }
+
+internal fun canonicalArtistAlbumShelfKind(
+    row: CanonicalCatalogSearchRow,
+): CanonicalArtistAlbumShelfKind {
+    val classified = CanonicalEditorialDiscography.classify(
+        row.releaseKind, row.secondaryTypes,
+    )
+    if (row.kind != CanonicalSearchKind.RELEASE_GROUP ||
+        classified.format != "Album"
+    ) return CanonicalArtistAlbumShelfKind.ALBUM
+    val live = "Live" in classified.secondaryTypes
+    val compilation = "Compilation" in classified.secondaryTypes
+    return when {
+        live && !compilation -> CanonicalArtistAlbumShelfKind.LIVE
+        compilation && !live -> CanonicalArtistAlbumShelfKind.COMPILATION
+        else -> CanonicalArtistAlbumShelfKind.ALBUM
+    }
+}
+
 /** Native DetailScreen accepts real browse shelves without synthetic Song.videoId. */
 internal fun canonicalNativeSections(
     parentKind: CanonicalSearchKind,
@@ -106,11 +132,25 @@ internal fun canonicalNativeSections(
         )
     }
     if (parentKind == CanonicalSearchKind.ARTIST) {
+        // MusicBrainz ReleaseGroup secondary types are explicit evidence,
+        // unlike a title containing "live" or "best of". Keep the rails
+        // mutually exclusive, preserving actual Group MBIDs, storefront-safe
+        // artwork and existing album navigation. Mixed Live + Compilation
+        // groups remain in the ordinary album shelf, since neither is the
+        // uniquely supported editorial presentation category.
+        val albumBuckets = eligible.filter { canonicalEditorialReleaseType(it) == "Album" }
+            .groupBy(::canonicalArtistAlbumShelfKind)
         return buildList {
-            val albums = eligible.filter { canonicalEditorialReleaseType(it) == "Album" }
-            val singlesAndEps = eligible.filter { canonicalEditorialReleaseType(it) in setOf("Single", "EP") }
-            if (albums.isNotEmpty()) add(HomeShelf(albumsHeading, cards(albums)))
+            albumBuckets[CanonicalArtistAlbumShelfKind.ALBUM]?.takeIf { it.isNotEmpty() }
+                ?.let { add(HomeShelf(albumsHeading, cards(it))) }
+            val singlesAndEps = eligible.filter {
+                canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+            }
             if (singlesAndEps.isNotEmpty()) add(HomeShelf(singlesHeading, cards(singlesAndEps)))
+            albumBuckets[CanonicalArtistAlbumShelfKind.LIVE]?.takeIf { it.isNotEmpty() }
+                ?.let { add(HomeShelf("Álbuns ao vivo", cards(it))) }
+            albumBuckets[CanonicalArtistAlbumShelfKind.COMPILATION]?.takeIf { it.isNotEmpty() }
+                ?.let { add(HomeShelf("Coletâneas", cards(it))) }
         }
     }
     return if (eligible.isNotEmpty()) listOf(HomeShelf(heading, cards(eligible))) else emptyList()
