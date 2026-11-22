@@ -872,9 +872,11 @@ internal fun ProviderHeader(
                     NativeCompactOverflowMenu(
                         expanded = overflowOpen,
                         onDismissRequest = { overflowOpen = false },
-                        minMenuWidth = 224.dp,
-                        maxMenuWidth = 224.dp,
-                        homePlateStyle = true,
+                        // Match the Library source filter's compact two-row
+                        // geometry, not the expanded held-item action plate.
+                        minMenuWidth = 208.dp,
+                        maxMenuWidth = 208.dp,
+                        homePlateStyle = false,
                     ) {
                         NativeCompactMenuItem(
                             label = "Organizar",
@@ -884,7 +886,6 @@ internal fun ProviderHeader(
                                 onOrganize()
                             },
                         )
-                        NativeCompactMenuDivider()
                         NativeCompactMenuItem(
                             label = "Conexões",
                             icon = Icons.Rounded.Settings,
