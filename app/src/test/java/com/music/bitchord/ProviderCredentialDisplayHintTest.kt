@@ -9,9 +9,9 @@ import org.junit.Test
 class ProviderCredentialDisplayHintTest {
     @Test fun onlyLastFourCharactersOfLongTokensAreVisible() {
         val original = "my-personal-account-token-Xy42"
-        val hint = maskedProviderCredentialHint(original)
+        val hint = requireNotNull(maskedProviderCredentialHint(original))
         assertEquals("••••••••Xy42", hint)
-        assertFalse(hint!!.contains("my-personal-account"))
+        assertFalse(hint.contains("my-personal-account"))
         assertFalse(hint.contains(original))
     }
 
@@ -23,6 +23,7 @@ class ProviderCredentialDisplayHintTest {
     }
 
     @Test fun unsafeControlCharactersInTheSuffixAreMasked() {
-        assertEquals("••••••••ab••", maskedProviderCredentialHint("secure-1234-ab\\n\\t".replace("\\n", "\n").replace("\\t", "\t")))
+        val credentialWithControls = "secure-1234-ab" + '\n' + '\t'
+        assertEquals("••••••••ab••", maskedProviderCredentialHint(credentialWithControls))
     }
 }
