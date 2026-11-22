@@ -3,6 +3,8 @@ package com.music.bitchord
 import com.music.bitchord.ui.DiscogsNativeRoute
 import com.music.bitchord.ui.discogsNativeDetailRouteKey
 import com.music.bitchord.ui.discogsArtistPage
+import com.music.bitchord.ui.discogsNativeLoadingPage
+import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsNativeArtistRelease
 import com.music.bitchord.data.model.BrowseType
@@ -56,6 +58,30 @@ class DiscogsNativeNavigationTest {
             DiscogsNativeRoute.RELEASE, card.browseId,
         ))
         assertTrue(card.videoId == null && page.thumbnailUrl == null)
+    }
+
+    @Test fun tappedArtistPaintsCanonicalDetailLoadingSkeletonBeforeNetworkReturns() {
+        val row = DiscogsNativeArtistSearchRow(17L, "Original Artist")
+        val pending = discogsNativeLoadingPage(
+            row.browseId, row.name, "Artista · Discogs", BrowseType.ARTIST,
+        )
+        assertEquals(row.browseId, pending.page.browseId)
+        assertEquals(BrowseType.ARTIST, pending.page.type)
+        assertEquals(row.name, pending.page.title)
+        assertTrue(pending.page.songs is UiState.Loading)
+        assertTrue(pending.page.sections.isEmpty())
+        val loaded = discogsArtistPage(
+            row, emptyList(), hasMore = false, incomplete = false,
+        )
+        assertEquals(pending.page.browseId, loaded.page.browseId)
+
+        val edition = discogsNativeLoadingPage(
+            "discogs:release:500", "A Real Edition",
+            row.name, BrowseType.ALBUM,
+        )
+        assertEquals(BrowseType.ALBUM, edition.page.type)
+        assertTrue(edition.page.songs is UiState.Loading)
+        assertEquals("discogs:release:500", edition.page.browseId)
     }
 
     @Test fun albumNavigationAndBackRestoreArtistRouteExactly() {
