@@ -153,6 +153,15 @@ internal class DiscogsNativeCatalogSession(
         ProviderReadLease.acquire(ProviderRuntime.gateOrNull(),
             listOf(capability to BuiltInProviderKeys.DISCOGS))
 
+    /** Keep the very same native artist/album header on network failure. */
+    private fun failDetail(message: String) {
+        val current = (_detail.value as? UiState.Success)?.data
+        _detail.value = if (current == null) UiState.Error(message)
+            else UiState.Success(current.copy(page = current.page.copy(
+                songs = UiState.Error(message),
+            )))
+    }
+
     /** Removing consent closes even previously painted provider-owned results. */
     fun purgeRevoked() {
         if (lease(ProviderCapability.CATALOG_SEARCH) == null) clearSearch()
@@ -305,7 +314,10 @@ internal class DiscogsNativeCatalogSession(
                 record.link.id == selected.releaseId
             ) UiState.Success(discogsReleasePage(
                 record.artistNames.joinToString(", "), record,
-            )) else UiState.Error("discogs_release_unavailable")
+            )) else {
+                failDetail("Não foi possível carregar esta edição Discogs.")
+                return@launch
+            }
         }
         detailJob = job
         val unregister = authorization.cancelJobOnRevoke(job)
@@ -330,7 +342,7 @@ internal class DiscogsNativeCatalogSession(
             detailJob?.isActive == true || (artistPage != 0 && !artistHasMore)) return
         val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY)
         if (authorization == null) {
-            _detail.value = UiState.Error("discogs_discography_disabled")
+            failDetail("Ative a Discografia do Discogs em Provedores.")
             return
         }
         val page = artistPage + 1
@@ -352,10 +364,10 @@ internal class DiscogsNativeCatalogSession(
                     _detail.value = UiState.Success(result)
                 }
                 DiscogsNativeArtistLoad.Disabled ->
-                    _detail.value = UiState.Error("discogs_discography_disabled")
+                    failDetail("Ative a Discografia do Discogs em Provedores.")
                 else -> {
                     if (cachedArtistPage == null) {
-                        _detail.value = UiState.Error("discogs_catalog_unavailable")
+                        failDetail("Não foi possível carregar este artista Discogs.")
                     } else {
                         _detail.value = UiState.Success(cachedArtistPage!!.copy(
                             incomplete = true,
@@ -390,7 +402,10 @@ internal class DiscogsNativeCatalogSession(
                 record.link.id == release.releaseId &&
                 parent.artistId in record.artistIds
             ) UiState.Success(discogsReleasePage(parent, record))
-            else UiState.Error("discogs_release_unavailable")
+            else {
+                failDetail("Não foi possível carregar esta edição Discogs.")
+                return@launch
+            }
         }
         detailJob = job
         val unregister = authorization.cancelJobOnRevoke(job)
