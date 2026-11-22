@@ -405,10 +405,35 @@ fun SearchScreen(
         ) {
             when {
                 searchingCanonical -> {
-                    if (filter == SearchFilter.ALL && query.isNotBlank() && canonicalDetail == null) {
+                    val editingCatalog = canonicalSearchEditing(
+                        query, searchCommitted, canonicalDetail != null,
+                    )
+                    if (!editingCatalog && filter == SearchFilter.ALL &&
+                        query.isNotBlank() && canonicalDetail == null
+                    ) {
                         canonicalCategorySearchRows(categorySearchResults, onCategoryOpen)
                     }
-                    if (canonicalSearchEditing(query, searchCommitted, canonicalDetail != null)) {
+                    if (editingCatalog) {
+                        // Editing is typeahead, not a results grid. Category
+                        // navigation uses the native magnifying-glass suggestion
+                        // visual and only becomes a category tile after Submit.
+                        if (filter == SearchFilter.ALL) {
+                            items(
+                                categorySearchResults.take(3),
+                                key = { "canonical:genre-suggestion:" + it.browseId },
+                            ) { category ->
+                                SuggestionRow(
+                                    term = category.title,
+                                    isQueryAction = true,
+                                    onFill = null,
+                                    onClick = {
+                                        onCategoryOpen(category)
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    },
+                                )
+                            }
+                        }
                         // Only locally known text, not invented Apple/server completions:
                         // an explicit action for the typed query plus matching history.
                         val known = canonicalRecentSearchEntries(history)

@@ -116,7 +116,10 @@ internal fun canonicalExploreGenreSearchHits(
         .map { genre ->
             ShelfItem(
                 title = genre.title,
-                subtitle = if (genre.parentTag == null) "Categoria" else "Subgênero",
+                // Both parent genres and child styles are category destinations.
+                // Their taxonomy relationship lives on the genre page,
+                // not in a second gray label in Apple-style Search.
+                subtitle = "Categoria",
                 thumbnailUrl = null,
                 videoId = null,
                 browseId = canonicalGenreBrowseId(genre),
