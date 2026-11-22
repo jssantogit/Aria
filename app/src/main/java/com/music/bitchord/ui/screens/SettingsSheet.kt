@@ -1075,20 +1075,6 @@ internal fun SettingsScreen(
                         onClick = { AppSettings.setLyricsBlur(!lyricsBlur) },
                     )
                 }
-                val lyricsSourcesTitle = stringResource(R.string.lyrics_sources)
-                row(lyricsSourcesTitle, "lyrics", "lrclib", "musixmatch") {
-                    SettingsRow(
-                        icon = Icons.Rounded.Language,
-                        title = lyricsSourcesTitle,
-                        // The title identifies what the number counts; a
-                        // numeric value avoids 1 fontes / 1 sources in any locale.
-                        subtitle = if (lyricsSources.isEmpty()) {
-                            stringResource(R.string.no_lyrics_sources_enabled)
-                        } else null,
-                        value = lyricsSourcesCountValue(lyricsSources.size),
-                        onClick = onLyricsSources,
-                    )
-                }
                 val translationLanguageTitle = stringResource(R.string.translation_language)
                 row(translationLanguageTitle, "lyrics", "translate") {
                     SettingsRow(
