@@ -38,11 +38,19 @@ class CanonicalEditorialFeedProjectionTest {
             communityShelf = community,
             personalRecommendationShelf = personal,
         )
-        assertEquals(listOf("Comunidade", "Para você"), result.map { it.title })
-        assertTrue(projectCanonicalHomeDisplay(
+        assertEquals(listOf("Comunidade", "Para você", "Explore gêneros"),
+            result.map { it.title })
+        // A sparse Home gets genuine genre-navigation destinations, never
+        // fabricated community rankings, releases, audio or artwork.
+        val sparse = projectCanonicalHomeDisplay(
             emptyList(), empty, null,
             communityShelf = HomeShelf("Vazio", emptyList()),
-        ).isEmpty())
+        )
+        assertEquals(listOf("Explore gêneros"), sparse.map { it.title })
+        assertTrue(sparse.flatMap { it.items }.all {
+            it.browseId.orEmpty().startsWith("catalog:GENRE:") &&
+                it.videoId == null && it.thumbnailUrl == null
+        })
     }
 
     @Test fun homeProviderPriorityDoesNotReidentifyAnyProviderNativeAlbum() {
@@ -68,8 +76,16 @@ class CanonicalEditorialFeedProjectionTest {
         ))
         val chosen = CatalogEditorialSelection(mb, UiState.Loading)
         val result = projectCanonicalHomeDisplay(listOf(personal), chosen, null)
+        // Loading editorial content does not block verified local assets.
+        // A category-navigation rail is neither foreign-provider content nor audio.
+        assertEquals(listOf("Explore gêneros", "Recent"), result.map { it.title })
         assertEquals(listOf("local:track:1"),
-            result.flatMap { it.items }.map { it.browseId })
+            result.filter { it.title == "Recent" }
+                .flatMap { it.items }.map { it.browseId })
+        assertTrue(result.flatMap { it.items }.all {
+            it.browseId.orEmpty().startsWith("catalog:GENRE:") ||
+                it.browseId.orEmpty().startsWith("local:")
+        })
         assertTrue(projectCanonicalHomeState(result, chosen) is UiState.Success)
         assertEquals(UiState.Loading, projectCanonicalHomeState(emptyList(), chosen))
     }
