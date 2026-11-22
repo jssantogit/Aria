@@ -1,30 +1,40 @@
 package com.music.bitchord.ui.screens
 
-import android.app.Activity
-import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
@@ -35,7 +45,6 @@ import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.components.NativeSettingsPrimaryAction
 import com.music.bitchord.ui.components.NativeSettingsSecondaryAction
-import com.music.bitchord.ui.components.PillTextField
 import com.music.bitchord.ui.components.appleSettingsSwitchColors
 import kotlinx.coroutines.launch
 
@@ -46,9 +55,12 @@ internal enum class ProviderAccountDetail(val title: String) {
 }
 
 /**
- * A compact non-Material3-outlined input shared by the Providers editors.
- * The placeholder identifies the field; do not repeat it with a second
- * label above and a verbose explanation beneath.
+ * A real editable field using the native Search bar's rounded, inset and
+ * outlined surface. Password text stays masked even though this screen now
+ * permits screenshots (requested for physical UI review).
+ *
+ * Own the BasicTextField directly: do not wrap PillTextField, whose passive
+ * visual treatment was indistinguishable from a label in the provider cards.
  */
 @Composable
 internal fun ProviderInlineField(
@@ -59,31 +71,52 @@ internal fun ProviderInlineField(
     secret: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxWidth().testTag("providers-inline-field-${label.lowercase().replace(" ", "-")}")) {
-        PillTextField(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = label,
-            enabled = enabled,
-            isPassword = secret,
-            accessibilityLabel = label,
-        )
-    }
-}
+    val shape = RoundedCornerShape(16.dp)
+    var focused by remember { mutableStateOf(false) }
+    val foreground = MaterialTheme.colorScheme.onSurface
+    val accent = MaterialTheme.colorScheme.primary
+    val outline = if (focused) accent else foreground.copy(alpha = 0.24f)
+    val background = MaterialTheme.colorScheme.surface
 
-/** Do not expose typed credentials through screenshots or Android Recents. */
-@Composable
-internal fun ProviderSecureEntryWindow() {
-    val activity = LocalContext.current as? Activity
-    DisposableEffect(activity) {
-        val window = activity?.window
-        val wasSecure = window?.attributes?.flags
-            ?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
-        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose {
-            if (!wasSecure) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = foreground),
+        visualTransformation = if (secret) PasswordVisualTransformation()
+            else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = when {
+                secret -> KeyboardType.Password
+                label == "URL do servidor" -> KeyboardType.Uri
+                else -> KeyboardType.Text
+            },
+            imeAction = ImeAction.Done,
+        ),
+        cursorBrush = SolidColor(accent),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 50.dp)
+            .clip(shape)
+            .background(background)
+            .border(1.dp, outline, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .testTag("providers-inline-field-${label.lowercase().replace(" ", "-")}")
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = foreground.copy(alpha = 0.55f),
+                    )
+                }
+                innerTextField()
+            }
+        },
+    )
 }
 
 /**
@@ -93,7 +126,6 @@ internal fun ProviderSecureEntryWindow() {
  */
 @Composable
 internal fun ProviderLastFmAccountForm() {
-    ProviderSecureEntryWindow()
     val scope = rememberCoroutineScope()
     val sessionKey by AppSettings.lastfmSessionKey.collectAsStateWithLifecycle()
     val sessionUsername by AppSettings.lastfmUsername.collectAsStateWithLifecycle()
