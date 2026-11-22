@@ -1,5 +1,5 @@
-# Temporary branch-local physical smoke build for IDM PR #224.
-# The trigger commit may add ONLY this workflow; the application tree remains the reviewed combined source.
+# Explicitly authorized 2026-11-22 branch-local smoke APK for IDM PR #224.
+# The trigger commit changes ONLY this workflow; application sources remain the exact PR candidate.
 name: IDM #224 — Physical smoke APK
 
 on:
@@ -27,11 +27,11 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Verify immutable CI-green application sources
+      - name: Verify immutable authorized application sources
         shell: bash
         run: |
           set -euo pipefail
-          approved="2821b22d8dd0f71819983ddf415796be9077ab58"
+          approved="798df13b21f9fc79c0e9fbcfcc0b30ae22afcd8f"
           trigger=".github/workflows/idm-224-physical-smoke-apk.yml"
           actual_parent="$(git rev-parse HEAD^)"
           if [[ "$actual_parent" != "$approved" ]]; then
@@ -61,6 +61,9 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
 
+      - name: Run Android unit tests on exact approved source
+        run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+
       - name: Assemble installable Android devDebug APK
         run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
 
@@ -70,7 +73,7 @@ jobs:
           set -euo pipefail
           {
             echo "pr=224"
-            echo "approved_android_source=2821b22d8dd0f71819983ddf415796be9077ab58"
+            echo "approved_android_source=798df13b21f9fc79c0e9fbcfcc0b30ae22afcd8f"
             echo "workflow_trigger_commit=$(git rev-parse HEAD)"
             find app/build/outputs/apk/dev/debug -maxdepth 1 -type f -name '*.apk' -print -exec sha256sum '{}' \;
           } > idm-224-apk-manifest.txt
