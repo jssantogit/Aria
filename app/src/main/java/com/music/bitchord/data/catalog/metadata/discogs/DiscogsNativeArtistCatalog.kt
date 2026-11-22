@@ -150,8 +150,14 @@ internal class DiscogsNativeArtistCatalog(
             }
             hydrated += entry to record
         }
+        val verified = discogsNativeArtistReleases(artistId, hydrated)
+        // A well-formed HTTP response can still contain unverified artist
+        // credits, unofficial editions or inconsistent master relations.
+        // Missing evidence is partial coverage, never proof of completeness.
+        if (verified.size < hydrated.map { it.second.link.id }.distinct().size)
+            incomplete = true
         return DiscogsNativeArtistLoad.Success(
-            releases = discogsNativeArtistReleases(artistId, hydrated),
+            releases = verified,
             hasMore = page < index.totalPages && page < 100,
             incomplete = incomplete,
         )
