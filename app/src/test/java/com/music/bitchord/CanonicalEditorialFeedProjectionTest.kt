@@ -164,6 +164,78 @@ class CanonicalEditorialFeedProjectionTest {
         assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
     }
 
+
+    @Test fun editionOnlyMusicBrainzBatchMustNotEraseExistingNativeReleaseShelf() {
+        // Full public composition accepts groups only. A page of exact
+        // MusicBrainz editions cannot be miscounted as five public groups.
+        val editions = (1..8).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "%08d-1111-4111-8111-111111111111".format(index),
+                kind = CanonicalSearchKind.RELEASE,
+                title = "Edition $index", subtitle = "Verified artist",
+                releaseDate = "2026-11-01", releaseKind = "Album",
+            )
+        }
+        val original = HomeShelf("Lançamentos", editions.map { row ->
+            ShelfItem(row.title, row.subtitle.orEmpty(), null, null,
+                "catalog:RELEASE:${row.musicBrainzId}")
+        })
+        val selection = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = listOf(original),
+            appleHomeReleases = UiState.Success(emptyList()),
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos",
+            discoveryHeading = "Descobrir",
+            todayIsoDate = "2026-11-22",
+            musicBrainzRows = editions,
+        )
+        assertEquals(mb, selection.provider)
+        val visible = (selection.state as UiState.Success).data
+        assertEquals(listOf("Lançamentos"), visible.map { it.title })
+        assertEquals(original.items.map { it.browseId },
+            visible.single().items.map { it.browseId })
+        assertTrue(visible.single().items.all { it.videoId == null })
+    }
+
+    @Test fun editionVolumeMustNotOverrideSparseGroupHomeComposition() {
+        val groups = (1..2).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "%08d-2222-4222-8222-222222222222".format(index),
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = "Group $index", subtitle = "Verified artist",
+                releaseDate = "2026-11-02", releaseKind = "Album",
+            )
+        }
+        val editions = (1..8).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "%08d-3333-4333-8333-333333333333".format(index),
+                kind = CanonicalSearchKind.RELEASE,
+                title = "Edition $index", subtitle = "Verified artist",
+                releaseDate = "2026-11-01", releaseKind = "Album",
+            )
+        }
+        val hero = HomeShelf("Lançamentos", groups.map { row ->
+            ShelfItem(row.title, row.subtitle.orEmpty(), null, null,
+                "catalog:RELEASE_GROUP:${row.musicBrainzId}")
+        })
+        val result = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = listOf(hero),
+            appleHomeReleases = UiState.Success(emptyList()),
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos",
+            discoveryHeading = "Descobrir",
+            todayIsoDate = "2026-11-22",
+            musicBrainzRows = editions + groups,
+        )
+        assertEquals(mb, result.provider)
+        val visible = (result.state as UiState.Success).data
+        assertEquals(listOf("Lançamentos"), visible.map { it.title })
+        assertEquals(hero.items.map { it.browseId },
+            visible.single().items.map { it.browseId })
+    }
+
     @Test fun musicBrainzGenreKeepsMultiShelfMusicBrainzEvidence() {
         val rows = (1..30).map { index ->
             CanonicalCatalogSearchRow(

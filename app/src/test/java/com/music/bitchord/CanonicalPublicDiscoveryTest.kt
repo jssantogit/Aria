@@ -334,7 +334,10 @@ class CanonicalPublicDiscoveryTest {
             publicPlaylists = playlists.copy(title = "Playlists para descobrir"),
         )
         assertTrue(home.any { it.title == "Playlists para descobrir" })
-        assertTrue(home.none { it.title == "Singles e EPs" })
+        // Public playlists and typed singles are distinct sources of discovery.
+        assertTrue(home.any { it.title == "Singles e EPs" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
     }
 

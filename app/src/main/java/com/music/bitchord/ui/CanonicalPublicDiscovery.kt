@@ -426,8 +426,8 @@ internal fun canonicalHomeWithWorldwideEditorial(
     if (worldwideTrending == null && community?.items?.isNotEmpty() == true &&
         community.title.isNotBlank()
     ) shelves.add(minOf(2, shelves.size), community)
-    // Home is a global discovery feed, not the genre's format-by-format
-    // discography. Real public playlists replace the genre-like singles row.
+    // Home is a global discovery feed; public playlists have their own
+    // provenance and must not suppress separately verified Singles and EPs.
     publicPlaylists?.takeIf { it.items.isNotEmpty() }?.let { shelf ->
         shelves.add(minOf(3, shelves.size), shelf)
     }
@@ -454,12 +454,10 @@ internal fun canonicalHomeWithWorldwideEditorial(
             canonicalNativeBrowseId(it) in selected ||
                 it.musicBrainzId == reservedMore?.musicBrainzId
         }
-        if (publicPlaylists?.items.isNullOrEmpty()) {
-            appendPublic(singlesHeading,
-                listOfNotNull(reservedSingle) + unusedSingles.filter {
-                    canonicalEditorialReleaseType(it) in setOf("EP", "Single")
-                })
-        }
+        appendPublic(singlesHeading,
+            listOfNotNull(reservedSingle) + unusedSingles.filter {
+                canonicalEditorialReleaseType(it) in setOf("EP", "Single")
+            })
     }
     appendPublic(moreHeading,
         listOfNotNull(reservedMore) + publicRows.filterNot { canonicalNativeBrowseId(it) in selected })

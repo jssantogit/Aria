@@ -8,6 +8,7 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import com.music.bitchord.ui.screens.CanonicalSearchKind
 
 /**
  * Pure projection for the existing Home/Explore widgets.
@@ -49,6 +50,10 @@ internal fun projectCanonicalHomeEditorial(
     // Earlier the projection discarded discovery/album/more shelves even when
     // typed release evidence was already present in the catalog snapshot.
     val verifiedPublicRows = musicBrainzRows.asSequence()
+        // The full Home composer only accepts ReleaseGroup identities.
+        // Counting individual editions here could select that compositor
+        // while it has no groups, silently erasing a valid edition shelf.
+        .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP }
         .filter { canonicalEditorialReleaseType(it) != null }
         .filter { row ->
             row.releaseDate?.let { date -> date.take(10) <= todayIsoDate } ?: true
