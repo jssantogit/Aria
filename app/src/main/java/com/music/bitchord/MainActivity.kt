@@ -3470,6 +3470,9 @@ private fun BitChordApp(
         // drawn; routing to an empty activity slot first creates black gaps on
         // both entry and dismissal. The in-Library creation modal is unchanged.
         val playlistRoute = canonicalPlaylistModalBackgroundRoute(showPlaylistLibrary)
+        val discogsPageRouteKey = com.music.bitchord.ui.discogsNativeDetailRouteKey(
+            discogsRoute, discogsBrowseId,
+        )
         // Preserve the existing page route and its Back stack. Only
         // the composited arrival changes for tab-to-tab navigation.
         val pageRouteKey = when {
@@ -3506,11 +3509,8 @@ private fun BitChordApp(
                 detail != null -> detail.browseId
                 // Exactly like MusicBrainz's native DetailPage, route by
                 // provider-owned browseId, never by a generic source screen.
-                selectedTab == TAB_SEARCH && com.music.bitchord.ui
-                    .discogsNativeDetailRouteKey(discogsRoute, discogsBrowseId) != null ->
-                    com.music.bitchord.ui.discogsNativeDetailRouteKey(
-                        discogsRoute, discogsBrowseId,
-                    )!!
+                selectedTab == TAB_SEARCH && discogsPageRouteKey != null ->
+                    discogsPageRouteKey
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
