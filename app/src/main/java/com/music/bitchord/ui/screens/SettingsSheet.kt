@@ -557,15 +557,9 @@ internal fun SettingsScreen(
 
         if (selectedSection == SettingsSection.DOWNLOADS || (selectedSection == null && searchQuery.isNotBlank())) {
         SearchableSettingsGroup(search, destination = SettingsSection.DOWNLOADS, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.DOWNLOADS) } else null, header = stringResource(R.string.downloads)) {
-            row("Soulseek", "conta", "pesquisa", "baixar") {
-                SettingsRow(
-                    icon = Icons.Rounded.Cloud,
-                    title = "Soulseek",
-                    subtitle = "Conta e downloads manuais (experimental)",
-                    trailing = { Chevron() },
-                    onClick = onSoulseek,
-                )
-            }
+            // Soulseek authentication is owned by Provedores → Conexões.
+            // Download quality and destinations remain here, but no second
+            // account editor should compete with its provider page.
             val downloadQualityTitle = stringResource(R.string.download_quality)
             row(downloadQualityTitle, "offline", "lossless") {
                 SettingsRow(
