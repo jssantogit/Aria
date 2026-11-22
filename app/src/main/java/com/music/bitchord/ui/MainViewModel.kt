@@ -3360,7 +3360,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * 15m negative TTLs prevent rate-limit bursts across tab re-entries.
      */
     fun loadCanonicalPublicPlaylists(genreTag: String? = null) {
-        if (genreTag != null && canonicalExploreGenres.none { it.tag == genreTag }) return
+        if (genreTag != null && canonicalAllExploreGenres.none { it.tag == genreTag }) return
         val key = genreTag ?: "home"
         val now = System.currentTimeMillis()
         val previous = publicPlaylistQueryAt[key]
@@ -3584,7 +3584,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     fun loadCanonicalGenre(tag: String) {
-        val selected = canonicalExploreGenres.firstOrNull { it.tag == tag } ?: return
+        val selected = canonicalAllExploreGenres.firstOrNull { it.tag == tag } ?: return
         canonicalGenreResultTag = tag
         val gate = ProviderRuntime.gateOrNull()
         val ticket = gate?.open(

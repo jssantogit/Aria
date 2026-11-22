@@ -628,7 +628,14 @@ private fun CanonicalHomeEditorialEffects(
         val first = catalogEditorialOrder.firstOrNull()
         val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
         val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
-        if (first == apple) {
+        if (first == apple &&
+            !com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)
+        ) {
+            // Apple's native genre lookup is intentionally restricted to verified
+            // primaryGenreName values. A known subgenre may still be browsed by
+            // the separately authorized MusicBrainz tag source.
+            if (mb in catalogEditorialOrder) viewModel.loadCanonicalGenre(tag)
+        } else if (first == apple) {
             viewModel.loadAppleGenreEditorial(tag, emptyList())
             val result = appleGenreReleases[tag]
             if (mb in catalogEditorialOrder &&
@@ -1530,7 +1537,10 @@ private fun BitChordApp(
     val refreshCanonicalGenreEditorial: (String, Boolean) -> Unit = { tag, force ->
         when (catalogEditorialOrder.firstOrNull()) {
             catalogMb -> viewModel.loadCanonicalGenre(tag)
-            catalogApple -> viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
+            catalogApple -> if (com.music.bitchord.data.catalog.metadata
+                    .AppleExploreGenrePolicy.supports(tag)
+            ) viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
+            else if (catalogMb in catalogEditorialOrder) viewModel.loadCanonicalGenre(tag)
             else -> Unit
         }
     }

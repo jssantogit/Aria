@@ -1,5 +1,6 @@
 package com.music.bitchord.ui
 
+import com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy
 import com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPublicPlaylist
 import com.music.bitchord.data.model.HomeShelf
@@ -93,7 +94,12 @@ internal fun projectCanonicalGenreState(
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
-    val appleState: UiState<List<HomeShelf>> = when (
+    // Do not leave the page forever Loading when Apple's genre contract
+    // does not recognize the tag. Only permitted providers can fill releases.
+    val appleSupported = AppleExploreGenrePolicy.supports(tag)
+    val appleState: UiState<List<HomeShelf>> = if (!appleSupported) {
+        UiState.Success(emptyList())
+    } else when (
         val source = appleByTag[tag] ?: UiState.Loading
     ) {
         is UiState.Success -> UiState.Success(
@@ -114,7 +120,9 @@ internal fun projectCanonicalGenreState(
         UiState.Loading -> UiState.Loading
         is UiState.Error -> source
     }
-    val chosen = selectCatalogEditorial(ordered, mapOf(
+    val eligibleProviders = if (appleSupported) ordered
+        else ordered.filterNot { it == BuiltInProviderKeys.ITUNES }
+    val chosen = selectCatalogEditorial(eligibleProviders, mapOf(
         BuiltInProviderKeys.MUSICBRAINZ to mbState,
         BuiltInProviderKeys.ITUNES to appleState,
     ))
