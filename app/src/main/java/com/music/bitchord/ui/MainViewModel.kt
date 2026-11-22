@@ -5404,6 +5404,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+            // Fetch the official artist discography independently after the
+            // album hero/tracklist has painted. The exact Apple artist ID
+            // comes from this selected storefront product, not a name guess.
+            // Failure only omits the shelf; never turn it into a bogus claim.
+            if (response is AppleEditorialLoad.Success) {
+                val selected = response.releases.singleOrNull {
+                    it.appleScopedId == row.browseId &&
+                        it.storefront == route.storefront &&
+                        it.appleCollectionId == route.id
+                }
+                val artistId = selected?.artistId?.takeIf { it > 0L }
+                if (artistId != null) launch {
+                    val discography = try {
+                        appleEditorialRepository.artistDiscography(
+                            artistId, route.storefront, limit = 40,
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
+                    }
+                    if (discography is AppleEditorialLoad.Success &&
+                        activeAppleAlbumId == row.browseId &&
+                        _searchSource.value == SearchSource.CANONICAL
+                    ) {
+                        val siblings = appleNativeSearchRows(
+                            discography.copy(releases = discography.releases.filter {
+                                it.artistId == artistId &&
+                                    it.storefront == route.storefront &&
+                                    it.appleCollectionId != route.id &&
+                                    it.appleCollectionId > 0L
+                            }),
+                        ).distinctBy { it.browseId }.take(12)
+                        _appleEditorialDetail.update { state ->
+                            if (state !is UiState.Success ||
+                                state.data.album.browseId != row.browseId
+                            ) state else UiState.Success(state.data.copy(
+                                relatedAlbums = siblings,
+                            ))
+                        }
+                    }
+                }
+            }
             // First paint is strictly Apple. The extra MusicBrainz lookups
             // happen only after the detail is already visible, and cannot
             // replace its artwork, name, track order or commercial identity.
@@ -5437,9 +5480,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             // Reconciliation is metadata-only. An already
                             // dimension-probed Apple hero must not regress to
                             // the Search API's original 100px thumbnail.
-                            val preserved = refined.copy(album = refined.album.copy(
-                                artworkUri = current.album.artworkUri,
-                            ))
+                            val preserved = refined.copy(
+                                album = refined.album.copy(
+                                    artworkUri = current.album.artworkUri,
+                                ),
+                                // Discogs reconciliation and Apple related
+                                // discography are independent async streams.
+                                relatedAlbums = current.relatedAlbums,
+                            )
                             if (preserved != current)
                                 _appleEditorialDetail.value = UiState.Success(preserved)
                         }

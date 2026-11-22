@@ -53,6 +53,8 @@ data class AppleEditorialAlbumDetailPage(
     /** The storefront-owned link accompanying promotional album artwork. */
     val appleStoreUrl: String? = null,
     val appleStoreBadgeUrl: String? = null,
+    /** Independently verified same-artist storefront releases, not recommendations inferred by title. */
+    val relatedAlbums: List<AppleEditorialSearchRow> = emptyList(),
 )
 
 data class AppleEditorialArtistDetailPage(

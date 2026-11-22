@@ -103,6 +103,27 @@ internal fun appleAlbumAsSharedDetail(
     }
     val credit = listOfNotNull(source.album.artistName.takeIf(String::isNotBlank), year)
         .joinToString(" • ")
+    val otherReleases = source.relatedAlbums.asSequence()
+        .filter { candidate ->
+            val candidateRoute = AppleCatalogBrowseRoute.parse(candidate.browseId)
+            candidate.kind == AppleEditorialSearchKind.ALBUM &&
+                candidateRoute?.kind == ItunesCatalogItemType.ALBUM &&
+                candidateRoute.storefront == route.storefront &&
+                candidate.browseId != source.album.browseId &&
+                candidate.title.isNotBlank() &&
+                candidate.artistName == source.album.artistName
+        }
+        .distinctBy { it.browseId }
+        .take(12)
+        .map { candidate ->
+            ShelfItem(
+                title = candidate.title,
+                subtitle = candidate.releaseDate?.take(4).orEmpty(),
+                thumbnailUrl = appleProminentArtworkOrNull(candidate.artworkUri),
+                videoId = null,
+                browseId = candidate.browseId,
+            )
+        }.toList()
     return AppleSharedDetail(
         page = DetailPage(
             browseId = source.album.browseId,
@@ -111,6 +132,9 @@ internal fun appleAlbumAsSharedDetail(
             thumbnailUrl = appleProminentArtworkOrNull(source.album.artworkUri),
             type = BrowseType.ALBUM,
             songs = UiState.Success(emptyList()),
+            sections = if (otherReleases.isNotEmpty()) listOf(
+                HomeShelf("Mais de ${source.album.artistName}", otherReleases),
+            ) else emptyList(),
         ),
         metadataTracks = source.tracks.filter { track ->
             val trackRoute = AppleCatalogBrowseRoute.parse(track.key)

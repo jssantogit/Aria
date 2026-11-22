@@ -73,6 +73,30 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
+    @Test fun albumMoreFromArtistUsesOnlyExactAppleStorefrontSiblingIDs() {
+        val selected = album(20, AppleEditorialReleaseCategory.EP)
+        val sibling = album(21, AppleEditorialReleaseCategory.ALBUM)
+        val crossStore = sibling.copy(browseId = "itunes:us:album:21")
+        val wrongArtist = sibling.copy(browseId = "itunes:br:album:22",
+            artistName = "Unrelated artist")
+        val sameAlbum = sibling.copy(browseId = selected.browseId)
+        val page = requireNotNull(appleAlbumAsSharedDetail(
+            AppleEditorialAlbumDetailPage(
+                album = selected, tracks = emptyList(), partialTracklist = false,
+                relatedAlbums = listOf(sibling, sibling, crossStore, wrongArtist, sameAlbum),
+            ),
+        ))
+        assertEquals(listOf("Mais de NewJeans"), page.page.sections.map { it.title })
+        assertEquals(listOf(sibling.browseId),
+            page.page.sections.single().items.map { it.browseId })
+        assertTrue(page.page.sections.single().items.all { it.videoId == null })
+        assertEquals(emptyList<String>(), requireNotNull(appleAlbumAsSharedDetail(
+            AppleEditorialAlbumDetailPage(
+                album = selected, tracks = emptyList(), partialTracklist = false,
+            ),
+        )).page.sections.map { it.title })
+    }
+
     @Test fun differentAppleIDsNeverCollapseBecauseTheirNamesMatch() {
         val a = appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
             artist = artist, albums = emptyList(), possiblyTruncated = false))

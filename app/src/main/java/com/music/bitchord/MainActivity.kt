@@ -4109,8 +4109,11 @@ private fun BitChordApp(
                                 onArtistClick = { _, _ -> },
                                 onAddSuggested = {},
                                 onSectionItemClick = { item ->
-                                    val matched = artistState?.data?.albums
-                                        ?.singleOrNull { it.browseId == item.browseId }
+                                    val matched = (
+                                        artistState?.data?.albums.orEmpty() +
+                                            (appleAlbumDetail as? UiState.Success)
+                                                ?.data?.relatedAlbums.orEmpty()
+                                    ).singleOrNull { it.browseId == item.browseId }
                                     if (matched != null) {
                                         detailActiveShelf = null
                                         viewModel.openAppleEditorialEntry(matched)
