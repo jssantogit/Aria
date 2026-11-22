@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -26,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import com.music.bitchord.R
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
@@ -97,10 +101,14 @@ internal fun ProviderLastFmAccountForm() {
     val scrobbleEnabled by AppSettings.lastfmScrobbleEnabled.collectAsStateWithLifecycle()
     val nowPlayingEnabled by AppSettings.lastfmNowPlaying.collectAsStateWithLifecycle()
     val primaryArtistOnly by AppSettings.lastfmPrimaryArtistOnly.collectAsStateWithLifecycle()
+    val scrobbleMinDuration by AppSettings.scrobbleMinDuration.collectAsStateWithLifecycle()
+    val scrobbleDelayPercent by AppSettings.scrobbleDelayPercent.collectAsStateWithLifecycle()
+    val scrobbleDelaySeconds by AppSettings.scrobbleDelaySeconds.collectAsStateWithLifecycle()
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    var advanced by remember { mutableStateOf(false) }
     val connected = sessionKey.isNotBlank()
 
     fun signIn() {
@@ -233,6 +241,51 @@ internal fun ProviderLastFmAccountForm() {
                 },
                 onClick = { AppSettings.setLastfmPrimaryArtistOnly(!primaryArtistOnly) },
             )
+        }
+    }
+    if (connected) {
+        SettingsGroupSurface(modifier = Modifier.padding(
+            start = 16.dp, end = 16.dp, top = 12.dp,
+        )) {
+            SettingsRow(
+                icon = Icons.Rounded.Tune,
+                title = "Tempos de scrobbling",
+                onClick = { advanced = !advanced },
+                value = if (advanced) "Ocultar" else "Ajustar",
+                modifier = Modifier.testTag("providers-lastfm-advanced"),
+            )
+            if (advanced) {
+                RowDivider()
+                SliderRow(
+                    icon = Icons.Rounded.Tune,
+                    title = stringResource(R.string.min_song_duration),
+                    value = "${scrobbleMinDuration}s",
+                    sliderValue = scrobbleMinDuration.toFloat(),
+                    onSliderValue = { AppSettings.setScrobbleMinDuration(it.roundToInt()) },
+                    valueRange = 15f..120f,
+                    steps = 20,
+                )
+                RowDivider()
+                SliderRow(
+                    icon = Icons.Rounded.Tune,
+                    title = stringResource(R.string.scrobble_delay),
+                    value = "${(scrobbleDelayPercent * 100).roundToInt()}%",
+                    sliderValue = scrobbleDelayPercent,
+                    onSliderValue = { AppSettings.setScrobbleDelayPercent(it) },
+                    valueRange = 0.1f..1.0f,
+                    steps = 8,
+                )
+                RowDivider()
+                SliderRow(
+                    icon = Icons.Rounded.Tune,
+                    title = stringResource(R.string.max_delay),
+                    value = "${scrobbleDelaySeconds}s",
+                    sliderValue = scrobbleDelaySeconds.toFloat(),
+                    onSliderValue = { AppSettings.setScrobbleDelaySeconds(it.roundToInt()) },
+                    valueRange = 30f..300f,
+                    steps = 26,
+                )
+            }
         }
     }
 }
