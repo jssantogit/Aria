@@ -5416,7 +5416,10 @@ private fun BitChordApp(
                         showReplay -> stringResource(R.string.replay)
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST ->
                             openedPublicPlaylist?.title.orEmpty()
-                        detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()
+                        // Same native artist shelf drill-down for MB, Apple
+                        // and Discogs, regardless of which state owns the page.
+                        visualDetail != null && detailActiveShelf != null ->
+                            detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
                         appleNativeKind == AppleNativeDetailKind.ALBUM ->
                             (appleAlbumDetail as? UiState.Success)?.data?.album?.title.orEmpty()
