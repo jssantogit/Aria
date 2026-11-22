@@ -29,7 +29,7 @@ internal fun providerSettingsDisplayName(entry: ProviderInventoryEntry): String 
         "lastfm" -> "Last.fm"
         "listenbrainz" -> "ListenBrainz"
         "apple_artist_art" -> "Apple Music"
-        "opensubsonic" -> "Navidrome / OpenSubsonic"
+        "opensubsonic" -> "Navidrome"
         "local" -> "Biblioteca local"
         else -> entry.displayName
     }
