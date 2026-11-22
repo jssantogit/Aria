@@ -5061,6 +5061,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ARTIST }
             ?: return
         if (_searchSource.value != SearchSource.CANONICAL) return
+        discogsNativeCatalog.backAll()
         clearCanonicalCatalogNavigation()
         // A previously pushed MB DetailPage must not outrank the iTunes
         // Search artist's own native route when providers are reordered.
@@ -5460,6 +5461,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?.takeIf { it.kind == com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ALBUM }
             ?: return
         if (_searchSource.value != SearchSource.CANONICAL) return
+        discogsNativeCatalog.backAll()
         clearCanonicalCatalogNavigation()
         _detailStack.update { stack ->
             stack.filterNot { it.browseId.startsWith("catalog:") }
