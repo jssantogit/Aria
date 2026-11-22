@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,7 +48,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
@@ -879,6 +880,44 @@ internal fun LazyListScope.canonicalCategorySearchRows(
     }
 }
 
+/**
+ * One native search-pagination control for every public catalog provider.
+ * Search changes the fetched source, never its visual component tree.
+ */
+@Composable
+private fun NativeCatalogSearchLoadMore(
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(ink.copy(alpha = 0.08f))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("native-catalog-search-load-more"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = BitChordIcons.Plus,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = ink.copy(alpha = if (enabled) 1f else 0.38f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = ink.copy(alpha = if (enabled) 1f else 0.38f),
+        )
+    }
+}
+
 private fun LazyListScope.appleSearchPagingFooter(
     section: AppleSearchSection,
     state: AppleSearchPageStatus?,
@@ -892,11 +931,12 @@ private fun LazyListScope.appleSearchPagingFooter(
                     horizontal = PAGE_GUTTER, vertical = 12.dp,
                 ),
             ) {
-                OutlinedButton(
+                NativeCatalogSearchLoadMore(
+                    label = stringResource(Res.string.apple_load_more),
                     onClick = onLoadMore,
                     enabled = !state.loadingMore,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(Res.string.apple_load_more)) }
+                )
                 if (state.loadingMore) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
@@ -1047,12 +1087,13 @@ private fun LazyListScope.discogsNativeReleaseRows(
                 MessageState("Nenhum lançamento encontrado no Discogs.")
             }
             if (hasMore) item(key = "discogs:releases:more") {
-                OutlinedButton(
+                NativeCatalogSearchLoadMore(
+                    label = "Carregar mais lançamentos",
                     onClick = onLoadMore,
                     modifier = Modifier.fillMaxWidth().padding(
                         horizontal = PAGE_GUTTER, vertical = 12.dp,
                     ),
-                ) { Text("Carregar mais lançamentos") }
+                )
             }
         }
     }
@@ -1114,12 +1155,13 @@ private fun LazyListScope.discogsNativeArtistRows(
                 }
             }
             if (hasMore) item(key = "discogs:artists:more") {
-                OutlinedButton(
+                NativeCatalogSearchLoadMore(
+                    label = "Carregar mais artistas",
                     onClick = onLoadMore,
                     modifier = Modifier.fillMaxWidth().padding(
                         horizontal = PAGE_GUTTER, vertical = 12.dp,
                     ),
-                ) { Text("Carregar mais artistas") }
+                )
             }
         }
     }
