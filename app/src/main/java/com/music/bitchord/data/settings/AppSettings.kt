@@ -574,6 +574,9 @@ object AppSettings {
     val webdavUrl = MutableStateFlow("")
     val webdavUsername = MutableStateFlow("")
     val webdavPassword = MutableStateFlow("")
+    // A configured connection can be paused without deleting its credentials.
+    // Default true preserves remote libraries configured before this switch existed.
+    val webdavEnabled = MutableStateFlow(true)
 
     // ── SMB ───────────────────────────────────────────────────────────────
 
@@ -590,6 +593,7 @@ object AppSettings {
     val smbBasePath = MutableStateFlow("")
     val smbUsername = MutableStateFlow("")
     val smbPassword = MutableStateFlow("")
+    val smbEnabled = MutableStateFlow(true)
 
     /**
      * Browse ids of the playlists pinned to the top of the Library tab, in the
@@ -942,6 +946,8 @@ object AppSettings {
             ?: LibrarySort.DEFAULT
         detailSongSorts.value = readDetailSongSorts()
         localMusicFolderUri.value = prefs.getString(KEY_LOCAL_MUSIC_FOLDER_URI, "").orEmpty()
+        webdavEnabled.value = prefs.getBoolean(KEY_WEBDAV_ENABLED, true)
+        smbEnabled.value = prefs.getBoolean(KEY_SMB_ENABLED, true)
         webdavUrl.value = prefs.getString(KEY_WEBDAV_URL, "").orEmpty()
         webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
         webdavPassword.value = authStore.webdavPassword.orEmpty()
@@ -950,18 +956,8 @@ object AppSettings {
         smbBasePath.value = prefs.getString(KEY_SMB_BASE_PATH, "").orEmpty()
         smbUsername.value = prefs.getString(KEY_SMB_USERNAME, "").orEmpty()
         smbPassword.value = authStore.smbPassword.orEmpty()
-        com.music.bitchord.data.smb.SmbAuth.update(
-            smbHost.value,
-            smbShare.value,
-            smbBasePath.value,
-            smbUsername.value,
-            smbPassword.value,
-        )
-        com.music.bitchord.data.webdav.WebDavAuth.update(
-            webdavUrl.value,
-            webdavUsername.value,
-            webdavPassword.value,
-        )
+        publishSmbAuth()
+        publishWebDavAuth()
         pinnedPlaylists.value = readPinnedPlaylists()
         discordToken.value = authStore.discordToken.orEmpty()
         discordUsername.value = prefs.getString(KEY_DISCORD_USERNAME, "").orEmpty()
@@ -1863,7 +1859,14 @@ object AppSettings {
         publishWebDavAuth()
     }
 
+    fun setWebDavEnabled(enabled: Boolean) {
+        webdavEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_WEBDAV_ENABLED, enabled).apply()
+        publishWebDavAuth()
+    }
+
     fun clearWebDav() {
+        setWebDavEnabled(true)
         setWebDavUrl("")
         setWebDavUsername("")
         setWebDavPassword("")
@@ -1904,7 +1907,14 @@ object AppSettings {
         publishSmbAuth()
     }
 
+    fun setSmbEnabled(enabled: Boolean) {
+        smbEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_SMB_ENABLED, enabled).apply()
+        publishSmbAuth()
+    }
+
     fun clearSmb() {
+        setSmbEnabled(true)
         setSmbHost("")
         setSmbShare("")
         setSmbBasePath("")
@@ -1915,20 +1925,20 @@ object AppSettings {
     private fun publishSmbAuth() {
         if (!this::prefs.isInitialized || !this::authStore.isInitialized) return
         com.music.bitchord.data.smb.SmbAuth.update(
-            smbHost.value,
-            smbShare.value,
-            smbBasePath.value,
-            smbUsername.value,
-            smbPassword.value,
+            if (smbEnabled.value) smbHost.value else "",
+            if (smbEnabled.value) smbShare.value else "",
+            if (smbEnabled.value) smbBasePath.value else "",
+            if (smbEnabled.value) smbUsername.value else "",
+            if (smbEnabled.value) smbPassword.value else "",
         )
     }
 
     private fun publishWebDavAuth() {
         if (!this::prefs.isInitialized || !this::authStore.isInitialized) return
         com.music.bitchord.data.webdav.WebDavAuth.update(
-            webdavUrl.value,
-            webdavUsername.value,
-            webdavPassword.value,
+            if (webdavEnabled.value) webdavUrl.value else "",
+            if (webdavEnabled.value) webdavUsername.value else "",
+            if (webdavEnabled.value) webdavPassword.value else "",
         )
     }
 
@@ -2171,6 +2181,8 @@ object AppSettings {
     private const val KEY_HOME_RECENTS_VIEW_TYPE = "home_recents_view_type"
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
     private const val KEY_WEBDAV_URL = "webdav_url"
+    private const val KEY_WEBDAV_ENABLED = "webdav_enabled"
+    private const val KEY_SMB_ENABLED = "smb_enabled"
     private const val KEY_WEBDAV_USERNAME = "webdav_username"
     private const val KEY_SMB_HOST = "smb_host"
     private const val KEY_SMB_SHARE = "smb_share"
