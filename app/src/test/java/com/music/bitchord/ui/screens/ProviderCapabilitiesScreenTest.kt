@@ -436,6 +436,62 @@ class ProviderCapabilitiesScreenTest {
             .assertExists()
     }
 
+    @Test fun soulseekDownloadFolderBelongsToDownloadProviderNotAccount() {
+        val key = ProviderKey("soulseek")
+        val cap = ProviderCapability.DOWNLOAD
+        val entry = ProviderInventoryEntry(
+            key = key,
+            capability = cap,
+            tab = ProviderSettingsTab.DOWNLOADS,
+            displayName = "Soulseek",
+            readiness = ProviderReadiness.READY,
+            supportsReordering = false,
+            notes = "",
+        )
+        val group = ProviderDisplayGroup(
+            key = key,
+            tab = ProviderSettingsTab.DOWNLOADS,
+            title = "Soulseek",
+            rows = listOf(
+                ProviderTabRowState(
+                    entry = entry,
+                    status = ProviderCapabilityStatus(
+                        capability = cap,
+                        key = key,
+                        implemented = true,
+                        prerequisitesMet = true,
+                        userAuthorized = false,
+                        operationalHealth = ProviderOperationalHealth.UNKNOWN,
+                        effectiveEligible = false,
+                    ),
+                    order = 0,
+                ),
+            ),
+        )
+        compose.setContent {
+            BitChordTheme {
+                ProviderCapabilitiesScreen(
+                    group = group,
+                    configured = emptyMap(),
+                    saving = false,
+                    loading = false,
+                    error = null,
+                    contentPadding = PaddingValues(0.dp),
+                    onBack = {},
+                    onToggle = { _, _ -> },
+                    onConfigure = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("providers-function-DOWNLOAD", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithTag("providers-soulseek-folder-settings", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithText("Pasta de downloads Soulseek").assertExists()
+        compose.onAllNodesWithTag("providers-connections-soulseek", useUnmergedTree = true)
+            .assertCountEquals(0)
+    }
+
     @Test fun audioRemoteLibraryUsesCleanNavidromeNameAndNoTrailingSetupLabel() {
         assertEquals("Navidrome", ProviderRemoteLibraryTarget.OPEN_SUBSONIC.displayName)
         var opened = 0
