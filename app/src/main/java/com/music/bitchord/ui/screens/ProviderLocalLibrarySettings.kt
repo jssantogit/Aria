@@ -48,10 +48,7 @@ internal fun ProviderLocalLibrarySettings() {
         }
     }
 
-    SettingsGroupSurface(
-        modifier = Modifier.padding(horizontal = 16.dp)
-            .testTag("providers-local-library-settings"),
-    ) {
+    SettingsGroupSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
         SettingsRow(
             icon = Icons.Rounded.Folder,
             title = stringResource(R.string.local_music_folder),
