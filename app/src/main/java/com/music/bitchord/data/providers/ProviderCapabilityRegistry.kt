@@ -121,6 +121,33 @@ internal object ProviderCapabilityRegistry {
         add(
             ProviderInventoryEntry(
                 key = BuiltInProviderKeys.DISCOGS,
+                capability = ProviderCapability.CATALOG_SEARCH,
+                tab = ProviderSettingsTab.CATALOG,
+                displayName = "Discogs (Busca)",
+                readiness = when {
+                    !discogsImplemented -> ProviderReadiness.NOT_IMPLEMENTED
+                    !discogsTokenConfigured -> ProviderReadiness.NEEDS_CONFIGURATION
+                    else -> ProviderReadiness.READY
+                },
+                supportsReordering = true,
+                notes = "Busca de artistas pelo ID Discogs; exige token pessoal",
+            ),
+        )
+        add(
+            ProviderInventoryEntry(
+                key = BuiltInProviderKeys.DISCOGS,
+                capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                tab = ProviderSettingsTab.CATALOG,
+                displayName = "Discogs (Discografia)",
+                readiness = if (discogsImplemented) ProviderReadiness.READY
+                    else ProviderReadiness.NOT_IMPLEMENTED,
+                supportsReordering = true,
+                notes = "Discografia por Artist ID Discogs; sem MusicBrainz ou token",
+            ),
+        )
+        add(
+            ProviderInventoryEntry(
+                key = BuiltInProviderKeys.DISCOGS,
                 capability = ProviderCapability.EDITION_METADATA,
                 tab = ProviderSettingsTab.CATALOG,
                 displayName = "Discogs (Edições)",
