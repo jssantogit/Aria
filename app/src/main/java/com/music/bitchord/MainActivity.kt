@@ -1539,11 +1539,11 @@ private fun BitChordApp(
     }
     val canonicalHomeDisplayShelves = remember(
         canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
-        authorizedCountryChartShelf,
+        authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
     ) {
         com.music.bitchord.ui.projectCanonicalHomeDisplay(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
-            authorizedCountryChartShelf,
+            authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
         )
     }
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(

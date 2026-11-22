@@ -19,6 +19,32 @@ class CanonicalEditorialFeedProjectionTest {
     private val apple = BuiltInProviderKeys.ITUNES
     private val mb = BuiltInProviderKeys.MUSICBRAINZ
 
+    @Test
+    fun homeIncludesOnlyVerifiedOptionalCommunityAndPersonalShelves() {
+        val empty = CatalogEditorialSelection(
+            state = UiState.Success(emptyList()),
+            provider = null,
+        )
+        val community = HomeShelf("Comunidade", listOf(
+            ShelfItem("Música A", "Artista", null, null, "catalog:RECORDING:a"),
+        ))
+        val personal = HomeShelf("Para você", listOf(
+            ShelfItem("Música B", "Artista", null, null, "catalog:RECORDING:b"),
+        ))
+        val result = projectCanonicalHomeDisplay(
+            canonicalHomeShelves = emptyList(),
+            selection = empty,
+            publicPlaylistShelf = null,
+            communityShelf = community,
+            personalRecommendationShelf = personal,
+        )
+        assertEquals(listOf("Comunidade", "Para você"), result.map { it.title })
+        assertTrue(projectCanonicalHomeDisplay(
+            emptyList(), empty, null,
+            communityShelf = HomeShelf("Vazio", emptyList()),
+        ).isEmpty())
+    }
+
     @Test fun homeProviderPriorityDoesNotReidentifyAnyProviderNativeAlbum() {
         val mixed = listOf(HomeShelf("Releases", listOf(
             ShelfItem("MusicBrainz Release", "Artist", null, null,
