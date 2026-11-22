@@ -4,6 +4,7 @@ import com.music.bitchord.ui.DiscogsNativeRoute
 import com.music.bitchord.ui.discogsNativeDetailRouteKey
 import com.music.bitchord.ui.discogsArtistPage
 import com.music.bitchord.ui.discogsNativeLoadingPage
+import com.music.bitchord.ui.discogsNativePageDisplayAllowed
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsNativeArtistRelease
@@ -12,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
@@ -82,6 +84,35 @@ class DiscogsNativeNavigationTest {
         assertEquals(BrowseType.ALBUM, edition.page.type)
         assertTrue(edition.page.songs is UiState.Loading)
         assertEquals("discogs:release:500", edition.page.browseId)
+    }
+
+    @Test fun deniedDiscographyCanOnlyRenderAContentFreeNativePermissionPage() {
+        val pending = discogsNativeLoadingPage(
+            "discogs:artist:17", "From an authorized search",
+            "Artista · Discogs", BrowseType.ARTIST,
+        )
+        val denied = pending.copy(page = pending.page.copy(
+            songs = UiState.Error("Ative a Discografia do Discogs em Provedores."),
+        ))
+        assertTrue(discogsNativePageDisplayAllowed(
+            denied, discographyAuthorized = false, catalogSearchAuthorized = true,
+        ))
+        assertTrue(discogsNativePageDisplayAllowed(
+            pending, discographyAuthorized = true, catalogSearchAuthorized = false,
+        ))
+        assertFalse(discogsNativePageDisplayAllowed(
+            pending, discographyAuthorized = false, catalogSearchAuthorized = true,
+        ))
+        assertFalse(discogsNativePageDisplayAllowed(
+            denied, discographyAuthorized = false, catalogSearchAuthorized = false,
+        ))
+        val loaded = discogsArtistPage(
+            DiscogsNativeArtistSearchRow(17L, "From an authorized search"),
+            emptyList(), hasMore = false, incomplete = false,
+        )
+        assertFalse(discogsNativePageDisplayAllowed(
+            loaded, discographyAuthorized = false, catalogSearchAuthorized = true,
+        ))
     }
 
     @Test fun albumNavigationAndBackRestoreArtistRouteExactly() {
