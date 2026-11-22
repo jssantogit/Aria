@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.components.NativeSettingsPrimaryAction
 
 /**
  * The same compact rounded BasicTextField vocabulary as the app's native
@@ -50,6 +51,7 @@ internal fun NativeProviderSecretField(
     enabled: Boolean,
     providerId: String = "discogs",
     providerLabel: String = "Discogs",
+    savedHint: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(12.dp)
@@ -83,16 +85,24 @@ internal fun NativeProviderSecretField(
                 Box(Modifier.weight(1f)) {
                     if (value.isEmpty()) {
                         Text(
-                            "Cole seu token pessoal",
+                            // Presentation only: never make the mask the
+                            // editable value or expose the saved credential
+                            // through the reveal toggle.
+                            savedHint ?: "Cole seu token pessoal",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag(
+                                "providers-${providerId}-token-hint",
+                            ),
                         )
                     }
                     inner()
                 }
                 IconButton(
                     onClick = { revealed = !revealed },
-                    enabled = enabled,
+                    // A stored masked hint cannot be revealed. The eye is
+                    // available only while the user enters a new raw token.
+                    enabled = enabled && value.isNotEmpty(),
                     modifier = Modifier.size(40.dp)
                         .testTag("providers-${providerId}-token-visibility"),
                 ) {
@@ -108,7 +118,7 @@ internal fun NativeProviderSecretField(
     )
 }
 
-/** Native inset Settings action, with the same dark/white contrast as the app. */
+/** Canonical native blue 50dp pill, shared with the other Settings forms. */
 @Composable
 internal fun NativeProviderCredentialSaveAction(
     enabled: Boolean,
@@ -116,25 +126,11 @@ internal fun NativeProviderCredentialSaveAction(
     providerId: String = "discogs",
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .clip(shape)
-            .background(
-                if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-            )
-            .clickable(enabled = enabled, onClick = onClick)
-            .testTag("providers-${providerId}-token-save"),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "Salvar token",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (enabled) MaterialTheme.colorScheme.surface
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    NativeSettingsPrimaryAction(
+        label = "Salvar token",
+        enabled = enabled,
+        onClick = onClick,
+        modifier = modifier,
+        tag = "providers-${providerId}-token-save",
+    )
 }
