@@ -1935,11 +1935,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Both exact editions and grouped works use the same native detail
             // shelves. Only a MusicBrainz-supplied group MBID permits related
             // edition/artist requests; titles cannot establish this relation.
-            val albumGroupMbid = when (entry.kind) {
-                CanonicalSearchKind.RELEASE_GROUP -> entry.musicBrainzId
-                CanonicalSearchKind.RELEASE -> displayedEditionGroupMbid
-                else -> null
-            }
+            val albumGroupMbid = canonicalAlbumGroupMbid(
+                entry.kind, entry.musicBrainzId, displayedEditionGroupMbid,
+            )
             if (albumGroupMbid != null && output is UiState.Success &&
                 lease.isCurrent() && _searchSource.value == SearchSource.CANONICAL &&
                 canonicalPath.lastOrNull() == entry

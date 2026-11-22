@@ -78,6 +78,77 @@ class CanonicalCuratedHomeFeedTest {
             com.music.bitchord.ui.canonicalAlbumArtistRelatedShelf(rows, "Various Artists")?.title)
     }
 
+
+    @Test fun editionAndWorkResolveExactlyOneCanonicalGroupWithoutTitleGuessing() {
+        val group = "11111111-1111-4111-8111-111111111111"
+        val release = "22222222-2222-4222-8222-222222222222"
+        assertEquals(group, com.music.bitchord.ui.canonicalAlbumGroupMbid(
+            CanonicalSearchKind.RELEASE_GROUP, group,
+        ))
+        assertEquals(group, com.music.bitchord.ui.canonicalAlbumGroupMbid(
+            CanonicalSearchKind.RELEASE, release, group.uppercase(),
+        ))
+        assertEquals(null, com.music.bitchord.ui.canonicalAlbumGroupMbid(
+            CanonicalSearchKind.RELEASE, release,
+        ))
+        assertEquals(null, com.music.bitchord.ui.canonicalAlbumGroupMbid(
+            CanonicalSearchKind.RELEASE, release, "Album title in a catalogue",
+        ))
+        assertEquals(null, com.music.bitchord.ui.canonicalAlbumGroupMbid(
+            CanonicalSearchKind.RECORDING, release, group,
+        ))
+        assertEquals(null, com.music.bitchord.ui.canonicalAlbumGroupMbid(
+            CanonicalSearchKind.RELEASE_GROUP, "invalid release group",
+        ))
+    }
+
+    @Test fun directlyOpenedEditionCanKeepIndependentNativeVersionsAndArtistSections() {
+        val group = "11111111-1111-4111-8111-111111111111"
+        val artist = "12345678-1234-4234-8234-123456789abc"
+        val current = "22222222-2222-4222-8222-222222222222"
+        val sibling = com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(
+            musicBrainzId = "33333333-3333-4333-8333-333333333333",
+            title = "Other verified edition", country = "JP",
+            releaseDate = "2025-07-11", artistDisplay = "Verified artist",
+            status = "Official", releaseGroupMbid = group,
+        )
+        val editions = com.music.bitchord.ui.canonicalReleaseGroupEditionRows(
+            group,
+            listOf(sibling.copy(musicBrainzId = current), sibling,
+                sibling.copy(musicBrainzId = "44444444-4444-4444-8444-444444444444",
+                    releaseGroupMbid = "55555555-5555-4555-8555-555555555555")),
+            current,
+        )
+        val versionSections = com.music.bitchord.ui.canonicalNativeSections(
+            CanonicalSearchKind.RELEASE_GROUP, editions, "Outras versões",
+        )
+        val related = com.music.bitchord.ui.canonicalAlbumArtistRelatedRows(
+            artist, group,
+            listOf(
+                com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit(
+                    group, "Current work", primaryType = "Album",
+                    artistDisplay = "Verified artist",
+                ),
+                com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit(
+                    "66666666-6666-4666-8666-666666666666", "Other artist work",
+                    primaryType = "EP", artistDisplay = "Verified artist",
+                ),
+            ),
+        )
+        val shelves = versionSections + listOfNotNull(
+            com.music.bitchord.ui.canonicalAlbumArtistRelatedShelf(related, "Verified artist"),
+        )
+        assertEquals(listOf("Outras versões", "Mais de Verified artist"),
+            shelves.map { it.title })
+        assertEquals(2, shelves.flatMap { it.items }.size)
+        assertTrue(shelves.flatMap { it.items }.all { it.videoId == null })
+        assertTrue(shelves.flatMap { it.items }.all { it.browseId.orEmpty().startsWith("catalog:") })
+        assertTrue(shelves.flatMap { it.items }.none {
+            it.browseId == "catalog:RELEASE:$current" ||
+                it.browseId == "catalog:RELEASE_GROUP:$group"
+        })
+    }
+
     @Test fun albumVersionsUseProvenGroupLinksAndAreNeverPlayableSongs() {
         val group = "11111111-1111-4111-8111-111111111111"
         val selected = com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(

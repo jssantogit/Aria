@@ -88,6 +88,27 @@ internal fun canonicalArtistAlbumShelfKind(
     }
 }
 
+
+/**
+ * A public album work is a ReleaseGroup. A specific Release joins that work
+ * only through its exact, source-provided group MBID, never through title or
+ * artist-name similarity. Unknown or malformed links do not create shelves.
+ */
+internal fun canonicalAlbumGroupMbid(
+    kind: CanonicalSearchKind,
+    openedMbid: String,
+    verifiedEditionGroupMbid: String? = null,
+): String? {
+    val candidate = when (kind) {
+        CanonicalSearchKind.RELEASE_GROUP -> openedMbid
+        CanonicalSearchKind.RELEASE -> verifiedEditionGroupMbid
+        else -> null
+    }?.trim()?.lowercase(java.util.Locale.ROOT)
+    return candidate?.takeIf {
+        Regex("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
+    }
+}
+
 /** An exact ReleaseGroup relation, not a same-title guess, authorizes edition cards. */
 internal fun canonicalReleaseGroupEditionRows(
     groupMbid: String,
