@@ -4140,8 +4140,7 @@ private fun BitChordApp(
                             onEditSignatureApi = { editingSignatureApi = true },
                             contentPadding = listPadding,
                         )
-                    } else if (key == "apple_native_album" ||
-                        key == "apple_native_artist" ||
+                    } else if (key.startsWith("itunes:") ||
                         key.startsWith("discogs:artist:") ||
                         key.startsWith("discogs:release:")
                     ) {
@@ -4152,7 +4151,19 @@ private fun BitChordApp(
                         // composition path is allowed.
                         val isDiscogs = key.startsWith("discogs:")
                         val artistState = appleArtistDetail as? UiState.Success
-                        val unified = if (isDiscogs) null else appleSharedVisual
+                        val liveApplePage = if (!isDiscogs) appleSharedVisual?.takeIf {
+                            it.page.browseId == key
+                        } else null
+                        // The outgoing native Apple artist keeps its own
+                        // compositor snapshot during the album transition;
+                        // never show that snapshot after permission revocation.
+                        val previousApplePage = remember(key) {
+                            mutableStateOf<com.music.bitchord.ui.screens.AppleSharedDetail?>(null)
+                        }
+                        if (liveApplePage != null) previousApplePage.value = liveApplePage
+                        val unified = liveApplePage ?: previousApplePage.value.takeIf {
+                            !isDiscogs && appleReadAllowed
+                        }
                         val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
                             it.page.browseId == key
                         } else null
@@ -4172,7 +4183,7 @@ private fun BitChordApp(
                         if (unifiedPage == null) {
                             com.music.bitchord.ui.components.MessageState(
                                 if ((if (isDiscogs) discogsDetail
-                                    else if (key == "apple_native_album") appleAlbumDetail
+                                    else if (key.contains(":album:")) appleAlbumDetail
                                     else appleArtistDetail) is UiState.Error
                                 ) "Não foi possível carregar os detalhes."
                                 else "Carregando…",
@@ -4180,10 +4191,9 @@ private fun BitChordApp(
                         } else {
                             // The native list is keyed by the exact Discogs ID
                             // rather than an artist/release category string.
-                            val unifiedListState = if (isDiscogs) pageDetailListState
-                                else detailListStates.getOrPut(
-                                    "apple:${unifiedPage.browseId}"
-                                ) { LazyListState() }
+                            // All three sources share their AnimatedContent
+                            // slot's exact-keyed native list/scroll state.
+                            val unifiedListState = pageDetailListState
                             val sourceUriHandler = LocalUriHandler.current
                             DetailScreen(
                                 page = unifiedPage,
@@ -4238,7 +4248,9 @@ private fun BitChordApp(
                                                 onOpenSource = sourceUriHandler::openUri,
                                             )
                                         }
-                                    } else if (key == "apple_native_artist") {
+                                    } else if (key.startsWith("itunes:") &&
+                                        key.contains(":artist:")
+                                    ) {
                                         artistState?.data?.let { artistPage ->
                                             item(key = "apple:source:paging") {
                                                 AppleArtistCatalogExtras(
@@ -5548,7 +5560,7 @@ private fun BitChordApp(
                             (list?.firstVisibleItemIndex ?: 0) > 0
                         }
                         appleSharedVisual != null -> {
-                            val list = detailListStates["apple:${appleSharedVisual.page.browseId}"]
+                            val list = detailListStates[appleSharedVisual.page.browseId]
                             (list?.firstVisibleItemIndex ?: 0) > 0 ||
                                 (list?.firstVisibleItemScrollOffset ?: 0) > detailTitleDrop
                         }
