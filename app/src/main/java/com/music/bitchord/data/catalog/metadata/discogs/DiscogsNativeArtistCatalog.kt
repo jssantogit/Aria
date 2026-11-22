@@ -91,7 +91,8 @@ internal class DiscogsNativeEditionClient(
  * never representing this first slice as a complete discography.
  */
 internal class DiscogsNativeArtistCatalog(
-    private val transport: DiscogsPublicArtistTransport = KtorDiscogsPublicArtistTransport(),
+    private val transport: DiscogsPublicArtistTransport =
+        KtorDiscogsPublicArtistTransport(perPage = 6),
     private val editions: DiscogsNativeEditionReader = DiscogsNativeEditionClient(),
     private val enabled: Boolean = false,
     private val limiter: DiscogsRateLimiter = DiscogsRequestBudget.limiter,
@@ -100,7 +101,7 @@ internal class DiscogsNativeArtistCatalog(
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
     suspend fun load(artistId: Long, page: Int = 1): DiscogsNativeArtistLoad {
-        if (artistId !in 1..999_999_999_999L || page !in 1..3)
+        if (artistId !in 1..999_999_999_999L || page !in 1..100)
             return DiscogsNativeArtistLoad.InvalidArtist
         if (!enabled || !admission.permitted(
             ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
@@ -126,7 +127,7 @@ internal class DiscogsNativeArtistCatalog(
         val index = DiscogsPublicArtistParsing.page(response.body, page)
             ?: return DiscogsNativeArtistLoad.Unavailable
         val hydrated = mutableListOf<Pair<DiscogsArtistIndexEntry, DiscogsRecord>>()
-        var incomplete = index.entries.size > 6 || index.totalPages > 3
+        var incomplete = index.entries.size > 6 || index.totalPages > 100
         val seenReleaseIds = HashSet<Long>()
         for (entry in index.entries.take(6)) {
             val releaseId = when (entry.kind) {
@@ -149,7 +150,7 @@ internal class DiscogsNativeArtistCatalog(
         }
         return DiscogsNativeArtistLoad.Success(
             releases = discogsNativeArtistReleases(artistId, hydrated),
-            hasMore = page < index.totalPages && page < 3,
+            hasMore = page < index.totalPages && page < 100,
             incomplete = incomplete,
         )
     }
