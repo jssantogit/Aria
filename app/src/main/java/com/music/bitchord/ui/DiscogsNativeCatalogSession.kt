@@ -16,6 +16,7 @@ import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.NativeMetadataTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -79,6 +80,23 @@ internal class DiscogsNativeCatalogSession(
     val detail: StateFlow<UiState<DiscogsNativePage>?> = _detail.asStateFlow()
 
     private var query = ""
+    /** Never let a still-open page display stale Discogs API Content beyond
+     * the provider's six-hour maximum. This timer is not extended by paging. */
+    private var expirationJob: Job? = null
+    private var expirationEpoch = 0L
+
+    private fun expireCurrentSnapshot() {
+        expirationJob?.cancel()
+        val epoch = ++expirationEpoch
+        expirationJob = scope.launch {
+            delay(4L * 60L * 60L * 1_000L)
+            if (expirationEpoch == epoch) {
+                clearSearch()
+                backAll()
+            }
+        }
+    }
+
     private var searchPage = 0
     private var releaseSearchPage = 0
     private var searchJob: Job? = null
@@ -120,6 +138,7 @@ internal class DiscogsNativeCatalogSession(
         backAll()
         query = raw.trim()
         if (query.isBlank()) return
+        expireCurrentSnapshot()
         _artists.value = UiState.Loading
         _releasesSearch.value = UiState.Loading
         loadNextSearchPage()
@@ -333,6 +352,11 @@ internal class DiscogsNativeCatalogSession(
         artistHasMore = false
         artistIncomplete = false
         cachedArtistPage = null
+        if (_artists.value == null && _releasesSearch.value == null) {
+            expirationJob?.cancel()
+            expirationJob = null
+            expirationEpoch++
+        }
     }
 }
 
