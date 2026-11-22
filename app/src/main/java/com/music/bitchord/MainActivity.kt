@@ -1853,8 +1853,18 @@ private fun BitChordApp(
     // A device folder's tab and selection, kept the same way and for the same
     // reason: an album opened from the folder replaces its page until Back.
     val localFolderStates = remember { mutableMapOf<String, LocalFolderState>() }
-    LaunchedEffect(detailStack.map { it.browseId }) {
+    LaunchedEffect(
+        detailStack.map { it.browseId },
+        appleArtistNavigation?.browseId, appleAlbumNavigation?.browseId,
+        discogsBrowseId,
+    ) {
         val open = detailStack.mapTo(HashSet()) { it.browseId }
+        // Source-native detail pages use the exact same list-state map as
+        // MusicBrainz, but their identities live in their own provider
+        // sessions. Keep the Apple parent artist state when an album opens.
+        appleArtistNavigation?.browseId?.let(open::add)
+        appleAlbumNavigation?.browseId?.let(open::add)
+        discogsBrowseId?.let(open::add)
         detailListStates.keys.retainAll(open)
         localFolderStates.keys.retainAll(open)
     }
