@@ -44,6 +44,26 @@ class CanonicalCuratedHomeFeedTest {
         trendingHeading = "Em alta", todayIsoDate = "2026-10-25",
     )
 
+    @Test fun largerRealMusicBrainzFeedDistributesDistinctTypedReleasesAcrossShelves() {
+        val base = release.copy(releaseKind = "Album")
+        val rows = (1..12).map { i ->
+            base.copy(
+                musicBrainzId = "00000000-0000-0000-0000-${i.toString().padStart(12, '0')}",
+                title = "Release $i",
+                releaseKind = if (i % 3 == 0) "Single" else "Album",
+                releaseDate = "2025-10-${i.toString().padStart(2, '0')}",
+            )
+        }
+        val shelves = feed(rows)
+        assertEquals(listOf("Lançamentos", "Álbuns para descobrir", "Singles e EPs"),
+            shelves.map { it.title })
+        assertEquals(12, shelves.flatMap { it.items }.map { it.browseId }.distinct().size)
+        assertTrue(shelves.flatMap { it.items }.all {
+            it.videoId == null && it.browseId.orEmpty().startsWith("catalog:RELEASE_GROUP:")
+        })
+        assertEquals(8, shelves.first().items.size)
+    }
+
     @Test fun communityPopularityRanksOnlyVerifiedCachedRecordingIdentities() {
         val known = playable.copy(hasCatalogedAsset = false)
         val other = playable.copy(musicBrainzId = "00000000-0000-0000-0000-000000000003",

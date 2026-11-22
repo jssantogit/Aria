@@ -365,23 +365,35 @@ internal fun canonicalCuratedHomeShelves(
     val candidates = groups.ifEmpty {
         releasedCandidates.filter { it.kind == CanonicalSearchKind.RELEASE }
     }
-    val knownReleases = candidates.asSequence()
+    val knownRows = candidates.asSequence()
         .sortedWith(
             compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
                 .thenBy { it.musicBrainzId },
         )
         .distinctBy { it.musicBrainzId }
         .take(24)
-        .mapNotNull { row ->
-            canonicalBrowseCardId(row)?.let { id ->
-                ShelfItem(row.title, row.subtitle.orEmpty(), row.artworkUri, null, id)
-            }
-        }
         .toList()
-    // No cached public releases on a fresh installation? Show genuine saved
-    // albums rather than a wholly empty feed. Never claim the saved copy is new.
-    val releaseItems = if (knownReleases.isNotEmpty()) knownReleases else savedReleases
+    fun releaseCard(row: CanonicalCatalogSearchRow): ShelfItem? =
+        canonicalBrowseCardId(row)?.let { id ->
+            ShelfItem(row.title, row.subtitle.orEmpty(), row.artworkUri, null, id)
+        }
+    // Reserve the leading carousel for the newest verified catalog releases;
+    // additional rows become truly distinct discovery sections. Never repeat
+    // an album in multiple rails or invent a "popular" rank from dates.
+    val featured = knownRows.take(8).mapNotNull(::releaseCard)
+    val releaseItems = if (featured.isNotEmpty()) featured else savedReleases
     if (releaseItems.isNotEmpty()) add(HomeShelf(releasesHeading, releaseItems))
+    if (knownRows.size > 8) {
+        val remaining = knownRows.drop(8)
+        val albums = remaining.filter {
+            canonicalEditorialReleaseType(it) == "Album"
+        }.mapNotNull(::releaseCard)
+        val singles = remaining.filter {
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        }.mapNotNull(::releaseCard)
+        if (albums.isNotEmpty()) add(HomeShelf("Álbuns para descobrir", albums))
+        if (singles.isNotEmpty()) add(HomeShelf("Singles e EPs", singles))
+    }
 
     val localCards = localPicks.asSequence()
         .filter(::isPlayableLocalPick)

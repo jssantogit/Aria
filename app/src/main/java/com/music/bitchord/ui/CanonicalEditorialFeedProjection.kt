@@ -29,6 +29,17 @@ internal fun projectCanonicalHomeEditorial(
     val musicBrainzShelves = musicBrainzHomeEditorialShelves(
         canonicalHomeShelves, releasesHeading,
     )
+    val musicBrainzExtraShelves = canonicalHomeShelves
+        .filter { it.title in setOf("Álbuns para descobrir", "Singles e EPs") }
+        .mapNotNull { shelf ->
+            // These are independently typed MusicBrainz releases from the
+            // same admitted source, never Apple, local, or server cards.
+            val items = shelf.items.filter { item ->
+                item.browseId.orEmpty().startsWith("catalog:RELEASE_GROUP:") ||
+                    item.browseId.orEmpty().startsWith("catalog:RELEASE:")
+            }
+            shelf.copy(items = items).takeIf { items.isNotEmpty() }
+        }
     val nativeAppleState: UiState<List<HomeShelf>> = when (val source = appleHomeReleases) {
         is UiState.Success -> UiState.Success(
             appleFirstHomeShelves(
@@ -55,11 +66,31 @@ internal fun projectCanonicalHomeEditorial(
     return selectCatalogEditorial(
         catalogEditorialOrder, mapOf(
             mb to if (canonicalWorldwideLoading && musicBrainzShelves.isEmpty())
-                UiState.Loading else UiState.Success(musicBrainzShelves),
+                UiState.Loading else UiState.Success(
+                    musicBrainzShelves + musicBrainzExtraShelves,
+                ),
             apple to appleState,
         ),
     )
 }
+
+/**
+ * When a cold/permission-limited installation has little verified editorial
+ * content, keep Home usable with actual navigation destinations from Explore.
+ * These tiles claim no album, cover, playback, chart or provider popularity.
+ */
+internal fun canonicalHomeGenreDiscoveryShelf(): HomeShelf = HomeShelf(
+    title = "Explore gêneros",
+    items = canonicalExploreGenres.take(8).map { genre ->
+        com.music.bitchord.data.model.ShelfItem(
+            title = genre.title,
+            subtitle = "Categoria",
+            thumbnailUrl = null,
+            videoId = null,
+            browseId = canonicalGenreBrowseId(genre),
+        )
+    },
+)
 
 /** Retain personal shelves regardless of catalog preference or upstream status. */
 internal fun projectCanonicalHomeDisplay(
@@ -70,14 +101,20 @@ internal fun projectCanonicalHomeDisplay(
     communityShelf: HomeShelf? = null,
     personalRecommendationShelf: HomeShelf? = null,
     chartArtistsShelf: HomeShelf? = null,
-): List<HomeShelf> =
-    listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
+): List<HomeShelf> {
+    val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         (selection.state as? UiState.Success)?.data.orEmpty() +
         listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(personalRecommendationShelf?.takeIf { it.items.isNotEmpty() }) +
-        listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() }) +
-        personalHomeShelves(canonicalHomeShelves) +
+        listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() })
+    val other = personalHomeShelves(canonicalHomeShelves) +
         listOfNotNull(publicPlaylistShelf?.takeIf { it.items.isNotEmpty() })
+    // Do not mistake an empty chart capability for empty music. Show a small
+    // navigation rail rather than an invented ranking/album/stream.
+    val genreDiscovery = if (editorial.size + other.size < 3)
+        listOf(canonicalHomeGenreDiscoveryShelf()) else emptyList()
+    return editorial + genreDiscovery + other
+}
 
 internal fun projectCanonicalHomeState(
     displayed: List<HomeShelf>,
