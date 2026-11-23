@@ -428,6 +428,27 @@ internal class DiscogsNativeCatalogSession(
         job.invokeOnCompletion { unregister() }
     }
 
+    /**
+     * Home, Explore and Search route through the SAME source-owned catalog
+     * session. A malformed Discogs ID is consumed (fail-closed), never
+     * handed to a legacy album screen or a name-based search.
+     */
+    fun openFromShelf(item: ShelfItem): Boolean {
+        val browseId = item.browseId ?: return false
+        if (!browseId.startsWith("discogs:")) return false
+        when {
+            discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId) != null ->
+                openReleaseFromSearch(DiscogsNativeReleaseSearchRow(
+                    browseId.substringAfterLast(':').toLong(), item.title,
+                ))
+            discogsNativeDetailRouteKey(DiscogsNativeRoute.ARTIST, browseId) != null ->
+                openArtist(DiscogsNativeArtistSearchRow(
+                    browseId.substringAfterLast(':').toLong(), item.title,
+                ))
+        }
+        return true
+    }
+
     fun openArtist(selected: DiscogsNativeArtistSearchRow) {
         if (selected.artistId !in 1..999_999_999_999L || selected.name.isBlank()) return
         backAll()
