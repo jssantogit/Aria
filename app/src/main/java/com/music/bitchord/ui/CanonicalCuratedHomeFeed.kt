@@ -501,21 +501,17 @@ internal fun canonicalCuratedHomeShelves(
     todayIsoDate: String,
     remotePicks: List<CanonicalServerSearchRow> = emptyList(),
 ): List<HomeShelf> = buildList {
-    val datePattern = Regex("^\\d{4}(-\\d{2}(-\\d{2})?)?$")
     val releasedCandidates = metadata.asSequence()
         .filter {
             it.kind == CanonicalSearchKind.RELEASE_GROUP ||
                 it.kind == CanonicalSearchKind.RELEASE
         }
         .filter { row -> canonicalEditorialReleaseType(row) != null }
+        // A partially dated catalogue work remains discoverable. Reject
+        // impossible dates such as February 30 / month 99, and known future
+        // works, rather than lexicographically comparing formatted guesses.
         .filter { row ->
-            val date = row.releaseDate ?: return@filter true
-            val normalized = when {
-                date.length == 4 -> "$date-01-01"
-                date.length == 7 -> "$date-01"
-                else -> date
-            }
-            date.matches(datePattern) && normalized <= todayIsoDate
+            canonicalCatalogReleaseDateNotFuture(row.releaseDate, todayIsoDate)
         }
         .toList()
     // An ineligible/future group must never suppress an already-published
