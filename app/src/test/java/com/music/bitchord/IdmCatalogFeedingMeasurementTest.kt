@@ -87,6 +87,38 @@ class IdmCatalogFeedingMeasurementTest {
         """{"id":"${id}","title":"Fixture ${index}","primary-type":"${kind}","first-release-date":"2026-11-01","artist-credit":[{"name":"Fixture Artist"}]}"""
     }
 
+    @Test fun appMusicBrainzHomeScannerConsumesSourcePositionsEvenAfterDateRejections() = runBlocking {
+        val seen = mutableListOf<Int>()
+        val rows = (1..9).map { index ->
+            val date = if (index == 6 || index == 9) "2026-11-18" else "2020-01-01"
+            """{"id":"${mbId(index)}","title":"Fixture Album","primary-type":"Album","first-release-date":"$date","artist-credit":[{"name":"Fixture Artist"}]}"""
+        }
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    assertEquals("release-group", path)
+                    val offset = parameters["offset"]!!.toInt()
+                    seen += offset
+                    return """{"count":9,"offset":$offset,"release-groups":[""" +
+                        rows.drop(offset).take(3).joinToString(",") + "]}"
+                }
+            },
+        ))
+        val scanned = scanMusicBrainzRecentEditorial(
+            search, "2026-10-01", "2026-11-23", maxPages = 3, pageSize = 3,
+        )
+        assertEquals(listOf(0, 3, 6), seen)
+        assertEquals(3, scanned.attempts)
+        assertEquals(9, scanned.sourcePositions)
+        assertEquals(9, scanned.parsedRows)
+        assertEquals(listOf(mbId(6), mbId(9)),
+            scanned.rows.map { it.musicBrainzId })
+        assertFalse(scanned.sourceFailure)
+        assertFalse(scanned.cursorRemaining)
+    }
+
     @Test fun musicbrainz_isolated_source_pages_flow_through_home_and_genre() = runBlocking {
         val entries = mbRows()
         val requests = mutableListOf<Pair<String, Int>>()
