@@ -643,67 +643,42 @@ private fun CanonicalHomeEditorialEffects(
         catalogEditorialOrder, genrePopularityAuthorized,
     ) {
         val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
-        val first = catalogEditorialOrder.firstOrNull()
         val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
         val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
         val discogs = com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
-        if (first == apple &&
-            !com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)
-        ) {
-            // Apple's native genre lookup is intentionally restricted to verified
-            // primaryGenreName values. A known subgenre may still be browsed by
-            // the separately authorized MusicBrainz tag source.
-            if (mb in catalogEditorialOrder &&
-                viewModel.canonicalGenreResultTag != tag
-            ) viewModel.loadCanonicalGenre(tag)
-        } else if (first == apple) {
-            if (mb !in catalogEditorialOrder)
-                viewModel.clearCanonicalGenreSupplement()
-            viewModel.loadAppleGenreEditorial(tag, emptyList())
-            val result = appleGenreReleases[tag]
-            if (mb in catalogEditorialOrder &&
-                (result is UiState.Error ||
-                    result is UiState.Success && result.data.isEmpty())
-            ) {
-                // This is a completed Apple miss. Do not repeatedly restart
-                // the same fallback when the MB Loading/Success state changes.
-                if (viewModel.canonicalGenreResultTag != tag)
+        if (catalogEditorialOrder.firstOrNull() == apple &&
+            mb !in catalogEditorialOrder
+        ) viewModel.clearCanonicalGenreSupplement()
+
+        // Preserve the user's three-way order for every genre. Only a
+        // settled miss makes the next provider eligible; unrelated MB tags
+        // and Loading states never bypass the configured middle provider.
+        for (source in catalogEditorialOrder) {
+            if (!com.music.bitchord.ui.shouldDispatchCanonicalGenreSource(
+                tag = tag,
+                target = source,
+                ordered = catalogEditorialOrder,
+                mbResultTag = viewModel.canonicalGenreResultTag,
+                mbState = canonicalGenreResults,
+                appleByTag = appleGenreReleases,
+                discogsByTag = discogsGenreReleases,
+            )) continue
+            when (source) {
+                mb -> if (viewModel.canonicalGenreResultTag != tag)
                     viewModel.loadCanonicalGenre(tag)
-            } else if (com.music.bitchord.ui.shouldSupplementAppleGenre(
-                    tag, catalogEditorialOrder, result,
-                )) {
-                viewModel.loadCanonicalGenreSupplement(tag)
+                apple -> if (com.music.bitchord.data.catalog.metadata
+                        .AppleExploreGenrePolicy.supports(tag)
+                    ) viewModel.loadAppleGenreEditorial(tag, emptyList())
+                discogs -> viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
             }
-        } else if (first == discogs) {
-            viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
-            if (com.music.bitchord.ui.editorialPrimaryMiss(discogsGenreReleases[tag])) {
-                when (catalogEditorialOrder.getOrNull(1)) {
-                    mb -> if (viewModel.canonicalGenreResultTag != tag)
-                        viewModel.loadCanonicalGenre(tag)
-                    apple -> viewModel.loadAppleGenreEditorial(tag, emptyList())
-                }
-            }
-        } else if (first == mb) {
-            if (apple in catalogEditorialOrder &&
-                (canonicalGenreResults is UiState.Error ||
-                    canonicalGenreResults is UiState.Success &&
-                    (canonicalGenreResults as UiState.Success).data.isEmpty())
-            ) viewModel.loadAppleGenreEditorial(tag, emptyList())
         }
-        if (first != discogs && discogs in catalogEditorialOrder) {
-            val prior = catalogEditorialOrder.takeWhile { it != discogs }
-            val priorMissed = prior.all { source ->
-                when (source) {
-                    mb -> viewModel.canonicalGenreResultTag == tag &&
-                        com.music.bitchord.ui.editorialPrimaryMiss(canonicalGenreResults)
-                    apple -> !com.music.bitchord.data.catalog.metadata
-                        .AppleExploreGenrePolicy.supports(tag) ||
-                        com.music.bitchord.ui.editorialPrimaryMiss(appleGenreReleases[tag])
-                    else -> false
-                }
-            }
-            if (priorMissed) viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
-        }
+
+        // MB artist membership is independently useful beside a valid Apple
+        // genre. This supplemental scan is not a premature release fallback.
+        if (com.music.bitchord.ui.shouldSupplementAppleGenre(
+                tag, catalogEditorialOrder, appleGenreReleases[tag],
+            )
+        ) viewModel.loadCanonicalGenreSupplement(tag)
     }
 
     LaunchedEffect(selectedTab, canonicalWorldwideLoading, canonicalHomeShelves,
