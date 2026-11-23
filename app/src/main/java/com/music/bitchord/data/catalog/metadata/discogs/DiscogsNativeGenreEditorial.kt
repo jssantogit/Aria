@@ -16,6 +16,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
+import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -236,27 +237,35 @@ internal class DiscogsNativeGenreEditorial(
     private data class IndexedAt(
         val page: DiscogsEditorialIndexPage,
         val instantMs: Long,
+        /** One-way in-memory binding; the access token is never cached. */
+        val tokenDigest: ByteArray,
     )
     private val recentIndexes = linkedMapOf<IndexKey, IndexedAt>()
     private val indexTtlMs = 120_000L
     private val maxCachedIndexes = 20
 
-    private fun cachedIndex(query: DiscogsEditorialQuery, page: Int):
-        DiscogsEditorialIndexPage? = synchronized(recentIndexes) {
-        val key = IndexKey(query, page)
-        val value = recentIndexes[key] ?: return@synchronized null
-        if (clockMs() - value.instantMs !in 0L..indexTtlMs) {
-            recentIndexes.remove(key)
-            null
-        } else value.page
-    }
+    private fun digestForCache(token: String): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(token.toByteArray(Charsets.UTF_8))
+
+    private fun cachedIndex(query: DiscogsEditorialQuery, page: Int,
+                            tokenDigest: ByteArray): DiscogsEditorialIndexPage? =
+        synchronized(recentIndexes) {
+            val key = IndexKey(query, page)
+            val value = recentIndexes[key] ?: return@synchronized null
+            if (clockMs() - value.instantMs !in 0L..indexTtlMs ||
+                !value.tokenDigest.contentEquals(tokenDigest)
+            ) {
+                recentIndexes.remove(key)
+                null
+            } else value.page
+        }
 
     private fun recordIndex(query: DiscogsEditorialQuery, page: Int,
-                            parsed: DiscogsEditorialIndexPage) {
+                            parsed: DiscogsEditorialIndexPage, tokenDigest: ByteArray) {
         synchronized(recentIndexes) {
             val key = IndexKey(query, page)
             recentIndexes.remove(key)
-            recentIndexes[key] = IndexedAt(parsed, clockMs())
+            recentIndexes[key] = IndexedAt(parsed, clockMs(), tokenDigest)
             if (recentIndexes.size > maxCachedIndexes) {
                 recentIndexes.remove(recentIndexes.keys.first())
             }
@@ -292,9 +301,10 @@ internal class DiscogsNativeGenreEditorial(
             )) return interrupted(DiscogsEditorialResult.Disabled)
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return interrupted(DiscogsEditorialResult.Unauthorized)
+        val tokenDigest = digestForCache(token)
         val reused = if (cursor.candidatePosition == 0 &&
             cursor.pageSignature == null
-        ) cachedIndex(query, cursor.page) else null
+        ) cachedIndex(query, cursor.page, tokenDigest) else null
         val index = if (reused != null) reused else {
             val response = try {
                 admission.execute(
@@ -311,7 +321,7 @@ internal class DiscogsNativeGenreEditorial(
               }
             when (response.status) {
                 200 -> DiscogsEditorialMasterParsing.page(response.body, cursor.page)
-                    ?.also { recordIndex(query, cursor.page, it) }
+                    ?.also { recordIndex(query, cursor.page, it, tokenDigest) }
                     ?: return interrupted(DiscogsEditorialResult.Unavailable)
                 401, 403 -> return interrupted(DiscogsEditorialResult.Unauthorized)
                 429 -> return interrupted(
@@ -427,6 +437,7 @@ internal class DiscogsNativeGenreEditorial(
         )) return DiscogsEditorialResult.Disabled
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return DiscogsEditorialResult.Unauthorized
+        val tokenDigest = digestForCache(token)
         val verified = mutableListOf<DiscogsEditorialCandidate>()
         val hydratedMasterIds = HashSet<Long>()
         // Transport failures are not negative evidence. Overlapping Discogs
@@ -459,7 +470,7 @@ internal class DiscogsNativeGenreEditorial(
               }
             val index = when (response.status) {
                 200 -> DiscogsEditorialMasterParsing.page(response.body, pageNumber)
-                    ?.also { recordIndex(query, pageNumber, it) }
+                    ?.also { recordIndex(query, pageNumber, it, tokenDigest) }
                     ?: return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
                         else DiscogsEditorialResult.Unavailable
                 401, 403 -> return if (verified.isNotEmpty())
