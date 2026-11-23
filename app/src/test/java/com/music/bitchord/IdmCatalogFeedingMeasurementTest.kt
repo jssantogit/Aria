@@ -38,6 +38,7 @@ class IdmCatalogFeedingMeasurementTest {
         withArtwork: Int,
         cursorRemaining: Boolean,
         rejected: Int = (raw - eligible).coerceAtLeast(0),
+        extras: Map<String, Int> = emptyMap(),
     ) {
         require(Regex("[a-z_]+").matches(scenario))
         require(listOf(raw, parsed, eligible, displayed, requests,
@@ -49,6 +50,10 @@ class IdmCatalogFeedingMeasurementTest {
             "displayed_with_artwork" to withArtwork,
             "rejected_or_not_selected" to rejected,
         )
+        extras.forEach { (key, value) ->
+            require(Regex("[a-z_]+").matches(key) && value >= 0)
+            fields[key] = value
+        }
         val directory = File(System.getenv("IDM_CATALOG_METRICS_DIR")
             ?: "build/idm-catalog-metrics")
         check(directory.exists() || directory.mkdirs())
@@ -354,7 +359,7 @@ class IdmCatalogFeedingMeasurementTest {
             listOf(apple, mb, discogs), listOf(apple, discogs, mb),
             listOf(discogs, mb, apple), listOf(discogs, apple, mb),
         )
-        var totalCards = 0
+        var visibleOnFirstOrder = 0
         for (order in providerOrders) {
             val selected = projectCanonicalHomeEditorial(
                 canonicalHomeShelves = listOf(mbSource),
@@ -375,7 +380,9 @@ class IdmCatalogFeedingMeasurementTest {
                 else -> "discogs:release:"
             }
             assertTrue(cards.all { it.browseId.orEmpty().startsWith(prefix) })
-            totalCards += cards.size
+            if (order == providerOrders.first()) {
+                visibleOnFirstOrder = cards.mapNotNull { it.browseId }.distinct().size
+            }
         }
 
         val noMb = emptyList<HomeShelf>()
@@ -413,8 +420,17 @@ class IdmCatalogFeedingMeasurementTest {
         assertTrue((genre as UiState.Success).data.flatMap { it.items }.all {
             it.browseId.orEmpty().startsWith("discogs:release:")
         })
-        measure("collective_all_priorities", raw = 8, parsed = 8,
-            eligible = 8, displayed = totalCards,
-            requests = 0, withArtwork = 0, cursorRemaining = false, rejected = 0)
+        // All three independently valid source candidates are available,
+        // but the current Home selector deliberately publishes ONE provider.
+        // Six different priority scenarios are not six cards on one Home.
+        assertEquals(1, visibleOnFirstOrder)
+        measure("collective_all_priorities", raw = 3, parsed = 3,
+            eligible = 3, displayed = visibleOnFirstOrder,
+            requests = 0, withArtwork = 0, cursorRemaining = false,
+            rejected = 3 - visibleOnFirstOrder,
+            extras = mapOf(
+                "priority_permutations" to providerOrders.size,
+                "unpublished_valid_candidates" to 3 - visibleOnFirstOrder,
+            ))
     }
 }
