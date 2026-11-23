@@ -35,7 +35,7 @@ private fun discogsSearchFold(value: String): String =
         .trim()
 
 private fun discogsCoreArtistName(value: String): String =
-    discogsSearchFold(value).replace(Regex(""" \\([1-9][0-9]*\\)$"""), "")
+    discogsSearchFold(value).replace(Regex(""" \([1-9][0-9]*\)$"""), "")
 
 private fun discogsSearchWordStarts(text: String, query: String): Boolean =
     text.startsWith(query) && (text.length == query.length ||
