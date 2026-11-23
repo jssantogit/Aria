@@ -3652,9 +3652,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleGenreActiveTag = tag
         appleGenreFingerprint = fingerprint
         appleGenreFetchedAtMs = now
-        if (_appleGenreReleases.value[tag] !is UiState.Success) {
-            _appleGenreReleases.update { it + (tag to UiState.Loading) }
-        }
+        // An expired or explicitly refreshed Apple snapshot is no longer a
+        // settled answer. Retaining Success(empty) here would let lower-priority
+        // Discogs/MB queries bypass this freshly dispatched Apple request.
+        _appleGenreReleases.update { it + (tag to UiState.Loading) }
         appleGenreJob = viewModelScope.launch(Dispatchers.IO) {
             val result = try {
                 com.music.bitchord.data.catalog.metadata
