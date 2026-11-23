@@ -1601,6 +1601,8 @@ private fun BitChordApp(
         canonicalPublicPlaylists[tag].orEmpty()
     }.orEmpty()
     val canonicalGenrePaging by viewModel.canonicalGenrePaging.collectAsStateWithLifecycle()
+    val discogsGenrePaging by viewModel.discogsNativeCatalog.genrePaging
+        .collectAsStateWithLifecycle()
     val canonicalGenreState = com.music.bitchord.ui.projectCanonicalGenreState(
         tag = activeCanonicalGenre?.tag,
         genrePlaylists = activeGenrePlaylists,
@@ -1616,7 +1618,31 @@ private fun BitChordApp(
         todayIsoDate = canonicalFeedDate,
         discogsByTag = discogsGenreReleases,
         musicBrainzPaging = canonicalGenrePaging,
+        discogsPaging = discogsGenrePaging,
     )
+    val genreMbOwnsReleases = com.music.bitchord.ui
+        .canonicalGenreShowsMusicBrainzReleases(canonicalGenreState)
+    val genreDiscogsOwnsReleases = com.music.bitchord.ui
+        .canonicalGenreShowsDiscogsReleases(canonicalGenreState)
+    val genrePagingHasMore = when {
+        genreMbOwnsReleases -> canonicalGenrePaging.tag == activeCanonicalGenre?.tag &&
+            canonicalGenrePaging.nextOffset != null
+        genreDiscogsOwnsReleases -> discogsGenrePaging.tag == activeCanonicalGenre?.tag &&
+            discogsGenrePaging.hasMore
+        else -> false
+    }
+    val genrePagingIsLoading = when {
+        genreMbOwnsReleases -> canonicalGenrePaging.loading
+        genreDiscogsOwnsReleases -> discogsGenrePaging.loading
+        else -> false
+    }
+    val loadNextVerifiedGenrePage: (String) -> Unit = { tag ->
+        when {
+            genreMbOwnsReleases -> viewModel.loadMoreCanonicalGenre(tag)
+            genreDiscogsOwnsReleases ->
+                viewModel.discogsNativeCatalog.loadMoreGenreEditorial(tag)
+        }
+    }
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
     // playlist's own page and its card both carry the id under the
@@ -1767,10 +1793,11 @@ private fun BitChordApp(
     com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
         tag = activeCanonicalGenre?.tag,
         enabled = selectedTab == TAB_EXPLORE && detail == null &&
-            com.music.bitchord.ui.canonicalGenreShowsMusicBrainzReleases(canonicalGenreState),
-        snapshot = canonicalGenrePaging,
+            (genreMbOwnsReleases || genreDiscogsOwnsReleases),
+        hasMore = genrePagingHasMore,
+        loading = genrePagingIsLoading,
         listState = genreListState,
-        onLoadMore = viewModel::loadMoreCanonicalGenre,
+        onLoadMore = loadNextVerifiedGenrePage,
     )
     val libraryListState = rememberLazyListState()
     LibraryPinsEditorScrollToTop(pinEditorState, libraryListState)
@@ -4564,8 +4591,8 @@ private fun BitChordApp(
                                 )
                             },
                             onRetry = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
-                            loadingMore = canonicalGenrePaging.tag == visibleGenre.tag &&
-                                canonicalGenrePaging.loading,
+                            loadingMore = genrePagingIsLoading &&
+                                activeCanonicalGenre?.tag == visibleGenre.tag,
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
                             onRefresh = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
                             pullState = explorePull,
@@ -4594,12 +4621,8 @@ private fun BitChordApp(
                             // Native horizontal shelf paging complements the
                             // vertical scroll boundary without changing screens.
                             onAdditionalGenrePage = if (
-                                canonicalGenrePaging.tag == visibleGenre.tag &&
-                                canonicalGenrePaging.nextOffset != null &&
-                                com.music.bitchord.ui.canonicalGenreShowsMusicBrainzReleases(
-                                    canonicalGenreState,
-                                )
-                            ) ({ viewModel.loadMoreCanonicalGenre(visibleGenre.tag) })
+                                genrePagingHasMore && activeCanonicalGenre?.tag == visibleGenre.tag
+                            ) ({ loadNextVerifiedGenrePage(visibleGenre.tag) })
                             else null,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
