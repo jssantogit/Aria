@@ -135,10 +135,15 @@ class DiscogsEditorialTaxonomyTest {
                 listOf("Album"), creditedArtists = listOf(55L to "ILLIT (2)")),
             DiscogsEditorialCandidate(12, 102, "Other", "Other", 2022,
                 listOf("Album"), creditedArtists = listOf(0L to "Spoof")),
+            DiscogsEditorialCandidate(13, 103, "Same stage name", "ILLIT", 2021,
+                listOf("Album"), creditedArtists = listOf(56L to "ILLIT")),
         )
         val artistShelf = discogsEditorialShelves(releases)
             .single { it.title == "Artistas" }
         assertEquals(1, artistShelf.items.size)
+        // Two Discogs IDs survive internally, but this shelf must not
+        // display two visually identical ILLIT cards.
+        assertEquals("ILLIT", artistShelf.items.single().title)
         assertEquals("discogs:artist:55", artistShelf.items.single().browseId)
         assertNull(artistShelf.items.single().videoId)
     }
