@@ -531,6 +531,8 @@ internal class DiscogsNativeGenreEditorial(
     suspend fun discover(
         query: DiscogsEditorialQuery,
         maxReleases: Int = 4,
+        /** Publish each fully verified source Release before the sample ends. */
+        onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsEditorialResult {
         if (!query.isValid() || maxReleases !in 1..6)
             return DiscogsEditorialResult.InvalidQuery
@@ -593,6 +595,7 @@ internal class DiscogsNativeGenreEditorial(
                 val previouslyVerified = cachedCandidate(masterId, query, tokenDigest)
                 if (previouslyVerified != null) {
                     verified += previouslyVerified
+                    onVerified(previouslyVerified)
                     continue
                 }
                 val cached = cachedMaster(masterId, tokenDigest)
@@ -656,6 +659,7 @@ internal class DiscogsNativeGenreEditorial(
                     ?: continue
                 rememberVerifiedPair(masterId, master, release, tokenDigest)
                 verified += candidate
+                onVerified(candidate)
             }
             if (!index.hasNext || verified.size >= maxReleases) break
         }
