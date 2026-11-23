@@ -243,6 +243,8 @@ internal class MusicBrainzCatalogSearch(
         fromIsoDate: String,
         throughIsoDate: String,
         limit: Int = 100,
+        /** Cursor counts source rows, not accepted editorial rows. */
+        offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
         val date = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         if (!date.matches(fromIsoDate) || !date.matches(throughIsoDate) ||
@@ -251,7 +253,7 @@ internal class MusicBrainzCatalogSearch(
         return searchReleaseGroupsInternal(
             "firstreleasedate:[$fromIsoDate TO $throughIsoDate] AND " +
                 "(primarytype:album OR primarytype:ep OR primarytype:single)",
-            limit, 0, fieldedQuery = true,
+            limit, offset, fieldedQuery = true,
         )
     }
 
