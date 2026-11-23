@@ -579,6 +579,52 @@ class CanonicalPublicDiscoveryTest {
         ), ids)
     }
 
+    @Test fun historicalHomeAnchorsPreferOfficialArtAndNewerEvidenceWithinFormat() {
+        val artAlbum = recent.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000001",
+            title = "Verified cover album", firstReleaseDate = "2022-04-03",
+            artworkUri = "https://coverartarchive.org/release-group/90100000-0000-4000-8000-000000000001/front-500",
+        )
+        val newerCoverlessAlbum = recent.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000002",
+            title = "Newer coverless album", firstReleaseDate = "2024-09-03",
+        )
+        val olderAlbum = recent.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000003",
+            title = "Oldest album", firstReleaseDate = "2018-05-04",
+        )
+        val singleOlder = another.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000004",
+            title = "Old single", firstReleaseDate = "2019-05-04",
+        )
+        val singleNewer = another.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000005",
+            title = "New single", firstReleaseDate = "2024-05-04",
+        )
+        val extra = another.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000006",
+            title = "Extra single", firstReleaseDate = "2021-06-06",
+        )
+        val rows = canonicalPublicReleaseRows(
+            listOf(olderAlbum, singleOlder, newerCoverlessAlbum,
+                artAlbum, singleNewer, extra),
+            "2018-01-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertTrue(home.none { it.title == "Lançamentos" })
+        assertEquals(artAlbum.title,
+            home.first { it.title == "Álbuns" }.items.first().title)
+        assertEquals(artAlbum.artworkUri,
+            home.first { it.title == "Álbuns" }.items.first().thumbnailUrl)
+        assertEquals(singleNewer.title,
+            home.first { it.title == "Singles e EPs" }.items.first().title)
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+    }
+
     @Test fun oneFreshAlbumSurvivesHistoricalSingleAndMoreReservations() {
         // The old allocator could reserve the *only* exact-dated new Album
         // for the format rail and silently remove "Lançamentos" entirely.
