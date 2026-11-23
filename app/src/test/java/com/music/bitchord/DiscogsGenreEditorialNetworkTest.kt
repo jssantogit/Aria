@@ -2,6 +2,12 @@ package com.music.bitchord
 
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.providers.*
+import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.ui.DiscogsNativeRoute
+import com.music.bitchord.ui.discogsArtistPage
+import com.music.bitchord.ui.discogsEditorialShelves
+import com.music.bitchord.ui.discogsNativeDetailRouteKey
+import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -88,6 +94,91 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals(listOf(
             "index:1", "master:42", "index:2", "master:77", "release:502",
         ), visited)
+    }
+
+    @Test fun sourceOnlyKpopSearchToArtistToReleaseUsesCanonicalDiscogsIdentity() = runBlocking {
+        val calls = mutableListOf<String>()
+        val editions = object : DiscogsNativeEditionReader {
+            override suspend fun master(id: Long): DiscogsLookupResult {
+                calls += "master:$id"
+                return DiscogsLookupResult.FoundMaster(master(id, "K-Pop"))
+            }
+
+            override suspend fun release(id: Long): DiscogsLookupResult {
+                calls += "release:$id"
+                return DiscogsLookupResult.Found(verifiedEdition(77L))
+            }
+        }
+        val genre = DiscogsNativeGenreEditorial(
+            enabled = true,
+            tokenProvider = { "A".repeat(32) },
+            admission = access(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    assertEquals("K-Pop", query.sourceName)
+                    assertTrue(query.isStyle)
+                    calls += "genre:$page"
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":77,"type":"master"}]}""")
+                }
+            },
+            editions = editions,
+        )
+        val result = genre.discover(DiscogsEditorialQuery("K-Pop", isStyle = true))
+        assertTrue(result is DiscogsEditorialResult.Verified)
+        val release = (result as DiscogsEditorialResult.Verified).releases.single()
+        assertEquals("discogs:release:502", release.browseId)
+
+        val shelves = discogsEditorialShelves(listOf(release))
+        val artistCard = shelves.single { it.title == "Artistas" }.items.single()
+        val albumCard = shelves.single { it.title == "Álbuns" }.items.single()
+        assertEquals("discogs:artist:99", artistCard.browseId)
+        assertEquals("discogs:release:502", albumCard.browseId)
+        assertEquals(albumCard.browseId, discogsNativeDetailRouteKey(
+            DiscogsNativeRoute.RELEASE, albumCard.browseId,
+        ))
+        assertNull(albumCard.videoId)
+        assertNull(albumCard.thumbnailUrl)
+
+        val artistCatalog = DiscogsNativeArtistCatalog(
+            enabled = true,
+            admission = access(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(
+                    artistId: Long, page: Int, userAgent: String,
+                ): DiscogsHttpResponse {
+                    assertEquals(99L, artistId)
+                    calls += "artist:$page"
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1},"releases":[
+                            {"id":77,"role":"Main","type":"master","title":"Source Album"}
+                        ]}""")
+                }
+            },
+            editions = editions,
+        )
+        val verifiedArtistReleases = artistCatalog.load(99L) as DiscogsNativeArtistLoad.Success
+        assertFalse(verifiedArtistReleases.incomplete)
+        assertFalse(verifiedArtistReleases.hasMore)
+        val artistPage = discogsArtistPage(
+            DiscogsNativeArtistSearchRow(99L, "Verified Artist"),
+            verifiedArtistReleases.releases,
+            hasMore = false, incomplete = false,
+        )
+        assertEquals(BrowseType.ARTIST, artistPage.page.type)
+        assertEquals(artistCard.browseId, artistPage.page.browseId)
+        assertEquals("discogs:release:502",
+            artistPage.page.sections.single { it.title == "Álbuns" }
+                .items.single().browseId)
+        assertEquals("https://www.discogs.com/artist/99", artistPage.attributionUrl)
+        assertEquals(listOf("genre:1", "master:77", "release:502",
+            "artist:1", "master:77", "release:502"), calls)
     }
 
     @Test fun authenticatedSearchThrottleIsNotRenderedAsAnEmptyCatalog() = runBlocking {
