@@ -31,6 +31,8 @@ internal sealed interface DiscogsNativeArtistLoad {
         val hasMore: Boolean,
         /** A bounded read or incomplete hydration cannot prove catalog completeness. */
         val incomplete: Boolean,
+        /** A transient interruption left some entries on this index page unread. */
+        val retryCurrentPage: Boolean = false,
     ) : DiscogsNativeArtistLoad
     data object Disabled : DiscogsNativeArtistLoad
     data object InvalidArtist : DiscogsNativeArtistLoad
@@ -148,6 +150,7 @@ internal class DiscogsNativeArtistCatalog(
         val hydrated = mutableListOf<Pair<DiscogsArtistIndexEntry, DiscogsRecord>>()
         var emitted = emptyList<DiscogsNativeArtistRelease>()
         var incomplete = index.entries.size > 6 || index.totalPages > 100
+        var retryCurrentPage = false
         val seenReleaseIds = HashSet<Long>()
         for (entry in index.entries.take(6)) {
             val releaseId = when (entry.kind) {
@@ -162,11 +165,13 @@ internal class DiscogsNativeArtistCatalog(
                             response.retryAfterSeconds,
                         )
                         incomplete = true
+                        retryCurrentPage = true
                         break
                     }
                     if (response is DiscogsLookupResult.Disabled) {
                         if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Disabled
                         incomplete = true
+                        retryCurrentPage = true
                         break
                     }
                     if (response is DiscogsLookupResult.Unauthorized ||
@@ -174,6 +179,7 @@ internal class DiscogsNativeArtistCatalog(
                     ) {
                         if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Unavailable
                         incomplete = true
+                        retryCurrentPage = true
                         break
                     }
                     val id = master?.takeIf {
@@ -192,11 +198,13 @@ internal class DiscogsNativeArtistCatalog(
                     lookup.retryAfterSeconds,
                 )
                 incomplete = true
+                retryCurrentPage = true
                 break
             }
             if (lookup is DiscogsLookupResult.Disabled) {
                 if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Disabled
                 incomplete = true
+                retryCurrentPage = true
                 break
             }
             if (lookup is DiscogsLookupResult.Unauthorized ||
@@ -204,6 +212,7 @@ internal class DiscogsNativeArtistCatalog(
             ) {
                 if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Unavailable
                 incomplete = true
+                retryCurrentPage = true
                 break
             }
             val record = (lookup as? DiscogsLookupResult.Found)?.record
@@ -231,6 +240,7 @@ internal class DiscogsNativeArtistCatalog(
             releases = verified,
             hasMore = page < index.totalPages && page < 100,
             incomplete = incomplete,
+            retryCurrentPage = retryCurrentPage,
         )
     }
 }
