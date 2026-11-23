@@ -179,6 +179,7 @@ class CanonicalGenreGranularPagingTest {
         )
         val mbShelves = (project(listOf(BuiltInProviderKeys.MUSICBRAINZ))
             as UiState.Success).data
+        assertEquals("Mais do gênero", mbShelves.last().title)
         assertEquals(listOf("catalog:RELEASE_GROUP:${id(61)}"),
             mbShelves.single { it.title == "Mais do gênero" }
                 .items.map { it.browseId })
