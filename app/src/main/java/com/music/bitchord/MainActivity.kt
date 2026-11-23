@@ -4564,6 +4564,8 @@ private fun BitChordApp(
                                 )
                             },
                             onRetry = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
+                            loadingMore = canonicalGenrePaging.tag == visibleGenre.tag &&
+                                canonicalGenrePaging.loading,
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
                             onRefresh = { refreshCanonicalGenreEditorial(visibleGenre.tag, true) },
                             pullState = explorePull,
