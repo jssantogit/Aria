@@ -36,7 +36,7 @@ class DiscogsGranularEditorialCursorTest {
         object : DiscogsNativeEditionReader {
             override suspend fun master(id: Long): DiscogsLookupResult = onMaster(id)
             override suspend fun release(id: Long): DiscogsLookupResult =
-                DiscogsLookupResult.Found(release(id - 1000))
+                DiscogsLookupResult.Found(this@DiscogsGranularEditorialCursorTest.release(id - 1000))
         }
 
     @Test fun loadsThirtyHundredAndThreeHundredCandidatesWithRealCursor() = runBlocking {
