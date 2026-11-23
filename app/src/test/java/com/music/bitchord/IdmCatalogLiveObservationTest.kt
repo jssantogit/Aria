@@ -49,6 +49,7 @@ class IdmCatalogLiveObservationTest {
         val requests: Int? = null,
         val artwork: Int = 0,
         val shelves: List<HomeShelf> = emptyList(),
+        val counts: Map<String, Int> = emptyMap(),
     )
 
     private fun report(scenario: String, sample: Sample) {
@@ -64,6 +65,11 @@ class IdmCatalogLiveObservationTest {
             "http_or_transport_reads" to (sample.requests?.toString() ?: "null"),
             "displayed_with_artwork" to sample.artwork.toString(),
         )
+        sample.counts.forEach { (key, value) ->
+            require(Regex("[a-z_]+").matches(key) && value >= 0)
+            require(key !in lines)
+            lines[key] = value.toString()
+        }
         val json = buildString {
             append("{\n  \"mode\": \"live-network-observation\",\n")
             append("  \"scenario\": \"").append(scenario).append("\",\n")
@@ -81,6 +87,52 @@ class IdmCatalogLiveObservationTest {
 
     private fun cards(shelves: List<HomeShelf>): List<com.music.bitchord.data.model.ShelfItem> =
         shelves.flatMap { it.items }.distinctBy { it.browseId }
+
+    /**
+     * Mirror canonicalPublicReleaseRows' ordered admission gates, reporting
+     * only aggregate first-rejection reasons. No source titles or IDs leave
+     * the test process. A short source sample cannot prove global coverage.
+     */
+    private fun musicBrainzRejectionCounts(
+        hits: List<MusicBrainzReleaseGroupHit>,
+        from: String,
+        through: String,
+        published: Int,
+    ): Map<String, Int> {
+        val counts = linkedMapOf(
+            "rejected_date" to 0,
+            "rejected_artist_credit" to 0,
+            "rejected_unsafe_title" to 0,
+            "rejected_release_type" to 0,
+            "rejected_duplicate_id" to 0,
+            "rejected_display_cap" to 0,
+        )
+        val identities = mutableSetOf<String>()
+        var admitted = 0
+        for (hit in hits) {
+            val date = hit.firstReleaseDate
+            val dateAccepted = date != null && date.length == 10 &&
+                date >= from && date <= through &&
+                runCatching { LocalDate.parse(date) }.isSuccess
+            val reason = when {
+                !dateAccepted -> "rejected_date"
+                hit.artistDisplay.isNullOrBlank() -> "rejected_artist_credit"
+                !canonicalStreamingTitleIsSafe(hit.title) -> "rejected_unsafe_title"
+                !CanonicalEditorialDiscography.classify(
+                    hit.primaryType, hit.secondaryTypes,
+                ).isPublishable -> "rejected_release_type"
+                !identities.add(hit.musicBrainzId.lowercase(java.util.Locale.ROOT)) ->
+                    "rejected_duplicate_id"
+                else -> null
+            }
+            if (reason == null) admitted++ else counts[reason] = counts.getValue(reason) + 1
+        }
+        counts["rejected_display_cap"] = (admitted - published).coerceAtLeast(0)
+        check(counts.values.sum() == hits.size - published) {
+            "MusicBrainz source and Home rejection counts diverged"
+        }
+        return counts
+    }
 
     @Test fun live_sources_and_collective_fallback_use_canonical_pipeline() = runBlocking {
         assumeTrue("Only the observational CI job may access remote services",
@@ -119,6 +171,9 @@ class IdmCatalogLiveObservationTest {
         val mbShelves = (mbProjected.state as? UiState.Success)?.data.orEmpty()
         val mbItems = cards(mbShelves)
         val mbPage = (mbResult as? MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)?.page
+        val rejectionCounts = mbPage?.items?.let {
+            musicBrainzRejectionCounts(it, startDate, date, mbTyped.size)
+        }.orEmpty()
         report("musicbrainz", Sample(
             status = when {
                 mbResult is MusicBrainzCatalogSearchResult.Failure -> "source_error"
@@ -129,7 +184,7 @@ class IdmCatalogLiveObservationTest {
             raw = mbPage?.consumedCount, parsed = mbPage?.items?.size,
             eligible = mbTyped.size, visible = mbItems.size, requests = 1,
             artwork = mbItems.count { !it.thumbnailUrl.isNullOrBlank() },
-            shelves = mbShelves,
+            shelves = mbShelves, counts = rejectionCounts,
         ))
 
         val appleCaps = setOf(ProviderCapability.CATALOG_SEARCH,
@@ -235,15 +290,16 @@ class IdmCatalogLiveObservationTest {
 
         // Same Home priority and fallback selection as MainActivity, evaluated
         // for every possible explicit provider order. No cross-provider IDs.
-        val all = listOf(mb, apple, discogs)
         val orders = listOf(
             listOf(mb, apple, discogs), listOf(mb, discogs, apple),
             listOf(apple, mb, discogs), listOf(apple, discogs, mb),
             listOf(discogs, mb, apple), listOf(discogs, apple, mb),
         )
         var successful = 0
-        var visible = 0
-        for (order in orders) {
+        var firstOrderVisible = 0
+        val shownByAnyOrder = linkedMapOf<String,
+            com.music.bitchord.data.model.ShelfItem>()
+        for ((index, order) in orders.withIndex()) {
             val selection = projectCanonicalHomeEditorial(
                 canonicalHomeShelves = mbHome,
                 appleHomeReleases = UiState.Success(appleReleases),
@@ -267,15 +323,44 @@ class IdmCatalogLiveObservationTest {
                 assertTrue(sourceItems.all {
                     it.browseId.orEmpty().startsWith(prefix)
                 })
-                visible += sourceItems.distinctBy { it.browseId }.size
+                val distinct = sourceItems.distinctBy { it.browseId }
+                if (index == 0) firstOrderVisible = distinct.size
+                distinct.forEach { item ->
+                    item.browseId?.let { shownByAnyOrder.putIfAbsent(it, item) }
+                }
             }
         }
+        val sourceVisibleCounts = listOf(
+            mbItems.size, appleItems.size, discogsItems.size,
+        )
+        // Each order represents an alternate Home, not another shelf on
+        // the same screen. Never sum repeated cards across permutations.
+        val sourceCandidates = mbItems.size + appleItems.size + discogsItems.size
         report("collective", Sample(
-            status = if (successful == 6) "verified_all_orders"
-                else "partial_" + successful + "_of_6",
-            parsed = 6, eligible = successful, visible = visible,
-            requests = 0, artwork = 0,
+            status = when {
+                token == null -> "partial_discogs_token_not_configured"
+                discogsRead !is DiscogsEditorialResult.Verified ->
+                    "partial_discogs_unverified"
+                successful == orders.size -> "all_sources_observed"
+                else -> "partial_priority_fallback"
+            },
+            eligible = sourceCandidates,
+            visible = shownByAnyOrder.size,
+            requests = 0,
+            artwork = shownByAnyOrder.values.count {
+                !it.thumbnailUrl.isNullOrBlank()
+            },
+            counts = mapOf(
+                "priority_orders_tested" to orders.size,
+                "priority_orders_with_content" to successful,
+                "provider_sources_with_content" to sourceVisibleCounts.count { it > 0 },
+                "provider_sources_not_verified" to
+                    listOf(mbResult !is MusicBrainzCatalogSearchResult.Success,
+                        appleResult !is AppleEditorialLoad.Success,
+                        discogsRead !is DiscogsEditorialResult.Verified).count { it },
+                "first_order_visible" to firstOrderVisible,
+            ),
         ))
-        assertEquals(3, all.distinct().size)
+        assertEquals(6, orders.size)
     }
 }
