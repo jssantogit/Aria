@@ -491,6 +491,25 @@ class CanonicalPublicDiscoveryTest {
         assertTrue(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-08-25", "2026-11-23"))
     }
 
+    @Test fun catalogDateGateAcceptsUnknownPrecisionButRejectsInvalidCalendarValues() {
+        val current = "2026-11-23"
+        val allowed = listOf(null, "", "2026", "2026-11", "2026-11-23",
+            "2020-02-29", "2025-12")
+        val rejected = listOf("2027", "2026-12", "2026-11-24", "2026-02-30",
+            "2024-13", "2026-00-04", "2026-11-99", "2026-1", "invalid")
+        allowed.forEach { date ->
+            assertTrue("Known/unknown catalog date incorrectly rejected: $date",
+                com.music.bitchord.ui.canonicalCatalogReleaseDateNotFuture(date, current))
+        }
+        rejected.forEach { date ->
+            assertFalse("Impossible/future catalog date incorrectly accepted: $date",
+                com.music.bitchord.ui.canonicalCatalogReleaseDateNotFuture(date, current))
+        }
+        assertFalse(com.music.bitchord.ui.canonicalCatalogReleaseDateNotFuture(
+            "2026-11-22", "not-a-calendar-day",
+        ))
+    }
+
     @Test fun rankingShelfKeepsItsRealUpstreamEvidenceRatherThanInventingCharts() {
         val real = HomeShelf("Em alta", listOf(
             ShelfItem("Observed weekly song", "Artist", null, null,
