@@ -489,7 +489,7 @@ internal class DiscogsNativeCatalogSession(
     /** Bounded, scroll-triggered Discogs candidate scan on the SAME genre page. */
     fun loadMoreGenreEditorial(tag: String) {
         if (genreEditorialTag != tag || genreEditorialJob?.isActive == true ||
-            (_genreEditorial.value[tag] as? UiState.Success)?.data.isNullOrEmpty()
+            (_genreEditorial.value[tag] as? UiState.Success<List<HomeShelf>>)?.data.isNullOrEmpty()
         ) return
         val current = _genrePaging.value
         val cursor = current.cursor ?: return
