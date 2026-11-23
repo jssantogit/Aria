@@ -43,6 +43,8 @@ internal object CanonicalHomeEditorialDispatch {
                 viewModel.loadCanonicalWorldwideReleases(force)
             BuiltInProviderKeys.ITUNES ->
                 viewModel.loadAppleHomeEditorial(force)
+            BuiltInProviderKeys.DISCOGS ->
+                viewModel.discogsNativeCatalog.loadHomeEditorial(force)
         }
     }
 
