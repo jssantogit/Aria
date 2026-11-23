@@ -229,7 +229,7 @@ internal class DiscogsNativeCatalogSession(
     fun loadHomeEditorial(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && (homeEditorialJob?.isActive == true ||
-            homeEditorialAtMs != 0L && now - homeEditorialAtMs in 0 until 2L * 60 * 60 * 1000
+            homeEditorialAtMs != 0L && now - homeEditorialAtMs in 0L until (2L * 60L * 60L * 1000L)
         )) return
         homeEditorialJob?.cancel()
         val lease = editorialLease()
@@ -288,7 +288,7 @@ internal class DiscogsNativeCatalogSession(
         if (!force && genreEditorialTag == tag &&
             (genreEditorialJob?.isActive == true ||
                 genreEditorialAtMs != 0L &&
-                now - genreEditorialAtMs in 0 until 2L * 60 * 60 * 1000)
+                now - genreEditorialAtMs in 0L until (2L * 60L * 60L * 1000L))
         ) return
         genreEditorialJob?.cancel()
         genreEditorialTag = tag
