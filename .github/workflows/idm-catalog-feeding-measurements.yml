@@ -10,6 +10,7 @@ on:
     paths:
       - .github/workflows/idm-catalog-feeding-measurements.yml
       - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
+      - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -19,6 +20,7 @@ on:
     paths:
       - .github/workflows/idm-catalog-feeding-measurements.yml
       - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
+      - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -63,7 +65,8 @@ jobs:
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
-            --tests 'com.music.bitchord.IdmCatalogFeedingMeasurementTest'
+            --tests 'com.music.bitchord.IdmCatalogFeedingMeasurementTest' \
+            --tests 'com.music.bitchord.IdmCatalogCapacityCurveTest'
 
       - name: Check completeness and write aggregate comparison
         shell: bash
@@ -99,6 +102,27 @@ jobs:
                   out.write("| " + " | ".join(map(str, cols)) + " |\n")
               out.write("\nAll source identities remain provider-native. ")
               out.write("Aggregates are fixture counts; do not interpret as live coverage.\n")
+          capacity = {f.stem.removeprefix("capacity_"): json.loads(f.read_text())
+                      for f in folder.glob("capacity_*.json")}
+          expected = {p + "_" + str(n).zfill(3)
+                      for p in ("musicbrainz", "itunes", "discogs")
+                      for n in (30, 100, 300)}
+          if capacity.keys() != expected:
+              raise SystemExit(f"Missing capacity curves: {sorted(expected - capacity.keys())}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### Cursor capacity curves (controlled fixtures)\n\n")
+              out.write("| Provider | Candidate target | Discovered | Verified unique | Reads | Coverage uncertain |\n")
+              out.write("|---|---:|---:|---:|---:|---|\n")
+              for key in sorted(expected):
+                  item = capacity[key]
+                  if item.get("mode") != "capacity-fixture":
+                      raise SystemExit(f"Invalid capacity measurement: {key}")
+                  cols = [item["provider"], item["target"],
+                          item["source_candidates"], item["verified_unique"],
+                          item["transport_reads"], item["coverage_uncertain"]]
+                  out.write("| " + " | ".join(map(str, cols)) + " |\n")
+              out.write("\nA fixture proving 300 local rows is not evidence of ")
+              out.write("300 relevant real-world releases.\n")
           print("IDM_CATALOG_MEASUREMENTS_COMPLETE", sorted(found))
           PY
 
