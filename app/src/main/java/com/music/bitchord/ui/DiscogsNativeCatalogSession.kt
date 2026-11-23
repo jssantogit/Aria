@@ -331,7 +331,7 @@ internal class DiscogsNativeCatalogSession(
         )) return
         homeEditorialJob?.cancel()
         homePagingJob?.cancel()
-        ++homePagingEpoch
+        val editorialEpoch = ++homePagingEpoch
         _homePaging.value = DiscogsHomePageSnapshot()
         homeEditorialAtMs = now
         scheduleHomeEditorialExpiry()
@@ -354,12 +354,28 @@ internal class DiscogsNativeCatalogSession(
                     remainingQueries = discogsHomeDiscoveryTags.size - index - 1,
                     totalSlots = 10,
                 ).coerceAtMost(2)
+                val inflight = mutableListOf<DiscogsEditorialCandidate>()
                 val result = try {
-                    editorialClient.discover(request, maxReleases = budget)
+                    editorialClient.discover(
+                        request, maxReleases = budget,
+                        onVerified = { candidate ->
+                            if (lease.isCurrent() && homePagingEpoch == editorialEpoch &&
+                                candidate.masterId !in verified.map { it.masterId } &&
+                                inflight.none { it.masterId == candidate.masterId }
+                            ) {
+                                inflight += candidate
+                                val preview = discogsEditorialShelves(
+                                    verified + inflight, home = true,
+                                )
+                                if (preview.isNotEmpty())
+                                    _homeEditorial.value = UiState.Success(preview)
+                            }
+                        },
+                    )
                 }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsEditorialResult.Unavailable }
-                if (!lease.isCurrent()) return@launch
+                if (!lease.isCurrent() || homePagingEpoch != editorialEpoch) return@launch
                 when (result) {
                     is DiscogsEditorialResult.Verified -> {
                         verified += result.releases
@@ -381,7 +397,7 @@ internal class DiscogsNativeCatalogSession(
                     else -> failure = "Não foi possível consultar o catálogo Discogs."
                 }
             }
-            if (!lease.isCurrent()) return@launch
+            if (!lease.isCurrent() || homePagingEpoch != editorialEpoch) return@launch
             val shelves = discogsEditorialShelves(verified, home = true)
             _homeEditorial.value = if (shelves.isNotEmpty()) UiState.Success(shelves)
                 else UiState.Error(failure ?: "Nenhum lançamento Discogs verificado nesta amostra.")
@@ -494,7 +510,7 @@ internal class DiscogsNativeCatalogSession(
         ) return
         genreEditorialJob?.cancel()
         genrePagingJob?.cancel()
-        ++genrePagingEpoch
+        val editorialEpoch = ++genrePagingEpoch
         _genrePaging.value = DiscogsGenrePageSnapshot(tag = tag)
         genreEditorialTag = tag
         genreEditorialAtMs = now
@@ -526,11 +542,29 @@ internal class DiscogsNativeCatalogSession(
                     verifiedMasters = distinctMasters,
                     remainingQueries = queries.size - queryIndex - 1,
                 )
+                val inflight = mutableListOf<DiscogsEditorialCandidate>()
                 val result = try {
-                    editorialClient.discover(query, maxReleases = budget)
+                    editorialClient.discover(
+                        query, maxReleases = budget,
+                        onVerified = { candidate ->
+                            if (lease.isCurrent() && genrePagingEpoch == editorialEpoch &&
+                                genreEditorialTag == tag &&
+                                candidate.masterId !in verified.map { it.masterId } &&
+                                inflight.none { it.masterId == candidate.masterId }
+                            ) {
+                                inflight += candidate
+                                val preview = discogsEditorialShelves(verified + inflight)
+                                if (preview.isNotEmpty())
+                                    _genreEditorial.value =
+                                        mapOf(tag to UiState.Success(preview))
+                            }
+                        },
+                    )
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) { DiscogsEditorialResult.Unavailable }
-                if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
+                if (!lease.isCurrent() || genrePagingEpoch != editorialEpoch ||
+                    genreEditorialTag != tag
+                ) return@launch
                 when (result) {
                     is DiscogsEditorialResult.Verified -> {
                         verified += result.releases
@@ -554,7 +588,9 @@ internal class DiscogsNativeCatalogSession(
                     else -> failure = "Não foi possível consultar este gênero no Discogs."
                 }
             }
-            if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
+            if (!lease.isCurrent() || genrePagingEpoch != editorialEpoch ||
+                genreEditorialTag != tag
+            ) return@launch
             val shelves = discogsEditorialShelves(verified)
             _genreEditorial.value = mapOf(tag to if (shelves.isNotEmpty()) {
                 UiState.Success(shelves)
