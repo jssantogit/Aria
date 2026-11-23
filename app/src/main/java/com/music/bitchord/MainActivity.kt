@@ -595,6 +595,8 @@ private fun CanonicalHomeEditorialEffects(
     listenBrainzAccountEnabled: Boolean,
     listenBrainzAccountToken: String,
     appleHomeReleases: UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>,
+    discogsHomeReleases: UiState<List<HomeShelf>>,
+    discogsGenreReleases: Map<String, UiState<List<HomeShelf>>>,
     activeCanonicalGenre: com.music.bitchord.ui.CanonicalExploreGenre?,
     canonicalGenreResults: UiState<List<CanonicalCatalogSearchRow>>,
     appleGenreReleases: Map<String, UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>>,
@@ -623,20 +625,28 @@ private fun CanonicalHomeEditorialEffects(
         }
     }
 
-    LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases) {
-        if (selectedTab == TAB_HOME)
+    LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases,
+        discogsHomeReleases,
+    ) {
+        if (selectedTab == TAB_HOME) {
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartMusicBrainz(
                 viewModel, catalogEditorialOrder, appleHomeReleases,
             )
+            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartAfterDiscogsMiss(
+                viewModel, catalogEditorialOrder, discogsHomeReleases,
+            )
+        }
     }
 
     LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults,
-        appleGenreReleases, catalogEditorialOrder, genrePopularityAuthorized,
+        appleGenreReleases, discogsGenreReleases,
+        catalogEditorialOrder, genrePopularityAuthorized,
     ) {
         val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
         val first = catalogEditorialOrder.firstOrNull()
         val mb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
         val apple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+        val discogs = com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
         if (first == apple &&
             !com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)
         ) {
@@ -664,10 +674,15 @@ private fun CanonicalHomeEditorialEffects(
                 )) {
                 viewModel.loadCanonicalGenreSupplement(tag)
             }
-        } else if (first ==
-            com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
-        ) {
+        } else if (first == discogs) {
             viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
+            if (com.music.bitchord.ui.editorialPrimaryMiss(discogsGenreReleases[tag])) {
+                when (catalogEditorialOrder.getOrNull(1)) {
+                    mb -> if (viewModel.canonicalGenreResultTag != tag)
+                        viewModel.loadCanonicalGenre(tag)
+                    apple -> viewModel.loadAppleGenreEditorial(tag, emptyList())
+                }
+            }
         } else if (first == mb) {
             if (apple in catalogEditorialOrder &&
                 (canonicalGenreResults is UiState.Error ||
@@ -675,16 +690,35 @@ private fun CanonicalHomeEditorialEffects(
                     (canonicalGenreResults as UiState.Success).data.isEmpty())
             ) viewModel.loadAppleGenreEditorial(tag, emptyList())
         }
+        if (first != discogs && discogs in catalogEditorialOrder) {
+            val prior = catalogEditorialOrder.takeWhile { it != discogs }
+            val priorMissed = prior.all { source ->
+                when (source) {
+                    mb -> viewModel.canonicalGenreResultTag == tag &&
+                        com.music.bitchord.ui.editorialPrimaryMiss(canonicalGenreResults)
+                    apple -> !com.music.bitchord.data.catalog.metadata
+                        .AppleExploreGenrePolicy.supports(tag) ||
+                        com.music.bitchord.ui.editorialPrimaryMiss(appleGenreReleases[tag])
+                    else -> false
+                }
+            }
+            if (priorMissed) viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
+        }
     }
 
     LaunchedEffect(selectedTab, canonicalWorldwideLoading, canonicalHomeShelves,
-        catalogEditorialOrder,
+        catalogEditorialOrder, appleHomeReleases,
     ) {
-        if (selectedTab == TAB_HOME)
+        if (selectedTab == TAB_HOME) {
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartApple(
                 viewModel, catalogEditorialOrder, canonicalWorldwideLoading,
                 canonicalHomeShelves, canonicalReleasesHeading,
             )
+            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartDiscogs(
+                viewModel, catalogEditorialOrder, viewModel.canonicalWorldwideLoading.value,
+                canonicalHomeShelves, canonicalReleasesHeading, appleHomeReleases,
+            )
+        }
     }
 }
 
@@ -1456,6 +1490,8 @@ private fun BitChordApp(
         listenBrainzAccountEnabled = listenBrainzAccountEnabled,
         listenBrainzAccountToken = listenBrainzAccountToken,
         appleHomeReleases = appleHomeReleases,
+        discogsHomeReleases = discogsHomeReleases,
+        discogsGenreReleases = discogsGenreReleases,
         activeCanonicalGenre = activeCanonicalGenre,
         canonicalGenreResults = canonicalGenreResults,
         appleGenreReleases = appleGenreReleases,
