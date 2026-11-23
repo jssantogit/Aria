@@ -374,11 +374,15 @@ internal fun canonicalHomeWithWorldwideEditorial(
         val id = card.browseId ?: return@filter false
         selected.add(id)
     }
-    // Give each real editorial format a minimum allocation before the Home
-    // hero and daily picks use the limited first public result page.
-    // If the verified ListenBrainz chart is missing, a distinct 'Mais' shelf
-    // can complete five sections without pretending to be 'Em alta'.
-    val supportsFive = publicRows.size >= 5
+    // Reserve real album and single evidence even for a sparse historical
+    // archive. Otherwise daily rotation consumes the only two archived
+    // releases before their proper format shelves can present them.
+    val genuinelyRecent = publicRows.filter {
+        canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
+    }
+    // With enough releases reserve distinct formats for a full Home, but do
+    // not force an invented fresh-launch shelf to fill a section quota.
+    val supportsFive = publicRows.size >= 5 || genuinelyRecent.isEmpty()
     val reservedAlbum = if (supportsFive) publicRows.asReversed().firstOrNull {
         canonicalEditorialReleaseType(it) == "Album"
     } else null
@@ -395,9 +399,6 @@ internal fun canonicalHomeWithWorldwideEditorial(
     } else null
     val reservedIds = listOfNotNull(reservedAlbum, reservedSingle, reservedMore)
         .map(::canonicalNativeBrowseId).toSet()
-    val genuinelyRecent = publicRows.filter {
-        canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
-    }
     val launchCandidates = genuinelyRecent.filterNot {
         canonicalNativeBrowseId(it) in reservedIds
     }
