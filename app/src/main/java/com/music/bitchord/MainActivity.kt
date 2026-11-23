@@ -1569,6 +1569,7 @@ private fun BitChordApp(
     val canonicalHomePaging by viewModel.canonicalHomePaging.collectAsStateWithLifecycle()
     val appleHomeVerifiedPool by viewModel.appleHomeVerifiedPool.collectAsStateWithLifecycle()
     val appleHomeRevealedCount by viewModel.appleHomeRevealedCount.collectAsStateWithLifecycle()
+    val discogsHomePaging by viewModel.discogsNativeCatalog.homePaging.collectAsStateWithLifecycle()
     val homeAppleEligibleExtras = com.music.bitchord.ui.appleHomeUnshownVerified(
         appleHomeVerifiedPool,
         (canonicalHomeEditorialSelection.state as? UiState.Success)?.data.orEmpty(),
@@ -1576,12 +1577,14 @@ private fun BitChordApp(
     val homeHasMoreVerified = when (canonicalHomeEditorialSelection.provider) {
         catalogMb -> canonicalHomePaging.hasMore
         catalogApple -> homeAppleEligibleExtras > appleHomeRevealedCount
+        catalogDiscogs -> discogsHomePaging.hasMore
         else -> false
     }
     val loadNextVerifiedHomePage: () -> Unit = {
         when (canonicalHomeEditorialSelection.provider) {
             catalogMb -> viewModel.loadMoreCanonicalHome()
             catalogApple -> viewModel.revealMoreAppleHome()
+            catalogDiscogs -> viewModel.discogsNativeCatalog.loadMoreHomeEditorial()
         }
     }
     val canonicalHomeDisplayShelves =
@@ -1589,7 +1592,7 @@ private fun BitChordApp(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
             authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
             weeklyArtistShelf, canonicalHomePaging,
-            appleHomeVerifiedPool, appleHomeRevealedCount,
+            appleHomeVerifiedPool, appleHomeRevealedCount, discogsHomePaging,
         )
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
         canonicalHomeDisplayShelves, canonicalHomeEditorialSelection,
@@ -1804,10 +1807,14 @@ private fun BitChordApp(
     com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
         tag = "home",
         enabled = selectedTab == TAB_HOME && detail == null &&
-            canonicalHomeEditorialSelection.provider in setOf(catalogMb, catalogApple),
+            canonicalHomeEditorialSelection.provider in
+                setOf(catalogMb, catalogApple, catalogDiscogs),
         hasMore = homeHasMoreVerified,
-        loading = canonicalHomePaging.loading &&
-            canonicalHomeEditorialSelection.provider == catalogMb,
+        loading = when (canonicalHomeEditorialSelection.provider) {
+            catalogMb -> canonicalHomePaging.loading
+            catalogDiscogs -> discogsHomePaging.loading
+            else -> false
+        },
         listState = homeListState,
         onLoadMore = { loadNextVerifiedHomePage() },
     )
@@ -4585,8 +4592,11 @@ private fun BitChordApp(
                             ) "Dados fornecidos pelo Discogs · Abrir fonte" to
                                 "https://www.discogs.com/" else null,
                             leadHero = true,
-                            loadingMore = canonicalHomeEditorialSelection.provider == catalogMb &&
-                                canonicalHomePaging.loading,
+                            loadingMore = when (canonicalHomeEditorialSelection.provider) {
+                                catalogMb -> canonicalHomePaging.loading
+                                catalogDiscogs -> discogsHomePaging.loading
+                                else -> false
+                            },
                             onAdditionalGenrePage = if (
                                 homeHasMoreVerified
                             ) ({ loadNextVerifiedHomePage() }) else null,
