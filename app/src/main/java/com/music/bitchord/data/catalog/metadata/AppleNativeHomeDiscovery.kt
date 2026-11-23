@@ -46,6 +46,8 @@ internal class AppleNativeHomeDiscovery(
         todayIsoDate: String,
         maxGenres: Int = 3,
         onProgress: suspend (List<ItunesEditorialRelease>) -> Unit = {},
+        /** Separately verified Apple products NOT clipped to Home's 36 cards. */
+        onVerifiedPool: suspend (List<ItunesEditorialRelease>) -> Unit = {},
     ): AppleEditorialLoad {
         val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull()
             ?: return AppleEditorialLoad.Failure(ItunesCatalogFailure.INVALID_QUERY)
@@ -148,6 +150,10 @@ internal class AppleNativeHomeDiscovery(
         if (finalSample != lastPublished &&
             (finalSample.isNotEmpty() || lastPublished != null)
         ) onProgress(finalSample)
+        // Save actual API-verified identities for native incremental reveal.
+        // The original 36-card editorial order and sections stay unchanged.
+        // A disputed storefront ID has already been removed from verified.
+        onVerifiedPool(verified.values.toList())
         val report = AppleEditorialProbeReport(
             eligibleSeeds = GENRES.size,
             probesMade = tags.size,
