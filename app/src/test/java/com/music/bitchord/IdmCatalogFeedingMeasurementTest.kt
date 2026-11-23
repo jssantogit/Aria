@@ -79,9 +79,7 @@ class IdmCatalogFeedingMeasurementTest {
             else -> mbId(index)
         }
         val kind = if (index % 5 == 0) "Single" else "Album"
-        """{"id":"""" + id + """","title":"Fixture """" + index +
-            """","primary-type":"""" + kind +
-            """","first-release-date":"2026-11-01","artist-credit":[{"name":"Fixture Artist"}]}"""
+        """{"id":"${id}","title":"Fixture ${index}","primary-type":"${kind}","first-release-date":"2026-11-01","artist-credit":[{"name":"Fixture Artist"}]}"""
     }
 
     @Test fun musicbrainz_isolated_source_pages_flow_through_home_and_genre() = runBlocking {
