@@ -44,6 +44,8 @@ internal data class DiscogsEditorialCandidate(
     val artist: String,
     val year: Int?,
     val formats: List<String>,
+    /** Exact artist IDs from the same verified release, never a name match. */
+    val creditedArtists: List<Pair<Long, String>> = emptyList(),
 ) {
     val browseId: String get() = "discogs:release:$releaseId"
 }
@@ -217,6 +219,8 @@ internal class DiscogsNativeGenreEditorial(
                 artist = release.artistNames.joinToString(", "),
                 year = release.year ?: master.year,
                 formats = release.formats,
+                creditedArtists = if (release.artistIds.size == release.artistNames.size)
+                    release.artistIds.zip(release.artistNames) else emptyList(),
             )
         }
         return DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
