@@ -405,18 +405,32 @@ internal fun canonicalHomeWithWorldwideEditorial(
     }
     // With enough releases reserve distinct formats for a full Home, but do
     // not force an invented fresh-launch shelf to fill a section quota.
+    // A single verified recent ReleaseGroup must not disappear from the
+    // Launches shelf just because the Home reserves format diversity and a
+    // generic More card from a much larger *historical* source snapshot.
+    // The protected row remains one source-owned, exact-dated identity;
+    // it is not popularity evidence and cannot be shown twice.
+    val launchOrder = compareByDescending<CanonicalCatalogSearchRow> {
+        !it.artworkUri.isNullOrBlank()
+    }.thenByDescending { it.releaseDate.orEmpty() }
+        .thenBy { it.musicBrainzId }
+    val protectedLaunch = genuinelyRecent.sortedWith(launchOrder).firstOrNull()
+    val protectedId = protectedLaunch?.musicBrainzId
     val supportsFive = publicRows.size >= 5 || genuinelyRecent.isEmpty()
     val reservedAlbum = if (supportsFive) publicRows.asReversed().firstOrNull {
-        canonicalEditorialReleaseType(it) == "Album"
+        it.musicBrainzId != protectedId &&
+            canonicalEditorialReleaseType(it) == "Album"
     } else null
     val reservedSingle = if (supportsFive) publicRows.asReversed().firstOrNull {
-        canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        it.musicBrainzId != protectedId &&
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
     } else null
     val hasRealChartOrCommunity = worldwideTrending?.items?.isNotEmpty() == true ||
         community?.items?.isNotEmpty() == true
     val reservedMore = if (supportsFive && !hasRealChartOrCommunity) {
         publicRows.asReversed().firstOrNull {
-            it.musicBrainzId != reservedAlbum?.musicBrainzId &&
+            it.musicBrainzId != protectedId &&
+                it.musicBrainzId != reservedAlbum?.musicBrainzId &&
                 it.musicBrainzId != reservedSingle?.musicBrainzId
         }
     } else null
@@ -424,15 +438,7 @@ internal fun canonicalHomeWithWorldwideEditorial(
         .map(::canonicalNativeBrowseId).toSet()
     val launchCandidates = genuinelyRecent.filterNot {
         canonicalNativeBrowseId(it) in reservedIds
-    }.sortedWith(
-        // The largest Home cards should use source-owned cover evidence
-        // where available. Every candidate is still a day-precise release
-        // from the same 90-day window; artwork does not mean popularity.
-        compareByDescending<CanonicalCatalogSearchRow> {
-            !it.artworkUri.isNullOrBlank()
-        }.thenByDescending { it.releaseDate.orEmpty() }
-            .thenBy { it.musicBrainzId },
-    )
+    }.sortedWith(launchOrder)
     if (launchCandidates.isNotEmpty()) {
         // Reserve independently verified Albums and Singles, but never fill
         // "Lançamentos" with historic works merely to complete a carousel.
