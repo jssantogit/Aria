@@ -58,7 +58,7 @@ internal class AppleExploreGenreDiscovery(
     private val nativeSource: AppleNativeGenreSearchSource =
         AppleNativeGenreSearchSource { term, storefront ->
             AppleEditorialCatalogRepository().searchAlbums(
-                query = term, storefront = storefront, limit = 100,
+                query = term, storefront = storefront, limit = 200,
                 capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                 attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
             )
@@ -93,7 +93,11 @@ internal class AppleExploreGenreDiscovery(
                     )
                 }.groupBy { it.appleScopedId }.values.mapNotNull { rows ->
                     rows.firstOrNull()?.takeIf { first -> rows.all { it == first } }
-                }.take(24)
+                }
+                // iTunes Search has no offset cursor. Keep the complete
+                // verified 200-response pool instead of discarding every
+                // valid album beyond position 24 before the native pager
+                // has an opportunity to reveal it. The UI stays bounded.
                 onProgress(matching)
                 AppleEditorialLoad.Success(
                     matching,
