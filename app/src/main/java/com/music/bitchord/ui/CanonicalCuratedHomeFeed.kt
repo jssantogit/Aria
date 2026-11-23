@@ -536,14 +536,18 @@ internal fun canonicalCuratedHomeShelves(
         canonicalBrowseCardId(row)?.let { id ->
             ShelfItem(row.title, row.subtitle.orEmpty(), row.artworkUri, null, id)
         }
-    // Reserve the leading carousel for the newest verified catalog releases;
-    // additional rows become truly distinct discovery sections. Never repeat
-    // an album in multiple rails or invent a "popular" rank from dates.
-    val featured = knownRows.take(8).mapNotNull(::releaseCard)
+    // A year-old group is a valid catalog entry, not a verified new
+    // release. Only exact dates within 90 days can enter "Lançamentos";
+    // older groups remain discoverable in the native album/single shelves.
+    val featuredRows = knownRows.filter {
+        canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
+    }.take(8)
+    val featured = featuredRows.mapNotNull(::releaseCard)
     val releaseItems = if (featured.isNotEmpty()) featured else savedReleases
     if (releaseItems.isNotEmpty()) add(HomeShelf(releasesHeading, releaseItems))
-    if (knownRows.size > 8) {
-        val remaining = knownRows.drop(8)
+    val featuredIds = featuredRows.map { it.musicBrainzId }.toSet()
+    val remaining = knownRows.filterNot { it.musicBrainzId in featuredIds }
+    if (remaining.isNotEmpty()) {
         val albums = remaining.filter {
             canonicalEditorialReleaseType(it) == "Album"
         }.mapNotNull(::releaseCard)
