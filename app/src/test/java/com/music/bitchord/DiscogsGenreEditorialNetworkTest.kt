@@ -31,7 +31,7 @@ class DiscogsGenreEditorialNetworkTest {
         styles = listOf(style),
     )
 
-    private fun release(masterId: Long) = DiscogsRecord(
+    private fun verifiedEdition(masterId: Long) = DiscogsRecord(
         link = DiscogsLink(DiscogsKind.RELEASE, 502L),
         title = "Source Album",
         artistNames = listOf("Verified Artist"),
@@ -76,7 +76,7 @@ class DiscogsGenreEditorialNetworkTest {
                 }
                 override suspend fun release(id: Long): DiscogsLookupResult {
                     visited += "release:$id"
-                    return DiscogsLookupResult.Found(release(77L))
+                    return DiscogsLookupResult.Found(verifiedEdition(77L))
                 }
             },
         )
