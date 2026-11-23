@@ -21,17 +21,37 @@ internal fun shouldStartAppleHomeEditorial(
     mbLoading: Boolean,
     visibleHomeShelves: List<HomeShelf>,
     releasesHeading: String,
+    discogsState: UiState<List<HomeShelf>> = UiState.Loading,
 ): Boolean {
     if (BuiltInProviderKeys.ITUNES !in ordered) return false
-    return when (ordered.firstOrNull()) {
-        BuiltInProviderKeys.ITUNES -> true
-        BuiltInProviderKeys.MUSICBRAINZ ->
-            !mbLoading &&
-                musicBrainzHomeEditorialShelves(visibleHomeShelves, releasesHeading).isEmpty()
-        else -> false
+    return ordered.takeWhile { it != BuiltInProviderKeys.ITUNES }.all { source ->
+        when (source) {
+            BuiltInProviderKeys.MUSICBRAINZ -> !mbLoading &&
+                musicBrainzHomeEditorialShelves(
+                    visibleHomeShelves, releasesHeading,
+                ).isEmpty()
+            BuiltInProviderKeys.DISCOGS -> editorialPrimaryMiss(discogsState)
+            else -> false
+        }
     }
 }
 
+/** MB may be a third-choice fallback: an Apple miss does not bypass a
+ * still-pending Discogs request in the middle of the user's order. */
+internal fun shouldStartMusicBrainzHomeEditorial(
+    ordered: List<ProviderKey>,
+    appleState: UiState<List<ItunesEditorialRelease>>,
+    discogsState: UiState<List<HomeShelf>> = UiState.Loading,
+): Boolean {
+    if (BuiltInProviderKeys.MUSICBRAINZ !in ordered) return false
+    return ordered.takeWhile { it != BuiltInProviderKeys.MUSICBRAINZ }.all { source ->
+        when (source) {
+            BuiltInProviderKeys.ITUNES -> editorialPrimaryMiss(appleState)
+            BuiltInProviderKeys.DISCOGS -> editorialPrimaryMiss(discogsState)
+            else -> false
+        }
+    }
+}
 
 /** A lower-priority provider starts only after EVERY earlier editorial source
  * has settled without eligible release shelves. Never bypass a loading source. */
@@ -76,6 +96,7 @@ internal object CanonicalHomeEditorialDispatch {
         @Suppress("UNUSED_PARAMETER") mbLoading: Boolean,
         visibleHomeShelves: List<HomeShelf>,
         releasesHeading: String,
+        discogsState: UiState<List<HomeShelf>> = UiState.Loading,
     ) {
         // Compose may have captured the old Loading=false before the
         // primary provider's LaunchedEffect starts its IO request. Always
@@ -88,7 +109,7 @@ internal object CanonicalHomeEditorialDispatch {
         if (shouldStartAppleHomeEditorial(
             ordered,
             viewModel.canonicalWorldwideLoading.value,
-            visibleHomeShelves, releasesHeading,
+            visibleHomeShelves, releasesHeading, discogsState,
         )) viewModel.loadAppleHomeEditorial()
     }
 
@@ -122,10 +143,12 @@ internal object CanonicalHomeEditorialDispatch {
         viewModel: MainViewModel,
         ordered: List<ProviderKey>,
         appleState: UiState<List<ItunesEditorialRelease>>,
+        discogsState: UiState<List<HomeShelf>> = UiState.Loading,
     ) {
-        if (ordered.firstOrNull() == BuiltInProviderKeys.ITUNES &&
-            BuiltInProviderKeys.MUSICBRAINZ in ordered &&
-            editorialPrimaryMiss(appleState)
+        // Preferred MB is dispatched by preferred(); this only starts it
+        // after every earlier provider in an arbitrary three-way order misses.
+        if (ordered.firstOrNull() != BuiltInProviderKeys.MUSICBRAINZ &&
+            shouldStartMusicBrainzHomeEditorial(ordered, appleState, discogsState)
         ) viewModel.loadCanonicalWorldwideReleases()
     }
 }
