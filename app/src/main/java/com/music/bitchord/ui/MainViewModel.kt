@@ -450,6 +450,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
     >>>> = _appleGenreReleases.asStateFlow()
     private val appleGenreEpoch = DiscoveryRequestEpoch()
+    /** iTunes Search has no upstream offset. Show additional verified products
+     * from the retained 200-response pool in native 24-card increments. */
+    private val _appleGenreVisibleCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    internal val appleGenreVisibleCounts = _appleGenreVisibleCounts.asStateFlow()
     private var appleGenreJob: Job? = null
     private var appleGenreActiveTag: String? = null
     private var appleGenreFingerprint: String? = null
@@ -3606,6 +3610,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Reveal a second source-confirmed Apple genre batch. No extra API call,
+     * fake iTunes offset, or title-based identity is involved.
+     */
+    fun revealNextAppleGenrePage(tag: String) {
+        if (appleGenreActiveTag != tag ||
+            !com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)
+        ) return
+        val verified = (_appleGenreReleases.value[tag]
+            as? UiState.Success<List<
+                com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
+            >>)?.data.orEmpty()
+        val eligible = appleSourceGenreCandidates(tag, verified).size
+        _appleGenreVisibleCounts.update { current ->
+            val before = current[tag] ?: 24
+            if (eligible <= before) current
+            else current + (tag to (before + 24).coerceAtMost(eligible))
+        }
+    }
+
+    /**
      * Explore release cards require both a returned Apple product and an
      * independently matching Apple primaryGenreName. MusicBrainz tag results
      * are candidate search terms, NOT a genre assertion about that product.
@@ -3625,6 +3649,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (lease == null) {
             appleGenreJob?.cancel()
             appleGenreEpoch.invalidateAndNext()
+            _appleGenreVisibleCounts.update { it - tag }
             _appleGenreReleases.update { it + (tag to UiState.Success(emptyList())) }
             return
         }
@@ -3638,6 +3663,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ) return
         appleGenreJob?.cancel()
         val generation = appleGenreEpoch.next()
+        _appleGenreVisibleCounts.update { it - tag }
         appleGenreActiveTag = tag
         appleGenreFingerprint = fingerprint
         appleGenreFetchedAtMs = now
@@ -4467,6 +4493,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             appleGenreJob?.cancel()
                             appleGenreEpoch.invalidateAndNext()
                             _appleGenreReleases.value = emptyMap()
+                            _appleGenreVisibleCounts.value = emptyMap()
                         }
                     }
                     val next = eligibleCatalogSearchProviders()
