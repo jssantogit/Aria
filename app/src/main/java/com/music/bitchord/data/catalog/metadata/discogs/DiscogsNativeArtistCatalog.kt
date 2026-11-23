@@ -70,7 +70,12 @@ internal fun discogsNativeArtistReleases(
             // Release tracklist is fetched again when the user opens its page.
             tracklist = emptyList(),
         )
-    }.distinctBy { it.releaseId }.toList()
+    }.distinctBy { release ->
+        // A Discogs Master groups physical versions of one catalog work.
+        // Preserve one representative card per proved Master; standalone
+        // Releases with no Master remain independent source identities.
+        release.masterId?.let { "master:$it" } ?: "release:${release.releaseId}"
+    }.toList()
 }
 
 internal interface DiscogsNativeEditionReader {
@@ -135,15 +140,60 @@ internal class DiscogsNativeArtistCatalog(
             val releaseId = when (entry.kind) {
                 DiscogsKind.RELEASE -> entry.id
                 DiscogsKind.MASTER -> {
-                    val master = editions.master(entry.id) as? DiscogsLookupResult.FoundMaster
-                    val id = master?.record?.mainReleaseId
+                    val response = try { editions.master(entry.id) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { DiscogsLookupResult.Unavailable }
+                    val master = (response as? DiscogsLookupResult.FoundMaster)?.record
+                    if (response is DiscogsLookupResult.Throttled) {
+                        if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Throttled(
+                            response.retryAfterSeconds,
+                        )
+                        incomplete = true
+                        break
+                    }
+                    if (response is DiscogsLookupResult.Disabled) {
+                        if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Disabled
+                        incomplete = true
+                        break
+                    }
+                    if (response is DiscogsLookupResult.Unauthorized ||
+                        response is DiscogsLookupResult.Unavailable
+                    ) {
+                        if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Unavailable
+                        incomplete = true
+                        break
+                    }
+                    val id = master?.takeIf {
+                        it.link.kind == DiscogsKind.MASTER && it.link.id == entry.id
+                    }?.mainReleaseId
                     if (id == null) incomplete = true
                     id ?: continue
                 }
             }
             if (!seenReleaseIds.add(releaseId)) continue
-            val record = (editions.release(releaseId) as?
-                DiscogsLookupResult.Found)?.record
+            val lookup = try { editions.release(releaseId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsLookupResult.Unavailable }
+            if (lookup is DiscogsLookupResult.Throttled) {
+                if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Throttled(
+                    lookup.retryAfterSeconds,
+                )
+                incomplete = true
+                break
+            }
+            if (lookup is DiscogsLookupResult.Disabled) {
+                if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Disabled
+                incomplete = true
+                break
+            }
+            if (lookup is DiscogsLookupResult.Unauthorized ||
+                lookup is DiscogsLookupResult.Unavailable
+            ) {
+                if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Unavailable
+                incomplete = true
+                break
+            }
+            val record = (lookup as? DiscogsLookupResult.Found)?.record
             if (record == null) {
                 incomplete = true
                 continue
