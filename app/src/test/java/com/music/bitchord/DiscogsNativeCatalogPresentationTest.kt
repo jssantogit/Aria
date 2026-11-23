@@ -10,6 +10,8 @@ import com.music.bitchord.ui.discogsAlbumArtistRelatedShelf
 import com.music.bitchord.ui.discogsArtistPage
 import com.music.bitchord.ui.discogsReleasePage
 import com.music.bitchord.ui.discogsReleaseMetadataFacts
+import com.music.bitchord.ui.discogsMasterVersionsShelf
+import com.music.bitchord.ui.discogsVerifiedVersionSelection
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.nativeArtistAllowsNameBasedAuxiliaryVisuals
 import org.junit.Assert.*
@@ -117,6 +119,63 @@ class DiscogsNativeCatalogPresentationTest {
             opened, artist.name, verified.filter { it.artistId != artist.artistId },
         ))
         assertTrue(discogsReleasePage(artist, opened).page.sections.isEmpty())
+    }
+
+    @Test fun versionsRailKeepsOnlyHydratedExactMasterReleaseIds() {
+        val original = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 700),
+            title = "Album", artistNames = listOf("Artist"),
+            country = "US", year = 2022,
+            labels = emptyList(), barcodes = emptyList(),
+            formats = listOf("CD", "Album"),
+            tracklist = emptyList(), unofficial = false,
+            masterId = 90, artistIds = listOf(artist.artistId),
+        )
+        val version = original.copy(
+            link = DiscogsLink(DiscogsKind.RELEASE, 701),
+            country = "Japan", formats = listOf("Vinyl", "Album"),
+        )
+        val unrelated = version.copy(
+            link = DiscogsLink(DiscogsKind.RELEASE, 702), masterId = 91,
+        )
+        val unofficial = version.copy(
+            link = DiscogsLink(DiscogsKind.RELEASE, 703), unofficial = true,
+        )
+        val silent = version.copy(
+            link = DiscogsLink(DiscogsKind.RELEASE, 704),
+            country = null, year = null, formats = emptyList(),
+        )
+        val shelf = discogsMasterVersionsShelf(
+            original, listOf(version, version, unrelated, unofficial, silent, original),
+        )!!
+        assertEquals("Versões", shelf.title)
+        assertEquals(listOf("discogs:release:701"),
+            shelf.items.map { it.browseId })
+        assertEquals("Album", shelf.items.single().title)
+        assertTrue(shelf.items.single().subtitle.contains("Japan"))
+        assertTrue(shelf.items.all { it.videoId == null && it.thumbnailUrl == null })
+        val page = discogsReleasePage(
+            artist, original, versionRecords = listOf(version, unrelated),
+            versionsIncomplete = true,
+        )
+        assertEquals(original.masterId, page.versionMasterId)
+        assertEquals(listOf("Versões"), page.page.sections.map { it.title })
+        assertTrue(page.incomplete)
+        assertEquals(701L, discogsVerifiedVersionSelection(
+            page, "discogs:release:701",
+        )?.releaseId)
+        assertNull(discogsVerifiedVersionSelection(
+            page, "discogs:release:702",
+        ))
+        assertNull(discogsVerifiedVersionSelection(
+            page, "discogs:release:0701",
+        ))
+        assertNull(discogsVerifiedVersionSelection(
+            page, "catalog:RELEASE_GROUP:701",
+        ))
+        assertNull(discogsMasterVersionsShelf(original.copy(masterId = null),
+            listOf(version)))
+        assertFalse(discogsReleasePage(artist, original).incomplete)
     }
 
     @Test fun otherReleasesOnlyCollectUnconfirmedOrConflictingFormats() {
