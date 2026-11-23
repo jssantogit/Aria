@@ -54,6 +54,39 @@ class CanonicalPublicDiscoveryTest {
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
     }
 
+    @Test fun publicHomePageReservesAlbumAtRawPositionOneHundred() {
+        // One source page, not 100 pagination calls: the historical first
+        // 40-rows clip lost an album hidden behind 99 source-typed singles.
+        val singles = (1..99).map { index ->
+            another.copy(
+                musicBrainzId = "81000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Verified recent single ${index}",
+                firstReleaseDate = "2026-11-15",
+            )
+        }
+        val lastAlbum = recent.copy(
+            musicBrainzId = "81000000-0000-4000-8000-000000000100",
+            title = "Last source row is a real album",
+            firstReleaseDate = "2026-11-01",
+        )
+        val rows = canonicalPublicReleaseRows(singles + lastAlbum,
+            "2026-10-01", "2026-11-23")
+        assertEquals(40, rows.size)
+        assertTrue(rows.any { it.musicBrainzId == lastAlbum.musicBrainzId })
+        assertTrue(rows.any { it.releaseKind == "Single" })
+        assertFalse(canonicalPublicNeedsMoreEditorialRows(rows))
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertTrue(home.flatMap { it.items }.any {
+            it.browseId == "catalog:RELEASE_GROUP:${lastAlbum.musicBrainzId}"
+        })
+        assertTrue(home.any { it.title == "Álbuns" || it.title == "Lançamentos" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+    }
+
     @Test fun aNonemptyRawShortWindowCanStillHaveNoEligiblePublicRows() {
         // The worldwide loader must inspect verified rows, not just whether
         // MusicBrainz returned a nonempty raw page before trying 90 days.
