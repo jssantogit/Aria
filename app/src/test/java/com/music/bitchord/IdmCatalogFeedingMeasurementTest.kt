@@ -262,11 +262,12 @@ class IdmCatalogFeedingMeasurementTest {
                         id
                     }
                     observedCandidates += ids.size
-                    return """{"pagination":{"page":""" + page +
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":""" + page +
                         ""","pages":2,"per_page":12},"results":[""" +
                         ids.joinToString(",") { id ->
                             """{"id":""" + id + ""","type":"master"}"""
-                        } + "]}"
+                        } + "]}")
                 }
             },
             editions = object : DiscogsNativeEditionReader {
