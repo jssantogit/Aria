@@ -58,6 +58,53 @@ private fun ItunesEditorialRelease.asAttributableShelfItem(): ShelfItem {
     )
 }
 
+/**
+ * iTunes Search provides no server offset. Retain the complete source-owned
+ * genre pool from the three Home queries, then reveal candidates NOT already
+ * visible in the immutable initial Home. A storefront title/genre alone never
+ * grants a MusicBrainz ID, playback asset or popularity ranking.
+ */
+internal fun appleHomeUnshownVerified(
+    sourcePool: List<ItunesEditorialRelease>,
+    initialShelves: List<HomeShelf>,
+): List<ItunesEditorialRelease> {
+    val shownIds = initialShelves.flatMap { it.items }
+        .mapNotNull { it.browseId }.toSet()
+    return sourcePool.asSequence()
+        .filter { item ->
+            item.storefront.matches(Regex("^[a-z]{2}$")) &&
+                item.appleCollectionId > 0L &&
+                item.artistId?.let { it > 0L } == true &&
+                item.appleScopedId ==
+                    "itunes:${item.storefront}:album:${item.appleCollectionId}" &&
+                AppleCatalogBrowseRoute.parse(item.appleScopedId)?.kind ==
+                    ItunesCatalogItemType.ALBUM &&
+                item.title.isNotBlank() && item.artistName.isNotBlank()
+        }
+        .groupBy { it.appleScopedId }
+        .values.mapNotNull { group ->
+            group.firstOrNull()?.takeIf { first -> group.all { it == first } }
+        }
+        .filterNot { it.appleScopedId in shownIds }
+}
+
+/** One immutable additional rail; source pool is verified, not a new API page. */
+internal fun appleHomeContinuationShelf(
+    selectedProviderIsApple: Boolean,
+    initialShelves: List<HomeShelf>,
+    sourcePool: List<ItunesEditorialRelease>,
+    revealedCount: Int,
+): HomeShelf? {
+    if (!selectedProviderIsApple || revealedCount <= 0) return null
+    val items = appleHomeUnshownVerified(sourcePool, initialShelves).asSequence()
+        .take(revealedCount)
+        .map(ItunesEditorialRelease::asAttributableShelfItem)
+        .toList()
+    return items.takeIf { it.isNotEmpty() }?.let {
+        HomeShelf("Mais do catálogo", it)
+    }
+}
+
 /** Headings are provided by Android localized resources, never hardcoded here. */
 internal data class AppleEditorialShelfHeadings(
     val albums: String,
