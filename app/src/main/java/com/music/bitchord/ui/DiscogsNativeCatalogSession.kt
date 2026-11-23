@@ -845,11 +845,18 @@ internal class DiscogsNativeCatalogSession(
             when (response) {
                 is DiscogsNativeArtistLoad.Success -> {
                     releases = discogsMergeArtistPageReleases(releases + response.releases)
-                    artistPage = page
-                    artistHasMore = response.hasMore
-                    artistIncomplete = artistIncomplete || response.incomplete
+                    // A throttled or interrupted hydration must not consume
+                    // the index page: retry the same page on the next request,
+                    // deduplicating the already verified Release/Master IDs.
+                    if (!response.retryCurrentPage) artistPage = page
+                    artistHasMore = response.hasMore || response.retryCurrentPage
+                    // A retryable gap is not a permanent missing-release
+                    // verdict; the successful retry can close it.
+                    if (!response.retryCurrentPage) {
+                        artistIncomplete = artistIncomplete || response.incomplete
+                    }
                     val result = discogsArtistPage(current, releases,
-                        artistHasMore, artistIncomplete)
+                        artistHasMore, artistIncomplete || response.retryCurrentPage)
                     cachedArtistPage = result
                     _detail.value = UiState.Success(result)
                 }
