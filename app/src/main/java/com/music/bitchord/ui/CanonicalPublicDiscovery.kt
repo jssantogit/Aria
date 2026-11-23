@@ -63,9 +63,12 @@ internal fun canonicalPublicGenreRows(
 ): List<CanonicalCatalogSearchRow> {
     val today = runCatching { LocalDate.parse(throughIsoDate) }.getOrNull()
         ?: return emptyList()
+    // Keep the entire bounded source response until format-aware sampling.
+    // A pre-emptive 120-item cap can hide the only Album behind 120 Singles
+    // even though the final genre viewport displays at most forty cards.
     val valid = canonicalPublicTypedReleaseRows(hits, { date ->
         canonicalCatalogReleaseDateNotFuture(date, today)
-    }, maxItems = 120)
+    }, maxItems = hits.size)
     // The world-news feed can simply lead with newest releases. A historical
     // genre page must NOT let 40 recent Singles crowd every Album out before
     // the editorial composer ever receives it.
