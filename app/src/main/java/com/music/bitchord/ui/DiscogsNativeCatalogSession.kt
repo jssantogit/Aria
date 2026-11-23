@@ -673,8 +673,11 @@ internal class DiscogsNativeCatalogSession(
         val index = try { editionClient.fetchMasterVersionPreview(masterId) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { DiscogsMasterVersionPreviewResult.Unavailable }
+        // A Release with an explicit Master link may have other editions.
+        // Failure to read its version index is uncertainty, not proof that
+        // no other editions exist. Do not invent a Versões shelf.
         val page = (index as? DiscogsMasterVersionPreviewResult.Page)?.result
-            ?: return VerifiedVersionSample()
+            ?: return VerifiedVersionSample(incomplete = true)
         val candidates = page.releaseIds.filter { it != source.link.id }
         val verified = mutableListOf<DiscogsRecord>()
         var incomplete = page.hasMore || candidates.size > 3
@@ -759,7 +762,9 @@ internal class DiscogsNativeCatalogSession(
                 credit, record, versionRecords = variants.records,
                 versionsIncomplete = variants.incomplete,
             )
-            if (variants.records.isNotEmpty()) _detail.value = UiState.Success(withVersions)
+            if (variants.records.isNotEmpty() || variants.incomplete) {
+                _detail.value = UiState.Success(withVersions)
+            }
             val exactArtistId = initial.albumArtistBrowseId
                 ?.removePrefix("discogs:artist:")?.toLongOrNull()
                 ?.takeIf { !record.unofficial } ?: return@launch
@@ -1302,7 +1307,8 @@ internal fun discogsReleasePage(
             name.equals(artistCredit.trim(), ignoreCase = true)
     },
     versionMasterId = record.masterId,
-    incomplete = versionsIncomplete && discogsMasterVersionsShelf(
-        record, versionRecords,
-    ) != null,
+    // Even with zero verified cards, an interrupted Master lookup means
+    // unknown coverage. The native source footer communicates this without
+    // presenting a fabricated Versions carousel.
+    incomplete = versionsIncomplete,
 )
