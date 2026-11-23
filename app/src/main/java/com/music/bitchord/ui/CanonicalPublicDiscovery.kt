@@ -379,7 +379,8 @@ internal fun canonicalHomeWithWorldwideEditorial(
     // catalog. Different MusicBrainz editions keep their real MBIDs in search.
     val publicRows = worldwideReleases.asSequence()
         .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP &&
-            canonicalEditorialReleaseType(it) != null }
+            canonicalEditorialReleaseType(it) != null &&
+            canonicalCatalogReleaseDateNotFuture(it.releaseDate, todayIsoDate) }
         .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
         .sortedWith(
             compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
