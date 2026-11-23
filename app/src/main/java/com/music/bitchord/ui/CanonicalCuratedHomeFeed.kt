@@ -554,7 +554,15 @@ internal fun canonicalCuratedHomeShelves(
     // older groups remain discoverable in the native album/single shelves.
     val featuredRows = knownRows.filter {
         canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
-    }.take(8)
+    }.sortedWith(
+        // Prioritize actual known cover art on prominent release plates,
+        // never a title-matched or invented image. Dates remain exact
+        // and within the same freshness window.
+        compareByDescending<CanonicalCatalogSearchRow> {
+            !it.artworkUri.isNullOrBlank()
+        }.thenByDescending { it.releaseDate.orEmpty() }
+            .thenBy { it.musicBrainzId },
+    ).take(8)
     val featured = featuredRows.mapNotNull(::releaseCard)
     val releaseItems = if (featured.isNotEmpty()) featured else savedReleases
     if (releaseItems.isNotEmpty()) add(HomeShelf(releasesHeading, releaseItems))
