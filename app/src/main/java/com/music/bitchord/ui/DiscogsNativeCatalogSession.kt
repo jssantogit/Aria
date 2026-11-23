@@ -14,6 +14,7 @@ import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.discogsSearchArtistRank
+import com.music.bitchord.ui.screens.discogsSearchDistinctArtists
 import com.music.bitchord.ui.screens.discogsArtistDisplayName
 import com.music.bitchord.ui.screens.discogsSearchReleaseRank
 import com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage
@@ -451,10 +452,15 @@ internal class DiscogsNativeCatalogSession(
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
-                        // Discogs numeric suffixes are not popularity ranks.
-                        // Preserve API order for the Search-only visible
-                        // representative while retaining all exact IDs.
-                        val candidates = (previous + rows).distinctBy { it.artistId }
+                        // "(2)" suffixes are Discogs disambiguators, not
+                        // visible artist names. The native Artist tab must
+                        // collapse duplicate display names just like General,
+                        // while a click retains the selected exact source ID.
+                        // We never claim that two Discogs IDs are the same
+                        // identity outside this search presentation.
+                        val candidates = discogsSearchDistinctArtists(
+                            subject, (previous + rows).distinctBy { it.artistId },
+                        )
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
                         }
