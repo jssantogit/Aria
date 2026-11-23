@@ -386,7 +386,7 @@ class CanonicalCuratedHomeFeedTest {
             canonicalPublicPopularityCandidates(listOf(release, known, known), limit = 40))
     }
 
-    @Test fun communityShelfDoesNotReplaceVerifiedReleasesOrReenterHome() {
+    @Test fun communityShelfCannotPretendHistoricalEpIsFreshLaunch() {
         val original = feed(listOf(release, playable), listOf(local), listOf(playable.musicBrainzId))
         val public = com.music.bitchord.data.model.HomeShelf(
             "Popular na comunidade",
@@ -397,8 +397,10 @@ class CanonicalCuratedHomeFeedTest {
             homeShelves = original, releasesHeading = "Lançamentos",
             trendingHeading = "Em alta", community = public,
         )
-        assertEquals(listOf("Lançamentos", "Popular na comunidade"), explore.map { it.title })
-        assertEquals(listOf("Lançamentos", "Escolha a dedo", "Em alta"), original.map { it.title })
+        assertEquals(listOf("Popular na comunidade"), explore.map { it.title })
+        assertEquals(listOf("Singles e EPs", "Escolha a dedo", "Em alta"),
+            original.map { it.title })
+        assertEquals("SUPER REAL ME", original.first().items.single().title)
     }
 
     @Test fun communityDiscoveryPrecedesPersonalFallbackWhenNoPublicReleaseExists() {
@@ -446,13 +448,15 @@ class CanonicalCuratedHomeFeedTest {
         assertEquals(PlaybackSourceType.EXPLORE, canonicalEditorialPlaybackSource(explore = true))
     }
 
-    @Test fun explorePrioritizesVerifiedReleasesWhileHomeKeepsAllThreeShelves() {
+    @Test fun explorePrefersVerifiedTrendingWhenHomeOnlyHasHistoricalReleases() {
         val home = feed(listOf(release, playable), listOf(local), listOf(playable.musicBrainzId))
         val explore = canonicalExploreShelves(home, releasesHeading = "Lançamentos",
             trendingHeading = "Em alta")
-        assertEquals(listOf("Lançamentos", "Escolha a dedo", "Em alta"), home.map { it.title })
-        assertEquals(listOf("Lançamentos"), explore.map { it.title })
-        assertEquals(home.first().items, explore.single().items)
+        assertEquals(listOf("Singles e EPs", "Escolha a dedo", "Em alta"),
+            home.map { it.title })
+        assertEquals(listOf("Em alta"), explore.map { it.title })
+        assertEquals(home.last().items, explore.single().items)
+        assertTrue(home.none { it.title == "Lançamentos" })
         assertFalse(explore.any { it.title == "Escolha a dedo" })
     }
 
