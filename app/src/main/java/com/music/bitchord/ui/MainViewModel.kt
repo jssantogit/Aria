@@ -3429,38 +3429,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
             val until = today.toString()
             val rows = try {
-                // MusicBrainz search offset counts raw server positions. A first
-                // page with two verified release groups is not evidence that
-                // the next hundred indexed candidates are also unusable.
-                // Traverse a bounded number of source pages before widening
-                // the historical window; never skip by *accepted* row count.
-                suspend fun scanRecentWindow(
-                    from: String, through: String, maxPages: Int,
-                ): List<CanonicalCatalogSearchRow> {
-                    val accepted = LinkedHashMap<String, CanonicalCatalogSearchRow>()
-                    var offset = 0
-                    for (pageNumber in 0 until maxPages) {
-                        val result = musicBrainzEditorialSearch.searchRecentReleaseGroups(
-                            from, through, limit = 100, offset = offset,
-                        )
-                        val page = (result as?
-                            MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)
-                            ?.page ?: break
-                        canonicalPublicReleaseRows(page.items, from, through)
-                            .forEach { row -> accepted.putIfAbsent(row.musicBrainzId, row) }
-                        if (!canonicalPublicNeedsMoreEditorialRows(accepted.values.toList()))
-                            break
-                        val next = page.nextOffset ?: break
-                        if (next <= offset) break
-                        offset = next
-                    }
-                    return accepted.values.toList()
-                }
+                // Use the same source-cursor scanner as CI. Verify candidate
+                // identities/date precision before deciding whether to widen
+                // the window, rather than treating a sparse first page as
+                // proof of low provider capacity.
                 val narrowFrom = today.minusDays(30).toString()
                 val wideFrom = today.minusDays(90).toString()
-                val recentRows = scanRecentWindow(narrowFrom, until, maxPages = 3)
+                val recentRows = scanMusicBrainzRecentEditorial(musicBrainzEditorialSearch,
+                    narrowFrom, until, maxPages = 3).rows
                 val expandedRows = if (canonicalPublicNeedsMoreEditorialRows(recentRows))
-                    scanRecentWindow(wideFrom, until, maxPages = 2)
+                    scanMusicBrainzRecentEditorial(musicBrainzEditorialSearch,
+                        wideFrom, until, maxPages = 2).rows
                 else emptyList()
                 val combined = (recentRows + expandedRows).distinctBy { it.musicBrainzId }
                 if (canonicalPublicNeedsMoreEditorialRows(combined)) {
@@ -3468,9 +3447,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val historicalThrough = today.minusDays(91).toString()
                     // Historical source records are retained as dated evidence,
                     // never relabeled as current charts or ranked popularity.
-                    val older = scanRecentWindow(
+                    val older = scanMusicBrainzRecentEditorial(
+                        musicBrainzEditorialSearch,
                         historicalFrom, historicalThrough, maxPages = 1,
-                    )
+                    ).rows
                     (combined + older).distinctBy { it.musicBrainzId }
                 } else combined
             } catch (cancelled: CancellationException) { throw cancelled }
