@@ -18,6 +18,8 @@ internal data class MusicBrainzRecentEditorialScan(
     val parsedRows: Int,
     val cursorRemaining: Boolean,
     val sourceFailure: Boolean,
+    /** Exact source-owned cursor to resume, including the failed offset on retry. */
+    val nextOffset: Int?,
 )
 
 internal suspend fun scanMusicBrainzRecentEditorial(
@@ -26,11 +28,14 @@ internal suspend fun scanMusicBrainzRecentEditorial(
     throughIsoDate: String,
     maxPages: Int = 3,
     pageSize: Int = 100,
+    /** Supports one-page scroll loads without treating filtered item counts as offsets. */
+    startOffset: Int = 0,
     onSourcePage: (List<MusicBrainzReleaseGroupHit>) -> Unit = {},
 ): MusicBrainzRecentEditorialScan {
-    require(maxPages in 1..5 && pageSize in 1..100)
+    require(maxPages in 1..5 && pageSize in 1..100 && startOffset >= 0)
     val admitted = LinkedHashMap<String, CanonicalCatalogSearchRow>()
-    var offset = 0
+    var offset = startOffset
+    var resumeOffset: Int? = null
     var attempts = 0
     var sourcePositions = 0
     var parsedRows = 0
@@ -44,12 +49,14 @@ internal suspend fun scanMusicBrainzRecentEditorial(
         val page = (result as?
             MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)
             ?.page
-        if (page == null) {
+        if (page == null || page.offset != offset ||
+            page.consumedCount > pageSize ||
+            (page.consumedCount == 0 && page.total > offset)
+        ) {
+            // An interrupted/invalid page is NOT proof of a completed feed.
+            // Retry exactly the last requested raw offset, never items.size.
             sourceFailure = true
-            break
-        }
-        if (page.offset != offset) {
-            sourceFailure = true
+            resumeOffset = offset
             break
         }
         sourcePositions += page.consumedCount
@@ -60,6 +67,7 @@ internal suspend fun scanMusicBrainzRecentEditorial(
 
         val next = page.nextOffset
         cursorRemaining = next != null && next > offset
+        resumeOffset = next?.takeIf { it > offset }
         if (!canonicalPublicNeedsMoreEditorialRows(admitted.values.toList()) ||
             !cursorRemaining
         ) break
@@ -67,6 +75,6 @@ internal suspend fun scanMusicBrainzRecentEditorial(
     }
     return MusicBrainzRecentEditorialScan(
         admitted.values.toList(), attempts, sourcePositions,
-        parsedRows, cursorRemaining, sourceFailure,
+        parsedRows, cursorRemaining, sourceFailure, resumeOffset,
     )
 }
