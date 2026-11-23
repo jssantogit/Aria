@@ -94,9 +94,14 @@ internal fun projectCanonicalHomeEditorial(
         // An empty completed MB primary makes Apple an actively scheduled
         // fallback, not an unstarted/empty source. Preserve Loading until
         // the Apple request settles; never promote Apple before MB finishes.
-        requestCanStart = catalogEditorialOrder.firstOrNull() == apple ||
-            (catalogEditorialOrder.firstOrNull() == mb &&
-                !canonicalWorldwideLoading && musicBrainzShelves.isEmpty()),
+        // A lower-priority Apple read may be scheduled after any sequence
+        // of MB and Discogs misses, not only when MB was the first provider.
+        // Keep the Apple loading state visible once it is eligible, while
+        // preserving earlier providers' pending/verified priority.
+        requestCanStart = shouldStartAppleHomeEditorial(
+            catalogEditorialOrder, canonicalWorldwideLoading,
+            canonicalHomeShelves, releasesHeading, discogsEditorial,
+        ),
         evidenceAuthorized = apple in catalogEditorialOrder,
     )
     return selectCatalogEditorial(
