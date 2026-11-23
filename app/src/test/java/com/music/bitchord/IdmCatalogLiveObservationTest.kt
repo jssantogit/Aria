@@ -569,8 +569,10 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
 
-        // Observe one source-owning Discogs Home round-robin chunk. This
-        // single live sample is NOT an exhaustive nine-genre Home search.
+        // Reproduce one FULL app Home gesture, not merely the first two
+        // index positions. Production checks up to three four-candidate
+        // chunks, rotating to the next source Genre/Style predicate when
+        // the current chunk does not yield a new verified Master.
         val homeQueries = discogsHomeGranularQueries()
         val discogsHomeInitial = initialDiscogsHomePageSnapshot(
             verifiedDiscogs, homeQueries.size,
@@ -578,55 +580,97 @@ class IdmCatalogLiveObservationTest {
         val beforeHomeIndexes = discogsIndexReads
         val beforeHomeCandidates = discogsIndexCandidates
         val beforeHomeMasters = discogsMasterReads
+        val beforeHomeMasterFound = discogsMasterFound
         val beforeHomeReleases = discogsReleaseReads
-        val homeDiscogsRead = if (discogsRead is DiscogsEditorialResult.Verified &&
-            homeQueries.isNotEmpty()
-        ) withTimeoutOrNull(45_000L) {
-            try {
-                discogsGranularScanner?.discoverGranular(
-                    query = homeQueries.first(),
-                    knownMasterIds = discogsHomeInitial.knownMasterIds,
-                    maxCandidates = 2,
-                )
-            } catch (_: Exception) { null }
+        val beforeHomeReleaseFound = discogsReleaseFound
+        var homeChunks = 0
+        var homeConsumed = 0
+        var homeTransportException = false
+        val homeStartNs = System.nanoTime()
+        // The UI has no network deadline of its own. This observational
+        // watchdog classifies excessive latency instead of falsely calling
+        // a timed-out network sample an exhausted catalog.
+        val homeCanStart = discogsRead is DiscogsEditorialResult.Verified &&
+            discogsShelves.isNotEmpty() && homeQueries.isNotEmpty()
+        val discogsHomeNext = if (homeCanStart) withTimeoutOrNull(110_000L) {
+            var state = discogsHomeInitial
+            val previouslyKnown = state.knownMasterIds
+            for (batch in 1..3) {
+                val index = state.nextQueryIndex ?: break
+                val cursor = state.cursors.getOrNull(index) ?: break
+                val query = homeQueries.getOrNull(index) ?: break
+                val response = try {
+                    discogsGranularScanner?.discoverGranular(
+                        query = query, cursor = cursor,
+                        knownMasterIds = state.knownMasterIds,
+                        maxCandidates = 4,
+                    ) ?: break
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    homeTransportException = true
+                    break
+                }
+                homeChunks++
+                homeConsumed += when (response) {
+                    is DiscogsGranularRead.Page -> response.consumedCandidates
+                    is DiscogsGranularRead.Interrupted ->
+                        (response.retryCursor.candidatePosition -
+                            cursor.candidatePosition).coerceAtLeast(0)
+                }
+                state = advanceDiscogsHomePage(state, index, response)
+                    ?: state.copy(loading = false, failed = true)
+                if (state.failed || !state.hasMore ||
+                    state.knownMasterIds.any { it !in previouslyKnown }
+                ) break
+            }
+            state
         } else null
-        val discogsHomeNext = homeDiscogsRead?.let {
-            advanceDiscogsHomePage(discogsHomeInitial, 0, it)
-        }
+        val homeElapsedMs = ((System.nanoTime() - homeStartNs) / 1_000_000L)
+            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        check(homeChunks in 0..3)
+        check(homeConsumed in 0..12)
         val discogsHomeExtra = discogsHomeNext?.let {
             discogsHomeContinuationShelf(discogs, discogsShelves, it)
         }
         report("discogs_home_granular", Sample(
             status = when {
                 token == null -> "token_not_configured"
-                discogsRead !is DiscogsEditorialResult.Verified -> "initial_unverified"
-                homeDiscogsRead == null -> "timeout_or_unavailable"
-                homeDiscogsRead is DiscogsGranularRead.Interrupted ->
-                    "retryable_interruption"
+                discogsRead !is DiscogsEditorialResult.Verified ->
+                    "initial_unverified"
+                !homeCanStart -> "initial_no_editorial"
+                homeTransportException -> "source_error"
+                discogsHomeNext == null -> "timeout_or_unavailable"
+                discogsHomeNext.failed -> "retryable_interruption"
                 discogsHomeExtra == null -> "no_new_verified_records"
                 else -> "verified"
             },
             raw = if (token == null) null
                 else discogsIndexCandidates - beforeHomeCandidates,
             parsed = if (token == null) null
-                else discogsMasterReads - beforeHomeMasters,
+                else discogsMasterFound - beforeHomeMasterFound,
             eligible = discogsHomeNext?.releases?.size ?: 0,
             visible = discogsHomeExtra?.items?.size ?: 0,
             requests = if (token == null) null else
                 discogsIndexReads - beforeHomeIndexes +
                 discogsMasterReads - beforeHomeMasters +
                 discogsReleaseReads - beforeHomeReleases,
-            artwork = 0,
+            artwork = discogsHomeExtra?.items?.count {
+                !it.thumbnailUrl.isNullOrBlank()
+            } ?: 0,
             counts = mapOf(
                 "source_queries_available" to homeQueries.size,
                 "next_query_index" to (discogsHomeNext?.nextQueryIndex ?: homeQueries.size),
                 "next_window_has_more" to if (discogsHomeNext?.hasMore == true) 1 else 0,
-                "source_candidates_consumed" to when (homeDiscogsRead) {
-                    is DiscogsGranularRead.Page -> homeDiscogsRead.consumedCandidates
-                    is DiscogsGranularRead.Interrupted ->
-                        homeDiscogsRead.retryCursor.candidatePosition
-                    else -> 0
-                },
+                "source_candidates_consumed" to homeConsumed,
+                "source_candidate_budget" to 12,
+                "source_chunks_attempted" to homeChunks,
+                "source_index_reads" to discogsIndexReads - beforeHomeIndexes,
+                "source_master_reads" to discogsMasterReads - beforeHomeMasters,
+                "source_master_found" to discogsMasterFound - beforeHomeMasterFound,
+                "source_release_reads" to discogsReleaseReads - beforeHomeReleases,
+                "source_release_found" to discogsReleaseFound - beforeHomeReleaseFound,
+                "elapsed_ms" to homeElapsedMs,
             ),
         ))
 
