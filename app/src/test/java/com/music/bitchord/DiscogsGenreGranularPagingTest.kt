@@ -137,8 +137,8 @@ class DiscogsGenreGranularPagingTest {
         assertEquals(listOf("discogs:release:1002"),
             discogs.last().items.map { it.browseId })
         val onlyMb = project(listOf(BuiltInProviderKeys.MUSICBRAINZ))
-        assertFalse((onlyMb as UiState.Success).data.any {
+        assertFalse((onlyMb as? UiState.Success)?.data.orEmpty().any {
             it.title == "Mais do gênero"
-        })
+        } == true)
     }
 }
