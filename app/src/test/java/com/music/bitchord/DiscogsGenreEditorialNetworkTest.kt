@@ -181,6 +181,47 @@ class DiscogsGenreEditorialNetworkTest {
             "artist:1", "master:77", "release:502"), calls)
     }
 
+    @Test fun rateLimitAfterVerifiedMasterKeepsSourceOnlyGenrePartialCatalog() = runBlocking {
+        val visited = mutableListOf<String>()
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true,
+            tokenProvider = { "A".repeat(32) },
+            admission = access(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    visited += "genre:$page"
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":77,"type":"master"},
+                                       {"id":78,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    visited += "master:$id"
+                    return if (id == 77L)
+                        DiscogsLookupResult.FoundMaster(master(id, "K-Pop"))
+                    else DiscogsLookupResult.Throttled(20L)
+                }
+
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    visited += "release:$id"
+                    return DiscogsLookupResult.Found(verifiedEdition(77L))
+                }
+            },
+        )
+        val result = source.discover(DiscogsEditorialQuery("K-Pop", true))
+        assertTrue(result is DiscogsEditorialResult.Verified)
+        assertEquals(listOf("discogs:release:502"),
+            (result as DiscogsEditorialResult.Verified).releases.map { it.browseId })
+        assertEquals(listOf("genre:1", "master:77", "release:502",
+            "master:78"), visited)
+    }
+
     @Test fun authenticatedSearchThrottleIsNotRenderedAsAnEmptyCatalog() = runBlocking {
         val source = DiscogsNativeGenreEditorial(
             enabled = true,
