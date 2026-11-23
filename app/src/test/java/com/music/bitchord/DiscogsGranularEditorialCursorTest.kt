@@ -220,7 +220,9 @@ class DiscogsGranularEditorialCursorTest {
                     events += "master:$id"
                     // An unverified source Master must never be streamed.
                     return if (id == 2L) DiscogsLookupResult.Missing
-                        else DiscogsLookupResult.FoundMaster(master(id))
+                        else DiscogsLookupResult.FoundMaster(
+                            this@DiscogsGranularEditorialCursorTest.master(id),
+                        )
                 }
                 override suspend fun release(id: Long): DiscogsLookupResult {
                     events += "release:$id"
