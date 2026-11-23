@@ -1566,11 +1566,12 @@ private fun BitChordApp(
             moreHeading = canonicalPublicMoreHeading,
             discogsEditorial = discogsHomeReleases,
         )
+    val canonicalHomePaging by viewModel.canonicalHomePaging.collectAsStateWithLifecycle()
     val canonicalHomeDisplayShelves =
         com.music.bitchord.ui.rememberCanonicalHomeDisplayShelves(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
             authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
-            weeklyArtistShelf,
+            weeklyArtistShelf, canonicalHomePaging,
         )
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
         canonicalHomeDisplayShelves, canonicalHomeEditorialSelection,
@@ -1780,6 +1781,17 @@ private fun BitChordApp(
     }
 
     val homeListState = rememberLazyListState()
+    // The worldwide continuation is only visible when MB owns editorial.
+    // Scroll transitions are user-driven; recomposition never auto-fetches.
+    com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
+        tag = "home",
+        enabled = selectedTab == TAB_HOME && detail == null &&
+            canonicalHomeEditorialSelection.provider == catalogMb,
+        hasMore = canonicalHomePaging.hasMore,
+        loading = canonicalHomePaging.loading,
+        listState = homeListState,
+        onLoadMore = { viewModel.loadMoreCanonicalHome() },
+    )
     val exploreListState = rememberLazyListState()
     // Keep expensive coroutine/composition machinery outside BitChordApp's
     // enormous Compose bytecode method. One shared native warmup surface.
@@ -4554,6 +4566,12 @@ private fun BitChordApp(
                             ) "Dados fornecidos pelo Discogs · Abrir fonte" to
                                 "https://www.discogs.com/" else null,
                             leadHero = true,
+                            loadingMore = canonicalHomeEditorialSelection.provider == catalogMb &&
+                                canonicalHomePaging.loading,
+                            onAdditionalGenrePage = if (
+                                canonicalHomeEditorialSelection.provider == catalogMb &&
+                                canonicalHomePaging.hasMore
+                            ) ({ viewModel.loadMoreCanonicalHome() }) else null,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                             // Keep live playhead state inside HomeScreen, not BitChordApp.
