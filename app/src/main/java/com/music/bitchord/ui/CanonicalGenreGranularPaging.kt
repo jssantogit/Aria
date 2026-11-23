@@ -87,7 +87,9 @@ internal fun canonicalGenreContinuationShelf(
                 browseId = canonicalNativeBrowseId(row),
             )
         }
-        .filter { card -> card.browseId != null && shownIds.add(card.browseId) }
+        .filter { card ->
+            card.browseId?.let { sourceId -> shownIds.add(sourceId) } == true
+        }
         .toList()
     return rows.takeIf { it.isNotEmpty() }?.let {
         HomeShelf("Mais do gênero", it)
