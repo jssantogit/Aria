@@ -349,6 +349,24 @@ fun SearchScreen(
     // Compact General results first, and reveal already fetched Apple products
     // before spending a separate source-specific paging request.
     var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(28) }
+    val pinnedMixedMore = searchingCanonical && searchCommitted &&
+        filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()
+    val appleMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
+        discogsArtistResults == null && discogsReleaseResults == null
+    val appleArtistRows = (appleArtistResults as? UiState.Success)?.data.orEmpty()
+    val appleTrackRows = (appleTrackResults as? UiState.Success)?.data.orEmpty()
+    val appleAlbumRows = (appleResults as? UiState.Success)?.data.orEmpty()
+    val appleUnshown = appleMixedMore && appleUnifiedSearchEntries(
+        query, appleArtistRows, appleTrackRows, appleAlbumRows,
+    ).size > appleGeneralVisibleRows
+    val appleNext = if (appleMixedMore) appleUnifiedNextPage(
+        query, appleArtistRows, appleTrackRows, appleAlbumRows, applePaging,
+    ) else null
+    val appleRequestLoading = appleMixedMore &&
+        applePaging.values.any { it.loadingMore }
+    val pinnedMoreVisible = (pinnedMixedMore && catalogSearchMusicBrainzVisible &&
+        (canonicalSearchHasMore || canonicalSearchLoadingMore)) ||
+        (appleMixedMore && (appleUnshown || appleNext != null || appleRequestLoading))
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {
@@ -419,10 +437,14 @@ fun SearchScreen(
             }
         }
 
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                bottom = contentPadding.calculateBottomPadding() +
+                    (if (pinnedMoreVisible) 60.dp else 0.dp),
+            ),
         ) {
             when {
                 searchingCanonical -> {
@@ -551,6 +573,7 @@ fun SearchScreen(
                             canonicalSearchLoadingMore,
                             onCanonicalPlay, onCanonicalAddToQueue,
                             onCanonicalRecordingInfo, appleResultTabs,
+                            showInlineSearchMore = !pinnedMixedMore,
                         )
                     } else if ((discogsArtistResults != null ||
                         discogsReleaseResults != null) && canonicalDetail == null) {
@@ -606,6 +629,7 @@ fun SearchScreen(
                             onLoadMore = onAppleLoadMore,
                             visibleLimit = appleGeneralVisibleRows,
                             onRevealMore = { appleGeneralVisibleRows += 24 },
+                            showInlineFooter = false,
                         )
                     } else {
                         canonicalMusicBrainzResults(
@@ -616,6 +640,7 @@ fun SearchScreen(
                             canonicalSearchLoadingMore,
                             onCanonicalPlay, onCanonicalAddToQueue,
                             onCanonicalRecordingInfo, appleResultTabs,
+                            showInlineSearchMore = !pinnedMixedMore,
                         )
                     }
                 }
@@ -848,6 +873,40 @@ fun SearchScreen(
                 )
             }
         }
+        // When the last results are visible, put ONE pagination action near
+        // the floating tab bar. On short pages this eliminates the oversized
+        // empty strip beneath the former in-list button. Content receives an
+        // extra footer clearance so neither tracks nor CTA are obscured.
+        val atEnd = listState.layoutInfo.let { layout ->
+            layout.totalItemsCount > 0 &&
+                (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >=
+                    layout.totalItemsCount - 2
+        }
+        if (pinnedMoreVisible && atEnd) {
+            val isApple = appleMixedMore
+            NativeSearchSecondaryAction(
+                label = stringResource(Res.string.canonical_more_results),
+                onClick = {
+                    if (isApple) {
+                        if (appleUnshown) appleGeneralVisibleRows += 24
+                        else appleNext?.let(onAppleLoadMore)
+                    } else onCanonicalSearchLoadMore()
+                },
+                enabled = if (isApple) appleUnshown || appleNext != null
+                    else !canonicalSearchLoadingMore,
+                loading = if (isApple)
+                    !appleUnshown && appleNext == null && appleRequestLoading
+                    else canonicalSearchLoadingMore,
+                highContrast = true,
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = PAGE_GUTTER, end = PAGE_GUTTER,
+                        bottom = contentPadding.calculateBottomPadding() + 12.dp,
+                    ),
+            )
+        }
+        }
     }
 }
 
@@ -938,6 +997,7 @@ private fun LazyListScope.appleUnifiedSearchRows(
     onLoadMore: (AppleSearchSection) -> Unit,
     visibleLimit: Int,
     onRevealMore: () -> Unit,
+    showInlineFooter: Boolean = true,
 ) {
     val artistRows = (artists as? UiState.Success)?.data.orEmpty()
     val trackRows = (tracks as? UiState.Success)?.data.orEmpty()
@@ -1009,7 +1069,7 @@ private fun LazyListScope.appleUnifiedSearchRows(
         query, artistRows, trackRows, albumRows, paging,
     )
     val sourceLoading = paging.values.any { it.loadingMore }
-    if (hasUnshown || nextSource != null || sourceLoading) {
+    if (showInlineFooter && (hasUnshown || nextSource != null || sourceLoading)) {
         item(key = "apple:unified:more") {
             NativeCatalogSearchLoadMore(
                 label = stringResource(Res.string.canonical_more_results),
@@ -1448,6 +1508,7 @@ private fun LazyListScope.canonicalMusicBrainzResults(
     onAddToQueue: (String) -> Unit,
     onRecordingInfo: (CanonicalCatalogSearchRow) -> Unit,
     appleStyle: Boolean,
+    showInlineSearchMore: Boolean = true,
 ) {
     if (detail != null) {
         item(key = "musicbrainz:navigation") {
@@ -1562,7 +1623,9 @@ private fun LazyListScope.canonicalMusicBrainzResults(
             }
         }
     }
-    if (detail == null && results is UiState.Success && searchHasMore) {
+    if (showInlineSearchMore && detail == null && results is UiState.Success &&
+        searchHasMore
+    ) {
         item(key = "musicbrainz:search:load-more") {
             NativeSearchSecondaryAction(
                 label = stringResource(Res.string.canonical_more_results),
