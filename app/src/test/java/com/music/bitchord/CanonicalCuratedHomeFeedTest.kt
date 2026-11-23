@@ -210,6 +210,56 @@ class CanonicalCuratedHomeFeedTest {
         assertEquals(8, shelves.first().items.size)
     }
 
+    @Test fun finiteCachedHomeSampleReservesAlbumBehindThirtyRecentSingles() {
+        val singles = (1..36).map { index ->
+            release.copy(
+                musicBrainzId = "90000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Single ${index}", releaseKind = "Single",
+                releaseDate = "2026-10-06",
+            )
+        }
+        val archivedAlbum = release.copy(
+            musicBrainzId = "90000000-0000-4000-8000-000000000099",
+            title = "Archived album", releaseKind = "Album",
+            releaseDate = "2020-01-01",
+        )
+        val shelves = feed(singles + archivedAlbum)
+        assertEquals("Archived album", shelves.first {
+            it.title == "Álbuns para descobrir"
+        }.items.single().title)
+        assertTrue(shelves.any { it.title == "Singles e EPs" })
+        assertTrue(shelves.first { it.title == "Lançamentos" }.items.all {
+            it.title.startsWith("Single ")
+        })
+        assertTrue(shelves.flatMap { it.items }.map { it.browseId }.distinct().size ==
+            shelves.flatMap { it.items }.size)
+    }
+
+    @Test fun finiteCachedHomeSampleReservesSingleBehindThirtyRecentAlbums() {
+        val albums = (1..36).map { index ->
+            release.copy(
+                musicBrainzId = "80000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Album ${index}", releaseKind = "Album",
+                releaseDate = "2026-10-06",
+            )
+        }
+        val archivedSingle = release.copy(
+            musicBrainzId = "80000000-0000-4000-8000-000000000099",
+            title = "Archived single", releaseKind = "Single",
+            releaseDate = "2019-07-01",
+        )
+        val shelves = feed(albums + archivedSingle)
+        assertEquals("Archived single", shelves.first {
+            it.title == "Singles e EPs"
+        }.items.single().title)
+        assertTrue(shelves.any { it.title == "Álbuns para descobrir" })
+        assertTrue(shelves.first { it.title == "Lançamentos" }.items.all {
+            it.title.startsWith("Album ")
+        })
+        val ids = shelves.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+    }
+
     @Test fun communityPopularityRanksOnlyVerifiedCachedRecordingIdentities() {
         val known = playable.copy(hasCatalogedAsset = false)
         val other = playable.copy(musicBrainzId = "00000000-0000-0000-0000-000000000003",
