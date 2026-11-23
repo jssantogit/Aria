@@ -3429,43 +3429,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
             val until = today.toString()
             val rows = try {
+                // MusicBrainz search offset counts raw server positions. A first
+                // page with two verified release groups is not evidence that
+                // the next hundred indexed candidates are also unusable.
+                // Traverse a bounded number of source pages before widening
+                // the historical window; never skip by *accepted* row count.
+                suspend fun scanRecentWindow(
+                    from: String, through: String, maxPages: Int,
+                ): List<CanonicalCatalogSearchRow> {
+                    val accepted = LinkedHashMap<String, CanonicalCatalogSearchRow>()
+                    var offset = 0
+                    for (pageNumber in 0 until maxPages) {
+                        val result = musicBrainzEditorialSearch.searchRecentReleaseGroups(
+                            from, through, limit = 100, offset = offset,
+                        )
+                        val page = (result as?
+                            MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)
+                            ?.page ?: break
+                        canonicalPublicReleaseRows(page.items, from, through)
+                            .forEach { row -> accepted.putIfAbsent(row.musicBrainzId, row) }
+                        if (!canonicalPublicNeedsMoreEditorialRows(accepted.values.toList()))
+                            break
+                        val next = page.nextOffset ?: break
+                        if (next <= offset) break
+                        offset = next
+                    }
+                    return accepted.values.toList()
+                }
                 val narrowFrom = today.minusDays(30).toString()
                 val wideFrom = today.minusDays(90).toString()
-                val recent = musicBrainzEditorialSearch.searchRecentReleaseGroups(
-                    narrowFrom, until, limit = 100,
-                )
-                val recentHits =
-                    (recent as? MusicBrainzCatalogSearchResult.Success)?.page?.items.orEmpty()
-                val recentRows = canonicalPublicReleaseRows(recentHits, narrowFrom, until)
-                // A valid but tiny first page must not strand Home at two
-                // sections. Expand in bounded historical windows, retaining
-                // only typed, dated releases with genuine MusicBrainz IDs.
-                val expandedRows = if (canonicalPublicNeedsMoreEditorialRows(recentRows)) {
-                    try {
-                        val expanded = musicBrainzEditorialSearch.searchRecentReleaseGroups(
-                            wideFrom, until, limit = 100,
-                        )
-                        val hits = (expanded as? MusicBrainzCatalogSearchResult.Success)
-                            ?.page?.items.orEmpty()
-                        canonicalPublicReleaseRows(hits, wideFrom, until)
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                      catch (_: Exception) { emptyList() }
-                } else emptyList()
+                val recentRows = scanRecentWindow(narrowFrom, until, maxPages = 3)
+                val expandedRows = if (canonicalPublicNeedsMoreEditorialRows(recentRows))
+                    scanRecentWindow(wideFrom, until, maxPages = 2)
+                else emptyList()
                 val combined = (recentRows + expandedRows).distinctBy { it.musicBrainzId }
                 if (canonicalPublicNeedsMoreEditorialRows(combined)) {
                     val historicalFrom = today.minusDays(365).toString()
                     val historicalThrough = today.minusDays(91).toString()
-                    val older = try {
-                        val historical = musicBrainzEditorialSearch.searchRecentReleaseGroups(
-                            historicalFrom, historicalThrough, limit = 100,
-                        )
-                        val hits = (historical as? MusicBrainzCatalogSearchResult.Success)
-                            ?.page?.items.orEmpty()
-                        canonicalPublicReleaseRows(
-                            hits, historicalFrom, historicalThrough,
-                        )
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                      catch (_: Exception) { emptyList() }
+                    // Historical source records are retained as dated evidence,
+                    // never relabeled as current charts or ranked popularity.
+                    val older = scanRecentWindow(
+                        historicalFrom, historicalThrough, maxPages = 1,
+                    )
                     (combined + older).distinctBy { it.musicBrainzId }
                 } else combined
             } catch (cancelled: CancellationException) { throw cancelled }
