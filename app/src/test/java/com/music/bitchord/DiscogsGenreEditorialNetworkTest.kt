@@ -270,6 +270,103 @@ class DiscogsGenreEditorialNetworkTest {
             "master:78"), visited)
     }
 
+    @Test fun duplicateMasterOnSecondIndexPageRetriesTransientUnavailableRead() = runBlocking {
+        val calls = mutableListOf<String>()
+        var masterReads = 0
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    calls += "index:$page"
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":$page,"pages":2,"per_page":12},
+                            "results":[{"id":77,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    calls += "master:$id"
+                    masterReads++
+                    return if (masterReads == 1) DiscogsLookupResult.Unavailable
+                    else DiscogsLookupResult.FoundMaster(master(id, "K-Pop"))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    calls += "release:$id"
+                    return DiscogsLookupResult.Found(verifiedEdition(77L))
+                }
+            },
+        )
+        val result = source.discover(DiscogsEditorialQuery("K-Pop", true))
+        assertTrue(result is DiscogsEditorialResult.Verified)
+        assertEquals(listOf("discogs:release:502"),
+            (result as DiscogsEditorialResult.Verified).releases.map { it.browseId })
+        assertEquals(listOf("index:1", "master:77",
+            "index:2", "master:77", "release:502"), calls)
+    }
+
+    @Test fun duplicateMasterRetriesWhenItsFirstReleaseHydrationFails() = runBlocking {
+        val calls = mutableListOf<String>()
+        var releaseReads = 0
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    calls += "index:$page"
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":$page,"pages":2,"per_page":12},
+                            "results":[{"id":77,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    calls += "master:$id"
+                    return DiscogsLookupResult.FoundMaster(master(id, "K-Pop"))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    calls += "release:$id"
+                    releaseReads++
+                    return if (releaseReads == 1) DiscogsLookupResult.Malformed
+                    else DiscogsLookupResult.Found(verifiedEdition(77L))
+                }
+            },
+        )
+        val result = source.discover(DiscogsEditorialQuery("K-Pop", true))
+        assertTrue(result is DiscogsEditorialResult.Verified)
+        assertEquals(listOf("discogs:release:502"),
+            (result as DiscogsEditorialResult.Verified).releases.map { it.browseId })
+        assertEquals(listOf("index:1", "master:77", "release:502",
+            "index:2", "master:77", "release:502"), calls)
+    }
+
+    @Test fun failedMasterHydrationIsUnavailableNotProofOfEmptyDiscogsGenre() = runBlocking {
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse = DiscogsHttpResponse(200,
+                    """{"pagination":{"page":1,"pages":1,"per_page":12},
+                        "results":[{"id":77,"type":"master"}]}""")
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Unavailable
+                override suspend fun release(id: Long) = DiscogsLookupResult.Unavailable
+            },
+        )
+        assertEquals(DiscogsEditorialResult.Unavailable,
+            source.discover(DiscogsEditorialQuery("K-Pop", true)))
+    }
+
     @Test fun authenticatedSearchThrottleIsNotRenderedAsAnEmptyCatalog() = runBlocking {
         val source = DiscogsNativeGenreEditorial(
             enabled = true,
