@@ -250,7 +250,9 @@ jobs:
           from pathlib import Path
           path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
           required = {"musicbrainz", "musicbrainz_app_flow",
-                      "itunes", "discogs", "discogs_granular", "collective"}
+                      "musicbrainz_home_granular", "itunes", "itunes_home_granular",
+                      "discogs", "discogs_granular", "discogs_home_granular",
+                      "collective"}
           data = {
               f.stem.removeprefix("live_"): json.loads(f.read_text())
               for f in path.glob("live_*.json")
@@ -262,7 +264,9 @@ jobs:
               out.write("| Source | Status | Raw page rows | Parsed | Eligible | Visible | Artwork | Reads |\n")
               out.write("|---|---|---:|---:|---:|---:|---:|---:|\n")
               for name in ("musicbrainz", "musicbrainz_app_flow",
-                           "itunes", "discogs", "discogs_granular", "collective"):
+                           "musicbrainz_home_granular", "itunes", "itunes_home_granular",
+                           "discogs", "discogs_granular", "discogs_home_granular",
+                           "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
                       raise SystemExit("Incorrect live report type")
