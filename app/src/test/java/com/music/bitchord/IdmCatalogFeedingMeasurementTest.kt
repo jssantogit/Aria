@@ -103,7 +103,7 @@ class IdmCatalogFeedingMeasurementTest {
         val search = MusicBrainzCatalogSearch(MusicBrainzClient(transport = transport))
         val recent = search.searchRecentReleaseGroups("2026-10-01", today)
         assertTrue(recent is MusicBrainzCatalogSearchResult.Success)
-        val full = (recent as MusicBrainzCatalogSearchResult.Success).page
+        val full = (recent as MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>).page
         assertEquals(30, full.consumedCount)
         val typed = canonicalPublicReleaseRows(full.items, "2026-10-01", today)
         assertTrue(typed.size >= 20)
@@ -114,7 +114,7 @@ class IdmCatalogFeedingMeasurementTest {
         while (offset != null) {
             val pageResult = search.searchReleaseGroups("Fixture", limit = 10, offset = offset)
             assertTrue(pageResult is MusicBrainzCatalogSearchResult.Success)
-            val page = (pageResult as MusicBrainzCatalogSearchResult.Success).page
+            val page = (pageResult as MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>).page
             assertEquals(offset, page.offset)
             page.items.forEach { pagedIds += it.musicBrainzId }
             pages++
