@@ -1,5 +1,6 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.catalog.metadata.ListenBrainzPublicPlaylist
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.UiState
@@ -50,6 +51,56 @@ class CanonicalEditorialFeedProjectionTest {
         assertTrue(sparse.flatMap { it.items }.all {
             it.browseId.orEmpty().startsWith("catalog:GENRE:") &&
                 it.videoId == null && it.thumbnailUrl == null
+        })
+    }
+
+    @Test fun homeNeverPromotesGenericPublicPlaylistSearchResultsAsEditorialCuration() {
+        val selected = CatalogEditorialSelection(
+            state = UiState.Success(listOf(
+                HomeShelf("Lançamentos", listOf(
+                    ShelfItem("Verified Release", "Verified artist",
+                        null, null, "discogs:release:222"),
+                )),
+            )),
+            provider = BuiltInProviderKeys.DISCOGS,
+        )
+        val uncurated = HomeShelf("Playlists para descobrir", listOf(
+            ShelfItem("Some Essentials", "Unknown public author", null,
+                null, "catalog:PUBLIC_PLAYLIST:11111111-1111-4111-8111-111111111111"),
+        ))
+        val chart = HomeShelf("Chart oficial", listOf(
+            ShelfItem("Chart Artist", "Source-owned rank", null,
+                null, "itunes:br:album:101"),
+        ))
+        val result = projectCanonicalHomeDisplay(
+            canonicalHomeShelves = emptyList(),
+            selection = selected,
+            publicPlaylistShelf = uncurated,
+            countryChartShelf = chart,
+        )
+        assertTrue(result.any { it.title == "Lançamentos" })
+        assertTrue(result.any { it.title == "Chart oficial" })
+        assertTrue(result.none { it.title == "Playlists para descobrir" })
+        assertTrue(result.flatMap { it.items }.none {
+            it.browseId.orEmpty().startsWith("catalog:PUBLIC_PLAYLIST:")
+        })
+    }
+
+    @Test fun playlistQualityGateDoesNotRemoveBrowseableGenrePlaylists() {
+        val playlist = ListenBrainzPublicPlaylist(
+            "11111111-1111-4111-8111-111111111111",
+            "Rock playlist", "Community creator", null,
+        )
+        val state = projectCanonicalGenreState(
+            tag = "rock", genrePlaylists = listOf(playlist),
+            playlistHeading = "Playlists", appleByTag = emptyMap(),
+            musicBrainzRows = UiState.Success(emptyList()),
+            ordered = listOf(mb), releasesHeading = "Lançamentos",
+        )
+        val shelves = (state as UiState.Success).data
+        assertTrue(shelves.any { it.title == "Playlists" })
+        assertTrue(shelves.flatMap { it.items }.any {
+            it.browseId == "catalog:PUBLIC_PLAYLIST:11111111-1111-4111-8111-111111111111"
         })
     }
 
