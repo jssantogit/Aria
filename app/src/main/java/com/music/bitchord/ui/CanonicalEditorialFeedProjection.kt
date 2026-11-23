@@ -134,11 +134,20 @@ internal fun canonicalHomeGenreDiscoveryShelf(): HomeShelf = HomeShelf(
     },
 )
 
-/** Retain personal shelves regardless of catalog preference or upstream status. */
+/**
+ * A public ListenBrainz playlist search is user-generated discovery, not
+ * verified editorial curation. Keep those playlists discoverable in Search and
+ * the relevant genre page, but never auto-promote them into the global Home.
+ * A title such as "Essentials" alone proves neither playlist quality nor
+ * popularity. Verified charts and personal recommendations remain eligible.
+ *
+ * The input is retained until upstream async callers migrate; deliberately
+ * ignored so a cached broad-search result cannot bypass this quality gate.
+ */
 internal fun projectCanonicalHomeDisplay(
     canonicalHomeShelves: List<HomeShelf>,
     selection: CatalogEditorialSelection,
-    publicPlaylistShelf: HomeShelf?,
+    @Suppress("UNUSED_PARAMETER") publicPlaylistShelf: HomeShelf?,
     countryChartShelf: HomeShelf? = null,
     communityShelf: HomeShelf? = null,
     personalRecommendationShelf: HomeShelf? = null,
@@ -149,8 +158,7 @@ internal fun projectCanonicalHomeDisplay(
         listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(personalRecommendationShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() })
-    val other = personalHomeShelves(canonicalHomeShelves) +
-        listOfNotNull(publicPlaylistShelf?.takeIf { it.items.isNotEmpty() })
+    val other = personalHomeShelves(canonicalHomeShelves)
     // Do not mistake an empty chart capability for empty music. Show a small
     // navigation rail rather than an invented ranking/album/stream.
     val genreDiscovery = if (editorial.size + other.size < 3)
