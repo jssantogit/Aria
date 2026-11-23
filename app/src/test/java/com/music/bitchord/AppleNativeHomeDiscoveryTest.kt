@@ -65,6 +65,62 @@ class AppleNativeHomeDiscoveryTest {
             assertEquals(3, result.probeReport?.probesMade)
         }
 
+    @Test fun saturatedFirstGenresCannotStarveThirdAppleHomeCategory() = runBlocking {
+        val day = LocalDate.parse("2026-11-17")
+        val tags = AppleNativeHomeDiscovery.sampleTags(day)
+        val progress = mutableListOf<List<Long>>()
+        var requests = 0
+        val home = AppleNativeHomeDiscovery(
+            source = AppleNativeHomeGenreSource { tag, _ ->
+                requests++
+                val start = (tags.indexOf(tag) + 1) * 1000L
+                AppleEditorialLoad.Success((1L..24L).map { id ->
+                    release(start + id, tag)
+                }, AppleEditorialReadState.COMPLETE)
+            },
+        )
+        val result = home.discover("br", day.toString(),
+            onProgress = { progress += it.map { row -> row.appleCollectionId } },
+        ) as AppleEditorialLoad.Success
+        assertEquals(3, requests)
+        assertEquals(36, result.releases.size)
+        assertEquals(listOf(12, 24, 36), progress.map { it.size })
+        assertEquals(72, result.probeReport?.matchingProducts)
+        assertEquals(3, tags.size)
+        assertEquals(36, result.releases.map { it.appleScopedId }.distinct().size)
+        assertTrue(progress.zipWithNext().all { (earlier, later) ->
+            later.take(earlier.size) == earlier
+        })
+        val shown = result.releases.map { it.appleCollectionId }
+        tags.forEachIndexed { index, _ ->
+            val start = (index + 1) * 1000L
+            assertEquals(12, shown.count { it in (start + 1)..(start + 24) })
+        }
+    }
+
+    @Test fun unfilledAppleHomeGenreSlotsReturnToVerifiedProducts() = runBlocking {
+        val day = LocalDate.parse("2026-11-17")
+        val tags = AppleNativeHomeDiscovery.sampleTags(day)
+        val updates = mutableListOf<Int>()
+        val home = AppleNativeHomeDiscovery(
+            source = AppleNativeHomeGenreSource { tag, _ ->
+                AppleEditorialLoad.Success(
+                    if (tag == tags.first()) (1L..24L).map { release(it, tag) }
+                    else emptyList(),
+                    AppleEditorialReadState.COMPLETE,
+                )
+            },
+        )
+        val result = home.discover("br", day.toString(),
+            onProgress = { updates += it.size },
+        ) as AppleEditorialLoad.Success
+        assertEquals(24, result.releases.size)
+        assertEquals(listOf(12, 24), updates)
+        assertEquals(24, result.probeReport?.matchingProducts)
+        assertEquals(AppleEditorialReadState.COMPLETE, result.state)
+        assertEquals((1L..24L).toList(), result.releases.map { it.appleCollectionId })
+    }
+
     @Test fun conflictingAppleProductClaimsAreRemovedRatherThanArbitrarilyMerged() =
         runBlocking {
             val today = LocalDate.parse("2026-11-17")
