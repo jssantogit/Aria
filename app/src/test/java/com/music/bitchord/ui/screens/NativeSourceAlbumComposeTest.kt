@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
@@ -59,6 +60,10 @@ class NativeSourceAlbumComposeTest {
         ))
         compose.onNodeWithTag("native-album-detail-frame").assertExists()
         compose.onNodeWithText("How Sweet").assertExists()
+        // The restored native album action row takes real vertical space.
+        // LazyColumn composes the next numbered track only when scrolled;
+        // do not interpret an off-screen row as missing source metadata.
+        compose.onNodeWithTag("native-album-detail-frame").performScrollToIndex(2)
         compose.onNodeWithText("Bubble Gum").assertExists()
         compose.onNodeWithTag("album-hero-playback-actions").assertDoesNotExist()
     }

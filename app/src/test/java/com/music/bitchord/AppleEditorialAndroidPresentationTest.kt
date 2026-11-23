@@ -186,13 +186,18 @@ class AppleEditorialAndroidPresentationTest {
         )
         val cards = shelves.flatMap { it.items }
         assertEquals(2, cards.size)
-        assertEquals(realStore, cards[0].appleStoreUrl)
+        // A source-typed Home may feature a Single before an EP. Link and
+        // badge authorization belong to exact product identities, never the
+        // relative shelf index or the order of editorial rails.
+        val cleanCard = cards.single { it.browseId == clean.appleScopedId }
+        val forgedCard = cards.single { it.browseId == forged.appleScopedId }
+        assertEquals(realStore, cleanCard.appleStoreUrl)
         assertEquals(
             "https://www.apple.com/ca/itunes/link/images/link-badge-music.png",
-            cards[0].appleStoreBadgeUrl,
+            cleanCard.appleStoreBadgeUrl,
         )
-        assertNull(cards[1].appleStoreUrl)
-        assertNull(cards[1].appleStoreBadgeUrl)
+        assertNull(forgedCard.appleStoreUrl)
+        assertNull(forgedCard.appleStoreBadgeUrl)
         val mismatched = clean.copy(
             storeUrl = "https://music.apple.com/br/album/somebody-else/999",
         )
