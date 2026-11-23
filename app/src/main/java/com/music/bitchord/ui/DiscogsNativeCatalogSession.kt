@@ -157,6 +157,39 @@ internal class DiscogsNativeCatalogSession(
     private var homeEditorialAtMs = 0L
     private var genreEditorialAtMs = 0L
     private var genreEditorialTag: String? = null
+    private var homeEditorialExpiryJob: Job? = null
+    private var genreEditorialExpiryJob: Job? = null
+    private var homeEditorialExpiryEpoch = 0L
+    private var genreEditorialExpiryEpoch = 0L
+
+    // A two-hour reuse window is not an indefinite right to display API
+    // Content. Even a Home or Explore page left open overnight purges its
+    // Discogs-owned metadata before the six-hour provider freshness deadline.
+    private fun scheduleHomeEditorialExpiry() {
+        homeEditorialExpiryJob?.cancel()
+        val epoch = ++homeEditorialExpiryEpoch
+        homeEditorialExpiryJob = scope.launch {
+            delay(5L * 60L * 60L * 1_000L)
+            if (homeEditorialExpiryEpoch == epoch) {
+                homeEditorialJob?.cancel()
+                homeEditorialAtMs = 0L
+                _homeEditorial.value = UiState.Loading
+            }
+        }
+    }
+
+    private fun scheduleGenreEditorialExpiry() {
+        genreEditorialExpiryJob?.cancel()
+        val epoch = ++genreEditorialExpiryEpoch
+        genreEditorialExpiryJob = scope.launch {
+            delay(5L * 60L * 60L * 1_000L)
+            if (genreEditorialExpiryEpoch == epoch) {
+                genreEditorialJob?.cancel()
+                genreEditorialAtMs = 0L
+                _genreEditorial.value = emptyMap()
+            }
+        }
+    }
 
     private val _artists = MutableStateFlow<UiState<List<DiscogsNativeArtistSearchRow>>?>(null)
     val artists: StateFlow<UiState<List<DiscogsNativeArtistSearchRow>>?> = _artists.asStateFlow()
@@ -232,18 +265,27 @@ internal class DiscogsNativeCatalogSession(
      */
     fun loadHomeEditorial(force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force && (homeEditorialJob?.isActive == true ||
-            homeEditorialAtMs != 0L && now - homeEditorialAtMs in 0L until (2L * 60L * 60L * 1000L)
-        )) return
-        homeEditorialJob?.cancel()
+        // Authorization is checked BEFORE cache reuse. A capability revoked
+        // while the old snapshot is still fresh must not keep its cards live.
         val lease = editorialLease()
         if (lease == null) {
+            homeEditorialJob?.cancel()
+            homeEditorialExpiryJob?.cancel()
+            ++homeEditorialExpiryEpoch
+            homeEditorialAtMs = 0L
             _homeEditorial.value = UiState.Error(
                 "Ative Busca e Discografia do Discogs em Provedores.",
             )
             return
         }
+        if (!force && (homeEditorialJob?.isActive == true ||
+            discogsEditorialSnapshotReusable(
+                homeEditorialAtMs, now, _homeEditorial.value,
+            )
+        )) return
+        homeEditorialJob?.cancel()
         homeEditorialAtMs = now
+        scheduleHomeEditorialExpiry()
         _homeEditorial.value = UiState.Loading
         val job = scope.launch(Dispatchers.IO) {
             val verified = mutableListOf<DiscogsEditorialCandidate>()
@@ -295,28 +337,37 @@ internal class DiscogsNativeCatalogSession(
     fun loadGenreEditorial(tag: String, force: Boolean = false) {
         if (canonicalAllExploreGenres.none { it.tag == tag }) return
         val now = System.currentTimeMillis()
+        val lease = editorialLease()
+        if (lease == null) {
+            genreEditorialJob?.cancel()
+            genreEditorialExpiryJob?.cancel()
+            ++genreEditorialExpiryEpoch
+            genreEditorialAtMs = 0L
+            _genreEditorial.value = mapOf(tag to UiState.Error(
+                "Ative Busca e Discografia do Discogs em Provedores.",
+            ))
+            return
+        }
         if (!force && genreEditorialTag == tag &&
             (genreEditorialJob?.isActive == true ||
-                genreEditorialAtMs != 0L &&
-                now - genreEditorialAtMs in 0L until (2L * 60L * 60L * 1000L))
+                discogsEditorialSnapshotReusable(
+                    genreEditorialAtMs, now, _genreEditorial.value[tag],
+                ))
         ) return
         genreEditorialJob?.cancel()
         genreEditorialTag = tag
         genreEditorialAtMs = now
         val queries = discogsEditorialQueriesForTag(tag)
         if (queries.isEmpty()) {
+            genreEditorialAtMs = 0L
+            genreEditorialExpiryJob?.cancel()
+            ++genreEditorialExpiryEpoch
             _genreEditorial.value = mapOf(tag to UiState.Error(
                 "Este gênero ainda não possui correspondência verificada no Discogs.",
             ))
             return
         }
-        val lease = editorialLease()
-        if (lease == null) {
-            _genreEditorial.value = mapOf(tag to UiState.Error(
-                "Ative Busca e Discografia do Discogs em Provedores.",
-            ))
-            return
-        }
+        scheduleGenreEditorialExpiry()
         _genreEditorial.value = mapOf(tag to UiState.Loading)
         val job = scope.launch(Dispatchers.IO) {
             val verified = mutableListOf<DiscogsEditorialCandidate>()
@@ -382,6 +433,10 @@ internal class DiscogsNativeCatalogSession(
         if (editorialLease() == null) {
             homeEditorialJob?.cancel()
             genreEditorialJob?.cancel()
+            homeEditorialExpiryJob?.cancel()
+            genreEditorialExpiryJob?.cancel()
+            ++homeEditorialExpiryEpoch
+            ++genreEditorialExpiryEpoch
             homeEditorialAtMs = 0L
             genreEditorialAtMs = 0L
             _homeEditorial.value = UiState.Loading
