@@ -86,6 +86,58 @@ class CanonicalHomeGranularPagingTest {
             }
         }
 
+    @Test fun yearAndMonthPrecisionAreOnlyAllowedInUnrankedHomeContinuation() = runBlocking {
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>,
+                    userAgent: String,
+                ): String = """{"count":4,"offset":0,"release-groups":[
+                    {"id":"${id(1)}","title":"Year only","primary-type":"Album",
+                     "first-release-date":"2026","artist-credit":[{"name":"Artist"}]},
+                    {"id":"${id(2)}","title":"Month only","primary-type":"Single",
+                     "first-release-date":"2026-11","artist-credit":[{"name":"Artist"}]},
+                    {"id":"${id(3)}","title":"Day precise","primary-type":"Album",
+                     "first-release-date":"2026-11-01","artist-credit":[{"name":"Artist"}]},
+                    {"id":"${id(4)}","title":"Future","primary-type":"Album",
+                     "first-release-date":"2027","artist-credit":[{"name":"Artist"}]}
+                ]}"""
+            },
+        ))
+        val ordinary = scanMusicBrainzRecentEditorial(
+            source, "2026-10-24", date, maxPages = 1,
+        )
+        assertEquals(listOf(id(3)), ordinary.rows.map { it.musicBrainzId })
+        val extra = scanMusicBrainzRecentEditorial(
+            source, "2026-10-24", date, maxPages = 1,
+            includeCoarseDatesForUnrankedHome = true,
+        )
+        assertEquals(setOf(id(1), id(2), id(3)),
+            extra.rows.map { it.musicBrainzId }.toSet())
+        assertFalse(extra.rows.any { it.musicBrainzId == id(4) })
+        val year = extra.rows.single { it.musicBrainzId == id(1) }
+        val month = extra.rows.single { it.musicBrainzId == id(2) }
+        assertEquals("2026", year.releaseDate)
+        assertEquals("2026-11", month.releaseDate)
+        assertFalse(canonicalHomeReleaseIsRecent(year.releaseDate, date))
+        assertFalse(canonicalHomeReleaseIsRecent(month.releaseDate, date))
+        val initial = listOf(HomeShelf("Lançamentos", listOf(
+            ShelfItem("Day precise", "Artist", null, null,
+                "catalog:RELEASE_GROUP:${id(3)}"),
+        )))
+        val rail = canonicalHomeContinuationShelf(
+            BuiltInProviderKeys.MUSICBRAINZ, initial,
+            CanonicalHomePageSnapshot(
+                todayIsoDate = date,
+                rows = extra.rows,
+            ),
+        )!!
+        assertEquals(setOf("catalog:RELEASE_GROUP:${id(1)}",
+                           "catalog:RELEASE_GROUP:${id(2)}"),
+            rail.items.map { it.browseId }.toSet())
+        assertEquals("Mais do catálogo", rail.title)
+    }
+
     @Test fun initialWindowsRememberWhatWasReadAndOnlyRetryRealSourceOffsets() {
         val landing = scan(listOf(row(1)), next = 300)
         val wide = scan(listOf(row(2)), next = 200)
