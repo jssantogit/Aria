@@ -2,6 +2,7 @@ package com.music.bitchord.ui.screens
 
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeGenreFloatingBackClearanceTest {
@@ -13,6 +14,15 @@ class HomeGenreFloatingBackClearanceTest {
         val libraryCategoryTextTop =
             com.music.bitchord.ui.components.NativePageHeaderMetrics.categoryTitleTopInset(safe)
         assertEquals(libraryCategoryTextTop, genreTextTop)
+    }
+
+    @Test fun pushedGenreTextClearsTheIndependentFloatingBackButton() {
+        val backRight = com.music.bitchord.ui.components.PAGE_GUTTER +
+            com.music.bitchord.ui.components.AppleFloatingControlMetrics.toolbarDiameter
+        val titleLeft = com.music.bitchord.ui.components.PAGE_GUTTER +
+            homePushedGenreTitleLeadingInset()
+        assertEquals(68.dp, titleLeft)
+        assertTrue(titleLeft > backRight)
     }
 
     @Test fun rootHomeTitleSharesTheSameBaselineAsLibraryAndExplore() {

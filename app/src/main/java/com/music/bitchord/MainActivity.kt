@@ -5463,7 +5463,12 @@ private fun BitChordApp(
                             ({ backAppleAlbum() })
                         appleNativeRouteKey != null &&
                             appleNativeKind == AppleNativeDetailKind.ARTIST ->
-                            ({ viewModel.backAppleEditorialArtist() })
+                            ({
+                                viewModel.backAppleEditorialArtist()
+                                // Home/Explore overlay must not retain a stale
+                                // source return token after the artist closes.
+                                appleShelfReturnTab = null
+                            })
                         discogsRoute != null -> ({
                             detailActiveShelf = null
                             viewModel.discogsNativeCatalog.back()

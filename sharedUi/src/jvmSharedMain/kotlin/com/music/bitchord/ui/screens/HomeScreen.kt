@@ -721,6 +721,16 @@ data class HomeHeaderAction(val label: String, val onClick: () -> Unit)
  * Keep the action menu at the same scroll position as the large heading,
  * not in another floating pill above the feed.
  */
+/**
+ * Genre detail has an independent 40dp floating Back above its in-list
+ * title. The Library's 32dp category gutter is NOT sufficient here:
+ * the K in "K-pop" would sit beneath the overlapping Back touch target.
+ * Reserve that target plus a small optical gap without changing Library.
+ */
+internal fun homePushedGenreTitleLeadingInset(): Dp =
+    NativePageHeaderMetrics.pushedTitleStartInset +
+        com.music.bitchord.ui.components.AppleFloatingControlMetrics.toolbarDiameter - 4.dp
+
 @Composable
 fun HomeTitle(
     title: String,
@@ -734,7 +744,7 @@ fun HomeTitle(
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(
-                start = PAGE_GUTTER + (if (pushedCategory) NativePageHeaderMetrics.pushedTitleStartInset else 0.dp),
+                start = PAGE_GUTTER + (if (pushedCategory) homePushedGenreTitleLeadingInset() else 0.dp),
                 end = PAGE_GUTTER,
                 top = 8.dp,
                 bottom = 8.dp,
