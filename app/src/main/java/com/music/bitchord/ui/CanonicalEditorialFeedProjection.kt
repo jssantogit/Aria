@@ -29,9 +29,11 @@ internal fun projectCanonicalHomeEditorial(
     albumsHeading: String = "Álbuns",
     singlesHeading: String = "Singles e EPs",
     moreHeading: String = "Mais",
+    discogsEditorial: UiState<List<HomeShelf>> = UiState.Loading,
 ): CatalogEditorialSelection {
     val mb = BuiltInProviderKeys.MUSICBRAINZ
     val apple = BuiltInProviderKeys.ITUNES
+    val discogs = BuiltInProviderKeys.DISCOGS
     val musicBrainzShelves = musicBrainzHomeEditorialShelves(
         canonicalHomeShelves, releasesHeading,
     )
@@ -104,6 +106,7 @@ internal fun projectCanonicalHomeEditorial(
                     nativeMusicBrainzShelves,
                 ),
             apple to appleState,
+            discogs to discogsEditorial,
         ),
     )
 }
@@ -174,6 +177,7 @@ internal fun projectCanonicalGenreState(
     genrePopular: CanonicalGenrePopularSnapshot? = null,
     genrePopularityAuthorized: Boolean = false,
     todayIsoDate: String = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
+    discogsByTag: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -211,6 +215,7 @@ internal fun projectCanonicalGenreState(
     val chosen = selectCatalogEditorial(eligibleProviders, mapOf(
         BuiltInProviderKeys.MUSICBRAINZ to mbState,
         BuiltInProviderKeys.ITUNES to appleState,
+        BuiltInProviderKeys.DISCOGS to (discogsByTag[tag] ?: UiState.Loading),
     ))
     val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
     val knownArtists = genreArtists?.takeIf {
