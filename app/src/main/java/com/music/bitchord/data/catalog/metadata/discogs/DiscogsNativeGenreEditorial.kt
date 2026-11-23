@@ -225,7 +225,44 @@ internal class DiscogsNativeGenreEditorial(
     private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
+    private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) {
+    // One source-owned, bounded, in-memory index snapshot per recent predicate.
+    // Only a new cursor (position=0, no signature) can use it. Partial
+    // cursors MUST reread the index to detect shifted source positions.
+    // Every call still checks capability and token before cache access, and
+    // every candidate still requires independently verified Master + Release.
+    private data class IndexKey(val query: DiscogsEditorialQuery, val page: Int)
+    private data class IndexedAt(
+        val page: DiscogsEditorialIndexPage,
+        val instantMs: Long,
+    )
+    private val recentIndexes = linkedMapOf<IndexKey, IndexedAt>()
+    private val indexTtlMs = 120_000L
+    private val maxCachedIndexes = 20
+
+    private fun cachedIndex(query: DiscogsEditorialQuery, page: Int):
+        DiscogsEditorialIndexPage? = synchronized(recentIndexes) {
+        val key = IndexKey(query, page)
+        val value = recentIndexes[key] ?: return@synchronized null
+        if (clockMs() - value.instantMs !in 0..indexTtlMs) {
+            recentIndexes.remove(key)
+            null
+        } else value.page
+    }
+
+    private fun recordIndex(query: DiscogsEditorialQuery, page: Int,
+                            parsed: DiscogsEditorialIndexPage) {
+        synchronized(recentIndexes) {
+            val key = IndexKey(query, page)
+            recentIndexes.remove(key)
+            recentIndexes[key] = IndexedAt(parsed, clockMs())
+            if (recentIndexes.size > maxCachedIndexes) {
+                recentIndexes.remove(recentIndexes.keys.first())
+            }
+        }
+    }
+
     /**
      * One bounded scroll gesture examines at most [maxCandidates] index
      * positions, regardless of how many verified releases those positions
@@ -255,26 +292,32 @@ internal class DiscogsNativeGenreEditorial(
             )) return interrupted(DiscogsEditorialResult.Disabled)
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return interrupted(DiscogsEditorialResult.Unauthorized)
-        val response = try {
-            admission.execute(
-                capability = ProviderCapability.CATALOG_SEARCH,
-                provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                networkCall = { transport.search(query, token, userAgent, cursor.page) },
-            )
-        } catch (cancelled: CancellationException) { throw cancelled }
-          catch (_: ProviderRequestDeniedException) {
-              return interrupted(DiscogsEditorialResult.Disabled)
-          } catch (_: Exception) {
-              return interrupted(DiscogsEditorialResult.Unavailable)
-          }
-        val index = when (response.status) {
-            200 -> DiscogsEditorialMasterParsing.page(response.body, cursor.page)
-                ?: return interrupted(DiscogsEditorialResult.Unavailable)
-            401, 403 -> return interrupted(DiscogsEditorialResult.Unauthorized)
-            429 -> return interrupted(
-                DiscogsEditorialResult.Throttled(response.retryAfterSeconds))
-            else -> return interrupted(DiscogsEditorialResult.Unavailable)
+        val reused = if (cursor.candidatePosition == 0 &&
+            cursor.pageSignature == null
+        ) cachedIndex(query, cursor.page) else null
+        val index = if (reused != null) reused else {
+            val response = try {
+                admission.execute(
+                    capability = ProviderCapability.CATALOG_SEARCH,
+                    provider = BuiltInProviderKeys.DISCOGS,
+                    scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                    networkCall = { transport.search(query, token, userAgent, cursor.page) },
+                )
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: ProviderRequestDeniedException) {
+                  return interrupted(DiscogsEditorialResult.Disabled)
+              } catch (_: Exception) {
+                  return interrupted(DiscogsEditorialResult.Unavailable)
+              }
+            when (response.status) {
+                200 -> DiscogsEditorialMasterParsing.page(response.body, cursor.page)
+                    ?.also { recordIndex(query, cursor.page, it) }
+                    ?: return interrupted(DiscogsEditorialResult.Unavailable)
+                401, 403 -> return interrupted(DiscogsEditorialResult.Unauthorized)
+                429 -> return interrupted(
+                    DiscogsEditorialResult.Throttled(response.retryAfterSeconds))
+                else -> return interrupted(DiscogsEditorialResult.Unavailable)
+            }
         }
         val signature = 31 * index.masterIds.hashCode() +
             if (index.hasNext) 1 else 0
@@ -416,6 +459,7 @@ internal class DiscogsNativeGenreEditorial(
               }
             val index = when (response.status) {
                 200 -> DiscogsEditorialMasterParsing.page(response.body, pageNumber)
+                    ?.also { recordIndex(query, pageNumber, it) }
                     ?: return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
                         else DiscogsEditorialResult.Unavailable
                 401, 403 -> return if (verified.isNotEmpty())
