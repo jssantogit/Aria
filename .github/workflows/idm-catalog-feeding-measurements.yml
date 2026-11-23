@@ -14,6 +14,10 @@ on:
       - .github/workflows/idm-catalog-feeding-measurements.yml
       - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -24,6 +28,10 @@ on:
       - .github/workflows/idm-catalog-feeding-measurements.yml
       - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -80,7 +88,11 @@ jobs:
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogFeedingMeasurementTest' \
-            --tests 'com.music.bitchord.IdmCatalogCapacityCurveTest'
+            --tests 'com.music.bitchord.IdmCatalogCapacityCurveTest' \
+            --tests 'com.music.bitchord.CanonicalHomeGranularPagingTest' \
+            --tests 'com.music.bitchord.AppleHomeVerifiedPoolCapacityTest' \
+            --tests 'com.music.bitchord.DiscogsHomeGranularPagingTest' \
+            --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest'
 
       - name: Check completeness and write aggregate comparison
         shell: bash
@@ -137,6 +149,34 @@ jobs:
                   out.write("| " + " | ".join(map(str, cols)) + " |\n")
               out.write("\nA fixture proving 300 local rows is not evidence of ")
               out.write("300 relevant real-world releases.\n")
+          import xml.etree.ElementTree as ET
+          # Source-curves and the ACTUAL Home handoff must both be exercised.
+          # Counts here are passing fixture regressions, not remote API yield.
+          suites = [
+              "CanonicalHomeGranularPagingTest",
+              "AppleHomeVerifiedPoolCapacityTest",
+              "DiscogsHomeGranularPagingTest",
+              "DiscogsGranularEditorialCursorTest",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### Home granular flows (controlled full-adapter regressions)\n\n")
+              out.write("| Suite | Tests | Failures | Errors | Skipped |\n")
+              out.write("|---|---:|---:|---:|---:|\n")
+              for suite in suites:
+                  path = Path("app/build/test-results/testDevDebugUnitTest") / (
+                      "TEST-com.music.bitchord." + suite + ".xml"
+                  )
+                  if not path.is_file():
+                      raise SystemExit("Missing Home granular regression suite: " + suite)
+                  node = ET.parse(path).getroot()
+                  data = [int(node.get(key, "0"))
+                          for key in ("tests", "failures", "errors", "skipped")]
+                  if data[0] < 1 or data[1] or data[2]:
+                      raise SystemExit("Home granular regression failed: " + suite)
+                  out.write("| " + suite + " | " +
+                            " | ".join(map(str, data)) + " |\n")
+              out.write("\nThis validates code paths with fixture transports; ")
+              out.write("it does not establish remote pagination completeness.\n")
           print("IDM_CATALOG_MEASUREMENTS_COMPLETE", sorted(found))
           PY
 
@@ -210,7 +250,7 @@ jobs:
           from pathlib import Path
           path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
           required = {"musicbrainz", "musicbrainz_app_flow",
-                      "itunes", "discogs", "collective"}
+                      "itunes", "discogs", "discogs_granular", "collective"}
           data = {
               f.stem.removeprefix("live_"): json.loads(f.read_text())
               for f in path.glob("live_*.json")
@@ -222,7 +262,7 @@ jobs:
               out.write("| Source | Status | Raw page rows | Parsed | Eligible | Visible | Artwork | Reads |\n")
               out.write("|---|---|---:|---:|---:|---:|---:|---:|\n")
               for name in ("musicbrainz", "musicbrainz_app_flow",
-                           "itunes", "discogs", "collective"):
+                           "itunes", "discogs", "discogs_granular", "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
                       raise SystemExit("Incorrect live report type")
