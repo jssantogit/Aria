@@ -52,6 +52,54 @@ class DiscogsGenreEditorialNetworkTest {
         artistIds = listOf(99L),
     )
 
+    @Test fun partialFirstIndexPageFillsBudgetOnNextPageWithoutDuplicateHydration() = runBlocking {
+        val calls = mutableListOf<String>()
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    calls += "index:$page"
+                    val ids = if (page == 1) listOf(77L, 88L) else listOf(77L, 99L)
+                    val rows = ids.joinToString(",") { id ->
+                        """{"id":$id,"type":"master"}"""
+                    }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":$page,"pages":2,"per_page":12},"results":[$rows]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    calls += "master:$id"
+                    return DiscogsLookupResult.FoundMaster(
+                        master(id, if (id == 88L) "Ambient" else "K-Pop")
+                            .copy(mainReleaseId = id + 500L),
+                    )
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    calls += "release:$id"
+                    return DiscogsLookupResult.Found(
+                        verifiedEdition(id - 500L).copy(
+                            link = DiscogsLink(DiscogsKind.RELEASE, id),
+                        ),
+                    )
+                }
+            },
+        )
+        val result = source.discover(
+            DiscogsEditorialQuery("K-Pop", true), maxReleases = 2,
+        ) as DiscogsEditorialResult.Verified
+        assertEquals(listOf("discogs:release:577", "discogs:release:599"),
+            result.releases.map { it.browseId })
+        assertEquals(listOf(
+            "index:1", "master:77", "release:577", "master:88",
+            "index:2", "master:99", "release:599",
+        ), calls)
+    }
+
     @Test fun secondPageCanRescueUnrelatedFirstPage() = runBlocking {
         val visited = mutableListOf<String>()
         val source = DiscogsNativeGenreEditorial(
