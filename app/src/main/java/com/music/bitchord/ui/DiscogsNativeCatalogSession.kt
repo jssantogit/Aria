@@ -174,6 +174,10 @@ internal class DiscogsNativeCatalogSession(
         _genreEditorial.asStateFlow()
     private var homeEditorialJob: Job? = null
     private var genreEditorialJob: Job? = null
+    private val _genrePaging = MutableStateFlow(DiscogsGenrePageSnapshot())
+    val genrePaging: StateFlow<DiscogsGenrePageSnapshot> = _genrePaging.asStateFlow()
+    private var genrePagingJob: Job? = null
+    private var genrePagingEpoch = 0L
     private var homeEditorialAtMs = 0L
     private var genreEditorialAtMs = 0L
     private var genreEditorialTag: String? = null
@@ -205,6 +209,9 @@ internal class DiscogsNativeCatalogSession(
             delay(5L * 60L * 60L * 1_000L)
             if (genreEditorialExpiryEpoch == epoch) {
                 genreEditorialJob?.cancel()
+                genrePagingJob?.cancel()
+                ++genrePagingEpoch
+                _genrePaging.value = DiscogsGenrePageSnapshot()
                 genreEditorialAtMs = 0L
                 _genreEditorial.value = emptyMap()
             }
@@ -378,6 +385,9 @@ internal class DiscogsNativeCatalogSession(
         val lease = editorialLease()
         if (lease == null) {
             genreEditorialJob?.cancel()
+            genrePagingJob?.cancel()
+            ++genrePagingEpoch
+            _genrePaging.value = DiscogsGenrePageSnapshot()
             genreEditorialExpiryJob?.cancel()
             ++genreEditorialExpiryEpoch
             genreEditorialAtMs = 0L
@@ -393,6 +403,9 @@ internal class DiscogsNativeCatalogSession(
                 ))
         ) return
         genreEditorialJob?.cancel()
+        genrePagingJob?.cancel()
+        ++genrePagingEpoch
+        _genrePaging.value = DiscogsGenrePageSnapshot(tag = tag)
         genreEditorialTag = tag
         genreEditorialAtMs = now
         val queries = discogsEditorialQueriesForTag(tag)
@@ -457,10 +470,68 @@ internal class DiscogsNativeCatalogSession(
                 UiState.Success(shelves)
             } else UiState.Error(failure ?:
                 "Nenhum lançamento com classificação Discogs verificada nesta amostra."))
+            // The initial sampler is deliberately short, not an exhaustive
+            // Discogs index scan. Scroll continues in four-candidate chunks,
+            // repeating only the index reads needed to establish the cursor.
+            // Already verified Masters are not rehydrated.
+            if (shelves.isNotEmpty()) {
+                _genrePaging.value = DiscogsGenrePageSnapshot(
+                    tag = tag, cursor = DiscogsEditorialCursor(),
+                    knownMasterIds = verified.map { it.masterId }.toSet(),
+                )
+            }
         }
         genreEditorialJob = job
         val unregister = lease.cancelJobOnRevoke(job)
         job.invokeOnCompletion { unregister() }
+    }
+
+    /** Bounded, scroll-triggered Discogs candidate scan on the SAME genre page. */
+    fun loadMoreGenreEditorial(tag: String) {
+        if (genreEditorialTag != tag || genreEditorialJob?.isActive == true ||
+            (_genreEditorial.value[tag] as? UiState.Success)?.data.isNullOrEmpty()
+        ) return
+        val current = _genrePaging.value
+        val cursor = current.cursor ?: return
+        val queries = discogsEditorialQueriesForTag(tag)
+        val query = queries.getOrNull(current.queryIndex) ?: return
+        if (current.tag != tag || current.loading ||
+            genrePagingJob?.isActive == true
+        ) return
+        val lease = editorialLease() ?: return
+        val epoch = ++genrePagingEpoch
+        _genrePaging.value = current.copy(loading = true, failed = false)
+        val job = scope.launch(Dispatchers.IO) {
+            val read = try {
+                editorialClient.discoverGranular(
+                    query = query, cursor = cursor,
+                    knownMasterIds = current.knownMasterIds,
+                    maxCandidates = 4,
+                )
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) {
+                  DiscogsGranularRead.Interrupted(
+                      emptyList(), cursor, DiscogsEditorialResult.Unavailable,
+                  )
+              }
+            if (!lease.isCurrent() || genrePagingEpoch != epoch ||
+                genreEditorialTag != tag
+            ) return@launch
+            val next = advanceDiscogsGenrePage(
+                current, tag, queries.size, read,
+            ) ?: current.copy(loading = false, failed = true)
+            _genrePaging.value = next
+        }
+        genrePagingJob = job
+        val unregister = lease.cancelJobOnRevoke(job)
+        job.invokeOnCompletion {
+            unregister()
+            if (genrePagingEpoch == epoch && _genrePaging.value.tag == tag &&
+                _genrePaging.value.loading
+            ) _genrePaging.value = _genrePaging.value.copy(
+                loading = false, failed = true,
+            )
+        }
     }
 
     private fun failDetail(message: String) {
@@ -476,6 +547,9 @@ internal class DiscogsNativeCatalogSession(
         if (editorialLease() == null) {
             homeEditorialJob?.cancel()
             genreEditorialJob?.cancel()
+            genrePagingJob?.cancel()
+            ++genrePagingEpoch
+            _genrePaging.value = DiscogsGenrePageSnapshot()
             homeEditorialExpiryJob?.cancel()
             genreEditorialExpiryJob?.cancel()
             ++homeEditorialExpiryEpoch
