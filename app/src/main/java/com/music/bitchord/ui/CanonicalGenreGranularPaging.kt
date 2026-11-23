@@ -9,6 +9,8 @@ import androidx.compose.runtime.snapshotFlow
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogPage
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.data.model.ShelfItem
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import java.util.Locale
@@ -37,7 +39,8 @@ internal fun appendCanonicalGenrePage(
 ): CanonicalGenrePageSnapshot? {
     if (previous.tag != tag || previous.nextOffset != offset ||
         page.offset != offset || page.total < offset ||
-        page.consumedCount !in 1..pageSize ||
+        (page.consumedCount == 0 && page.total > offset) ||
+        page.consumedCount !in 0..pageSize ||
         page.items.size > page.consumedCount ||
         page.nextOffset?.let { it <= offset } == true
     ) return null
@@ -56,6 +59,37 @@ internal fun appendCanonicalGenrePage(
         loading = false,
         failed = false,
     )
+}
+
+/**
+ * The initial editorial shelves keep their order and bounded size. Additional
+ * verified MusicBrainz records appear only after them; they never contaminate
+ * an Apple or Discogs-selected genre page.
+ */
+internal fun canonicalGenreContinuationShelf(
+    tag: String,
+    selectedProviderIsMusicBrainz: Boolean,
+    original: List<HomeShelf>,
+    paging: CanonicalGenrePageSnapshot,
+): HomeShelf? {
+    if (!selectedProviderIsMusicBrainz || paging.tag != tag) return null
+    val shownIds = original.flatMap { it.items }
+        .mapNotNull { it.browseId }.toHashSet()
+    val rows = paging.rows.asSequence()
+        .map { row ->
+            ShelfItem(
+                title = row.title,
+                subtitle = row.subtitle.orEmpty(),
+                thumbnailUrl = row.artworkUri,
+                videoId = null,
+                browseId = canonicalNativeBrowseId(row),
+            )
+        }
+        .filter { card -> card.browseId != null && shownIds.add(card.browseId) }
+        .toList()
+    return rows.takeIf { it.isNotEmpty() }?.let {
+        HomeShelf("Mais do gênero", it)
+    }
 }
 
 internal fun canonicalGenreNearEnd(
