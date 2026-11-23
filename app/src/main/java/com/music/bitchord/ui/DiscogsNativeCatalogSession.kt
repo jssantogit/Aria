@@ -502,25 +502,37 @@ internal class DiscogsNativeCatalogSession(
         val epoch = ++genrePagingEpoch
         _genrePaging.value = current.copy(loading = true, failed = false)
         val job = scope.launch(Dispatchers.IO) {
-            val read = try {
-                editorialClient.discoverGranular(
-                    query = query, cursor = cursor,
-                    knownMasterIds = current.knownMasterIds,
-                    maxCandidates = 4,
-                )
-            } catch (cancelled: CancellationException) { throw cancelled }
-              catch (_: Exception) {
-                  DiscogsGranularRead.Interrupted(
-                      emptyList(), cursor, DiscogsEditorialResult.Unavailable,
-                  )
-              }
-            if (!lease.isCurrent() || genrePagingEpoch != epoch ||
-                genreEditorialTag != tag
-            ) return@launch
-            val next = advanceDiscogsGenrePage(
-                current, tag, queries.size, read,
-            ) ?: current.copy(loading = false, failed = true)
-            _genrePaging.value = next
+            var accumulated = current
+            // One scroll gesture may encounter only already-published Masters.
+            // Progress across at most three bounded source chunks, never an
+            // unbounded scan or a change of editorial ownership.
+            for (batch in 1..3) {
+                val nextCursor = accumulated.cursor ?: break
+                val nextQuery = queries.getOrNull(accumulated.queryIndex) ?: break
+                val read = try {
+                    editorialClient.discoverGranular(
+                        query = nextQuery, cursor = nextCursor,
+                        knownMasterIds = accumulated.knownMasterIds,
+                        maxCandidates = 4,
+                    )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) {
+                      DiscogsGranularRead.Interrupted(
+                          emptyList(), nextCursor, DiscogsEditorialResult.Unavailable,
+                      )
+                  }
+                if (!lease.isCurrent() || genrePagingEpoch != epoch ||
+                    genreEditorialTag != tag
+                ) return@launch
+                accumulated = advanceDiscogsGenrePage(
+                    accumulated, tag, queries.size, read,
+                ) ?: accumulated.copy(loading = false, failed = true)
+                if (!discogsShouldContinueEmptyCandidateScan(
+                        current, accumulated, batch,
+                    )
+                ) break
+            }
+            _genrePaging.value = accumulated.copy(loading = false)
         }
         genrePagingJob = job
         val unregister = lease.cancelJobOnRevoke(job)
