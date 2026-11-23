@@ -9,6 +9,7 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.discogsAlbumArtistRelatedShelf
 import com.music.bitchord.ui.discogsArtistPage
 import com.music.bitchord.ui.discogsReleasePage
+import com.music.bitchord.ui.discogsReleaseMetadataFacts
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.nativeArtistAllowsNameBasedAuxiliaryVisuals
 import org.junit.Assert.*
@@ -153,6 +154,37 @@ class DiscogsNativeCatalogPresentationTest {
             artistIds = listOf(8303009L, 92L),
         )).albumArtistBrowseId)
         assertNull(discogsReleasePage("Unrelated", verified).albumArtistBrowseId)
+    }
+
+    @Test fun nativeAlbumFactsUseOnlyItsExactHydratedDiscogsRelease() {
+        val edition = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 902L),
+            title = "Source Album",
+            artistNames = listOf("Credited Artist"),
+            country = "Brazil",
+            year = 2023,
+            labels = listOf("Label A" to "ABC-001", "Label A" to "ABC-001"),
+            barcodes = emptyList(),
+            formats = listOf("CD", "Album", "CD"),
+            tracklist = emptyList(),
+            unofficial = false,
+        )
+        val facts = discogsReleasePage("Credited Artist", edition).editionFacts
+        assertEquals(listOf(
+            "Ano" to "2023",
+            "País" to "Brazil",
+            "Formatos" to "CD · Album",
+            "Gravadoras" to "Label A",
+            "Nº de catálogo" to "ABC-001",
+        ), facts)
+        assertTrue(discogsReleaseMetadataFacts(edition.copy(
+            country = null, year = null, labels = emptyList(),
+            formats = emptyList(),
+        )).isEmpty())
+        // Informational facts are never fictional tracks or media assets.
+        val page = discogsReleasePage("Credited Artist", edition)
+        assertTrue((page.page.songs as UiState.Success).data.isEmpty())
+        assertTrue(page.tracks.isEmpty())
     }
 
     @Test fun sourceReleaseTracklistIsNonPlayableAndHasNoSyntheticMusicBrainzIdentity() {
