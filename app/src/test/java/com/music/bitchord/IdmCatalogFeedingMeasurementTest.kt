@@ -277,7 +277,7 @@ class IdmCatalogFeedingMeasurementTest {
         assertTrue(result is AppleEditorialLoad.Success)
         val verified = (result as AppleEditorialLoad.Success).releases
         assertEquals(3, queries.size)
-        assertEquals(listOf(16, 32, 36), updates)
+        assertEquals(listOf(12, 24, 36), updates)
         assertEquals(48, result.probeReport?.matchingProducts)
         assertEquals(36, verified.size)
         assertTrue(verified.all { it.musicBrainzReleaseGroupId == null })
