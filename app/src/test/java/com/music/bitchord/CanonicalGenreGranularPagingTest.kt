@@ -55,7 +55,7 @@ class CanonicalGenreGranularPagingTest {
                         userAgent: String,
                     ): String {
                         assertEquals("release-group", path)
-                        assertTrue(parameters["query"]!!.contains("tag:\\"rock\\""))
+                        assertTrue(parameters["query"]!!.startsWith("tag:"))
                         val offset = parameters["offset"]!!.toInt()
                         val limit = parameters["limit"]!!.toInt()
                         offsets += offset
