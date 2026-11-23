@@ -277,7 +277,7 @@ class IdmCatalogLiveObservationTest {
         val appleGenre = AppleExploreGenreDiscovery(
             nativeSource = AppleNativeGenreSearchSource { term, storefront ->
                 appleRepository.searchAlbums(
-                    query = term, storefront = storefront, limit = 100,
+                    query = term, storefront = storefront, limit = 200,
                     capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                     attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
                 )
@@ -327,6 +327,7 @@ class IdmCatalogLiveObservationTest {
         var discogsMasterFound = 0
         var discogsReleaseReads = 0
         var discogsReleaseFound = 0
+        var discogsGranularScanner: DiscogsNativeGenreEditorial? = null
         val discogsRead = if (token == null) null else {
             val caps = setOf(ProviderCapability.CATALOG_SEARCH,
                 ProviderCapability.EDITORIAL_DISCOGRAPHY)
@@ -373,6 +374,7 @@ class IdmCatalogLiveObservationTest {
                     }
                 },
             )
+            discogsGranularScanner = native
             withTimeoutOrNull(95_000L) {
                 try { native.discover(DiscogsEditorialQuery("K-Pop", isStyle = true),
                     maxReleases = 3) }
@@ -412,6 +414,71 @@ class IdmCatalogLiveObservationTest {
                 "discogs_hydration_rejections" to
                     (discogsMasterReads - discogsMasterFound) +
                     (discogsReleaseReads - discogsReleaseFound),
+            ),
+        ))
+
+        // One genuine scroll gesture after the same bounded landing read.
+        // The counters below are DELTAS: never double-count the initial
+        // Discogs index sample as newly seen raw source positions.
+        val beforeIndexReads = discogsIndexReads
+        val beforeIndexCandidates = discogsIndexCandidates
+        val beforeMasterReads = discogsMasterReads
+        val beforeMasterFound = discogsMasterFound
+        val beforeReleaseReads = discogsReleaseReads
+        val extraRead = if (discogsRead is DiscogsEditorialResult.Verified)
+            withTimeoutOrNull(50_000L) {
+                try {
+                    discogsGranularScanner?.discoverGranular(
+                        query = DiscogsEditorialQuery("K-Pop", isStyle = true),
+                        knownMasterIds = verifiedDiscogs.map { it.masterId }.toSet(),
+                        maxCandidates = 2,
+                    )
+                } catch (_: Exception) { null }
+            }
+        else null
+        val extraVerified = when (extraRead) {
+            is DiscogsGranularRead.Page -> extraRead.releases
+            is DiscogsGranularRead.Interrupted -> extraRead.releases
+            else -> emptyList()
+        }
+        val extraShelf = discogsGenreContinuationShelf(
+            tag = "k-pop", selectedProviderIsDiscogs = true,
+            original = discogsEditorialShelves(verifiedDiscogs),
+            paging = DiscogsGenrePageSnapshot(
+                tag = "k-pop", releases = extraVerified,
+            ),
+        )
+        report("discogs_granular", Sample(
+            status = when {
+                token == null -> "token_not_configured"
+                discogsRead !is DiscogsEditorialResult.Verified -> "initial_unverified"
+                extraRead == null -> "timeout_or_unavailable"
+                extraRead is DiscogsGranularRead.Interrupted -> "retryable_interruption"
+                extraVerified.isEmpty() -> "no_new_verified_records"
+                else -> "verified"
+            },
+            raw = if (token == null) null
+                else discogsIndexCandidates - beforeIndexCandidates,
+            parsed = if (token == null) null
+                else discogsMasterFound - beforeMasterFound,
+            eligible = extraVerified.size,
+            visible = extraShelf?.items?.size ?: 0,
+            requests = if (token == null) null else
+                discogsIndexReads - beforeIndexReads +
+                discogsMasterReads - beforeMasterReads +
+                discogsReleaseReads - beforeReleaseReads,
+            artwork = extraShelf?.items?.count { !it.thumbnailUrl.isNullOrBlank() } ?: 0,
+            counts = mapOf(
+                "source_index_reads" to discogsIndexReads - beforeIndexReads,
+                "source_master_reads" to discogsMasterReads - beforeMasterReads,
+                "source_release_reads" to discogsReleaseReads - beforeReleaseReads,
+                "source_candidates_consumed" to when (extraRead) {
+                    is DiscogsGranularRead.Page -> extraRead.consumedCandidates
+                    is DiscogsGranularRead.Interrupted ->
+                        extraRead.retryCursor.candidatePosition
+                    else -> 0
+                },
+                "retry_needed" to if (extraRead is DiscogsGranularRead.Interrupted) 1 else 0,
             ),
         ))
 
