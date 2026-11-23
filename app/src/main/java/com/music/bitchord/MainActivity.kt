@@ -2261,7 +2261,11 @@ private fun BitChordApp(
     val onBrowseLongPress: (ShelfItem) -> Unit = { item ->
         val id = item.browseId
         val type = id?.let { viewModel.browseTypeOf(it) }
-        if (id != null) {
+        if (id?.startsWith("discogs:") == true) {
+            // Source-only metadata never enters the legacy collection actions.
+            providerHeldCardRoute = id
+            providerDetailOverflowOpen = true
+        } else if (id != null) {
             openBrowseMenu(
                 BrowseTarget(
                     browseId = id,
@@ -2517,6 +2521,7 @@ private fun BitChordApp(
             genreNavigation.open(genre, fromSearch = false)
             return@click
         }
+        if (viewModel.discogsNativeCatalog.openFromShelf(item)) return@click
         // Storefront-scoped Apple cards cannot fall through to old MB browse
         // or playback navigation. No title-to-MBID lookup is performed here.
         if (item.browseId?.startsWith("itunes:") == true) {
@@ -3428,7 +3433,7 @@ private fun BitChordApp(
                     appleArtistDetail != null && detailActiveShelf == null,
             ) { viewModel.backAppleEditorialArtist() }
             BackHandler(
-                enabled = selectedTab == TAB_SEARCH && detail == null &&
+                enabled = detail == null &&
                     !showSettings && !showReplay && !showSources &&
                     !showSmartPlaylistBuilder && discogsRoute != null &&
                     detailActiveShelf == null,
@@ -3502,8 +3507,7 @@ private fun BitChordApp(
                 detail != null -> detail.browseId
                 // Exactly like MusicBrainz's native DetailPage, route by
                 // provider-owned browseId, never by a generic source screen.
-                selectedTab == TAB_SEARCH && discogsPageRouteKey != null ->
-                    discogsPageRouteKey
+                discogsPageRouteKey != null -> discogsPageRouteKey
                 // Exact iTunes storefront identity, matching MB and Discogs
                 // canonical DetailPage routes (including while loading).
                 com.music.bitchord.ui.screens.appleDetailVisibleOnTab(
@@ -4121,7 +4125,8 @@ private fun BitChordApp(
                             viewModel = viewModel,
                             onSectionItemLongPress = { item ->
                                 val selected = item.browseId
-                                if (selected?.startsWith("itunes:") == true) {
+                                if (selected?.startsWith("itunes:") == true ||
+                                    selected?.startsWith("discogs:") == true) {
                                     providerHeldCardRoute = selected
                                     providerDetailOverflowOpen = true
                                 } else onBrowseLongPress(item)
@@ -5672,8 +5677,11 @@ private fun BitChordApp(
                             // below is left with just the sleeve, the title and
                             // Shuffle / Play / Add.
                             val sourceOwnedAppleAlbum = detail == null &&
-                                appleSharedVisual?.page?.type == BrowseType.ALBUM
-                            val toolbarAlbum = detail ?: appleSharedVisual?.page
+                                (if (pageRouteKey.startsWith("discogs:"))
+                                    discogsNativeVisual?.page?.type == BrowseType.ALBUM
+                                else appleSharedVisual?.page?.type == BrowseType.ALBUM)
+                            val toolbarAlbum = detail ?: if (pageRouteKey.startsWith("discogs:"))
+                                discogsNativeVisual?.page else appleSharedVisual?.page
                             if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
                                 (isReleaseDetail || isLocalDetail || sourceOwnedAppleAlbum) &&
                                 toolbarAlbum != null) {
@@ -5743,7 +5751,8 @@ private fun BitChordApp(
                                 detailActiveShelf == null) {
                                 val currentArtist = visualDetail
                                 val appleArtist = detail == null &&
-                                    appleSharedVisual?.page?.browseId == currentArtist.browseId
+                                    (appleSharedVisual?.page?.browseId == currentArtist.browseId ||
+                                        discogsNativeVisual?.page?.browseId == currentArtist.browseId)
                                 Box(Modifier.onGloballyPositioned {
                                     catalogAlbumOverflowAnchor = nativeMenuAnchorBounds(it)
                                 }) {
@@ -6184,10 +6193,15 @@ private fun BitChordApp(
                     },
                 )
             }
-            if (providerDetailOverflowOpen && appleSharedVisual != null &&
-                toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL
+            if (providerDetailOverflowOpen &&
+                (appleSharedVisual != null || discogsNativeVisual != null ||
+                    providerHeldCardRoute?.startsWith("discogs:") == true) &&
+                (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL ||
+                    providerHeldCardRoute != null)
             ) {
-                val currentRoute = providerHeldCardRoute ?: appleNativeRouteKey
+                val currentRoute = providerHeldCardRoute ?:
+                    if (pageRouteKey.startsWith("discogs:")) discogsBrowseId
+                    else appleNativeRouteKey
                 val exactSourceUrl = if (providerHeldCardRoute == null) {
                     when (appleNativeKind) {
                         AppleNativeDetailKind.ARTIST -> appleArtistNavigation?.appleStoreUrl
@@ -6203,8 +6217,11 @@ private fun BitChordApp(
                             ?.data?.relatedAlbums.orEmpty()
                     candidates.firstOrNull { it.browseId == currentRoute }?.appleStoreUrl
                 }
-                val productLink = com.music.bitchord.ui.screens
-                    .verifiedAppleDetailStoreUrl(exactSourceUrl, currentRoute)
+                val discogsSourceLink =
+                    com.music.bitchord.ui.discogsNativeAttributionUrl(currentRoute)
+                val productLink = discogsSourceLink ?:
+                    com.music.bitchord.ui.screens
+                        .verifiedAppleDetailStoreUrl(exactSourceUrl, currentRoute)
                 FrostedMenuPanel(
                     hazeState = hazeState,
                     anchorBounds = if (providerHeldCardRoute == null)
@@ -6217,7 +6234,8 @@ private fun BitChordApp(
                 ) {
                     if (productLink != null) {
                         FrostedMenuRow(
-                            label = "Abrir no Apple Music",
+                            label = if (discogsSourceLink != null) "Abrir no Discogs"
+                                else "Abrir no Apple Music",
                             checked = false,
                             onClick = {
                                 providerDetailOverflowOpen = false
