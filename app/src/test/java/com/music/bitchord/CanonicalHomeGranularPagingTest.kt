@@ -138,6 +138,33 @@ class CanonicalHomeGranularPagingTest {
         assertEquals("Mais do catálogo", rail.title)
     }
 
+    @Test fun alreadyFetchedMusicBrainzHomeOverflowNeverNeedsAnExtraApiRead() {
+        val admitted = (1..100).map(::row)
+        val nativeLanding = listOf(HomeShelf("Lançamentos",
+            admitted.take(40).map {
+                ShelfItem(it.title, it.subtitle.orEmpty(), null, null,
+                    "catalog:RELEASE_GROUP:${it.musicBrainzId}")
+            },
+        ))
+        val cursor = CanonicalHomePageSnapshot(
+            todayIsoDate = date, offsets = listOf(300, null, null),
+            rows = admitted,
+        )
+        val overflow = canonicalHomeContinuationShelf(
+            BuiltInProviderKeys.MUSICBRAINZ, nativeLanding, cursor,
+        )!!
+        assertEquals(60, overflow.items.size)
+        assertEquals(
+            (41..100).map { "catalog:RELEASE_GROUP:${id(it)}" },
+            overflow.items.map { it.browseId },
+        )
+        assertTrue(overflow.items.all { it.videoId == null })
+        assertEquals(300, cursor.offsets.first())
+        assertNull(canonicalHomeContinuationShelf(
+            BuiltInProviderKeys.DISCOGS, nativeLanding, cursor,
+        ))
+    }
+
     @Test fun initialWindowsRememberWhatWasReadAndOnlyRetryRealSourceOffsets() {
         val landing = scan(listOf(row(1)), next = 300)
         val wide = scan(listOf(row(2)), next = 200)
