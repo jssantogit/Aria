@@ -58,7 +58,10 @@ internal fun projectCanonicalHomeEditorial(
         .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP }
         .filter { canonicalEditorialReleaseType(it) != null }
         .filter { row ->
-            row.releaseDate?.let { date -> date.take(10) <= todayIsoDate } ?: true
+            // Direct/cache-sourced rows have not necessarily gone through the
+            // MusicBrainz genre parser. Validate real calendar precision
+            // before allowing any album into the public Home compositor.
+            canonicalCatalogReleaseDateNotFuture(row.releaseDate, todayIsoDate)
         }
         .distinctBy { it.kind to it.musicBrainzId }
         .toList()
