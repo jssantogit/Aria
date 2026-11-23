@@ -56,6 +56,38 @@ internal data class DiscogsEditorialCandidate(
     val browseId: String get() = "discogs:release:$releaseId"
 }
 
+/**
+ * Source index position, independent of the number of releases that passed
+ * verification. The signature prevents a changing Discogs index page from
+ * silently shifting already-consumed candidates between scroll requests.
+ */
+internal data class DiscogsEditorialCursor(
+    val page: Int = 1,
+    val candidatePosition: Int = 0,
+    val pageSignature: Int? = null,
+) {
+    fun isValid(): Boolean = page in 1..1000 &&
+        candidatePosition in 0..12 &&
+        (candidatePosition == 0 || pageSignature != null)
+}
+
+internal sealed interface DiscogsGranularRead {
+    data class Page(
+        val releases: List<DiscogsEditorialCandidate>,
+        val nextCursor: DiscogsEditorialCursor?,
+        val consumedCandidates: Int,
+        val hydratedCandidates: Int,
+        /** A safety ceiling is not proof of source exhaustion. */
+        val stoppedByPageLimit: Boolean = false,
+    ) : DiscogsGranularRead
+
+    data class Interrupted(
+        val releases: List<DiscogsEditorialCandidate>,
+        val retryCursor: DiscogsEditorialCursor,
+        val failure: DiscogsEditorialResult,
+    ) : DiscogsGranularRead
+}
+
 internal sealed interface DiscogsEditorialResult {
     data class Verified(val releases: List<DiscogsEditorialCandidate>) : DiscogsEditorialResult
     data object Unauthorized : DiscogsEditorialResult
@@ -92,7 +124,7 @@ internal class KtorDiscogsGenreSearchTransport(
         userAgent: String,
         page: Int,
     ): DiscogsHttpResponse {
-        require(query.isValid() && page in 1..2)
+        require(query.isValid() && page in 1..1000)
         val response = client.get("https://api.discogs.com/database/search") {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
@@ -140,7 +172,7 @@ internal object DiscogsEditorialMasterParsing {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun page(body: String, expectedPage: Int): DiscogsEditorialIndexPage? {
-        if (expectedPage !in 1..2 || body.length > 131_072) return null
+        if (expectedPage !in 1..1000 || body.length > 131_072) return null
         val root = try { json.parseToJsonElement(body) as? JsonObject }
             catch (_: Exception) { null } ?: return null
         val paging = root["pagination"] as? JsonObject ?: return null
@@ -194,6 +226,145 @@ internal class DiscogsNativeGenreEditorial(
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
+    /**
+     * One bounded scroll gesture examines at most [maxCandidates] index
+     * positions, regardless of how many verified releases those positions
+     * yield. No candidate after the visual target is discarded.
+     *
+     * Existing discover() remains the compatible, bounded landing sampler;
+     * this cursor API is independently testable before wiring UI continuation.
+     */
+    suspend fun discoverGranular(
+        query: DiscogsEditorialQuery,
+        cursor: DiscogsEditorialCursor = DiscogsEditorialCursor(),
+        knownMasterIds: Set<Long> = emptySet(),
+        maxCandidates: Int = 4,
+    ): DiscogsGranularRead {
+        fun interrupted(reason: DiscogsEditorialResult,
+                        retry: DiscogsEditorialCursor = cursor,
+                        releases: List<DiscogsEditorialCandidate> = emptyList()) =
+            DiscogsGranularRead.Interrupted(releases, retry, reason)
+        if (!query.isValid() || !cursor.isValid() || maxCandidates !in 1..6)
+            return interrupted(DiscogsEditorialResult.InvalidQuery)
+        if (!enabled || !admission.permitted(
+                ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS,
+            ) || !admission.permitted(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
+            )) return interrupted(DiscogsEditorialResult.Disabled)
+        val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
+            ?: return interrupted(DiscogsEditorialResult.Unauthorized)
+        val response = try {
+            admission.execute(
+                capability = ProviderCapability.CATALOG_SEARCH,
+                provider = BuiltInProviderKeys.DISCOGS,
+                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                networkCall = { transport.search(query, token, userAgent, cursor.page) },
+            )
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: ProviderRequestDeniedException) {
+              return interrupted(DiscogsEditorialResult.Disabled)
+          } catch (_: Exception) {
+              return interrupted(DiscogsEditorialResult.Unavailable)
+          }
+        val index = when (response.status) {
+            200 -> DiscogsEditorialMasterParsing.page(response.body, cursor.page)
+                ?: return interrupted(DiscogsEditorialResult.Unavailable)
+            401, 403 -> return interrupted(DiscogsEditorialResult.Unauthorized)
+            429 -> return interrupted(
+                DiscogsEditorialResult.Throttled(response.retryAfterSeconds))
+            else -> return interrupted(DiscogsEditorialResult.Unavailable)
+        }
+        val signature = 31 * index.masterIds.hashCode() +
+            if (index.hasNext) 1 else 0
+        if (cursor.candidatePosition > index.masterIds.size ||
+            (cursor.pageSignature != null && cursor.pageSignature != signature)
+        ) return interrupted(DiscogsEditorialResult.Unavailable)
+        var position = cursor.candidatePosition
+        var hydrated = 0
+        val releases = mutableListOf<DiscogsEditorialCandidate>()
+        fun retryAtCurrent() = DiscogsEditorialCursor(cursor.page, position, signature)
+
+        while (position < index.masterIds.size &&
+            position - cursor.candidatePosition < maxCandidates
+        ) {
+            val masterId = index.masterIds[position]
+            if (masterId in knownMasterIds) {
+                position++
+                continue
+            }
+            val masterResult = try { editions.master(masterId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsLookupResult.Unavailable }
+            hydrated++
+            when (masterResult) {
+                is DiscogsLookupResult.Throttled ->
+                    return interrupted(
+                        DiscogsEditorialResult.Throttled(masterResult.retryAfterSeconds),
+                        retryAtCurrent(), releases)
+                DiscogsLookupResult.Unauthorized ->
+                    return interrupted(DiscogsEditorialResult.Unauthorized, retryAtCurrent(), releases)
+                DiscogsLookupResult.Disabled ->
+                    return interrupted(DiscogsEditorialResult.Disabled, retryAtCurrent(), releases)
+                DiscogsLookupResult.Unavailable, DiscogsLookupResult.Malformed ->
+                    return interrupted(DiscogsEditorialResult.Unavailable, retryAtCurrent(), releases)
+                else -> Unit
+            }
+            val master = (masterResult as? DiscogsLookupResult.FoundMaster)?.record
+            if (master == null || master.link.id != masterId ||
+                !discogsEditorialMasterMatches(master, query)
+            ) {
+                position++
+                continue
+            }
+            val releaseId = master.mainReleaseId
+            if (releaseId == null) {
+                position++
+                continue
+            }
+            val releaseResult = try { editions.release(releaseId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsLookupResult.Unavailable }
+            when (releaseResult) {
+                is DiscogsLookupResult.Throttled ->
+                    return interrupted(
+                        DiscogsEditorialResult.Throttled(releaseResult.retryAfterSeconds),
+                        retryAtCurrent(), releases)
+                DiscogsLookupResult.Unauthorized ->
+                    return interrupted(DiscogsEditorialResult.Unauthorized, retryAtCurrent(), releases)
+                DiscogsLookupResult.Disabled ->
+                    return interrupted(DiscogsEditorialResult.Disabled, retryAtCurrent(), releases)
+                DiscogsLookupResult.Unavailable, DiscogsLookupResult.Malformed ->
+                    return interrupted(DiscogsEditorialResult.Unavailable, retryAtCurrent(), releases)
+                else -> Unit
+            }
+            val release = (releaseResult as? DiscogsLookupResult.Found)?.record
+            if (release != null && release.link.kind == DiscogsKind.RELEASE &&
+                release.link.id == releaseId && release.masterId == masterId &&
+                !release.unofficial && release.title.isNotBlank() &&
+                release.artistNames.isNotEmpty()
+            ) {
+                releases += DiscogsEditorialCandidate(
+                    masterId = masterId, releaseId = releaseId,
+                    title = release.title, artist = release.artistNames.joinToString(", "),
+                    year = release.year ?: master.year, formats = release.formats,
+                    creditedArtists = if (release.artistIds.size == release.artistNames.size)
+                        release.artistIds.zip(release.artistNames) else emptyList(),
+                )
+            }
+            position++
+        }
+        val next = if (position < index.masterIds.size)
+            DiscogsEditorialCursor(cursor.page, position, signature)
+        else if (index.hasNext && cursor.page < 1000)
+            DiscogsEditorialCursor(cursor.page + 1)
+        else null
+        return DiscogsGranularRead.Page(
+            releases, next, position - cursor.candidatePosition, hydrated,
+            stoppedByPageLimit = index.hasNext && cursor.page == 1000 &&
+                position == index.masterIds.size,
+        )
+    }
+
     suspend fun discover(
         query: DiscogsEditorialQuery,
         maxReleases: Int = 4,
