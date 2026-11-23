@@ -66,7 +66,7 @@ internal class AppleNativeHomeDiscovery(
                 sourceIdsByGenre.getValue(tag).asSequence()
                     .filter { it in verified }
                     .take(perGenreShare)
-                    .forEach(ids::add)
+                    .forEach { ids.add(it) }
             }
             return ids.mapNotNull(verified::get)
         }
