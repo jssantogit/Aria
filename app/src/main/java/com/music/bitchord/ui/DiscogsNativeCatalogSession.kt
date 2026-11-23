@@ -30,6 +30,17 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal enum class DiscogsNativeRoute { ARTIST, RELEASE }
 
+/** Source attribution is derived from a validated provider ID, never a URL
+ * supplied by search text or an untrusted response. */
+internal fun discogsNativeAttributionUrl(browseId: String?): String? {
+    val kind = when {
+        discogsNativeDetailRouteKey(DiscogsNativeRoute.ARTIST, browseId) != null -> "artist"
+        discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId) != null -> "release"
+        else -> return null
+    }
+    return "https://www.discogs.com/$kind/${browseId!!.substringAfterLast(':')}"
+}
+
 /**
  * Exact provider-scoped entity route. Rejects historical generic screen keys
  * and refuses to reinterpret an Apple/MusicBrainz ID as a Discogs artist.
