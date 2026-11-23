@@ -47,7 +47,8 @@ internal fun appendCanonicalGenrePage(
     ) return null
     // Each raw page may have more valid items than the 40-item landing sample.
     // Preserve all verified, typed entries before deduplication.
-    val additions = canonicalPublicGenreRows(page.items, todayIsoDate, maxItems = page.items.size)
+    val additions = if (page.items.isEmpty()) emptyList() else
+        canonicalPublicGenreRows(page.items, todayIsoDate, maxItems = page.items.size)
     val known = previous.rows.mapTo(hashSetOf()) {
         it.musicBrainzId.lowercase(Locale.ROOT)
     }
