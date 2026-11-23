@@ -208,9 +208,11 @@ internal class DiscogsNativeGenreEditorial(
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return DiscogsEditorialResult.Unauthorized
         val verified = mutableListOf<DiscogsEditorialCandidate>()
-        // A second Search page is a bounded recovery when page one contains
-        // only unrelated/unverifiable candidates. It does not claim to list
-        // the entire source genre, and all hydrated reads share one limiter.
+        val hydratedMasterIds = HashSet<Long>()
+        // Fill the caller's bounded sample with verified releases, not just
+        // the first non-empty index page. A page with one valid release must
+        // not prematurely end a three-release request. All reads still share
+        // the source rate limiter and no more than two index pages are probed.
         for (pageNumber in 1..2) {
             val response = try {
                 admission.execute(
@@ -243,6 +245,9 @@ internal class DiscogsNativeGenreEditorial(
             }
             for (masterId in index.masterIds.take(5)) {
                 if (verified.size >= maxReleases) break
+                // Discogs index pages may overlap; never hydrate the same
+                // Master twice just to exhaust the editorial request budget.
+                if (!hydratedMasterIds.add(masterId)) continue
                 val masterResult = try { editions.master(masterId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
@@ -284,8 +289,7 @@ internal class DiscogsNativeGenreEditorial(
                         release.artistIds.zip(release.artistNames) else emptyList(),
                 )
             }
-            if (verified.isNotEmpty() || !index.hasNext || verified.size >= maxReleases)
-                break
+            if (!index.hasNext || verified.size >= maxReleases) break
         }
         return DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
     }
