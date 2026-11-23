@@ -130,12 +130,29 @@ internal class DiscogsNativeCatalogSession(
         )
     }
     private val artistClient by lazy { DiscogsNativeArtistCatalog(enabled = true) }
+    private val editorialClient by lazy {
+        DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { tokenVault.readForSearch() },
+        )
+    }
     private val editionClient by lazy {
         DiscogsClient(
             enabled = true,
             capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
         )
     }
+
+    private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
+    val homeEditorial: StateFlow<UiState<List<HomeShelf>>> = _homeEditorial.asStateFlow()
+    private val _genreEditorial =
+        MutableStateFlow<Map<String, UiState<List<HomeShelf>>>>(emptyMap())
+    val genreEditorial: StateFlow<Map<String, UiState<List<HomeShelf>>>> =
+        _genreEditorial.asStateFlow()
+    private var homeEditorialJob: Job? = null
+    private var genreEditorialJob: Job? = null
+    private var homeEditorialAtMs = 0L
+    private var genreEditorialAtMs = 0L
+    private var genreEditorialTag: String? = null
 
     private val _artists = MutableStateFlow<UiState<List<DiscogsNativeArtistSearchRow>>?>(null)
     val artists: StateFlow<UiState<List<DiscogsNativeArtistSearchRow>>?> = _artists.asStateFlow()
@@ -195,6 +212,129 @@ internal class DiscogsNativeCatalogSession(
             listOf(capability to BuiltInProviderKeys.DISCOGS))
 
     /** Keep the very same native artist/album header on network failure. */
+    private fun editorialLease(): ProviderReadLease? =
+        ProviderReadLease.acquire(
+            ProviderRuntime.gateOrNull(),
+            listOf(
+                ProviderCapability.CATALOG_SEARCH to BuiltInProviderKeys.DISCOGS,
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.DISCOGS,
+            ),
+        )
+
+    /**
+     * Source-only Home discovery: a small bounded cross-genre sample, with
+     * exact Discogs IDs and no implied chart ranking or false latest-date.
+     * Providers are independently selectable; MB/iTunes need not be enabled.
+     */
+    fun loadHomeEditorial(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && (homeEditorialJob?.isActive == true ||
+            homeEditorialAtMs != 0L && now - homeEditorialAtMs in 0 until 2L * 60 * 60 * 1000
+        )) return
+        homeEditorialJob?.cancel()
+        val lease = editorialLease()
+        if (lease == null) {
+            _homeEditorial.value = UiState.Error(
+                "Ative Busca e Discografia do Discogs em Provedores.",
+            )
+            return
+        }
+        homeEditorialAtMs = now
+        _homeEditorial.value = UiState.Loading
+        val job = scope.launch(Dispatchers.IO) {
+            val verified = mutableListOf<DiscogsEditorialCandidate>()
+            var failure: String? = null
+            for (tag in listOf("pop", "rock")) {
+                val request = discogsEditorialQueryForTag(tag) ?: continue
+                val result = try { editorialClient.discover(request, maxReleases = 4) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { DiscogsEditorialResult.Unavailable }
+                if (!lease.isCurrent()) return@launch
+                when (result) {
+                    is DiscogsEditorialResult.Verified -> {
+                        verified += result.releases
+                        val shelves = discogsEditorialShelves(verified, home = true)
+                        if (shelves.isNotEmpty()) _homeEditorial.value = UiState.Success(shelves)
+                    }
+                    DiscogsEditorialResult.Unauthorized -> {
+                        failure = "Configure o token do Discogs em Conexões."
+                        break
+                    }
+                    DiscogsEditorialResult.Disabled -> {
+                        failure = "Ative Busca e Discografia do Discogs em Provedores."
+                        break
+                    }
+                    is DiscogsEditorialResult.Throttled -> {
+                        failure = "O Discogs limitou temporariamente as consultas."
+                        break
+                    }
+                    else -> failure = "Não foi possível consultar o catálogo Discogs."
+                }
+            }
+            if (!lease.isCurrent()) return@launch
+            val shelves = discogsEditorialShelves(verified, home = true)
+            _homeEditorial.value = if (shelves.isNotEmpty()) UiState.Success(shelves)
+                else UiState.Error(failure ?: "Nenhum lançamento Discogs verificado nesta amostra.")
+        }
+        homeEditorialJob = job
+        val unregister = lease.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+    }
+
+    /** Typed Discogs Genre or Style, verified by hydrated source Master data. */
+    fun loadGenreEditorial(tag: String, force: Boolean = false) {
+        if (canonicalAllExploreGenres.none { it.tag == tag }) return
+        val now = System.currentTimeMillis()
+        if (!force && genreEditorialTag == tag &&
+            (genreEditorialJob?.isActive == true ||
+                genreEditorialAtMs != 0L &&
+                now - genreEditorialAtMs in 0 until 2L * 60 * 60 * 1000)
+        ) return
+        genreEditorialJob?.cancel()
+        genreEditorialTag = tag
+        genreEditorialAtMs = now
+        val query = discogsEditorialQueryForTag(tag)
+        if (query == null) {
+            _genreEditorial.value = mapOf(tag to UiState.Error(
+                "Este gênero ainda não possui correspondência verificada no Discogs.",
+            ))
+            return
+        }
+        val lease = editorialLease()
+        if (lease == null) {
+            _genreEditorial.value = mapOf(tag to UiState.Error(
+                "Ative Busca e Discografia do Discogs em Provedores.",
+            ))
+            return
+        }
+        _genreEditorial.value = mapOf(tag to UiState.Loading)
+        val job = scope.launch(Dispatchers.IO) {
+            val result = try { editorialClient.discover(query, maxReleases = 6) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsEditorialResult.Unavailable }
+            if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
+            _genreEditorial.value = mapOf(tag to when (result) {
+                is DiscogsEditorialResult.Verified -> {
+                    val shelves = discogsEditorialShelves(result.releases)
+                    if (shelves.isNotEmpty()) UiState.Success(shelves)
+                    else UiState.Error(
+                        "Nenhum lançamento com classificação Discogs verificada nesta amostra.",
+                    )
+                }
+                DiscogsEditorialResult.Unauthorized ->
+                    UiState.Error("Configure o token do Discogs em Conexões.")
+                DiscogsEditorialResult.Disabled ->
+                    UiState.Error("Ative Busca e Discografia do Discogs em Provedores.")
+                is DiscogsEditorialResult.Throttled ->
+                    UiState.Error("O Discogs limitou temporariamente as consultas.")
+                else -> UiState.Error("Não foi possível consultar este gênero no Discogs.")
+            })
+        }
+        genreEditorialJob = job
+        val unregister = lease.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+    }
+
     private fun failDetail(message: String) {
         val current = (_detail.value as? UiState.Success)?.data
         _detail.value = if (current == null) UiState.Error(message)
@@ -205,6 +345,14 @@ internal class DiscogsNativeCatalogSession(
 
     /** Removing consent closes even previously painted provider-owned results. */
     fun purgeRevoked() {
+        if (editorialLease() == null) {
+            homeEditorialJob?.cancel()
+            genreEditorialJob?.cancel()
+            homeEditorialAtMs = 0L
+            genreEditorialAtMs = 0L
+            _homeEditorial.value = UiState.Loading
+            _genreEditorial.value = emptyMap()
+        }
         if (lease(ProviderCapability.CATALOG_SEARCH) == null) clearSearch()
         if (lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) == null) backAll()
     }
