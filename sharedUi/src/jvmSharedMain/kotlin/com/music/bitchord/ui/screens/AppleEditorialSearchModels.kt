@@ -86,3 +86,68 @@ data class AppleEditorialTrackSearchRow(
     val appleStoreUrl: String? = null,
     val appleStoreBadgeUrl: String? = null,
 )
+
+/**
+ * One mixed public-search surface regardless of metadata provider. These
+ * variants preserve source-owned IDs and their original click handlers; no
+ * Apple product is converted to a MusicBrainz recording or playable Song.
+ */
+sealed interface AppleUnifiedSearchEntry {
+    data class Artist(val row: AppleEditorialSearchRow) : AppleUnifiedSearchEntry
+    data class Track(val row: AppleEditorialTrackSearchRow) : AppleUnifiedSearchEntry
+    data class Album(val row: AppleEditorialSearchRow) : AppleUnifiedSearchEntry
+}
+
+/**
+ * A precise artist hit leads General Search, like MusicBrainz. Subsequent
+ * result rows mix recordings and releases in source order rather than
+ * recreating provider-specific "Artistas/Músicas/Álbuns" subsections.
+ * The Artists tab still lists every returned artist.
+ */
+fun appleUnifiedSearchEntries(
+    query: String,
+    artists: List<AppleEditorialSearchRow>,
+    tracks: List<AppleEditorialTrackSearchRow>,
+    albums: List<AppleEditorialSearchRow>,
+): List<AppleUnifiedSearchEntry> = buildList {
+    val normalized = query.trim().replace(Regex("\\s+"), " ")
+    val exact = artists.filter { it.title.equals(normalized, ignoreCase = true) }
+    val leaders = if (exact.isNotEmpty()) exact.take(1) else artists.take(3)
+    leaders.distinctBy { it.browseId }.forEach { add(AppleUnifiedSearchEntry.Artist(it)) }
+    val uniqueTracks = tracks.distinctBy { it.key }
+    val uniqueAlbums = albums.distinctBy { it.browseId }
+    val maxRows = maxOf(uniqueTracks.size, uniqueAlbums.size)
+    for (index in 0 until maxRows) {
+        uniqueTracks.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Track(it)) }
+        uniqueAlbums.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Album(it)) }
+    }
+}
+
+/**
+ * A single continuation for the mixed tab. Retriable failures get priority;
+ * otherwise read a source-backed page from the shorter visible track/album
+ * stream. Do not spend repeated requests on fuzzy artist names if an exact
+ * Artist product has already been found.
+ */
+fun appleUnifiedNextPage(
+    query: String,
+    artists: List<AppleEditorialSearchRow>,
+    tracks: List<AppleEditorialTrackSearchRow>,
+    albums: List<AppleEditorialSearchRow>,
+    paging: Map<AppleSearchSection, AppleSearchPageStatus>,
+): AppleSearchSection? {
+    val exactArtist = artists.any { it.title.equals(query.trim(), ignoreCase = true) }
+    val candidates = listOf(
+        AppleSearchSection.TRACKS to tracks.size,
+        AppleSearchSection.ALBUMS to albums.size,
+        AppleSearchSection.ARTISTS to artists.size,
+    ).filter { (type, _) ->
+        (type != AppleSearchSection.ARTISTS || !exactArtist) &&
+            paging[type]?.let { !it.loadingMore && (it.hasMore || it.retryableError) } == true
+    }
+    return candidates.sortedWith(
+        compareBy<Pair<AppleSearchSection, Int>> {
+            if (paging[it.first]?.retryableError == true) 0 else 1
+        }.thenBy { it.second },
+    ).firstOrNull()?.first
+}

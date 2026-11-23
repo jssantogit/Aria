@@ -54,6 +54,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -344,6 +346,9 @@ fun SearchScreen(
     // appear as a dropdown beneath the text completions rather than floating
     // after the search has committed.
     val showTypeahead = typeaheadResults.isNotEmpty() && suggesting
+    // Compact General results first, and reveal already fetched Apple products
+    // before spending a separate source-specific paging request.
+    var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(28) }
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {
@@ -587,20 +592,20 @@ fun SearchScreen(
                     } else if (filter == SearchFilter.ALL && canonicalDetail == null &&
                         query.isNotBlank()
                     ) {
-                        appleEditorialArtistRows(
-                            appleArtistResults, onAppleOpen, showHeading = true,
-                            paging = applePaging[AppleSearchSection.ARTISTS],
-                            onLoadMore = { onAppleLoadMore(AppleSearchSection.ARTISTS) },
-                        )
-                        appleEditorialTrackRows(
-                            appleTrackResults, onAppleTrackOpen, showHeading = true,
-                            paging = applePaging[AppleSearchSection.TRACKS],
-                            onLoadMore = { onAppleLoadMore(AppleSearchSection.TRACKS) },
-                        )
-                        appleEditorialAlbumRows(
-                            appleResults, onAppleOpen, showHeading = true,
-                            paging = applePaging[AppleSearchSection.ALBUMS],
-                            onLoadMore = { onAppleLoadMore(AppleSearchSection.ALBUMS) },
+                        // One mixed and relevancy-led Apple result list, exactly
+                        // the same native row structure as MusicBrainz. Types
+                        // are separated ONLY by the existing filter tabs.
+                        appleUnifiedSearchRows(
+                            query = query,
+                            artists = appleArtistResults,
+                            tracks = appleTrackResults,
+                            albums = appleResults,
+                            onOpen = onAppleOpen,
+                            onTrackOpen = onAppleTrackOpen,
+                            paging = applePaging,
+                            onLoadMore = onAppleLoadMore,
+                            visibleLimit = appleGeneralVisibleRows,
+                            onRevealMore = { appleGeneralVisibleRows += 24 },
                         )
                     } else {
                         canonicalMusicBrainzResults(
@@ -903,31 +908,123 @@ private fun NativeCatalogSearchLoadMore(
     onClick: () -> Unit,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    loading: Boolean = false,
 ) {
-    val ink = MaterialTheme.colorScheme.onSurface
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(ink.copy(alpha = 0.08f))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .heightIn(min = 44.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("native-catalog-search-load-more"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            imageVector = BitChordIcons.Plus,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = ink.copy(alpha = if (enabled) 1f else 0.38f),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleMedium,
-            color = ink.copy(alpha = if (enabled) 1f else 0.38f),
-        )
+    // MusicBrainz, Discogs, and iTunes use the SAME pagination control.
+    // White/black contrast and rounded corners are native BitChord style.
+    NativeSearchSecondaryAction(
+        label = label,
+        onClick = onClick,
+        enabled = enabled,
+        loading = loading,
+        highContrast = true,
+        modifier = modifier.testTag("native-catalog-search-load-more"),
+    )
+}
+
+/**
+ * General iTunes results are not three stacked provider sub-pages. One
+ * native list mixes verified Apple artists, tracks and albums; typed tabs
+ * continue to show the full source-specific result sets independently.
+ */
+private fun LazyListScope.appleUnifiedSearchRows(
+    query: String,
+    artists: UiState<List<AppleEditorialSearchRow>>?,
+    tracks: UiState<List<AppleEditorialTrackSearchRow>>?,
+    albums: UiState<List<AppleEditorialSearchRow>>?,
+    onOpen: (AppleEditorialSearchRow) -> Unit,
+    onTrackOpen: (AppleEditorialTrackSearchRow) -> Unit,
+    paging: Map<AppleSearchSection, AppleSearchPageStatus>,
+    onLoadMore: (AppleSearchSection) -> Unit,
+    visibleLimit: Int,
+    onRevealMore: () -> Unit,
+) {
+    val artistRows = (artists as? UiState.Success)?.data.orEmpty()
+    val trackRows = (tracks as? UiState.Success)?.data.orEmpty()
+    val albumRows = (albums as? UiState.Success)?.data.orEmpty()
+    val unified = appleUnifiedSearchEntries(query, artistRows, trackRows, albumRows)
+    if (unified.isEmpty()) {
+        when {
+            artists is UiState.Loading || tracks is UiState.Loading ||
+                albums is UiState.Loading ->
+                songListSkeleton(keyPrefix = "apple:unified")
+            artists is UiState.Error && tracks is UiState.Error &&
+                albums is UiState.Error ->
+                item(key = "apple:unified:error") {
+                    MessageState(stringResource(Res.string.apple_catalog_unavailable))
+                }
+            else -> item(key = "apple:unified:empty") {
+                MessageState(stringResource(Res.string.canonical_empty_search))
+            }
+        }
+    } else {
+        itemsIndexed(
+            items = unified.take(visibleLimit),
+            key = { _, item ->
+                when (item) {
+                    is AppleUnifiedSearchEntry.Artist ->
+                        "apple:unified:artist:${item.row.browseId}"
+                    is AppleUnifiedSearchEntry.Album ->
+                        "apple:unified:album:${item.row.browseId}"
+                    is AppleUnifiedSearchEntry.Track ->
+                        "apple:unified:track:${item.row.key}"
+                }
+            },
+        ) { _, result ->
+            when (result) {
+                is AppleUnifiedSearchEntry.Artist -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = result.row.title,
+                        subtitle = stringResource(Res.string.canonical_artist_kind)
+                            .substringBefore('·').trim(),
+                        artworkUri = result.row.artworkUri,
+                        artistPortrait = true,
+                    ),
+                    onClick = { onOpen(result.row) },
+                )
+                is AppleUnifiedSearchEntry.Track -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = result.row.title,
+                        subtitle = result.row.artistName,
+                        artworkUri = result.row.artworkUri,
+                        artistPortrait = false,
+                    ),
+                    onClick = if (result.row.albumBrowseId != null)
+                        ({ onTrackOpen(result.row) }) else null,
+                )
+                is AppleUnifiedSearchEntry.Album -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = result.row.title,
+                        subtitle = result.row.artistName,
+                        artworkUri = result.row.artworkUri,
+                        artistPortrait = false,
+                    ),
+                    onClick = { onOpen(result.row) },
+                )
+            }
+        }
+    }
+    val hasUnshown = unified.size > visibleLimit
+    val nextSource = appleUnifiedNextPage(
+        query, artistRows, trackRows, albumRows, paging,
+    )
+    val sourceLoading = paging.values.any { it.loadingMore }
+    if (hasUnshown || nextSource != null || sourceLoading) {
+        item(key = "apple:unified:more") {
+            NativeCatalogSearchLoadMore(
+                label = stringResource(Res.string.canonical_more_results),
+                onClick = {
+                    if (hasUnshown) onRevealMore()
+                    else nextSource?.let(onLoadMore)
+                },
+                enabled = hasUnshown || nextSource != null,
+                loading = !hasUnshown && nextSource == null && sourceLoading,
+                modifier = Modifier.fillMaxWidth().padding(
+                    start = PAGE_GUTTER, end = PAGE_GUTTER,
+                    top = 12.dp, bottom = 8.dp,
+                ),
+            )
+        }
     }
 }
 
@@ -941,13 +1038,14 @@ private fun LazyListScope.appleSearchPagingFooter(
         item(key = "apple:search:more:${section.name}") {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(
-                    horizontal = PAGE_GUTTER, vertical = 12.dp,
+                    horizontal = PAGE_GUTTER, vertical = 8.dp,
                 ),
             ) {
                 NativeCatalogSearchLoadMore(
-                    label = stringResource(Res.string.apple_load_more),
+                    label = stringResource(Res.string.canonical_more_results),
                     onClick = onLoadMore,
                     enabled = !state.loadingMore,
+                    loading = state.loadingMore,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (state.loadingMore) {
@@ -1456,6 +1554,7 @@ private fun LazyListScope.canonicalMusicBrainzResults(
                         onClick = onLoadMore,
                         enabled = !loadingMore,
                         loading = loadingMore,
+                        highContrast = true,
                         modifier = Modifier.fillMaxWidth()
                             .padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
                     )
@@ -1470,6 +1569,7 @@ private fun LazyListScope.canonicalMusicBrainzResults(
                 onClick = onSearchLoadMore,
                 enabled = !searchLoadingMore,
                 loading = searchLoadingMore,
+                highContrast = true,
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
             )
