@@ -608,8 +608,10 @@ private fun CanonicalHomeEditorialEffects(
         listenBrainzAccountEnabled, listenBrainzAccountToken,
     ) {
         if (selectedTab == TAB_HOME) {
-            if (catalogEditorialOrder.firstOrNull() ==
-                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
+            if (catalogEditorialOrder.firstOrNull() in setOf(
+                    com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
+                    com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
+                )
             ) com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
                 viewModel, catalogEditorialOrder,
             )
@@ -662,6 +664,10 @@ private fun CanonicalHomeEditorialEffects(
                 )) {
                 viewModel.loadCanonicalGenreSupplement(tag)
             }
+        } else if (first ==
+            com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
+        ) {
+            viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
         } else if (first == mb) {
             if (apple in catalogEditorialOrder &&
                 (canonicalGenreResults is UiState.Error ||
@@ -696,6 +702,8 @@ private data class CanonicalCatalogRuntime(
     val editorialOrder: List<com.music.bitchord.data.providers.ProviderKey>,
     val worldwideReleases: List<CanonicalCatalogSearchRow>,
     val appleHome: UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>,
+    val discogsHome: UiState<List<HomeShelf>>,
+    val discogsGenres: Map<String, UiState<List<HomeShelf>>>,
     val worldwideLoading: Boolean,
     val genreResults: UiState<List<CanonicalCatalogSearchRow>>,
     val genreArtists: com.music.bitchord.ui.CanonicalGenreArtistSnapshot?,
@@ -713,6 +721,8 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
     val editorialOrder by viewModel.catalogEditorialOrder.collectAsStateWithLifecycle()
     val worldwideReleases by viewModel.canonicalWorldwideReleases.collectAsStateWithLifecycle()
     val appleHome by viewModel.appleHomeReleases.collectAsStateWithLifecycle()
+    val discogsHome by viewModel.discogsNativeCatalog.homeEditorial.collectAsStateWithLifecycle()
+    val discogsGenres by viewModel.discogsNativeCatalog.genreEditorial.collectAsStateWithLifecycle()
     val worldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
     val genreResults by viewModel.canonicalGenreResults.collectAsStateWithLifecycle()
     val genreArtists by viewModel.canonicalGenreArtists.collectAsStateWithLifecycle()
@@ -727,6 +737,8 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
         editorialOrder = editorialOrder,
         worldwideReleases = worldwideReleases,
         appleHome = appleHome,
+        discogsHome = discogsHome,
+        discogsGenres = discogsGenres,
         worldwideLoading = worldwideLoading,
         genreResults = genreResults,
         genreArtists = genreArtists,
@@ -1107,6 +1119,8 @@ private fun BitChordApp(
     val catalogEditorialOrder = catalogRuntime.editorialOrder
     val canonicalWorldwideReleases = catalogRuntime.worldwideReleases
     val appleHomeReleases = catalogRuntime.appleHome
+    val discogsHomeReleases = catalogRuntime.discogsHome
+    val discogsGenreReleases = catalogRuntime.discogsGenres
     val canonicalWorldwideLoading = catalogRuntime.worldwideLoading
     val canonicalGenreResults = catalogRuntime.genreResults
     val canonicalGenreArtists = catalogRuntime.genreArtists
@@ -1514,6 +1528,7 @@ private fun BitChordApp(
     // adapters own their own cards and IDs; local/server media stays separate.
     val catalogMb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
     val catalogApple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+    val catalogDiscogs = com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
     val canonicalHomeEditorialSelection =
         com.music.bitchord.ui.rememberCanonicalHomeEditorialSelection(
             canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
@@ -1524,6 +1539,7 @@ private fun BitChordApp(
             albumsHeading = canonicalPublicAlbumsHeading,
             singlesHeading = canonicalPublicSinglesHeading,
             moreHeading = canonicalPublicMoreHeading,
+            discogsEditorial = discogsHomeReleases,
         )
     val canonicalHomeDisplayShelves =
         com.music.bitchord.ui.rememberCanonicalHomeDisplayShelves(
@@ -1539,6 +1555,7 @@ private fun BitChordApp(
     val refreshCanonicalGenreEditorial: (String, Boolean) -> Unit = { tag, force ->
         when (catalogEditorialOrder.firstOrNull()) {
             catalogMb -> viewModel.loadCanonicalGenre(tag)
+            catalogDiscogs -> viewModel.discogsNativeCatalog.loadGenreEditorial(tag, force)
             catalogApple -> if (com.music.bitchord.data.catalog.metadata
                     .AppleExploreGenrePolicy.supports(tag)
             ) {
@@ -1566,6 +1583,7 @@ private fun BitChordApp(
         genrePopular = canonicalGenrePopular,
         genrePopularityAuthorized = genrePopularityAuthorized,
         todayIsoDate = canonicalFeedDate,
+        discogsByTag = discogsGenreReleases,
     )
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
