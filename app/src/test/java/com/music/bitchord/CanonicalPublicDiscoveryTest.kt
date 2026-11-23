@@ -423,6 +423,32 @@ class CanonicalPublicDiscoveryTest {
         assertTrue(home.none { it.title == "Em alta" })
     }
 
+    @Test fun homeLaunchHeroPrefersVerifiedCoverWithoutUsingPopularityOrFutureDates() {
+        val newerWithoutArt = recent.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000001",
+            title = "Recent with no verified sleeve",
+            firstReleaseDate = "2026-11-05", artworkUri = null,
+        )
+        val olderWithArt = recent.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000002",
+            title = "Recent with actual sleeve",
+            firstReleaseDate = "2026-10-21",
+            artworkUri = "https://coverartarchive.org/release-group/60000000-0000-4000-8000-000000000002/front-500",
+        )
+        val rows = canonicalPublicReleaseRows(
+            listOf(newerWithoutArt, olderWithArt), "2026-10-01", "2026-11-06",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-06",
+        )
+        assertEquals("Recent with actual sleeve",
+            home.first { it.title == "Lançamentos" }.items.single().title)
+        assertEquals(olderWithArt.artworkUri,
+            home.first { it.title == "Lançamentos" }.items.single().thumbnailUrl)
+        assertTrue(home.none { it.title == "Em alta" || it.title == "Escolha a dedo" })
+    }
+
     @Test fun largeVerifiedFeedFillsAlbumAndSingleShelvesAfterLaunchAndDiscoveryDedup() {
         // An 80-record source page is already sufficient to fill every
         // carousel. Raw take(12) before excluding earlier shelves used to
