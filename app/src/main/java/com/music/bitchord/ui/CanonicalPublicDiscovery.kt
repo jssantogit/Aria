@@ -437,20 +437,27 @@ internal fun canonicalHomeWithWorldwideEditorial(
     val protectedLaunch = genuinelyRecent.sortedWith(launchOrder).firstOrNull()
     val protectedId = protectedLaunch?.musicBrainzId
     val supportsFive = publicRows.size >= 5 || genuinelyRecent.isEmpty()
-    val reservedAlbum = if (supportsFive) publicRows.asReversed().firstOrNull {
-        it.musicBrainzId != protectedId &&
-            canonicalEditorialReleaseType(it) == "Album"
+    // Reserving the oldest identity as the FIRST Album/Single card was
+    // technically diverse but visually weak: an ancient, coverless record
+    // could lead a category despite newer, source-owned cover evidence.
+    // This is presentation quality, NOT a claim of popularity or a chart.
+    val formatAnchorOrder = compareByDescending<CanonicalCatalogSearchRow> {
+        !it.artworkUri.isNullOrBlank()
+    }.thenByDescending { it.releaseDate.orEmpty() }
+        .thenBy { it.musicBrainzId }
+    val reservable = publicRows.filterNot { it.musicBrainzId == protectedId }
+        .sortedWith(formatAnchorOrder)
+    val reservedAlbum = if (supportsFive) reservable.firstOrNull {
+        canonicalEditorialReleaseType(it) == "Album"
     } else null
-    val reservedSingle = if (supportsFive) publicRows.asReversed().firstOrNull {
-        it.musicBrainzId != protectedId &&
-            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+    val reservedSingle = if (supportsFive) reservable.firstOrNull {
+        canonicalEditorialReleaseType(it) in setOf("Single", "EP")
     } else null
     val hasRealChartOrCommunity = worldwideTrending?.items?.isNotEmpty() == true ||
         community?.items?.isNotEmpty() == true
     val reservedMore = if (supportsFive && !hasRealChartOrCommunity) {
-        publicRows.asReversed().firstOrNull {
-            it.musicBrainzId != protectedId &&
-                it.musicBrainzId != reservedAlbum?.musicBrainzId &&
+        reservable.firstOrNull {
+            it.musicBrainzId != reservedAlbum?.musicBrainzId &&
                 it.musicBrainzId != reservedSingle?.musicBrainzId
         }
     } else null
