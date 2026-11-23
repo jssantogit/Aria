@@ -280,6 +280,8 @@ internal class MusicBrainzCatalogSearch(
     suspend fun searchReleaseGroupsForTag(
         tag: String,
         limit: Int = 40,
+        /** Upstream raw offset, never calculated from filtered/visible cards. */
+        offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
         val musicBrainzTag = safeMusicBrainzGenreTag(tag)
             ?: return MusicBrainzCatalogSearchResult.Failure(
@@ -288,7 +290,7 @@ internal class MusicBrainzCatalogSearch(
         return searchReleaseGroupsInternal(
             "tag:\"$musicBrainzTag\" AND " +
                 "(primarytype:album OR primarytype:ep OR primarytype:single)",
-            limit, 0, fieldedQuery = true,
+            limit, offset, fieldedQuery = true,
         )
     }
 
