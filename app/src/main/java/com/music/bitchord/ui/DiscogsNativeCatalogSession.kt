@@ -667,6 +667,7 @@ internal class DiscogsNativeCatalogSession(
     fun openReleaseFromSearch(
         selected: DiscogsNativeReleaseSearchRow,
         retainDirectParent: Boolean = false,
+        expectedMasterId: Long? = null,
     ) {
         if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
         val previous = if (retainDirectParent && artist == null &&
@@ -697,19 +698,32 @@ internal class DiscogsNativeCatalogSession(
             val record = (response as? DiscogsLookupResult.Found)?.record
             if (record == null || record.link.kind != DiscogsKind.RELEASE ||
                 record.link.id != selected.releaseId ||
+                (expectedMasterId != null && record.masterId != expectedMasterId) ||
                 _browseId.value != selected.browseId
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
             }
-            // First paint is never held hostage by a second source lookup.
-            val initial = discogsReleasePage(record.artistNames.joinToString(", "), record)
+            // Paint the canonical album immediately, then enrich the SAME
+            // DetailPage with a bounded source-verified editions sample.
+            val credit = record.artistNames.joinToString(", ")
+            val initial = discogsReleasePage(credit, record)
             _detail.value = UiState.Success(initial)
+            val variants = sampleVerifiedVersions(record)
+            if (!authorization.isCurrent() || artist != null ||
+                _route.value != DiscogsNativeRoute.RELEASE ||
+                _browseId.value != selected.browseId
+            ) return@launch
+            val withVersions = discogsReleasePage(
+                credit, record, versionRecords = variants.records,
+                versionsIncomplete = variants.incomplete,
+            )
+            if (variants.records.isNotEmpty()) _detail.value = UiState.Success(withVersions)
             val exactArtistId = initial.albumArtistBrowseId
                 ?.removePrefix("discogs:artist:")?.toLongOrNull()
                 ?.takeIf { !record.unofficial } ?: return@launch
             // Only one bounded, independently verified Discogs Artist page.
-            // No name search and no claim of complete discography.
+            // Do not re-identify a release through a similar artist name.
             val related = try { artistClient.load(exactArtistId, 1) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
@@ -720,9 +734,12 @@ internal class DiscogsNativeCatalogSession(
             if (related is DiscogsNativeArtistLoad.Success) {
                 val enriched = discogsReleasePage(
                     record.artistNames.single(), record, related.releases,
+                    versionRecords = variants.records,
+                    versionsIncomplete = variants.incomplete,
                 )
                 _detail.value = UiState.Success(enriched.copy(
-                    incomplete = related.incomplete || related.hasMore,
+                    incomplete = enriched.incomplete ||
+                        related.incomplete || related.hasMore,
                 ))
             }
         }
