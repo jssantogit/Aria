@@ -415,6 +415,8 @@ class IdmCatalogLiveObservationTest {
         var discogsReleaseReads = 0
         var discogsReleaseFound = 0
         var discogsGranularScanner: DiscogsNativeGenreEditorial? = null
+        var firstInitialVerifiedNs: Long? = null
+        val initialStartedNs = System.nanoTime()
         val discogsRead = if (token == null) null else {
             val caps = setOf(ProviderCapability.CATALOG_SEARCH,
                 ProviderCapability.EDITORIAL_DISCOGRAPHY)
@@ -463,11 +465,26 @@ class IdmCatalogLiveObservationTest {
             )
             discogsGranularScanner = native
             withTimeoutOrNull(95_000L) {
-                try { native.discover(DiscogsEditorialQuery("K-Pop", isStyle = true),
-                    maxReleases = 3) }
-                catch (_: Exception) { null }
+                try {
+                    native.discover(
+                        DiscogsEditorialQuery("K-Pop", isStyle = true),
+                        maxReleases = 3,
+                        onVerified = {
+                            if (firstInitialVerifiedNs == null)
+                                firstInitialVerifiedNs = System.nanoTime()
+                        },
+                    )
+                } catch (_: Exception) { null }
             }
         }
+        val initialElapsedMs = if (token == null) 0 else
+            ((System.nanoTime() - initialStartedNs) / 1_000_000L)
+                .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        val firstInitialVerifiedMs = firstInitialVerifiedNs?.let {
+            ((it - initialStartedNs) / 1_000_000L)
+                .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        } ?: 0
+        check(firstInitialVerifiedMs in 0..initialElapsedMs)
         val verifiedDiscogs =
             (discogsRead as? DiscogsEditorialResult.Verified)?.releases.orEmpty()
         val discogsShelves = discogsEditorialShelves(verifiedDiscogs, home = true)
@@ -501,6 +518,9 @@ class IdmCatalogLiveObservationTest {
                 "discogs_hydration_rejections" to
                     (discogsMasterReads - discogsMasterFound) +
                     (discogsReleaseReads - discogsReleaseFound),
+                "initial_elapsed_ms" to initialElapsedMs,
+                "initial_first_verified_ms" to firstInitialVerifiedMs,
+                "initial_first_verified_seen" to if (firstInitialVerifiedNs != null) 1 else 0,
             ),
         ))
 
