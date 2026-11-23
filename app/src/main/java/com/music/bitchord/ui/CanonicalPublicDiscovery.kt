@@ -472,7 +472,20 @@ internal fun canonicalHomeWithWorldwideEditorial(
         shelves.add(minOf(3, shelves.size), shelf)
     }
     fun appendPublic(heading: String, rows: List<CanonicalCatalogSearchRow>) {
-        val cards = unique(rows.map(::item).take(12))
+        // Pagination may supply hundreds of valid releases, but earlier
+        // Home shelves already consumed a leading prefix. Take twelve
+        // *unassigned* source IDs, not twelve raw candidates followed by
+        // deduplication, or a well-stocked catalog can render a nearly
+        // empty Album/Single carousel.
+        val available = rows.asSequence().map(::item)
+            .filter { card ->
+                val id = card.browseId
+                id != null && id !in selected
+            }
+            .distinctBy { it.browseId }
+            .take(12)
+            .toList()
+        val cards = unique(available)
         if (cards.isNotEmpty()) shelves.add(HomeShelf(heading, cards))
     }
     val unused = publicRows.filterNot {
