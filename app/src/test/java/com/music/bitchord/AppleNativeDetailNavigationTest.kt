@@ -14,6 +14,7 @@ import com.music.bitchord.ui.screens.appleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
 import com.music.bitchord.ui.screens.appleNativePendingDetail
 import com.music.bitchord.ui.screens.appleNativeShelfEntry
+import com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -140,6 +141,62 @@ class AppleNativeDetailNavigationTest {
         assertNull(appleNativeShelfEntry(
             "discogs:release:500", listOf(artistShelfRow, relatedRow),
         ))
+    }
+
+    @Test fun providerOverflowOnlyOpensExactVerifiedAppleStorefrontProduct() {
+        val appleArtist = "itunes:br:artist:17"
+        val appleAlbum = "itunes:br:album:500"
+        val link = "https://music.apple.com/br/album/real-album/500"
+        assertEquals(link, verifiedAppleDetailStoreUrl(link, appleAlbum))
+        assertEquals("https://music.apple.com/br/artist/name/17",
+            verifiedAppleDetailStoreUrl("https://music.apple.com/br/artist/name/17",
+                appleArtist))
+        assertNull(verifiedAppleDetailStoreUrl(link, appleArtist))
+        assertNull(verifiedAppleDetailStoreUrl(
+            "https://music.apple.com/br/album/real-album/501", appleAlbum,
+        ))
+        assertNull(verifiedAppleDetailStoreUrl(
+            "https://music.apple.com/us/album/real-album/500", appleAlbum,
+        ))
+        assertNull(verifiedAppleDetailStoreUrl(
+            "https://music.apple.com.evil.test/br/album/real-album/500", appleAlbum,
+        ))
+        assertNull(verifiedAppleDetailStoreUrl(
+            "http://music.apple.com/br/album/real-album/500", appleAlbum,
+        ))
+        assertNull(verifiedAppleDetailStoreUrl(
+            "https://person@music.apple.com/br/album/real-album/500", appleAlbum,
+        ))
+        assertNull(verifiedAppleDetailStoreUrl(
+            "https://music.apple.com/br/album/real-album/500",
+            "catalog:RELEASE_GROUP:500",
+        ))
+    }
+
+    @Test fun datedAppleArtistFeaturedCardHasExactProductIdentity() {
+        val newest = album(601).copy(
+            title = "New EP", releaseDate = "2026-11-01",
+            category = com.music.bitchord.ui.screens.AppleEditorialReleaseCategory.EP,
+        )
+        val older = album(600).copy(
+            title = "Old album", releaseDate = "2025-04-01",
+        )
+        val visual = appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist(), albums = listOf(older, newest),
+                possiblyTruncated = false,
+            ),
+        )!!
+        assertEquals(newest.browseId, visual.featuredRelease?.browseId)
+        assertEquals("EP · 2026", visual.featuredRelease?.subtitle)
+        assertNull(visual.featuredRelease?.videoId)
+        assertNull(appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist = artist(), albums = listOf(
+                    album().copy(releaseDate = null),
+                ), possiblyTruncated = false,
+            ),
+        )?.featuredRelease)
     }
 
     @Test fun loadingAndPermissionErrorsUseOriginalNativeDetailPage() {

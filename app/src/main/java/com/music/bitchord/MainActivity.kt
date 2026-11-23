@@ -1288,10 +1288,14 @@ private fun BitChordApp(
     LaunchedEffect(selectedTab, detail?.browseId, showSettings) {
         rootSettingsOverflowOpen = false
     }
-    var catalogAlbumOverflowOpen by remember(detail?.browseId) { mutableStateOf(false) }
-    var catalogAlbumOverflowAnchor by remember(detail?.browseId) {
+    var catalogAlbumOverflowOpen by remember(activeDetailSortId) { mutableStateOf(false) }
+    var catalogAlbumOverflowAnchor by remember(activeDetailSortId) {
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
     }
+    // iTunes owns exact storefront IDs, so it uses the same native ⋯ launcher
+    // but never inherits MusicBrainz ratings or legacy queue commands.
+    var providerDetailOverflowOpen by remember(activeDetailSortId) { mutableStateOf(false) }
+    var providerHeldCardRoute by remember(activeDetailSortId) { mutableStateOf<String?>(null) }
     // A device folder's equivalents — its sort and whether it is a grid —
     // kept apart for Downloads and shared by every other folder, as they
     // always were. Up here because both the page and the top bar's menu read
@@ -4105,6 +4109,13 @@ private fun BitChordApp(
                             onSearchingChange = { detailSearching = it },
                             songSort = songSort,
                             viewModel = viewModel,
+                            onSectionItemLongPress = { item ->
+                                val selected = item.browseId
+                                if (selected?.startsWith("itunes:") == true) {
+                                    providerHeldCardRoute = selected
+                                    providerDetailOverflowOpen = true
+                                } else onBrowseLongPress(item)
+                            },
                         )
                     } else if (page != null) {
                         // Local Music, Downloads and the other device folders are
@@ -5174,10 +5185,10 @@ private fun BitChordApp(
                 // shared app-level gradient is continuous; its controls float
                 // as separate circles in both the glass and blur materials.
                 val isDetailVisible =
-                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL && detail != null &&
-                    (detail.type == BrowseType.ALBUM ||
-                        detail.type == BrowseType.PLAYLIST ||
-                        detail.type == BrowseType.ARTIST) &&
+                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL && visualDetail != null &&
+                    (visualDetail.type == BrowseType.ALBUM ||
+                        visualDetail.type == BrowseType.PLAYLIST ||
+                        visualDetail.type == BrowseType.ARTIST) &&
                     !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showWearOs && !showEqualizer && !showReplay
                 val appleDetailPalette = rememberArtworkPalette(
@@ -5645,17 +5656,22 @@ private fun BitChordApp(
                             // "…" pair do on Apple Music's album page: the header
                             // below is left with just the sleeve, the title and
                             // Shuffle / Play / Add.
+                            val sourceOwnedAppleAlbum = detail == null &&
+                                appleSharedVisual?.page?.type == BrowseType.ALBUM
+                            val toolbarAlbum = detail ?: appleSharedVisual?.page
                             if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
-                                (isReleaseDetail || isLocalDetail) && detail != null) {
-                                val releaseSongs = (detail.songs as? UiState.Success)?.data.orEmpty()
+                                (isReleaseDetail || isLocalDetail || sourceOwnedAppleAlbum) &&
+                                toolbarAlbum != null) {
+                                val releaseSongs = (toolbarAlbum.songs as? UiState.Success)?.data.orEmpty()
                                 NativeDetailAlbumTopBarActions(
-                                    isReleaseDetail = isReleaseDetail,
+                                    isReleaseDetail = isReleaseDetail || sourceOwnedAppleAlbum,
                                     isLocalDetail = isLocalDetail,
-                                    browseId = detail.browseId,
-                                    title = detail.title,
-                                    subtitle = detail.subtitle.orEmpty(),
-                                    thumbnailUrl = detail.thumbnailUrl,
-                                    plateTint = detailPalette.elevated,
+                                    browseId = toolbarAlbum.browseId,
+                                    title = toolbarAlbum.title,
+                                    subtitle = toolbarAlbum.subtitle.orEmpty(),
+                                    thumbnailUrl = toolbarAlbum.thumbnailUrl,
+                                    plateTint = if (sourceOwnedAppleAlbum)
+                                        appleDetailPalette.elevated else detailPalette.elevated,
                                     songs = releaseSongs,
                                     searching = detailSearching,
                                     onToggleSearch = { detailSearching = !detailSearching },
@@ -5667,27 +5683,39 @@ private fun BitChordApp(
                                         detailSortMenuAnchor = bounds
                                         if (isLocalDetail) folderMenuAnchor = bounds
                                     },
-                                    catalogOverflowExpanded = catalogAlbumOverflowOpen,
+                                    catalogOverflowExpanded = if (sourceOwnedAppleAlbum)
+                                        providerDetailOverflowOpen else catalogAlbumOverflowOpen,
                                     localOverflowExpanded = shouldAnchorNativeAlbumOverflow(
-                                        browseActions, detail.browseId, browseMenuOrigin != null,
+                                        browseActions, toolbarAlbum.browseId, browseMenuOrigin != null,
                                     ),
-                                    onOpenCatalogOverflow = { catalogAlbumOverflowOpen = true },
+                                    onOpenCatalogOverflow = {
+                                        if (sourceOwnedAppleAlbum) {
+                                            providerHeldCardRoute = null
+                                            providerDetailOverflowOpen = true
+                                        } else catalogAlbumOverflowOpen = true
+                                    },
                                     onCatalogOverflowAnchor = { catalogAlbumOverflowAnchor = it },
-                                    onDismissCatalogOverflow = { catalogAlbumOverflowOpen = false },
+                                    onDismissCatalogOverflow = {
+                                        if (sourceOwnedAppleAlbum) providerDetailOverflowOpen = false
+                                        else catalogAlbumOverflowOpen = false
+                                    },
                                     onAlbumActions = {
-                                        browseActions = BrowseTarget(
-                                            browseId = detail.browseId,
-                                            title = detail.title,
-                                            subtitle = detail.subtitle,
-                                            thumbnailUrl = detail.thumbnailUrl,
-                                            type = detail.type,
+                                        if (sourceOwnedAppleAlbum) {
+                                            providerHeldCardRoute = null
+                                            providerDetailOverflowOpen = true
+                                        } else browseActions = BrowseTarget(
+                                            browseId = toolbarAlbum.browseId,
+                                            title = toolbarAlbum.title,
+                                            subtitle = toolbarAlbum.subtitle,
+                                            thumbnailUrl = toolbarAlbum.thumbnailUrl,
+                                            type = toolbarAlbum.type,
                                             songs = releaseSongs.sortedForDetail(songSort).map { song ->
-                                                if (detail.type == BrowseType.ALBUM)
-                                                    song.copy(albumName = song.albumName ?: detail.title)
+                                                if (toolbarAlbum.type == BrowseType.ALBUM)
+                                                    song.copy(albumName = song.albumName ?: toolbarAlbum.title)
                                                 else song
                                             },
                                             fromCard = false,
-                                            downloadId = downloadIdFor(detail.browseId),
+                                            downloadId = downloadIdFor(toolbarAlbum.browseId),
                                         )
                                     },
                                 )
@@ -5696,23 +5724,31 @@ private fun BitChordApp(
                             // Preserve their existing BrowseActionsSheet commands instead
                             // of showing the legacy full-screen action sheet.
                             if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
-                                detail != null && detail.type == BrowseType.ARTIST &&
+                                visualDetail?.type == BrowseType.ARTIST &&
                                 detailActiveShelf == null) {
+                                val currentArtist = visualDetail
+                                val appleArtist = detail == null &&
+                                    appleSharedVisual?.page?.browseId == currentArtist.browseId
                                 Box(Modifier.onGloballyPositioned {
                                     catalogAlbumOverflowAnchor = nativeMenuAnchorBounds(it)
                                 }) {
                                     NativeCollectionOverflowAction(
                                         contentDescription = "Opções do artista",
-                                        expanded = shouldAnchorNativeAlbumOverflow(
-                                            browseActions, detail.browseId, browseMenuOrigin != null,
-                                        ),
+                                        expanded = if (appleArtist) providerDetailOverflowOpen
+                                            else shouldAnchorNativeAlbumOverflow(
+                                                browseActions, currentArtist.browseId,
+                                                browseMenuOrigin != null,
+                                            ),
                                         onClick = {
                                             browseMenuOrigin = null
-                                            browseActions = BrowseTarget(
-                                                browseId = detail.browseId,
-                                                title = detail.title,
-                                                subtitle = detail.subtitle,
-                                                thumbnailUrl = detail.thumbnailUrl,
+                                            if (appleArtist) {
+                                                providerHeldCardRoute = null
+                                                providerDetailOverflowOpen = true
+                                            } else browseActions = BrowseTarget(
+                                                browseId = currentArtist.browseId,
+                                                title = currentArtist.title,
+                                                subtitle = currentArtist.subtitle,
+                                                thumbnailUrl = currentArtist.thumbnailUrl,
                                                 type = BrowseType.ARTIST,
                                                 fromCard = false,
                                             )
@@ -5731,7 +5767,9 @@ private fun BitChordApp(
                             // three of its own controls — Apple Music leaves the
                             // profile off its album pages too.
                             if (!appleSearchRootChrome && !isReleaseDetail &&
-                                !(detail?.type == BrowseType.ARTIST && detailActiveShelf == null) &&
+                                !(toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                                    visualDetail?.type == BrowseType.ARTIST &&
+                                    detailActiveShelf == null) &&
                                 openedPublicPlaylist == null &&
                                 !shouldUseUnifiedAlbumDetailToolbar(
                                     unifiedLibraryCategory, unifiedLibraryDetailOpen,
@@ -6127,6 +6165,70 @@ private fun BitChordApp(
                         showSettings = true
                     },
                 )
+            }
+            if (providerDetailOverflowOpen && appleSharedVisual != null &&
+                toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL
+            ) {
+                val currentRoute = providerHeldCardRoute ?: appleNativeRouteKey
+                val exactSourceUrl = if (providerHeldCardRoute == null) {
+                    when (appleNativeKind) {
+                        AppleNativeDetailKind.ARTIST -> appleArtistNavigation?.appleStoreUrl
+                        AppleNativeDetailKind.ALBUM ->
+                            (appleAlbumDetail as? UiState.Success)?.data?.appleStoreUrl
+                                ?: appleAlbumNavigation?.appleStoreUrl
+                        else -> null
+                    }
+                } else {
+                    val candidates = (appleArtistDetail as? UiState.Success)
+                        ?.data?.albums.orEmpty() +
+                        (appleAlbumDetail as? UiState.Success)
+                            ?.data?.relatedAlbums.orEmpty()
+                    candidates.firstOrNull { it.browseId == currentRoute }?.appleStoreUrl
+                }
+                val productLink = com.music.bitchord.ui.screens
+                    .verifiedAppleDetailStoreUrl(exactSourceUrl, currentRoute)
+                FrostedMenuPanel(
+                    hazeState = hazeState,
+                    anchorBounds = if (providerHeldCardRoute == null)
+                        catalogAlbumOverflowAnchor else null,
+                    menuWidth = FROSTED_SETTINGS_MENU_WIDTH,
+                    onDismiss = {
+                        providerDetailOverflowOpen = false
+                        providerHeldCardRoute = null
+                    },
+                ) {
+                    if (productLink != null) {
+                        FrostedMenuRow(
+                            label = "Abrir no Apple Music",
+                            checked = false,
+                            onClick = {
+                                providerDetailOverflowOpen = false
+                                providerHeldCardRoute = null
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW,
+                                        Uri.parse(productLink)))
+                                }
+                            },
+                        )
+                    }
+                    if (providerHeldCardRoute == null &&
+                        appleNativeKind == AppleNativeDetailKind.ARTIST) {
+                        FrostedMenuRow(
+                            label = "Buscar lançamentos",
+                            checked = detailSearching,
+                            onClick = {
+                                providerDetailOverflowOpen = false
+                                detailSearching = true
+                            },
+                            icon = Icons.Rounded.Search,
+                        )
+                    }
+                    FrostedSettingsAction {
+                        providerDetailOverflowOpen = false
+                        providerHeldCardRoute = null
+                        showSettings = true
+                    }
+                }
             }
             openedPublicPlaylist?.takeIf {
                 toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST
@@ -9561,7 +9663,8 @@ private fun NativeDetailAlbumTopBarActions(
     onAlbumActions: () -> Unit,
 ) {
     val onlineMetadata = browseId.startsWith("catalog:RELEASE:") ||
-        browseId.startsWith("catalog:RELEASE_GROUP:")
+        browseId.startsWith("catalog:RELEASE_GROUP:") ||
+        browseId.startsWith("itunes:")
     val ratingTarget = remember(browseId, isReleaseDetail) {
         if (isReleaseDetail) com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(browseId)
         else null

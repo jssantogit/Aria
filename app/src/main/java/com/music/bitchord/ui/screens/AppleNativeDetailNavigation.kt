@@ -39,6 +39,33 @@ internal fun appleNativeDetailRouteKey(
 }
 
 /**
+ * An official, source-supplied storefront link is navigable only when it
+ * resolves to the exact typed product already opened. Reject redirects,
+ * non-Apple hosts, user-info, alternate IDs and title-based lookups.
+ */
+internal fun verifiedAppleDetailStoreUrl(raw: String?, browseId: String?): String? {
+    val route = com.music.bitchord.ui.AppleCatalogBrowseRoute.parse(browseId)
+        ?.takeIf { it.kind == ItunesCatalogItemType.ALBUM ||
+            it.kind == ItunesCatalogItemType.ARTIST } ?: return null
+    val url = raw?.takeIf { it.length <= 2048 } ?: return null
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    if (!uri.scheme.equals("https", ignoreCase = true) ||
+        !uri.host.equals("music.apple.com", ignoreCase = true) ||
+        uri.userInfo != null || uri.port != -1 || uri.fragment != null
+    ) return null
+    val segments = uri.path.orEmpty().trim('/').split('/')
+    val kind = when (route.kind) {
+        ItunesCatalogItemType.ALBUM -> "album"
+        ItunesCatalogItemType.ARTIST -> "artist"
+        else -> return null
+    }
+    if (segments.size < 4 || segments[0] != route.storefront ||
+        segments[1] != kind || segments.last() != route.id.toString()
+    ) return null
+    return url
+}
+
+/**
  * Artist and album rails can both contain the SAME exact iTunes collection.
  * Distinct sources of presentation artwork do not make it two albums.
  * Conflicting source credits for one ID fail closed instead of guessing.
