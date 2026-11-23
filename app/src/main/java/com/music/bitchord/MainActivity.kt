@@ -1603,6 +1603,8 @@ private fun BitChordApp(
     val canonicalGenrePaging by viewModel.canonicalGenrePaging.collectAsStateWithLifecycle()
     val discogsGenrePaging by viewModel.discogsNativeCatalog.genrePaging
         .collectAsStateWithLifecycle()
+    val appleGenreVisibleCounts by viewModel.appleGenreVisibleCounts.collectAsStateWithLifecycle()
+    val appleGenreRevealed = appleGenreVisibleCounts[activeCanonicalGenre?.tag] ?: 24
     val canonicalGenreState = com.music.bitchord.ui.projectCanonicalGenreState(
         tag = activeCanonicalGenre?.tag,
         genrePlaylists = activeGenrePlaylists,
@@ -1619,16 +1621,22 @@ private fun BitChordApp(
         discogsByTag = discogsGenreReleases,
         musicBrainzPaging = canonicalGenrePaging,
         discogsPaging = discogsGenrePaging,
+        appleVisibleCount = appleGenreRevealed,
     )
     val genreMbOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsMusicBrainzReleases(canonicalGenreState)
     val genreDiscogsOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsDiscogsReleases(canonicalGenreState)
+    val genreAppleOwnsReleases = com.music.bitchord.ui
+        .canonicalGenreShowsAppleReleases(canonicalGenreState)
+    val appleGenreAvailable = (appleGenreReleases[activeCanonicalGenre?.tag]
+        as? UiState.Success)?.data?.size ?: 0
     val genrePagingHasMore = when {
         genreMbOwnsReleases -> canonicalGenrePaging.tag == activeCanonicalGenre?.tag &&
             canonicalGenrePaging.nextOffset != null
         genreDiscogsOwnsReleases -> discogsGenrePaging.tag == activeCanonicalGenre?.tag &&
             discogsGenrePaging.hasMore
+        genreAppleOwnsReleases -> appleGenreAvailable > appleGenreRevealed
         else -> false
     }
     val genrePagingIsLoading = when {
@@ -1641,6 +1649,7 @@ private fun BitChordApp(
             genreMbOwnsReleases -> viewModel.loadMoreCanonicalGenre(tag)
             genreDiscogsOwnsReleases ->
                 viewModel.discogsNativeCatalog.loadMoreGenreEditorial(tag)
+            genreAppleOwnsReleases -> viewModel.revealNextAppleGenrePage(tag)
         }
     }
     // What a browse id is recorded under in Downloads.collections, when it names
@@ -1793,7 +1802,8 @@ private fun BitChordApp(
     com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
         tag = activeCanonicalGenre?.tag,
         enabled = selectedTab == TAB_EXPLORE && detail == null &&
-            (genreMbOwnsReleases || genreDiscogsOwnsReleases),
+            (genreMbOwnsReleases || genreDiscogsOwnsReleases ||
+                genreAppleOwnsReleases),
         hasMore = genrePagingHasMore,
         loading = genrePagingIsLoading,
         listState = genreListState,
