@@ -423,6 +423,22 @@ internal class DiscogsNativeCatalogSession(
                         query = query, cursor = cursor,
                         knownMasterIds = state.knownMasterIds,
                         maxCandidates = 4,
+                        onVerified = { candidate ->
+                            // Publish only after both native Master and
+                            // Release are verified. Keep the cursor in the
+                            // request-local state until the page resolves.
+                            if (lease.isCurrent() && homePagingEpoch == epoch) {
+                                val visible = _homePaging.value
+                                if (candidate.masterId !in visible.knownMasterIds) {
+                                    _homePaging.value = visible.copy(
+                                        knownMasterIds =
+                                            visible.knownMasterIds + candidate.masterId,
+                                        releases = visible.releases + candidate,
+                                        loading = true,
+                                    )
+                                }
+                            }
+                        },
                     )
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) {
