@@ -115,7 +115,7 @@ internal fun CanonicalProviderDetailHost(
     // Apple, rather than a second provider-specific footer navigation.
     val canContinueDiscogs = isDiscogs &&
         discogsPage?.page?.type == com.music.bitchord.data.model.BrowseType.ARTIST &&
-        discogsPage.hasMore && !searching
+        discogsPage?.hasMore == true && !searching
     LaunchedEffect(routeKey, canContinueDiscogs, discogsPage?.page?.sections) {
         if (canContinueDiscogs) {
             snapshotFlow {
@@ -217,7 +217,6 @@ internal fun CanonicalProviderDetailHost(
                 discogsPage?.let { detail ->
                     discogsNativeDetailExtras(
                         page = detail,
-                        onLoadMore = viewModel.discogsNativeCatalog::loadNextArtistPage,
                         onOpenSource = uriHandler::openUri,
                     )
                 }
