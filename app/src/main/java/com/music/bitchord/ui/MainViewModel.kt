@@ -629,7 +629,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun eligibleEditorialProviders() = orderedCatalogProviders(
         ProviderRuntime.gateOrNull(),
         ProviderCapability.EDITORIAL_DISCOGRAPHY,
-        setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES),
+        setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES,
+            BuiltInProviderKeys.DISCOGS),
     )
 
     private val _catalogEditorialOrder = MutableStateFlow(eligibleEditorialProviders())
