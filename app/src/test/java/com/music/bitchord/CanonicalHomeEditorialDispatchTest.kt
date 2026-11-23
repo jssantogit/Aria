@@ -5,6 +5,8 @@ import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.ui.shouldStartAppleHomeEditorial
+import com.music.bitchord.ui.shouldStartDiscogsHomeEditorial
+import com.music.bitchord.ui.shouldStartMusicBrainzHomeEditorial
 import com.music.bitchord.ui.editorialPrimaryMiss
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -58,6 +60,48 @@ class CanonicalHomeEditorialDispatchTest {
         assertTrue(shouldStartAppleHomeEditorial(
             listOf(mb, apple), mbLoading = false,
             visibleHomeShelves = emptyList(), releasesHeading = "Releases",
+        ))
+    }
+
+    @Test fun arbitraryThreeProviderHomeOrderNeverSkipsPendingMiddle() {
+        val mb = BuiltInProviderKeys.MUSICBRAINZ
+        val apple = BuiltInProviderKeys.ITUNES
+        val discogs = BuiltInProviderKeys.DISCOGS
+        val emptyApple = UiState.Success(emptyList<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>())
+        val pendingDiscogs: UiState<List<HomeShelf>> = UiState.Loading
+        val missedDiscogs: UiState<List<HomeShelf>> = UiState.Error("unavailable")
+        // An Apple miss is NOT sufficient to start third-choice MB.
+        assertFalse(shouldStartMusicBrainzHomeEditorial(
+            listOf(apple, discogs, mb), emptyApple, pendingDiscogs,
+        ))
+        assertTrue(shouldStartMusicBrainzHomeEditorial(
+            listOf(apple, discogs, mb), emptyApple, missedDiscogs,
+        ))
+        // MB failed, but Apple must not bypass second-choice Discogs.
+        assertFalse(shouldStartAppleHomeEditorial(
+            listOf(mb, discogs, apple), false, emptyList(), "Releases",
+            pendingDiscogs,
+        ))
+        assertTrue(shouldStartAppleHomeEditorial(
+            listOf(mb, discogs, apple), false, emptyList(), "Releases",
+            missedDiscogs,
+        ))
+        // A Discogs-first install can still fall through MB to Apple.
+        assertFalse(shouldStartAppleHomeEditorial(
+            listOf(discogs, mb, apple), false, emptyList(), "Releases",
+            pendingDiscogs,
+        ))
+        assertTrue(shouldStartAppleHomeEditorial(
+            listOf(discogs, mb, apple), false, emptyList(), "Releases",
+            missedDiscogs,
+        ))
+        assertFalse(shouldStartDiscogsHomeEditorial(
+            listOf(apple, mb, discogs), false, emptyList(), "Releases",
+            UiState.Loading,
+        ))
+        assertTrue(shouldStartDiscogsHomeEditorial(
+            listOf(apple, mb, discogs), false, emptyList(), "Releases",
+            emptyApple,
         ))
     }
 
