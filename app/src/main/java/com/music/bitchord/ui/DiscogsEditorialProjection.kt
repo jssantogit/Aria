@@ -108,10 +108,13 @@ internal fun discogsEditorialShelves(
         .distinctBy { it.masterId }
         .sortedWith(compareByDescending<DiscogsEditorialCandidate> { it.year ?: 0 }
             .thenBy { it.masterId })
-    val assigned = HashSet<Long>()
+    // A release may legitimately occur both in discovery and the Album/EP
+    // shelf, just as on the native Apple/MB UI. Only duplicate Masters inside
+    // the *same* shelf are redundant. A global consumed-ID set silently
+    // removes the Album shelf when its records appear in "Lançamentos" first.
     fun make(title: String, releases: List<DiscogsEditorialCandidate>, limit: Int): HomeShelf? {
-        val items = releases.asSequence().filter { it.masterId !in assigned }
-            .take(limit).onEach { assigned.add(it.masterId) }.map { release ->
+        val items = releases.asSequence().distinctBy { it.masterId }
+            .take(limit).map { release ->
             ShelfItem(
                 title = release.title,
                 subtitle = listOfNotNull(
@@ -153,7 +156,7 @@ internal fun discogsEditorialShelves(
         make("Para descobrir", unique.take(2), 2),
         make("Álbuns", unique.filter { kind(it) == 1 }, 12),
         make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
-        make("Mais para explorar", unique, 12),
+        make("Mais para explorar", unique.drop(2), 12),
         artistShelf,
     ) else listOfNotNull(
         make("Lançamentos", unique.take(2), 2),
