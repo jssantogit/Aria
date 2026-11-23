@@ -101,6 +101,25 @@ sealed interface AppleUnifiedSearchEntry {
 }
 
 /**
+ * Match the public Search pager's Unicode folding. A search for "Beyonce"
+ * can have an exact artist hit titled "Beyoncé"; neither the mixed surface
+ * nor its pager should demote that hit to fuzzy namesake suggestions.
+ * Retain punctuation: "Ill-It" is not an exact match for "illit".
+ */
+private fun appleUnifiedArtistFold(value: String): String =
+    java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase(java.util.Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun appleUnifiedExactArtistMatch(query: String, artistName: String): Boolean {
+    val q = appleUnifiedArtistFold(query)
+    val name = appleUnifiedArtistFold(artistName)
+    return q.isNotBlank() && (name == q || name == "the $q")
+}
+
+/**
  * A precise artist hit leads General Search, like MusicBrainz. Subsequent
  * result rows mix recordings and releases in source order rather than
  * recreating provider-specific "Artistas/Músicas/Álbuns" subsections.
@@ -112,8 +131,7 @@ fun appleUnifiedSearchEntries(
     tracks: List<AppleEditorialTrackSearchRow>,
     albums: List<AppleEditorialSearchRow>,
 ): List<AppleUnifiedSearchEntry> = buildList {
-    val normalized = query.trim().replace(Regex("\\s+"), " ")
-    val exact = artists.filter { it.title.equals(normalized, ignoreCase = true) }
+    val exact = artists.filter { appleUnifiedExactArtistMatch(query, it.title) }
     val leaders = if (exact.isNotEmpty()) exact.take(1) else artists.take(3)
     leaders.distinctBy { it.browseId }.forEach { add(AppleUnifiedSearchEntry.Artist(it)) }
     // An exact Apple artist hit scopes General to THAT artist's products,
@@ -124,7 +142,7 @@ fun appleUnifiedSearchEntries(
     val primary = exact.firstOrNull()
     fun creditedToPrimary(artistRoute: String?, credit: String): Boolean =
         primary == null || if (artistRoute != null) artistRoute == primary.browseId
-        else credit.equals(primary.title, ignoreCase = true)
+        else appleUnifiedArtistFold(credit) == appleUnifiedArtistFold(primary.title)
     val uniqueTracks = tracks.asSequence()
         .filter { creditedToPrimary(it.artistBrowseId, it.artistName) }
         .distinctBy { it.key }.toList()
@@ -151,7 +169,7 @@ fun appleUnifiedNextPage(
     albums: List<AppleEditorialSearchRow>,
     paging: Map<AppleSearchSection, AppleSearchPageStatus>,
 ): AppleSearchSection? {
-    val exactArtist = artists.any { it.title.equals(query.trim(), ignoreCase = true) }
+    val exactArtist = artists.any { appleUnifiedExactArtistMatch(query, it.title) }
     val candidates = listOf(
         AppleSearchSection.TRACKS to tracks.size,
         AppleSearchSection.ALBUMS to albums.size,

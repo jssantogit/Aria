@@ -70,6 +70,34 @@ class AppleUnifiedSearchResultsTest {
         assertTrue(withoutExact.contains(AppleUnifiedSearchEntry.Album(namesakeAlbum)))
     }
 
+    @Test fun accentAndLeadingArticleResolveExactArtistWithoutPunctuationConfusion() {
+        val beyonce = artist(10, "Beyoncé")
+        val credited = track(1).copy(artistName = "Beyoncé",
+            artistBrowseId = beyonce.browseId)
+        val other = track(2).copy(artistName = "Other",
+            artistBrowseId = "itunes:br:artist:999")
+        assertEquals(listOf(
+            AppleUnifiedSearchEntry.Artist(beyonce),
+            AppleUnifiedSearchEntry.Track(credited),
+        ), appleUnifiedSearchEntries(
+            "Beyonce", listOf(beyonce, artist(11, "Beyonce Tribute")),
+            listOf(credited, other), emptyList(),
+        ))
+        val theBeatles = artist(30, "The Beatles")
+        assertEquals(listOf(AppleUnifiedSearchEntry.Artist(theBeatles)),
+            appleUnifiedSearchEntries("beatles", listOf(theBeatles),
+                emptyList(), emptyList()))
+        assertEquals(listOf(AppleUnifiedSearchEntry.Artist(artist(19, "Ill-It"))),
+            appleUnifiedSearchEntries("Ill-It",
+                listOf(artist(19, "Ill-It")), emptyList(), emptyList()))
+        val states = mapOf(AppleSearchSection.ARTISTS to
+            AppleSearchPageStatus(hasMore = true))
+        assertNull(appleUnifiedNextPage("Beyonce", listOf(beyonce),
+            emptyList(), emptyList(), states))
+        assertNull(appleUnifiedNextPage("beatles", listOf(theBeatles),
+            emptyList(), emptyList(), states))
+    }
+
     @Test fun noExactArtistKeepsBoundedCandidatesAndOriginalTypes() {
         val artists = (1..9).map { artist(it, "Artist $it") }
         val entries = appleUnifiedSearchEntries("Artist", artists,
