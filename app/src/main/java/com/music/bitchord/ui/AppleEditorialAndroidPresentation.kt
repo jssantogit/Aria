@@ -158,8 +158,34 @@ internal fun appleFirstHomeShelves(
                 ?.let { it >= recentCutoff } == true
         } == true
     }
-    val assigned = recent.take(12).map { it.appleScopedId }.toSet()
-    val remaining = clean.filterNot { it.appleScopedId in assigned }.take(18)
+    // Source order is already stable. Reserve a genuine new release before
+    // allocating the remaining distinct products to native discovery rails.
+    // A format is source-typed or omitted: never infer Album from
+    // collectionType=Album or label a sampled catalogue as "Em alta".
+    val assigned = mutableSetOf<String>()
+    fun takeUnique(rows: List<ItunesEditorialRelease>, limit: Int): List<ItunesEditorialRelease> {
+        val selected = rows.asSequence()
+            .filter { it.appleScopedId !in assigned }
+            .take(limit).toList()
+        selected.forEach { assigned += it.appleScopedId }
+        return selected
+    }
+    val launchSeed = takeUnique(recent, 1)
+    val albumKind = clean.filter { it.format == ItunesEditorialReleaseFormat.ALBUM }
+    val singlesKind = clean.filter {
+        it.format == ItunesEditorialReleaseFormat.SINGLE ||
+            it.format == ItunesEditorialReleaseFormat.EP
+    }
+    val otherKind = clean.filter { it.format == ItunesEditorialReleaseFormat.UNCLASSIFIED }
+    val albumSeed = takeUnique(albumKind, 1)
+    val singleSeed = takeUnique(singlesKind, 1)
+    val otherSeed = takeUnique(otherKind, 1)
+    val launches = launchSeed + takeUnique(recent, 11 - launchSeed.size)
+    val discovery = takeUnique(clean, if (clean.size >= 12) 5 else 2)
+    val albums = albumSeed + takeUnique(albumKind, 11)
+    val singles = singleSeed + takeUnique(singlesKind, 11)
+    val other = otherSeed + takeUnique(otherKind, 11)
+    val more = takeUnique(clean, 16)
 
     val local = existingLocalShelves.mapNotNull { shelf ->
         val items = shelf.items.filter { item ->
@@ -170,12 +196,12 @@ internal fun appleFirstHomeShelves(
         if (items.isEmpty()) null else shelf.copy(items = items)
     }
     return buildList {
-        if (recent.isNotEmpty()) add(HomeShelf(
-            releasesHeading, cards(recent.take(12)),
-        ))
-        if (remaining.isNotEmpty()) add(HomeShelf(
-            discoveryHeading, cards(remaining),
-        ))
+        if (launches.isNotEmpty()) add(HomeShelf(releasesHeading, cards(launches)))
+        if (discovery.isNotEmpty()) add(HomeShelf(discoveryHeading, cards(discovery)))
+        if (albums.isNotEmpty()) add(HomeShelf("Álbuns", cards(albums)))
+        if (singles.isNotEmpty()) add(HomeShelf("Singles e EPs", cards(singles)))
+        if (other.isNotEmpty()) add(HomeShelf("Outros lançamentos", cards(other)))
+        if (more.isNotEmpty()) add(HomeShelf("Mais para explorar", cards(more)))
         addAll(local)
     }
 }
@@ -191,6 +217,7 @@ internal fun appleFirstGenreShelves(
     appleAlbums: List<ItunesEditorialRelease>,
     publicPlaylists: HomeShelf?,
     releaseHeading: String,
+    todayIsoDate: String = LocalDate.now(java.time.ZoneOffset.UTC).toString(),
 ): List<HomeShelf> {
     val releases = appleAlbums.asSequence()
         .filter { album ->
@@ -208,11 +235,53 @@ internal fun appleFirstGenreShelves(
         }
         // Artist/title probes append; preserving order avoids scroll jumps.
         .take(24)
-        .map { album -> album.asAttributableShelfItem() }
-    return buildList {
-        if (releases.isNotEmpty()) add(HomeShelf(releaseHeading, releases))
-        publicPlaylists?.takeIf { it.items.isNotEmpty() }?.let(::add)
+    val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull()
+    val recentCutoff = today?.minusDays(180)
+    val recent = releases.filter { row ->
+        row.releaseDate?.take(10)?.let { raw ->
+            runCatching { LocalDate.parse(raw) }.getOrNull()?.let { date ->
+                recentCutoff != null && date >= recentCutoff && date <= today
+            }
+        } == true
     }
+    val albums = releases.filter { it.format == ItunesEditorialReleaseFormat.ALBUM }
+    val singles = releases.filter {
+        it.format == ItunesEditorialReleaseFormat.SINGLE ||
+            it.format == ItunesEditorialReleaseFormat.EP
+    }
+    val unclassified = releases.filter {
+        it.format == ItunesEditorialReleaseFormat.UNCLASSIFIED
+    }
+    val assigned = mutableSetOf<String>()
+    fun takeUnique(rows: List<ItunesEditorialRelease>, max: Int): List<ItunesEditorialRelease> {
+        val selected = rows.asSequence().filter { it.appleScopedId !in assigned }
+            .take(max).toList()
+        selected.forEach { assigned += it.appleScopedId }
+        return selected
+    }
+    val recentSeed = takeUnique(recent, 1)
+    val albumSeed = takeUnique(albums, 1)
+    val singlesSeed = takeUnique(singles, 1)
+    val otherSeed = takeUnique(unclassified, 1)
+    val discovery = takeUnique(releases, if (releases.size >= 12) 4 else 2)
+    val launches = recentSeed + takeUnique(recent, 11)
+    val albumRail = albumSeed + takeUnique(albums, 11)
+    val singleRail = singlesSeed + takeUnique(singles, 11)
+    val otherRail = otherSeed + takeUnique(unclassified, 11)
+    val more = takeUnique(releases, 16)
+    fun shelf(title: String, items: List<ItunesEditorialRelease>): HomeShelf? =
+        items.takeIf { it.isNotEmpty() }?.let {
+            HomeShelf(title, it.map(ItunesEditorialRelease::asAttributableShelfItem))
+        }
+    return listOfNotNull(
+        shelf("Para descobrir", discovery),
+        shelf(releaseHeading, launches),
+        publicPlaylists?.takeIf { it.items.isNotEmpty() },
+        shelf("Álbuns", albumRail),
+        shelf("Singles e EPs", singleRail),
+        shelf("Outros lançamentos", otherRail),
+        shelf("Mais para explorar", more),
+    )
 }
 
 

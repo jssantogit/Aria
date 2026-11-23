@@ -77,6 +77,56 @@ class AppleExploreGenreEditorialTest {
         assertTrue(shelves.none { it.title == "Playlists" })
     }
 
+
+    @Test fun genreSeparatesEvidenceBackedFormatsAndRetainsPlaylistsAsIndependentSource() {
+        val items = (1..18).map { id ->
+            edition(id.toLong(), "K-Pop").copy(
+                title = "K-pop $id", releaseDate = if (id <= 6) "2026-11-11"
+                    else "2024-10-03",
+                format = when (id % 4) {
+                    0 -> ItunesEditorialReleaseFormat.ALBUM
+                    1 -> ItunesEditorialReleaseFormat.EP
+                    2 -> ItunesEditorialReleaseFormat.SINGLE
+                    else -> ItunesEditorialReleaseFormat.UNCLASSIFIED
+                },
+            )
+        }
+        val public = HomeShelf("Playlists", listOf(
+            com.music.bitchord.data.model.ShelfItem(
+                "Verified playlist", "Creator", null, null,
+                "listenbrainz:playlist:123",
+            ),
+        ))
+        val shelves = com.music.bitchord.ui.appleFirstGenreShelves(
+            tag = "k-pop", appleAlbums = items,
+            publicPlaylists = public, releaseHeading = "Lançamentos",
+            todayIsoDate = "2026-11-22",
+        )
+        val names = shelves.map { it.title }
+        assertTrue("Lançamentos" in names)
+        assertTrue("Para descobrir" in names)
+        assertTrue("Álbuns" in names)
+        assertTrue("Singles e EPs" in names)
+        assertTrue("Outros lançamentos" in names)
+        assertTrue("Playlists" in names)
+        assertEquals(1, shelves.count { it.title == "Playlists" })
+        val appleIds = shelves.flatMap { it.items }
+            .mapNotNull { it.browseId?.takeIf { id -> id.startsWith("itunes:") } }
+        assertEquals(appleIds.size, appleIds.distinct().size)
+        assertTrue(shelves.flatMap { it.items }.all { it.videoId == null })
+        for (shelf in shelves) {
+            if (shelf.title == "Álbuns") assertTrue(shelf.items.all {
+                items.first { release -> release.appleScopedId == it.browseId }.format ==
+                    ItunesEditorialReleaseFormat.ALBUM
+            })
+            if (shelf.title == "Singles e EPs") assertTrue(shelf.items.all {
+                items.first { release -> release.appleScopedId == it.browseId }.format in setOf(
+                    ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP,
+                )
+            })
+        }
+    }
+
     @Test fun boundedAppleGenreDiscoveryOnlyUsesAppleCategoryAndNeverCopiesMbids() =
         runBlocking {
             val calls = mutableListOf<String>()

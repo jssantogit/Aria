@@ -65,7 +65,7 @@ class AppleHomeEditorialShelvesTest {
         assertEquals(listOf("itunes:br:album:10"),
             shelves.first { it.title == "Lançamentos" }.items.map { it.browseId })
         assertEquals(listOf("itunes:br:album:11"),
-            shelves.first { it.title == "Descoberta global" }.items.map { it.browseId })
+            shelves.first { it.title == "Outros lançamentos" }.items.map { it.browseId })
         assertTrue(shelves.flatMap { it.items }.none {
             it.browseId.orEmpty().startsWith("catalog:")
         })
@@ -73,6 +73,45 @@ class AppleHomeEditorialShelvesTest {
         assertTrue(shelves.flatMap { it.items }.filter {
             it.browseId.orEmpty().startsWith("itunes:")
         }.all { it.videoId == null })
+    }
+
+
+    @Test fun homeDistributesRealAppleFormatsAcrossNativeShelvesWithoutDuplicates() {
+        val releases = (1..22).map { i ->
+            album(i.toLong(), "Apple $i",
+                if (i <= 12) "2026-11-${(i % 11 + 1).toString().padStart(2, '0')}"
+                else "2024-05-01",
+            ).copy(format = when (i % 4) {
+                0 -> ItunesEditorialReleaseFormat.ALBUM
+                1 -> ItunesEditorialReleaseFormat.SINGLE
+                2 -> ItunesEditorialReleaseFormat.EP
+                else -> ItunesEditorialReleaseFormat.UNCLASSIFIED
+            })
+        }
+        val shelves = appleFirstHomeShelves(
+            releases, emptyList(), "Lançamentos", "Para descobrir", "2026-11-22",
+        )
+        val labels = shelves.map { it.title }
+        assertTrue("Lançamentos" in labels)
+        assertTrue("Para descobrir" in labels)
+        assertTrue("Álbuns" in labels)
+        assertTrue("Singles e EPs" in labels)
+        assertTrue("Outros lançamentos" in labels)
+        val all = shelves.flatMap { it.items }
+        assertEquals(all.size, all.map { it.browseId }.distinct().size)
+        assertTrue(all.all { it.browseId.orEmpty().startsWith("itunes:br:album:") &&
+            it.videoId == null })
+        val singles = shelves.first { it.title == "Singles e EPs" }.items
+        assertTrue(singles.all { item ->
+            releases.first { it.appleScopedId == item.browseId }.format in setOf(
+                ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP,
+            )
+        })
+        val albums = shelves.first { it.title == "Álbuns" }.items
+        assertTrue(albums.all { item ->
+            releases.first { it.appleScopedId == item.browseId }.format ==
+                ItunesEditorialReleaseFormat.ALBUM
+        })
     }
 
     @Test fun futureAndInvalidDatesCannotBeCalledNewReleases() {

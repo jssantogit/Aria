@@ -189,6 +189,7 @@ internal fun projectCanonicalGenreState(
             appleFirstGenreShelves(
                 tag, source.data, publicPlaylists = null,
                 releaseHeading = releasesHeading,
+                todayIsoDate = todayIsoDate,
             ),
         )
         UiState.Loading -> UiState.Loading
