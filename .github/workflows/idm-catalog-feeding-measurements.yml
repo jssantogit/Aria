@@ -1,0 +1,105 @@
+# CI-only measurement of catalogue processing; not an APK or physical smoke.
+# Deterministic transports drive the real source adapters and Home/genre
+# projection. Artifacts contain aggregate counts only, never source payloads.
+name: IDM #224 · Catalogue feeding measurements
+
+on:
+  push:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - .github/workflows/idm-catalog-feeding-measurements.yml
+      - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
+      - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
+      - app/src/main/java/com/music/bitchord/ui/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: idm-catalog-measurements-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  canonical-feeding:
+    name: Real adapters · deterministic MB/Apple/Discogs and collective
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-metrics
+
+    steps:
+      - name: Checkout exact candidate HEAD
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless Android unit-test environment
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+
+      - name: Exercise app catalog adapters and canonical Home/genre feeds
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogFeedingMeasurementTest'
+
+      - name: Check completeness and write aggregate comparison
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          folder = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          required = {
+              "musicbrainz_isolated",
+              "itunes_isolated",
+              "discogs_isolated",
+              "collective_all_priorities",
+          }
+          found = {path.stem: json.loads(path.read_text()) for path in folder.glob("*.json")}
+          missing = required - found.keys()
+          if missing:
+              raise SystemExit(f"Missing required measurements: {sorted(missing)}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("### IDM #224: measured catalogue feeding (controlled fixture)\n\n")
+              out.write("Uses production source parsers, editorial projections and dispatch; ")
+              out.write("fixture transport is **not** evidence of live availability or popularity.\n\n")
+              out.write("| Scenario | Raw candidates | Parsed/distinct | Editorial eligible | Visible IDs | Reads | Artwork | Cursor may remain |\n")
+              out.write("|---|---:|---:|---:|---:|---:|---:|---|\n")
+              for key in sorted(required):
+                  row = found[key]
+                  if row.get("mode") != "fixture-production-pipeline" or row.get("schema") != 1:
+                      raise SystemExit(f"Invalid measurement schema: {key}")
+                  cols = [key, row["raw_candidates"], row["parsed_distinct"],
+                          row["editorial_eligible"], row["displayed_unique"],
+                          row["http_or_transport_reads"], row["displayed_with_artwork"],
+                          row["cursor_remaining"]]
+                  out.write("| " + " | ".join(map(str, cols)) + " |\n")
+              out.write("\nAll source identities remain provider-native. ")
+              out.write("Aggregates are fixture counts; do not interpret as live coverage.\n")
+          print("IDM_CATALOG_MEASUREMENTS_COMPLETE", sorted(found))
+          PY
+
+      - name: Preserve exact HEAD and aggregate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-catalog-measurements-${{ github.sha }}
+          path: |
+            idm-catalog-metrics/*.json
+            app/build/test-results/testDevDebugUnitTest/
+            app/build/reports/tests/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
