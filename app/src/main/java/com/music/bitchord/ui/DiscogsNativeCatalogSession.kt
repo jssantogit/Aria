@@ -678,7 +678,7 @@ internal class DiscogsNativeCatalogSession(
                 _route.value != DiscogsNativeRoute.ARTIST) return@launch
             when (response) {
                 is DiscogsNativeArtistLoad.Success -> {
-                    releases = (releases + response.releases).distinctBy { it.releaseId }
+                    releases = discogsMergeArtistPageReleases(releases + response.releases)
                     artistPage = page
                     artistHasMore = response.hasMore
                     artistIncomplete = artistIncomplete || response.incomplete
