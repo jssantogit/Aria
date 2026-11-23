@@ -3,6 +3,10 @@ package com.music.bitchord.ui.screens
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import com.music.bitchord.data.model.ShelfItem
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +53,7 @@ internal fun CanonicalProviderDetailHost(
     onSearchingChange: (Boolean) -> Unit,
     songSort: SongSort,
     viewModel: MainViewModel,
+    onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
     val artistState = appleArtistDetail as? UiState.Success
@@ -86,6 +91,26 @@ internal fun CanonicalProviderDetailHost(
     }
 
     val uriHandler = LocalUriHandler.current
+    // One bounded continuation per deliberate scroll to the end. Never
+    // eagerly drain the entire Apple catalog merely because a short first
+    // page happens to fit the screen; navigation cancels this collector.
+    val appleArtist = if (!isDiscogs) artistState?.data?.takeIf {
+        it.artist.browseId == routeKey
+    } else null
+    val canContinueApple = appleArtist?.hasMore == true &&
+        appleArtist.loadingMore == false
+    LaunchedEffect(routeKey, canContinueApple, appleArtist?.albums?.size) {
+        if (canContinueApple) {
+            snapshotFlow {
+                val layout = listState.layoutInfo
+                listState.isScrollInProgress &&
+                    layout.totalItemsCount > 0 &&
+                    (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >=
+                    layout.totalItemsCount - 3
+            }.first { it }
+            viewModel.loadMoreAppleEditorialArtist()
+        }
+    }
     DetailScreen(
         page = page,
         currentSong = null,
@@ -131,6 +156,10 @@ internal fun CanonicalProviderDetailHost(
             }
         },
         onAddSuggested = {},
+        sourceFeaturedRelease = applePage?.featuredRelease,
+        onArtistReleaseSearch = if (appleArtist != null)
+            viewModel::searchMoreAppleEditorialArtist else null,
+        onSectionItemLongPress = onSectionItemLongPress,
         onCanonicalFeaturedReleaseOpen = if (isDiscogs) null
             else viewModel::openCanonicalNativeDetail,
         onSectionItemClick = { item ->
@@ -181,8 +210,6 @@ internal fun CanonicalProviderDetailHost(
                         AppleArtistCatalogExtras(
                             state = artistPage,
                             palette = palette,
-                            onLoadMore = viewModel::loadMoreAppleEditorialArtist,
-                            onSearchMore = viewModel::searchMoreAppleEditorialArtist,
                         )
                     }
                 }

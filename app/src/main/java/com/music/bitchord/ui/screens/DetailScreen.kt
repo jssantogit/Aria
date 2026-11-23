@@ -401,6 +401,10 @@ fun DetailScreen(
     /** MBID, title, creator and description only: no internal DTO in public API. */
     onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,
     onCanonicalArtistPlaylistHold: ((String, String, String, String?) -> Unit)? = null,
+    /** The source's exact dated recent release, rendered as the same native card. */
+    sourceFeaturedRelease: ShelfItem? = null,
+    /** Optional explicit submit for source-owned discography beyond cached pages. */
+    onArtistReleaseSearch: ((String) -> Unit)? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
@@ -835,6 +839,9 @@ fun DetailScreen(
                         autoFocus = focusSearch,
                         onFocused = { focusSearch = false },
                         palette = palette,
+                        onSubmit = onArtistReleaseSearch?.let { search ->
+                            { query.trim().takeIf { it.length >= 2 }?.let(search) }
+                        },
                     )
                 }
             }
@@ -842,6 +849,8 @@ fun DetailScreen(
             val description = page.description
 
             if (isArtist && (songs.isNotEmpty() || publicTopRows.isNotEmpty() ||
+                appleArtistTracks.isNotEmpty() || scopedCanonicalArtistTracks.isNotEmpty() ||
+                page.sections.isNotEmpty() ||
                 catalogRatingTarget?.entityType == "ARTIST")) {
                 item(key = "actions") {
                     // The native artist action row does not disappear merely
@@ -870,7 +879,7 @@ fun DetailScreen(
                 // Verified Apple/MusicBrainz relation supplements the Apple
                 // storefront page; it must never hide Apple's own top album.
                 else if (isArtist && page.browseId.startsWith("itunes:"))
-                    page.sections.topRelease()
+                    sourceFeaturedRelease
                 else if (isArtist && publicArtistMbid == null) page.sections.topRelease()
                 else null
             if (isArtist && publicArtistMbid != null && canonicalFeaturedRelease != null &&
@@ -1298,7 +1307,14 @@ fun DetailScreen(
             }
 
             // Albums / Singles & EPs carousels (artist pages).
-            items(page.sections) { shelf ->
+            val visibleReleaseSections = if (isArtist && searching && query.isNotBlank()) {
+                page.sections.mapNotNull { section ->
+                    section.copy(items = section.items.filter { item ->
+                        item.title.contains(query.trim(), ignoreCase = true)
+                    }).takeIf { it.items.isNotEmpty() }
+                }
+            } else page.sections
+            items(visibleReleaseSections) { shelf ->
                 val canShowAll = shelf.items.size > ARTIST_ROW_MAX_ITEMS
                 val displayItems = remember(shelf.items) {
                     if (canShowAll) shelf.items.take(ARTIST_ROW_MAX_ITEMS) else shelf.items
@@ -1585,7 +1601,9 @@ private fun ReleaseHeader(
             }
         },
         actions = {
-            if (songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
+            if (page.type == BrowseType.ALBUM ||
+                songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
+                metadataTracks.isNotEmpty() ||
                 onToggleCatalogPin != null || onRate != null) {
                 val library = page.library?.takeIf { onToggleLibrary != null }
                 val canPlay = songs.isNotEmpty() ||
@@ -1633,6 +1651,7 @@ internal fun DetailSearchField(
     palette: ArtworkPalette,
     placeholder: String? = null,
     horizontalInset: Dp = HEADER_GUTTER,
+    onSubmit: (() -> Unit)? = null,
 ) = NativeDetailSearchField(
     query = query,
     onQueryChange = onQueryChange,
@@ -1642,6 +1661,7 @@ internal fun DetailSearchField(
     palette = palette,
     placeholder = placeholder,
     horizontalInset = horizontalInset,
+    onSubmit = onSubmit,
 )
 
 internal fun List<Song>.sortedForDetail(sort: SongSort): List<Song> = when (sort) {

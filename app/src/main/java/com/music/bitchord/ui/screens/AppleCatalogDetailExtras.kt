@@ -42,53 +42,23 @@ import com.music.bitchord.ui.theme.ArtworkPalette
 internal fun AppleArtistCatalogExtras(
     state: AppleEditorialArtistDetailPage,
     palette: ArtworkPalette,
-    onLoadMore: () -> Unit,
-    onSearchMore: (String) -> Unit,
 ) {
-    var query by remember(state.artist.browseId) { mutableStateOf("") }
     Column {
-        if (state.hasMore) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = PAGE_GUTTER, vertical = 12.dp)) {
-                ActionPill(
-                    icon = BitChordIcons.Plus,
-                    label = "Carregar mais",
-                    onClick = onLoadMore,
-                    filled = false,
-                    enabled = !state.loadingMore,
-                )
-            }
+        // The native artist screen owns its search field and scroll-based
+        // continuation. This footer only communicates source limitations,
+        // not another provider-specific toolbar.
+        if (state.loadingMore) {
+            CircularProgressIndicator(
+                color = palette.onBackground,
+                modifier = Modifier.padding(PAGE_GUTTER),
+            )
         }
-        if (state.possiblyTruncated) {
+        if (state.possiblyTruncated && !state.hasMore) {
             Text(
                 "A API pública pode não incluir toda a discografia.",
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.onBackgroundVariant,
                 modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-            )
-        }
-        SectionHeading("Buscar lançamentos", palette)
-        NativeDetailSearchField(
-            query = query,
-            onQueryChange = { query = it },
-            onClose = { query = "" },
-            autoFocus = false,
-            onFocused = {},
-            palette = palette,
-            placeholder = "Título do lançamento",
-        )
-        Box(Modifier.padding(horizontal = PAGE_GUTTER)) {
-            ActionPill(
-                icon = BitChordIcons.Search,
-                label = "Buscar",
-                onClick = { onSearchMore(query.trim()) },
-                filled = false,
-                enabled = query.trim().length >= 2 && !state.loadingMore,
-            )
-        }
-        if (state.loadingMore) {
-            CircularProgressIndicator(
-                color = palette.onBackground,
-                modifier = Modifier.padding(PAGE_GUTTER),
             )
         }
         if (state.pageError || state.noAdditionalResults) {

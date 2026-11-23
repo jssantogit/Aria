@@ -54,6 +54,7 @@ internal data class AppleSharedDetail(
     val albumArtistBrowseId: String? = null,
     val albumArtistDisplayName: String? = null,
     val artistHeroUrl: String? = null,
+    val featuredRelease: ShelfItem? = null,
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
 )
@@ -97,6 +98,32 @@ internal fun appleArtistAsSharedDetail(
             sections = groups,
         ),
         artistHeroUrl = source.artist.artworkUri,
+        featuredRelease = releases.asSequence()
+            .filter { row ->
+                row.releaseDate?.take(10)?.let { date ->
+                    runCatching { java.time.LocalDate.parse(date) }.isSuccess
+                } == true
+            }
+            .sortedWith(compareByDescending<AppleEditorialSearchRow> {
+                it.releaseDate.orEmpty()
+            }.thenBy { it.browseId })
+            .firstOrNull()?.let { newest ->
+                ShelfItem(
+                    title = newest.title,
+                    subtitle = listOfNotNull(
+                        when (newest.category) {
+                            AppleEditorialReleaseCategory.SINGLE -> "Single"
+                            AppleEditorialReleaseCategory.EP -> "EP"
+                            AppleEditorialReleaseCategory.ALBUM -> "Álbum"
+                            AppleEditorialReleaseCategory.UNCLASSIFIED -> null
+                        },
+                        newest.releaseDate?.take(4),
+                    ).joinToString(" · "),
+                    thumbnailUrl = appleProminentArtworkOrNull(newest.artworkUri),
+                    browseId = newest.browseId,
+                    videoId = null,
+                )
+            },
         verifiedArtistMbid = source.verifiedMusicBrainzArtistMbid?.takeIf {
             Regex("^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
         },
