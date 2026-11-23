@@ -109,7 +109,7 @@ class CanonicalGenreGranularPagingTest {
         assertFalse(canonicalGenreShowsMusicBrainzReleases(UiState.Loading))
         assertFalse(canonicalGenreShowsMusicBrainzReleases(UiState.Success(listOf(
             HomeShelf("Artistas", listOf(
-                ShelfItem("Artist", null, null, null, "catalog:ARTIST:${id(1)}"),
+                ShelfItem("Artist", "", null, null, "catalog:ARTIST:${id(1)}"),
             )),
         ))))
         assertFalse(canonicalGenreShowsMusicBrainzReleases(UiState.Success(listOf(
