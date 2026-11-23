@@ -3573,6 +3573,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     scanMusicBrainzRecentEditorial(
                         musicBrainzEditorialSearch, dates.first, dates.second,
                         maxPages = 1, startOffset = offset,
+                        includeCoarseDatesForUnrankedHome = true,
                     )
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) {
