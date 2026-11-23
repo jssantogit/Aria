@@ -31,6 +31,8 @@ internal suspend fun scanMusicBrainzRecentEditorial(
     /** Supports one-page scroll loads without treating filtered item counts as offsets. */
     startOffset: Int = 0,
     onSourcePage: (List<MusicBrainzReleaseGroupHit>) -> Unit = {},
+    /** Extra unranked Home rail only; never the recent-release landing. */
+    includeCoarseDatesForUnrankedHome: Boolean = false,
 ): MusicBrainzRecentEditorialScan {
     require(maxPages in 1..5 && pageSize in 1..100 && startOffset >= 0)
     val admitted = LinkedHashMap<String, CanonicalCatalogSearchRow>()
@@ -62,8 +64,17 @@ internal suspend fun scanMusicBrainzRecentEditorial(
         sourcePositions += page.consumedCount
         parsedRows += page.items.size
         onSourcePage(page.items)
-        canonicalPublicReleaseRows(page.items, fromIsoDate, throughIsoDate)
-            .forEach { row -> admitted.putIfAbsent(row.musicBrainzId, row) }
+        val selected = if (includeCoarseDatesForUnrankedHome) {
+            // The original Home continues to demand day-precise dates.
+            // Only an explicitly unranked supplemental catalogue rail may
+            // show source-owned year/month/unknown dates without inventing a
+            // day, chart rank or a source relationship.
+            if (page.items.isEmpty()) emptyList()
+            else canonicalPublicGenreRows(
+                page.items, throughIsoDate, maxItems = page.items.size,
+            )
+        } else canonicalPublicReleaseRows(page.items, fromIsoDate, throughIsoDate)
+        selected.forEach { row -> admitted.putIfAbsent(row.musicBrainzId, row) }
 
         val next = page.nextOffset
         cursorRemaining = next != null && next > offset
