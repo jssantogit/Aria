@@ -258,12 +258,47 @@ class CanonicalEditorialFeedProjectionTest {
         assertTrue(shelves.size >= 4)
         assertTrue(shelves.any { it.title == "Álbuns" })
         assertTrue(shelves.any { it.title == "Singles e EPs" })
-        assertTrue(shelves.any { it.title == "Escolha a dedo" })
+        assertTrue(shelves.any { it.title == "Para descobrir" })
         val ids = shelves.flatMap { it.items }.mapNotNull { it.browseId }
         assertEquals(ids.size, ids.distinct().size)
         assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
     }
 
+
+    @Test fun canonicalHomeDispatchNeverPublishesMalformedDirectMusicBrainzDates() {
+        val verified = (1..6).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "60000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = "Verified work ${index}", subtitle = "Verified artist",
+                releaseDate = "2026-11-01", releaseKind = "Album",
+            )
+        }
+        val malformed = verified.first().copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000999",
+            title = "Invalid calendar", releaseDate = "2025-99",
+        )
+        val hero = HomeShelf("Lançamentos", verified.take(2).map { row ->
+            ShelfItem(row.title, row.subtitle.orEmpty(), null, null,
+                "catalog:RELEASE_GROUP:${row.musicBrainzId}")
+        })
+        val selected = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = listOf(hero),
+            appleHomeReleases = UiState.Success(emptyList()),
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos", discoveryHeading = "Descobrir",
+            todayIsoDate = "2026-11-23",
+            musicBrainzRows = verified + malformed,
+        )
+        assertEquals(mb, selected.provider)
+        val shelves = (selected.state as UiState.Success).data
+        assertTrue(shelves.isNotEmpty())
+        assertTrue(shelves.flatMap { it.items }.none {
+            it.title == "Invalid calendar" ||
+                it.browseId == "catalog:RELEASE_GROUP:${malformed.musicBrainzId}"
+        })
+    }
 
     @Test fun editionOnlyMusicBrainzBatchMustNotEraseExistingNativeReleaseShelf() {
         // Full public composition accepts groups only. A page of exact
