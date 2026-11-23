@@ -14,6 +14,7 @@ import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.discogsSearchArtistRank
+import com.music.bitchord.ui.screens.discogsArtistDisplayName
 import com.music.bitchord.ui.screens.discogsSearchReleaseRank
 import com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage
 import com.music.bitchord.ui.screens.NativeMetadataTrack
@@ -261,10 +262,10 @@ internal class DiscogsNativeCatalogSession(
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
+                        // Discogs numeric suffixes are not popularity ranks.
+                        // Preserve API order for the Search-only visible
+                        // representative while retaining all exact IDs.
                         val candidates = (previous + rows).distinctBy { it.artistId }
-                            .sortedWith(compareBy<DiscogsNativeArtistSearchRow> {
-                                discogsSearchArtistRank(subject, it.name) ?: Int.MAX_VALUE
-                            }.thenBy { it.artistId })
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
                         }
@@ -434,7 +435,8 @@ internal class DiscogsNativeCatalogSession(
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.ARTIST
         _detail.value = UiState.Success(discogsNativeLoadingPage(
-            selected.browseId, selected.name, "Artista", BrowseType.ARTIST,
+            selected.browseId, discogsArtistDisplayName(selected.name),
+            "Artista", BrowseType.ARTIST,
         ))
         loadNextArtistPage()
     }
@@ -606,7 +608,7 @@ internal fun discogsArtistPage(
     return DiscogsNativePage(
         page = DetailPage(
             browseId = artist.browseId,
-            title = artist.name,
+            title = discogsArtistDisplayName(artist.name),
             subtitle = "Artista",
             thumbnailUrl = null,
             type = BrowseType.ARTIST,

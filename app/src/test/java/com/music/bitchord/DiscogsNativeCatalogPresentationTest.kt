@@ -68,6 +68,14 @@ class DiscogsNativeCatalogPresentationTest {
     }
 
 
+    @Test fun artistHeaderHidesDiscogsNumberButKeepsOriginalArtistId() {
+        val selected = DiscogsNativeArtistSearchRow(31L, "Illit (2)")
+        val page = discogsArtistPage(selected, emptyList(), false, false)
+        assertEquals("Illit", page.page.title)
+        assertEquals("discogs:artist:31", page.page.browseId)
+        assertEquals("https://www.discogs.com/artist/31", page.attributionUrl)
+    }
+
     @Test fun releaseMoreByArtistOnlyUsesExactDiscogsCreditAndVerifiedEditions() {
         val opened = DiscogsRecord(
             link = DiscogsLink(DiscogsKind.RELEASE, 456L),

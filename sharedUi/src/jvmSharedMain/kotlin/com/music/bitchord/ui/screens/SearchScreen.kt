@@ -599,7 +599,7 @@ fun SearchScreen(
                             )
                         } else if (filter == SearchFilter.ARTISTS) {
                             discogsNativeArtistRows(
-                                discogsArtistResults, onDiscogsArtistOpen,
+                                query, discogsArtistResults, onDiscogsArtistOpen,
                                 discogsHasMore, onDiscogsLoadMore,
                             )
                         } else if (filter == SearchFilter.ALBUMS) {
@@ -1266,7 +1266,7 @@ private fun LazyListScope.discogsUnifiedSearchRows(
             when (entry) {
                 is DiscogsUnifiedSearchEntry.Artist -> NativeSearchResultRow(
                     row = NativeSearchRowUi(
-                        title = entry.row.name,
+                        title = discogsArtistDisplayName(entry.row.name),
                         subtitle = stringResource(Res.string.canonical_artist_kind)
                             .substringBefore('·').trim(),
                         artworkUri = null,
@@ -1281,7 +1281,8 @@ private fun LazyListScope.discogsUnifiedSearchRows(
                     NativeSearchResultRow(
                         row = NativeSearchRowUi(
                             title = display.title,
-                            subtitle = display.artistCredit ?: "Lançamento",
+                            subtitle = display.artistCredit
+                                ?.let(::discogsArtistDisplayName) ?: "Lançamento",
                             artworkUri = null,
                             artistPortrait = false,
                         ),
@@ -1329,7 +1330,8 @@ private fun LazyListScope.discogsNativeReleaseRows(
                 NativeSearchResultRow(
                     row = NativeSearchRowUi(
                         title = display.title,
-                        subtitle = display.artistCredit ?: "Lançamento",
+                        subtitle = display.artistCredit
+                                ?.let(::discogsArtistDisplayName) ?: "Lançamento",
                         artworkUri = null, artistPortrait = false,
                     ),
                     onClick = { onOpen(release) },
@@ -1349,6 +1351,7 @@ private fun LazyListScope.discogsNativeReleaseRows(
 }
 
 private fun LazyListScope.discogsNativeArtistRows(
+    query: String,
     results: UiState<List<DiscogsNativeArtistSearchRow>>?,
     onOpen: (DiscogsNativeArtistSearchRow) -> Unit,
     hasMore: Boolean,
@@ -1365,15 +1368,16 @@ private fun LazyListScope.discogsNativeArtistRows(
             )
         }
         is UiState.Success -> {
-            if (results.data.isEmpty()) item(key = "discogs:artists:empty") {
+            val visible = discogsSearchDistinctArtists(query, results.data)
+            if (visible.isEmpty()) item(key = "discogs:artists:empty") {
                 MessageState(stringResource(Res.string.canonical_empty_search))
             } else items(
-                items = results.data,
+                items = visible,
                 key = { "discogs:artist:search:${it.artistId}" },
             ) { artist ->
                 NativeSearchResultRow(
                     row = NativeSearchRowUi(
-                        title = artist.name,
+                        title = discogsArtistDisplayName(artist.name),
                         subtitle = stringResource(Res.string.canonical_artist_kind)
                             .substringBefore('·').trim(),
                         artworkUri = null, artistPortrait = true,
