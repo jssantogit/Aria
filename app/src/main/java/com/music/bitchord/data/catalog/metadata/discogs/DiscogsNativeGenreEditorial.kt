@@ -34,7 +34,7 @@ internal data class DiscogsEditorialQuery(
 ) {
     fun isValid(): Boolean = sourceName.length in 2..80 &&
         sourceName.none(Character::isISOControl) &&
-        sourceName.none { it == '\\' || it == '/' || it == '&' && sourceName.length > 70 }
+        sourceName.none { it == '\\' || it == '/' }
 }
 
 internal data class DiscogsEditorialCandidate(
