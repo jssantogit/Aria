@@ -75,4 +75,20 @@ class DiscogsEditorialTaxonomyTest {
         assertFalse(shelves.any { it.title.contains("Em alta") ||
             it.title.contains("Mais tocadas") })
     }
+    @Test fun genreArtistShelfUsesOnlyVerifiedSourceIdsWithoutPlayback() {
+        val releases = listOf(
+            DiscogsEditorialCandidate(10, 100, "One", "ILLIT (2)", 2024,
+                listOf("Album"), creditedArtists = listOf(55L to "ILLIT (2)")),
+            DiscogsEditorialCandidate(11, 101, "Two", "ILLIT (2)", 2023,
+                listOf("Album"), creditedArtists = listOf(55L to "ILLIT (2)")),
+            DiscogsEditorialCandidate(12, 102, "Other", "Other", 2022,
+                listOf("Album"), creditedArtists = listOf(0L to "Spoof")),
+        )
+        val artistShelf = discogsEditorialShelves(releases)
+            .single { it.title == "Artistas" }
+        assertEquals(1, artistShelf.items.size)
+        assertEquals("discogs:artist:55", artistShelf.items.single().browseId)
+        assertNull(artistShelf.items.single().videoId)
+    }
+
 }
