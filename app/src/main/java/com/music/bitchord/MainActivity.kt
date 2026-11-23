@@ -1600,6 +1600,7 @@ private fun BitChordApp(
     val activeGenrePlaylists = activeCanonicalGenre?.tag?.let { tag ->
         canonicalPublicPlaylists[tag].orEmpty()
     }.orEmpty()
+    val canonicalGenrePaging by viewModel.canonicalGenrePaging.collectAsStateWithLifecycle()
     val canonicalGenreState = com.music.bitchord.ui.projectCanonicalGenreState(
         tag = activeCanonicalGenre?.tag,
         genrePlaylists = activeGenrePlaylists,
@@ -1614,6 +1615,7 @@ private fun BitChordApp(
         genrePopularityAuthorized = genrePopularityAuthorized,
         todayIsoDate = canonicalFeedDate,
         discogsByTag = discogsGenreReleases,
+        musicBrainzPaging = canonicalGenrePaging,
     )
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
@@ -1760,6 +1762,16 @@ private fun BitChordApp(
     LaunchedEffect(activeCanonicalGenre?.tag) {
         genreListState.scrollToItem(0)
     }
+    // Observe real scroll-to-end transitions, not recomposition or a timer.
+    // The existing HomeScreen remains the sole genre detail renderer.
+    com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
+        tag = activeCanonicalGenre?.tag,
+        enabled = selectedTab == TAB_EXPLORE && detail == null &&
+            com.music.bitchord.ui.canonicalGenreShowsMusicBrainzReleases(canonicalGenreState),
+        snapshot = canonicalGenrePaging,
+        listState = genreListState,
+        onLoadMore = viewModel::loadMoreCanonicalGenre,
+    )
     val libraryListState = rememberLazyListState()
     LibraryPinsEditorScrollToTop(pinEditorState, libraryListState)
     val historyListState = rememberLazyListState()
