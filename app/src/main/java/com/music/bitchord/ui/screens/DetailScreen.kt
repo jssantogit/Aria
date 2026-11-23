@@ -781,7 +781,14 @@ fun DetailScreen(
                 // Capping against the window's own height is what keeps the ratio's
                 // math honest once the width it's fed is no longer guaranteed to be
                 // the narrow one it was written for.
-                val artHeight = (maxWidth / ARTIST_PHOTO_RATIO).coerceAtMost(maxHeight * 0.6f)
+                val artHeight = nativeArtistHeroHeight(
+                    hasStill = !artistHeroOverride.isNullOrBlank() ||
+                        !appleArt?.heroUrl.isNullOrBlank() ||
+                        !page.thumbnailUrl.isNullOrBlank(),
+                    hasCanvas = canvas != null,
+                    expandedHeight = (maxWidth / ARTIST_PHOTO_RATIO)
+                        .coerceAtMost(maxHeight * 0.6f),
+                )
                 val sleeveSize = if (nativeReleaseUsesAlbumGeometry(page.browseId, page.type))
                     nativeReleaseSleeveSize(maxWidth, maxHeight)
                 else (maxWidth * SLEEVE_FRACTION)
@@ -1938,7 +1945,10 @@ private fun SuggestedSongRow(
 private fun List<HomeShelf>.topRelease(): ShelfItem? =
     asSequence()
         .flatMap { it.items.asSequence() }
-        .filter { it.browseId?.startsWith("MPRE") == true }
+        .filter { item ->
+            item.browseId?.startsWith("MPRE") == true ||
+                item.browseId?.startsWith("discogs:release:") == true
+        }
         .withIndex()
         .maxWithOrNull(
             compareBy<IndexedValue<ShelfItem>> { it.value.releaseYear() ?: 0 }
