@@ -821,11 +821,27 @@ internal class DiscogsNativeCatalogSession(
         }
         val page = artistPage + 1
         val job = scope.launch(Dispatchers.IO) {
-            val response = try { artistClient.load(current.artistId, page) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
+            val response = try {
+                artistClient.load(current.artistId, page) { verified ->
+                    if (artist == current && authorization.isCurrent() &&
+                        _route.value == DiscogsNativeRoute.ARTIST &&
+                        _browseId.value == current.browseId
+                    ) {
+                        val partial = discogsMergeArtistPageReleases(
+                            releases + verified,
+                        )
+                        val snapshot = discogsArtistPage(
+                            current, partial, hasMore = false, incomplete = true,
+                        )
+                        cachedArtistPage = snapshot
+                        _detail.value = UiState.Success(snapshot)
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
             if (artist != current || !authorization.isCurrent() ||
-                _route.value != DiscogsNativeRoute.ARTIST) return@launch
+                _route.value != DiscogsNativeRoute.ARTIST ||
+                _browseId.value != current.browseId) return@launch
             when (response) {
                 is DiscogsNativeArtistLoad.Success -> {
                     releases = discogsMergeArtistPageReleases(releases + response.releases)
