@@ -728,8 +728,9 @@ data class HomeHeaderAction(val label: String, val onClick: () -> Unit)
  * Reserve that target plus a small optical gap without changing Library.
  */
 internal fun homePushedGenreTitleLeadingInset(): Dp =
-    NativePageHeaderMetrics.pushedTitleStartInset +
-        com.music.bitchord.ui.components.AppleFloatingControlMetrics.toolbarDiameter - 4.dp
+    // The global 40dp toolbar button lives in the Android host; sharedUi
+    // cannot depend on app-only AppleFloatingControlMetrics.
+    NativePageHeaderMetrics.pushedTitleStartInset + 36.dp
 
 @Composable
 fun HomeTitle(
