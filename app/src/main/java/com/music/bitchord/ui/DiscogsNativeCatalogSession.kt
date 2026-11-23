@@ -240,6 +240,7 @@ internal class DiscogsNativeCatalogSession(
     // Direct Search -> Release -> related Release retains the original native
     // album on Back. Artist -> Release continues to use cachedArtistPage.
     private var directReleaseHistory: List<DiscogsNativePage> = emptyList()
+    private var versionHistory: List<DiscogsNativePage> = emptyList()
     private var artist: DiscogsNativeArtistSearchRow? = null
     private var releases: List<DiscogsNativeArtistRelease> = emptyList()
     private var artistPage = 0
@@ -611,6 +612,52 @@ internal class DiscogsNativeCatalogSession(
         releaseSearchJob = job
         val unregister = authorization.cancelJobOnRevoke(job)
         job.invokeOnCompletion { unregister() }
+    }
+
+    private data class VerifiedVersionSample(
+        val records: List<DiscogsRecord> = emptyList(),
+        val incomplete: Boolean = false,
+    )
+
+    /**
+     * A Master version index supplies candidate IDs ONLY. For a native
+     * versions carousel we independently hydrate up to three editions and
+     * verify their Master membership, unofficial flag and exact Release IDs.
+     * The exhaustive edition cross-source matcher is intentionally separate.
+     */
+    private suspend fun sampleVerifiedVersions(
+        source: DiscogsRecord,
+    ): VerifiedVersionSample {
+        val masterId = source.masterId ?: return VerifiedVersionSample()
+        if (source.unofficial || source.link.kind != DiscogsKind.RELEASE)
+            return VerifiedVersionSample()
+        val index = try { editionClient.fetchMasterVersionPreview(masterId) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { DiscogsMasterVersionPreviewResult.Unavailable }
+        val page = (index as? DiscogsMasterVersionPreviewResult.Page)?.result
+            ?: return VerifiedVersionSample()
+        val candidates = page.releaseIds.filter { it != source.link.id }
+        val verified = mutableListOf<DiscogsRecord>()
+        var incomplete = page.hasMore || candidates.size > 3
+        for (id in candidates.take(3)) {
+            val response = try { editionClient.fetchRelease(id) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsLookupResult.Unavailable }
+            val record = (response as? DiscogsLookupResult.Found)?.record
+            if (record == null || record.link.kind != DiscogsKind.RELEASE ||
+                record.link.id != id || record.masterId != masterId ||
+                record.unofficial
+            ) {
+                incomplete = true
+                if (response is DiscogsLookupResult.Throttled ||
+                    response is DiscogsLookupResult.Disabled ||
+                    response is DiscogsLookupResult.Unauthorized
+                ) break
+                continue
+            }
+            verified += record
+        }
+        return VerifiedVersionSample(verified, incomplete)
     }
 
     /**
