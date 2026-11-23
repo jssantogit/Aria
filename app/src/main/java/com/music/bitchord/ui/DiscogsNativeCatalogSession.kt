@@ -75,6 +75,8 @@ internal data class DiscogsNativePage(
     /** Exact release artist, omitted for multi-artist or unproved credits. */
     val albumArtistBrowseId: String? = null,
     val albumArtistDisplayName: String? = null,
+    /** Source-owned Master context, never an inferred MusicBrainz group. */
+    val versionMasterId: Long? = null,
 )
 
 /** Native loading skeleton, just like a MusicBrainz DetailPage pushed from Search. */
@@ -108,6 +110,7 @@ internal fun discogsNativePageDisplayAllowed(
         page.attributionUrl == null &&
         page.albumArtistBrowseId == null &&
         page.albumArtistDisplayName == null &&
+        page.versionMasterId == null &&
         page.page.thumbnailUrl == null
     )
 
@@ -983,17 +986,68 @@ internal fun discogsReleaseMetadataFacts(record: DiscogsRecord): List<Pair<Strin
     return facts
 }
 
+/**
+ * Exact Master membership is proved by the hydrated Release, not by the
+ * (potentially extensive) search/versions index. This is a bounded preview,
+ * never an exhaustive edition-matching or ranking claim.
+ */
+internal fun discogsMasterVersionsShelf(
+    source: DiscogsRecord,
+    editionCandidates: List<DiscogsRecord>,
+): HomeShelf? {
+    val masterId = source.masterId?.takeIf { it in 1..999_999_999_999L }
+        ?: return null
+    if (source.link.kind != DiscogsKind.RELEASE) return null
+    val verified = editionCandidates
+        .filter { candidate ->
+            candidate.link.kind == DiscogsKind.RELEASE &&
+                candidate.link.id != source.link.id &&
+                candidate.link.id in 1..999_999_999_999L &&
+                candidate.masterId == masterId &&
+                !candidate.unofficial && candidate.title.isNotBlank()
+        }
+        .groupBy { it.link.id }.values
+        .mapNotNull { snapshots ->
+            snapshots.firstOrNull()?.takeIf { first ->
+                snapshots.all { it == first }
+            }
+        }.take(3)
+    val items = verified.mapNotNull { record ->
+        val subtitle = listOfNotNull(
+            record.year?.toString(),
+            record.country?.trim()?.takeIf(String::isNotBlank),
+            record.formats.distinct().take(3).joinToString(" · ")
+                .takeIf(String::isNotBlank),
+        ).joinToString(" · ").take(240)
+        // Two source pressings can have the same title. With no distinguishing
+        // date/country/format, a second identical-looking card is just noise.
+        if (subtitle.isBlank()) null else ShelfItem(
+            title = record.title,
+            subtitle = subtitle,
+            thumbnailUrl = null, videoId = null,
+            browseId = "discogs:release:${record.link.id}",
+        )
+    }
+    return items.takeIf { it.isNotEmpty() }?.let { HomeShelf("Versões", it) }
+}
+
 /** A Discogs release's tracklist is non-playable source metadata only. */
 internal fun discogsReleasePage(
     artist: DiscogsNativeArtistSearchRow,
     record: DiscogsRecord,
     relatedReleases: List<DiscogsNativeArtistRelease> = emptyList(),
-): DiscogsNativePage = discogsReleasePage(artist.name, record, relatedReleases)
+    versionRecords: List<DiscogsRecord> = emptyList(),
+    versionsIncomplete: Boolean = false,
+): DiscogsNativePage = discogsReleasePage(
+    artist.name, record, relatedReleases, versionRecords, versionsIncomplete,
+)
 
 internal fun discogsReleasePage(
     artistCredit: String,
     record: DiscogsRecord,
     relatedReleases: List<DiscogsNativeArtistRelease> = emptyList(),
+    versionRecords: List<DiscogsRecord> = emptyList(),
+    versionsIncomplete: Boolean = false,
 ): DiscogsNativePage = DiscogsNativePage(
     page = DetailPage(
         browseId = "discogs:release:${record.link.id}",
@@ -1008,6 +1062,7 @@ internal fun discogsReleasePage(
         songs = UiState.Success(emptyList()),
         sections = listOfNotNull(
             discogsAlbumArtistRelatedShelf(record, artistCredit, relatedReleases),
+            discogsMasterVersionsShelf(record, versionRecords),
         ),
     ),
     editionFacts = discogsReleaseMetadataFacts(record),
@@ -1031,4 +1086,8 @@ internal fun discogsReleasePage(
         record.artistIds.singleOrNull()?.let { it in 1..999_999_999_999L } == true &&
             name.equals(artistCredit.trim(), ignoreCase = true)
     },
+    versionMasterId = record.masterId,
+    incomplete = versionsIncomplete && discogsMasterVersionsShelf(
+        record, versionRecords,
+    ) != null,
 )
