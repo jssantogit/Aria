@@ -55,8 +55,10 @@ internal fun rememberCanonicalHomeDisplayShelves(
     community: HomeShelf?,
     personal: HomeShelf?,
     weeklyArtists: HomeShelf?,
+    musicBrainzPaging: CanonicalHomePageSnapshot = CanonicalHomePageSnapshot(),
 ): List<HomeShelf> = remember(
     local, selected, playlists, territories, community, personal, weeklyArtists,
+    musicBrainzPaging,
 ) {
     projectCanonicalHomeDisplay(
         canonicalHomeShelves = local,
@@ -66,5 +68,6 @@ internal fun rememberCanonicalHomeDisplayShelves(
         communityShelf = community,
         personalRecommendationShelf = personal,
         chartArtistsShelf = weeklyArtists,
+        musicBrainzPaging = musicBrainzPaging,
     )
 }
