@@ -15,6 +15,8 @@ import com.music.bitchord.ui.canonicalGenreContinuationShelf
 import com.music.bitchord.ui.canonicalGenreNearEnd
 import com.music.bitchord.ui.canonicalPublicGenreRows
 import com.music.bitchord.ui.canonicalGenreShowsMusicBrainzReleases
+import com.music.bitchord.ui.projectCanonicalGenreState
+import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
 import com.music.bitchord.ui.screens.CanonicalSearchKind
 import org.junit.Assert.*
@@ -148,6 +150,51 @@ class CanonicalGenreGranularPagingTest {
         )!!
         assertNull(exhausted.nextOffset)
         assertTrue(exhausted.rows.isEmpty())
+    }
+
+    @Test fun projectedGenreAppendsOnlyForTheSelectedEditorialProvider() {
+        val first = CanonicalCatalogSearchRow(
+            musicBrainzId = id(1), kind = CanonicalSearchKind.RELEASE_GROUP,
+            title = "Original Album", subtitle = "Source artist",
+            releaseKind = "Album", releaseDate = "2026-11-01",
+        )
+        val second = CanonicalCatalogSearchRow(
+            musicBrainzId = id(61), kind = CanonicalSearchKind.RELEASE_GROUP,
+            title = "Extra Album", subtitle = "Source artist",
+            releaseKind = "Album", releaseDate = "2026-11-01",
+        )
+        val paging = CanonicalGenrePageSnapshot(
+            tag = "rock", nextOffset = 120, rows = listOf(first, second),
+        )
+        fun project(
+            ordered: List<com.music.bitchord.data.providers.ProviderKey>,
+            discogs: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
+        ) = projectCanonicalGenreState(
+            tag = "rock", genrePlaylists = emptyList(),
+            playlistHeading = "Playlists", appleByTag = emptyMap(),
+            musicBrainzRows = UiState.Success(listOf(first)),
+            ordered = ordered, releasesHeading = "Lançamentos",
+            todayIsoDate = today, discogsByTag = discogs,
+            musicBrainzPaging = paging,
+        )
+        val mbShelves = (project(listOf(BuiltInProviderKeys.MUSICBRAINZ))
+            as UiState.Success).data
+        assertEquals(listOf("catalog:RELEASE_GROUP:${id(61)}"),
+            mbShelves.single { it.title == "Mais do gênero" }
+                .items.map { it.browseId })
+
+        val discogs = UiState.Success(listOf(HomeShelf("Álbuns", listOf(
+            ShelfItem("Discogs edition", "Source artist", null, null,
+                "discogs:release:999"),
+        ))))
+        val otherShelves = (project(
+            listOf(BuiltInProviderKeys.DISCOGS, BuiltInProviderKeys.MUSICBRAINZ),
+            mapOf("rock" to discogs),
+        ) as UiState.Success).data
+        assertFalse(otherShelves.any { it.title == "Mais do gênero" })
+        assertTrue(otherShelves.any { it.items.any { item ->
+            item.browseId == "discogs:release:999"
+        } })
     }
 
     @Test fun scrollTriggerRequiresActualMovementAndBoundedVisibleDistance() {
