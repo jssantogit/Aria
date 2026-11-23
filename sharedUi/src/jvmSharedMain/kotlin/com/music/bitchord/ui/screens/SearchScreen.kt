@@ -349,6 +349,7 @@ fun SearchScreen(
     // Compact General results first, and reveal already fetched Apple products
     // before spending a separate source-specific paging request.
     var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
+    var discogsGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
     val pinnedMixedMore = searchingCanonical && searchCommitted &&
         filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()
     val appleMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
@@ -364,9 +365,20 @@ fun SearchScreen(
     ) else null
     val appleRequestLoading = appleMixedMore &&
         applePaging.values.any { it.loadingMore }
+    val discogsMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
+        (discogsArtistResults != null || discogsReleaseResults != null)
+    val discogsArtistRows = (discogsArtistResults as? UiState.Success)?.data.orEmpty()
+    val discogsReleaseRows = (discogsReleaseResults as? UiState.Success)?.data.orEmpty()
+    val discogsUnshown = discogsMixedMore && discogsUnifiedSearchEntries(
+        query, discogsArtistRows, discogsReleaseRows,
+    ).size > discogsGeneralVisibleRows
+    val discogsNext = if (discogsMixedMore) discogsUnifiedNextPage(
+        query, discogsArtistRows, discogsHasMore, discogsReleaseHasMore,
+    ) else null
     val pinnedMoreVisible = (pinnedMixedMore && catalogSearchMusicBrainzVisible &&
         (canonicalSearchHasMore || canonicalSearchLoadingMore)) ||
-        (appleMixedMore && (appleUnshown || appleNext != null || appleRequestLoading))
+        (appleMixedMore && (appleUnshown || appleNext != null || appleRequestLoading)) ||
+        (discogsMixedMore && (discogsUnshown || discogsNext != null))
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {
@@ -577,13 +589,20 @@ fun SearchScreen(
                         )
                     } else if ((discogsArtistResults != null ||
                         discogsReleaseResults != null) && canonicalDetail == null) {
-                        if (filter == SearchFilter.ALL || filter == SearchFilter.ARTISTS) {
+                        if (filter == SearchFilter.ALL) {
+                            // One list of source-owned results. Type sections
+                            // exist only in the native search filter tabs.
+                            discogsUnifiedSearchRows(
+                                query, discogsArtistResults, discogsReleaseResults,
+                                onDiscogsArtistOpen, onDiscogsReleaseOpen,
+                                visibleLimit = discogsGeneralVisibleRows,
+                            )
+                        } else if (filter == SearchFilter.ARTISTS) {
                             discogsNativeArtistRows(
                                 discogsArtistResults, onDiscogsArtistOpen,
                                 discogsHasMore, onDiscogsLoadMore,
                             )
-                        }
-                        if (filter == SearchFilter.ALL || filter == SearchFilter.ALBUMS) {
+                        } else if (filter == SearchFilter.ALBUMS) {
                             discogsNativeReleaseRows(
                                 discogsReleaseResults, onDiscogsReleaseOpen,
                                 discogsReleaseHasMore, onDiscogsReleaseLoadMore,
@@ -891,13 +910,25 @@ fun SearchScreen(
                     if (isApple) {
                         if (appleUnshown) appleGeneralVisibleRows += 18
                         else appleNext?.let(onAppleLoadMore)
+                    } else if (discogsMixedMore) {
+                        if (discogsUnshown) discogsGeneralVisibleRows += 18
+                        else when (discogsNext) {
+                            DiscogsUnifiedSearchNext.ARTISTS -> onDiscogsLoadMore()
+                            DiscogsUnifiedSearchNext.RELEASES -> onDiscogsReleaseLoadMore()
+                            null -> Unit
+                        }
                     } else onCanonicalSearchLoadMore()
                 },
-                enabled = if (isApple) appleUnshown || appleNext != null
-                    else !canonicalSearchLoadingMore,
-                loading = if (isApple)
-                    !appleUnshown && appleNext == null && appleRequestLoading
-                    else canonicalSearchLoadingMore,
+                enabled = when {
+                    isApple -> appleUnshown || appleNext != null
+                    discogsMixedMore -> discogsUnshown || discogsNext != null
+                    else -> !canonicalSearchLoadingMore
+                },
+                loading = when {
+                    isApple -> !appleUnshown && appleNext == null && appleRequestLoading
+                    discogsMixedMore -> false
+                    else -> canonicalSearchLoadingMore
+                },
                 highContrast = true,
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -1208,6 +1239,69 @@ private fun LazyListScope.appleEditorialTrackRows(
  */
 
 /** Exact Discogs Release IDs; complete metadata is resolved when the row opens. */
+
+/** Same single native result list as the other public catalog providers. */
+private fun LazyListScope.discogsUnifiedSearchRows(
+    query: String,
+    artists: UiState<List<DiscogsNativeArtistSearchRow>>?,
+    releases: UiState<List<DiscogsNativeReleaseSearchRow>>?,
+    onArtistOpen: (DiscogsNativeArtistSearchRow) -> Unit,
+    onReleaseOpen: (DiscogsNativeReleaseSearchRow) -> Unit,
+    visibleLimit: Int,
+) {
+    val entries = discogsUnifiedSearchEntries(
+        query, (artists as? UiState.Success)?.data.orEmpty(),
+        (releases as? UiState.Success)?.data.orEmpty(),
+    )
+    when {
+        entries.isNotEmpty() -> items(
+            items = entries.take(visibleLimit),
+            key = { entry -> when (entry) {
+                is DiscogsUnifiedSearchEntry.Artist ->
+                    "discogs:general:artist:${entry.row.artistId}"
+                is DiscogsUnifiedSearchEntry.Release ->
+                    "discogs:general:release:${entry.row.releaseId}"
+            } },
+        ) { entry ->
+            when (entry) {
+                is DiscogsUnifiedSearchEntry.Artist -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = entry.row.name,
+                        subtitle = stringResource(Res.string.canonical_artist_kind)
+                            .substringBefore('·').trim(),
+                        artworkUri = null,
+                        artistPortrait = true,
+                    ),
+                    onClick = { onArtistOpen(entry.row) },
+                )
+                is DiscogsUnifiedSearchEntry.Release -> {
+                    // Discogs' combined "Artist - Work" is split for display
+                    // only, never used to claim an Artist ID or music format.
+                    val display = discogsSearchReleaseDisplay(entry.row.title)
+                    NativeSearchResultRow(
+                        row = NativeSearchRowUi(
+                            title = display.title,
+                            subtitle = display.artistCredit ?: "Lançamento",
+                            artworkUri = null,
+                            artistPortrait = false,
+                        ),
+                        onClick = { onReleaseOpen(entry.row) },
+                    )
+                }
+            }
+        }
+        artists == UiState.Loading || releases == UiState.Loading ->
+            songListSkeleton(keyPrefix = "discogs:general")
+        artists is UiState.Error && releases is UiState.Error ->
+            item(key = "discogs:general:error") {
+                MessageState("Não foi possível carregar os resultados.")
+            }
+        else -> item(key = "discogs:general:empty") {
+            MessageState(stringResource(Res.string.canonical_empty_search))
+        }
+    }
+}
+
 private fun LazyListScope.discogsNativeReleaseRows(
     results: UiState<List<DiscogsNativeReleaseSearchRow>>?,
     onOpen: (DiscogsNativeReleaseSearchRow) -> Unit,
@@ -1220,50 +1314,30 @@ private fun LazyListScope.discogsNativeReleaseRows(
         is UiState.Error -> item(key = "discogs:releases:error") {
             MessageState(
                 if (results.message == "discogs_token_required")
-                    "Conecte seu token Discogs em Provedores → Conexões para pesquisar lançamentos."
-                else "Não foi possível carregar os lançamentos Discogs.",
+                    "Conecte seu token em Provedores → Conexões para pesquisar lançamentos."
+                else "Não foi possível carregar os lançamentos.",
             )
         }
         is UiState.Success -> {
-            if (results.data.isNotEmpty()) {
-                item(key = "discogs:releases:heading") {
-                    Text(
-                        text = stringResource(Res.string.albums),
-                        modifier = Modifier.padding(
-                            start = PAGE_GUTTER, end = PAGE_GUTTER,
-                            top = 16.dp, bottom = 6.dp,
-                        ),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                }
-                itemsIndexed(
-                    items = results.data,
-                    key = { _, release -> "discogs:release:search:${release.releaseId}" },
-                ) { index, release ->
-                    NativeSearchResultRow(
-                        row = NativeSearchRowUi(
-                            title = release.title,
-                            subtitle = "Lançamento · Discogs",
-                            artworkUri = null,
-                            artistPortrait = false,
-                        ),
-                        onClick = { onOpen(release) },
-                        onLongPress = null,
-                    )
-                    if (index < results.data.lastIndex) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                }
-            } else item(key = "discogs:releases:empty") {
-                MessageState("Nenhum lançamento encontrado no Discogs.")
+            if (results.data.isEmpty()) item(key = "discogs:releases:empty") {
+                MessageState(stringResource(Res.string.canonical_empty_search))
+            } else items(
+                items = results.data,
+                key = { "discogs:release:search:${it.releaseId}" },
+            ) { release ->
+                val display = discogsSearchReleaseDisplay(release.title)
+                NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = display.title,
+                        subtitle = display.artistCredit ?: "Lançamento",
+                        artworkUri = null, artistPortrait = false,
+                    ),
+                    onClick = { onOpen(release) },
+                )
             }
             if (hasMore) item(key = "discogs:releases:more") {
                 NativeCatalogSearchLoadMore(
-                    label = "Carregar mais lançamentos",
+                    label = stringResource(Res.string.canonical_more_results),
                     onClick = onLoadMore,
                     modifier = Modifier.fillMaxWidth().padding(
                         horizontal = PAGE_GUTTER, vertical = 12.dp,
@@ -1286,52 +1360,30 @@ private fun LazyListScope.discogsNativeArtistRows(
         is UiState.Error -> item(key = "discogs:artists:error") {
             MessageState(
                 if (results.message == "discogs_token_required")
-                    "Conecte seu token Discogs em Provedores → Conexões para pesquisar artistas."
-                else "Não foi possível carregar a busca Discogs. Verifique a conexão e as permissões do provider.",
+                    "Conecte seu token em Provedores → Conexões para pesquisar artistas."
+                else "Não foi possível carregar os artistas.",
             )
         }
         is UiState.Success -> {
-            if (results.data.isEmpty()) {
-                item(key = "discogs:artists:empty") {
-                    MessageState("Nenhum artista encontrado no Discogs.")
-                }
-            } else {
-                item(key = "discogs:artists:heading") {
-                    Text(
-                        text = stringResource(Res.string.artists),
-                        modifier = Modifier.padding(
-                            start = PAGE_GUTTER, end = PAGE_GUTTER,
-                            top = 16.dp, bottom = 6.dp,
-                        ),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                }
-                itemsIndexed(
-                    items = results.data,
-                    key = { _, artist -> "discogs:artist:search:${artist.artistId}" },
-                ) { index, artist ->
-                    NativeSearchResultRow(
-                        row = NativeSearchRowUi(
-                            title = artist.name,
-                            subtitle = "Artista · Discogs",
-                            artworkUri = null,
-                            artistPortrait = true,
-                        ),
-                        onClick = { onOpen(artist) },
-                        onLongPress = null,
-                    )
-                    if (index < results.data.lastIndex) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                }
+            if (results.data.isEmpty()) item(key = "discogs:artists:empty") {
+                MessageState(stringResource(Res.string.canonical_empty_search))
+            } else items(
+                items = results.data,
+                key = { "discogs:artist:search:${it.artistId}" },
+            ) { artist ->
+                NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = artist.name,
+                        subtitle = stringResource(Res.string.canonical_artist_kind)
+                            .substringBefore('·').trim(),
+                        artworkUri = null, artistPortrait = true,
+                    ),
+                    onClick = { onOpen(artist) },
+                )
             }
             if (hasMore) item(key = "discogs:artists:more") {
                 NativeCatalogSearchLoadMore(
-                    label = "Carregar mais artistas",
+                    label = stringResource(Res.string.canonical_more_results),
                     onClick = onLoadMore,
                     modifier = Modifier.fillMaxWidth().padding(
                         horizontal = PAGE_GUTTER, vertical = 12.dp,
