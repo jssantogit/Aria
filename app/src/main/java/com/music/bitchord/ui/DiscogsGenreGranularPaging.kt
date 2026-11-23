@@ -22,6 +22,28 @@ internal data class DiscogsGenrePageSnapshot(
 }
 
 /**
+ * Publish a fully verified Discogs Release while its bounded genre chunk is
+ * still hydrating. The cursor remains request-local until the source confirms
+ * the final position; cancellation/revocation still owns this state upstream.
+ */
+internal fun appendDiscogsGenreVerified(
+    prior: DiscogsGenrePageSnapshot,
+    tag: String,
+    candidate: DiscogsEditorialCandidate,
+): DiscogsGenrePageSnapshot? {
+    if (prior.tag != tag || prior.cursor == null || !prior.loading ||
+        candidate.masterId !in 1..999_999_999_999L ||
+        candidate.releaseId !in 1..999_999_999_999L ||
+        candidate.title.isBlank() || candidate.artist.isBlank()
+    ) return null
+    if (candidate.masterId in prior.knownMasterIds) return prior
+    return prior.copy(
+        knownMasterIds = prior.knownMasterIds + candidate.masterId,
+        releases = prior.releases + candidate,
+    )
+}
+
+/**
  * A retryable failed Master/Release keeps the exact candidate position, even
  * when valid earlier releases from that same scroll gesture are published.
  * Each typed Discogs Style is separately queried and corroborated.
