@@ -69,6 +69,33 @@ internal fun discogsEditorialQueryForTag(tag: String): DiscogsEditorialQuery? {
     return DiscogsEditorialQuery(style, isStyle = true)
 }
 
+
+/**
+ * A top-level app genre may span several *actual* Discogs Styles. Each
+ * candidate is still checked against the hydrated Master's exact Styles
+ * field; none of these labels is inferred from a release title or artist.
+ *
+ * In particular, Discogs has no umbrella Genre named Metal or R&B.
+ * Never map Metal to its much broader Rock Genre or R&B to Funk / Soul.
+ */
+internal fun discogsEditorialQueriesForTag(tag: String): List<DiscogsEditorialQuery> {
+    discogsEditorialQueryForTag(tag)?.let { return listOf(it) }
+    val styles = when (tag) {
+        "metal" -> listOf(
+            "Heavy Metal", "Thrash", "Death Metal", "Black Metal", "Doom Metal",
+        )
+        "rnb" -> listOf(
+            "Contemporary R&B", "Rhythm & Blues", "Neo Soul",
+        )
+        "folk" -> listOf("Folk", "Folk Rock", "Bluegrass")
+        // These are direct source style names, not approximate genres.
+        "indie folk" -> listOf("Indie Folk")
+        "alternative r&b" -> listOf("Alternative R&B")
+        else -> emptyList()
+    }
+    return styles.map { DiscogsEditorialQuery(it, isStyle = true) }
+}
+
 internal fun discogsEditorialShelves(
     candidates: List<DiscogsEditorialCandidate>,
     home: Boolean = false,
