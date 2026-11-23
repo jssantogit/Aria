@@ -209,6 +209,10 @@ internal class DiscogsNativeGenreEditorial(
             ?: return DiscogsEditorialResult.Unauthorized
         val verified = mutableListOf<DiscogsEditorialCandidate>()
         val hydratedMasterIds = HashSet<Long>()
+        // Transport failures are not negative evidence. Overlapping Discogs
+        // index pages can legitimately repeat a Master; allow the next page
+        // to retry an unresolved Master instead of permanently blacklisting it.
+        val unresolvedMasterIds = HashSet<Long>()
         // Fill the caller's bounded sample with verified releases, not just
         // the first non-empty index page. A page with one valid release must
         // not prematurely end a three-release request. All reads still share
@@ -245,8 +249,8 @@ internal class DiscogsNativeGenreEditorial(
             }
             for (masterId in index.masterIds.take(5)) {
                 if (verified.size >= maxReleases) break
-                // Discogs index pages may overlap; never hydrate the same
-                // Master twice just to exhaust the editorial request budget.
+                // A successfully checked Master is deduplicated across pages.
+                // An unavailable/malformed transport response is NOT a check.
                 if (!hydratedMasterIds.add(masterId)) continue
                 val masterResult = try { editions.master(masterId) }
                 catch (cancelled: CancellationException) { throw cancelled }
@@ -257,6 +261,19 @@ internal class DiscogsNativeGenreEditorial(
                 if (masterResult is DiscogsLookupResult.Unauthorized)
                     return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
                         else DiscogsEditorialResult.Unauthorized
+                if (masterResult is DiscogsLookupResult.Disabled)
+                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Disabled
+                if (masterResult is DiscogsLookupResult.Unavailable ||
+                    masterResult is DiscogsLookupResult.Malformed
+                ) {
+                    hydratedMasterIds.remove(masterId)
+                    unresolvedMasterIds.add(masterId)
+                    continue
+                }
+                // A definitive Master response (even Missing or a mismatched
+                // source ID) settles this index candidate without guessing.
+                unresolvedMasterIds.remove(masterId)
                 val master = (masterResult as? DiscogsLookupResult.FoundMaster)?.record
                     ?: continue
                 if (master.link.id != masterId ||
@@ -271,6 +288,19 @@ internal class DiscogsNativeGenreEditorial(
                 if (releaseResult is DiscogsLookupResult.Unauthorized)
                     return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
                         else DiscogsEditorialResult.Unauthorized
+                if (releaseResult is DiscogsLookupResult.Disabled)
+                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Disabled
+                if (releaseResult is DiscogsLookupResult.Unavailable ||
+                    releaseResult is DiscogsLookupResult.Malformed
+                ) {
+                    // A second index page can safely retry this source-owned
+                    // Master and its main Release. Never cache a failed read.
+                    hydratedMasterIds.remove(masterId)
+                    unresolvedMasterIds.add(masterId)
+                    continue
+                }
+                unresolvedMasterIds.remove(masterId)
                 val release = (releaseResult as? DiscogsLookupResult.Found)?.record
                     ?: continue
                 // No unofficial/ambiguous edition, wrong Master or unverified
@@ -291,6 +321,8 @@ internal class DiscogsNativeGenreEditorial(
             }
             if (!index.hasNext || verified.size >= maxReleases) break
         }
-        return DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
+        return if (verified.isEmpty() && unresolvedMasterIds.isNotEmpty())
+            DiscogsEditorialResult.Unavailable
+        else DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
     }
 }
