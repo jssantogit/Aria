@@ -207,6 +207,64 @@ class IdmCatalogLiveObservationTest {
             shelves = mbShelves, counts = rejectionCounts,
         ))
 
+        // Repeat the *actual* app's narrow / wide / historical progression
+        // through the same bounded raw-offset scanner that MainViewModel uses.
+        // The separate 50-day single-page report above isolates date defects;
+        // this report measures the complete Home feeding decision.
+        val narrow = scanMusicBrainzRecentEditorial(
+            musicBrainz, now.minusDays(30).toString(), date, maxPages = 3,
+        )
+        val wide = if (canonicalPublicNeedsMoreEditorialRows(narrow.rows))
+            scanMusicBrainzRecentEditorial(
+                musicBrainz, now.minusDays(90).toString(), date, maxPages = 2,
+            ) else null
+        val currentRows = (narrow.rows + wide?.rows.orEmpty())
+            .distinctBy { it.musicBrainzId }
+        val historical = if (canonicalPublicNeedsMoreEditorialRows(currentRows))
+            scanMusicBrainzRecentEditorial(
+                musicBrainz, now.minusDays(365).toString(),
+                now.minusDays(91).toString(), maxPages = 1,
+            ) else null
+        val appMbRows = (currentRows + historical?.rows.orEmpty())
+            .distinctBy { it.musicBrainzId }
+        val appMbHome = canonicalCuratedHomeShelves(
+            savedReleases = emptyList(), metadata = appMbRows,
+            localPicks = emptyList(), trendingRecordingMbids = emptyList(),
+            releasesHeading = "Lançamentos", picksHeading = "Escolha a dedo",
+            trendingHeading = "Em alta", todayIsoDate = date,
+        )
+        val appMbSelected = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = appMbHome,
+            appleHomeReleases = UiState.Loading,
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos", discoveryHeading = "Descobrir",
+            todayIsoDate = date, musicBrainzRows = appMbRows,
+        )
+        val appMbShelves = (appMbSelected.state as? UiState.Success)
+            ?.data.orEmpty()
+        val appMbItems = cards(appMbShelves)
+        val scans = listOfNotNull(narrow, wide, historical)
+        report("musicbrainz_app_flow", Sample(
+            status = when {
+                scans.any { it.sourceFailure } -> "partial_source_failure"
+                appMbItems.isEmpty() -> "empty_after_filters"
+                else -> "verified"
+            },
+            raw = scans.sumOf { it.sourcePositions },
+            parsed = scans.sumOf { it.parsedRows },
+            eligible = appMbRows.size, visible = appMbItems.size,
+            requests = scans.sumOf { it.attempts },
+            artwork = appMbItems.count { !it.thumbnailUrl.isNullOrBlank() },
+            counts = mapOf(
+                "narrow_window_reads" to narrow.attempts,
+                "wide_window_reads" to (wide?.attempts ?: 0),
+                "historical_window_reads" to (historical?.attempts ?: 0),
+                "raw_cursor_windows_open" to scans.count { it.cursorRemaining },
+            ),
+            shelves = appMbShelves,
+        ))
+
         val appleCaps = setOf(ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY)
         val appleGate = gateFor(apple, appleCaps)
@@ -370,12 +428,12 @@ class IdmCatalogLiveObservationTest {
             com.music.bitchord.data.model.ShelfItem>()
         for ((index, order) in orders.withIndex()) {
             val selection = projectCanonicalHomeEditorial(
-                canonicalHomeShelves = mbHome,
+                canonicalHomeShelves = appMbHome,
                 appleHomeReleases = UiState.Success(appleReleases),
                 catalogEditorialOrder = order,
                 canonicalWorldwideLoading = false,
                 releasesHeading = "Lançamentos", discoveryHeading = "Descobrir",
-                todayIsoDate = date, musicBrainzRows = mbTyped,
+                todayIsoDate = date, musicBrainzRows = appMbRows,
                 discogsEditorial = UiState.Success(discogsShelves),
             )
             val owner = selection.provider
@@ -400,11 +458,11 @@ class IdmCatalogLiveObservationTest {
             }
         }
         val sourceVisibleCounts = listOf(
-            mbItems.size, appleItems.size, discogsItems.size,
+            appMbItems.size, appleItems.size, discogsItems.size,
         )
         // Each order represents an alternate Home, not another shelf on
         // the same screen. Never sum repeated cards across permutations.
-        val sourceCandidates = mbItems.size + appleItems.size + discogsItems.size
+        val sourceCandidates = appMbItems.size + appleItems.size + discogsItems.size
         report("collective", Sample(
             status = when {
                 token == null -> "partial_discogs_token_not_configured"
