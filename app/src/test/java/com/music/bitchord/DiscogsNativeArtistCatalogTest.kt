@@ -31,6 +31,10 @@ class DiscogsNativeArtistCatalogTest {
                 release(50, masterId = 90),
             DiscogsArtistIndexEntry(DiscogsKind.RELEASE, 50) to
                 release(50, masterId = 90),
+            // A distinct physical Release of the SAME proven Master must
+            // not create a second visible album card.
+            DiscogsArtistIndexEntry(DiscogsKind.RELEASE, 54) to
+                release(54, masterId = 90),
             DiscogsArtistIndexEntry(DiscogsKind.RELEASE, 51) to
                 release(51, artistId = 18),
             DiscogsArtistIndexEntry(DiscogsKind.MASTER, 91) to
@@ -42,6 +46,110 @@ class DiscogsNativeArtistCatalogTest {
         assertEquals(90L, rows.single().masterId)
         assertEquals("https://www.discogs.com/release/50", rows.single().attributionUrl)
         assertTrue(rows.single().tracklist.isEmpty())
+    }
+
+    private fun permittedDiscography(): RateLimitedProviderTransport {
+        val provider = BuiltInProviderKeys.DISCOGS
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(
+                provider, setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY),
+                ProviderReadiness.READY,
+            )),
+            choices = mapOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to listOf(
+                ProviderChoice(provider, true, 0),
+            )),
+        ))
+        return RateLimitedProviderTransport { gate }
+    }
+
+    @Test fun artistPageDedupUsesOnlyProvenMasterAcrossPages() {
+        val first = DiscogsNativeArtistRelease(
+            artistId = 17L, releaseId = 50L, masterId = 90L,
+            title = "An Album", year = 2020, formats = listOf("Album"),
+            tracklist = emptyList(),
+        )
+        val alternate = first.copy(releaseId = 54L)
+        val standalone = first.copy(releaseId = 60L, masterId = null)
+        assertEquals(listOf(50L, 60L),
+            discogsMergeArtistPageReleases(
+                listOf(first, alternate, standalone),
+            ).map { it.releaseId })
+        assertEquals(listOf(60L, 50L),
+            discogsMergeArtistPageReleases(
+                listOf(standalone, first, alternate),
+            ).map { it.releaseId })
+        assertEquals(listOf(60L, 61L),
+            discogsMergeArtistPageReleases(
+                listOf(standalone, standalone.copy(releaseId = 61L)),
+            ).map { it.releaseId })
+    }
+
+    @Test fun masterHydrationRateLimitIsARealFailureNotEmptyArtist() = runBlocking {
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true,
+            admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String) =
+                    DiscogsHttpResponse(200, """
+                        {"pagination":{"page":1,"pages":1},"releases":[
+                            {"id":90,"role":"Main","type":"master","title":"Album"}
+                        ]}""")
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) =
+                    DiscogsLookupResult.Throttled(15L)
+                override suspend fun release(id: Long) = DiscogsLookupResult.Missing
+            },
+        )
+        assertEquals(DiscogsNativeArtistLoad.Throttled(15L), source.load(17))
+    }
+
+    @Test fun interruptedEditionHydrationPreservesOnlyVerifiedPartialPage() = runBlocking {
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true,
+            admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String) =
+                    DiscogsHttpResponse(200, """
+                        {"pagination":{"page":1,"pages":1},"releases":[
+                            {"id":50,"role":"Main","type":"release","title":"Good"},
+                            {"id":51,"role":"Main","type":"release","title":"Unavailable"}
+                        ]}""")
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long) = if (id == 50L)
+                    DiscogsLookupResult.Found(release(id))
+                    else DiscogsLookupResult.Throttled(12L)
+            },
+        )
+        val result = source.load(17) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(50L), result.releases.map { it.releaseId })
+        assertTrue(result.incomplete)
+        assertFalse(result.hasMore)
+    }
+
+    @Test fun unexpectedSourceExceptionDoesNotEscapeArtistLoader() = runBlocking {
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true,
+            admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String) =
+                    DiscogsHttpResponse(200, """
+                        {"pagination":{"page":1,"pages":1},"releases":[
+                            {"id":50,"role":"Main","type":"release","title":"Unavailable"}
+                        ]}""")
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long): DiscogsLookupResult =
+                    throw IllegalStateException("upstream")
+            },
+        )
+        assertEquals(DiscogsNativeArtistLoad.Unavailable, source.load(17))
     }
 
     @Test fun missingPermissionFailsClosedBeforeAnyDiscogsTransportCall() = runBlocking {
