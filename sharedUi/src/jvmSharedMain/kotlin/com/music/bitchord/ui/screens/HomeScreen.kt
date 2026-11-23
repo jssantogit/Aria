@@ -229,8 +229,11 @@ fun HomeScreen(
     reserveFloatingBackSpace: Boolean = false,
     /** Genre/subgenre navigation is a square-card shelf, never the hero. */
     categoryNavigationShelf: HomeShelf? = null,
+    /** Verified external source attribution, not a fabricated catalog card. */
+    editorialAttribution: Pair<String, String>? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
+    val sourceUriHandler = LocalUriHandler.current
     val continueHeading = stringResource(Res.string.shelf_continue_listening)
     val resumeLabel = stringResource(Res.string.shelf_resume_from)
     // Read the rapidly changing playhead only in Home's own Compose scope.
@@ -387,6 +390,22 @@ fun HomeScreen(
                             )
                         },
                     )
+                    if (editorialAttribution != null && state.data.any { shelf ->
+                            shelf.items.any { it.browseId.orEmpty().startsWith("discogs:") }
+                        }) {
+                        item(key = "editorial-source-attribution") {
+                            Text(
+                                text = editorialAttribution.first,
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable {
+                                        sourceUriHandler.openUri(editorialAttribution.second)
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     if (loadingMore) feedMoreSkeleton()
                 }
             }
