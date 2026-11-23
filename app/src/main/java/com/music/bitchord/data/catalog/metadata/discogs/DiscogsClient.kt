@@ -259,6 +259,41 @@ internal class DiscogsClient(
         }
     }
 
+    /**
+     * A VISUAL preview is different from the exhaustive Master verification
+     * used by the edition matcher above. Large Masters may have hundreds of
+     * physical versions: reveal only a bounded, explicitly non-exhaustive
+     * first page and re-verify each candidate Release before painting it.
+     */
+    suspend fun fetchMasterVersionPreview(id: Long): DiscogsMasterVersionPreviewResult {
+        if (!enabled) return DiscogsMasterVersionPreviewResult.Disabled
+        if (id !in 1..999_999_999_999L)
+            return DiscogsMasterVersionPreviewResult.Malformed
+        val response = try {
+            admission.execute(
+                capability = capability,
+                provider = BuiltInProviderKeys.DISCOGS,
+                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                networkCall = {
+                    transport.get("masters/$id/versions?page=1&per_page=8", userAgent)
+                },
+            )
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: ProviderRequestDeniedException) {
+              return DiscogsMasterVersionPreviewResult.Disabled
+          } catch (_: Exception) {
+              return DiscogsMasterVersionPreviewResult.Unavailable
+          }
+        return when (response.status) {
+            200 -> discogsMasterVersionPreviewPage(response.body)?.let {
+                DiscogsMasterVersionPreviewResult.Page(it)
+            } ?: DiscogsMasterVersionPreviewResult.Malformed
+            429 -> DiscogsMasterVersionPreviewResult.Throttled(response.retryAfterSeconds)
+            401, 403 -> DiscogsMasterVersionPreviewResult.Disabled
+            else -> DiscogsMasterVersionPreviewResult.Unavailable
+        }
+    }
+
     suspend fun fetchRelease(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
@@ -300,6 +335,52 @@ internal sealed interface DiscogsMasterVersionsResult {
     data object Disabled : DiscogsMasterVersionsResult
     data object Malformed : DiscogsMasterVersionsResult
     data object Unavailable : DiscogsMasterVersionsResult
+}
+
+internal data class DiscogsMasterVersionPreviewPage(
+    val releaseIds: List<Long>,
+    /** Never treat the first-page index as a complete pressing list. */
+    val hasMore: Boolean,
+)
+
+internal sealed interface DiscogsMasterVersionPreviewResult {
+    data class Page(val result: DiscogsMasterVersionPreviewPage) :
+        DiscogsMasterVersionPreviewResult
+    data class Throttled(val retryAfterSeconds: Long?) :
+        DiscogsMasterVersionPreviewResult
+    data object Disabled : DiscogsMasterVersionPreviewResult
+    data object Malformed : DiscogsMasterVersionPreviewResult
+    data object Unavailable : DiscogsMasterVersionPreviewResult
+}
+
+/** Strict candidate IDs only; the Release endpoint must corroborate Master ID. */
+internal fun discogsMasterVersionPreviewPage(
+    raw: String,
+): DiscogsMasterVersionPreviewPage? {
+    if (raw.length > 131_072) return null
+    val root = try { Json.parseToJsonElement(raw) as? JsonObject }
+        catch (_: Exception) { null } ?: return null
+    val paging = root["pagination"] as? JsonObject ?: return null
+    val page = (paging["page"] as? JsonPrimitive)?.intOrNull
+    val pages = (paging["pages"] as? JsonPrimitive)?.intOrNull
+    val perPage = (paging["per_page"] as? JsonPrimitive)?.intOrNull
+    val items = (paging["items"] as? JsonPrimitive)?.intOrNull
+    if (page != 1 || perPage != 8 || pages == null || pages !in 1..100_000 ||
+        items == null || items !in 0..10_000_000
+    ) return null
+    val rows = root["versions"] as? JsonArray ?: return null
+    if (rows.size > 8 || rows.size > items ||
+        pages == 1 && rows.size != items || items > 0 && rows.isEmpty()
+    ) return null
+    val ids = rows.map { value ->
+        ((value as? JsonObject)?.get("id") as? JsonPrimitive)?.longOrNull
+            ?.takeIf { it in 1..999_999_999_999L } ?: return null
+    }
+    if (ids.size != ids.distinct().size) return null
+    return DiscogsMasterVersionPreviewPage(
+        releaseIds = ids,
+        hasMore = pages > 1 || items > ids.size,
+    )
 }
 
 /**
