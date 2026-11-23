@@ -586,6 +586,7 @@ class IdmCatalogLiveObservationTest {
         var homeChunks = 0
         var homeConsumed = 0
         var homeTransportException = false
+        var firstHomeVerifiedNs: Long? = null
         val homeStartNs = System.nanoTime()
         // The UI has no network deadline of its own. This observational
         // watchdog classifies excessive latency instead of falsely calling
@@ -604,6 +605,10 @@ class IdmCatalogLiveObservationTest {
                         query = query, cursor = cursor,
                         knownMasterIds = state.knownMasterIds,
                         maxCandidates = 4,
+                        onVerified = {
+                            if (firstHomeVerifiedNs == null)
+                                firstHomeVerifiedNs = System.nanoTime()
+                        },
                     ) ?: break
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
@@ -628,6 +633,11 @@ class IdmCatalogLiveObservationTest {
         } else null
         val homeElapsedMs = ((System.nanoTime() - homeStartNs) / 1_000_000L)
             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        val firstHomeVerifiedMs = firstHomeVerifiedNs?.let { first ->
+            ((first - homeStartNs) / 1_000_000L)
+                .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        } ?: 0
+        check(firstHomeVerifiedMs in 0..homeElapsedMs)
         check(homeChunks in 0..3)
         check(homeConsumed in 0..12)
         val discogsHomeExtra = discogsHomeNext?.let {
@@ -671,6 +681,7 @@ class IdmCatalogLiveObservationTest {
                 "source_release_reads" to discogsReleaseReads - beforeHomeReleases,
                 "source_release_found" to discogsReleaseFound - beforeHomeReleaseFound,
                 "elapsed_ms" to homeElapsedMs,
+                "first_verified_ms" to firstHomeVerifiedMs,
             ),
         ))
 
