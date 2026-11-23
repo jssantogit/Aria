@@ -31,10 +31,16 @@ import kotlinx.serialization.json.longOrNull
 internal data class DiscogsEditorialQuery(
     val sourceName: String,
     val isStyle: Boolean,
+    /** Optional exact Discogs Genre required in addition to a Style. */
+    val requiredGenre: String? = null,
 ) {
     fun isValid(): Boolean = sourceName.length in 2..80 &&
         sourceName.none(Character::isISOControl) &&
-        sourceName.none { it == '\\' || it == '/' }
+        sourceName.none { it == '\\' || it == '/' } &&
+        (requiredGenre == null || (isStyle &&
+            requiredGenre.length in 2..80 &&
+            requiredGenre.none(Character::isISOControl) &&
+            requiredGenre.none { it == '\\' || it == '/' }))
 }
 
 internal data class DiscogsEditorialCandidate(
@@ -93,6 +99,7 @@ internal class KtorDiscogsGenreSearchTransport(
             header(HttpHeaders.Authorization, "Discogs token=$token")
             parameter("type", "master")
             parameter(if (query.isStyle) "style" else "genre", query.sourceName)
+            query.requiredGenre?.let { parameter("genre", it) }
             parameter("per_page", 12)
             parameter("page", page)
         }
@@ -169,7 +176,10 @@ internal fun discogsEditorialMasterMatches(
 ): Boolean {
     if (!query.isValid()) return false
     val entries = if (query.isStyle) master.styles else master.genres
-    return entries.any { it.trim().equals(query.sourceName, ignoreCase = true) }
+    return entries.any { it.trim().equals(query.sourceName, ignoreCase = true) } &&
+        (query.requiredGenre == null || master.genres.any {
+            it.trim().equals(query.requiredGenre, ignoreCase = true)
+        })
 }
 
 /** Independent of MusicBrainz and iTunes. Never uses image/search snippets as
