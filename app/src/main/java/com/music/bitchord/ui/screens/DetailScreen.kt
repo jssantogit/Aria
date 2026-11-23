@@ -1945,6 +1945,15 @@ private val RELEASE_YEAR = Regex("""\b(19|20)\d{2}\b""")
 private fun ShelfItem.releaseYear(): Int? =
     RELEASE_YEAR.find(subtitle)?.value?.toIntOrNull()
 
+/**
+ * Apple storefront classification may be explicitly unknown. A valid dated
+ * product is still a recent release, but "Álbum recente" would invent its
+ * format. This changes only its label, not the shared top-release card.
+ */
+internal fun appleSourceRecentReleaseNeedsGenericLabel(item: ShelfItem): Boolean =
+    item.browseId?.startsWith("itunes:") == true &&
+        Regex("""^(19|20)\d{2}$""").matches(item.subtitle.trim())
+
 /** "Recent Single" and "Recent EP" where the card says so, otherwise "Recent Album". */
 @androidx.annotation.StringRes
 private fun ShelfItem.recentLabel(): Int {
@@ -1978,7 +1987,8 @@ private fun TopReleaseCard(
     NativeArtistTopReleaseCard(
         title = item.title,
         subtitle = item.subtitle,
-        label = stringResource(item.recentLabel()),
+        label = if (appleSourceRecentReleaseNeedsGenericLabel(item))
+            "Lançamento recente" else stringResource(item.recentLabel()),
         palette = palette,
         onClick = onClick,
         onLongPress = onLongPress,

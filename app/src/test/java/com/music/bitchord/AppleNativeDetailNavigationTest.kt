@@ -9,6 +9,7 @@ import com.music.bitchord.ui.screens.AppleEditorialSearchRow
 import com.music.bitchord.ui.screens.AppleNativeDetailKind
 import com.music.bitchord.ui.screens.appleAlbumAsSharedDetail
 import com.music.bitchord.ui.screens.appleArtistAsSharedDetail
+import com.music.bitchord.ui.screens.appleSourceRecentReleaseNeedsGenericLabel
 import com.music.bitchord.ui.screens.appleNativeDetailDisplayAllowed
 import com.music.bitchord.ui.screens.appleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
@@ -208,6 +209,27 @@ class AppleNativeDetailNavigationTest {
                 ), possiblyTruncated = false,
             ),
         )?.featuredRelease)
+    }
+
+    @Test fun unclassifiedAppleRecentReleaseNeverClaimsAnAlbumFormat() {
+        val unknown = appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist(), listOf(album().copy(
+                    category = com.music.bitchord.ui.screens.AppleEditorialReleaseCategory.UNCLASSIFIED,
+                )), possiblyTruncated = false,
+            ),
+        )?.featuredRelease!!
+        assertEquals("2024", unknown.subtitle)
+        assertTrue(appleSourceRecentReleaseNeedsGenericLabel(unknown))
+        val typed = appleArtistAsSharedDetail(
+            AppleEditorialArtistDetailPage(
+                artist(), listOf(album().copy(
+                    category = com.music.bitchord.ui.screens.AppleEditorialReleaseCategory.EP,
+                )), possiblyTruncated = false,
+            ),
+        )?.featuredRelease!!
+        assertEquals("EP · 2024", typed.subtitle)
+        assertFalse(appleSourceRecentReleaseNeedsGenericLabel(typed))
     }
 
     @Test fun loadingAndPermissionErrorsUseOriginalNativeDetailPage() {
