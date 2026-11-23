@@ -7,6 +7,7 @@ import com.music.bitchord.data.catalog.metadata.discogs.DiscogsLink
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsMasterRecord
 import com.music.bitchord.data.catalog.metadata.discogs.discogsEditorialMasterMatches
 import com.music.bitchord.ui.discogsEditorialQueryForTag
+import com.music.bitchord.ui.discogsEditorialQueriesForTag
 import com.music.bitchord.ui.discogsEditorialShelves
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -68,13 +69,50 @@ class DiscogsEditorialTaxonomyTest {
         val shelves = discogsEditorialShelves(input)
         assertNotNull(shelves.firstOrNull())
         val items = shelves.flatMap { it.items }
-        assertEquals(4, items.size)
+        // Discovery + album/EP classification can share a verified Master.
+        // That is not a duplicate artist or edition *within* any shelf.
         assertEquals(4, items.map { it.browseId }.distinct().size)
+        assertTrue(shelves.all { shelf ->
+            shelf.items.map { it.browseId }.distinct().size == shelf.items.size
+        })
+        assertEquals(listOf("discogs:release:502"),
+            shelves.single { it.title == "Álbuns" }.items.map { it.browseId })
+        assertEquals(setOf("discogs:release:504", "discogs:release:505"),
+            shelves.single { it.title == "Singles e EPs" }
+                .items.map { it.browseId }.toSet())
         assertTrue(items.all { it.browseId!!.startsWith("discogs:release:") })
         assertTrue(items.all { it.videoId == null && it.thumbnailUrl == null })
         assertFalse(shelves.any { it.title.contains("Em alta") ||
             it.title.contains("Mais tocadas") })
     }
+    @Test fun umbrellaGenresUseOnlyTypedExactDiscogsStyles() {
+        val metal = discogsEditorialQueriesForTag("metal")
+        assertTrue(metal.size >= 4)
+        assertTrue(metal.all { it.isStyle && it.sourceName.isNotBlank() })
+        assertTrue(metal.any { it.sourceName == "Death Metal" })
+        val rnb = discogsEditorialQueriesForTag("rnb")
+        assertTrue(rnb.any { it.sourceName == "Rhythm & Blues" })
+        assertTrue(rnb.all { it.isStyle })
+        val folk = discogsEditorialQueriesForTag("folk")
+        assertTrue(folk.any { it.sourceName == "Folk" })
+        assertEquals(listOf("K-Pop"),
+            discogsEditorialQueriesForTag("k-pop").map { it.sourceName })
+        assertTrue(discogsEditorialQueriesForTag("not-a-real-genre").isEmpty())
+    }
+
+    @Test fun sparseVerifiedCatalogRetainsAlbumCategoryWhenDiscoveryReusesIt() {
+        val one = DiscogsEditorialCandidate(
+            42, 502, "Verified Album", "Verified Artist", 2025, listOf("Album"),
+        )
+        val shelves = discogsEditorialShelves(listOf(one))
+        assertEquals(listOf("discogs:release:502"),
+            shelves.single { it.title == "Lançamentos" }.items.map { it.browseId })
+        assertEquals(listOf("discogs:release:502"),
+            shelves.single { it.title == "Álbuns" }.items.map { it.browseId })
+        assertFalse(shelves.any { it.title == "Singles e EPs" })
+        assertFalse(shelves.any { it.title == "Mais para explorar" })
+    }
+
     @Test fun genreArtistShelfUsesOnlyVerifiedSourceIdsWithoutPlayback() {
         val releases = listOf(
             DiscogsEditorialCandidate(10, 100, "One", "ILLIT (2)", 2024,
