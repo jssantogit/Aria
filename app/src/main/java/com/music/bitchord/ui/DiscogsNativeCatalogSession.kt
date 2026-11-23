@@ -404,13 +404,18 @@ internal class DiscogsNativeCatalogSession(
             // Source categories such as Metal / R&B require a union of
             // independently verified Discogs Styles, not an invented Genre.
             // Stop after a bounded set, and surface partial results promptly.
-            for (query in queries) {
-                if (verified.distinctBy { it.masterId }.size >= 6) break
+            for ((queryIndex, query) in queries.withIndex()) {
+                val distinctMasters = verified.distinctBy { it.masterId }.size
+                if (distinctMasters >= 6) break
+                // Keep slots for subsequent real Styles. A broad Metal
+                // category must not become just Heavy Metal because it was
+                // the first source query to return six verified releases.
+                val budget = discogsMultiStylePageBudget(
+                    verifiedMasters = distinctMasters,
+                    remainingQueries = queries.size - queryIndex - 1,
+                )
                 val result = try {
-                    editorialClient.discover(
-                        query, maxReleases = (6 - verified.distinctBy { it.masterId }.size)
-                            .coerceIn(1, 6),
-                    )
+                    editorialClient.discover(query, maxReleases = budget)
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) { DiscogsEditorialResult.Unavailable }
                 if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
