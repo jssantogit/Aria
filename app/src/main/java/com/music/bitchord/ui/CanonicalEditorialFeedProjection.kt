@@ -248,9 +248,13 @@ internal fun projectCanonicalGenreState(
         genrePopularityAuthorized && it.tag == tag &&
             BuiltInProviderKeys.MUSICBRAINZ in ordered
     }?.let(::canonicalGenrePopularShelf)
-    val all = releases + listOfNotNull(continuation) + listOfNotNull(popular) +
+    // Append the continuation AFTER every pre-existing shelf. HomeScreen's
+    // native LazyColumn keys include each shelf's index; inserting a new rail
+    // earlier would remount the existing artists/playlists and jump the scroll.
+    val all = releases + listOfNotNull(popular) +
         listOfNotNull(knownArtists) +
-        listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
+        listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() }) +
+        listOfNotNull(continuation)
     return when {
         all.isNotEmpty() -> UiState.Success(all)
         chosen.state is UiState.Loading -> UiState.Loading
