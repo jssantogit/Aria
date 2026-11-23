@@ -195,6 +195,7 @@ internal fun projectCanonicalGenreState(
     todayIsoDate: String = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
     discogsByTag: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
     musicBrainzPaging: CanonicalGenrePageSnapshot = CanonicalGenrePageSnapshot(),
+    discogsPaging: DiscogsGenrePageSnapshot = DiscogsGenrePageSnapshot(),
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -241,6 +242,12 @@ internal fun projectCanonicalGenreState(
         original = releases,
         paging = musicBrainzPaging,
     )
+    val discogsContinuation = discogsGenreContinuationShelf(
+        tag = tag,
+        selectedProviderIsDiscogs = chosen.provider == BuiltInProviderKeys.DISCOGS,
+        original = releases,
+        paging = discogsPaging,
+    )
     val knownArtists = genreArtists?.takeIf {
         it.tag == tag && BuiltInProviderKeys.MUSICBRAINZ in ordered
     }?.let(::canonicalGenreArtistsShelf)
@@ -254,7 +261,7 @@ internal fun projectCanonicalGenreState(
     val all = releases + listOfNotNull(popular) +
         listOfNotNull(knownArtists) +
         listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() }) +
-        listOfNotNull(continuation)
+        listOfNotNull(continuation, discogsContinuation)
     return when {
         all.isNotEmpty() -> UiState.Success(all)
         chosen.state is UiState.Loading -> UiState.Loading
