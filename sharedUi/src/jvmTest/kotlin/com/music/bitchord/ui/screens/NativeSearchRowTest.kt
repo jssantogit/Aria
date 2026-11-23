@@ -27,6 +27,14 @@ class NativeSearchRowTest {
         assertFalse(visual.downloadBadge)
     }
 
+    @Test fun nativePaginationOnlyAnchorsWhenLastResultsAreVisible() {
+        assertFalse(nativeCatalogPaginationAtEnd(-1, 0))
+        assertFalse(nativeCatalogPaginationAtEnd(3, 40))
+        assertTrue(nativeCatalogPaginationAtEnd(0, 1))
+        assertTrue(nativeCatalogPaginationAtEnd(38, 40))
+        assertTrue(nativeCatalogPaginationAtEnd(39, 40))
+    }
+
     @Test fun searchArtistUsesCircularArtworkAndNoFakeDownloadBadge() {
         val row = CanonicalCatalogSearchRow(
             musicBrainzId = "artist-mbid", kind = CanonicalSearchKind.ARTIST,

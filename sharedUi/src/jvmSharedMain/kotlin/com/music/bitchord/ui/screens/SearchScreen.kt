@@ -878,9 +878,10 @@ fun SearchScreen(
         // empty strip beneath the former in-list button. Content receives an
         // extra footer clearance so neither tracks nor CTA are obscured.
         val atEnd = listState.layoutInfo.let { layout ->
-            layout.totalItemsCount > 0 &&
-                (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >=
-                    layout.totalItemsCount - 2
+            nativeCatalogPaginationAtEnd(
+                lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                totalItems = layout.totalItemsCount,
+            )
         }
         if (pinnedMoreVisible && atEnd) {
             val isApple = appleMixedMore
@@ -956,6 +957,10 @@ internal fun LazyListScope.canonicalCategorySearchRows(
         )
     }
 }
+
+/** Only show the floating continuation after real results reach the end. */
+internal fun nativeCatalogPaginationAtEnd(lastVisibleIndex: Int, totalItems: Int): Boolean =
+    totalItems > 0 && lastVisibleIndex >= totalItems - 2
 
 /**
  * One native search-pagination control for every public catalog provider.
@@ -1108,9 +1113,8 @@ private fun LazyListScope.appleSearchPagingFooter(
                     loading = state.loadingMore,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (state.loadingMore) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
+                // The unified native button already draws its loading
+                // indicator; do not stack a second spinner beneath it.
                 if (state.retryableError) {
                     Text(
                         stringResource(Res.string.apple_discovery_failed),
