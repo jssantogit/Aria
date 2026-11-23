@@ -65,6 +65,13 @@ internal fun verifiedAppleDetailStoreUrl(raw: String?, browseId: String?): Strin
     return url
 }
 
+/** Source-owned album overlay remains in the originating Home/Explore tab. */
+internal fun appleDetailVisibleOnTab(
+    selectedTab: Int,
+    searchTab: Int,
+    originatingTab: Int?,
+): Boolean = selectedTab == searchTab || originatingTab == selectedTab
+
 /**
  * Artist and album rails can both contain the SAME exact iTunes collection.
  * Distinct sources of presentation artwork do not make it two albums.

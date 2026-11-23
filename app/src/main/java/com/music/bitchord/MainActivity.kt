@@ -1242,10 +1242,16 @@ private fun BitChordApp(
     val detailStack by viewModel.detailStack.collectAsStateWithLifecycle()
     val releaseLibrary by viewModel.releaseLibrary.collectAsStateWithLifecycle()
     val detail = detailStack.lastOrNull()
+    // Provider-owned album overlays retain the tab from which their card was
+    // tapped. Only source/data changes; the user never "teleports" from
+    // Home or Explore into the Search tab to view the same native album.
+    var appleShelfReturnTab by remember { mutableStateOf<Int?>(null) }
     // Storefront-scoped IDs render through the same first-party native detail
     // building blocks. They never enter the MusicBrainz/YouTube detail stack.
     val appleNativeSelection = nativeProviderState.appleDetail(
-        selectedTab == TAB_SEARCH && detail == null,
+        com.music.bitchord.ui.screens.appleDetailVisibleOnTab(
+            selectedTab, TAB_SEARCH, appleShelfReturnTab,
+        ) && detail == null,
     )
     val appleNativeKind = appleNativeSelection.kind
     val appleNativeDetailOpen = appleNativeKind != AppleNativeDetailKind.NONE
@@ -2467,16 +2473,20 @@ private fun BitChordApp(
     var communityMetadataRecording by remember { mutableStateOf<CanonicalCatalogSearchRow?>(null) }
     // Home/Explore Apple cards use the existing Search-owned Apple detail.
     // Track the original tab so album back restores its origin, not Search.
-    var appleShelfReturnTab by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(selectedTab) {
-        if (selectedTab != TAB_SEARCH) appleShelfReturnTab = null
+        // Switching away from a source-owned overlay closes the old album.
+        // Otherwise the next Search tab could reopen an unrelated product.
+        val origin = appleShelfReturnTab
+        if (origin != null && selectedTab != origin) {
+            appleShelfReturnTab = null
+            viewModel.backAppleEditorialAlbum()
+        }
     }
     val backAppleAlbum: () -> Unit = {
         viewModel.backAppleEditorialAlbum()
-        appleShelfReturnTab?.let { origin ->
-            appleShelfReturnTab = null
-            selectedTab = origin
-        }
+        // selectedTab is STILL the originating Home/Explore tab. Unmount the
+        // exact Apple detail instead of navigating the root bar twice.
+        appleShelfReturnTab = null
     }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
@@ -2513,8 +2523,7 @@ private fun BitChordApp(
             if (viewModel.openAppleHomeAlbum(
                 item.browseId, item.title, item.subtitle, item.thumbnailUrl,
             )) {
-                appleShelfReturnTab = selectedTab
-                selectedTab = TAB_SEARCH
+                if (selectedTab != TAB_SEARCH) appleShelfReturnTab = selectedTab
             }
             // Even a malformed Apple ID must not fall through to the old
             // album browse or playback path.
@@ -3497,8 +3506,9 @@ private fun BitChordApp(
                     discogsPageRouteKey
                 // Exact iTunes storefront identity, matching MB and Discogs
                 // canonical DetailPage routes (including while loading).
-                selectedTab == TAB_SEARCH && appleNativeRouteKey != null ->
-                    appleNativeRouteKey
+                com.music.bitchord.ui.screens.appleDetailVisibleOnTab(
+                    selectedTab, TAB_SEARCH, appleShelfReturnTab,
+                ) && appleNativeRouteKey != null -> appleNativeRouteKey
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
@@ -5767,6 +5777,9 @@ private fun BitChordApp(
                             // three of its own controls — Apple Music leaves the
                             // profile off its album pages too.
                             if (!appleSearchRootChrome && !isReleaseDetail &&
+                                !(toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                                    visualDetail?.type == BrowseType.ALBUM &&
+                                    appleSharedVisual?.page?.browseId == visualDetail.browseId) &&
                                 !(toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
                                     visualDetail?.type == BrowseType.ARTIST &&
                                     detailActiveShelf == null) &&

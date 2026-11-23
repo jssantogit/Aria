@@ -14,6 +14,7 @@ import com.music.bitchord.ui.screens.appleNativeDetailKind
 import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
 import com.music.bitchord.ui.screens.appleNativePendingDetail
 import com.music.bitchord.ui.screens.appleNativeShelfEntry
+import com.music.bitchord.ui.screens.appleDetailVisibleOnTab
 import com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl
 import org.junit.Assert.*
 import org.junit.Test
@@ -141,6 +142,16 @@ class AppleNativeDetailNavigationTest {
         assertNull(appleNativeShelfEntry(
             "discogs:release:500", listOf(artistShelfRow, relatedRow),
         ))
+    }
+
+    @Test fun appleHomeAlbumDoesNotTurnExploreIntoTheSearchTab() {
+        // 0=Home, 1=Explore, 4=Search in BitChord's root navigation.
+        assertTrue(appleDetailVisibleOnTab(0, 4, 0))
+        assertTrue(appleDetailVisibleOnTab(1, 4, 1))
+        assertTrue(appleDetailVisibleOnTab(4, 4, null))
+        assertFalse(appleDetailVisibleOnTab(2, 4, 0))
+        assertFalse(appleDetailVisibleOnTab(0, 4, null))
+        assertFalse(appleDetailVisibleOnTab(1, 4, 0))
     }
 
     @Test fun providerOverflowOnlyOpensExactVerifiedAppleStorefrontProduct() {

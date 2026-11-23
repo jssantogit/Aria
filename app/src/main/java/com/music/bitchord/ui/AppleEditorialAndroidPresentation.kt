@@ -240,7 +240,8 @@ internal fun appleFirstGenreShelves(
     val recent = releases.filter { row ->
         row.releaseDate?.take(10)?.let { raw ->
             runCatching { LocalDate.parse(raw) }.getOrNull()?.let { date ->
-                recentCutoff != null && date >= recentCutoff && date <= today
+                today != null && recentCutoff != null &&
+                    date >= recentCutoff && date <= today
             }
         } == true
     }
