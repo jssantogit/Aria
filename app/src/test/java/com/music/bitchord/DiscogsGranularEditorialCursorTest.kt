@@ -363,4 +363,102 @@ class DiscogsGranularEditorialCursorTest {
         assertEquals(DiscogsEditorialResult.Unauthorized, denied.failure)
         assertEquals(2, indexReads)
     }
+
+    @Test fun overlappingGenreAndStyleReuseOnlyVerifiedMasterReleasePair() = runBlocking {
+        var indexReads = 0
+        val masterReads = mutableListOf<Long>()
+        val releaseReads = mutableListOf<Long>()
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    indexReads++
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":1,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    masterReads += id
+                    return DiscogsLookupResult.FoundMaster(
+                        this@DiscogsGranularEditorialCursorTest.master(id),
+                    )
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    releaseReads += id
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsGranularEditorialCursorTest.release(id - 1000L),
+                    )
+                }
+            },
+        )
+        val initial = client.discover(DiscogsEditorialQuery("Rock", false), 1)
+            as DiscogsEditorialResult.Verified
+        assertEquals(listOf(1L), initial.releases.map { it.masterId })
+        // The other source predicate is independently fetched, but its exact
+        // already-verified Master/Release pair never spends two extra HTTP reads.
+        val same = client.discoverGranular(
+            DiscogsEditorialQuery("Indie Rock", true, requiredGenre = "Rock"),
+            maxCandidates = 1,
+        ) as DiscogsGranularRead.Page
+        assertEquals(listOf(1L), same.releases.map { it.masterId })
+        assertEquals(2, indexReads)
+        assertEquals(listOf(1L), masterReads)
+        assertEquals(listOf(1001L), releaseReads)
+        // Cached evidence is NOT permission to fabricate a different Style.
+        val other = client.discoverGranular(
+            DiscogsEditorialQuery("Ambient", true), maxCandidates = 1,
+        ) as DiscogsGranularRead.Page
+        assertTrue(other.releases.isEmpty())
+        assertEquals(3, indexReads)
+        assertEquals(listOf(1L, 1L), masterReads)
+        assertEquals(listOf(1001L), releaseReads)
+    }
+
+    @Test fun verifiedPairExpiresBeforeItCanBeReusedAcrossPredicates() = runBlocking {
+        var nowMs = 0L
+        var masterReads = 0
+        var releaseReads = 0
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            clockMs = { nowMs },
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse = DiscogsHttpResponse(200,
+                    """{"pagination":{"page":1,"pages":1,"per_page":12},
+                        "results":[{"id":1,"type":"master"}]}""")
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    masterReads++
+                    return DiscogsLookupResult.FoundMaster(
+                        this@DiscogsGranularEditorialCursorTest.master(id),
+                    )
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    releaseReads++
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsGranularEditorialCursorTest.release(id - 1000L),
+                    )
+                }
+            },
+        )
+        assertTrue(client.discover(DiscogsEditorialQuery("Rock", false), 1)
+            is DiscogsEditorialResult.Verified)
+        nowMs = 120_001L
+        val fresh = client.discoverGranular(
+            DiscogsEditorialQuery("Indie Rock", true, "Rock"),
+        ) as DiscogsGranularRead.Page
+        assertEquals(1, fresh.releases.size)
+        assertEquals(2, masterReads)
+        assertEquals(2, releaseReads)
+    }
 }
