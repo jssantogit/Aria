@@ -210,6 +210,24 @@ class CanonicalCuratedHomeFeedTest {
         assertEquals(8, shelves.first().items.size)
     }
 
+    @Test fun cachedHomeHeroUsesSourceOwnedCoverBeforePlaceholderWhenBothRecent() {
+        val newest = release.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000001",
+            title = "No cover yet", releaseKind = "Album",
+            releaseDate = "2026-10-21", artworkUri = null,
+        )
+        val withArt = release.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000002",
+            title = "Verified cover", releaseKind = "Album",
+            releaseDate = "2026-10-11",
+            artworkUri = "https://coverartarchive.org/release-group/60000000-0000-4000-8000-000000000002/front-500",
+        )
+        val shelves = feed(listOf(newest, withArt))
+        assertEquals("Verified cover",
+            shelves.first { it.title == "Lançamentos" }.items.first().title)
+        assertTrue(shelves.none { it.title == "Em alta" })
+    }
+
     @Test fun finiteCachedHomeSampleReservesAlbumBehindThirtyRecentSingles() {
         val singles = (1..36).map { index ->
             release.copy(
