@@ -44,6 +44,17 @@ jobs:
     steps:
       - name: Checkout exact candidate HEAD
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify tested checkout is the actual PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "Exact tested source: \`$actual\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -130,7 +141,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: idm-catalog-measurements-${{ github.sha }}
+          name: idm-catalog-measurements-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             idm-catalog-metrics/*.json
             app/build/test-results/testDevDebugUnitTest/
@@ -154,6 +165,17 @@ jobs:
     steps:
       - name: Checkout exact candidate HEAD
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify tested checkout is the actual PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "Exact tested source: \`$actual\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -213,7 +235,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: idm-catalog-live-observation-${{ github.sha }}
+          name: idm-catalog-live-observation-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             idm-catalog-live-metrics/*.json
             app/build/test-results/testDevDebugUnitTest/
