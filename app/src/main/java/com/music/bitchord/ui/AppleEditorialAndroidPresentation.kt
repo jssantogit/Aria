@@ -212,14 +212,15 @@ internal fun appleFirstHomeShelves(
  * displays only Apple catalog albums whose independent primaryGenreName
  * agrees with that category; MB tag hits are never copied into these rows.
  */
-internal fun appleFirstGenreShelves(
+/**
+ * Exact Apple-sourced genre identities shared by the fixed first 24 cards
+ * and subsequent in-memory reveals. No iTunes offset is fabricated.
+ */
+internal fun appleSourceGenreCandidates(
     tag: String,
     appleAlbums: List<ItunesEditorialRelease>,
-    publicPlaylists: HomeShelf?,
-    releaseHeading: String,
-    todayIsoDate: String = LocalDate.now(java.time.ZoneOffset.UTC).toString(),
-): List<HomeShelf> {
-    val releases = appleAlbums.asSequence()
+): List<ItunesEditorialRelease> {
+    return appleAlbums.asSequence()
         .filter { album ->
             AppleExploreGenrePolicy.matches(tag, album.genre) &&
                 album.appleCollectionId > 0L &&
@@ -233,8 +234,40 @@ internal fun appleFirstGenreShelves(
         .values.mapNotNull { rows ->
             rows.firstOrNull()?.takeIf { first -> rows.all { it == first } }
         }
-        // Artist/title probes append; preserving order avoids scroll jumps.
-        .take(24)
+}
+
+/** Reveal additional verified Apple products, without moving existing shelves. */
+internal fun appleGenreContinuationShelf(
+    tag: String,
+    selectedProviderIsApple: Boolean,
+    original: List<HomeShelf>,
+    sourceRows: List<ItunesEditorialRelease>,
+    revealedCount: Int = 24,
+): HomeShelf? {
+    if (!selectedProviderIsApple || revealedCount <= 24) return null
+    val shownIds = original.flatMap { it.items }
+        .mapNotNull { it.browseId }.toMutableSet()
+    val additional = appleSourceGenreCandidates(tag, sourceRows)
+        .drop(24)
+        .take((revealedCount - 24).coerceIn(0, 176))
+        .map(ItunesEditorialRelease::asAttributableShelfItem)
+        .filter { item ->
+            item.browseId?.let(shownIds::add) == true
+        }
+    return additional.takeIf { it.isNotEmpty() }?.let {
+        HomeShelf("Mais do gênero", it)
+    }
+}
+
+internal fun appleFirstGenreShelves(
+    tag: String,
+    appleAlbums: List<ItunesEditorialRelease>,
+    publicPlaylists: HomeShelf?,
+    releaseHeading: String,
+    todayIsoDate: String = LocalDate.now(java.time.ZoneOffset.UTC).toString(),
+): List<HomeShelf> {
+    // Keep the original curated landing viewport fixed as the source pool grows.
+    val releases = appleSourceGenreCandidates(tag, appleAlbums).take(24)
     val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull()
     val recentCutoff = today?.minusDays(180)
     val recent = releases.filter { row ->
