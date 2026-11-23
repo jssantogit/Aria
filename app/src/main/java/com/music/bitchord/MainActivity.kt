@@ -4589,6 +4589,16 @@ private fun BitChordApp(
                             onBack = null,
                             signedIn = true,
                             leadHero = true,
+                            // Native horizontal shelf paging complements the
+                            // vertical scroll boundary without changing screens.
+                            onAdditionalGenrePage = if (
+                                canonicalGenrePaging.tag == visibleGenre.tag &&
+                                canonicalGenrePaging.nextOffset != null &&
+                                com.music.bitchord.ui.canonicalGenreShowsMusicBrainzReleases(
+                                    canonicalGenreState,
+                                )
+                            ) ({ viewModel.loadMoreCanonicalGenre(visibleGenre.tag) })
+                            else null,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                         )
