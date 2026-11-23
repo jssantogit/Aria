@@ -192,6 +192,23 @@ class CanonicalPublicDiscoveryTest {
         })
     }
 
+    @Test fun directWorldwideComposerCannotPublishInvalidCachedDate() {
+        val source = canonicalPublicGenreRows(listOf(recent), "2026-11-23").single()
+        val malformed = source.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000999",
+            title = "Invalid date in direct Home", releaseDate = "2025-99",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), listOf(malformed, source),
+            "Lançamentos", "Escolha a dedo", "Em alta",
+            null, "2026-11-23",
+        )
+        assertTrue(home.flatMap { it.items }.none {
+            it.title == malformed.title
+        })
+        assertTrue(home.flatMap { it.items }.any { it.title == source.title })
+    }
+
     @Test fun directGenreComposerRejectsInvalidCachedCalendarEvidence() {
         val canonical = canonicalPublicGenreRows(listOf(recent), "2026-11-06").single()
         val invalidMonth = canonical.copy(
