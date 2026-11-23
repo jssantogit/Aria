@@ -16,6 +16,7 @@ import com.music.bitchord.ui.screens.appleNativeDetailRouteKey
 import com.music.bitchord.ui.screens.appleNativePendingDetail
 import com.music.bitchord.ui.screens.appleNativeShelfEntry
 import com.music.bitchord.ui.screens.appleDetailVisibleOnTab
+import com.music.bitchord.ui.screens.nativeArtistShelfShouldPage
 import com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl
 import org.junit.Assert.*
 import org.junit.Test
@@ -212,6 +213,14 @@ class AppleNativeDetailNavigationTest {
                 ), possiblyTruncated = false,
             ),
         )?.featuredRelease)
+    }
+
+    @Test fun nativeArtistShowAllOnlyPaginatesAfterActualNearEndScroll() {
+        assertFalse(nativeArtistShelfShouldPage(false, 23, 24))
+        assertFalse(nativeArtistShelfShouldPage(true, 2, 24))
+        assertFalse(nativeArtistShelfShouldPage(true, -1, 0))
+        assertTrue(nativeArtistShelfShouldPage(true, 21, 24))
+        assertTrue(nativeArtistShelfShouldPage(true, 23, 24))
     }
 
     @Test fun unclassifiedAppleRecentReleaseNeverClaimsAnAlbumFormat() {

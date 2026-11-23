@@ -64,6 +64,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -405,6 +407,8 @@ fun DetailScreen(
     sourceFeaturedRelease: ShelfItem? = null,
     /** Optional explicit submit for source-owned discography beyond cached pages. */
     onArtistReleaseSearch: ((String) -> Unit)? = null,
+    /** Same Apple discography pager from the native "Ver tudo" grid. */
+    onArtistReleaseLoadMore: (() -> Unit)? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
@@ -1434,6 +1438,7 @@ fun DetailScreen(
         onItemLongPress = onSectionItemLongPress,
         contentPadding = contentPadding,
         appleGroupCardPromotions = appleGroupCardPromotions,
+        onNearEnd = onArtistReleaseLoadMore,
     )
 }
 }
@@ -2171,6 +2176,14 @@ private fun ArtistCardArtwork(
     )
 }
 
+/** Never drain a short grid on first paint; request more only after scroll. */
+internal fun nativeArtistShelfShouldPage(
+    scrolling: Boolean,
+    lastVisibleIndex: Int,
+    totalItems: Int,
+): Boolean = scrolling && totalItems > 0 &&
+    lastVisibleIndex >= totalItems - 4
+
 @Composable
 private fun ArtistShelfGridPage(
     shelf: HomeShelf,
@@ -2180,8 +2193,22 @@ private fun ArtistShelfGridPage(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
+    onNearEnd: (() -> Unit)? = null,
 ) {
     val gridState = rememberLazyGridState()
+    LaunchedEffect(gridState, shelf.items.size, onNearEnd) {
+        if (onNearEnd != null) {
+            snapshotFlow {
+                val layout = gridState.layoutInfo
+                nativeArtistShelfShouldPage(
+                    scrolling = gridState.isScrollInProgress,
+                    lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                    totalItems = layout.totalItemsCount,
+                )
+            }.first { it }
+            onNearEnd()
+        }
+    }
     BoxWithConstraints(modifier.fillMaxSize().background(palette.background)) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
         LazyVerticalGrid(

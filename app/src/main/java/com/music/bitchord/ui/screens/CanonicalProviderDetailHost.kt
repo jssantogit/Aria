@@ -98,7 +98,7 @@ internal fun CanonicalProviderDetailHost(
         it.artist.browseId == routeKey
     } else null
     val canContinueApple = appleArtist?.hasMore == true &&
-        appleArtist.loadingMore == false
+        appleArtist.loadingMore == false && !searching
     LaunchedEffect(routeKey, canContinueApple, appleArtist?.albums?.size) {
         if (canContinueApple) {
             snapshotFlow {
@@ -159,6 +159,8 @@ internal fun CanonicalProviderDetailHost(
         sourceFeaturedRelease = applePage?.featuredRelease,
         onArtistReleaseSearch = if (appleArtist != null)
             viewModel::searchMoreAppleEditorialArtist else null,
+        onArtistReleaseLoadMore = if (canContinueApple)
+            viewModel::loadMoreAppleEditorialArtist else null,
         onSectionItemLongPress = onSectionItemLongPress,
         onCanonicalFeaturedReleaseOpen = if (isDiscogs) null
             else viewModel::openCanonicalNativeDetail,
