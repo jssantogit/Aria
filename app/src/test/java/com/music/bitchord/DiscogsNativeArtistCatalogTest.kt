@@ -132,7 +132,65 @@ class DiscogsNativeArtistCatalogTest {
         assertEquals(listOf(listOf(50L)), emissions)
         assertEquals(listOf(50L), result.releases.map { it.releaseId })
         assertTrue(result.incomplete)
+        assertTrue(result.retryCurrentPage)
         assertFalse(result.hasMore)
+    }
+
+    @Test fun interruptedFinalArtistPageIsRetriedBeforeAdvancingAndClosesIncompleteGap() = runBlocking {
+        val requestedPages = mutableListOf<Int>()
+        val releaseCalls = mutableListOf<Long>()
+        var throttleSecondRelease = true
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true,
+            admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String): DiscogsHttpResponse {
+                    requestedPages += page
+                    return DiscogsHttpResponse(200, if (page == 1) """
+                        {"pagination":{"page":1,"pages":2},"releases":[
+                            {"id":50,"role":"Main","type":"release","title":"First"},
+                            {"id":51,"role":"Main","type":"release","title":"Second"}
+                        ]}""" else """
+                        {"pagination":{"page":2,"pages":2},"releases":[
+                            {"id":52,"role":"Main","type":"release","title":"Third"}
+                        ]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    releaseCalls += id
+                    return if (id == 51L && throttleSecondRelease) {
+                        throttleSecondRelease = false
+                        DiscogsLookupResult.Throttled(9L)
+                    } else DiscogsLookupResult.Found(release(id))
+                }
+            },
+        )
+        val partial = source.load(17, 1) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(50L), partial.releases.map { it.releaseId })
+        assertTrue(partial.incomplete)
+        assertTrue(partial.retryCurrentPage)
+        assertTrue(partial.hasMore)
+
+        // The session must request page 1 again rather than silently skipping
+        // release 51. The duplicate verified release is safe to merge by ID.
+        val retried = source.load(17, 1) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(50L, 51L), retried.releases.map { it.releaseId })
+        assertFalse(retried.incomplete)
+        assertFalse(retried.retryCurrentPage)
+        assertTrue(retried.hasMore)
+
+        val finalPage = source.load(17, 2) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(52L), finalPage.releases.map { it.releaseId })
+        assertFalse(finalPage.retryCurrentPage)
+        assertFalse(finalPage.hasMore)
+        assertEquals(listOf(1, 1, 2), requestedPages)
+        assertEquals(listOf(50L, 51L, 50L, 51L, 52L), releaseCalls)
+        assertEquals(listOf(50L, 51L, 52L), discogsMergeArtistPageReleases(
+            partial.releases + retried.releases + finalPage.releases,
+        ).map { it.releaseId })
     }
 
     @Test fun unexpectedSourceExceptionDoesNotEscapeArtistLoader() = runBlocking {
