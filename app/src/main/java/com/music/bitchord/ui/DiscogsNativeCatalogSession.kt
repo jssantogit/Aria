@@ -15,6 +15,7 @@ import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.discogsSearchArtistRank
 import com.music.bitchord.ui.screens.discogsSearchReleaseRank
+import com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage
 import com.music.bitchord.ui.screens.NativeMetadataTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -226,7 +227,7 @@ internal class DiscogsNativeCatalogSession(
         if (query.isBlank() || searchJob?.isActive == true) return
         if (searchPage != 0 && !_searchHasMore.value) return
         val subject = query
-        val page = searchPage + 1
+        val firstPage = searchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
             _artists.value = UiState.Error(
@@ -236,45 +237,54 @@ internal class DiscogsNativeCatalogSession(
             return
         }
         val job = scope.launch(Dispatchers.IO) {
-            val result = try { searchClient.search(subject, page) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { DiscogsNativeArtistSearchResult.Unavailable }
-            if (query != subject || !authorization.isCurrent()) return@launch
-            when (result) {
-                is DiscogsNativeArtistSearchResult.Success -> {
-                    // Search API is fuzzy; reject token substrings before
-                    // publication to any tab. Discogs suffixes retain distinct IDs.
-                    val rows = result.page.artists.asSequence()
-                        .map { DiscogsNativeArtistSearchRow(it.artistId, it.name) }
-                        .filter { discogsSearchArtistRank(subject, it.name) != null }
-                        .toList()
-                    val previous = (_artists.value as? UiState.Success)?.data.orEmpty()
-                    val candidates = (previous + rows).distinctBy { it.artistId }
-                        .sortedWith(compareBy<DiscogsNativeArtistSearchRow> {
-                            discogsSearchArtistRank(subject, it.name) ?: Int.MAX_VALUE
-                        }.thenBy { it.artistId })
-                    val exact = candidates.any {
-                        (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
-                    }
-                    _artists.value = UiState.Success(
-                        if (exact) candidates.filter {
+            var currentPage = firstPage
+            while (true) {
+                val result = try { searchClient.search(subject, currentPage) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { DiscogsNativeArtistSearchResult.Unavailable }
+                if (query != subject || !authorization.isCurrent()) return@launch
+                when (result) {
+                    is DiscogsNativeArtistSearchResult.Success -> {
+                        val rows = result.page.artists.asSequence()
+                            .map { DiscogsNativeArtistSearchRow(it.artistId, it.name) }
+                            .filter { discogsSearchArtistRank(subject, it.name) != null }
+                            .toList()
+                        val previous = (_artists.value as? UiState.Success)?.data.orEmpty()
+                        searchPage = currentPage
+                        _searchHasMore.value = result.page.nextPage != null
+                        // Don't show "nothing found" merely because the
+                        // public Discogs ranking filled page one with junk.
+                        if (discogsSearchNeedsNextRelevantPage(
+                                previous.size, rows.size, result.page.nextPage,
+                            )
+                        ) {
+                            currentPage = requireNotNull(result.page.nextPage)
+                            continue
+                        }
+                        val candidates = (previous + rows).distinctBy { it.artistId }
+                            .sortedWith(compareBy<DiscogsNativeArtistSearchRow> {
+                                discogsSearchArtistRank(subject, it.name) ?: Int.MAX_VALUE
+                            }.thenBy { it.artistId })
+                        val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
-                        } else candidates.take(12),
-                    )
-                    searchPage = page
-                    _searchHasMore.value = result.page.nextPage != null
+                        }
+                        _artists.value = UiState.Success(
+                            if (exact) candidates.filter {
+                                (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
+                            } else candidates.take(12),
+                        )
+                    }
+                    DiscogsNativeArtistSearchResult.AuthenticationRequired ->
+                        _artists.value = UiState.Error("discogs_token_required")
+                    DiscogsNativeArtistSearchResult.Disabled ->
+                        _artists.value = UiState.Error("discogs_search_disabled")
+                    else -> {
+                        if (currentPage > 1 && _artists.value is UiState.Success)
+                            _searchHasMore.value = true
+                        else _artists.value = UiState.Error("discogs_catalog_unavailable")
+                    }
                 }
-                DiscogsNativeArtistSearchResult.AuthenticationRequired ->
-                    _artists.value = UiState.Error("discogs_token_required")
-                DiscogsNativeArtistSearchResult.Disabled ->
-                    _artists.value = UiState.Error("discogs_search_disabled")
-                else -> {
-                    // A page-two outage cannot erase successful page-one IDs;
-                    // keep the next-page affordance available for manual retry.
-                    if (page > 1 && _artists.value is UiState.Success) {
-                        _searchHasMore.value = true
-                    } else _artists.value = UiState.Error("discogs_catalog_unavailable")
-                }
+                break
             }
         }
         searchJob = job
@@ -286,7 +296,7 @@ internal class DiscogsNativeCatalogSession(
         if (query.isBlank() || releaseSearchJob?.isActive == true) return
         if (releaseSearchPage != 0 && !_releaseSearchHasMore.value) return
         val subject = query
-        val page = releaseSearchPage + 1
+        val firstPage = releaseSearchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
             _releasesSearch.value = UiState.Error(
@@ -296,39 +306,49 @@ internal class DiscogsNativeCatalogSession(
             return
         }
         val job = scope.launch(Dispatchers.IO) {
-            val result = try { releaseSearchClient.search(subject, page) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { DiscogsNativeReleaseSearchResult.Unavailable }
-            if (query != subject || !authorization.isCurrent()) return@launch
-            when (result) {
-                is DiscogsNativeReleaseSearchResult.Success -> {
-                    // "Illiteracy" does not match "illit". The combined
-                    // search title may contain a credit and a work title,
-                    // but is not a verified artist-ID relationship.
-                    val rows = result.page.releases.asSequence()
-                        .map { DiscogsNativeReleaseSearchRow(it.releaseId, it.title) }
-                        .filter { discogsSearchReleaseRank(subject, it.title) != null }
-                        .toList()
-                    val previous = (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
-                    _releasesSearch.value = UiState.Success(
-                        (previous + rows).distinctBy { it.releaseId }
-                            .sortedWith(compareBy<DiscogsNativeReleaseSearchRow> {
-                                discogsSearchReleaseRank(subject, it.title) ?: Int.MAX_VALUE
-                            }.thenBy { it.releaseId }),
-                    )
-                    releaseSearchPage = page
-                    _releaseSearchHasMore.value = result.page.nextPage != null
+            var currentPage = firstPage
+            while (true) {
+                val result = try { releaseSearchClient.search(subject, currentPage) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { DiscogsNativeReleaseSearchResult.Unavailable }
+                if (query != subject || !authorization.isCurrent()) return@launch
+                when (result) {
+                    is DiscogsNativeReleaseSearchResult.Success -> {
+                        val rows = result.page.releases.asSequence()
+                            .map { DiscogsNativeReleaseSearchRow(it.releaseId, it.title) }
+                            .filter { discogsSearchReleaseRank(subject, it.title) != null }
+                            .toList()
+                        val previous =
+                            (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
+                        releaseSearchPage = currentPage
+                        _releaseSearchHasMore.value = result.page.nextPage != null
+                        if (discogsSearchNeedsNextRelevantPage(
+                                previous.size, rows.size, result.page.nextPage,
+                            )
+                        ) {
+                            currentPage = requireNotNull(result.page.nextPage)
+                            continue
+                        }
+                        _releasesSearch.value = UiState.Success(
+                            (previous + rows).distinctBy { it.releaseId }
+                                .sortedWith(compareBy<DiscogsNativeReleaseSearchRow> {
+                                    discogsSearchReleaseRank(subject, it.title)
+                                        ?: Int.MAX_VALUE
+                                }.thenBy { it.releaseId }),
+                        )
+                    }
+                    DiscogsNativeReleaseSearchResult.AuthenticationRequired ->
+                        _releasesSearch.value = UiState.Error("discogs_token_required")
+                    DiscogsNativeReleaseSearchResult.Disabled ->
+                        _releasesSearch.value = UiState.Error("discogs_search_disabled")
+                    else -> {
+                        if (currentPage > 1 && _releasesSearch.value is UiState.Success)
+                            _releaseSearchHasMore.value = true
+                        else _releasesSearch.value =
+                            UiState.Error("discogs_catalog_unavailable")
+                    }
                 }
-                DiscogsNativeReleaseSearchResult.AuthenticationRequired ->
-                    _releasesSearch.value = UiState.Error("discogs_token_required")
-                DiscogsNativeReleaseSearchResult.Disabled ->
-                    _releasesSearch.value = UiState.Error("discogs_search_disabled")
-                else -> {
-                    if (page > 1 && _releasesSearch.value is UiState.Success) {
-                        _releaseSearchHasMore.value = true
-                    } else _releasesSearch.value =
-                        UiState.Error("discogs_catalog_unavailable")
-                }
+                break
             }
         }
         releaseSearchJob = job
