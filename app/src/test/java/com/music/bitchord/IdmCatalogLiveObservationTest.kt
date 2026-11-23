@@ -98,13 +98,9 @@ class IdmCatalogLiveObservationTest {
                 startDate, date, limit = 60,
             ) } catch (_: Exception) { null }
         }
-        val mbTyped = (mbResult as? MusicBrainzCatalogSearchResult.Success)
+        val mbTyped = (mbResult as? MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)
             ?.page?.items?.let { hits ->
-                // The source type remains a ReleaseGroup, not a name match.
-                @Suppress("UNCHECKED_CAST")
-                canonicalPublicReleaseRows(
-                    hits as List<MusicBrainzReleaseGroupHit>, startDate, date,
-                )
+                canonicalPublicReleaseRows(hits, startDate, date)
             }.orEmpty()
         val mbHome = canonicalCuratedHomeShelves(
             savedReleases = emptyList(), metadata = mbTyped,
@@ -122,7 +118,7 @@ class IdmCatalogLiveObservationTest {
         )
         val mbShelves = (mbProjected.state as? UiState.Success)?.data.orEmpty()
         val mbItems = cards(mbShelves)
-        val mbPage = (mbResult as? MusicBrainzCatalogSearchResult.Success)?.page
+        val mbPage = (mbResult as? MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)?.page
         report("musicbrainz", Sample(
             status = when {
                 mbResult is MusicBrainzCatalogSearchResult.Failure -> "source_error"
@@ -193,7 +189,8 @@ class IdmCatalogLiveObservationTest {
         val discogsRead = if (token == null) null else {
             val caps = setOf(ProviderCapability.CATALOG_SEARCH,
                 ProviderCapability.EDITORIAL_DISCOGRAPHY)
-            val guard = RateLimitedProviderTransport { gateFor(discogs, caps) }
+            val discogsGate = gateFor(discogs, caps)
+            val guard = RateLimitedProviderTransport { discogsGate }
             val native = DiscogsNativeGenreEditorial(
                 enabled = true, tokenProvider = { token },
                 admission = guard,
