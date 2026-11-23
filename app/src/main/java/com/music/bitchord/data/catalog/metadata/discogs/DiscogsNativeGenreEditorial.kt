@@ -272,6 +272,41 @@ internal class DiscogsNativeGenreEditorial(
         }
     }
 
+    // Master evidence can be reused even if its Genre/Style did not match the
+    // first query. It is a positive, exact source identity, not a negative
+    // result or an assertion that an unrelated Release has been checked.
+    private data class MasterEvidence(
+        val master: DiscogsMasterRecord,
+        val instantMs: Long,
+        val tokenDigest: ByteArray,
+    )
+    private val verifiedMasters = linkedMapOf<Long, MasterEvidence>()
+    private val maxVerifiedMasters = 80
+
+    private fun cachedMaster(masterId: Long, tokenDigest: ByteArray):
+        DiscogsMasterRecord? = synchronized(verifiedMasters) {
+        val evidence = verifiedMasters[masterId] ?: return@synchronized null
+        if (clockMs() - evidence.instantMs !in 0L..indexTtlMs ||
+            !evidence.tokenDigest.contentEquals(tokenDigest)
+        ) {
+            verifiedMasters.remove(masterId)
+            null
+        } else evidence.master
+    }
+
+    private fun rememberMaster(master: DiscogsMasterRecord, tokenDigest: ByteArray) {
+        if (master.link.kind != DiscogsKind.MASTER ||
+            master.link.id !in 1..999_999_999_999L
+        ) return
+        synchronized(verifiedMasters) {
+            verifiedMasters.remove(master.link.id)
+            verifiedMasters[master.link.id] =
+                MasterEvidence(master, clockMs(), tokenDigest)
+            if (verifiedMasters.size > maxVerifiedMasters)
+                verifiedMasters.remove(verifiedMasters.keys.first())
+        }
+    }
+
     // Reusing positive evidence avoids repeated Master/Release HTTP reads
     // when the same source Master appears in another Genre/Style index.
     // No negative result, token, search thumbnail or unverified row is cached.
@@ -418,10 +453,13 @@ internal class DiscogsNativeGenreEditorial(
                 position++
                 continue
             }
-            val masterResult = try { editions.master(masterId) }
+            val cached = cachedMaster(masterId, tokenDigest)
+            val masterResult = if (cached != null) {
+                DiscogsLookupResult.FoundMaster(cached)
+            } else try { editions.master(masterId) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
-            hydrated++
+            if (cached == null) hydrated++
             when (masterResult) {
                 is DiscogsLookupResult.Throttled ->
                     return interrupted(
@@ -436,7 +474,11 @@ internal class DiscogsNativeGenreEditorial(
                 else -> Unit
             }
             val master = (masterResult as? DiscogsLookupResult.FoundMaster)?.record
+            if (master != null && master.link.kind == DiscogsKind.MASTER &&
+                master.link.id == masterId
+            ) rememberMaster(master, tokenDigest)
             if (master == null || master.link.id != masterId ||
+                master.link.kind != DiscogsKind.MASTER ||
                 !discogsEditorialMasterMatches(master, query)
             ) {
                 position++
@@ -553,7 +595,10 @@ internal class DiscogsNativeGenreEditorial(
                     verified += previouslyVerified
                     continue
                 }
-                val masterResult = try { editions.master(masterId) }
+                val cached = cachedMaster(masterId, tokenDigest)
+                val masterResult = if (cached != null) {
+                    DiscogsLookupResult.FoundMaster(cached)
+                } else try { editions.master(masterId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
                 if (masterResult is DiscogsLookupResult.Throttled)
@@ -578,7 +623,9 @@ internal class DiscogsNativeGenreEditorial(
                 val master = (masterResult as? DiscogsLookupResult.FoundMaster)?.record
                     ?: continue
                 if (master.link.id != masterId ||
-                    !discogsEditorialMasterMatches(master, query)) continue
+                    master.link.kind != DiscogsKind.MASTER) continue
+                rememberMaster(master, tokenDigest)
+                if (!discogsEditorialMasterMatches(master, query)) continue
                 val releaseId = master.mainReleaseId ?: continue
                 val releaseResult = try { editions.release(releaseId) }
                 catch (cancelled: CancellationException) { throw cancelled }
