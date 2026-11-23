@@ -32,6 +32,28 @@ internal fun shouldStartAppleHomeEditorial(
     }
 }
 
+
+/** A lower-priority provider starts only after EVERY earlier editorial source
+ * has settled without eligible release shelves. Never bypass a loading source. */
+internal fun shouldStartDiscogsHomeEditorial(
+    ordered: List<ProviderKey>,
+    mbLoading: Boolean,
+    visibleHomeShelves: List<HomeShelf>,
+    releasesHeading: String,
+    appleState: UiState<List<ItunesEditorialRelease>>,
+): Boolean {
+    if (BuiltInProviderKeys.DISCOGS !in ordered) return false
+    val preceding = ordered.takeWhile { it != BuiltInProviderKeys.DISCOGS }
+    return preceding.all { source ->
+        when (source) {
+            BuiltInProviderKeys.MUSICBRAINZ -> !mbLoading &&
+                musicBrainzHomeEditorialShelves(visibleHomeShelves, releasesHeading).isEmpty()
+            BuiltInProviderKeys.ITUNES -> editorialPrimaryMiss(appleState)
+            else -> false
+        }
+    }
+}
+
 internal object CanonicalHomeEditorialDispatch {
     fun preferred(
         viewModel: MainViewModel,
@@ -68,6 +90,32 @@ internal object CanonicalHomeEditorialDispatch {
             viewModel.canonicalWorldwideLoading.value,
             visibleHomeShelves, releasesHeading,
         )) viewModel.loadAppleHomeEditorial()
+    }
+
+    fun maybeStartDiscogs(
+        viewModel: MainViewModel,
+        ordered: List<ProviderKey>,
+        mbLoading: Boolean,
+        homeShelves: List<HomeShelf>,
+        releasesHeading: String,
+        appleState: UiState<List<ItunesEditorialRelease>>,
+    ) {
+        if (shouldStartDiscogsHomeEditorial(
+            ordered, mbLoading, homeShelves, releasesHeading, appleState,
+        )) viewModel.discogsNativeCatalog.loadHomeEditorial()
+    }
+
+    fun maybeStartAfterDiscogsMiss(
+        viewModel: MainViewModel,
+        ordered: List<ProviderKey>,
+        discogsState: UiState<List<HomeShelf>>,
+    ) {
+        if (ordered.firstOrNull() != BuiltInProviderKeys.DISCOGS ||
+            !editorialPrimaryMiss(discogsState)) return
+        when (ordered.getOrNull(1)) {
+            BuiltInProviderKeys.MUSICBRAINZ -> viewModel.loadCanonicalWorldwideReleases()
+            BuiltInProviderKeys.ITUNES -> viewModel.loadAppleHomeEditorial()
+        }
     }
 
     fun maybeStartMusicBrainz(
