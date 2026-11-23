@@ -3511,6 +3511,82 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Home's first editorial shelves are immutable after publication. Scroll
+     * continues the same raw MusicBrainz source windows into an independent
+     * rail, with at most three 100-position requests per user gesture. A
+     * failed offset remains retryable and does not manufacture source EOF.
+     */
+    fun loadMoreCanonicalHome() {
+        if (worldwideReleaseJob?.isActive == true ||
+            canonicalHomePagingJob?.isActive == true
+        ) return
+        val current = _canonicalHomePaging.value
+        if (!current.hasMore || current.loading ||
+            _canonicalWorldwideLoading.value ||
+            _canonicalWorldwideReleases.value.isEmpty()
+        ) return
+        val gate = ProviderRuntime.gateOrNull() ?: return
+        val ticket = gate.open(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
+        ) ?: return
+        val generation = canonicalHomePagingEpoch.next()
+        _canonicalHomePaging.value = current.copy(loading = true, failed = false)
+        canonicalHomePagingJob = viewModelScope.launch(Dispatchers.IO) {
+            var progress = current
+            val originallyShown = _canonicalWorldwideReleases.value
+                .mapTo(hashSetOf()) { it.musicBrainzId }
+            for (batch in 1..3) {
+                val window = progress.nextWindow ?: break
+                val offset = progress.offsets.getOrNull(window) ?: break
+                val dates = progress.todayIsoDate?.let {
+                    canonicalHomeWindowDates(it, window)
+                } ?: break
+                val scanned = try {
+                    scanMusicBrainzRecentEditorial(
+                        musicBrainzEditorialSearch, dates.first, dates.second,
+                        maxPages = 1, startOffset = offset,
+                    )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) {
+                      MusicBrainzRecentEditorialScan(
+                          rows = emptyList(), attempts = 1, sourcePositions = 0,
+                          parsedRows = 0, cursorRemaining = false,
+                          sourceFailure = true, nextOffset = offset,
+                      )
+                  }
+                if (!gate.accept(ticket) ||
+                    !canonicalHomePagingEpoch.isCurrent(generation)
+                ) return@launch
+                progress = advanceCanonicalHomePage(
+                    progress, window, offset, scanned,
+                ) ?: progress.copy(loading = false, failed = true)
+                if (progress.failed || !progress.hasMore ||
+                    progress.rows.any { it.musicBrainzId !in originallyShown }
+                ) break
+                // Rows still overlapping the already published landing source
+                // are not progress to the user. Bound attempts in this gesture.
+            }
+            if (gate.accept(ticket) && canonicalHomePagingEpoch.isCurrent(generation))
+                _canonicalHomePaging.value = progress.copy(loading = false)
+        }.also { job ->
+            val unregister = gate.onRevoke(ticket) {
+                canonicalHomePagingEpoch.invalidateAndNext()
+                job.cancel()
+                _canonicalHomePaging.value = CanonicalHomePageSnapshot()
+            }
+            job.invokeOnCompletion {
+                unregister()
+                if (canonicalHomePagingEpoch.isCurrent(generation)) {
+                    _canonicalHomePaging.update { currentState ->
+                        if (currentState.loading) currentState.copy(loading = false)
+                        else currentState
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Progressively decorate the native Explore grid with REAL covers. Each
      * preview comes from a tagged MusicBrainz ReleaseGroup and its own trusted
      * CAA lookup. No random artwork or obsolete YouTube requests.
