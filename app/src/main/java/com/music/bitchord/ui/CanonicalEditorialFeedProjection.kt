@@ -156,6 +156,8 @@ internal fun projectCanonicalHomeDisplay(
     personalRecommendationShelf: HomeShelf? = null,
     chartArtistsShelf: HomeShelf? = null,
     musicBrainzPaging: CanonicalHomePageSnapshot = CanonicalHomePageSnapshot(),
+    appleHomePool: List<ItunesEditorialRelease> = emptyList(),
+    appleRevealedCount: Int = 0,
 ): List<HomeShelf> {
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         (selection.state as? UiState.Success)?.data.orEmpty() +
@@ -173,7 +175,13 @@ internal fun projectCanonicalHomeDisplay(
     val continuation = canonicalHomeContinuationShelf(
         selection.provider, original, musicBrainzPaging,
     )
-    return original + listOfNotNull(continuation)
+    val appleContinuation = appleHomeContinuationShelf(
+        selectedProviderIsApple = selection.provider == BuiltInProviderKeys.ITUNES,
+        initialShelves = original,
+        sourcePool = appleHomePool,
+        revealedCount = appleRevealedCount,
+    )
+    return original + listOfNotNull(continuation, appleContinuation)
 }
 
 internal fun projectCanonicalHomeState(
