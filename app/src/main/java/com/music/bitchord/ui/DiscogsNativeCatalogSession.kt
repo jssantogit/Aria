@@ -244,9 +244,15 @@ internal class DiscogsNativeCatalogSession(
         val job = scope.launch(Dispatchers.IO) {
             val verified = mutableListOf<DiscogsEditorialCandidate>()
             var failure: String? = null
-            for (tag in listOf("pop", "rock")) {
-                val request = discogsEditorialQueryForTag(tag) ?: continue
-                val result = try { editorialClient.discover(request, maxReleases = 4) }
+            // Diverse verified catalog slices instead of only Pop and Rock.
+            // Publish incrementally and stop at the bounded Home target; no
+            // implied chart order, genre-wide completeness or fabricated art.
+            for (tag in listOf(
+                "pop", "rock", "hip-hop", "electronic", "jazz", "k-pop",
+            )) {
+                if (verified.distinctBy { it.masterId }.size >= 10) break
+                val request = discogsEditorialQueriesForTag(tag).firstOrNull() ?: continue
+                val result = try { editorialClient.discover(request, maxReleases = 2) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsEditorialResult.Unavailable }
                 if (!lease.isCurrent()) return@launch
@@ -293,8 +299,8 @@ internal class DiscogsNativeCatalogSession(
         genreEditorialJob?.cancel()
         genreEditorialTag = tag
         genreEditorialAtMs = now
-        val query = discogsEditorialQueryForTag(tag)
-        if (query == null) {
+        val queries = discogsEditorialQueriesForTag(tag)
+        if (queries.isEmpty()) {
             _genreEditorial.value = mapOf(tag to UiState.Error(
                 "Este gênero ainda não possui correspondência verificada no Discogs.",
             ))
@@ -309,26 +315,50 @@ internal class DiscogsNativeCatalogSession(
         }
         _genreEditorial.value = mapOf(tag to UiState.Loading)
         val job = scope.launch(Dispatchers.IO) {
-            val result = try { editorialClient.discover(query, maxReleases = 6) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { DiscogsEditorialResult.Unavailable }
-            if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
-            _genreEditorial.value = mapOf(tag to when (result) {
-                is DiscogsEditorialResult.Verified -> {
-                    val shelves = discogsEditorialShelves(result.releases)
-                    if (shelves.isNotEmpty()) UiState.Success(shelves)
-                    else UiState.Error(
-                        "Nenhum lançamento com classificação Discogs verificada nesta amostra.",
+            val verified = mutableListOf<DiscogsEditorialCandidate>()
+            var failure: String? = null
+            // Source categories such as Metal / R&B require a union of
+            // independently verified Discogs Styles, not an invented Genre.
+            // Stop after a bounded set, and surface partial results promptly.
+            for (query in queries) {
+                if (verified.distinctBy { it.masterId }.size >= 6) break
+                val result = try {
+                    editorialClient.discover(
+                        query, maxReleases = (6 - verified.distinctBy { it.masterId }.size)
+                            .coerceIn(1, 6),
                     )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: Exception) { DiscogsEditorialResult.Unavailable }
+                if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
+                when (result) {
+                    is DiscogsEditorialResult.Verified -> {
+                        verified += result.releases
+                        val shelves = discogsEditorialShelves(verified)
+                        if (shelves.isNotEmpty()) {
+                            _genreEditorial.value = mapOf(tag to UiState.Success(shelves))
+                        }
+                    }
+                    DiscogsEditorialResult.Unauthorized -> {
+                        failure = "Configure o token do Discogs em Conexões."
+                        break
+                    }
+                    DiscogsEditorialResult.Disabled -> {
+                        failure = "Ative Busca e Discografia do Discogs em Provedores."
+                        break
+                    }
+                    is DiscogsEditorialResult.Throttled -> {
+                        failure = "O Discogs limitou temporariamente as consultas."
+                        break
+                    }
+                    else -> failure = "Não foi possível consultar este gênero no Discogs."
                 }
-                DiscogsEditorialResult.Unauthorized ->
-                    UiState.Error("Configure o token do Discogs em Conexões.")
-                DiscogsEditorialResult.Disabled ->
-                    UiState.Error("Ative Busca e Discografia do Discogs em Provedores.")
-                is DiscogsEditorialResult.Throttled ->
-                    UiState.Error("O Discogs limitou temporariamente as consultas.")
-                else -> UiState.Error("Não foi possível consultar este gênero no Discogs.")
-            })
+            }
+            if (!lease.isCurrent() || genreEditorialTag != tag) return@launch
+            val shelves = discogsEditorialShelves(verified)
+            _genreEditorial.value = mapOf(tag to if (shelves.isNotEmpty()) {
+                UiState.Success(shelves)
+            } else UiState.Error(failure ?:
+                "Nenhum lançamento com classificação Discogs verificada nesta amostra."))
         }
         genreEditorialJob = job
         val unregister = lease.cancelJobOnRevoke(job)
