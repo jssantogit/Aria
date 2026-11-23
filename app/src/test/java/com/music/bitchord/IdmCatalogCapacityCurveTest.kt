@@ -139,7 +139,9 @@ class IdmCatalogCapacityCurveTest {
                         error("Temporary source failure")
                     }
                     val rows = (offset until minOf(offset + 100, 150)).map { n ->
-                        val kind = if (n < 100) "Single" else "Album"
+                        // Only the last source row is an Album: its type must be
+                        // reserved before the 40-card editorial sample clips Singles.
+                        val kind = if (n == 149) "Album" else "Single"
                         """{"id":"${mbId(n + 1)}","title":"Source title $n","primary-type":"$kind","first-release-date":"2026-11-01","artist-credit":[{"name":"Fixture artist"}]}"""
                     }
                     return """{"count":150,"offset":$offset,"release-groups":[${rows.joinToString(",") }]}"""
