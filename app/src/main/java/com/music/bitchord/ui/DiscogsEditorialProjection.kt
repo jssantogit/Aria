@@ -106,15 +106,33 @@ internal fun discogsEditorialShelves(
             else -> 0
         }
     }
+    // Artist membership is the verified release's explicit artist ID,
+    // NOT a claim of genre-wide popularity or a search by stage name.
+    val artists = unique.asSequence()
+        .flatMap { it.creditedArtists.asSequence() }
+        .filter { (id, name) -> id in 1..999_999_999_999L && name.isNotBlank() }
+        .distinctBy { it.first }.take(12)
+        .map { (id, name) ->
+            ShelfItem(
+                title = discogsArtistDisplayName(name),
+                subtitle = "Artista",
+                thumbnailUrl = null, videoId = null, browseId = "discogs:artist:$id",
+            )
+        }.toList()
+    val artistShelf = artists.takeIf { it.isNotEmpty() }?.let {
+        HomeShelf(if (home) "Artistas para descobrir" else "Artistas", it)
+    }
     return if (home) listOfNotNull(
         make("Para descobrir", unique.take(2), 2),
         make("Álbuns", unique.filter { kind(it) == 1 }, 12),
         make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
         make("Mais para explorar", unique, 12),
+        artistShelf,
     ) else listOfNotNull(
         make("Lançamentos", unique.take(2), 2),
         make("Álbuns", unique.filter { kind(it) == 1 }, 12),
         make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
         make("Mais para explorar", unique, 12),
+        artistShelf,
     )
 }
