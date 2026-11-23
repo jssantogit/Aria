@@ -629,6 +629,14 @@ private fun CanonicalHomeEditorialEffects(
         discogsHomeReleases,
     ) {
         if (selectedTab == TAB_HOME) {
+            // Expired Discogs samples are actively evicted even when Home
+            // stays mounted for hours. An idle/loading preferred source must
+            // be refreshed here; the primary dispatch effect otherwise runs
+            // only when tab/order changes, leaving a permanent spinner.
+            if (catalogEditorialOrder.firstOrNull() ==
+                    com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS &&
+                discogsHomeReleases is UiState.Loading
+            ) viewModel.discogsNativeCatalog.loadHomeEditorial()
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartMusicBrainz(
                 viewModel, catalogEditorialOrder, appleHomeReleases, discogsHomeReleases,
             )
