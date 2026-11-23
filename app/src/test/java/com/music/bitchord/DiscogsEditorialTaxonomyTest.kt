@@ -97,6 +97,20 @@ class DiscogsEditorialTaxonomyTest {
         assertTrue(folk.any { it.sourceName == "Folk" })
         assertEquals(listOf("K-Pop"),
             discogsEditorialQueriesForTag("k-pop").map { it.sourceName })
+        val conscious = discogsEditorialQueriesForTag("conscious hip hop").single()
+        assertEquals("Conscious", conscious.sourceName)
+        assertEquals("Hip Hop", conscious.requiredGenre)
+        assertTrue(conscious.isStyle)
+        val hipHopMaster = DiscogsMasterRecord(
+            link = DiscogsLink(DiscogsKind.MASTER, 44),
+            title = "Conscious Release", artistNames = listOf("Artist"),
+            year = 2024, mainReleaseId = 502,
+            genres = listOf("Hip Hop"), styles = listOf("Conscious"),
+        )
+        assertTrue(discogsEditorialMasterMatches(hipHopMaster, conscious))
+        assertFalse(discogsEditorialMasterMatches(
+            hipHopMaster.copy(genres = listOf("Electronic")), conscious,
+        ))
         assertTrue(discogsEditorialQueriesForTag("not-a-real-genre").isEmpty())
     }
 
