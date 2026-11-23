@@ -115,7 +115,11 @@ internal class DiscogsNativeArtistCatalog(
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
-    suspend fun load(artistId: Long, page: Int = 1): DiscogsNativeArtistLoad {
+    suspend fun load(
+        artistId: Long,
+        page: Int = 1,
+        onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
+    ): DiscogsNativeArtistLoad {
         if (artistId !in 1..999_999_999_999L || page !in 1..100)
             return DiscogsNativeArtistLoad.InvalidArtist
         if (!enabled || !admission.permitted(
@@ -142,6 +146,7 @@ internal class DiscogsNativeArtistCatalog(
         val index = DiscogsPublicArtistParsing.page(response.body, page)
             ?: return DiscogsNativeArtistLoad.Unavailable
         val hydrated = mutableListOf<Pair<DiscogsArtistIndexEntry, DiscogsRecord>>()
+        var emitted = emptyList<DiscogsNativeArtistRelease>()
         var incomplete = index.entries.size > 6 || index.totalPages > 100
         val seenReleaseIds = HashSet<Long>()
         for (entry in index.entries.take(6)) {
@@ -207,6 +212,14 @@ internal class DiscogsNativeArtistCatalog(
                 continue
             }
             hydrated += entry to record
+            // Publish as soon as a genuine source-scoped Release is verified.
+            // Do not wait for all six (potentially rate-limited) hydrations.
+            // A disputed/unofficial/mismatched candidate is never emitted.
+            val partial = discogsNativeArtistReleases(artistId, hydrated)
+            if (partial.isNotEmpty() && partial != emitted) {
+                emitted = partial
+                onProgress(partial)
+            }
         }
         val verified = discogsNativeArtistReleases(artistId, hydrated)
         // A well-formed HTTP response can still contain unverified artist
