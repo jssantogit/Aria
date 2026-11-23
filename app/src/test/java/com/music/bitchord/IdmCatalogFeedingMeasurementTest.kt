@@ -119,6 +119,49 @@ class IdmCatalogFeedingMeasurementTest {
         assertFalse(scanned.cursorRemaining)
     }
 
+    @Test fun musicbrainzFullSourcePageKeepsRareAlbumWithoutExtraRequests() = runBlocking {
+        var requests = 0
+        val releases = (1..100).map { index ->
+            val kind = if (index == 100) "Album" else "Single"
+            val date = if (index == 100) "2026-11-01" else "2026-11-18"
+            """{"id":"${mbId(index)}","title":"Verified source fixture ${index}","primary-type":"${kind}","first-release-date":"${date}","artist-credit":[{"name":"Fixture artist"}]}"""
+        }
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>,
+                    userAgent: String,
+                ): String {
+                    requests++
+                    assertEquals("release-group", path)
+                    assertEquals("0", parameters["offset"])
+                    assertEquals("100", parameters["limit"])
+                    return """{"count":100,"offset":0,"release-groups":[""" +
+                        releases.joinToString(",") + "]}"
+                }
+            },
+        ))
+        val result = scanMusicBrainzRecentEditorial(
+            search, "2026-10-01", "2026-11-23",
+            maxPages = 1, pageSize = 100,
+        )
+        assertEquals(1, requests)
+        assertEquals(100, result.sourcePositions)
+        assertEquals(100, result.parsedRows)
+        assertFalse(result.cursorRemaining)
+        assertFalse(result.sourceFailure)
+        assertEquals(40, result.rows.size)
+        assertTrue(result.rows.any {
+            it.musicBrainzId == mbId(100) && it.releaseKind == "Album"
+        })
+        assertFalse(canonicalPublicNeedsMoreEditorialRows(result.rows))
+        measure("musicbrainz_mixed_source_page",
+            raw = 100, parsed = result.parsedRows,
+            eligible = result.rows.size, displayed = result.rows.size,
+            requests = requests, withArtwork = 0,
+            cursorRemaining = result.cursorRemaining)
+    }
+
     @Test fun musicbrainz_isolated_source_pages_flow_through_home_and_genre() = runBlocking {
         val entries = mbRows()
         val requests = mutableListOf<Pair<String, Int>>()
