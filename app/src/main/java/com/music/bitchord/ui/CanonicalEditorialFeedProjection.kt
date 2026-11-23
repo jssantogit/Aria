@@ -158,6 +158,7 @@ internal fun projectCanonicalHomeDisplay(
     musicBrainzPaging: CanonicalHomePageSnapshot = CanonicalHomePageSnapshot(),
     appleHomePool: List<ItunesEditorialRelease> = emptyList(),
     appleRevealedCount: Int = 0,
+    discogsPaging: DiscogsHomePageSnapshot = DiscogsHomePageSnapshot(),
 ): List<HomeShelf> {
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         (selection.state as? UiState.Success)?.data.orEmpty() +
@@ -181,7 +182,10 @@ internal fun projectCanonicalHomeDisplay(
         sourcePool = appleHomePool,
         revealedCount = appleRevealedCount,
     )
-    return original + listOfNotNull(continuation, appleContinuation)
+    val discogsContinuation = discogsHomeContinuationShelf(
+        selection.provider, original, discogsPaging,
+    )
+    return original + listOfNotNull(continuation, appleContinuation, discogsContinuation)
 }
 
 internal fun projectCanonicalHomeState(
