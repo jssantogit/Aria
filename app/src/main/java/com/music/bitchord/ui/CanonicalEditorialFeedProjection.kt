@@ -194,6 +194,7 @@ internal fun projectCanonicalGenreState(
     genrePopularityAuthorized: Boolean = false,
     todayIsoDate: String = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
     discogsByTag: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
+    musicBrainzPaging: CanonicalGenrePageSnapshot = CanonicalGenrePageSnapshot(),
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -234,6 +235,12 @@ internal fun projectCanonicalGenreState(
         BuiltInProviderKeys.DISCOGS to (discogsByTag[tag] ?: UiState.Loading),
     ))
     val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
+    val continuation = canonicalGenreContinuationShelf(
+        tag = tag,
+        selectedProviderIsMusicBrainz = chosen.provider == BuiltInProviderKeys.MUSICBRAINZ,
+        original = releases,
+        paging = musicBrainzPaging,
+    )
     val knownArtists = genreArtists?.takeIf {
         it.tag == tag && BuiltInProviderKeys.MUSICBRAINZ in ordered
     }?.let(::canonicalGenreArtistsShelf)
@@ -241,7 +248,7 @@ internal fun projectCanonicalGenreState(
         genrePopularityAuthorized && it.tag == tag &&
             BuiltInProviderKeys.MUSICBRAINZ in ordered
     }?.let(::canonicalGenrePopularShelf)
-    val all = releases + listOfNotNull(popular) +
+    val all = releases + listOfNotNull(continuation) + listOfNotNull(popular) +
         listOfNotNull(knownArtists) +
         listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() })
     return when {
