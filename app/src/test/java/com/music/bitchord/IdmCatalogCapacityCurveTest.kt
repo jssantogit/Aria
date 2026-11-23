@@ -123,6 +123,45 @@ class IdmCatalogCapacityCurveTest {
         assertEquals(target, scannedPositions)
         assertTrue("Late album dropped by clipping", mbId(target) in seen)
     }
+    @Test fun musicbrainzEditorialFailureRetainsExactRawRetryCursor() = runBlocking {
+        val requestedOffsets = mutableListOf<Int>()
+        var firstPageOneAttempt = true
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>,
+                    userAgent: String,
+                ): String {
+                    val offset = parameters["offset"]!!.toInt()
+                    requestedOffsets += offset
+                    if (offset == 100 && firstPageOneAttempt) {
+                        firstPageOneAttempt = false
+                        error("Temporary source failure")
+                    }
+                    val rows = (offset until minOf(offset + 100, 150)).map { n ->
+                        val kind = if (n < 100) "Single" else "Album"
+                        """{"id":"${mbId(n + 1)}","title":"Source title $n","primary-type":"$kind","first-release-date":"2026-11-01","artist-credit":[{"name":"Fixture artist"}]}"""
+                    }
+                    return """{"count":150,"offset":$offset,"release-groups":[${rows.joinToString(",") }]}"""
+                }
+            },
+        ))
+        val interrupted = scanMusicBrainzRecentEditorial(
+            source, "2026-10-01", "2026-11-23", maxPages = 2,
+        )
+        assertTrue(interrupted.sourceFailure)
+        assertEquals(100, interrupted.sourcePositions)
+        assertEquals(100, interrupted.nextOffset)
+        assertTrue(interrupted.rows.isNotEmpty())
+        val recovered = scanMusicBrainzRecentEditorial(
+            source, "2026-10-01", "2026-11-23",
+            maxPages = 1, startOffset = requireNotNull(interrupted.nextOffset),
+        )
+        assertFalse(recovered.sourceFailure)
+        assertNull(recovered.nextOffset)
+        assertTrue(recovered.rows.any { it.musicBrainzId == mbId(150) })
+        assertEquals(listOf(0, 100, 100), requestedOffsets)
+    }
     private fun appleAlbum(id: Long): ItunesCatalogItem = ItunesCatalogItem(
         type = ItunesCatalogItemType.ALBUM,
         id = id, storefront = "br", title = "Fixture Album",
