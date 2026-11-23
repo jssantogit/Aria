@@ -7,6 +7,7 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.ui.DiscogsGenrePageSnapshot
 import com.music.bitchord.ui.advanceDiscogsGenrePage
+import com.music.bitchord.ui.appendDiscogsGenreVerified
 import com.music.bitchord.ui.discogsShouldContinueEmptyCandidateScan
 import com.music.bitchord.ui.discogsGenreContinuationShelf
 import com.music.bitchord.ui.canonicalGenreShowsDiscogsReleases
@@ -21,6 +22,48 @@ class DiscogsGenreGranularPagingTest {
         year = 2024, formats = listOf("Album"),
         creditedArtists = listOf(99L to "Verified artist"),
     )
+
+    @Test fun progressiveReleaseIsVisibleBeforeCursorSettlementWithoutDuplicates() {
+        val starting = DiscogsGenrePageSnapshot(
+            tag = "rock", queryIndex = 0,
+            cursor = DiscogsEditorialCursor(1, 4, 88),
+            knownMasterIds = setOf(1L),
+            loading = true,
+        )
+        assertNull(appendDiscogsGenreVerified(starting, "metal", release(2L)))
+        assertNull(appendDiscogsGenreVerified(starting.copy(loading = false), "rock",
+            release(2L)))
+        val first = appendDiscogsGenreVerified(starting, "rock", release(2L))!!
+        assertEquals(listOf(2L), first.releases.map { it.masterId })
+        assertEquals(starting.cursor, first.cursor)
+        assertTrue(first.loading)
+        val duplicate = appendDiscogsGenreVerified(first, "rock", release(2L))!!
+        assertEquals(first, duplicate)
+        val second = appendDiscogsGenreVerified(duplicate, "rock", release(3L))!!
+        assertEquals(listOf(2L, 3L), second.releases.map { it.masterId })
+        val resolved = advanceDiscogsGenrePage(
+            starting, "rock", queryCount = 1,
+            read = DiscogsGranularRead.Page(
+                releases = listOf(release(2L), release(3L)),
+                nextCursor = DiscogsEditorialCursor(1, 8, 88),
+                consumedCandidates = 4, hydratedCandidates = 2,
+            ),
+        )!!
+        assertEquals(second.knownMasterIds, resolved.knownMasterIds)
+        assertEquals(second.releases, resolved.releases)
+        assertEquals(8, resolved.cursor!!.candidatePosition)
+        assertFalse(resolved.loading)
+        val interrupted = advanceDiscogsGenrePage(
+            starting, "rock", queryCount = 1,
+            read = DiscogsGranularRead.Interrupted(
+                listOf(release(2L)), DiscogsEditorialCursor(1, 6, 88),
+                DiscogsEditorialResult.Unavailable,
+            ),
+        )!!
+        assertEquals(listOf(2L), interrupted.releases.map { it.masterId })
+        assertTrue(interrupted.failed)
+        assertEquals(6, interrupted.cursor!!.candidatePosition)
+    }
 
     @Test fun emptyCandidatePagesAreBoundedAndDoNotStallOnAlreadyKnownMasters() {
         val initial = DiscogsGenrePageSnapshot(
