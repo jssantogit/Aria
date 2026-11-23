@@ -178,6 +178,39 @@ class DiscogsNativeCatalogPresentationTest {
         assertFalse(discogsReleasePage(artist, original).incomplete)
     }
 
+    @Test fun failedVersionIndexKeepsAlbumIncompleteWithoutInventingVersionCards() {
+        val source = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 700L),
+            title = "Verified Album",
+            artistNames = listOf("Artist"),
+            artistIds = listOf(artist.artistId),
+            country = "Brazil",
+            year = 2025,
+            labels = emptyList(),
+            barcodes = emptyList(),
+            formats = listOf("Album", "CD"),
+            tracklist = emptyList(),
+            unofficial = false,
+            masterId = 90L,
+        )
+        val initial = discogsReleasePage(artist, source)
+        assertFalse(initial.incomplete)
+        val interrupted = discogsReleasePage(
+            artist, source, versionRecords = emptyList(),
+            versionsIncomplete = true,
+        )
+        assertTrue(interrupted.incomplete)
+        assertTrue(interrupted.page.sections.none { it.title == "Versões" })
+        assertEquals("discogs:release:700", interrupted.page.browseId)
+        assertEquals(90L, interrupted.versionMasterId)
+        assertEquals(initial.editionFacts, interrupted.editionFacts)
+        // A partially verified index must never authorize clicking an
+        // imaginary edition.
+        assertNull(discogsVerifiedVersionSelection(
+            interrupted, "discogs:release:701",
+        ))
+    }
+
     @Test fun otherReleasesOnlyCollectUnconfirmedOrConflictingFormats() {
         val page = discogsArtistPage(artist, listOf(
             release(1, "Plain Album", "CD", "Album"),
