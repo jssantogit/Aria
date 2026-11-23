@@ -430,18 +430,28 @@ internal fun canonicalHomeWithWorldwideEditorial(
 
     val picksIndex = shelves.indexOfFirst { it.title == picksHeading }
     val existingPicks = shelves.getOrNull(picksIndex).takeIf { picksIndex >= 0 }?.items.orEmpty()
-    val availablePicks = canonicalDailyPublicPicks(
+    // "Escolha a dedo" may contain genuine user-selected local/server
+    // assets. It must never silently absorb a deterministic public-release
+    // hash rotation and imply human curation or listening popularity.
+    val actualPicks = unique(existingPicks.distinctBy { it.browseId }.take(16))
+    if (picksIndex >= 0) {
+        if (actualPicks.isNotEmpty()) shelves[picksIndex] =
+            shelves[picksIndex].copy(items = actualPicks)
+        else shelves.removeAt(picksIndex)
+    }
+    // Unknown but verified catalog records belong to an explicitly named
+    // discovery rail, not a faux handpicked recommendation. Keep this
+    // sampling small so source-typed Album and Single shelves have room.
+    val availableDiscovery = canonicalDailyPublicPicks(
         publicRows.filterNot {
             canonicalNativeBrowseId(it) in selected ||
                 canonicalNativeBrowseId(it) in reservedIds
         },
-        todayIsoDate, limit = 24,
+        todayIsoDate, limit = 8,
     ).sortedWith(compareByDescending<ShelfItem> { !it.thumbnailUrl.isNullOrBlank() })
-    val picks = unique((existingPicks + availablePicks).distinctBy { it.browseId }.take(16))
-    if (picksIndex >= 0) {
-        if (picks.isNotEmpty()) shelves[picksIndex] = shelves[picksIndex].copy(items = picks)
-        else shelves.removeAt(picksIndex)
-    } else if (picks.isNotEmpty()) shelves.add(minOf(1, shelves.size), HomeShelf(picksHeading, picks))
+    val discovery = unique(availableDiscovery.distinctBy { it.browseId })
+    if (discovery.isNotEmpty())
+        shelves.add(minOf(1, shelves.size), HomeShelf("Para descobrir", discovery))
 
     // "Em alta" is ONLY upstream ListenBrainz evidence or verified local
     // listening evidence already present. Recent release dates are not charts.
