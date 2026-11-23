@@ -80,7 +80,10 @@ private fun canonicalCatalogReleaseDateNotFuture(
 internal fun canonicalPublicGenreRows(
     hits: List<MusicBrainzReleaseGroupHit>,
     throughIsoDate: String,
+    /** Initial genre viewport stays at 40; scroll continuations retain their full page. */
+    maxItems: Int = 40,
 ): List<CanonicalCatalogSearchRow> {
+    require(maxItems in 1..100)
     val today = runCatching { LocalDate.parse(throughIsoDate) }.getOrNull()
         ?: return emptyList()
     // Keep the entire bounded source response until format-aware sampling.
@@ -99,11 +102,11 @@ internal fun canonicalPublicGenreRows(
     }.take(12).map { it.musicBrainzId }.toSet()
     val selected = albumIds + singleIds
     return (valid.filter { it.musicBrainzId in selected } +
-        valid.filterNot { it.musicBrainzId in selected }.take((40 - selected.size).coerceAtLeast(0)))
+        valid.filterNot { it.musicBrainzId in selected }.take((maxItems - selected.size).coerceAtLeast(0)))
         .sortedWith(compareByDescending<CanonicalCatalogSearchRow> {
             it.releaseDate.orEmpty()
         }.thenBy { it.musicBrainzId })
-        .take(40)
+        .take(maxItems)
 }
 
 /** Common type, identity and credit gate for world and genre discovery. */
