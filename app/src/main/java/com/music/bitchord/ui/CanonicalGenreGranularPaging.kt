@@ -11,6 +11,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.data.model.UiState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import java.util.Locale
@@ -91,6 +92,13 @@ internal fun canonicalGenreContinuationShelf(
         HomeShelf("Mais do gênero", it)
     }
 }
+
+/** Avoid paging a supplementary MB artist rail while Apple/Discogs owns releases. */
+internal fun canonicalGenreShowsMusicBrainzReleases(state: UiState<List<HomeShelf>>): Boolean =
+    (state as? UiState.Success)?.data.orEmpty().any { shelf ->
+        shelf.title in setOf("Lançamentos", "Álbuns", "Singles e EPs", "Mais para explorar", "Mais do gênero") &&
+            shelf.items.any { it.browseId.orEmpty().startsWith("catalog:RELEASE_GROUP:") }
+    }
 
 internal fun canonicalGenreNearEnd(
     scrolling: Boolean,
