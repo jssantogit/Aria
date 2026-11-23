@@ -322,12 +322,21 @@ internal class DiscogsNativeCatalogSession(
             // Diverse verified catalog slices instead of only Pop and Rock.
             // Publish incrementally and stop at the bounded Home target; no
             // implied chart order, genre-wide completeness or fabricated art.
-            for (tag in listOf(
-                "pop", "rock", "hip-hop", "electronic", "jazz", "k-pop",
-            )) {
-                if (verified.distinctBy { it.masterId }.size >= 10) break
+            for ((index, tag) in discogsHomeDiscoveryTags.withIndex()) {
+                val distinctMasters = verified.distinctBy { it.masterId }.size
+                if (distinctMasters >= 10) break
                 val request = discogsEditorialQueriesForTag(tag).firstOrNull() ?: continue
-                val result = try { editorialClient.discover(request, maxReleases = 2) }
+                // Reserve one verified slot for each later genre, so success
+                // in Pop/Rock cannot prevent K-pop, Metal, R&B and Folk
+                // from even being queried. This is discovery, not a chart.
+                val budget = discogsMultiStylePageBudget(
+                    verifiedMasters = distinctMasters,
+                    remainingQueries = discogsHomeDiscoveryTags.size - index - 1,
+                    totalSlots = 10,
+                ).coerceAtMost(2)
+                val result = try {
+                    editorialClient.discover(request, maxReleases = budget)
+                }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsEditorialResult.Unavailable }
                 if (!lease.isCurrent()) return@launch
