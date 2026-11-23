@@ -272,6 +272,70 @@ internal class DiscogsNativeGenreEditorial(
         }
     }
 
+    // Reusing positive evidence avoids repeated Master/Release HTTP reads
+    // when the same source Master appears in another Genre/Style index.
+    // No negative result, token, search thumbnail or unverified row is cached.
+    private data class VerifiedPair(
+        val master: DiscogsMasterRecord,
+        val release: DiscogsRecord,
+        val instantMs: Long,
+        val tokenDigest: ByteArray,
+    )
+    private val verifiedPairs = linkedMapOf<Long, VerifiedPair>()
+    private val maxVerifiedPairs = 80
+
+    private fun cachedPair(masterId: Long, tokenDigest: ByteArray): VerifiedPair? =
+        synchronized(verifiedPairs) {
+            val pair = verifiedPairs[masterId] ?: return@synchronized null
+            if (clockMs() - pair.instantMs !in 0L..indexTtlMs ||
+                !pair.tokenDigest.contentEquals(tokenDigest)
+            ) {
+                verifiedPairs.remove(masterId)
+                null
+            } else pair
+        }
+
+    private fun rememberVerifiedPair(
+        masterId: Long, master: DiscogsMasterRecord,
+        release: DiscogsRecord, tokenDigest: ByteArray,
+    ) {
+        synchronized(verifiedPairs) {
+            verifiedPairs.remove(masterId)
+            verifiedPairs[masterId] =
+                VerifiedPair(master, release, clockMs(), tokenDigest)
+            if (verifiedPairs.size > maxVerifiedPairs)
+                verifiedPairs.remove(verifiedPairs.keys.first())
+        }
+    }
+
+    private fun verifiedCandidate(
+        masterId: Long, master: DiscogsMasterRecord,
+        release: DiscogsRecord, query: DiscogsEditorialQuery,
+    ): DiscogsEditorialCandidate? {
+        if (master.link.kind != DiscogsKind.MASTER || master.link.id != masterId ||
+            !discogsEditorialMasterMatches(master, query)
+        ) return null
+        val releaseId = master.mainReleaseId ?: return null
+        if (release.link.kind != DiscogsKind.RELEASE ||
+            release.link.id != releaseId || release.masterId != masterId ||
+            release.unofficial || release.title.isBlank() ||
+            release.artistNames.isEmpty()
+        ) return null
+        return DiscogsEditorialCandidate(
+            masterId = masterId, releaseId = releaseId,
+            title = release.title, artist = release.artistNames.joinToString(", "),
+            year = release.year ?: master.year, formats = release.formats,
+            creditedArtists = if (release.artistIds.size == release.artistNames.size)
+                release.artistIds.zip(release.artistNames) else emptyList(),
+        )
+    }
+
+    private fun cachedCandidate(
+        masterId: Long, query: DiscogsEditorialQuery, tokenDigest: ByteArray,
+    ): DiscogsEditorialCandidate? = cachedPair(masterId, tokenDigest)?.let {
+        verifiedCandidate(masterId, it.master, it.release, query)
+    }
+
     /**
      * One bounded scroll gesture examines at most [maxCandidates] index
      * positions, regardless of how many verified releases those positions
@@ -347,6 +411,13 @@ internal class DiscogsNativeGenreEditorial(
                 position++
                 continue
             }
+            val previouslyVerified = cachedCandidate(masterId, query, tokenDigest)
+            if (previouslyVerified != null) {
+                releases += previouslyVerified
+                onVerified(previouslyVerified)
+                position++
+                continue
+            }
             val masterResult = try { editions.master(masterId) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
@@ -393,18 +464,9 @@ internal class DiscogsNativeGenreEditorial(
                 else -> Unit
             }
             val release = (releaseResult as? DiscogsLookupResult.Found)?.record
-            if (release != null && release.link.kind == DiscogsKind.RELEASE &&
-                release.link.id == releaseId && release.masterId == masterId &&
-                !release.unofficial && release.title.isNotBlank() &&
-                release.artistNames.isNotEmpty()
-            ) {
-                val verified = DiscogsEditorialCandidate(
-                    masterId = masterId, releaseId = releaseId,
-                    title = release.title, artist = release.artistNames.joinToString(", "),
-                    year = release.year ?: master.year, formats = release.formats,
-                    creditedArtists = if (release.artistIds.size == release.artistNames.size)
-                        release.artistIds.zip(release.artistNames) else emptyList(),
-                )
+            val verified = release?.let { verifiedCandidate(masterId, master, it, query) }
+            if (verified != null && release != null) {
+                rememberVerifiedPair(masterId, master, release, tokenDigest)
                 releases += verified
                 // In-place streaming changes presentation latency, not source
                 // authorization, cursor advancement or HTTP request budget.
@@ -486,6 +548,11 @@ internal class DiscogsNativeGenreEditorial(
                 // A successfully checked Master is deduplicated across pages.
                 // An unavailable/malformed transport response is NOT a check.
                 if (!hydratedMasterIds.add(masterId)) continue
+                val previouslyVerified = cachedCandidate(masterId, query, tokenDigest)
+                if (previouslyVerified != null) {
+                    verified += previouslyVerified
+                    continue
+                }
                 val masterResult = try { editions.master(masterId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
@@ -537,21 +604,11 @@ internal class DiscogsNativeGenreEditorial(
                 unresolvedMasterIds.remove(masterId)
                 val release = (releaseResult as? DiscogsLookupResult.Found)?.record
                     ?: continue
-                // No unofficial/ambiguous edition, wrong Master or unverified
-                // artist credit can enter the common Home / genre shelves.
-                if (release.link.kind != DiscogsKind.RELEASE ||
-                    release.link.id != releaseId || release.masterId != masterId ||
-                    release.unofficial || release.title.isBlank() ||
-                    release.artistNames.isEmpty()) continue
-                verified += DiscogsEditorialCandidate(
-                    masterId = masterId, releaseId = releaseId,
-                    title = release.title,
-                    artist = release.artistNames.joinToString(", "),
-                    year = release.year ?: master.year,
-                    formats = release.formats,
-                    creditedArtists = if (release.artistIds.size == release.artistNames.size)
-                        release.artistIds.zip(release.artistNames) else emptyList(),
-                )
+                // Never admit an unverified edition or a source ID that changed.
+                val candidate = verifiedCandidate(masterId, master, release, query)
+                    ?: continue
+                rememberVerifiedPair(masterId, master, release, tokenDigest)
+                verified += candidate
             }
             if (!index.hasNext || verified.size >= maxReleases) break
         }
