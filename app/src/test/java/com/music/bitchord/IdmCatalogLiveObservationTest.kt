@@ -283,6 +283,7 @@ class IdmCatalogLiveObservationTest {
                 scanMusicBrainzRecentEditorial(
                     musicBrainz, homeWindowDates.first, homeWindowDates.second,
                     maxPages = 1, startOffset = homeOffset,
+                    includeCoarseDatesForUnrankedHome = true,
                 )
             } catch (_: Exception) { null }
         } else null
