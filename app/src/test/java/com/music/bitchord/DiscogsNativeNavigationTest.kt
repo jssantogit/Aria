@@ -2,6 +2,7 @@ package com.music.bitchord
 
 import com.music.bitchord.ui.DiscogsNativeRoute
 import com.music.bitchord.ui.discogsNativeDetailRouteKey
+import com.music.bitchord.ui.discogsNativeAttributionUrl
 import com.music.bitchord.ui.discogsArtistPage
 import com.music.bitchord.ui.discogsNativeLoadingPage
 import com.music.bitchord.ui.discogsNativePageDisplayAllowed
@@ -143,4 +144,16 @@ class DiscogsNativeNavigationTest {
         assertNull(discogsNativeDetailRouteKey(artist, "discogs:artist:0017"))
         assertNull(discogsNativeDetailRouteKey(artist, "discogs:artist:1000000000000"))
     }
+    @Test fun exactProviderIdsAreTheOnlySourceOfDiscogsAttributionLinks() {
+        assertEquals("https://www.discogs.com/artist/17",
+            discogsNativeAttributionUrl("discogs:artist:17"))
+        assertEquals("https://www.discogs.com/release/500",
+            discogsNativeAttributionUrl("discogs:release:500"))
+        assertNull(discogsNativeAttributionUrl("catalog:RELEASE:500"))
+        assertNull(discogsNativeAttributionUrl("discogs:master:500"))
+        assertNull(discogsNativeAttributionUrl("discogs:release:000500"))
+        assertNull(discogsNativeAttributionUrl("discogs:release:-1"))
+        assertNull(discogsNativeAttributionUrl(null))
+    }
+
 }
