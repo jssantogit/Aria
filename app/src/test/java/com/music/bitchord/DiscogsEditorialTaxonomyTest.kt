@@ -8,6 +8,7 @@ import com.music.bitchord.data.catalog.metadata.discogs.DiscogsMasterRecord
 import com.music.bitchord.data.catalog.metadata.discogs.discogsEditorialMasterMatches
 import com.music.bitchord.ui.discogsEditorialQueryForTag
 import com.music.bitchord.ui.discogsEditorialQueriesForTag
+import com.music.bitchord.ui.discogsMultiStylePageBudget
 import com.music.bitchord.ui.discogsEditorialShelves
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -112,6 +113,26 @@ class DiscogsEditorialTaxonomyTest {
             hipHopMaster.copy(genres = listOf("Electronic")), conscious,
         ))
         assertTrue(discogsEditorialQueriesForTag("not-a-real-genre").isEmpty())
+    }
+
+    @Test fun umbrellaGenreSourceSamplingReservesSlotsForOtherVerifiedStyles() {
+        // Five actual source Styles for Metal, not a fabricated umbrella
+        // Discogs Genre. The first matching Style may not starve the rest.
+        var accepted = 0
+        val budgets = (0 until 5).map { index ->
+            discogsMultiStylePageBudget(
+                verifiedMasters = accepted, remainingQueries = 4 - index,
+            ).also { accepted += it }
+        }
+        assertEquals(listOf(2, 1, 1, 1, 1), budgets)
+        assertEquals(6, accepted)
+        assertEquals(6, discogsMultiStylePageBudget(0, 0))
+        assertEquals(0, discogsMultiStylePageBudget(6, 3))
+
+        // If the first queried Style yields nothing, later real Styles
+        // can use the unclaimed slots without inventing releases.
+        assertEquals(3, discogsMultiStylePageBudget(0, 3))
+        assertEquals(4, discogsMultiStylePageBudget(0, 2))
     }
 
     @Test fun sparseVerifiedCatalogRetainsAlbumCategoryWhenDiscoveryReusesIt() {
