@@ -80,6 +80,11 @@ internal fun discogsEditorialQueryForTag(tag: String): DiscogsEditorialQuery? {
  */
 internal fun discogsEditorialQueriesForTag(tag: String): List<DiscogsEditorialQuery> {
     discogsEditorialQueryForTag(tag)?.let { return listOf(it) }
+    if (tag == "conscious hip hop") return listOf(
+        DiscogsEditorialQuery(
+            sourceName = "Conscious", isStyle = true, requiredGenre = "Hip Hop",
+        ),
+    )
     val styles = when (tag) {
         "metal" -> listOf(
             "Heavy Metal", "Thrash", "Death Metal", "Black Metal", "Doom Metal",
