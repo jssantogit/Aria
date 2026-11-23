@@ -6,6 +6,7 @@ import com.music.bitchord.data.catalog.metadata.discogs.DiscogsNativeArtistRelea
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsRecord
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.UiState
+import com.music.bitchord.ui.discogsAlbumArtistRelatedShelf
 import com.music.bitchord.ui.discogsArtistPage
 import com.music.bitchord.ui.discogsReleasePage
 import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
@@ -48,17 +49,80 @@ class DiscogsNativeCatalogPresentationTest {
             page.page.sections.map { it.title },
         )
         assertEquals(
-            listOf("discogs:release:1", "discogs:release:6"),
+            listOf("discogs:release:1"),
             page.page.sections.first().items.map { it.browseId },
         )
-        assertEquals("Greatest Hits Live",
-            page.page.sections.last().items.single().title)
+        assertEquals(
+            setOf("discogs:release:5", "discogs:release:6"),
+            page.page.sections.last().items.map { it.browseId }.toSet(),
+        )
         assertTrue(page.page.sections.flatMap { it.items }
             .all { it.videoId == null && it.thumbnailUrl == null })
         assertTrue(page.hasMore)
         assertTrue(page.incomplete)
         assertEquals("https://www.discogs.com/artist/8303009", page.attributionUrl)
         assertTrue((page.page.songs as UiState.Success).data.isEmpty())
+    }
+
+
+    @Test fun releaseMoreByArtistOnlyUsesExactDiscogsCreditAndVerifiedEditions() {
+        val opened = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 456L),
+            title = "Current", artistNames = listOf("Artist"),
+            artistIds = listOf(artist.artistId), country = "BR", year = 2025,
+            labels = emptyList(), barcodes = emptyList(),
+            formats = listOf("Album"), tracklist = listOf("1" to "First"),
+            unofficial = false,
+            masterId = 12L,
+        )
+        val verified = listOf(
+            release(456L, "Current", "Album").copy(masterId = 12L),
+            release(600L, "Other edition of same master", "Album").copy(masterId = 12L),
+            release(601L, "Other official work", "EP"),
+            release(602L, "Another official work", "CD"),
+            release(603L, "Other artist", "Album").copy(artistId = 1234L),
+        )
+        val enriched = discogsReleasePage(artist, opened, verified)
+        assertEquals(listOf("Mais de Artist"),
+            enriched.page.sections.map { it.title })
+        assertEquals(listOf("discogs:release:601", "discogs:release:602"),
+            enriched.page.sections.single().items.map { it.browseId })
+        assertTrue(enriched.page.sections.single().items.all {
+            it.videoId == null && it.browseId.orEmpty().startsWith("discogs:release:")
+        })
+        assertEquals(listOf("First"), enriched.tracks.map { it.title })
+        assertNull(discogsAlbumArtistRelatedShelf(
+            opened.copy(artistIds = listOf(artist.artistId, 1234L)),
+            artist.name, verified,
+        ))
+        assertNull(discogsAlbumArtistRelatedShelf(
+            opened, "Unrelated", verified,
+        ))
+        assertNull(discogsAlbumArtistRelatedShelf(
+            opened.copy(unofficial = true), artist.name, verified,
+        ))
+        assertNull(discogsAlbumArtistRelatedShelf(
+            opened, artist.name, verified.filter { it.artistId != artist.artistId },
+        ))
+        assertTrue(discogsReleasePage(artist, opened).page.sections.isEmpty())
+    }
+
+    @Test fun otherReleasesOnlyCollectUnconfirmedOrConflictingFormats() {
+        val page = discogsArtistPage(artist, listOf(
+            release(1, "Plain Album", "CD", "Album"),
+            release(2, "Plain EP", "EP"),
+            release(3, "Unknown", "Vinyl"),
+            release(4, "Conflicting", "Album", "EP"),
+            release(5, "Live Compilation", "Album", "Live", "Compilation"),
+        ), hasMore = false, incomplete = false)
+        assertEquals(listOf("discogs:release:1"),
+            page.page.sections.single { it.title == "Álbuns" }.items.map { it.browseId })
+        assertEquals(listOf("discogs:release:2"),
+            page.page.sections.single { it.title == "Singles e EPs" }.items.map { it.browseId })
+        assertEquals(setOf("discogs:release:3", "discogs:release:4",
+            "discogs:release:5"),
+            page.page.sections.single { it.title == "Outros lançamentos" }
+                .items.map { it.browseId }.toSet())
     }
 
     @Test fun discogsAlbumCreditOnlyNavigatesWithOneProvenArtist() {

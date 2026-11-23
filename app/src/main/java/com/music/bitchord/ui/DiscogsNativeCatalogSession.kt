@@ -165,6 +165,9 @@ internal class DiscogsNativeCatalogSession(
     private var searchJob: Job? = null
     private var releaseSearchJob: Job? = null
     private var detailJob: Job? = null
+    // Direct Search -> Release -> related Release retains the original native
+    // album on Back. Artist -> Release continues to use cachedArtistPage.
+    private var directReleaseHistory: List<DiscogsNativePage> = emptyList()
     private var artist: DiscogsNativeArtistSearchRow? = null
     private var releases: List<DiscogsNativeArtistRelease> = emptyList()
     private var artistPage = 0
@@ -316,9 +319,20 @@ internal class DiscogsNativeCatalogSession(
      * Exact typed Discogs Release search selection. Hydrate the chosen source
      * ID directly, with no artist page or MusicBrainz requirement.
      */
-    fun openReleaseFromSearch(selected: DiscogsNativeReleaseSearchRow) {
+    fun openReleaseFromSearch(
+        selected: DiscogsNativeReleaseSearchRow,
+        retainDirectParent: Boolean = false,
+    ) {
         if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
+        val previous = if (retainDirectParent && artist == null &&
+            _route.value == DiscogsNativeRoute.RELEASE
+        ) (_detail.value as? UiState.Success)?.data?.takeIf {
+            it.page.type == BrowseType.ALBUM && it.page.browseId == _browseId.value
+        } else null
+        val history = if (previous != null)
+            (directReleaseHistory + previous).takeLast(8) else emptyList()
         backAll()
+        directReleaseHistory = history
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.RELEASE
         _detail.value = UiState.Success(discogsNativeLoadingPage(
@@ -336,14 +350,35 @@ internal class DiscogsNativeCatalogSession(
             if (!authorization.isCurrent() || artist != null ||
                 _route.value != DiscogsNativeRoute.RELEASE) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
-            _detail.value = if (record != null &&
-                record.link.kind == DiscogsKind.RELEASE &&
-                record.link.id == selected.releaseId
-            ) UiState.Success(discogsReleasePage(
-                record.artistNames.joinToString(", "), record,
-            )) else {
+            if (record == null || record.link.kind != DiscogsKind.RELEASE ||
+                record.link.id != selected.releaseId ||
+                _browseId.value != selected.browseId
+            ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
+            }
+            // First paint is never held hostage by a second source lookup.
+            val initial = discogsReleasePage(record.artistNames.joinToString(", "), record)
+            _detail.value = UiState.Success(initial)
+            val exactArtistId = initial.albumArtistBrowseId
+                ?.removePrefix("discogs:artist:")?.toLongOrNull()
+                ?.takeIf { !record.unofficial } ?: return@launch
+            // Only one bounded, independently verified Discogs Artist page.
+            // No name search and no claim of complete discography.
+            val related = try { artistClient.load(exactArtistId, 1) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
+            if (!authorization.isCurrent() || artist != null ||
+                _route.value != DiscogsNativeRoute.RELEASE ||
+                _browseId.value != selected.browseId
+            ) return@launch
+            if (related is DiscogsNativeArtistLoad.Success) {
+                val enriched = discogsReleasePage(
+                    record.artistNames.single(), record, related.releases,
+                )
+                _detail.value = UiState.Success(enriched.copy(
+                    incomplete = related.incomplete || related.hasMore,
+                ))
             }
         }
         detailJob = job
@@ -409,7 +444,27 @@ internal class DiscogsNativeCatalogSession(
     }
 
     fun openRelease(browseId: String) {
-        val parent = artist ?: return
+        val parent = artist
+        if (parent == null) {
+            // A directly opened source edition can navigate ONLY its verified
+            // "Mais do artista" entries; return to the parent album on Back.
+            val current = (_detail.value as? UiState.Success)?.data
+                ?.takeIf { _route.value == DiscogsNativeRoute.RELEASE &&
+                    it.page.browseId == _browseId.value } ?: return
+            val related = current.page.sections
+                .filter { it.title.startsWith("Mais de ") ||
+                    it.title == "Mais do artista" }
+                .flatMap { it.items }
+                .singleOrNull { it.browseId == browseId } ?: return
+            val exact = discogsNativeDetailRouteKey(
+                DiscogsNativeRoute.RELEASE, browseId,
+            )?.removePrefix("discogs:release:")?.toLongOrNull() ?: return
+            openReleaseFromSearch(
+                DiscogsNativeReleaseSearchRow(exact, related.title),
+                retainDirectParent = true,
+            )
+            return
+        }
         val release = releases.singleOrNull { it.browseId == browseId } ?: return
         val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
         detailJob?.cancel()
@@ -428,7 +483,7 @@ internal class DiscogsNativeCatalogSession(
             _detail.value = if (record != null && !record.unofficial &&
                 record.link.id == release.releaseId &&
                 parent.artistId in record.artistIds
-            ) UiState.Success(discogsReleasePage(parent, record))
+            ) UiState.Success(discogsReleasePage(parent, record, releases))
             else {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
@@ -447,6 +502,14 @@ internal class DiscogsNativeCatalogSession(
             _route.value = DiscogsNativeRoute.ARTIST
             _detail.value = cachedArtistPage?.let { UiState.Success(it) }
                 ?: UiState.Error("discogs_catalog_unavailable")
+        } else if (_route.value == DiscogsNativeRoute.RELEASE &&
+            directReleaseHistory.isNotEmpty()
+        ) {
+            val previous = directReleaseHistory.last()
+            directReleaseHistory = directReleaseHistory.dropLast(1)
+            _browseId.value = previous.page.browseId
+            _route.value = DiscogsNativeRoute.RELEASE
+            _detail.value = UiState.Success(previous)
         } else backAll()
     }
 
@@ -456,6 +519,7 @@ internal class DiscogsNativeCatalogSession(
         _route.value = null
         _browseId.value = null
         _detail.value = null
+        directReleaseHistory = emptyList()
         artist = null
         releases = emptyList()
         artistPage = 0
@@ -480,13 +544,19 @@ internal fun discogsArtistPage(
     fun has(release: DiscogsNativeArtistRelease, label: String) =
         release.formats.any { it.equals(label, ignoreCase = true) }
     val buckets = releases.groupBy { release ->
+        val album = has(release, "Album")
+        val epOrSingle = has(release, "EP") || has(release, "Single")
+        val live = has(release, "Live")
+        val compilation = has(release, "Compilation")
         when {
-            has(release, "Album") && has(release, "Live") &&
-                !has(release, "Compilation") -> "Álbuns ao vivo"
-            has(release, "Album") && has(release, "Compilation") &&
-                !has(release, "Live") -> "Coletâneas"
-            has(release, "EP") || has(release, "Single") -> "Singles e EPs"
-            has(release, "Album") -> "Álbuns"
+            // Contradictory source labels cannot be arbitrarily assigned to
+            // one of the confident categories. "Outros" means unconfirmed.
+            (album && epOrSingle) || (live && compilation) ->
+                "Outros lançamentos"
+            album && live -> "Álbuns ao vivo"
+            album && compilation -> "Coletâneas"
+            epOrSingle -> "Singles e EPs"
+            album -> "Álbuns"
             else -> "Outros lançamentos"
         }
     }
@@ -523,15 +593,65 @@ internal fun discogsArtistPage(
     )
 }
 
+/**
+ * The artist's Discogs index has already proved both the Release ID and its
+ * source-scoped Artist ID. "Mais de" is another set of releases from that
+ * artist, not the Unclassified/Outros bucket; never join by title or MBID.
+ */
+internal fun discogsAlbumArtistRelatedShelf(
+    record: DiscogsRecord,
+    artistCredit: String,
+    candidates: List<DiscogsNativeArtistRelease>,
+): HomeShelf? {
+    if (record.unofficial || record.link.kind != DiscogsKind.RELEASE) return null
+    val artistId = record.artistIds.singleOrNull()
+        ?.takeIf { it in 1..999_999_999_999L } ?: return null
+    val artistName = record.artistNames.singleOrNull()?.trim()?.takeIf {
+        it.isNotBlank() && it.equals(artistCredit.trim(), ignoreCase = true)
+    } ?: return null
+    val safe = candidates.asSequence()
+        .filter { it.artistId == artistId &&
+            it.releaseId in 1..999_999_999_999L &&
+            it.releaseId != record.link.id &&
+            (record.masterId == null || it.masterId == null ||
+                it.masterId != record.masterId) &&
+            it.title.isNotBlank()
+        }
+        .groupBy { it.releaseId }
+        .values.mapNotNull { group ->
+            group.firstOrNull()?.takeIf { first -> group.all { it == first } }
+        }
+        .sortedWith(compareByDescending<DiscogsNativeArtistRelease> { it.year ?: 0 }
+            .thenBy { it.releaseId })
+        .take(12)
+        .map { release ->
+            ShelfItem(
+                title = release.title,
+                subtitle = listOfNotNull(
+                    release.year?.toString(),
+                    release.formats.joinToString(" · ").takeIf(String::isNotBlank),
+                ).joinToString(" · "),
+                thumbnailUrl = null, videoId = null, browseId = release.browseId,
+            )
+        }
+    if (safe.isEmpty()) return null
+    val heading = artistName.takeIf { it.length <= 80 &&
+        !it.equals("Various Artists", ignoreCase = true)
+    }?.let { "Mais de $it" } ?: "Mais do artista"
+    return HomeShelf(heading, safe)
+}
+
 /** A Discogs release's tracklist is non-playable source metadata only. */
 internal fun discogsReleasePage(
     artist: DiscogsNativeArtistSearchRow,
     record: DiscogsRecord,
-): DiscogsNativePage = discogsReleasePage(artist.name, record)
+    relatedReleases: List<DiscogsNativeArtistRelease> = emptyList(),
+): DiscogsNativePage = discogsReleasePage(artist.name, record, relatedReleases)
 
 internal fun discogsReleasePage(
     artistCredit: String,
     record: DiscogsRecord,
+    relatedReleases: List<DiscogsNativeArtistRelease> = emptyList(),
 ): DiscogsNativePage = DiscogsNativePage(
     page = DetailPage(
         browseId = "discogs:release:${record.link.id}",
@@ -544,7 +664,9 @@ internal fun discogsReleasePage(
         thumbnailUrl = null,
         type = BrowseType.ALBUM,
         songs = UiState.Success(emptyList()),
-        sections = emptyList(),
+        sections = listOfNotNull(
+            discogsAlbumArtistRelatedShelf(record, artistCredit, relatedReleases),
+        ),
     ),
     tracks = record.tracklist.mapIndexed { index, (position, title) ->
         NativeMetadataTrack(
