@@ -265,6 +265,60 @@ class IdmCatalogLiveObservationTest {
             shelves = appMbShelves,
         ))
 
+        // One real Home scroll window, using the exact cursor chosen by
+        // initialCanonicalHomePageSnapshot. This is a bounded observation,
+        // never an assertion that a source has any specific number of albums.
+        val mbInitialPaging = initialCanonicalHomePageSnapshot(
+            date, narrow, wide, historical,
+        )
+        val homeWindow = mbInitialPaging.nextWindow
+        val homeOffset = homeWindow?.let(mbInitialPaging.offsets::get)
+        val homeWindowDates = homeWindow?.let {
+            canonicalHomeWindowDates(date, it)
+        }
+        val mbHomeMore = if (appMbItems.isNotEmpty() &&
+            homeWindow != null && homeOffset != null && homeWindowDates != null
+        ) withTimeoutOrNull(35_000L) {
+            try {
+                scanMusicBrainzRecentEditorial(
+                    musicBrainz, homeWindowDates.first, homeWindowDates.second,
+                    maxPages = 1, startOffset = homeOffset,
+                )
+            } catch (_: Exception) { null }
+        } else null
+        val mbHomeNext = if (mbHomeMore != null &&
+            homeWindow != null && homeOffset != null
+        ) advanceCanonicalHomePage(
+            mbInitialPaging, homeWindow, homeOffset, mbHomeMore,
+        ) else null
+        val mbHomeExtra = mbHomeNext?.let {
+            canonicalHomeContinuationShelf(mb, appMbShelves, it)
+        }
+        report("musicbrainz_home_granular", Sample(
+            status = when {
+                appMbItems.isEmpty() -> "initial_no_editorial"
+                !mbInitialPaging.hasMore -> "no_source_cursor"
+                mbHomeMore == null -> "timeout_or_unavailable"
+                mbHomeMore.sourceFailure -> "retryable_interruption"
+                mbHomeExtra == null -> "no_new_verified_records"
+                else -> "verified"
+            },
+            raw = mbHomeMore?.sourcePositions,
+            parsed = mbHomeMore?.parsedRows,
+            eligible = mbHomeMore?.rows?.size ?: 0,
+            visible = mbHomeExtra?.items?.size ?: 0,
+            requests = mbHomeMore?.attempts,
+            artwork = mbHomeExtra?.items?.count {
+                !it.thumbnailUrl.isNullOrBlank()
+            } ?: 0,
+            counts = mapOf(
+                "window_index" to (homeWindow ?: 3),
+                "cursor_after" to (mbHomeNext?.offsets
+                    ?.getOrNull(homeWindow ?: 3) ?: 0),
+                "retry_needed" to if (mbHomeMore?.sourceFailure == true) 1 else 0,
+            ),
+        ))
+
         val appleCaps = setOf(ProviderCapability.CATALOG_SEARCH,
             ProviderCapability.EDITORIAL_DISCOGRAPHY)
         val appleGate = gateFor(apple, appleCaps)
@@ -288,9 +342,11 @@ class IdmCatalogLiveObservationTest {
                 appleGenre.discoverNative(tag, storefront)
             },
         )
+        var verifiedAppleHomePool: List<ItunesEditorialRelease> = emptyList()
         val appleResult = withTimeoutOrNull(95_000L) {
-            try { appleHome.discover("br", date) }
-            catch (_: Exception) { null }
+            try { appleHome.discover(
+                "br", date, onVerifiedPool = { verifiedAppleHomePool = it },
+            ) } catch (_: Exception) { null }
         }
         val appleReleases =
             (appleResult as? AppleEditorialLoad.Success)?.releases.orEmpty()
@@ -315,6 +371,36 @@ class IdmCatalogLiveObservationTest {
             requests = appleProbes?.probesMade,
             artwork = appleItems.count { !it.thumbnailUrl.isNullOrBlank() },
             shelves = appleShelves,
+        ))
+
+        val appleHomeUnshown = appleHomeUnshownVerified(
+            verifiedAppleHomePool, appleShelves,
+        )
+        val appleHomeMore = appleHomeContinuationShelf(
+            selectedProviderIsApple = true,
+            initialShelves = appleShelves,
+            sourcePool = verifiedAppleHomePool,
+            revealedCount = 24,
+        )
+        report("itunes_home_granular", Sample(
+            status = when {
+                appleResult !is AppleEditorialLoad.Success -> "initial_unverified"
+                appleHomeUnshown.isEmpty() -> "no_unshown_verified_products"
+                else -> "verified"
+            },
+            raw = null,
+            parsed = verifiedAppleHomePool.size,
+            eligible = appleHomeUnshown.size,
+            visible = appleHomeMore?.items?.size ?: 0,
+            requests = 0,
+            artwork = appleHomeMore?.items?.count {
+                !it.thumbnailUrl.isNullOrBlank()
+            } ?: 0,
+            counts = mapOf(
+                "original_editorial_products" to appleReleases.size,
+                "source_pool_distinct" to verifiedAppleHomePool.size,
+                "first_reveal_budget" to 24,
+            ),
         ))
 
         val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
