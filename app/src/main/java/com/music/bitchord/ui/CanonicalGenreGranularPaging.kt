@@ -103,6 +103,15 @@ internal fun canonicalGenreShowsMusicBrainzReleases(state: UiState<List<HomeShel
             shelf.items.any { it.browseId.orEmpty().startsWith("catalog:RELEASE_GROUP:") }
     }
 
+/** Provider-selected Apple release rails, never an artist-only supplement. */
+internal fun canonicalGenreShowsAppleReleases(state: UiState<List<HomeShelf>>): Boolean =
+    (state as? UiState.Success)?.data.orEmpty().any { shelf ->
+        shelf.title in setOf(
+            "Para descobrir", "Lançamentos", "Álbuns", "Singles e EPs",
+            "Outros lançamentos", "Mais para explorar", "Mais do gênero",
+        ) && shelf.items.any { it.browseId.orEmpty().startsWith("itunes:") }
+    }
+
 internal fun canonicalGenreNearEnd(
     scrolling: Boolean,
     lastVisible: Int,
