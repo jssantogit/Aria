@@ -232,7 +232,9 @@ internal fun canonicalGenreEditorialShelves(
             canonicalEditorialReleaseType(it) != null &&
             !it.subtitle.isNullOrBlank() &&
             canonicalStreamingTitleIsSafe(it.title) &&
-            (it.releaseDate?.let { date -> date <= todayIsoDate } ?: true) }
+            // This composer also receives cached rows directly. Never
+            // trust lexical year/month comparisons to validate calendars.
+            canonicalCatalogReleaseDateNotFuture(it.releaseDate, todayIsoDate) }
         .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
         .sortedWith(compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
             .thenBy { it.musicBrainzId })
