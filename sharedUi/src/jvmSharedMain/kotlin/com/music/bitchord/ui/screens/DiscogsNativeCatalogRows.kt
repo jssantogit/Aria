@@ -18,3 +18,127 @@ data class DiscogsNativeReleaseSearchRow(
 ) {
     val browseId: String get() = "discogs:release:$releaseId"
 }
+
+/**
+ * Discogs Search is deliberately fuzzy. This ranks only matches supported by
+ * complete artist names or full word starts; a substring ("Illiteracy" for
+ * "illit") must never become an accepted music search result.
+ *
+ * Numeric Discogs suffixes disambiguate distinct artists. They are ignored
+ * for text relevance ONLY; the exact source artist IDs remain independent.
+ */
+private fun discogsSearchFold(value: String): String =
+    java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase(java.util.Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun discogsCoreArtistName(value: String): String =
+    discogsSearchFold(value).replace(Regex(""" \\([1-9][0-9]*\\)$"""), "")
+
+private fun discogsSearchWordStarts(text: String, query: String): Boolean =
+    text.startsWith(query) && (text.length == query.length ||
+        !text[query.length].isLetterOrDigit())
+
+fun discogsSearchArtistRank(query: String, name: String): Int? {
+    val q = discogsSearchFold(query)
+    if (q.isBlank()) return null
+    val full = discogsSearchFold(name)
+    val core = discogsCoreArtistName(name)
+    return when {
+        full == q -> 0
+        core == q -> 1
+        full.startsWith("the ") && discogsCoreArtistName(full.drop(4)) == q -> 2
+        discogsSearchWordStarts(core, q) -> 3
+        else -> null
+    }
+}
+
+/**
+ * Discogs supplies combined "artist - release" Search labels, not full
+ * release metadata. Splitting is for presentation ONLY: it neither
+ * establishes a verified Artist ID nor an Album/EP/Single classification.
+ */
+data class DiscogsSearchReleaseDisplay(val title: String, val artistCredit: String?)
+
+fun discogsSearchReleaseDisplay(rawTitle: String): DiscogsSearchReleaseDisplay {
+    val cut = rawTitle.indexOf(" - ")
+    if (cut <= 0 || cut + 3 >= rawTitle.length)
+        return DiscogsSearchReleaseDisplay(rawTitle.trim(), null)
+    val credit = rawTitle.substring(0, cut).trim()
+    val title = rawTitle.substring(cut + 3).trim()
+    return if (credit.isBlank() || title.isBlank()) {
+        DiscogsSearchReleaseDisplay(rawTitle.trim(), null)
+    } else DiscogsSearchReleaseDisplay(title, credit)
+}
+
+fun discogsSearchReleaseRank(query: String, combinedTitle: String): Int? {
+    val q = discogsSearchFold(query)
+    if (q.isBlank()) return null
+    val display = discogsSearchReleaseDisplay(combinedTitle)
+    val artistRank = display.artistCredit?.let { discogsSearchArtistRank(query, it) }
+    val title = discogsSearchFold(display.title)
+    return when {
+        artistRank != null && artistRank <= 2 -> artistRank
+        title == q -> 3
+        discogsSearchWordStarts(title, q) -> 4
+        artistRank == 3 -> 5
+        else -> null
+    }
+}
+
+sealed interface DiscogsUnifiedSearchEntry {
+    data class Artist(val row: DiscogsNativeArtistSearchRow) : DiscogsUnifiedSearchEntry
+    data class Release(val row: DiscogsNativeReleaseSearchRow) : DiscogsUnifiedSearchEntry
+}
+
+/**
+ * General search mixes provider-owned Artist and Release IDs in one native
+ * list. Typed tabs keep broader text-relevant matches. When an exact artist
+ * exists, General shows that artist and works actually credited to its
+ * name, rather than titles/works owned by unrelated artists.
+ */
+fun discogsUnifiedSearchEntries(
+    query: String,
+    artists: List<DiscogsNativeArtistSearchRow>,
+    releases: List<DiscogsNativeReleaseSearchRow>,
+): List<DiscogsUnifiedSearchEntry> {
+    val rankedArtists = artists.mapNotNull { row ->
+        discogsSearchArtistRank(query, row.name)?.let { it to row }
+    }.distinctBy { it.second.artistId }.sortedWith(
+        compareBy<Pair<Int, DiscogsNativeArtistSearchRow>> { it.first }
+            .thenBy { it.second.artistId },
+    )
+    val exactArtist = rankedArtists.any { it.first <= 2 }
+    val leaders = if (exactArtist) rankedArtists.filter { it.first <= 2 }.take(2)
+        else rankedArtists.take(2)
+    val matches = releases.mapNotNull { release ->
+        discogsSearchReleaseRank(query, release.title)?.let { rank ->
+            (rank to release).takeIf { !exactArtist || rank <= 2 }
+        }
+    }.distinctBy { it.second.releaseId }.sortedWith(
+        compareBy<Pair<Int, DiscogsNativeReleaseSearchRow>> { it.first }
+            .thenBy { it.second.releaseId },
+    )
+    return buildList {
+        leaders.forEach { add(DiscogsUnifiedSearchEntry.Artist(it.second)) }
+        matches.forEach { add(DiscogsUnifiedSearchEntry.Release(it.second)) }
+    }
+}
+
+enum class DiscogsUnifiedSearchNext { ARTISTS, RELEASES }
+
+/** A single "Mais resultados" request; do not repeatedly page fuzzy artists. */
+fun discogsUnifiedNextPage(
+    query: String,
+    artists: List<DiscogsNativeArtistSearchRow>,
+    hasMoreArtists: Boolean,
+    hasMoreReleases: Boolean,
+): DiscogsUnifiedSearchNext? {
+    if (hasMoreReleases) return DiscogsUnifiedSearchNext.RELEASES
+    if (hasMoreArtists && artists.none {
+        (discogsSearchArtistRank(query, it.name) ?: 99) <= 2
+    }) return DiscogsUnifiedSearchNext.ARTISTS
+    return null
+}
