@@ -245,7 +245,7 @@ internal class DiscogsNativeGenreEditorial(
         DiscogsEditorialIndexPage? = synchronized(recentIndexes) {
         val key = IndexKey(query, page)
         val value = recentIndexes[key] ?: return@synchronized null
-        if (clockMs() - value.instantMs !in 0..indexTtlMs) {
+        if (clockMs() - value.instantMs !in 0L..indexTtlMs) {
             recentIndexes.remove(key)
             null
         } else value.page
