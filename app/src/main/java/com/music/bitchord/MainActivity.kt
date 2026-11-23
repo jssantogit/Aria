@@ -7100,165 +7100,172 @@ private fun BitChordApp(
             ) { target ->
                 browseMenuBody(target, SongActionsPresentation.Menu)
             }
-            CanonicalSearchHeldMenus(
-                catalogRow = heldCatalogSearchRow,
-                catalogOrigin = heldCatalogSearchOrigin,
-                publicPlaylist = heldPublicPlaylistSearchRow,
-                publicPlaylistOrigin = heldPublicPlaylistSearchOrigin,
-                hazeState = hazeState,
-                bottomChromeClearance = heldChromeClearance,
-                hostProvidesBlur = true,
-                plateTint = detail?.let { detailPalette.elevated },
-                onDismissCatalog = {
-                    heldCatalogSearchRow = null
-                    heldCatalogSearchOrigin = null
-                },
-                onDismissPublicPlaylist = {
-                    heldPublicPlaylistSearchRow = null
-                    heldPublicPlaylistSearchOrigin = null
-                },
-                onOpenCatalog = { row ->
-                    if (row.kind == CanonicalSearchKind.RECORDING)
-                        communityMetadataRecording = row
-                    else viewModel.openCanonicalNativeDetail(row)
-                },
-                onOpenPublicPlaylist = openPublicSearchPlaylist,
-                onAddCatalogToPlaylist = { row ->
-                    searchMetadataPlaylistTarget = com.music.bitchord.ui.screens.CatalogSearchPlaylistTarget(
-                        kind = row.kind, id = row.musicBrainzId,
-                        title = row.title, artist = row.subtitle.orEmpty(),
-                    )
-                },
-                onAddPublicPlaylistToPlaylist = { row ->
-                    searchMetadataPlaylistTarget = com.music.bitchord.ui.screens.CatalogSearchPlaylistTarget(
-                        kind = null, id = row.mbid,
-                        title = row.title, artist = row.creator,
-                    )
-                },
-                onRateCatalog = { row ->
-                    searchMetadataRatingTarget =
-                        ("catalog:${row.kind.name}:${row.musicBrainzId}") to row.title
-                },
-                onRatePublicPlaylist = { row ->
-                    searchMetadataRatingTarget = ("public:${row.mbid}") to row.title
-                },
-                onPinCatalog = { row ->
-                    val route = "catalog:${row.kind.name}:${row.musicBrainzId}"
-                    val pinned = com.music.bitchord.ui.screens.CatalogMetadataPinRepository
-                        .get(context).toggle(com.music.bitchord.ui.screens.CatalogMetadataPin(
-                            browseId = route,
-                            title = row.title.trim(),
-                            subtitle = row.subtitle.orEmpty().take(240),
-                            artworkUrl = com.music.bitchord.ui.screens
-                                .trustedCatalogMetadataPinArtwork(row.artworkUri),
-                        ))
-                    Toast.makeText(context,
-                        if (pinned) "Fixado na Biblioteca" else "Item desafixado",
-                        Toast.LENGTH_SHORT).show()
-                },
-                onPinPublicPlaylist = { row ->
-                    val pinned = com.music.bitchord.ui.screens.LibraryPlaylistPinRepository
-                        .get(context).toggle(com.music.bitchord.ui.screens.LibraryPlaylistPin(
-                            "public:${row.mbid}", row.title, row.creator,
-                        ))
-                    Toast.makeText(context,
-                        if (pinned) "Playlist fixada" else "Playlist desafixada",
-                        Toast.LENGTH_SHORT).show()
-                },
-                onShareCatalog = { row ->
-                    val kind = when (row.kind) {
-                        CanonicalSearchKind.ARTIST -> "artist"
-                        CanonicalSearchKind.RELEASE_GROUP -> "release-group"
-                        CanonicalSearchKind.RELEASE -> "release"
-                        CanonicalSearchKind.RECORDING -> "recording"
+            // Isolate search context menus from BitChordApp's Compose-generated JVM method.
+            // The original state owners remain in the parent composition.
+            @Composable
+            fun CanonicalSearchContextOverlays() {
+                CanonicalSearchHeldMenus(
+                    catalogRow = heldCatalogSearchRow,
+                    catalogOrigin = heldCatalogSearchOrigin,
+                    publicPlaylist = heldPublicPlaylistSearchRow,
+                    publicPlaylistOrigin = heldPublicPlaylistSearchOrigin,
+                    hazeState = hazeState,
+                    bottomChromeClearance = heldChromeClearance,
+                    hostProvidesBlur = true,
+                    plateTint = detail?.let { detailPalette.elevated },
+                    onDismissCatalog = {
+                        heldCatalogSearchRow = null
+                        heldCatalogSearchOrigin = null
+                    },
+                    onDismissPublicPlaylist = {
+                        heldPublicPlaylistSearchRow = null
+                        heldPublicPlaylistSearchOrigin = null
+                    },
+                    onOpenCatalog = { row ->
+                        if (row.kind == CanonicalSearchKind.RECORDING)
+                            communityMetadataRecording = row
+                        else viewModel.openCanonicalNativeDetail(row)
+                    },
+                    onOpenPublicPlaylist = openPublicSearchPlaylist,
+                    onAddCatalogToPlaylist = { row ->
+                        searchMetadataPlaylistTarget = com.music.bitchord.ui.screens.CatalogSearchPlaylistTarget(
+                            kind = row.kind, id = row.musicBrainzId,
+                            title = row.title, artist = row.subtitle.orEmpty(),
+                        )
+                    },
+                    onAddPublicPlaylistToPlaylist = { row ->
+                        searchMetadataPlaylistTarget = com.music.bitchord.ui.screens.CatalogSearchPlaylistTarget(
+                            kind = null, id = row.mbid,
+                            title = row.title, artist = row.creator,
+                        )
+                    },
+                    onRateCatalog = { row ->
+                        searchMetadataRatingTarget =
+                            ("catalog:${row.kind.name}:${row.musicBrainzId}") to row.title
+                    },
+                    onRatePublicPlaylist = { row ->
+                        searchMetadataRatingTarget = ("public:${row.mbid}") to row.title
+                    },
+                    onPinCatalog = { row ->
+                        val route = "catalog:${row.kind.name}:${row.musicBrainzId}"
+                        val pinned = com.music.bitchord.ui.screens.CatalogMetadataPinRepository
+                            .get(context).toggle(com.music.bitchord.ui.screens.CatalogMetadataPin(
+                                browseId = route,
+                                title = row.title.trim(),
+                                subtitle = row.subtitle.orEmpty().take(240),
+                                artworkUrl = com.music.bitchord.ui.screens
+                                    .trustedCatalogMetadataPinArtwork(row.artworkUri),
+                            ))
+                        Toast.makeText(context,
+                            if (pinned) "Fixado na Biblioteca" else "Item desafixado",
+                            Toast.LENGTH_SHORT).show()
+                    },
+                    onPinPublicPlaylist = { row ->
+                        val pinned = com.music.bitchord.ui.screens.LibraryPlaylistPinRepository
+                            .get(context).toggle(com.music.bitchord.ui.screens.LibraryPlaylistPin(
+                                "public:${row.mbid}", row.title, row.creator,
+                            ))
+                        Toast.makeText(context,
+                            if (pinned) "Playlist fixada" else "Playlist desafixada",
+                            Toast.LENGTH_SHORT).show()
+                    },
+                    onShareCatalog = { row ->
+                        val kind = when (row.kind) {
+                            CanonicalSearchKind.ARTIST -> "artist"
+                            CanonicalSearchKind.RELEASE_GROUP -> "release-group"
+                            CanonicalSearchKind.RELEASE -> "release"
+                            CanonicalSearchKind.RECORDING -> "recording"
+                        }
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT,
+                                "${row.title} — ${row.subtitle.orEmpty()}\n" +
+                                    "https://musicbrainz.org/$kind/${row.musicBrainzId}")
+                        }
+                        context.startActivity(Intent.createChooser(share, "Compartilhar catálogo"))
+                    },
+                    onSharePublicPlaylist = { row ->
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "${row.title} — ${row.creator}\n" +
+                                "https://listenbrainz.org/playlist/${row.mbid}")
+                        }
+                        context.startActivity(Intent.createChooser(share, "Compartilhar playlist"))
+                    },
+                )
+                // Indexed OpenSubsonic search results are real provider-owned
+                // MediaAssets, but not Songs. This native frosted menu preserves
+                // their exact source identity and never fabricates browse/video IDs.
+                val playHeldRemoteSearch: (com.music.bitchord.ui.screens.CanonicalServerSearchRow) -> Unit =
+                    { row ->
+                        heldServerSearchRow = null
+                        heldServerSearchOrigin = null
+                        controller?.playCanonicalRemote(
+                            request = CanonicalRemotePlaybackRequest(
+                                recordingId = row.recordingId,
+                                mediaAssetId = row.mediaAssetId,
+                                providerKey = row.providerKey,
+                            ),
+                            metadata = CanonicalRemotePlaybackMetadata(
+                                title = row.title,
+                                artistDisplay = row.artistDisplay,
+                            ),
+                        )
                     }
-                    val share = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT,
-                            "${row.title} — ${row.subtitle.orEmpty()}\n" +
-                                "https://musicbrainz.org/$kind/${row.musicBrainzId}")
-                    }
-                    context.startActivity(Intent.createChooser(share, "Compartilhar catálogo"))
-                },
-                onSharePublicPlaylist = { row ->
-                    val share = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, "${row.title} — ${row.creator}\n" +
-                            "https://listenbrainz.org/playlist/${row.mbid}")
-                    }
-                    context.startActivity(Intent.createChooser(share, "Compartilhar playlist"))
-                },
-            )
-            // Indexed OpenSubsonic search results are real provider-owned
-            // MediaAssets, but not Songs. This native frosted menu preserves
-            // their exact source identity and never fabricates browse/video IDs.
-            val playHeldRemoteSearch: (com.music.bitchord.ui.screens.CanonicalServerSearchRow) -> Unit =
-                { row ->
-                    heldServerSearchRow = null
-                    heldServerSearchOrigin = null
-                    controller?.playCanonicalRemote(
-                        request = CanonicalRemotePlaybackRequest(
-                            recordingId = row.recordingId,
-                            mediaAssetId = row.mediaAssetId,
-                            providerKey = row.providerKey,
-                        ),
-                        metadata = CanonicalRemotePlaybackMetadata(
-                            title = row.title,
-                            artistDisplay = row.artistDisplay,
-                        ),
+                HeldContextMenu(
+                    item = heldServerSearchRow,
+                    held = heldServerSearchOrigin,
+                    hazeState = hazeState,
+                    bottomChromeClearance = heldChromeClearance,
+                    hostProvidesBlur = true,
+                    onDismiss = {
+                        heldServerSearchRow = null
+                        heldServerSearchOrigin = null
+                    },
+                    onPreviewClick = playHeldRemoteSearch,
+                ) { row ->
+                    com.music.bitchord.ui.components.NativeCompactMenuItem(
+                        label = "Reproduzir",
+                        onClick = { playHeldRemoteSearch(row) },
                     )
                 }
-            HeldContextMenu(
-                item = heldServerSearchRow,
-                held = heldServerSearchOrigin,
-                hazeState = hazeState,
-                bottomChromeClearance = heldChromeClearance,
-                hostProvidesBlur = true,
-                onDismiss = {
-                    heldServerSearchRow = null
-                    heldServerSearchOrigin = null
-                },
-                onPreviewClick = playHeldRemoteSearch,
-            ) { row ->
-                com.music.bitchord.ui.components.NativeCompactMenuItem(
-                    label = "Reproduzir",
-                    onClick = { playHeldRemoteSearch(row) },
-                )
-            }
-            searchMetadataPlaylistTarget?.let { target ->
-                com.music.bitchord.ui.screens.CanonicalSearchMetadataPlaylistPicker(
-                    target = target,
-                    onDismiss = { searchMetadataPlaylistTarget = null },
-                )
-            }
-            searchMetadataRatingTarget?.let { (id, title) ->
-                if (id.startsWith("catalog:RECORDING:")) {
-                    com.music.bitchord.ui.screens.CanonicalMetadataRecordingRatingDialog(
-                        recordingId = id.removePrefix("catalog:RECORDING:"),
-                        onDismiss = { searchMetadataRatingTarget = null },
+                searchMetadataPlaylistTarget?.let { target ->
+                    com.music.bitchord.ui.screens.CanonicalSearchMetadataPlaylistPicker(
+                        target = target,
+                        onDismiss = { searchMetadataPlaylistTarget = null },
                     )
-                } else {
-                    val rating = if (id.startsWith("public:")) {
-                        com.music.bitchord.ui.screens.canonicalPublicPlaylistRatingTarget(
-                            id.removePrefix("public:"),
-                        )
-                    } else com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(id)
-                    if (rating != null) {
-                        com.music.bitchord.ui.screens.CanonicalCatalogEntityRatingDialog(
-                            target = rating,
-                            title = title,
+                }
+                searchMetadataRatingTarget?.let { (id, title) ->
+                    if (id.startsWith("catalog:RECORDING:")) {
+                        com.music.bitchord.ui.screens.CanonicalMetadataRecordingRatingDialog(
+                            recordingId = id.removePrefix("catalog:RECORDING:"),
                             onDismiss = { searchMetadataRatingTarget = null },
                         )
+                    } else {
+                        val rating = if (id.startsWith("public:")) {
+                            com.music.bitchord.ui.screens.canonicalPublicPlaylistRatingTarget(
+                                id.removePrefix("public:"),
+                            )
+                        } else com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(id)
+                        if (rating != null) {
+                            com.music.bitchord.ui.screens.CanonicalCatalogEntityRatingDialog(
+                                target = rating,
+                                title = title,
+                                onDismiss = { searchMetadataRatingTarget = null },
+                            )
+                        }
                     }
                 }
-            }
-            LaunchedEffect(browseActions == null) {
-                if (browseActions == null) {
-                    browseMenuOrigin = null
-                    browseRenameInSheet = false
-                    browseRenameDirty = false
+                LaunchedEffect(browseActions == null) {
+                    if (browseActions == null) {
+                        browseMenuOrigin = null
+                        browseRenameInSheet = false
+                        browseRenameDirty = false
+                    }
                 }
+    
             }
+            CanonicalSearchContextOverlays()
 
             // ---- Reorder playlist ----
             // Full height, and the list never hands its leftover scroll to the
