@@ -352,9 +352,15 @@ class DiscogsGranularEditorialCursorTest {
         val query = DiscogsEditorialQuery("Rock", false)
         assertTrue(client.discover(query, maxReleases = 1)
             is DiscogsEditorialResult.Verified)
+        // A different syntactically valid token MUST contact the provider
+        // again rather than receiving the old credential's cached index.
+        token = "B".repeat(32)
+        val changedCredential = client.discoverGranular(query)
+        assertTrue(changedCredential is DiscogsGranularRead.Page)
+        assertEquals(2, indexReads)
         token = null
         val denied = client.discoverGranular(query) as DiscogsGranularRead.Interrupted
         assertEquals(DiscogsEditorialResult.Unauthorized, denied.failure)
-        assertEquals(1, indexReads)
+        assertEquals(2, indexReads)
     }
 }
