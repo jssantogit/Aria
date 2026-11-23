@@ -546,6 +546,65 @@ class CanonicalPublicDiscoveryTest {
         ), ids)
     }
 
+    @Test fun oneFreshAlbumSurvivesHistoricalSingleAndMoreReservations() {
+        // The old allocator could reserve the *only* exact-dated new Album
+        // for the format rail and silently remove "Lançamentos" entirely.
+        val soleFresh = recent.copy(
+            musicBrainzId = "78900000-0000-4000-8000-000000000001",
+            title = "Only verified fresh launch",
+            firstReleaseDate = "2026-11-21",
+        )
+        val historicalSingles = (1..6).map { index ->
+            another.copy(
+                musicBrainzId = "78900000-0000-4000-8000-${(100 + index).toString().padStart(12, '0')}",
+                title = "Historical single ${index}",
+                firstReleaseDate = "2024-08-${index.toString().padStart(2, '0')}",
+            )
+        }
+        val rows = canonicalPublicReleaseRows(
+            historicalSingles + soleFresh, "2023-01-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertEquals(listOf("Only verified fresh launch"),
+            home.single { it.title == "Lançamentos" }.items.map { it.title })
+        assertTrue(home.any { it.title == "Singles e EPs" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(home.none { it.title == "Em alta" })
+    }
+
+    @Test fun coveredFreshAlbumRetainsLaunchHeroAmongManyNewSingles() {
+        val covered = recent.copy(
+            musicBrainzId = "78900000-0000-4000-8000-000000000002",
+            title = "Official cover belongs to actual new album",
+            firstReleaseDate = "2026-11-16",
+            artworkUri = "https://coverartarchive.org/release-group/78900000-0000-4000-8000-000000000002/front-500",
+        )
+        val newerSinglesWithoutArt = (1..6).map { index ->
+            another.copy(
+                musicBrainzId = "78900000-0000-4000-8000-${(200 + index).toString().padStart(12, '0')}",
+                title = "More recent single ${index}",
+                firstReleaseDate = "2026-11-${(17 + index).toString().padStart(2, '0')}",
+                artworkUri = null,
+            )
+        }
+        val rows = canonicalPublicReleaseRows(
+            newerSinglesWithoutArt + covered, "2026-11-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        val hero = home.first { it.title == "Lançamentos" }.items
+        assertTrue(hero.any { it.title == covered.title && it.thumbnailUrl == covered.artworkUri })
+        val allIds = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(allIds.size, allIds.distinct().size)
+        assertTrue(home.any { it.title == "Singles e EPs" })
+    }
+
     @Test fun genreReservesOlderAlbumHiddenBehindHundredsOfRecentSingles() {
         val singles = (1..125).map { index ->
             another.copy(
