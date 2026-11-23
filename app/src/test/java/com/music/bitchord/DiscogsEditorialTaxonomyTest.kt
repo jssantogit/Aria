@@ -167,17 +167,33 @@ class DiscogsEditorialTaxonomyTest {
         assertEquals(4, discogsMultiStylePageBudget(0, 2))
     }
 
-    @Test fun sparseVerifiedCatalogRetainsAlbumCategoryWhenDiscoveryReusesIt() {
+    @Test fun sparseVerifiedCatalogRetainsAlbumWithoutFalselyCallingYearOnlyReleaseNew() {
         val one = DiscogsEditorialCandidate(
             42, 502, "Verified Album", "Verified Artist", 2025, listOf("Album"),
         )
         val shelves = discogsEditorialShelves(listOf(one))
         assertEquals(listOf("discogs:release:502"),
-            shelves.single { it.title == "Lançamentos" }.items.map { it.browseId })
+            shelves.single { it.title == "Para descobrir" }.items.map { it.browseId })
         assertEquals(listOf("discogs:release:502"),
             shelves.single { it.title == "Álbuns" }.items.map { it.browseId })
-        assertFalse(shelves.any { it.title == "Singles e EPs" })
-        assertFalse(shelves.any { it.title == "Mais para explorar" })
+        assertFalse(shelves.any { it.title == "Lançamentos" ||
+            it.title == "Singles e EPs" || it.title == "Mais para explorar" })
+    }
+
+    @Test fun currentYearAloneStillCannotProveDiscogsGenreLaunchFreshness() {
+        val candidates = listOf(
+            DiscogsEditorialCandidate(42, 502, "2026 release", "Artist", 2026, listOf("Album")),
+            DiscogsEditorialCandidate(43, 503, "2024 release", "Artist", 2024, listOf("EP")),
+        )
+        val shelves = discogsEditorialShelves(candidates, home = false)
+        assertTrue(shelves.any { it.title == "Para descobrir" })
+        assertTrue(shelves.any { it.title == "Álbuns" })
+        assertTrue(shelves.any { it.title == "Singles e EPs" })
+        assertFalse(shelves.any { it.title == "Lançamentos" || it.title == "Em alta" })
+        assertTrue(shelves.flatMap { it.items }.all {
+            it.videoId == null && it.thumbnailUrl == null &&
+                it.browseId.orEmpty().startsWith("discogs:release:")
+        })
     }
 
     @Test fun genreArtistShelfUsesOnlyVerifiedSourceIdsWithoutPlayback() {
