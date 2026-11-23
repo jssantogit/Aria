@@ -17,6 +17,7 @@ import org.junit.Test
 class CatalogEditorialPresentationTest {
     private val mb = ProviderKey("musicbrainz")
     private val apple = ProviderKey("itunes")
+    private val discogs = ProviderKey("discogs")
     private fun shelf(id: String): List<HomeShelf> =
         listOf(HomeShelf("Releases", listOf(ShelfItem(
             title = "Album", subtitle = "Artist", thumbnailUrl = null,
@@ -108,4 +109,22 @@ class CatalogEditorialPresentationTest {
             musicBrainzHomeEditorialShelves(releases, "Releases")
                 .flatMap { it.items }.map { it.browseId })
     }
+    @Test fun discogsAloneSuppliesOwnReleaseIdsWithoutOtherProviderFallback() {
+        val source = UiState.Success(shelf("discogs:release:1579"))
+        val one = selectCatalogEditorial(listOf(discogs), mapOf(discogs to source))
+        assertEquals(discogs, one.provider)
+        assertEquals(source, one.state)
+        val afterMiss = selectCatalogEditorial(listOf(mb, discogs), mapOf(
+            mb to UiState.Success(emptyList()),
+            discogs to source,
+        ))
+        assertEquals(discogs, afterMiss.provider)
+        val stillLoading = selectCatalogEditorial(listOf(mb, discogs), mapOf(
+            mb to UiState.Loading,
+            discogs to source,
+        ))
+        assertEquals(mb, stillLoading.provider)
+        assertEquals(UiState.Loading, stillLoading.state)
+    }
+
 }
