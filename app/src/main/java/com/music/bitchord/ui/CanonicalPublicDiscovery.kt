@@ -19,10 +19,30 @@ internal fun canonicalPublicReleaseRows(
     hits: List<MusicBrainzReleaseGroupHit>,
     fromIsoDate: String,
     throughIsoDate: String,
-): List<CanonicalCatalogSearchRow> = canonicalPublicTypedReleaseRows(hits, { date ->
-    date != null && date.length == 10 && date >= fromIsoDate &&
-        date <= throughIsoDate && runCatching { LocalDate.parse(date) }.isSuccess
-})
+): List<CanonicalCatalogSearchRow> {
+    // A MusicBrainz source page can hold 100 raw records. Its first 40
+    // verified rows may all be Singles even when the final row is the only
+    // real Album. Reserve both exact source-typed formats before clipping
+    // the *viewport sample*. The offset still advances by all raw rows.
+    val eligible = canonicalPublicTypedReleaseRows(hits, { date ->
+        date != null && date.length == 10 && date >= fromIsoDate &&
+            date <= throughIsoDate && runCatching { LocalDate.parse(date) }.isSuccess
+    }, maxItems = hits.size)
+    val anchors = listOfNotNull(
+        eligible.firstOrNull { canonicalEditorialReleaseType(it) == "Album" },
+        eligible.firstOrNull {
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        },
+    ).distinctBy { it.musicBrainzId }
+    val reserved = anchors.map { it.musicBrainzId }.toSet()
+    return (anchors + eligible.asSequence()
+        .filterNot { it.musicBrainzId in reserved }
+        .take((40 - anchors.size).coerceAtLeast(0))
+        .toList())
+        .sortedWith(compareByDescending<CanonicalCatalogSearchRow> {
+            it.releaseDate.orEmpty()
+        }.thenBy { it.musicBrainzId })
+}
 
 /**
  * An unknown or coarse source date is valid *catalogue* evidence, but an
