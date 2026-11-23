@@ -17,8 +17,7 @@ class HomeGenreFloatingBackClearanceTest {
     }
 
     @Test fun pushedGenreTextClearsTheIndependentFloatingBackButton() {
-        val backRight = com.music.bitchord.ui.components.PAGE_GUTTER +
-            com.music.bitchord.ui.components.AppleFloatingControlMetrics.toolbarDiameter
+        val backRight = com.music.bitchord.ui.components.PAGE_GUTTER + 40.dp
         val titleLeft = com.music.bitchord.ui.components.PAGE_GUTTER +
             homePushedGenreTitleLeadingInset()
         assertEquals(68.dp, titleLeft)
