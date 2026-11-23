@@ -83,7 +83,8 @@ internal fun discogsEditorialShelves(
             .thenBy { it.masterId })
     val assigned = HashSet<Long>()
     fun make(title: String, releases: List<DiscogsEditorialCandidate>, limit: Int): HomeShelf? {
-        val items = releases.filter { assigned.add(it.masterId) }.take(limit).map { release ->
+        val items = releases.asSequence().filter { it.masterId !in assigned }
+            .take(limit).onEach { assigned.add(it.masterId) }.map { release ->
             ShelfItem(
                 title = release.title,
                 subtitle = listOfNotNull(
@@ -92,7 +93,7 @@ internal fun discogsEditorialShelves(
                 ).joinToString(" · "),
                 thumbnailUrl = null, videoId = null, browseId = release.browseId,
             )
-        }
+        }.toList()
         return items.takeIf { it.isNotEmpty() }?.let { HomeShelf(title, it) }
     }
     fun kind(release: DiscogsEditorialCandidate): Int {
