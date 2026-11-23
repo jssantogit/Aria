@@ -37,7 +37,7 @@ class AppleGenreGranularCapacityTest {
                         assertEquals("rock", term)
                         assertEquals("br", storefront)
                         AppleEditorialLoad.Success(
-                            (1L..count.toLong()).map(::edition),
+                            (1L..count.toLong()).map { edition(it) },
                             AppleEditorialReadState.POSSIBLY_TRUNCATED,
                         )
                     },
@@ -74,7 +74,7 @@ class AppleGenreGranularCapacityTest {
         val client = AppleExploreGenreDiscovery(
             nativeSource = AppleNativeGenreSearchSource { _, _ ->
                 AppleEditorialLoad.Success(
-                    (1L..35L).map(::edition) + listOf(
+                    (1L..35L).map { edition(it) } + listOf(
                         edition(36L, "Pop"),
                         edition(37L).copy(storefront = "us"),
                         edition(38L).copy(appleScopedId = "itunes:br:album:999"),
@@ -93,7 +93,7 @@ class AppleGenreGranularCapacityTest {
     }
 
     @Test fun providerPolicyBlocksAppleOverflowWhenDiscogsOwnsGenre() {
-        val source = (1L..60L).map(::edition)
+        val source = (1L..60L).map { edition(it) }
         val apple = mapOf("rock" to UiState.Success(source))
         val discogs = mapOf("rock" to UiState.Success(listOf(
             HomeShelf("Álbuns", listOf(
