@@ -55,6 +55,22 @@ internal class AppleNativeHomeDiscovery(
         val tags = sampleTags(today, maxGenres)
         val verified = linkedMapOf<String, ItunesEditorialRelease>()
         val disputed = mutableSetOf<String>()
+        // Make all three source genres eligible before early probes fill the
+        // 36-card Home sample. Preserve source-local append order: do not
+        // reshuffle existing cards after every incremental network response.
+        val sourceIdsByGenre = tags.associateWith { linkedSetOf<String>() }
+        val perGenreShare = 36 / tags.size
+        fun balancedSample(): List<ItunesEditorialRelease> {
+            val ids = linkedSetOf<String>()
+            for (tag in tags) {
+                sourceIdsByGenre.getValue(tag).asSequence()
+                    .filter { it in verified }
+                    .take(perGenreShare)
+                    .forEach(ids::add)
+            }
+            return ids.mapNotNull(verified::get)
+        }
+        val requestedHomeSlots = 36
         var successfulProbes = 0
         var failedProbes = 0
         var emptyProbes = 0
@@ -101,14 +117,16 @@ internal class AppleNativeHomeDiscovery(
                         val id = native.appleScopedId
                         if (id in disputed) return@forEach
                         val previous = verified[id]
-                        if (previous == null) verified[id] = native
-                        else if (previous != native) {
+                        if (previous == null) {
+                            verified[id] = native
+                            sourceIdsByGenre.getValue(tag).add(id)
+                        } else if (previous != native) {
                             verified.remove(id)
                             disputed += id
                         }
                     }
                     if (accepted == 0) emptyProbes++
-                    val snapshot = verified.values.take(36)
+                    val snapshot = balancedSample()
                     if (snapshot != lastPublished &&
                         (snapshot.isNotEmpty() || lastPublished != null)
                     ) {
@@ -118,6 +136,18 @@ internal class AppleNativeHomeDiscovery(
                 }
             }
         }
+        // Vacant genre reservations return to verified products from other
+        // genres after all probes finish. Never synthesize a record to reach
+        // the shelf target, and never reintroduce disputed Apple IDs.
+        val finalIds = linkedSetOf<String>()
+        balancedSample().forEach { finalIds.add(it.appleScopedId) }
+        verified.keys.forEach { id ->
+            if (finalIds.size < requestedHomeSlots) finalIds.add(id)
+        }
+        val finalSample = finalIds.mapNotNull(verified::get)
+        if (finalSample != lastPublished &&
+            (finalSample.isNotEmpty() || lastPublished != null)
+        ) onProgress(finalSample)
         val report = AppleEditorialProbeReport(
             eligibleSeeds = GENRES.size,
             probesMade = tags.size,
@@ -131,7 +161,7 @@ internal class AppleNativeHomeDiscovery(
             ItunesCatalogFailure.UNAVAILABLE, report,
         )
         return AppleEditorialLoad.Success(
-            releases = verified.values.take(36),
+            releases = finalSample,
             state = when {
                 incomplete > 0 || failedProbes > 0 || disputed.isNotEmpty() ->
                     AppleEditorialReadState.POSSIBLY_TRUNCATED
