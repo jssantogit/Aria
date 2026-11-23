@@ -436,6 +436,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     >(null)
     internal val appleHomeProbeReport = _appleHomeProbeReport.asStateFlow()
     private val appleHomeEpoch = DiscoveryRequestEpoch()
+    private val _appleHomeVerifiedPool = MutableStateFlow<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>(emptyList())
+    internal val appleHomeVerifiedPool = _appleHomeVerifiedPool.asStateFlow()
+    private val _appleHomeRevealedCount = MutableStateFlow(0)
+    internal val appleHomeRevealedCount = _appleHomeRevealedCount.asStateFlow()
     private var appleHomeJob: Job? = null
     private var appleHomeFingerprint: String? = null
     private var appleHomeLastAttemptAtMs: Long = 0L
@@ -3323,6 +3327,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (lease == null) {
             appleHomeJob?.cancel()
             appleHomeEpoch.invalidateAndNext()
+            _appleHomeVerifiedPool.value = emptyList()
+            _appleHomeRevealedCount.value = 0
             _appleHomeReleases.value = UiState.Success(emptyList())
             return
         }
@@ -3335,6 +3341,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ) return
         appleHomeJob?.cancel()
         val generation = appleHomeEpoch.next()
+        _appleHomeVerifiedPool.value = emptyList()
+        _appleHomeRevealedCount.value = 0
         appleHomeFingerprint = fingerprint
         appleHomeLastAttemptAtMs = now
         if ((_appleHomeReleases.value as? UiState.Success)?.data.isNullOrEmpty()) {
@@ -3345,6 +3353,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 com.music.bitchord.data.catalog.metadata
                     .AppleNativeHomeDiscovery().discover(
                         storefront = "br", todayIsoDate = today, maxGenres = 3,
+                        onVerifiedPool = { pool ->
+                            if (lease.isCurrent() && appleHomeEpoch.isCurrent(generation) &&
+                                isCanonicalDiscoverySelected()
+                            ) _appleHomeVerifiedPool.value = pool
+                        },
                         onProgress = { releases ->
                             if (lease.isCurrent() && appleHomeEpoch.isCurrent(generation) &&
                                 isCanonicalDiscoverySelected()
@@ -3409,6 +3422,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.also { job ->
             val unregister = lease.cancelJobOnRevoke(job)
             job.invokeOnCompletion { unregister() }
+        }
+    }
+
+    /** Reveal only already-verified Apple Home products; no extra Search call. */
+    fun revealMoreAppleHome() {
+        if (!isCanonicalDiscoverySelected()) return
+        val lease = ProviderReadLease.acquire(
+            ProviderRuntime.gateOrNull(),
+            listOf(ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES),
+        ) ?: return
+        if (!lease.isCurrent() || _appleHomeReleases.value !is UiState.Success)
+            return
+        val maximum = _appleHomeVerifiedPool.value.size
+        _appleHomeRevealedCount.update { current ->
+            (current + 24).coerceAtMost(maximum)
         }
     }
 
@@ -4579,6 +4607,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         if (BuiltInProviderKeys.ITUNES !in nextEditorial) {
                             appleHomeJob?.cancel()
                             appleHomeEpoch.invalidateAndNext()
+                            _appleHomeVerifiedPool.value = emptyList()
+                            _appleHomeRevealedCount.value = 0
                             _appleHomeReleases.value = UiState.Success(emptyList())
                         }
                         if (restoreMbCache && isCanonicalDiscoverySelected()) {
