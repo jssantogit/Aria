@@ -70,12 +70,20 @@ internal fun discogsNativeArtistReleases(
             // Release tracklist is fetched again when the user opens its page.
             tracklist = emptyList(),
         )
-    }.distinctBy { release ->
-        // A Discogs Master groups physical versions of one catalog work.
-        // Preserve one representative card per proved Master; standalone
-        // Releases with no Master remain independent source identities.
-        release.masterId?.let { "master:$it" } ?: "release:${release.releaseId}"
-    }.toList()
+    }.let(::discogsMergeArtistPageReleases)
+}
+
+/**
+ * Deduplication is a source-scoped *display* rule, applied both within a
+ * batch and across artist pagination. A Master confirms several pressings
+ * are editions of one work; unrelated standalone Release IDs never merge.
+ * The retained first item always keeps its original, independently verified
+ * Discogs Release ID for navigation.
+ */
+internal fun discogsMergeArtistPageReleases(
+    releases: List<DiscogsNativeArtistRelease>,
+): List<DiscogsNativeArtistRelease> = releases.distinctBy { release ->
+    release.masterId?.let { "master:$it" } ?: "release:${release.releaseId}"
 }
 
 internal interface DiscogsNativeEditionReader {
