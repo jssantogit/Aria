@@ -1567,11 +1567,29 @@ private fun BitChordApp(
             discogsEditorial = discogsHomeReleases,
         )
     val canonicalHomePaging by viewModel.canonicalHomePaging.collectAsStateWithLifecycle()
+    val appleHomeVerifiedPool by viewModel.appleHomeVerifiedPool.collectAsStateWithLifecycle()
+    val appleHomeRevealedCount by viewModel.appleHomeRevealedCount.collectAsStateWithLifecycle()
+    val homeAppleEligibleExtras = com.music.bitchord.ui.appleHomeUnshownVerified(
+        appleHomeVerifiedPool,
+        (canonicalHomeEditorialSelection.state as? UiState.Success)?.data.orEmpty(),
+    ).size
+    val homeHasMoreVerified = when (canonicalHomeEditorialSelection.provider) {
+        catalogMb -> canonicalHomePaging.hasMore
+        catalogApple -> homeAppleEligibleExtras > appleHomeRevealedCount
+        else -> false
+    }
+    val loadNextVerifiedHomePage: () -> Unit = {
+        when (canonicalHomeEditorialSelection.provider) {
+            catalogMb -> viewModel.loadMoreCanonicalHome()
+            catalogApple -> viewModel.revealMoreAppleHome()
+        }
+    }
     val canonicalHomeDisplayShelves =
         com.music.bitchord.ui.rememberCanonicalHomeDisplayShelves(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
             authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
             weeklyArtistShelf, canonicalHomePaging,
+            appleHomeVerifiedPool, appleHomeRevealedCount,
         )
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
         canonicalHomeDisplayShelves, canonicalHomeEditorialSelection,
@@ -1786,11 +1804,12 @@ private fun BitChordApp(
     com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
         tag = "home",
         enabled = selectedTab == TAB_HOME && detail == null &&
+            canonicalHomeEditorialSelection.provider in setOf(catalogMb, catalogApple),
+        hasMore = homeHasMoreVerified,
+        loading = canonicalHomePaging.loading &&
             canonicalHomeEditorialSelection.provider == catalogMb,
-        hasMore = canonicalHomePaging.hasMore,
-        loading = canonicalHomePaging.loading,
         listState = homeListState,
-        onLoadMore = { viewModel.loadMoreCanonicalHome() },
+        onLoadMore = { loadNextVerifiedHomePage() },
     )
     val exploreListState = rememberLazyListState()
     // Keep expensive coroutine/composition machinery outside BitChordApp's
@@ -4569,9 +4588,8 @@ private fun BitChordApp(
                             loadingMore = canonicalHomeEditorialSelection.provider == catalogMb &&
                                 canonicalHomePaging.loading,
                             onAdditionalGenrePage = if (
-                                canonicalHomeEditorialSelection.provider == catalogMb &&
-                                canonicalHomePaging.hasMore
-                            ) ({ viewModel.loadMoreCanonicalHome() }) else null,
+                                homeHasMoreVerified
+                            ) ({ loadNextVerifiedHomePage() }) else null,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
                             // Keep live playhead state inside HomeScreen, not BitChordApp.
