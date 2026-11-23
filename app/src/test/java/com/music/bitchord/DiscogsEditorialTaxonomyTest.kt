@@ -9,6 +9,7 @@ import com.music.bitchord.data.catalog.metadata.discogs.discogsEditorialMasterMa
 import com.music.bitchord.ui.discogsEditorialQueryForTag
 import com.music.bitchord.ui.discogsEditorialQueriesForTag
 import com.music.bitchord.ui.discogsMultiStylePageBudget
+import com.music.bitchord.ui.discogsHomeDiscoveryTags
 import com.music.bitchord.ui.discogsEditorialShelves
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -113,6 +114,37 @@ class DiscogsEditorialTaxonomyTest {
             hipHopMaster.copy(genres = listOf("Electronic")), conscious,
         ))
         assertTrue(discogsEditorialQueriesForTag("not-a-real-genre").isEmpty())
+    }
+
+    @Test fun discogsOnlyHomeReservesDiscoverySlotsForKpopMetalRnbAndFolk() {
+        assertEquals(9, discogsHomeDiscoveryTags.distinct().size)
+        assertTrue(discogsHomeDiscoveryTags.containsAll(
+            listOf("pop", "rock", "hip-hop", "electronic", "jazz",
+                "k-pop", "metal", "rnb", "folk"),
+        ))
+        // Every Home category must map to an actual typed Discogs query.
+        assertTrue(discogsHomeDiscoveryTags.all {
+            discogsEditorialQueriesForTag(it).isNotEmpty()
+        })
+        val budgets = mutableListOf<Int>()
+        var verifiedMasters = 0
+        for ((index, _) in discogsHomeDiscoveryTags.withIndex()) {
+            val budget = discogsMultiStylePageBudget(
+                verifiedMasters = verifiedMasters,
+                remainingQueries = discogsHomeDiscoveryTags.size - index - 1,
+                totalSlots = 10,
+            ).coerceAtMost(2)
+            budgets += budget
+            verifiedMasters += budget
+        }
+        assertEquals(listOf(2, 1, 1, 1, 1, 1, 1, 1, 1), budgets)
+        assertEquals(10, verifiedMasters)
+
+        // A sparse early category gives unused slots to later categories,
+        // rather than reporting a fake release in order to fill capacity.
+        assertEquals(2, discogsMultiStylePageBudget(
+            verifiedMasters = 1, remainingQueries = 7, totalSlots = 10,
+        ).coerceAtMost(2))
     }
 
     @Test fun umbrellaGenreSourceSamplingReservesSlotsForOtherVerifiedStyles() {
