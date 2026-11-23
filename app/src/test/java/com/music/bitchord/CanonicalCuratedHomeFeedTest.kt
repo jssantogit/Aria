@@ -554,6 +554,28 @@ class CanonicalCuratedHomeFeedTest {
             shelves.single().items.single().browseId)
     }
 
+    @Test fun cachedInvalidDatesCannotEnterHistoricalAlbumAndSingleShelves() {
+        val invalid = listOf(
+            release.copy(musicBrainzId = "11111111-1111-4111-8111-111111111111",
+                title = "Impossible day", releaseKind = "Album",
+                releaseDate = "2026-02-30"),
+            release.copy(musicBrainzId = "22222222-2222-4222-8222-222222222222",
+                title = "Impossible month", releaseKind = "Single",
+                releaseDate = "2025-99"),
+            release.copy(musicBrainzId = "33333333-3333-4333-8333-333333333333",
+                title = "Known future", releaseKind = "Album",
+                releaseDate = "2027-01-01"),
+        )
+        val partial = release.copy(
+            musicBrainzId = "44444444-4444-4444-8444-444444444444",
+            title = "Known year only", releaseKind = "Album", releaseDate = "2025",
+        )
+        val rows = feed(invalid + partial)
+        assertEquals(listOf("Álbuns para descobrir"), rows.map { it.title })
+        assertEquals("Known year only", rows.single().items.single().title)
+        assertTrue(rows.none { it.title == "Lançamentos" })
+    }
+
     @Test fun locallyRepeatedSongsCanTrendWithoutAnyMusicBrainzMatch() {
         val shelves = canonicalCuratedHomeShelves(
             savedReleases = emptyList(), metadata = emptyList(),
