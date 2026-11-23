@@ -70,7 +70,7 @@ internal fun discogsNativeArtistReleases(
             // Release tracklist is fetched again when the user opens its page.
             tracklist = emptyList(),
         )
-    }.let(::discogsMergeArtistPageReleases)
+    }.toList().let(::discogsMergeArtistPageReleases)
 }
 
 /**
