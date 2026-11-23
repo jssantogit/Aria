@@ -143,14 +143,14 @@ jobs:
       - name: Prepare secretless base properties and isolated reports
         shell: bash
         run: |
-          printf 'LASTFM_API_KEY=\\nLASTFM_SECRET=\\n' > local.properties
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           mkdir -p "$IDM_CATALOG_METRICS_DIR"
 
       - name: Observe live provider responses through production catalogue adapters
         run: |
-          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \\
-            :app:testDevDebugUnitTest \\
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest'
 
       - name: Summarize exact live results and capability blocks
@@ -168,9 +168,9 @@ jobs:
           if required - data.keys():
               raise SystemExit("Live observation report missing required source states")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
-              out.write("### Live API observation (not a fixture and not a popularity score)\\n\\n")
-              out.write("| Source | Status | Raw page rows | Parsed | Eligible | Visible | Artwork | Reads |\\n")
-              out.write("|---|---|---:|---:|---:|---:|---:|---:|\\n")
+              out.write("### Live API observation (not a fixture and not a popularity score)\n\n")
+              out.write("| Source | Status | Raw page rows | Parsed | Eligible | Visible | Artwork | Reads |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---:|\n")
               for name in ("musicbrainz", "itunes", "discogs", "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
@@ -179,10 +179,10 @@ jobs:
                       row["parsed_distinct"], row["editorial_eligible"],
                       row["displayed_unique"], row["displayed_with_artwork"],
                       row["http_or_transport_reads"]]
-                  out.write("| " + " | ".join(map(str, fields)) + " |\\n")
-              out.write("\\nA null count means unavailable telemetry, not zero. ")
+                  out.write("| " + " | ".join(map(str, fields)) + " |\n")
+              out.write("\nA null count means unavailable telemetry, not zero. ")
               out.write("Discogs without a CI token is **not measured**. ")
-              out.write("This is one sampled observation, not exhaustive source coverage.\\n")
+              out.write("This is one sampled observation, not exhaustive source coverage.\n")
           PY
 
       - name: Archive aggregate live observations and test results
