@@ -3892,8 +3892,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // The first visible page remains the existing bounded editorial
             // sample. A separate cursor unlocks further raw tag pages on scroll.
             if (gate.accept(ticket) && canonicalGenreEpoch.isCurrent(generation)) {
+                // The first source page can contain sixty verified releases
+                // while the landing composer intentionally publishes forty.
+                // Retain the others in the append-only rail: a cursor must
+                // never silently discard rows behind the viewport limit.
+                val firstPageRows = historicalPage?.items?.takeIf { it.isNotEmpty() }
+                    ?.let { hits ->
+                        canonicalPublicGenreRows(hits, todayIso, maxItems = hits.size)
+                    }.orEmpty()
                 _canonicalGenrePaging.value = CanonicalGenrePageSnapshot(
                     tag = tag, nextOffset = historicalPage?.nextOffset,
+                    rows = firstPageRows,
                 )
             }
             if (!gate.accept(ticket)) return@launch
