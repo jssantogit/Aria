@@ -1,6 +1,9 @@
 # CI-only measurement of catalogue processing; not an APK or physical smoke.
 # Deterministic transports drive the real source adapters and Home/genre
 # projection. Artifacts contain aggregate counts only, never source payloads.
+# Live Discogs requests read DISCOGS_TOKEN from GitHub Actions Secrets only.
+# Refreshing this workflow on the PR branch reruns both isolated and collective
+# observations without changing production catalog sources or merging main.
 name: 'IDM #224 · Catalogue feeding measurements'
 
 on:
