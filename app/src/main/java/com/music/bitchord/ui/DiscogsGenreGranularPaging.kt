@@ -77,6 +77,21 @@ internal fun advanceDiscogsGenrePage(
 }
 
 /**
+ * A chunk containing only already-shown or rejected Masters is not a useful
+ * viewport continuation. Allow a small, strictly bounded number of further
+ * source-index chunks within that same gesture; do not trigger an unbounded
+ * feed scanner or claim empty candidates mean source exhaustion.
+ */
+internal fun discogsShouldContinueEmptyCandidateScan(
+    initial: DiscogsGenrePageSnapshot,
+    current: DiscogsGenrePageSnapshot,
+    batchesCompleted: Int,
+    maxBatches: Int = 3,
+): Boolean = batchesCompleted in 1 until maxBatches &&
+    current.tag == initial.tag && current.hasMore && !current.failed &&
+    current.releases.size == initial.releases.size
+
+/**
  * No resorting, synthesized art, provider identity conversion or ranking.
  * A late Discogs record is rendered by the same HomeScreen/ShelfCard widgets.
  */
