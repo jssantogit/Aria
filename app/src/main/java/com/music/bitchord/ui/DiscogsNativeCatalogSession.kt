@@ -67,6 +67,8 @@ internal fun discogsNativeDetailRouteKey(
 internal data class DiscogsNativePage(
     val page: DetailPage,
     val tracks: List<NativeMetadataTrack> = emptyList(),
+    /** Explicit non-playable Release facts shown in native album information. */
+    val editionFacts: List<Pair<String, String>> = emptyList(),
     val hasMore: Boolean = false,
     val incomplete: Boolean = false,
     val attributionUrl: String? = null,
@@ -102,6 +104,7 @@ internal fun discogsNativePageDisplayAllowed(
         page.page.songs is UiState.Error &&
         page.page.sections.isEmpty() &&
         page.tracks.isEmpty() &&
+        page.editionFacts.isEmpty() &&
         page.attributionUrl == null &&
         page.albumArtistBrowseId == null &&
         page.albumArtistDisplayName == null &&
@@ -900,6 +903,31 @@ internal fun discogsAlbumArtistRelatedShelf(
     return HomeShelf(heading, safe)
 }
 
+/** Values are copied only from the exact hydrated Discogs Release, not
+ * inferred from an artist name, a Master or a search snippet. No market
+ * pricing, imagery or invented track playback enters these native facts. */
+internal fun discogsReleaseMetadataFacts(record: DiscogsRecord): List<Pair<String, String>> {
+    if (record.link.kind != DiscogsKind.RELEASE) return emptyList()
+    val facts = mutableListOf<Pair<String, String>>()
+    record.year?.takeIf { it in 1800..2200 }?.let {
+        facts += "Ano" to it.toString()
+    }
+    record.country?.trim()?.takeIf { it.isNotBlank() }?.let {
+        facts += "País" to it.take(80)
+    }
+    val formats = record.formats.map { it.trim() }
+        .filter { it.isNotBlank() }.distinct().take(8)
+    if (formats.isNotEmpty()) facts += "Formatos" to formats.joinToString(" · ").take(240)
+    val labels = record.labels.map { it.first.trim() }
+        .filter { it.isNotBlank() }.distinct().take(4)
+    if (labels.isNotEmpty()) facts += "Gravadoras" to labels.joinToString(" · ").take(240)
+    val catalog = record.labels.map { it.second.trim() }
+        .filter { it.isNotBlank() && it != "none" }.distinct().take(4)
+    if (catalog.isNotEmpty()) facts += "Nº de catálogo" to
+        catalog.joinToString(" · ").take(160)
+    return facts
+}
+
 /** A Discogs release's tracklist is non-playable source metadata only. */
 internal fun discogsReleasePage(
     artist: DiscogsNativeArtistSearchRow,
@@ -927,6 +955,7 @@ internal fun discogsReleasePage(
             discogsAlbumArtistRelatedShelf(record, artistCredit, relatedReleases),
         ),
     ),
+    editionFacts = discogsReleaseMetadataFacts(record),
     tracks = record.tracklist.mapIndexed { index, (position, title) ->
         NativeMetadataTrack(
             key = "discogs:track:${record.link.id}:$index",
