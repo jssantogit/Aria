@@ -197,7 +197,7 @@ class CanonicalCuratedHomeFeedTest {
                 musicBrainzId = "00000000-0000-0000-0000-${i.toString().padStart(12, '0')}",
                 title = "Release $i",
                 releaseKind = if (i % 3 == 0) "Single" else "Album",
-                releaseDate = "2025-10-${i.toString().padStart(2, '0')}",
+                releaseDate = "2026-10-${i.toString().padStart(2, '0')}",
             )
         }
         val shelves = feed(rows)
@@ -435,7 +435,8 @@ class CanonicalCuratedHomeFeedTest {
     }
 
     @Test fun showsNativeReleasePickAndEvidenceBasedTrendingShelvesInEditorialOrder() {
-        val shelves = feed(listOf(release, playable), listOf(local), listOf(playable.musicBrainzId))
+        val shelves = feed(listOf(release.copy(releaseDate = "2026-10-02"), playable),
+            listOf(local), listOf(playable.musicBrainzId))
         assertEquals(listOf("Lançamentos", "Escolha a dedo", "Em alta"), shelves.map { it.title })
         assertEquals("catalog:RELEASE_GROUP:${release.musicBrainzId}", shelves[0].items.single().browseId)
         assertEquals(null, shelves[0].items.single().videoId)
@@ -455,15 +456,20 @@ class CanonicalCuratedHomeFeedTest {
         )
         val recording = playable.copy(title = "Hype Boy")
         val knownSingle = release.copy(
-            musicBrainzId = "certified-single", title = "Super Shy", releaseKind = "Single", releaseDate = "2025-01-01",
+            musicBrainzId = "certified-single", title = "Super Shy", releaseKind = "Single", releaseDate = "2026-10-05",
         )
         val shelves = feed(listOf(unknownGroup, unknownEdition, recording, release, knownSingle))
-        assertEquals(listOf("Super Shy", "SUPER REAL ME"), shelves.single().items.map { it.title })
-        assertTrue(shelves.single().items.all { it.browseId!!.contains("RELEASE_GROUP") })
+        assertEquals(listOf("Lançamentos", "Singles e EPs"), shelves.map { it.title })
+        assertEquals("Super Shy", shelves[0].items.single().title)
+        assertEquals("SUPER REAL ME", shelves[1].items.single().title)
+        assertTrue(shelves.flatMap { it.items }.all {
+            it.browseId!!.contains("RELEASE_GROUP")
+        })
     }
 
     @Test fun cannotClaimChartsWithoutListeningEvidenceOrAudioAsset() {
-        val shelves = feed(listOf(release, playable.copy(hasCatalogedAsset = false)),
+        val shelves = feed(listOf(release.copy(releaseDate = "2026-10-02"),
+            playable.copy(hasCatalogedAsset = false)),
             listOf(local.copy(localUri = null)), listOf(playable.musicBrainzId))
         assertEquals(listOf("Lançamentos"), shelves.map { it.title })
         assertFalse(shelves.any { it.title == "Em alta" })
@@ -473,8 +479,13 @@ class CanonicalCuratedHomeFeedTest {
         val future = release.copy(musicBrainzId = "future", title = "Album 2027", releaseDate = "2027-01-01")
         val older = release.copy(musicBrainzId = "older", title = "Older", releaseDate = "2020-01-01")
         val edition = release.copy(kind = CanonicalSearchKind.RELEASE, musicBrainzId = "edition")
-        val items = feed(listOf(older, future, edition, release)).first().items
-        assertEquals(listOf("SUPER REAL ME", "Older"), items.map { it.title })
+        val shelves = feed(listOf(
+            older, future, edition, release.copy(releaseDate = "2026-10-04"),
+        ))
+        assertEquals("SUPER REAL ME", shelves.first().items.single().title)
+        assertTrue(shelves.first().items.none { it.title == "Older" })
+        assertTrue(shelves.flatMap { it.items }.any { it.title == "Older" })
+        assertTrue(shelves.flatMap { it.items }.none { it.title == "Album 2027" })
     }
 
     @Test fun existingReleasedEditionIsVisibleWhenEveryCachedGroupIsFuture() {
@@ -488,7 +499,7 @@ class CanonicalCuratedHomeFeedTest {
             releaseDate = "2024-03-25",
         )
         val shelves = feed(listOf(futureGroup, releasedEdition))
-        assertEquals(listOf("Lançamentos"), shelves.map { it.title })
+        assertEquals(listOf("Singles e EPs"), shelves.map { it.title })
         assertEquals("catalog:RELEASE:${releasedEdition.musicBrainzId}",
             shelves.single().items.single().browseId)
     }
