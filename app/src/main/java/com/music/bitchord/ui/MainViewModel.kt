@@ -3514,7 +3514,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _canonicalWorldwideLoading.value = false
                 return@launch
             }
-            _canonicalHomePaging.value = pendingHomePaging ?: CanonicalHomePageSnapshot()
+            // The initial worldwide scanner may admit more source-owned
+            // ReleaseGroups than the fixed native Home shelves can publish.
+            // Preserve that verified overflow in the separate supplemental
+            // rail rather than discarding source positions already scanned.
+            _canonicalHomePaging.value = (pendingHomePaging
+                ?: CanonicalHomePageSnapshot()).copy(rows = rows)
             _canonicalWorldwideReleases.value = rows
             _canonicalWorldwideLoading.value = false
             worldwideReleaseFetchedAtMs = System.currentTimeMillis()
