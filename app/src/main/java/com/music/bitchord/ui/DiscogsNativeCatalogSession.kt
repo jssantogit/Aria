@@ -604,6 +604,19 @@ internal class DiscogsNativeCatalogSession(
                         query = nextQuery, cursor = nextCursor,
                         knownMasterIds = accumulated.knownMasterIds,
                         maxCandidates = 4,
+                        onVerified = { candidate ->
+                            // Source Master+Release have both passed admission.
+                            // Publish during hydration but never advance the
+                            // persistent cursor before this chunk resolves.
+                            if (lease.isCurrent() && genrePagingEpoch == epoch &&
+                                genreEditorialTag == tag
+                            ) {
+                                val visible = _genrePaging.value
+                                appendDiscogsGenreVerified(visible, tag, candidate)?.let {
+                                    _genrePaging.value = it
+                                }
+                            }
+                        },
                     )
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) {
