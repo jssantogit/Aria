@@ -899,9 +899,10 @@ internal class DiscogsNativeCatalogSession(
             discogsVerifiedVersionSelection(it, browseId)
         }
         if (verifiedVersion != null) {
-            val masterId = current.versionMasterId ?: return
+            val versionParent = current ?: return
+            val masterId = versionParent.versionMasterId ?: return
             if (parent != null) {
-                openVerifiedArtistVersion(verifiedVersion, current, masterId, parent)
+                openVerifiedArtistVersion(verifiedVersion, versionParent, masterId, parent)
             } else {
                 openReleaseFromSearch(
                     verifiedVersion, retainDirectParent = true,
