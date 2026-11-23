@@ -64,6 +64,7 @@ internal interface DiscogsGenreSearchTransport {
         query: DiscogsEditorialQuery,
         token: String,
         userAgent: String,
+        page: Int,
     ): DiscogsHttpResponse
 }
 
@@ -83,8 +84,9 @@ internal class KtorDiscogsGenreSearchTransport(
         query: DiscogsEditorialQuery,
         token: String,
         userAgent: String,
+        page: Int,
     ): DiscogsHttpResponse {
-        require(query.isValid())
+        require(query.isValid() && page in 1..2)
         val response = client.get("https://api.discogs.com/database/search") {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
@@ -92,7 +94,7 @@ internal class KtorDiscogsGenreSearchTransport(
             parameter("type", "master")
             parameter(if (query.isStyle) "style" else "genre", query.sourceName)
             parameter("per_page", 12)
-            parameter("page", 1)
+            parameter("page", page)
         }
         if ((response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0L) > 131_072L) {
             response.bodyAsChannel().cancel()
@@ -122,17 +124,31 @@ internal class KtorDiscogsGenreSearchTransport(
 
 /** A structured search row is only a candidate until the Master and its
  * main Release independently corroborate its tag and source-owned linkage. */
+internal data class DiscogsEditorialIndexPage(
+    val masterIds: List<Long>,
+    val hasNext: Boolean,
+)
+
 internal object DiscogsEditorialMasterParsing {
     private val json = Json { ignoreUnknownKeys = true }
-    fun candidates(body: String): List<Long>? {
-        if (body.length > 131_072) return null
+
+    fun page(body: String, expectedPage: Int): DiscogsEditorialIndexPage? {
+        if (expectedPage !in 1..2 || body.length > 131_072) return null
         val root = try { json.parseToJsonElement(body) as? JsonObject }
             catch (_: Exception) { null } ?: return null
         val paging = root["pagination"] as? JsonObject ?: return null
-        if ((paging["page"] as? JsonPrimitive)?.intOrNull != 1) return null
+        if ((paging["page"] as? JsonPrimitive)?.intOrNull != expectedPage)
+            return null
+        val pages = (paging["pages"] as? JsonPrimitive)?.intOrNull
+            ?: return null
+        if (pages !in expectedPage..100_000) return null
+        // The fixed transport always asks for 12; reject a larger surprise
+        // page before accepting a truncated list as the whole candidate set.
+        val perPage = (paging["per_page"] as? JsonPrimitive)?.intOrNull
+        if (perPage != null && perPage !in 1..12) return null
         val rows = root["results"] as? JsonArray ?: return null
         if (rows.size > 12) return null
-        return rows.mapNotNull { item ->
+        val ids = rows.mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
             if ((obj["type"] as? JsonPrimitive)?.contentOrNull != "master") {
                 return@mapNotNull null
@@ -140,7 +156,11 @@ internal object DiscogsEditorialMasterParsing {
             (obj["id"] as? JsonPrimitive)?.longOrNull
                 ?.takeIf { it in 1..999_999_999_999L }
         }.distinct()
+        return DiscogsEditorialIndexPage(ids, expectedPage < pages)
     }
+
+    /** Kept for the original first-page contract and callers. */
+    fun candidates(body: String): List<Long>? = page(body, 1)?.masterIds
 }
 
 internal fun discogsEditorialMasterMatches(
@@ -177,51 +197,85 @@ internal class DiscogsNativeGenreEditorial(
         )) return DiscogsEditorialResult.Disabled
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return DiscogsEditorialResult.Unauthorized
-        val response = try {
-            admission.execute(
-                capability = ProviderCapability.CATALOG_SEARCH,
-                provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                networkCall = { transport.search(query, token, userAgent) },
-            )
-        } catch (cancelled: CancellationException) { throw cancelled }
-          catch (_: ProviderRequestDeniedException) { return DiscogsEditorialResult.Disabled }
-          catch (_: Exception) { return DiscogsEditorialResult.Unavailable }
-        val ids = when (response.status) {
-            200 -> DiscogsEditorialMasterParsing.candidates(response.body)
-                ?: return DiscogsEditorialResult.Unavailable
-            401, 403 -> return DiscogsEditorialResult.Unauthorized
-            429 -> return DiscogsEditorialResult.Throttled(response.retryAfterSeconds)
-            else -> return DiscogsEditorialResult.Unavailable
-        }
         val verified = mutableListOf<DiscogsEditorialCandidate>()
-        // A bounded scan is a sample, never a complete genre catalogue.
-        for (masterId in ids.take(6)) {
-            if (verified.size >= maxReleases) break
-            val masterResult = editions.master(masterId)
-            val master = (masterResult as? DiscogsLookupResult.FoundMaster)?.record
-                ?: continue
-            if (master.link.id != masterId ||
-                !discogsEditorialMasterMatches(master, query)) continue
-            val releaseId = master.mainReleaseId ?: continue
-            val releaseResult = editions.release(releaseId)
-            val release = (releaseResult as? DiscogsLookupResult.Found)?.record
-                ?: continue
-            // No unofficial/ambiguous edition, wrong Master or unverifiable
-            // artist credit can become a native catalogue card.
-            if (release.link.kind != DiscogsKind.RELEASE ||
-                release.link.id != releaseId || release.masterId != masterId ||
-                release.unofficial || release.title.isBlank() ||
-                release.artistNames.isEmpty()) continue
-            verified += DiscogsEditorialCandidate(
-                masterId = masterId, releaseId = releaseId,
-                title = release.title,
-                artist = release.artistNames.joinToString(", "),
-                year = release.year ?: master.year,
-                formats = release.formats,
-                creditedArtists = if (release.artistIds.size == release.artistNames.size)
-                    release.artistIds.zip(release.artistNames) else emptyList(),
-            )
+        // A second Search page is a bounded recovery when page one contains
+        // only unrelated/unverifiable candidates. It does not claim to list
+        // the entire source genre, and all hydrated reads share one limiter.
+        for (pageNumber in 1..2) {
+            val response = try {
+                admission.execute(
+                    capability = ProviderCapability.CATALOG_SEARCH,
+                    provider = BuiltInProviderKeys.DISCOGS,
+                    scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                    networkCall = {
+                        transport.search(query, token, userAgent, pageNumber)
+                    },
+                )
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: ProviderRequestDeniedException) {
+                  return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                      else DiscogsEditorialResult.Disabled
+              } catch (_: Exception) {
+                  return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                      else DiscogsEditorialResult.Unavailable
+              }
+            val index = when (response.status) {
+                200 -> DiscogsEditorialMasterParsing.page(response.body, pageNumber)
+                    ?: return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Unavailable
+                401, 403 -> return if (verified.isNotEmpty())
+                    DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unauthorized
+                429 -> return if (verified.isNotEmpty())
+                    DiscogsEditorialResult.Verified(verified)
+                    else DiscogsEditorialResult.Throttled(response.retryAfterSeconds)
+                else -> return if (verified.isNotEmpty())
+                    DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unavailable
+            }
+            for (masterId in index.masterIds.take(5)) {
+                if (verified.size >= maxReleases) break
+                val masterResult = try { editions.master(masterId) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { DiscogsLookupResult.Unavailable }
+                if (masterResult is DiscogsLookupResult.Throttled)
+                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Throttled(masterResult.retryAfterSeconds)
+                if (masterResult is DiscogsLookupResult.Unauthorized)
+                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Unauthorized
+                val master = (masterResult as? DiscogsLookupResult.FoundMaster)?.record
+                    ?: continue
+                if (master.link.id != masterId ||
+                    !discogsEditorialMasterMatches(master, query)) continue
+                val releaseId = master.mainReleaseId ?: continue
+                val releaseResult = try { editions.release(releaseId) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { DiscogsLookupResult.Unavailable }
+                if (releaseResult is DiscogsLookupResult.Throttled)
+                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Throttled(releaseResult.retryAfterSeconds)
+                if (releaseResult is DiscogsLookupResult.Unauthorized)
+                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Unauthorized
+                val release = (releaseResult as? DiscogsLookupResult.Found)?.record
+                    ?: continue
+                // No unofficial/ambiguous edition, wrong Master or unverified
+                // artist credit can enter the common Home / genre shelves.
+                if (release.link.kind != DiscogsKind.RELEASE ||
+                    release.link.id != releaseId || release.masterId != masterId ||
+                    release.unofficial || release.title.isBlank() ||
+                    release.artistNames.isEmpty()) continue
+                verified += DiscogsEditorialCandidate(
+                    masterId = masterId, releaseId = releaseId,
+                    title = release.title,
+                    artist = release.artistNames.joinToString(", "),
+                    year = release.year ?: master.year,
+                    formats = release.formats,
+                    creditedArtists = if (release.artistIds.size == release.artistNames.size)
+                        release.artistIds.zip(release.artistNames) else emptyList(),
+                )
+            }
+            if (verified.isNotEmpty() || !index.hasNext || verified.size >= maxReleases)
+                break
         }
         return DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
     }
