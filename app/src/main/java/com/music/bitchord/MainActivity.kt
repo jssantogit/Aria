@@ -659,9 +659,14 @@ private fun CanonicalHomeEditorialEffects(
                 target = source,
                 ordered = catalogEditorialOrder,
                 mbResultTag = viewModel.canonicalGenreResultTag,
-                mbState = canonicalGenreResults,
-                appleByTag = appleGenreReleases,
-                discogsByTag = discogsGenreReleases,
+                // A provider started earlier in this SAME loop immediately
+                // publishes Loading. The Compose captures above are older
+                // than that synchronous state write. Reading them here would
+                // mistake a previous empty result for a completed new miss
+                // and start the third provider before the second responds.
+                mbState = viewModel.canonicalGenreResults.value,
+                appleByTag = viewModel.appleGenreReleases.value,
+                discogsByTag = viewModel.discogsNativeCatalog.genreEditorial.value,
             )) continue
             when (source) {
                 mb -> if (viewModel.canonicalGenreResultTag != tag)
