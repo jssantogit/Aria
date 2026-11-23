@@ -101,6 +101,25 @@ internal fun discogsEditorialQueriesForTag(tag: String): List<DiscogsEditorialQu
     return styles.map { DiscogsEditorialQuery(it, isStyle = true) }
 }
 
+/**
+ * Reserve one discovery slot for each still-unqueried, independently
+ * corroborated Discogs Style in an umbrella genre. Without this cap, the
+ * first matching style (e.g. Heavy Metal) could fill all six slots and hide
+ * Thrash, Death, Black and Doom Metal without ever consulting them.
+ *
+ * Empty styles surrender their reservation to later searches; no unknown
+ * release or synthetic genre is added to fill the remaining slots.
+ */
+internal fun discogsMultiStylePageBudget(
+    verifiedMasters: Int,
+    remainingQueries: Int,
+    totalSlots: Int = 6,
+): Int {
+    val available = (totalSlots - verifiedMasters).coerceAtLeast(0)
+    if (available == 0) return 0
+    return (available - remainingQueries.coerceAtLeast(0)).coerceIn(1, available)
+}
+
 internal fun discogsEditorialShelves(
     candidates: List<DiscogsEditorialCandidate>,
     home: Boolean = false,
