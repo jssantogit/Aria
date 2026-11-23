@@ -218,10 +218,9 @@ class DiscogsGranularEditorialCursorTest {
             editions = object : DiscogsNativeEditionReader {
                 override suspend fun master(id: Long): DiscogsLookupResult {
                     events += "master:$id"
-                    return DiscogsLookupResult.FoundMaster(
-                        master(id).copy(genres = if (id == 2L)
-                            listOf("Jazz") else listOf("Rock")),
-                    )
+                    // An unverified source Master must never be streamed.
+                    return if (id == 2L) DiscogsLookupResult.Missing
+                        else DiscogsLookupResult.FoundMaster(master(id))
                 }
                 override suspend fun release(id: Long): DiscogsLookupResult {
                     events += "release:$id"
