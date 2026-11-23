@@ -155,6 +155,7 @@ internal fun projectCanonicalHomeDisplay(
     communityShelf: HomeShelf? = null,
     personalRecommendationShelf: HomeShelf? = null,
     chartArtistsShelf: HomeShelf? = null,
+    musicBrainzPaging: CanonicalHomePageSnapshot = CanonicalHomePageSnapshot(),
 ): List<HomeShelf> {
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         (selection.state as? UiState.Success)?.data.orEmpty() +
@@ -166,7 +167,13 @@ internal fun projectCanonicalHomeDisplay(
     // navigation rail rather than an invented ranking/album/stream.
     val genreDiscovery = if (editorial.size + other.size < 3)
         listOf(canonicalHomeGenreDiscoveryShelf()) else emptyList()
-    return editorial + genreDiscovery + other
+    val original = editorial + genreDiscovery + other
+    // An append-only rail at the very end preserves the native LazyColumn
+    // index-based keys of ALL existing editorial, community and local shelves.
+    val continuation = canonicalHomeContinuationShelf(
+        selection.provider, original, musicBrainzPaging,
+    )
+    return original + listOfNotNull(continuation)
 }
 
 internal fun projectCanonicalHomeState(
