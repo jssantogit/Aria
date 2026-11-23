@@ -7,6 +7,7 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.ui.DiscogsGenrePageSnapshot
 import com.music.bitchord.ui.advanceDiscogsGenrePage
+import com.music.bitchord.ui.discogsShouldContinueEmptyCandidateScan
 import com.music.bitchord.ui.discogsGenreContinuationShelf
 import com.music.bitchord.ui.canonicalGenreShowsDiscogsReleases
 import com.music.bitchord.ui.projectCanonicalGenreState
@@ -20,6 +21,45 @@ class DiscogsGenreGranularPagingTest {
         year = 2024, formats = listOf("Album"),
         creditedArtists = listOf(99L to "Verified artist"),
     )
+
+    @Test fun emptyCandidatePagesAreBoundedAndDoNotStallOnAlreadyKnownMasters() {
+        val initial = DiscogsGenrePageSnapshot(
+            tag = "rock", cursor = DiscogsEditorialCursor(),
+            knownMasterIds = setOf(1L, 2L, 3L, 4L),
+        )
+        val first = advanceDiscogsGenrePage(
+            initial, "rock", queryCount = 1,
+            read = DiscogsGranularRead.Page(
+                releases = emptyList(), nextCursor = DiscogsEditorialCursor(1, 4, 99),
+                consumedCandidates = 4, hydratedCandidates = 0,
+            ),
+        )!!
+        assertTrue(discogsShouldContinueEmptyCandidateScan(initial, first, 1))
+        val second = advanceDiscogsGenrePage(
+            first, "rock", queryCount = 1,
+            read = DiscogsGranularRead.Page(
+                releases = emptyList(), nextCursor = DiscogsEditorialCursor(1, 8, 99),
+                consumedCandidates = 4, hydratedCandidates = 4,
+            ),
+        )!!
+        assertTrue(discogsShouldContinueEmptyCandidateScan(initial, second, 2))
+        assertFalse(discogsShouldContinueEmptyCandidateScan(initial, second, 3))
+        assertFalse(discogsShouldContinueEmptyCandidateScan(initial, second, 1, maxBatches = 1))
+        val accepted = advanceDiscogsGenrePage(
+            second, "rock", queryCount = 1,
+            read = DiscogsGranularRead.Page(
+                releases = listOf(release(12L)), nextCursor = null,
+                consumedCandidates = 4, hydratedCandidates = 4,
+            ),
+        )!!
+        assertFalse(discogsShouldContinueEmptyCandidateScan(initial, accepted, 1))
+        assertFalse(discogsShouldContinueEmptyCandidateScan(initial,
+            second.copy(failed = true), 1))
+        assertFalse(discogsShouldContinueEmptyCandidateScan(initial,
+            second.copy(tag = "pop"), 1))
+        assertFalse(discogsShouldContinueEmptyCandidateScan(initial,
+            second.copy(cursor = null), 1))
+    }
 
     @Test fun partialFailureAppendsEvidenceAndRetriesSamePosition() {
         val starting = DiscogsGenrePageSnapshot(
