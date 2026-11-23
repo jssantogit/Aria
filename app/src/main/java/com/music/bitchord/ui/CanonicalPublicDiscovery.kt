@@ -421,7 +421,15 @@ internal fun canonicalHomeWithWorldwideEditorial(
         .map(::canonicalNativeBrowseId).toSet()
     val launchCandidates = genuinelyRecent.filterNot {
         canonicalNativeBrowseId(it) in reservedIds
-    }
+    }.sortedWith(
+        // The largest Home cards should use source-owned cover evidence
+        // where available. Every candidate is still a day-precise release
+        // from the same 90-day window; artwork does not mean popularity.
+        compareByDescending<CanonicalCatalogSearchRow> {
+            !it.artworkUri.isNullOrBlank()
+        }.thenByDescending { it.releaseDate.orEmpty() }
+            .thenBy { it.musicBrainzId },
+    )
     if (launchCandidates.isNotEmpty()) {
         // Reserve independently verified Albums and Singles, but never fill
         // "Lançamentos" with historic works merely to complete a carousel.
