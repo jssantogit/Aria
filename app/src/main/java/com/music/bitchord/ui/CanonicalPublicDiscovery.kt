@@ -25,6 +25,33 @@ internal fun canonicalPublicReleaseRows(
 })
 
 /**
+ * An unknown or coarse source date is valid *catalogue* evidence, but an
+ * invalid calendar value or known future month/day is not. This deliberately
+ * does NOT upgrade a year/month to a day for "Lançamentos" or popularity.
+ */
+internal fun canonicalCatalogReleaseDateNotFuture(
+    releaseDate: String?, todayIsoDate: String,
+): Boolean {
+    val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull()
+        ?: return false
+    return canonicalCatalogReleaseDateNotFuture(releaseDate, today)
+}
+
+private fun canonicalCatalogReleaseDateNotFuture(
+    releaseDate: String?, today: LocalDate,
+): Boolean = when (releaseDate?.length) {
+    null, 0 -> true
+    4 -> runCatching { java.time.Year.parse(releaseDate).value <= today.year }
+        .getOrDefault(false)
+    7 -> runCatching {
+        java.time.YearMonth.parse(releaseDate) <= java.time.YearMonth.from(today)
+    }.getOrDefault(false)
+    10 -> runCatching { LocalDate.parse(releaseDate) <= today }
+        .getOrDefault(false)
+    else -> false
+}
+
+/**
  * A genre is a historical browse category, NOT a world new-release chart.
  * MusicBrainz can know a real ReleaseGroup and artist credit while only knowing
  * its year/month, or no release date at all. Keep that incomplete evidence
@@ -37,17 +64,7 @@ internal fun canonicalPublicGenreRows(
     val today = runCatching { LocalDate.parse(throughIsoDate) }.getOrNull()
         ?: return emptyList()
     val valid = canonicalPublicTypedReleaseRows(hits, { date ->
-        when (date?.length) {
-            null, 0 -> true
-            4 -> runCatching { java.time.Year.parse(date).value <= today.year }
-                .getOrDefault(false)
-            7 -> runCatching {
-                java.time.YearMonth.parse(date) <= java.time.YearMonth.from(today)
-            }.getOrDefault(false)
-            10 -> runCatching { LocalDate.parse(date) <= today }
-                .getOrDefault(false)
-            else -> false
-        }
+        canonicalCatalogReleaseDateNotFuture(date, today)
     }, maxItems = 120)
     // The world-news feed can simply lead with newest releases. A historical
     // genre page must NOT let 40 recent Singles crowd every Album out before
