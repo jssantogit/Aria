@@ -4503,6 +4503,11 @@ private fun BitChordApp(
                             onItemLongPress = onShelfLongPress,
                             signedIn = true,
                             publicPlaylistNotice = canonicalHomePlaylistNotice,
+                            editorialAttribution = if (
+                                canonicalHomeEditorialSelection.provider ==
+                                    com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
+                            ) "Dados fornecidos pelo Discogs · Abrir fonte" to
+                                "https://www.discogs.com/" else null,
                             leadHero = true,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
@@ -4563,6 +4568,8 @@ private fun BitChordApp(
                             reserveFloatingBackSpace = true,
                             onItemLongPress = onShelfLongPress,
                             publicPlaylistNotice = canonicalGenrePlaylistNotice,
+                            editorialAttribution = "Dados fornecidos pelo Discogs · Abrir fonte" to
+                                "https://www.discogs.com/",
                             categoryNavigationShelf =
                                 com.music.bitchord.ui.canonicalExploreGenreRelationsShelf(visibleGenre),
                             // The global FrostedTopBar owns this back button.
