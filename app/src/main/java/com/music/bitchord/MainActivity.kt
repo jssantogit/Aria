@@ -1604,7 +1604,8 @@ private fun BitChordApp(
     val discogsGenrePaging by viewModel.discogsNativeCatalog.genrePaging
         .collectAsStateWithLifecycle()
     val appleGenreVisibleCounts by viewModel.appleGenreVisibleCounts.collectAsStateWithLifecycle()
-    val appleGenreRevealed = appleGenreVisibleCounts[activeCanonicalGenre?.tag] ?: 24
+    val activeGenrePagingTag = activeCanonicalGenre?.tag
+    val appleGenreRevealed = activeGenrePagingTag?.let(appleGenreVisibleCounts::get) ?: 24
     val canonicalGenreState = com.music.bitchord.ui.projectCanonicalGenreState(
         tag = activeCanonicalGenre?.tag,
         genrePlaylists = activeGenrePlaylists,
@@ -1629,8 +1630,9 @@ private fun BitChordApp(
         .canonicalGenreShowsDiscogsReleases(canonicalGenreState)
     val genreAppleOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsAppleReleases(canonicalGenreState)
-    val appleGenreAvailable = (appleGenreReleases[activeCanonicalGenre?.tag]
-        as? UiState.Success)?.data?.size ?: 0
+    val appleGenreAvailable = activeGenrePagingTag?.let { tag ->
+        (appleGenreReleases[tag] as? UiState.Success)?.data?.size
+    } ?: 0
     val genrePagingHasMore = when {
         genreMbOwnsReleases -> canonicalGenrePaging.tag == activeCanonicalGenre?.tag &&
             canonicalGenrePaging.nextOffset != null
