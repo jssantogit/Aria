@@ -568,6 +568,67 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
 
+        // Observe one source-owning Discogs Home round-robin chunk. This
+        // single live sample is NOT an exhaustive nine-genre Home search.
+        val homeQueries = discogsHomeGranularQueries()
+        val discogsHomeInitial = initialDiscogsHomePageSnapshot(
+            verifiedDiscogs, homeQueries.size,
+        )
+        val beforeHomeIndexes = discogsIndexReads
+        val beforeHomeCandidates = discogsIndexCandidates
+        val beforeHomeMasters = discogsMasterReads
+        val beforeHomeReleases = discogsReleaseReads
+        val homeDiscogsRead = if (discogsRead is DiscogsEditorialResult.Verified &&
+            homeQueries.isNotEmpty()
+        ) withTimeoutOrNull(45_000L) {
+            try {
+                discogsGranularScanner?.discoverGranular(
+                    query = homeQueries.first(),
+                    knownMasterIds = discogsHomeInitial.knownMasterIds,
+                    maxCandidates = 2,
+                )
+            } catch (_: Exception) { null }
+        } else null
+        val discogsHomeNext = homeDiscogsRead?.let {
+            advanceDiscogsHomePage(discogsHomeInitial, 0, it)
+        }
+        val discogsHomeExtra = discogsHomeNext?.let {
+            discogsHomeContinuationShelf(discogs, discogsShelves, it)
+        }
+        report("discogs_home_granular", Sample(
+            status = when {
+                token == null -> "token_not_configured"
+                discogsRead !is DiscogsEditorialResult.Verified -> "initial_unverified"
+                homeDiscogsRead == null -> "timeout_or_unavailable"
+                homeDiscogsRead is DiscogsGranularRead.Interrupted ->
+                    "retryable_interruption"
+                discogsHomeExtra == null -> "no_new_verified_records"
+                else -> "verified"
+            },
+            raw = if (token == null) null
+                else discogsIndexCandidates - beforeHomeCandidates,
+            parsed = if (token == null) null
+                else discogsMasterReads - beforeHomeMasters,
+            eligible = discogsHomeNext?.releases?.size ?: 0,
+            visible = discogsHomeExtra?.items?.size ?: 0,
+            requests = if (token == null) null else
+                discogsIndexReads - beforeHomeIndexes +
+                discogsMasterReads - beforeHomeMasters +
+                discogsReleaseReads - beforeHomeReleases,
+            artwork = 0,
+            counts = mapOf(
+                "source_queries_available" to homeQueries.size,
+                "next_query_index" to (discogsHomeNext?.nextQueryIndex ?: homeQueries.size),
+                "next_window_has_more" to if (discogsHomeNext?.hasMore == true) 1 else 0,
+                "source_candidates_consumed" to when (homeDiscogsRead) {
+                    is DiscogsGranularRead.Page -> homeDiscogsRead.consumedCandidates
+                    is DiscogsGranularRead.Interrupted ->
+                        homeDiscogsRead.retryCursor.candidatePosition
+                    else -> 0
+                },
+            ),
+        ))
+
         // Same Home priority and fallback selection as MainActivity, evaluated
         // for every possible explicit provider order. No cross-provider IDs.
         val orders = listOf(
@@ -592,6 +653,18 @@ class IdmCatalogLiveObservationTest {
             val owner = selection.provider
             val sourceItems = (selection.state as? UiState.Success)?.data
                 ?.flatMap { it.items }.orEmpty()
+            val displayedWithScroll = projectCanonicalHomeDisplay(
+                canonicalHomeShelves = emptyList(),
+                selection = selection,
+                publicPlaylistShelf = null,
+                musicBrainzPaging = mbHomeNext ?: mbInitialPaging,
+                appleHomePool = verifiedAppleHomePool,
+                appleRevealedCount = 24,
+                discogsPaging = discogsHomeNext ?: discogsHomeInitial,
+            )
+            val continuation = displayedWithScroll.firstOrNull {
+                it.title == "Mais do catálogo"
+            }
             if (sourceItems.isNotEmpty()) {
                 successful++
                 val prefix = when (owner) {
@@ -602,6 +675,11 @@ class IdmCatalogLiveObservationTest {
                 }
                 assertTrue(sourceItems.all {
                     it.browseId.orEmpty().startsWith(prefix)
+                })
+                // The same Home widgets may append verified source rows, but
+                // never a release owned by a lower-priority provider.
+                assertTrue(continuation?.items.orEmpty().all { row ->
+                    row.browseId.orEmpty().startsWith(prefix)
                 })
                 val distinct = sourceItems.distinctBy { it.browseId }
                 if (index == 0) firstOrderVisible = distinct.size
