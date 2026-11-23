@@ -150,6 +150,9 @@ class AppleNativeDetailNavigationTest {
         assertTrue(appleDetailVisibleOnTab(0, 4, 0))
         assertTrue(appleDetailVisibleOnTab(1, 4, 1))
         assertTrue(appleDetailVisibleOnTab(4, 4, null))
+        // Pending cleanup must not briefly repaint an Explore/Home album
+        // after the user intentionally switched to Search.
+        assertFalse(appleDetailVisibleOnTab(4, 4, 0))
         assertFalse(appleDetailVisibleOnTab(2, 4, 0))
         assertFalse(appleDetailVisibleOnTab(0, 4, null))
         assertFalse(appleDetailVisibleOnTab(1, 4, 0))

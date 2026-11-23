@@ -70,7 +70,8 @@ internal fun appleDetailVisibleOnTab(
     selectedTab: Int,
     searchTab: Int,
     originatingTab: Int?,
-): Boolean = selectedTab == searchTab || originatingTab == selectedTab
+): Boolean = if (originatingTab == null) selectedTab == searchTab
+    else selectedTab == originatingTab
 
 /**
  * Artist and album rails can both contain the SAME exact iTunes collection.
