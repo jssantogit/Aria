@@ -549,4 +549,54 @@ class DiscogsGranularEditorialCursorTest {
         assertEquals(2, masterReads)
         assertEquals(1, releaseReads)
     }
+
+    @Test fun initialSamplerStreamsVerifiedReleasesBeforeItsWholeIndexFinishes() = runBlocking {
+        val events = mutableListOf<String>()
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse = DiscogsHttpResponse(
+                    200, """{"pagination":{"page":1,"pages":1,"per_page":12},
+                        "results":[{"id":1,"type":"master"},
+                                   {"id":2,"type":"master"},
+                                   {"id":3,"type":"master"}]}""",
+                )
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    events += "master:$id"
+                    val native = this@DiscogsGranularEditorialCursorTest.master(id)
+                    return DiscogsLookupResult.FoundMaster(
+                        if (id == 2L) native.copy(genres = listOf("Jazz"))
+                        else native,
+                    )
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    events += "release:$id"
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsGranularEditorialCursorTest.release(id - 1000L),
+                    )
+                }
+            },
+        )
+        val emitted = mutableListOf<Long>()
+        val result = client.discover(
+            query = DiscogsEditorialQuery("Rock", false),
+            maxReleases = 2,
+            onVerified = { candidate ->
+                events += "emit:${candidate.masterId}"
+                emitted += candidate.masterId
+            },
+        ) as DiscogsEditorialResult.Verified
+        assertEquals(listOf(1L, 3L), emitted)
+        assertEquals(result.releases.map { it.masterId }, emitted)
+        assertEquals(listOf(
+            "master:1", "release:1001", "emit:1",
+            "master:2", "master:3", "release:1003", "emit:3",
+        ), events)
+    }
 }
