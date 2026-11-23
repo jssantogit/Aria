@@ -480,6 +480,32 @@ class CanonicalPublicDiscoveryTest {
         ), ids)
     }
 
+    @Test fun genreReservesOlderAlbumHiddenBehindHundredsOfRecentSingles() {
+        val singles = (1..125).map { index ->
+            another.copy(
+                musicBrainzId = "70000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Tagged Single ${index}",
+                firstReleaseDate = "2026-11-01",
+            )
+        }
+        val album = recent.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000999",
+            title = "Older but verified Album",
+            firstReleaseDate = "2024-02-01",
+        )
+        val rows = canonicalPublicGenreRows(singles + album, "2026-11-23")
+        assertEquals(40, rows.size)
+        assertTrue(rows.any { it.musicBrainzId == album.musicBrainzId })
+        assertTrue(rows.any { it.releaseKind == "Single" })
+        // The older Album is not a current chart or fresh release, but its
+        // verified genre membership remains visible in the Album section.
+        val genre = com.music.bitchord.ui.canonicalExploreGenres.first()
+        val shelves = canonicalGenreEditorialShelves(genre, rows, "2026-11-23")
+        assertTrue(shelves.first { it.title == "Álbuns" }.items.any {
+            it.browseId == "catalog:RELEASE_GROUP:${album.musicBrainzId}"
+        })
+    }
+
     @Test fun partialDatesCannotMasqueradeAsExactNinetyDayReleases() {
         assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026", "2026-11-23"))
         assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11", "2026-11-23"))
