@@ -102,6 +102,17 @@ internal fun discogsEditorialQueriesForTag(tag: String): List<DiscogsEditorialQu
 }
 
 /**
+ * The Discogs-only Home must be able to sample all of these real source
+ * genres/styles before the earliest searches consume its limited shelf.
+ * Top-level Metal / R&B / Folk are resolved to verified source Styles by
+ * discogsEditorialQueriesForTag; a query result is still hydrated and checked.
+ */
+internal val discogsHomeDiscoveryTags = listOf(
+    "pop", "rock", "hip-hop", "electronic", "jazz", "k-pop",
+    "metal", "rnb", "folk",
+)
+
+/**
  * Reserve one discovery slot for each still-unqueried, independently
  * corroborated Discogs Style in an umbrella genre. Without this cap, the
  * first matching style (e.g. Heavy Metal) could fill all six slots and hide
