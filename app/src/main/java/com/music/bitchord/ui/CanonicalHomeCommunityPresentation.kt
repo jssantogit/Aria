@@ -3,6 +3,7 @@ package com.music.bitchord.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.music.bitchord.data.catalog.metadata.ListenBrainzPopularityEvidence
+import com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
 
@@ -56,9 +57,11 @@ internal fun rememberCanonicalHomeDisplayShelves(
     personal: HomeShelf?,
     weeklyArtists: HomeShelf?,
     musicBrainzPaging: CanonicalHomePageSnapshot = CanonicalHomePageSnapshot(),
+    appleHomePool: List<ItunesEditorialRelease> = emptyList(),
+    appleRevealedCount: Int = 0,
 ): List<HomeShelf> = remember(
     local, selected, playlists, territories, community, personal, weeklyArtists,
-    musicBrainzPaging,
+    musicBrainzPaging, appleHomePool, appleRevealedCount,
 ) {
     projectCanonicalHomeDisplay(
         canonicalHomeShelves = local,
@@ -69,5 +72,7 @@ internal fun rememberCanonicalHomeDisplayShelves(
         personalRecommendationShelf = personal,
         chartArtistsShelf = weeklyArtists,
         musicBrainzPaging = musicBrainzPaging,
+        appleHomePool = appleHomePool,
+        appleRevealedCount = appleRevealedCount,
     )
 }
