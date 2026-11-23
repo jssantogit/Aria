@@ -3,6 +3,7 @@ package com.music.bitchord
 import com.music.bitchord.data.catalog.metadata.*
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.providers.*
+import com.music.bitchord.ui.scanMusicBrainzRecentEditorial
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -81,6 +82,47 @@ class IdmCatalogCapacityCurveTest {
         }
     }
 
+    @Test fun musicbrainzEditorialGranularResumeFindsAlbumAfterThirdFullPage() = runBlocking {
+        val target = 350
+        val requestedOffsets = mutableListOf<Int>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>,
+                    userAgent: String,
+                ): String {
+                    assertEquals("release-group", path)
+                    val offset = parameters["offset"]!!.toInt()
+                    val limit = parameters["limit"]!!.toInt()
+                    requestedOffsets += offset
+                    val rows = (offset until minOf(offset + limit, target)).map { n ->
+                        val kind = if (n == target - 1) "Album" else "Single"
+                        """{"id":"${mbId(n + 1)}","title":"Source title $n","primary-type":"$kind","first-release-date":"2026-11-01","artist-credit":[{"name":"Fixture artist"}]}"""
+                    }
+                    return """{"count":$target,"offset":$offset,"release-groups":[${rows.joinToString(",") }]}"""
+                }
+            },
+        ))
+        var cursor: Int? = 0
+        var scannedPositions = 0
+        val seen = linkedSetOf<String>()
+        while (cursor != null) {
+            val result = scanMusicBrainzRecentEditorial(
+                source, "2026-10-01", "2026-11-23",
+                maxPages = 1, startOffset = cursor,
+            )
+            assertFalse(result.sourceFailure)
+            assertEquals(1, result.attempts)
+            scannedPositions += result.sourcePositions
+            seen.addAll(result.rows.map { it.musicBrainzId })
+            assertEquals(result.cursorRemaining, result.nextOffset != null)
+            cursor = result.nextOffset
+            assertTrue("Cursor did not terminate", requestedOffsets.size <= 5)
+        }
+        assertEquals(listOf(0, 100, 200, 300), requestedOffsets)
+        assertEquals(target, scannedPositions)
+        assertTrue("Late album dropped by clipping", mbId(target) in seen)
+    }
     private fun appleAlbum(id: Long): ItunesCatalogItem = ItunesCatalogItem(
         type = ItunesCatalogItemType.ALBUM,
         id = id, storefront = "br", title = "Fixture Album",
