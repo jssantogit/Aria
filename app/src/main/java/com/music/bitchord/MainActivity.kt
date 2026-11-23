@@ -4554,8 +4554,14 @@ private fun BitChordApp(
                             reserveFloatingBackSpace = true,
                             onItemLongPress = onShelfLongPress,
                             publicPlaylistNotice = canonicalGenrePlaylistNotice,
-                            editorialAttribution = "Dados fornecidos pelo Discogs · Abrir fonte" to
-                                "https://www.discogs.com/",
+                            editorialAttribution = if (
+                                (canonicalGenreState as? UiState.Success)?.data?.any { shelf ->
+                                    shelf.items.any { item ->
+                                        item.browseId.orEmpty().startsWith("discogs:")
+                                    }
+                                } == true
+                            ) "Dados fornecidos pelo Discogs · Abrir fonte" to
+                                "https://www.discogs.com/" else null,
                             categoryNavigationShelf =
                                 com.music.bitchord.ui.canonicalExploreGenreRelationsShelf(visibleGenre),
                             // The global FrostedTopBar owns this back button.
