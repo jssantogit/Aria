@@ -470,6 +470,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val canonicalGenrePopular = _canonicalGenrePopular.asStateFlow()
     private var canonicalGenreJob: Job? = null
     private val canonicalGenreEpoch = DiscoveryRequestEpoch()
+    private val _canonicalGenrePaging = MutableStateFlow(CanonicalGenrePageSnapshot())
+    internal val canonicalGenrePaging = _canonicalGenrePaging.asStateFlow()
+    private val canonicalGenrePagingEpoch = DiscoveryRequestEpoch()
+    private var canonicalGenrePagingJob: Job? = null
     /** MusicBrainz tag evidence supplements an Apple-primary genre without
      * cancelling or overwriting Apple's own editorial release discovery. */
     private var genreSupplementJob: Job? = null
@@ -3833,6 +3837,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadCanonicalGenre(tag: String) {
         val selected = canonicalAllExploreGenres.firstOrNull { it.tag == tag } ?: return
+        // A refresh, provider switch or genre navigation revokes the previous
+        // continuation. Never append pages from an older tag/request epoch.
+        canonicalGenrePagingEpoch.invalidateAndNext()
+        canonicalGenrePagingJob?.cancel()
+        _canonicalGenrePaging.value = CanonicalGenrePageSnapshot(tag = tag)
         // Full MB fallback owns artist/popularity rows exclusively. A slower
         // Apple-primary supplement from another tag must not overwrite them.
         clearCanonicalGenreSupplement()
@@ -3875,10 +3884,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { null }
             if (!gate.accept(ticket) || !canonicalGenreEpoch.isCurrent(generation)) return@launch
-            val historicalHits = (historical as? MusicBrainzCatalogSearchResult.Success)
-                ?.page?.items
+            val historicalPage = (historical as? MusicBrainzCatalogSearchResult.Success)
+                ?.page
+            val historicalHits = historicalPage?.items
             val recentHits = (recent as? MusicBrainzCatalogSearchResult.Success)
                 ?.page?.items
+            // The first visible page remains the existing bounded editorial
+            // sample. A separate cursor unlocks further raw tag pages on scroll.
+            if (gate.accept(ticket) && canonicalGenreEpoch.isCurrent(generation)) {
+                _canonicalGenrePaging.value = CanonicalGenrePageSnapshot(
+                    tag = tag, nextOffset = historicalPage?.nextOffset,
+                )
+            }
             if (!gate.accept(ticket)) return@launch
             val releasesUnavailable = historicalHits == null && recentHits == null
             if (releasesUnavailable) {
@@ -3981,6 +3998,64 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.also { job ->
             val unregister = gate.onRevoke(ticket) { job.cancel() }
             job.invokeOnCompletion { unregister() }
+        }
+    }
+
+    /**
+     * Continue the exact MusicBrainz tag query after the first genre sample.
+     * The original shelves stay immutable. New verified releases are appended
+     * to an independent rail, without altering Apple/Discogs priority or IDs.
+     */
+    fun loadMoreCanonicalGenre(tag: String) {
+        if (canonicalGenreResultTag != tag ||
+            canonicalAllExploreGenres.none { it.tag == tag } ||
+            _canonicalGenreResults.value !is UiState.Success
+        ) return
+        val current = _canonicalGenrePaging.value
+        val offset = current.nextOffset ?: return
+        if (current.tag != tag || current.loading ||
+            canonicalGenrePagingJob?.isActive == true
+        ) return
+        val gate = ProviderRuntime.gateOrNull() ?: return
+        val ticket = gate.open(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.MUSICBRAINZ,
+        ) ?: return
+        val generation = canonicalGenrePagingEpoch.next()
+        _canonicalGenrePaging.value = current.copy(loading = true, failed = false)
+        canonicalGenrePagingJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = try {
+                musicBrainzEditorialSearch.searchReleaseGroupsForTag(
+                    tag, limit = 60, offset = offset,
+                )
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { null }
+            if (!gate.accept(ticket) || !canonicalGenrePagingEpoch.isCurrent(generation))
+                return@launch
+            val page = (result as? MusicBrainzCatalogSearchResult.Success)
+                ?.page
+            val date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
+            _canonicalGenrePaging.update { snapshot ->
+                if (snapshot.tag != tag || snapshot.nextOffset != offset) snapshot
+                else if (page == null) snapshot.copy(loading = false, failed = true)
+                else appendCanonicalGenrePage(
+                    snapshot, tag, offset, 60, page, date,
+                ) ?: snapshot.copy(loading = false, failed = true)
+            }
+        }.also { job ->
+            val unregister = gate.onRevoke(ticket) {
+                canonicalGenrePagingEpoch.invalidateAndNext()
+                job.cancel()
+                _canonicalGenrePaging.value = CanonicalGenrePageSnapshot()
+            }
+            job.invokeOnCompletion {
+                unregister()
+                if (canonicalGenrePagingEpoch.isCurrent(generation)) {
+                    _canonicalGenrePaging.update {
+                        if (it.tag == tag && it.loading) it.copy(loading = false)
+                        else it
+                    }
+                }
+            }
         }
     }
 
