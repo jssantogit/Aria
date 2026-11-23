@@ -118,12 +118,14 @@ internal fun canonicalGenreNearEnd(
 internal fun CanonicalGenreGranularPagingEffect(
     tag: String?,
     enabled: Boolean,
-    snapshot: CanonicalGenrePageSnapshot,
+    hasMore: Boolean,
+    loading: Boolean,
     listState: LazyListState,
     onLoadMore: (String) -> Unit,
 ) {
-    val active by rememberUpdatedState(enabled && snapshot.tag == tag &&
-        snapshot.nextOffset != null && !snapshot.loading)
+    // The same genuine viewport boundary can page either independent source.
+    // Provider selection stays outside this UI observer.
+    val active by rememberUpdatedState(enabled && hasMore && !loading)
     val callback by rememberUpdatedState(onLoadMore)
     LaunchedEffect(tag, listState) {
         val requestedTag = tag ?: return@LaunchedEffect
