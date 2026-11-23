@@ -161,6 +161,44 @@ class MusicBrainzCatalogSearchTest {
         assertEquals("IU", editions.single().artistDisplay)
     }
 
+    @Test fun recentEditorialPaginationAdvancesByRawRowsNotAcceptedReleaseGroups() = runBlocking {
+        val observed = mutableListOf<Map<String, String>>()
+        val id = "11111111-1111-4111-8111-111111111111"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    assertEquals("release-group", path)
+                    observed += parameters
+                    return """{"count":200,"offset":100,"release-groups":[
+                        {"id":"bad-id","title":"Unverifiable"},
+                        {"id":"$id","title":"Verified album","primary-type":"Album",
+                            "first-release-date":"2026-11-11",
+                            "artist-credit":[{"name":"Artist"}]},
+                        {"id":"$id","title":"Verified album","primary-type":"Album",
+                            "first-release-date":"2026-11-11",
+                            "artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchRecentReleaseGroups(
+            "2026-10-01", "2026-11-23", limit = 25, offset = 100,
+        )
+        val page = (result as MusicBrainzCatalogSearchResult.Success<
+            MusicBrainzReleaseGroupHit>).page
+        assertEquals(3, page.consumedCount)
+        assertEquals(listOf(id), page.items.map { it.musicBrainzId })
+        assertEquals(100, page.offset)
+        assertEquals(103, page.nextOffset)
+        assertEquals("100", observed.single()["offset"])
+        assertEquals("25", observed.single()["limit"])
+        assertEquals("false", observed.single()["dismax"])
+        assertTrue(observed.single()["query"].orEmpty().contains(
+            "firstreleasedate:[2026-10-01 TO 2026-11-23]"))
+    }
+
     @Test
     fun worldwideReleasesAndGenreUseFieldedQueriesNotLocalIndex() = runBlocking {
         val calls = mutableListOf<Pair<String, Map<String, String>>>()
