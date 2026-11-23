@@ -171,9 +171,10 @@ class IdmCatalogCapacityCurveTest {
                         val rows = (first..last).joinToString(",") { id ->
                             """{"id":""" + id + ""","role":"Main","type":"master","title":"Fixture"}"""
                         }
-                        return """{"pagination":{"page":""" + page +
+                        return DiscogsHttpResponse(200,
+                            """{"pagination":{"page":""" + page +
                             ""","pages":""" + ((target + 5) / 6) +
-                            """},"releases":[""" + rows + "]}"
+                            """},"releases":[""" + rows + "]}")
                     }
                 },
                 editions = object : DiscogsNativeEditionReader {
