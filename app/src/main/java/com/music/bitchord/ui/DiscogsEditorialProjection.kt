@@ -146,7 +146,13 @@ internal fun discogsEditorialShelves(
     val artists = unique.asSequence()
         .flatMap { it.creditedArtists.asSequence() }
         .filter { (id, name) -> id in 1..999_999_999_999L && name.isNotBlank() }
-        .distinctBy { it.first }.take(12)
+        .distinctBy { it.first }
+        // Distinct source artists may have the same visible Discogs stage
+        // name after removing "(2)". Collapse duplicate cards in THIS
+        // editorial shelf only; never merge or rewrite the source artist IDs.
+        .distinctBy { (_, name) ->
+            discogsArtistDisplayName(name).trim().lowercase(Locale.ROOT)
+        }.take(12)
         .map { (id, name) ->
             ShelfItem(
                 title = discogsArtistDisplayName(name),
