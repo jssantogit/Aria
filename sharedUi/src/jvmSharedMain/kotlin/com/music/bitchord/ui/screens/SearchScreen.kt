@@ -348,7 +348,7 @@ fun SearchScreen(
     val showTypeahead = typeaheadResults.isNotEmpty() && suggesting
     // Compact General results first, and reveal already fetched Apple products
     // before spending a separate source-specific paging request.
-    var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(28) }
+    var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
     val pinnedMixedMore = searchingCanonical && searchCommitted &&
         filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()
     val appleMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
@@ -628,7 +628,7 @@ fun SearchScreen(
                             paging = applePaging,
                             onLoadMore = onAppleLoadMore,
                             visibleLimit = appleGeneralVisibleRows,
-                            onRevealMore = { appleGeneralVisibleRows += 24 },
+                            onRevealMore = { appleGeneralVisibleRows += 18 },
                             showInlineFooter = false,
                         )
                     } else {
@@ -889,7 +889,7 @@ fun SearchScreen(
                 label = stringResource(Res.string.canonical_more_results),
                 onClick = {
                     if (isApple) {
-                        if (appleUnshown) appleGeneralVisibleRows += 24
+                        if (appleUnshown) appleGeneralVisibleRows += 18
                         else appleNext?.let(onAppleLoadMore)
                     } else onCanonicalSearchLoadMore()
                 },

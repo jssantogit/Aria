@@ -85,6 +85,8 @@ data class AppleEditorialTrackSearchRow(
     val durationMs: Long?,
     val appleStoreUrl: String? = null,
     val appleStoreBadgeUrl: String? = null,
+    /** Exact source-supplied artist route; absent means no verified artist ID. */
+    val artistBrowseId: String? = null,
 )
 
 /**
@@ -114,8 +116,21 @@ fun appleUnifiedSearchEntries(
     val exact = artists.filter { it.title.equals(normalized, ignoreCase = true) }
     val leaders = if (exact.isNotEmpty()) exact.take(1) else artists.take(3)
     leaders.distinctBy { it.browseId }.forEach { add(AppleUnifiedSearchEntry.Artist(it)) }
-    val uniqueTracks = tracks.distinctBy { it.key }
-    val uniqueAlbums = albums.distinctBy { it.browseId }
+    // An exact Apple artist hit scopes General to THAT artist's products,
+    // not songs called "ILLIT ..." by an unrelated artist. Exact storefront
+    // artist ID beats a misleading display credit; where Apple omits the ID
+    // an exact credit is only weak search relevance, never an identity join.
+    // The typed Songs/Albums tabs retain all independently matched products.
+    val primary = exact.firstOrNull()
+    fun creditedToPrimary(artistRoute: String?, credit: String): Boolean =
+        primary == null || if (artistRoute != null) artistRoute == primary.browseId
+        else credit.equals(primary.title, ignoreCase = true)
+    val uniqueTracks = tracks.asSequence()
+        .filter { creditedToPrimary(it.artistBrowseId, it.artistName) }
+        .distinctBy { it.key }.toList()
+    val uniqueAlbums = albums.asSequence()
+        .filter { creditedToPrimary(it.artistBrowseId, it.artistName) }
+        .distinctBy { it.browseId }.toList()
     val maxRows = maxOf(uniqueTracks.size, uniqueAlbums.size)
     for (index in 0 until maxRows) {
         uniqueTracks.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Track(it)) }

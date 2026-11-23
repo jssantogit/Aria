@@ -115,6 +115,24 @@ class AppleEditorialNativeSearchBridgeTest {
         ), rows.map { it.category })
     }
 
+    @Test fun officialAppleTrackSearchRetainsExactArtistIdForGeneralRelevance() {
+        val official = track(44, 101, 1, "Magnetic", "br")
+        val converted = com.music.bitchord.ui.appleNativeTrackSearchRows(
+            com.music.bitchord.data.catalog.metadata.AppleEditorialTrackLoad.Success(
+                listOf(official), false,
+            ),
+        )
+        assertEquals("itunes:br:track:44", converted.single().key)
+        assertEquals("itunes:br:artist:77", converted.single().artistBrowseId)
+        val noArtist = com.music.bitchord.ui.appleNativeTrackSearchRows(
+            com.music.bitchord.data.catalog.metadata.AppleEditorialTrackLoad.Success(
+                listOf(official.copy(artistId = null)), false,
+            ),
+        )
+        assertNull(noArtist.single().artistBrowseId)
+        assertEquals(official.title, noArtist.single().title)
+    }
+
     @Test fun appleSearchPaginationPreservesRemoteRankingWhenNewReleasesArrive() {
         fun item(id: Long, date: String) = ItunesCatalogItem(
             type = ItunesCatalogItemType.ALBUM, id = id, storefront = "br",

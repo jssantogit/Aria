@@ -264,6 +264,9 @@ internal fun appleNativeTrackSearchRows(
         artworkUri = track.artworkUrl,
         albumBrowseId = albumRoute?.let { "itunes:${it.storefront}:album:${it.id}" },
         durationMs = track.durationMs,
+        artistBrowseId = track.artistId?.takeIf { it > 0L }?.let { artistId ->
+            "itunes:${route.storefront}:artist:$artistId"
+        },
         appleStoreUrl = appleStoreLinkForExactProduct(
             track.storeUrl, ItunesCatalogItemType.TRACK, track.id, track.storefront,
         ),
