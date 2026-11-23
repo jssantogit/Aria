@@ -318,6 +318,22 @@ internal fun canonicalPublicNeedsMoreEditorialRows(
         typed.none { canonicalEditorialReleaseType(it) in setOf("Single", "EP") }
 }
 
+/**
+ * Only a source-owned, day-precise date within the last 90 days can enter
+ * the global Home's chronological Launches shelf. Year-only/month-only
+ * MusicBrainz metadata remains valid for search, genres and archive discovery,
+ * but claiming a specific recent launch from it would fabricate precision.
+ * This is NOT a popularity or chart ranking.
+ */
+internal fun canonicalHomeReleaseIsRecent(
+    releaseDate: String?, todayIsoDate: String, maxAgeDays: Long = 90L,
+): Boolean {
+    if (maxAgeDays < 0L || releaseDate?.length != 10) return false
+    val date = runCatching { LocalDate.parse(releaseDate) }.getOrNull() ?: return false
+    val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull() ?: return false
+    return !date.isAfter(today) && !date.isBefore(today.minusDays(maxAgeDays))
+}
+
 /** Independent public metadata never becomes a playable song without an asset. */
 internal fun canonicalHomeWithWorldwideEditorial(
     localShelves: List<HomeShelf>,
@@ -379,22 +395,35 @@ internal fun canonicalHomeWithWorldwideEditorial(
     } else null
     val reservedIds = listOfNotNull(reservedAlbum, reservedSingle, reservedMore)
         .map(::canonicalNativeBrowseId).toSet()
-    if (publicRows.isNotEmpty()) {
-        // Reserve enough releases for separately curated shelves instead of
-        // using all 24 on the hero and repeating them under Quick Picks.
-        val launchCount = if (publicRows.size <= 10)
-            maxOf(1, publicRows.size / 2) else minOf(10, publicRows.size / 3)
-        val launches = unique(publicRows.filterNot {
-            canonicalNativeBrowseId(it) in reservedIds
-        }.take(launchCount).map(::item))
+    val genuinelyRecent = publicRows.filter {
+        canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
+    }
+    val launchCandidates = genuinelyRecent.filterNot {
+        canonicalNativeBrowseId(it) in reservedIds
+    }
+    if (launchCandidates.isNotEmpty()) {
+        // Reserve independently verified Albums and Singles, but never fill
+        // "Lançamentos" with historic works merely to complete a carousel.
+        val launchCount = if (launchCandidates.size <= 10)
+            maxOf(1, launchCandidates.size / 2)
+        else minOf(10, launchCandidates.size / 3)
+        val launches = unique(launchCandidates.take(launchCount).map(::item))
         val index = shelves.indexOfFirst { it.title == releasesHeading }
         if (index >= 0) shelves[index] = shelves[index].copy(items = launches)
         else shelves.add(0, HomeShelf(releasesHeading, launches))
     } else {
-        // On a cold offline install, retain only genuinely available local
-        // items. Never present a saved album as a verified worldwide launch.
-        shelves.firstOrNull { it.title == releasesHeading }?.items?.forEach {
-            it.browseId?.let(selected::add)
+        // No verified recent album: keep personal offline cards but discard
+        // an old source group accidentally labeled as a fresh global launch.
+        val index = shelves.indexOfFirst { it.title == releasesHeading }
+        if (index >= 0) {
+            val personal = shelves[index].items.filter { card ->
+                val id = card.browseId.orEmpty()
+                id.startsWith("local:") || id.startsWith("server:") ||
+                    id.startsWith("downloads:")
+            }
+            if (personal.isEmpty()) shelves.removeAt(index)
+            else shelves[index] = shelves[index].copy(items = personal)
+            personal.mapNotNull { it.browseId }.forEach(selected::add)
         }
     }
 
