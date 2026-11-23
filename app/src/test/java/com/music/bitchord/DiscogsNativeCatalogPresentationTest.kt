@@ -43,6 +43,9 @@ class DiscogsNativeCatalogPresentationTest {
         ), hasMore = true, incomplete = true)
         assertEquals("discogs:artist:8303009", page.page.browseId)
         assertEquals(BrowseType.ARTIST, page.page.type)
+        // Provenance lives in the exact source route and attribution; it is
+        // not a redundant genre/type label in the native artist header.
+        assertEquals("Artista", page.page.subtitle)
         assertEquals(
             listOf("Álbuns", "Singles e EPs", "Álbuns ao vivo",
                 "Coletâneas", "Outros lançamentos"),

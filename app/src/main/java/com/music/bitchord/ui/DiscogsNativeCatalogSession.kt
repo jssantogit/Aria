@@ -587,7 +587,7 @@ internal fun discogsArtistPage(
         page = DetailPage(
             browseId = artist.browseId,
             title = artist.name,
-            subtitle = "Artista · Discogs",
+            subtitle = "Artista",
             thumbnailUrl = null,
             type = BrowseType.ARTIST,
             songs = UiState.Success(emptyList()),
