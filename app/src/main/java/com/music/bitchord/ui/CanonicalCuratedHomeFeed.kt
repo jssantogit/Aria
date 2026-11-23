@@ -524,14 +524,31 @@ internal fun canonicalCuratedHomeShelves(
     val candidates = groups.ifEmpty {
         releasedCandidates.filter { it.kind == CanonicalSearchKind.RELEASE }
     }
-    val knownRows = candidates.asSequence()
-        .sortedWith(
-            compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
-                .thenBy { it.musicBrainzId },
-        )
+    val chronological = compareByDescending<CanonicalCatalogSearchRow> {
+        it.releaseDate.orEmpty()
+    }.thenBy { it.musicBrainzId }
+    val distinctCandidates = candidates.asSequence()
+        .sortedWith(chronological)
         .distinctBy { it.musicBrainzId }
-        .take(24)
         .toList()
+    // The local/cached base Home shares the same finite 24-card budget as
+    // worldwide editorial. Selecting the first 24 dates *before* reserving
+    // formats can hide a valid Album behind 30 Singles (or vice versa).
+    // Reserve one verified work per source-typed format, then allocate the
+    // remaining slots chronologically. No type or popularity is inferred.
+    val anchors = listOfNotNull(
+        distinctCandidates.firstOrNull {
+            canonicalEditorialReleaseType(it) == "Album"
+        },
+        distinctCandidates.firstOrNull {
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        },
+    ).distinctBy { it.musicBrainzId }
+    val anchorIds = anchors.map { it.musicBrainzId }.toSet()
+    val knownRows = (anchors + distinctCandidates.asSequence()
+        .filterNot { it.musicBrainzId in anchorIds }
+        .take(24 - anchors.size)
+        .toList()).sortedWith(chronological)
     fun releaseCard(row: CanonicalCatalogSearchRow): ShelfItem? =
         canonicalBrowseCardId(row)?.let { id ->
             ShelfItem(row.title, row.subtitle.orEmpty(), row.artworkUri, null, id)
