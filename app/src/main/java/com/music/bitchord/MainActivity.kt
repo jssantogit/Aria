@@ -630,7 +630,7 @@ private fun CanonicalHomeEditorialEffects(
     ) {
         if (selectedTab == TAB_HOME) {
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartMusicBrainz(
-                viewModel, catalogEditorialOrder, appleHomeReleases,
+                viewModel, catalogEditorialOrder, appleHomeReleases, discogsHomeReleases,
             )
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartAfterDiscogsMiss(
                 viewModel, catalogEditorialOrder, discogsHomeReleases,
@@ -707,12 +707,13 @@ private fun CanonicalHomeEditorialEffects(
     }
 
     LaunchedEffect(selectedTab, canonicalWorldwideLoading, canonicalHomeShelves,
-        catalogEditorialOrder, appleHomeReleases,
+        catalogEditorialOrder, appleHomeReleases, discogsHomeReleases,
     ) {
         if (selectedTab == TAB_HOME) {
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartApple(
                 viewModel, catalogEditorialOrder, canonicalWorldwideLoading,
                 canonicalHomeShelves, canonicalReleasesHeading,
+                discogsHomeReleases,
             )
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartDiscogs(
                 viewModel, catalogEditorialOrder, viewModel.canonicalWorldwideLoading.value,
