@@ -214,9 +214,11 @@ internal class DiscogsNativeGenreEditorial(
         // to retry an unresolved Master instead of permanently blacklisting it.
         val unresolvedMasterIds = HashSet<Long>()
         // Fill the caller's bounded sample with verified releases, not just
-        // the first non-empty index page. A page with one valid release must
-        // not prematurely end a three-release request. All reads still share
-        // the source rate limiter and no more than two index pages are probed.
+        // the first non-empty index page. Check all 12 advertised candidates
+        // within each source page: an arbitrary first-five cut hides valid
+        // releases in positions 6-12 even when no other page exists. Stop
+        // once maxReleases is met; every hydration remains rate-limited and
+        // only the existing two index pages may be requested.
         for (pageNumber in 1..2) {
             val response = try {
                 admission.execute(
@@ -247,7 +249,7 @@ internal class DiscogsNativeGenreEditorial(
                 else -> return if (verified.isNotEmpty())
                     DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unavailable
             }
-            for (masterId in index.masterIds.take(5)) {
+            for (masterId in index.masterIds) {
                 if (verified.size >= maxReleases) break
                 // A successfully checked Master is deduplicated across pages.
                 // An unavailable/malformed transport response is NOT a check.
