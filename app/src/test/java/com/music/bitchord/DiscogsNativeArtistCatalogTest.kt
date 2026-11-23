@@ -125,7 +125,11 @@ class DiscogsNativeArtistCatalogTest {
                     else DiscogsLookupResult.Throttled(12L)
             },
         )
-        val result = source.load(17) as DiscogsNativeArtistLoad.Success
+        val emissions = mutableListOf<List<Long>>()
+        val result = source.load(17, onProgress = { rows ->
+            emissions += rows.map { it.releaseId }
+        }) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(listOf(50L)), emissions)
         assertEquals(listOf(50L), result.releases.map { it.releaseId })
         assertTrue(result.incomplete)
         assertFalse(result.hasMore)
@@ -218,7 +222,11 @@ class DiscogsNativeArtistCatalogTest {
                 }
             },
         )
-        val result = source.load(17)
+        val progressive = mutableListOf<List<Long>>()
+        val result = source.load(17, onProgress = { items ->
+            progressive += items.map { it.releaseId }
+        })
+        assertEquals(listOf(listOf(50L), listOf(50L, 51L)), progressive)
         assertTrue(result is DiscogsNativeArtistLoad.Success)
         val page = result as DiscogsNativeArtistLoad.Success
         assertEquals(listOf(50L, 51L), page.releases.map { it.releaseId })
@@ -253,7 +261,10 @@ class DiscogsNativeArtistCatalogTest {
                     DiscogsLookupResult.Found(release(id, artistId = 999L))
             },
         )
-        val result = source.load(17) as DiscogsNativeArtistLoad.Success
+        val emissions = mutableListOf<List<DiscogsNativeArtistRelease>>()
+        val result = source.load(17, onProgress = { emissions += it }) as
+            DiscogsNativeArtistLoad.Success
+        assertTrue(emissions.isEmpty())
         assertTrue(result.releases.isEmpty())
         assertTrue(result.incomplete)
         assertFalse(result.hasMore)
