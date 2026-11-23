@@ -79,6 +79,23 @@ internal data class DiscogsNativePage(
     val versionMasterId: Long? = null,
 )
 
+/** A version link is accepted only from a hydrated, explicitly verified
+ * Master-specific carousel. Its source ID cannot be inferred from a title. */
+internal fun discogsVerifiedVersionSelection(
+    page: DiscogsNativePage,
+    browseId: String,
+): DiscogsNativeReleaseSearchRow? {
+    if (page.page.type != BrowseType.ALBUM ||
+        page.versionMasterId !in 1..999_999_999_999L
+    ) return null
+    val row = page.page.sections
+        .singleOrNull { it.title == "Versões" }
+        ?.items?.singleOrNull { it.browseId == browseId } ?: return null
+    val id = discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId)
+        ?.removePrefix("discogs:release:")?.toLongOrNull() ?: return null
+    return DiscogsNativeReleaseSearchRow(id, row.title)
+}
+
 /** Native loading skeleton, just like a MusicBrainz DetailPage pushed from Search. */
 internal fun discogsNativeLoadingPage(
     browseId: String,
@@ -827,15 +844,77 @@ internal class DiscogsNativeCatalogSession(
         job.invokeOnCompletion { unregister() }
     }
 
+    private fun openVerifiedArtistVersion(
+        selected: DiscogsNativeReleaseSearchRow,
+        current: DiscogsNativePage,
+        expectedMasterId: Long,
+        parent: DiscogsNativeArtistSearchRow,
+    ) {
+        val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
+        detailJob?.cancel()
+        versionHistory = (versionHistory + current).takeLast(8)
+        _browseId.value = selected.browseId
+        _route.value = DiscogsNativeRoute.RELEASE
+        _detail.value = UiState.Success(discogsNativeLoadingPage(
+            selected.browseId, selected.title, parent.name, BrowseType.ALBUM,
+        ))
+        val job = scope.launch(Dispatchers.IO) {
+            val response = try { editionClient.fetchRelease(selected.releaseId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DiscogsLookupResult.Unavailable }
+            if (!authorization.isCurrent() || artist != parent ||
+                _route.value != DiscogsNativeRoute.RELEASE ||
+                _browseId.value != selected.browseId) return@launch
+            val record = (response as? DiscogsLookupResult.Found)?.record
+            if (record == null || record.link.id != selected.releaseId ||
+                record.link.kind != DiscogsKind.RELEASE ||
+                record.masterId != expectedMasterId || record.unofficial ||
+                parent.artistId !in record.artistIds
+            ) {
+                failDetail("Não foi possível verificar esta versão Discogs.")
+                return@launch
+            }
+            _detail.value = UiState.Success(discogsReleasePage(parent, record, releases))
+            val variants = sampleVerifiedVersions(record)
+            if (!authorization.isCurrent() || artist != parent ||
+                _route.value != DiscogsNativeRoute.RELEASE ||
+                _browseId.value != selected.browseId) return@launch
+            _detail.value = UiState.Success(discogsReleasePage(
+                parent, record, releases,
+                versionRecords = variants.records,
+                versionsIncomplete = variants.incomplete,
+            ))
+        }
+        detailJob = job
+        val unregister = authorization.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+    }
+
     fun openRelease(browseId: String) {
         val parent = artist
+        val current = (_detail.value as? UiState.Success)?.data
+            ?.takeIf { _route.value == DiscogsNativeRoute.RELEASE &&
+                it.page.browseId == _browseId.value }
+        val verifiedVersion = current?.let {
+            discogsVerifiedVersionSelection(it, browseId)
+        }
+        if (verifiedVersion != null) {
+            val masterId = current.versionMasterId ?: return
+            if (parent != null) {
+                openVerifiedArtistVersion(verifiedVersion, current, masterId, parent)
+            } else {
+                openReleaseFromSearch(
+                    verifiedVersion, retainDirectParent = true,
+                    expectedMasterId = masterId,
+                )
+            }
+            return
+        }
         if (parent == null) {
             // A directly opened source edition can navigate ONLY its verified
             // "Mais do artista" entries; return to the parent album on Back.
-            val current = (_detail.value as? UiState.Success)?.data
-                ?.takeIf { _route.value == DiscogsNativeRoute.RELEASE &&
-                    it.page.browseId == _browseId.value } ?: return
-            val related = current.page.sections
+            val live = current ?: return
+            val related = live.page.sections
                 .filter { it.title.startsWith("Mais de ") ||
                     it.title == "Mais do artista" }
                 .flatMap { it.items }
@@ -852,6 +931,9 @@ internal class DiscogsNativeCatalogSession(
         val release = releases.singleOrNull { it.browseId == browseId } ?: return
         val authorization = lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) ?: return
         detailJob?.cancel()
+        // This opens another work from the artist's discography, not a
+        // pressing of the current work. Discard its separate version stack.
+        versionHistory = emptyList()
         _browseId.value = release.browseId
         _route.value = DiscogsNativeRoute.RELEASE
         _detail.value = UiState.Success(discogsNativeLoadingPage(
@@ -864,14 +946,25 @@ internal class DiscogsNativeCatalogSession(
             if (!authorization.isCurrent() || artist != parent ||
                 _route.value != DiscogsNativeRoute.RELEASE) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
-            _detail.value = if (record != null && !record.unofficial &&
-                record.link.id == release.releaseId &&
-                parent.artistId in record.artistIds
-            ) UiState.Success(discogsReleasePage(parent, record, releases))
-            else {
+            if (record == null || record.unofficial ||
+                record.link.kind != DiscogsKind.RELEASE ||
+                record.link.id != release.releaseId ||
+                parent.artistId !in record.artistIds ||
+                _browseId.value != release.browseId
+            ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
             }
+            _detail.value = UiState.Success(discogsReleasePage(parent, record, releases))
+            val variants = sampleVerifiedVersions(record)
+            if (!authorization.isCurrent() || artist != parent ||
+                _route.value != DiscogsNativeRoute.RELEASE ||
+                _browseId.value != release.browseId) return@launch
+            _detail.value = UiState.Success(discogsReleasePage(
+                parent, record, releases,
+                versionRecords = variants.records,
+                versionsIncomplete = variants.incomplete,
+            ))
         }
         detailJob = job
         val unregister = authorization.cancelJobOnRevoke(job)
@@ -881,7 +974,15 @@ internal class DiscogsNativeCatalogSession(
     fun back() {
         detailJob?.cancel()
         detailJob = null
-        if (_route.value == DiscogsNativeRoute.RELEASE && artist != null) {
+        if (_route.value == DiscogsNativeRoute.RELEASE &&
+            versionHistory.isNotEmpty()
+        ) {
+            val previous = versionHistory.last()
+            versionHistory = versionHistory.dropLast(1)
+            _browseId.value = previous.page.browseId
+            _route.value = DiscogsNativeRoute.RELEASE
+            _detail.value = UiState.Success(previous)
+        } else if (_route.value == DiscogsNativeRoute.RELEASE && artist != null) {
             _browseId.value = artist?.browseId
             _route.value = DiscogsNativeRoute.ARTIST
             _detail.value = cachedArtistPage?.let { UiState.Success(it) }
@@ -904,6 +1005,7 @@ internal class DiscogsNativeCatalogSession(
         _browseId.value = null
         _detail.value = null
         directReleaseHistory = emptyList()
+        versionHistory = emptyList()
         artist = null
         releases = emptyList()
         artistPage = 0
