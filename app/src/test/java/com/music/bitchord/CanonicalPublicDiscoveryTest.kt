@@ -192,6 +192,29 @@ class CanonicalPublicDiscoveryTest {
         })
     }
 
+    @Test fun directGenreComposerRejectsInvalidCachedCalendarEvidence() {
+        val canonical = canonicalPublicGenreRows(listOf(recent), "2026-11-06").single()
+        val invalidMonth = canonical.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000001",
+            title = "Impossible month", releaseDate = "2025-99",
+        )
+        val invalidDay = canonical.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000002",
+            title = "Impossible day", releaseDate = "2026-02-30",
+        )
+        val yearOnly = canonical.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000003",
+            title = "Verified historical year", releaseDate = "2024",
+        )
+        val shelves = canonicalGenreEditorialShelves(
+            canonicalExploreGenres.first(),
+            listOf(invalidMonth, invalidDay, yearOnly), "2026-11-06",
+        )
+        assertEquals(listOf("Verified historical year"),
+            shelves.flatMap { it.items }.map { it.title }.distinct())
+        assertTrue(shelves.none { it.title == "Lançamentos" })
+    }
+
     @Test fun nativeGenreDetailBuildsDistinctEditorialSectionsWithoutInventedCharts() {
         val sample = buildList {
             repeat(5) { index ->
