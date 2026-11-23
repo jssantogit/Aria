@@ -173,7 +173,9 @@ internal fun discogsEditorialShelves(
         make("Lançamentos", unique.take(2), 2),
         make("Álbuns", unique.filter { kind(it) == 1 }, 12),
         make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
-        make("Mais para explorar", unique, 12),
+        // Do not invent a second discovery rail from the only verified
+        // release. The album classification shelf remains visible above.
+        make("Mais para explorar", unique.drop(2), 12),
         artistShelf,
     )
 }
