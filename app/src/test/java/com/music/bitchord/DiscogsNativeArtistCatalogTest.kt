@@ -120,8 +120,8 @@ class DiscogsNativeArtistCatalogTest {
             },
             editions = object : DiscogsNativeEditionReader {
                 override suspend fun master(id: Long) = DiscogsLookupResult.Missing
-                override suspend fun release(id: Long) = if (id == 50L)
-                    DiscogsLookupResult.Found(release(id))
+                override suspend fun release(id: Long): DiscogsLookupResult = if (id == 50L)
+                    DiscogsLookupResult.Found(this@DiscogsNativeArtistCatalogTest.release(id))
                     else DiscogsLookupResult.Throttled(12L)
             },
         )
@@ -136,7 +136,7 @@ class DiscogsNativeArtistCatalogTest {
         assertFalse(result.hasMore)
     }
 
-    @Test fun interruptedFinalArtistPageIsRetriedBeforeAdvancingAndClosesIncompleteGap() = runBlocking {
+    @Test fun interruptedArtistPageIsRetriedBeforeAdvancingAndClosesIncompleteGap() = runBlocking {
         val requestedPages = mutableListOf<Int>()
         val releaseCalls = mutableListOf<Long>()
         var throttleSecondRelease = true
@@ -164,7 +164,7 @@ class DiscogsNativeArtistCatalogTest {
                     return if (id == 51L && throttleSecondRelease) {
                         throttleSecondRelease = false
                         DiscogsLookupResult.Throttled(9L)
-                    } else DiscogsLookupResult.Found(release(id))
+                    } else DiscogsLookupResult.Found(this@DiscogsNativeArtistCatalogTest.release(id))
                 }
             },
         )
