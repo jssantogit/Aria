@@ -233,7 +233,7 @@ fun HomeScreen(
     categoryNavigationShelf: HomeShelf? = null,
     /** Verified external source attribution, not a fabricated catalog card. */
     editorialAttribution: Pair<String, String>? = null,
-    /** Only a verified genre continuation shelf uses horizontal end paging. */
+    /** Verified supplemental Home/genre shelves share native horizontal paging. */
     onAdditionalGenrePage: (() -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
@@ -499,8 +499,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
-                    onRowEndReached = if (shelf.title == "Mais do gênero")
-                        onAdditionalGenrePage else null,
+                    onRowEndReached = if (
+                        shelf.title == "Mais do gênero" ||
+                        shelf.title == "Mais do catálogo"
+                    ) onAdditionalGenrePage else null,
                 )
             }
         }
