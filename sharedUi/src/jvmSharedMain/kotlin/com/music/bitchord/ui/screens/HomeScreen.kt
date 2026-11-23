@@ -54,6 +54,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -231,6 +233,8 @@ fun HomeScreen(
     categoryNavigationShelf: HomeShelf? = null,
     /** Verified external source attribution, not a fabricated catalog card. */
     editorialAttribution: Pair<String, String>? = null,
+    /** Only a verified genre continuation shelf uses horizontal end paging. */
+    onAdditionalGenrePage: (() -> Unit)? = null,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
     val sourceUriHandler = LocalUriHandler.current
@@ -380,6 +384,7 @@ fun HomeScreen(
                         isPlaying = isPlaying,
                         firstIsHero = leadHero && !recentlyPlayedLoading && displayShelves.isNotEmpty(),
                         recentsViewType = recentsViewType,
+                        onAdditionalGenrePage = onAdditionalGenrePage,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
                                 if (recentsViewType == LibraryViewType.LIST) {
@@ -446,6 +451,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
     emptyPlaylistNotice: String? = null,
+    onAdditionalGenrePage: (() -> Unit)? = null,
 ) {
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
@@ -493,6 +499,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
+                    onRowEndReached = if (shelf.title == "Mais do gênero")
+                        onAdditionalGenrePage else null,
                 )
             }
         }
@@ -1193,11 +1201,26 @@ internal fun Shelf(
     leadingCard: (@Composable () -> Unit)? = null,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    onRowEndReached: (() -> Unit)? = null,
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title, shelf.subtitle)
         val isCurrentItem = shelf.items.playingItemMatcher(currentSong)
+        val rowState = rememberLazyListState()
+        val latestEndCallback by rememberUpdatedState(onRowEndReached)
+        LaunchedEffect(rowState, onRowEndReached != null) {
+            if (onRowEndReached == null) return@LaunchedEffect
+            snapshotFlow {
+                val layout = rowState.layoutInfo
+                rowState.isScrollInProgress && layout.totalItemsCount > 0 &&
+                    (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >=
+                        (layout.totalItemsCount - 3).coerceAtLeast(0)
+            }.distinctUntilChanged().filter { it }.collect {
+                latestEndCallback?.invoke()
+            }
+        }
         ShelfRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
