@@ -724,7 +724,8 @@ internal class DiscogsNativeCatalogSession(
             val record = (response as? DiscogsLookupResult.Found)?.record
             if (record == null || record.link.kind != DiscogsKind.RELEASE ||
                 record.link.id != selected.releaseId ||
-                (expectedMasterId != null && record.masterId != expectedMasterId) ||
+                (expectedMasterId != null &&
+                    (record.masterId != expectedMasterId || record.unofficial)) ||
                 _browseId.value != selected.browseId
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
