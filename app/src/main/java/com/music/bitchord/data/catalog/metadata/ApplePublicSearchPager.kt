@@ -38,6 +38,51 @@ internal sealed interface ApplePublicSearchPageLoad {
     data class Failure(val reason: ItunesCatalogFailure) : ApplePublicSearchPageLoad
 }
 
+
+/**
+ * Public iTunes search is fuzzy; only an independently visible title or artist
+ * credit can make an item relevant to the typed query. This is textual search
+ * evidence, NOT an artist identity crosswalk, popularity score or playable ID.
+ *
+ * Word-start matching intentionally rejects "Ill-It" for "illit" and
+ * "MOKA ILLIT" for "illit", without removing legitimate artist-owned tracks
+ * whose track titles do not contain the artist name.
+ */
+internal fun applePublicSearchMatchRank(
+    query: String,
+    row: ItunesCatalogItem,
+): Int? {
+    fun fold(value: String?): String = java.text.Normalizer.normalize(
+        value.orEmpty(), java.text.Normalizer.Form.NFKD,
+    ).replace(Regex("\\p{M}+"), "")
+        .lowercase(java.util.Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    fun beginsAsWholeTerm(field: String, term: String): Boolean =
+        field.startsWith(term) &&
+            (field.length == term.length || !field[term.length].isLetterOrDigit())
+
+    val term = fold(query)
+    if (term.isEmpty()) return null
+    val title = fold(row.title)
+    val artist = fold(row.artistName)
+    return when (row.type) {
+        ItunesCatalogItemType.ARTIST -> when {
+            title == term -> 0
+            beginsAsWholeTerm(title, term) -> 2
+            title.startsWith("the ") && beginsAsWholeTerm(title.drop(4), term) -> 3
+            else -> null
+        }
+        ItunesCatalogItemType.TRACK, ItunesCatalogItemType.ALBUM -> when {
+            artist == term -> 0
+            title == term -> 1
+            beginsAsWholeTerm(title, term) -> 2
+            beginsAsWholeTerm(artist, term) -> 3
+            else -> null
+        }
+    }
+}
+
 internal class ApplePublicSearchPager(
     private val query: String,
     private val entity: ItunesCatalogEntity,
@@ -83,10 +128,17 @@ internal class ApplePublicSearchPager(
     )
 
     private fun merge(result: ItunesCatalogResult.Success) {
-        result.items.forEach { row ->
-            if (row.type != expected || row.storefront != country ||
-                row.id <= 0L || row.title.isBlank() || row.id in disputed
-            ) return@forEach
+        // Rank each incoming official batch once, then append new verified
+        // IDs. Never re-sort previously visible pages as portraits or later
+        // public Search attributes arrive.
+        result.items.asSequence()
+            .filter { it.type == expected && it.storefront == country &&
+                it.id > 0L && it.title.isNotBlank() && it.id !in disputed }
+            .mapNotNull { row ->
+                applePublicSearchMatchRank(query, row)?.let { it to row }
+            }
+            .sortedBy { it.first }
+            .forEach { (_, row) ->
             val prev = rows[row.id]
             if (prev == null) {
                 rows[row.id] = row

@@ -21,13 +21,14 @@ class ApplePublicSearchPagerTest {
             mutableMapOf(),
     ) : ApplePublicSearchSource {
         val calls = mutableListOf<ItunesCatalogSearchAttribute?>()
+        var expectedQuery = "Artist"
         override suspend fun search(
             query: String, entity: ItunesCatalogEntity, country: String,
             attribute: ItunesCatalogSearchAttribute?,
         ): ItunesCatalogResult {
             calls.add(attribute)
             assertEquals("br", country)
-            assertEquals("Artist", query)
+            assertEquals(expectedQuery, query)
             return if (attribute == null) initial
             else extras[attribute] ?: ItunesCatalogResult.Success(emptyList())
         }
@@ -80,6 +81,87 @@ class ApplePublicSearchPagerTest {
         assertEquals(listOf(1L,2L), pager.snapshot().visible.map { it.id })
         assertEquals(2, fake.calls.count { it == ItunesCatalogSearchAttribute.ALBUM_TERM })
     }
+
+
+    @Test fun artistQueryRejectsSubstringNamesakesButKeepsExactAndLegitimatePrefixes() =
+        runBlocking {
+            val rows = listOf(
+                ItunesCatalogItem(ItunesCatalogItemType.ARTIST, 10, "br", "MOKA ILLIT",
+                    null, null, null, null, null, null, null, null, null),
+                ItunesCatalogItem(ItunesCatalogItemType.ARTIST, 11, "br", "Ill-It",
+                    null, null, null, null, null, null, null, null, null),
+                ItunesCatalogItem(ItunesCatalogItemType.ARTIST, 12, "br", "ILLITE",
+                    null, null, null, null, null, null, null, null, null),
+                ItunesCatalogItem(ItunesCatalogItemType.ARTIST, 13, "br", "ILLIT Official",
+                    null, null, null, null, null, null, null, null, null),
+                ItunesCatalogItem(ItunesCatalogItemType.ARTIST, 14, "br", "ILLIT",
+                    null, null, null, null, null, null, null, null, null),
+            )
+            val fake = Fake(ItunesCatalogResult.Success(rows)).apply {
+                expectedQuery = "illit"
+            }
+            val pager = ApplePublicSearchPager(
+                "illit", ItunesCatalogEntity.ARTIST, "br", 24, fake,
+            )
+            val result = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+            assertEquals(listOf(14L, 13L), result.visible.map { it.id })
+            assertEquals(2, result.discoveredCount)
+            assertFalse(result.hasMore)
+        }
+
+    @Test fun songsAndAlbumsMatchExactArtistOrActualWorkTitleNotNamesakes() =
+        runBlocking {
+            fun song(id: Long, artist: String, title: String) =
+                ItunesCatalogItem(
+                    type = ItunesCatalogItemType.TRACK, id = id,
+                    storefront = "br", title = title, artistName = artist,
+                    artistId = id, collectionId = 1L, storeUrl = null,
+                    releaseDate = null, genre = null, durationMs = null,
+                    trackNumber = 1, discNumber = 1,
+                )
+            val rows = listOf(
+                song(1L, "MOKA ILLIT", "Not Related"),
+                song(2L, "ILL-IT", "Other"),
+                song(3L, "ILLIT", "Magnetic"),
+                song(4L, "Other Artist", "ILLIT (a tribute)"),
+                song(5L, "ILLIT", "Cherish"),
+                song(6L, "MOKA ILLIT", "Unrelated"),
+            )
+            val fake = Fake(ItunesCatalogResult.Success(rows)).apply {
+                expectedQuery = "illit"
+            }
+            val pager = ApplePublicSearchPager(
+                "illit", ItunesCatalogEntity.SONG, "br", 24, fake,
+            )
+            assertEquals(listOf(3L, 5L, 4L),
+                (pager.start() as ApplePublicSearchPageLoad.Success)
+                    .snapshot.visible.map { it.id })
+            assertEquals(null, applePublicSearchMatchRank(
+                "illit", album(10L).copy(artistName = "MOKA ILLIT",
+                    title = "Unrelated EP"),
+            ))
+            assertEquals(0, applePublicSearchMatchRank(
+                "illit", album(11L).copy(artistName = "ILLIT",
+                    title = "BREAK EVEN"),
+            ))
+            assertEquals(2, applePublicSearchMatchRank(
+                "illit", album(12L).copy(artistName = "Other",
+                    title = "ILLIT Live"),
+            ))
+        }
+
+    @Test fun accentsAndArticlesAreNormalizedWithoutRemovingSourcePunctuation() {
+        val artist = ItunesCatalogItem(
+            ItunesCatalogItemType.ARTIST, 17L, "br", "Beyoncé",
+            null, null, null, null, null, null, null, null, null,
+        )
+        assertEquals(0, applePublicSearchMatchRank("Beyonce", artist))
+        assertEquals(3, applePublicSearchMatchRank("beatles",
+            artist.copy(title = "The Beatles")))
+        assertNull(applePublicSearchMatchRank("illit", artist.copy(title = "Ill-It")))
+        assertNull(applePublicSearchMatchRank("illit", artist.copy(title = "ILLITERATE")))
+    }
+
 
     @Test fun invalidUserSearchQueryReturnsFailureInsteadOfCrashingConstructor() =
         runBlocking {
