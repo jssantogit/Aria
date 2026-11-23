@@ -100,6 +100,45 @@ class DiscogsGenreEditorialNetworkTest {
         ), calls)
     }
 
+    @Test fun finalCandidateInTwelveRowIndexPageMustReachCanonicalEditorial() = runBlocking {
+        val visitedMasters = mutableListOf<Long>()
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    assertEquals(1, page)
+                    val rows = (1L..12L).joinToString(",") {
+                        """{"id":$it,"type":"master"}"""
+                    }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[$rows]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    visitedMasters += id
+                    return DiscogsLookupResult.FoundMaster(
+                        master(id, if (id == 12L) "K-Pop" else "Ambient"),
+                    )
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    assertEquals(502L, id)
+                    return DiscogsLookupResult.Found(verifiedEdition(12L))
+                }
+            },
+        )
+        val result = source.discover(
+            DiscogsEditorialQuery("K-Pop", isStyle = true), maxReleases = 1,
+        ) as DiscogsEditorialResult.Verified
+        assertEquals((1L..12L).toList(), visitedMasters)
+        assertEquals(listOf("discogs:release:502"),
+            result.releases.map { it.browseId })
+    }
+
     @Test fun secondPageCanRescueUnrelatedFirstPage() = runBlocking {
         val visited = mutableListOf<String>()
         val source = DiscogsNativeGenreEditorial(
