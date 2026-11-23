@@ -261,21 +261,59 @@ class IdmCatalogLiveObservationTest {
 
         val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
             ?.trim()?.takeIf(String::isNotBlank)
+        // Bounded live transport counters, without titles, IDs, search bodies
+        // or token values. Distinguish index discovery from costly hydration.
+        var discogsIndexReads = 0
+        var discogsIndexCandidates = 0
+        var discogsMasterReads = 0
+        var discogsMasterFound = 0
+        var discogsReleaseReads = 0
+        var discogsReleaseFound = 0
         val discogsRead = if (token == null) null else {
             val caps = setOf(ProviderCapability.CATALOG_SEARCH,
                 ProviderCapability.EDITORIAL_DISCOGRAPHY)
             val discogsGate = gateFor(discogs, caps)
             val guard = RateLimitedProviderTransport { discogsGate }
+            val liveIndex = KtorDiscogsGenreSearchTransport()
+            val editions = DiscogsNativeEditionClient(
+                DiscogsClient(
+                    enabled = true,
+                    capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                    admission = guard,
+                ),
+            )
             val native = DiscogsNativeGenreEditorial(
                 enabled = true, tokenProvider = { token },
                 admission = guard,
-                editions = DiscogsNativeEditionClient(
-                    DiscogsClient(
-                        enabled = true,
-                        capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
-                        admission = guard,
-                    ),
-                ),
+                transport = object : DiscogsGenreSearchTransport {
+                    override suspend fun search(
+                        query: DiscogsEditorialQuery,
+                        token: String, userAgent: String, page: Int,
+                    ): DiscogsHttpResponse {
+                        discogsIndexReads++
+                        val response = liveIndex.search(query, token, userAgent, page)
+                        if (response.status == 200) {
+                            val index = DiscogsEditorialMasterParsing.page(response.body, page)
+                            discogsIndexCandidates += index?.masterIds?.size ?: 0
+                        }
+                        return response
+                    }
+                },
+                editions = object : DiscogsNativeEditionReader {
+                    override suspend fun master(id: Long): DiscogsLookupResult {
+                        discogsMasterReads++
+                        return editions.master(id).also {
+                            if (it is DiscogsLookupResult.FoundMaster) discogsMasterFound++
+                        }
+                    }
+
+                    override suspend fun release(id: Long): DiscogsLookupResult {
+                        discogsReleaseReads++
+                        return editions.release(id).also {
+                            if (it is DiscogsLookupResult.Found) discogsReleaseFound++
+                        }
+                    }
+                },
             )
             withTimeoutOrNull(95_000L) {
                 try { native.discover(DiscogsEditorialQuery("K-Pop", isStyle = true),
@@ -299,13 +337,24 @@ class IdmCatalogLiveObservationTest {
                 discogsRead is DiscogsEditorialResult.Verified -> "verified"
                 else -> "source_error"
             },
-            raw = null, parsed = null, eligible = verifiedDiscogs.size,
+            raw = if (token != null) discogsIndexCandidates else null,
+            parsed = if (token != null) discogsMasterFound else null,
+            eligible = verifiedDiscogs.size,
             visible = discogsItems.size,
-            // The adapter performs nested reads not exposed here; null means
-            // unmeasured, not zero network requests.
-            requests = null, artwork = discogsItems.count {
-                !it.thumbnailUrl.isNullOrBlank()
-            }, shelves = discogsShelves,
+            requests = if (token != null)
+                discogsIndexReads + discogsMasterReads + discogsReleaseReads else null,
+            artwork = discogsItems.count { !it.thumbnailUrl.isNullOrBlank() },
+            shelves = discogsShelves,
+            counts = mapOf(
+                "discogs_index_reads" to discogsIndexReads,
+                "discogs_master_reads" to discogsMasterReads,
+                "discogs_master_found" to discogsMasterFound,
+                "discogs_release_reads" to discogsReleaseReads,
+                "discogs_release_found" to discogsReleaseFound,
+                "discogs_hydration_rejections" to
+                    (discogsMasterReads - discogsMasterFound) +
+                    (discogsReleaseReads - discogsReleaseFound),
+            ),
         ))
 
         // Same Home priority and fallback selection as MainActivity, evaluated
