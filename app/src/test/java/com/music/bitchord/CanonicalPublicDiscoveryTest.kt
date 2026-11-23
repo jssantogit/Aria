@@ -431,11 +431,15 @@ class CanonicalPublicDiscoveryTest {
             recent.copy(
                 musicBrainzId = "90000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
                 title = "Verified unique ${index}",
-                primaryType = if (index <= 40) "Album" else "Single",
+                primaryType = if (index % 2 == 0) "Album" else "Single",
                 firstReleaseDate = "2026-11-01",
             )
         }
-        val rows = canonicalPublicReleaseRows(hits, "2026-10-01", "2026-11-06")
+        // The real scanner concatenates multiple typed source pages. Each
+        // page can publish 40 rows; do not treat one-page gate as a global cap.
+        val rows = hits.chunked(40).flatMap {
+            canonicalPublicReleaseRows(it, "2026-10-01", "2026-11-06")
+        }
         val home = canonicalHomeWithWorldwideEditorial(
             emptyList(), rows, "Lançamentos", "Escolha a dedo", "Em alta",
             null, "2026-11-06", "Álbuns", "Singles e EPs", "Mais",
