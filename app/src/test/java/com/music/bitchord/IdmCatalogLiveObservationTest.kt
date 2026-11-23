@@ -107,15 +107,28 @@ class IdmCatalogLiveObservationTest {
             "rejected_duplicate_id" to 0,
             "rejected_display_cap" to 0,
         )
+        val dateReasons = linkedMapOf(
+            "date_missing" to 0,
+            "date_year_only" to 0,
+            "date_month_only" to 0,
+            "date_invalid" to 0,
+            "date_outside_window" to 0,
+        )
         val identities = mutableSetOf<String>()
         var admitted = 0
         for (hit in hits) {
             val date = hit.firstReleaseDate
-            val dateAccepted = date != null && date.length == 10 &&
-                date >= from && date <= through &&
-                runCatching { LocalDate.parse(date) }.isSuccess
+            val dateReason = when {
+                date.isNullOrBlank() -> "date_missing"
+                Regex("^\\d{4}$").matches(date) -> "date_year_only"
+                Regex("^\\d{4}-\\d{2}$").matches(date) -> "date_month_only"
+                date.length != 10 || runCatching { LocalDate.parse(date) }.isFailure ->
+                    "date_invalid"
+                date < from || date > through -> "date_outside_window"
+                else -> null
+            }
             val reason = when {
-                !dateAccepted -> "rejected_date"
+                dateReason != null -> "rejected_date"
                 hit.artistDisplay.isNullOrBlank() -> "rejected_artist_credit"
                 !canonicalStreamingTitleIsSafe(hit.title) -> "rejected_unsafe_title"
                 !CanonicalEditorialDiscography.classify(
@@ -125,13 +138,20 @@ class IdmCatalogLiveObservationTest {
                     "rejected_duplicate_id"
                 else -> null
             }
-            if (reason == null) admitted++ else counts[reason] = counts.getValue(reason) + 1
+            if (dateReason != null) {
+                dateReasons[dateReason] = dateReasons.getValue(dateReason) + 1
+            }
+            if (reason == null) admitted++
+            else counts[reason] = counts.getValue(reason) + 1
         }
         counts["rejected_display_cap"] = (admitted - published).coerceAtLeast(0)
         check(counts.values.sum() == hits.size - published) {
             "MusicBrainz source and Home rejection counts diverged"
         }
-        return counts
+        check(dateReasons.values.sum() == counts.getValue("rejected_date")) {
+            "MusicBrainz date precision breakdown diverged"
+        }
+        return counts + dateReasons
     }
 
     @Test fun live_sources_and_collective_fallback_use_canonical_pipeline() = runBlocking {
