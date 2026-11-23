@@ -7296,312 +7296,319 @@ private fun BitChordApp(
         }
         contextualActionOverlays()
 
-        // ---- Welcome (once; under the sign-in WebView it can open) ----
-        // There from the first frame, so no way in; on the way out it drops
-        // like a dismissed sheet onto the app it was standing in front of.
-        WelcomeOnboardingOverlay(
-            visibleState = onboardingShown,
-            signedIn = signedIn,
-            accountName = account?.name.orEmpty(),
-            onSignIn = { showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled)) },
-        )
+        // This late overlay group is a separate Compose method: keeping it
+        // in BitChordApp exceeds the JVM 64 KiB bytecode ceiling in Android/TV.
+        // The original owners, order, and callbacks remain in this scope.
+        @Composable
+        fun LegacyFullWindowOverlays() {
+            // ---- Welcome (once; under the sign-in WebView it can open) ----
+            // There from the first frame, so no way in; on the way out it drops
+            // like a dismissed sheet onto the app it was standing in front of.
+            WelcomeOnboardingOverlay(
+                visibleState = onboardingShown,
+                signedIn = signedIn,
+                accountName = account?.name.orEmpty(),
+                onSignIn = { showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled)) },
+            )
 
-        // ---- Update available (once per launch; held until the welcome is done) ----
-        if (showUpdateDialog && onboardingComplete) {
-            updateNotice?.let { update ->
-                UpdateAvailableDialog(
-                    version = update.version,
-                    notes = update.notes,
-                    hazeState = hazeState,
-                    // A download in progress keeps running behind the closed
-                    // sheet — only the sheet itself goes away. The top bar's
-                    // update icon reopens it onto whatever state it reached.
-                    onDismiss = { showUpdateDialog = false },
-                    onDownload = {
-                        if (update.apkUrl != null) {
-                            scope.launch { AppUpdateChecker.downloadApk(context) }
-                        } else {
+            // ---- Update available (once per launch; held until the welcome is done) ----
+            if (showUpdateDialog && onboardingComplete) {
+                updateNotice?.let { update ->
+                    UpdateAvailableDialog(
+                        version = update.version,
+                        notes = update.notes,
+                        hazeState = hazeState,
+                        // A download in progress keeps running behind the closed
+                        // sheet — only the sheet itself goes away. The top bar's
+                        // update icon reopens it onto whatever state it reached.
+                        onDismiss = { showUpdateDialog = false },
+                        onDownload = {
+                            if (update.apkUrl != null) {
+                                scope.launch { AppUpdateChecker.downloadApk(context) }
+                            } else {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
+                                showUpdateDialog = false
+                            }
+                        },
+                        onCancelDownload = {
+                            AppUpdateChecker.cancelDownload()
+                        },
+                        onInstall = {
+                            val ready = AppUpdateChecker.download.value as? AppUpdateChecker.DownloadState.Ready
+                            ready?.let { AppUpdateChecker.installApk(context, it.file) }
+                        },
+                        onOpenReleasePage = {
+                            AppUpdateChecker.resetDownload()
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
                             showUpdateDialog = false
+                        },
+                    )
+                }
+            }
+
+            if (showLyricsSources) {
+                BackHandler { showLyricsSources = false }
+                LyricsSourcesDialog(
+                    hazeState = hazeState,
+                    onDismiss = { showLyricsSources = false },
+                )
+            }
+
+            if (toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY) {
+                CanonicalPlaylistMenus(
+                    hazeState = hazeState,
+                    sortOrFilterAnchor = playlistSortOrFilterAnchor,
+                    overflowAnchor = playlistOverflowAnchor,
+                    librarySortOpen = playlistLibrarySortMenu,
+                    onLibrarySortDismiss = { playlistLibrarySortMenu = false },
+                    librarySort = playlistLibrarySort,
+                    onLibrarySort = { playlistLibrarySort = it },
+                    libraryFilterOpen = playlistLibraryOptionsMenu,
+                    onLibraryFilterDismiss = { playlistLibraryOptionsMenu = false },
+                    libraryFilter = playlistLibraryFilter,
+                    onLibraryFilter = { playlistLibraryFilter = it },
+                    detailSortOpen = playlistDetailSortMenu,
+                    onDetailSortDismiss = { playlistDetailSortMenu = false },
+                    detailSort = playlistDetailSort,
+                    onDetailSort = { playlistDetailSort = it },
+                    detailOptionsOpen = playlistDetailOptionsMenu,
+                    onDetailOptionsDismiss = { playlistDetailOptionsMenu = false },
+                    selectedCard = openedCanonicalPlaylist,
+                    detailRows = playlistDetailRows,
+                    onDetailQueue = { selected, intent ->
+                        when (selected) {
+                            is com.music.bitchord.ui.screens.LibraryPlaylistCard.Smart ->
+                                executeSmartCollection(
+                                    SmartCollectionActionSource.SavedV2Definition(selected.definition.id),
+                                    intent,
+                                )
+                            is com.music.bitchord.ui.screens.LibraryPlaylistCard.CanonicalNormal ->
+                                executeSmartCollection(
+                                    SmartCollectionActionSource.SavedStaticPlaylist(selected.definition.id),
+                                    intent,
+                                )
+                            else -> Unit
                         }
                     },
-                    onCancelDownload = {
-                        AppUpdateChecker.cancelDownload()
+                    onSettings = {
+                        playlistLibrarySortMenu = false
+                        playlistDetailOptionsMenu = false
+                        showSettings = true
                     },
-                    onInstall = {
-                        val ready = AppUpdateChecker.download.value as? AppUpdateChecker.DownloadState.Ready
-                        ready?.let { AppUpdateChecker.installApk(context, it.file) }
-                    },
-                    onOpenReleasePage = {
-                        AppUpdateChecker.resetDownload()
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
-                        showUpdateDialog = false
+                    onDetailEdit = { selected ->
+                        openedCanonicalPlaylist = null
+                        when (selected) {
+                            is com.music.bitchord.ui.screens.LibraryPlaylistCard.Smart -> {
+                                editingSmartPlaylistId = selected.definition.id
+                                editingNormalPlaylistId = null
+                                showSmartPlaylistBuilder = true
+                            }
+                            is com.music.bitchord.ui.screens.LibraryPlaylistCard.CanonicalNormal -> {
+                                editingNormalPlaylistId = selected.definition.id
+                                editingSmartPlaylistId = null
+                                showSmartPlaylistBuilder = true
+                            }
+                            else -> Unit
+                        }
                     },
                 )
             }
-        }
 
-        if (showLyricsSources) {
-            BackHandler { showLyricsSources = false }
-            LyricsSourcesDialog(
-                hazeState = hazeState,
-                onDismiss = { showLyricsSources = false },
-            )
-        }
-
-        if (toolbarOwner == NativeTopBarRouteOwner.PLAYLIST_LIBRARY) {
-            CanonicalPlaylistMenus(
-                hazeState = hazeState,
-                sortOrFilterAnchor = playlistSortOrFilterAnchor,
-                overflowAnchor = playlistOverflowAnchor,
-                librarySortOpen = playlistLibrarySortMenu,
-                onLibrarySortDismiss = { playlistLibrarySortMenu = false },
-                librarySort = playlistLibrarySort,
-                onLibrarySort = { playlistLibrarySort = it },
-                libraryFilterOpen = playlistLibraryOptionsMenu,
-                onLibraryFilterDismiss = { playlistLibraryOptionsMenu = false },
-                libraryFilter = playlistLibraryFilter,
-                onLibraryFilter = { playlistLibraryFilter = it },
-                detailSortOpen = playlistDetailSortMenu,
-                onDetailSortDismiss = { playlistDetailSortMenu = false },
-                detailSort = playlistDetailSort,
-                onDetailSort = { playlistDetailSort = it },
-                detailOptionsOpen = playlistDetailOptionsMenu,
-                onDetailOptionsDismiss = { playlistDetailOptionsMenu = false },
-                selectedCard = openedCanonicalPlaylist,
-                detailRows = playlistDetailRows,
-                onDetailQueue = { selected, intent ->
-                    when (selected) {
-                        is com.music.bitchord.ui.screens.LibraryPlaylistCard.Smart ->
-                            executeSmartCollection(
-                                SmartCollectionActionSource.SavedV2Definition(selected.definition.id),
-                                intent,
-                            )
-                        is com.music.bitchord.ui.screens.LibraryPlaylistCard.CanonicalNormal ->
-                            executeSmartCollection(
-                                SmartCollectionActionSource.SavedStaticPlaylist(selected.definition.id),
-                                intent,
-                            )
-                        else -> Unit
-                    }
-                },
-                onSettings = {
-                    playlistLibrarySortMenu = false
-                    playlistDetailOptionsMenu = false
-                    showSettings = true
-                },
-                onDetailEdit = { selected ->
-                    openedCanonicalPlaylist = null
-                    when (selected) {
-                        is com.music.bitchord.ui.screens.LibraryPlaylistCard.Smart -> {
-                            editingSmartPlaylistId = selected.definition.id
-                            editingNormalPlaylistId = null
-                            showSmartPlaylistBuilder = true
+            if (songSortMenuOpen &&
+                toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL) {
+                BackHandler { songSortMenuOpen = false }
+                FrostedSortMenu(
+                    hazeState = hazeState,
+                    anchorBounds = detailSortMenuAnchor,
+                    selected = songSort,
+                    onSelect = { option ->
+                        activeDetailSortId?.let { AppSettings.setDetailSongSort(it, option) }
+                        songSortMenuOpen = false
+                    },
+                    // Flipping the date direction deliberately leaves the menu up:
+                    // closing it here would cut the arrow's rotation animation off
+                    // before it played, and the open menu lets the direction flip
+                    // read against the list reordering behind the frost.
+                    onFlipDateDirection = {
+                        activeDetailSortId?.let { browseId ->
+                            val next = when (songSort) {
+                                SongSort.DATE_ADDED_DESC -> SongSort.DATE_ADDED_ASC
+                                SongSort.DATE_ADDED_ASC -> SongSort.DATE_ADDED_DESC
+                                else -> SongSort.DATE_ADDED_DESC
+                            }
+                            AppSettings.setDetailSongSort(browseId, next)
                         }
-                        is com.music.bitchord.ui.screens.LibraryPlaylistCard.CanonicalNormal -> {
-                            editingNormalPlaylistId = selected.definition.id
-                            editingSmartPlaylistId = null
-                            showSmartPlaylistBuilder = true
-                        }
-                        else -> Unit
-                    }
-                },
-            )
-        }
+                    },
+                    onDismiss = { songSortMenuOpen = false },
+                )
+            }
 
-        if (songSortMenuOpen &&
-            toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL) {
-            BackHandler { songSortMenuOpen = false }
-            FrostedSortMenu(
+            UnifiedAlbumDetailSortMenu(
+                visible = toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
+                    shouldUseUnifiedAlbumDetailToolbar(
+                        unifiedLibraryCategory, unifiedLibraryDetailOpen, unifiedLibraryNestedAlbumOpen,
+                ),
+                state = unifiedAlbumUi,
                 hazeState = hazeState,
-                anchorBounds = detailSortMenuAnchor,
-                selected = songSort,
-                onSelect = { option ->
-                    activeDetailSortId?.let { AppSettings.setDetailSongSort(it, option) }
-                    songSortMenuOpen = false
-                },
-                // Flipping the date direction deliberately leaves the menu up:
-                // closing it here would cut the arrow's rotation animation off
-                // before it played, and the open menu lets the direction flip
-                // read against the list reordering behind the frost.
-                onFlipDateDirection = {
-                    activeDetailSortId?.let { browseId ->
-                        val next = when (songSort) {
-                            SongSort.DATE_ADDED_DESC -> SongSort.DATE_ADDED_ASC
-                            SongSort.DATE_ADDED_ASC -> SongSort.DATE_ADDED_DESC
-                            else -> SongSort.DATE_ADDED_DESC
-                        }
-                        AppSettings.setDetailSongSort(browseId, next)
-                    }
-                },
-                onDismiss = { songSortMenuOpen = false },
             )
-        }
 
-        UnifiedAlbumDetailSortMenu(
-            visible = toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
-                shouldUseUnifiedAlbumDetailToolbar(
-                    unifiedLibraryCategory, unifiedLibraryDetailOpen, unifiedLibraryNestedAlbumOpen,
-            ),
-            state = unifiedAlbumUi,
-            hazeState = hazeState,
-        )
-
-        UnifiedLibraryMenus(
-            visible = toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
-                shouldShowUnifiedLibraryBrowseFilters(unifiedLibraryDetailOpen),
-            hazeState = hazeState,
-            controls = unifiedControls,
-        )
-        UnifiedLibraryMenus(
-            visible = toolbarOwner == NativeTopBarRouteOwner.RECENT_ADDITIONS,
-            hazeState = hazeState,
-            controls = recentControls,
-        )
-
-        val menuFolder = detail?.browseId?.takeIf { it.isDeviceFolder() }
-        if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
-            folderMenuOpen && menuFolder != null) {
-            BackHandler { folderMenuOpen = false }
-            val downloadsFolder = menuFolder == "local:downloads"
-            val folderState = localFolderStates.getOrPut(menuFolder) { LocalFolderState() }
-            val selectedFolderTab = folderState.tab
-            val viewType = folderState.viewTypeFor(selectedFolderTab, folderViewTypeOf(menuFolder))
-            FrostedFolderMenu(
+            UnifiedLibraryMenus(
+                visible = toolbarOwner == NativeTopBarRouteOwner.UNIFIED_LIBRARY &&
+                    shouldShowUnifiedLibraryBrowseFilters(unifiedLibraryDetailOpen),
                 hazeState = hazeState,
-                anchorBounds = folderMenuAnchor,
-                sort = folderSortOf(menuFolder),
-                viewType = viewType,
-                onSort = { option ->
-                    if (downloadsFolder) AppSettings.setDownloadedMusicSort(option)
-                    else AppSettings.setLocalMusicSort(option)
-                    folderMenuOpen = false
-                },
-                onToggleViewType = {
-                    val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
-                    folderState.setViewTypeFor(selectedFolderTab, next)
-                    folderMenuOpen = false
-                },
-                onDismiss = { folderMenuOpen = false },
+                controls = unifiedControls,
             )
-        }
-
-        if (showAccountSelector) {
-            BackHandler { showAccountSelector = false }
-            AccountProfileSelector(
-                accounts = googleAccounts,
-                activeAccountId = activeAccountId,
-                activeProfileId = activeProfileId,
+            UnifiedLibraryMenus(
+                visible = toolbarOwner == NativeTopBarRouteOwner.RECENT_ADDITIONS,
                 hazeState = hazeState,
-                onSelect = { selected, profile -> viewModel.selectProfile(selected.accountId, profile.profileId) },
-                onAddAccount = {
-                    showAccountSelector = false
-                    showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                },
-                onRemoveAccount = { selected ->
-                    viewModel.removeAccount(selected.accountId)
-                    showAccountSelector = false
-                },
-                onOpenSettings = {
-                    showAccountSelector = false
-                    showSettings = true
-                },
-                onDismiss = { showAccountSelector = false },
+                controls = recentControls,
             )
-        }
 
-        LanguageSettingsOverlays(
-            hazeState = hazeState,
-            showAppLanguage = showAppLanguage,
-            showTranslationLanguage = showTranslationLanguage,
-            onDismissApp = { showAppLanguage = false },
-            onDismissTranslation = { showTranslationLanguage = false },
-        )
+            val menuFolder = detail?.browseId?.takeIf { it.isDeviceFolder() }
+            if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                folderMenuOpen && menuFolder != null) {
+                BackHandler { folderMenuOpen = false }
+                val downloadsFolder = menuFolder == "local:downloads"
+                val folderState = localFolderStates.getOrPut(menuFolder) { LocalFolderState() }
+                val selectedFolderTab = folderState.tab
+                val viewType = folderState.viewTypeFor(selectedFolderTab, folderViewTypeOf(menuFolder))
+                FrostedFolderMenu(
+                    hazeState = hazeState,
+                    anchorBounds = folderMenuAnchor,
+                    sort = folderSortOf(menuFolder),
+                    viewType = viewType,
+                    onSort = { option ->
+                        if (downloadsFolder) AppSettings.setDownloadedMusicSort(option)
+                        else AppSettings.setLocalMusicSort(option)
+                        folderMenuOpen = false
+                    },
+                    onToggleViewType = {
+                        val next = if (viewType == LibraryViewType.GRID) LibraryViewType.LIST else LibraryViewType.GRID
+                        folderState.setViewTypeFor(selectedFolderTab, next)
+                        folderMenuOpen = false
+                    },
+                    onDismiss = { folderMenuOpen = false },
+                )
+            }
 
-        ConnectionEditors(
-            hazeState = hazeState,
-            context = context,
-            scope = scope,
-            listenBrainzToken = listenBrainzToken,
-            listenBrainzOpen = showListenBrainzLogin,
-            lastfmOpen = showLastfmLogin,
-            webDavOpen = showWebDavEditor,
-            smbOpen = showSmbEditor,
-            onCloseListenBrainz = { showListenBrainzLogin = false },
-            onCloseLastfm = { showLastfmLogin = false },
-            onCloseWebDav = { showWebDavEditor = false },
-            onCloseSmb = { showSmbEditor = false },
-        )
+            if (showAccountSelector) {
+                BackHandler { showAccountSelector = false }
+                AccountProfileSelector(
+                    accounts = googleAccounts,
+                    activeAccountId = activeAccountId,
+                    activeProfileId = activeProfileId,
+                    hazeState = hazeState,
+                    onSelect = { selected, profile -> viewModel.selectProfile(selected.accountId, profile.profileId) },
+                    onAddAccount = {
+                        showAccountSelector = false
+                        showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
+                    },
+                    onRemoveAccount = { selected ->
+                        viewModel.removeAccount(selected.accountId)
+                        showAccountSelector = false
+                    },
+                    onOpenSettings = {
+                        showAccountSelector = false
+                        showSettings = true
+                    },
+                    onDismiss = { showAccountSelector = false },
+                )
+            }
 
-        // A clash mid-upload, answered here so the scrim covers the tab bar
-        // and mini player like every other alert. Backing out is a skip —
-        // leaving the batch suspended on a dismissed dialog would hang the
-        // upload with no way to reach the question again.
-        WebDavUploadConflictOverlay(hazeState)
-
-        ExternalAccountLoginOverlays(
-            showDiscordLogin = showDiscordLogin,
-            onDismissDiscord = { showDiscordLogin = false },
-            showSpotifyLogin = showSpotifyLogin,
-            onDismissSpotify = { showSpotifyLogin = false },
-            showSpotifyCanvasAuth = showSpotifyCanvasAuth,
-            onDismissSpotifyCanvasAuth = { showSpotifyCanvasAuth = false },
-        )
-
-        discordDialog?.let { which ->
-            DiscordDialogHost(
-                which = which,
+            LanguageSettingsOverlays(
                 hazeState = hazeState,
-                onDismiss = { discordDialog = null },
+                showAppLanguage = showAppLanguage,
+                showTranslationLanguage = showTranslationLanguage,
+                onDismissApp = { showAppLanguage = false },
+                onDismissTranslation = { showTranslationLanguage = false },
             )
-        }
 
-        // At the root with the source editor, and for the same two reasons: it
-        // is a haze card that has to sample the backdrop it is *not* inside,
-        // and a full-window scrim that has to be full-window.
-        if (editingPartyServer) {
-            PartyServerEditor(
+            ConnectionEditors(
                 hazeState = hazeState,
-                onDismiss = { editingPartyServer = false },
-            )
-        }
-
-        if (editingSignatureApi) {
-            SignatureApiEditor(
-                hazeState = hazeState,
-                onDismiss = { editingSignatureApi = false },
-            )
-        }
-
-        editingSource?.let { config ->
-            SourceEditorAlert(
-                hazeState = hazeState,
-                config = config,
-                onDismiss = { editingSource = null },
-                onSaved = { editingSource = null },
-                onDelete = {
-                    SourceRegistry.remove(config.id)
-                    editingSource = null
-                },
+                context = context,
                 scope = scope,
+                listenBrainzToken = listenBrainzToken,
+                listenBrainzOpen = showListenBrainzLogin,
+                lastfmOpen = showLastfmLogin,
+                webDavOpen = showWebDavEditor,
+                smbOpen = showSmbEditor,
+                onCloseListenBrainz = { showListenBrainzLogin = false },
+                onCloseLastfm = { showLastfmLogin = false },
+                onCloseWebDav = { showWebDavEditor = false },
+                onCloseSmb = { showSmbEditor = false },
             )
-        }
 
-        if (confirmJioSaavn) {
-            ConfirmationAlert(
-                hazeState = hazeState,
-                title = stringResource(R.string.enable_jiosaavn),
-                description = stringResource(R.string.jiosaavn_mismatch_warning),
-                confirmLabel = stringResource(R.string.enable_anyway),
-                onConfirm = {
-                    SourceRegistry.configs.value
-                        .firstOrNull { it.kind == SourceKind.JIOSAAVN }
-                        ?.let { SourceRegistry.setEnabled(it.id, true) }
-                    confirmJioSaavn = false
-                },
-                onDismiss = { confirmJioSaavn = false },
+            // A clash mid-upload, answered here so the scrim covers the tab bar
+            // and mini player like every other alert. Backing out is a skip —
+            // leaving the batch suspended on a dismissed dialog would hang the
+            // upload with no way to reach the question again.
+            WebDavUploadConflictOverlay(hazeState)
+
+            ExternalAccountLoginOverlays(
+                showDiscordLogin = showDiscordLogin,
+                onDismissDiscord = { showDiscordLogin = false },
+                showSpotifyLogin = showSpotifyLogin,
+                onDismissSpotify = { showSpotifyLogin = false },
+                showSpotifyCanvasAuth = showSpotifyCanvasAuth,
+                onDismissSpotifyCanvasAuth = { showSpotifyCanvasAuth = false },
             )
+
+            discordDialog?.let { which ->
+                DiscordDialogHost(
+                    which = which,
+                    hazeState = hazeState,
+                    onDismiss = { discordDialog = null },
+                )
+            }
+
+            // At the root with the source editor, and for the same two reasons: it
+            // is a haze card that has to sample the backdrop it is *not* inside,
+            // and a full-window scrim that has to be full-window.
+            if (editingPartyServer) {
+                PartyServerEditor(
+                    hazeState = hazeState,
+                    onDismiss = { editingPartyServer = false },
+                )
+            }
+
+            if (editingSignatureApi) {
+                SignatureApiEditor(
+                    hazeState = hazeState,
+                    onDismiss = { editingSignatureApi = false },
+                )
+            }
+
+            editingSource?.let { config ->
+                SourceEditorAlert(
+                    hazeState = hazeState,
+                    config = config,
+                    onDismiss = { editingSource = null },
+                    onSaved = { editingSource = null },
+                    onDelete = {
+                        SourceRegistry.remove(config.id)
+                        editingSource = null
+                    },
+                    scope = scope,
+                )
+            }
+
+            if (confirmJioSaavn) {
+                ConfirmationAlert(
+                    hazeState = hazeState,
+                    title = stringResource(R.string.enable_jiosaavn),
+                    description = stringResource(R.string.jiosaavn_mismatch_warning),
+                    confirmLabel = stringResource(R.string.enable_anyway),
+                    onConfirm = {
+                        SourceRegistry.configs.value
+                            .firstOrNull { it.kind == SourceKind.JIOSAAVN }
+                            ?.let { SourceRegistry.setEnabled(it.id, true) }
+                        confirmJioSaavn = false
+                    },
+                    onDismiss = { confirmJioSaavn = false },
+                )
+            }
         }
+        LegacyFullWindowOverlays()
 
     }
 }
