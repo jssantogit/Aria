@@ -249,6 +249,14 @@ internal class DiscogsNativeCatalogSession(
         }
     }
 
+    private fun ensureDetailSnapshotExpiry() {
+        // Search starts this clock on its own. Home/Explore can open the
+        // exact same DetailPage without any Search visit, so they also need
+        // an absolute expiration. Never reset an already running deadline
+        // while opening a related Release or switching native pages.
+        if (expirationJob?.isActive != true) expireCurrentSnapshot()
+    }
+
     private var searchPage = 0
     private var releaseSearchPage = 0
     private var searchJob: Job? = null
@@ -695,6 +703,7 @@ internal class DiscogsNativeCatalogSession(
         val history = if (previous != null)
             (directReleaseHistory + previous).takeLast(8) else emptyList()
         backAll()
+        ensureDetailSnapshotExpiry()
         directReleaseHistory = history
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.RELEASE
@@ -789,6 +798,7 @@ internal class DiscogsNativeCatalogSession(
     fun openArtist(selected: DiscogsNativeArtistSearchRow) {
         if (selected.artistId !in 1..999_999_999_999L || selected.name.isBlank()) return
         backAll()
+        ensureDetailSnapshotExpiry()
         artist = selected
         _browseId.value = selected.browseId
         _route.value = DiscogsNativeRoute.ARTIST
