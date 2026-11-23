@@ -1565,16 +1565,21 @@ private fun BitChordApp(
     /** Refresh only the preferred authorized editorial provider; retry
      * fallback is decided by the same ordered policy after an empty result. */
     val refreshCanonicalGenreEditorial: (String, Boolean) -> Unit = { tag, force ->
-        when (catalogEditorialOrder.firstOrNull()) {
+        // A source with no taxonomy contract for this style is not a
+        // refresh target. In Apple -> Discogs mode a K-pop-substyle Retry
+        // must reach Discogs, not turn into an inert Apple-only action.
+        val refreshSource = catalogEditorialOrder.firstOrNull { source ->
+            source != catalogApple || com.music.bitchord.data.catalog.metadata
+                .AppleExploreGenrePolicy.supports(tag)
+        }
+        when (refreshSource) {
             catalogMb -> viewModel.loadCanonicalGenre(tag)
             catalogDiscogs -> viewModel.discogsNativeCatalog.loadGenreEditorial(tag, force)
-            catalogApple -> if (com.music.bitchord.data.catalog.metadata
-                    .AppleExploreGenrePolicy.supports(tag)
-            ) {
+            catalogApple -> {
                 viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
                 if (catalogMb in catalogEditorialOrder)
                     viewModel.loadCanonicalGenreSupplement(tag, force)
-            } else if (catalogMb in catalogEditorialOrder) viewModel.loadCanonicalGenre(tag)
+            }
             else -> Unit
         }
     }
