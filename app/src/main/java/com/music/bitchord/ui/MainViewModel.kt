@@ -415,6 +415,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         MutableStateFlow<List<CanonicalCatalogSearchRow>>(emptyList())
     val canonicalWorldwideReleases: StateFlow<List<CanonicalCatalogSearchRow>> =
         _canonicalWorldwideReleases.asStateFlow()
+    private val _canonicalHomePaging = MutableStateFlow(CanonicalHomePageSnapshot())
+    internal val canonicalHomePaging: StateFlow<CanonicalHomePageSnapshot> =
+        _canonicalHomePaging.asStateFlow()
+    private var canonicalHomePagingJob: Job? = null
+    private val canonicalHomePagingEpoch = DiscoveryRequestEpoch()
     /**
      * Home storefront proof: MB worldwide ReleaseGroups provide candidate
      * text only, never a visible release or an Apple↔MB identity edge.
@@ -3419,6 +3424,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
         if (ticket == null) {
             worldwideReleaseJob?.cancel()
+            canonicalHomePagingJob?.cancel()
+            canonicalHomePagingEpoch.invalidateAndNext()
+            _canonicalHomePaging.value = CanonicalHomePageSnapshot()
             worldwideReleaseEpoch.invalidateAndNext()
             _canonicalWorldwideReleases.value = emptyList()
             _canonicalWorldwideLoading.value = false
@@ -3432,10 +3440,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
         ) return
         val generation = worldwideReleaseEpoch.next()
+        canonicalHomePagingJob?.cancel()
+        canonicalHomePagingEpoch.invalidateAndNext()
+        _canonicalHomePaging.value = CanonicalHomePageSnapshot()
         _canonicalWorldwideLoading.value = true
         worldwideReleaseJob = viewModelScope.launch(Dispatchers.IO) {
             val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
             val until = today.toString()
+            var pendingHomePaging: CanonicalHomePageSnapshot? = null
             val rows = try {
                 // Use the same source-cursor scanner as CI. Verify candidate
                 // identities/date precision before deciding whether to widen
@@ -3443,32 +3455,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // proof of low provider capacity.
                 val narrowFrom = today.minusDays(30).toString()
                 val wideFrom = today.minusDays(90).toString()
-                val recentRows = scanMusicBrainzRecentEditorial(musicBrainzEditorialSearch,
-                    narrowFrom, until, maxPages = 3).rows
-                val expandedRows = if (canonicalPublicNeedsMoreEditorialRows(recentRows))
+                val narrow = scanMusicBrainzRecentEditorial(musicBrainzEditorialSearch,
+                    narrowFrom, until, maxPages = 3)
+                val recentRows = narrow.rows
+                val wide = if (canonicalPublicNeedsMoreEditorialRows(recentRows))
                     scanMusicBrainzRecentEditorial(musicBrainzEditorialSearch,
-                        wideFrom, until, maxPages = 2).rows
-                else emptyList()
-                val combined = (recentRows + expandedRows).distinctBy { it.musicBrainzId }
-                if (canonicalPublicNeedsMoreEditorialRows(combined)) {
+                        wideFrom, until, maxPages = 2)
+                else null
+                val combined = (recentRows + wide?.rows.orEmpty())
+                    .distinctBy { it.musicBrainzId }
+                val historical = if (canonicalPublicNeedsMoreEditorialRows(combined)) {
                     val historicalFrom = today.minusDays(365).toString()
                     val historicalThrough = today.minusDays(91).toString()
-                    // Historical source records are retained as dated evidence,
-                    // never relabeled as current charts or ranked popularity.
-                    val older = scanMusicBrainzRecentEditorial(
+                    // Historical metadata remains historical, never a new chart.
+                    scanMusicBrainzRecentEditorial(
                         musicBrainzEditorialSearch,
                         historicalFrom, historicalThrough, maxPages = 1,
-                    ).rows
-                    (combined + older).distinctBy { it.musicBrainzId }
-                } else combined
+                    )
+                } else null
+                pendingHomePaging = initialCanonicalHomePageSnapshot(
+                    until, narrow, wide, historical,
+                )
+                (combined + historical?.rows.orEmpty()).distinctBy { it.musicBrainzId }
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { emptyList() }
-            if (!gate.accept(ticket) || !worldwideReleaseEpoch.isCurrent(generation)) return@launch
+            if (!gate.accept(ticket) || !worldwideReleaseEpoch.isCurrent(generation))
+                return@launch
             if (rows.isEmpty()) {
                 worldwideReleaseRetryAtMs = System.currentTimeMillis() + 15L * 60_000L
                 _canonicalWorldwideLoading.value = false
                 return@launch
             }
+            _canonicalHomePaging.value = pendingHomePaging ?: CanonicalHomePageSnapshot()
             _canonicalWorldwideReleases.value = rows
             _canonicalWorldwideLoading.value = false
             worldwideReleaseFetchedAtMs = System.currentTimeMillis()
@@ -4460,6 +4478,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 pages.filterNot { it.browseId.startsWith("catalog:") }
                             }
                             worldwideReleaseJob?.cancel()
+                            canonicalHomePagingJob?.cancel()
+                            canonicalHomePagingEpoch.invalidateAndNext()
+                            _canonicalHomePaging.value = CanonicalHomePageSnapshot()
                             worldwideReleaseEpoch.invalidateAndNext()
                             _canonicalWorldwideReleases.value = emptyList()
                             _canonicalWorldwideLoading.value = false
