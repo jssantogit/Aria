@@ -49,7 +49,7 @@ class CanonicalPublicDiscoveryTest {
             emptyList(), rows, "Lançamentos", "Escolha a dedo", "Em alta",
             null, "2026-11-05",
         )
-        assertEquals(listOf("Lançamentos", "Escolha a dedo"), home.map { it.title })
+        assertEquals(listOf("Lançamentos", "Para descobrir"), home.map { it.title })
         assertEquals("catalog:RELEASE_GROUP:${recent.musicBrainzId}", home.first().items.first().browseId)
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
     }
@@ -97,11 +97,11 @@ class CanonicalPublicDiscoveryTest {
             listOf(stale), fresh, "Lançamentos", "Escolha a dedo", "Em alta",
             null, "2026-11-05",
         )
-        assertEquals(listOf("Lançamentos", "Escolha a dedo"), online.map { it.title })
+        assertEquals(listOf("Lançamentos", "Para descobrir"), online.map { it.title })
         assertEquals(listOf(recent.musicBrainzId),
             online.first().items.map { it.browseId!!.removePrefix("catalog:RELEASE_GROUP:") })
         assertEquals("catalog:RELEASE_GROUP:${another.musicBrainzId}",
-            online.first { it.title == "Escolha a dedo" }.items.single().browseId)
+            online.first { it.title == "Para descobrir" }.items.single().browseId)
         assertEquals(online.flatMap { it.items }.size,
             online.flatMap { it.items }.map { it.browseId }.distinct().size)
         assertTrue(online.first().items.none { it.videoId != null })
@@ -362,7 +362,7 @@ class CanonicalPublicDiscoveryTest {
             ),
             globalDiscoveryHeading = "Descobertas do mundo",
         )
-        assertEquals(listOf("Lançamentos", "Escolha a dedo",
+        assertEquals(listOf("Lançamentos", "Para descobrir",
             "Playlists para descobrir", "Descobertas do mundo", "Mais"),
             home.map { it.title })
         assertTrue(home.none { it.title == "Álbuns" || it.title == "Singles e EPs" })
@@ -394,7 +394,7 @@ class CanonicalPublicDiscoveryTest {
         val ids = home.flatMap { it.items }.map { it.browseId }
         assertEquals("The same album must not appear twice in Home", ids.size, ids.distinct().size)
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
-        assertTrue(home.first { it.title == "Escolha a dedo" }.items.first().thumbnailUrl != null)
+        assertTrue(home.first { it.title == "Para descobrir" }.items.first().thumbnailUrl != null)
         // No worldwide ranking is fabricated from release dates alone.
         assertTrue(home.none { it.title == "Em alta" })
     }
@@ -413,7 +413,7 @@ class CanonicalPublicDiscoveryTest {
             null, "2026-11-06", "Álbuns", "Singles e EPs", "Mais para explorar",
         )
         assertEquals(
-            listOf("Lançamentos", "Escolha a dedo", "Álbuns",
+            listOf("Lançamentos", "Para descobrir", "Álbuns",
                 "Singles e EPs", "Mais para explorar"),
             home.map { it.title },
         )
@@ -421,6 +421,32 @@ class CanonicalPublicDiscoveryTest {
         assertEquals(8, cards.size)
         assertEquals(cards.size, cards.map { it.browseId }.distinct().size)
         assertTrue(home.none { it.title == "Em alta" })
+    }
+
+    @Test fun largeVerifiedFeedFillsAlbumAndSingleShelvesAfterLaunchAndDiscoveryDedup() {
+        // An 80-record source page is already sufficient to fill every
+        // carousel. Raw take(12) before excluding earlier shelves used to
+        // truncate legitimate Album and Single IDs out of their own rails.
+        val hits = (1..80).map { index ->
+            recent.copy(
+                musicBrainzId = "90000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Verified unique ${index}",
+                primaryType = if (index <= 40) "Album" else "Single",
+                firstReleaseDate = "2026-11-01",
+            )
+        }
+        val rows = canonicalPublicReleaseRows(hits, "2026-10-01", "2026-11-06")
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo", "Em alta",
+            null, "2026-11-06", "Álbuns", "Singles e EPs", "Mais",
+        )
+        assertEquals(12, home.first { it.title == "Álbuns" }.items.size)
+        assertEquals(12, home.first { it.title == "Singles e EPs" }.items.size)
+        assertEquals(12, home.first { it.title == "Mais" }.items.size)
+        assertTrue(home.none { it.title == "Escolha a dedo" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
     }
 
     @Test fun historicalWorldwideGroupsRemainBrowseableButNeverBecomeFreshLaunches() {
@@ -498,8 +524,8 @@ class CanonicalPublicDiscoveryTest {
             chart, "2026-11-06", "Álbuns recentes", "Singles e EPs",
         )
         assertEquals(
-            listOf("Lançamentos", "Escolha a dedo", "Em alta",
-                "Álbuns recentes", "Singles e EPs"), home.map { it.title },
+            listOf("Lançamentos", "Para descobrir", "Em alta",
+                "Álbuns recentes", "Singles e EPs", "Mais"), home.map { it.title },
         )
         val cards = home.flatMap { it.items }
         assertEquals(cards.size, cards.map { it.browseId }.distinct().size)
