@@ -129,6 +129,55 @@ class CanonicalEditorialFeedProjectionTest {
         assertEquals(UiState.Loading, selection.state)
     }
 
+    @Test fun discogsBeforeAppleKeepsAppleLoadingOnlyAfterDiscogsMiss() {
+        val discogs = BuiltInProviderKeys.DISCOGS
+        val order = listOf(discogs, apple, mb)
+        fun select(discogsState: UiState<List<HomeShelf>>) = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = emptyList(),
+            appleHomeReleases = UiState.Loading,
+            catalogEditorialOrder = order,
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos",
+            discoveryHeading = "Descobrir",
+            todayIsoDate = "2026-11-22",
+            discogsEditorial = discogsState,
+        )
+        val primaryPending = select(UiState.Loading)
+        assertEquals(discogs, primaryPending.provider)
+        assertEquals(UiState.Loading, primaryPending.state)
+        val primaryMissed = select(UiState.Error("source unavailable"))
+        assertEquals(apple, primaryMissed.provider)
+        assertEquals(UiState.Loading, primaryMissed.state)
+        val completedEmpty = select(UiState.Success(emptyList()))
+        assertEquals(apple, completedEmpty.provider)
+        assertEquals(UiState.Loading, completedEmpty.state)
+        val release = HomeShelf("Álbuns", listOf(
+            ShelfItem("Verified Discogs album", "Artist", null, null,
+                "discogs:release:42"),
+        ))
+        val primarySucceeded = select(UiState.Success(listOf(release)))
+        assertEquals(discogs, primarySucceeded.provider)
+        assertEquals(listOf(release), (primarySucceeded.state as UiState.Success).data)
+    }
+
+    @Test fun discogsMiddleHoldsApplePendingUntilItSettles() {
+        val discogs = BuiltInProviderKeys.DISCOGS
+        fun select(state: UiState<List<HomeShelf>>) = projectCanonicalHomeEditorial(
+            canonicalHomeShelves = emptyList(),
+            appleHomeReleases = UiState.Loading,
+            catalogEditorialOrder = listOf(mb, discogs, apple),
+            canonicalWorldwideLoading = false,
+            releasesHeading = "Lançamentos",
+            discoveryHeading = "Descobrir",
+            todayIsoDate = "2026-11-22",
+            discogsEditorial = state,
+        )
+        assertEquals(discogs, select(UiState.Loading).provider)
+        val eligibleApple = select(UiState.Error("empty catalog"))
+        assertEquals(apple, eligibleApple.provider)
+        assertEquals(UiState.Loading, eligibleApple.state)
+    }
+
     @Test fun musicBrainzHomePublishesFullEvidenceBackedShelves() {
         val rows = (1..20).map { index ->
             CanonicalCatalogSearchRow(
