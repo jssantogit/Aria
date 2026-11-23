@@ -3896,7 +3896,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // while the landing composer intentionally publishes forty.
                 // Retain the others in the append-only rail: a cursor must
                 // never silently discard rows behind the viewport limit.
-                val firstPageRows = historicalPage?.items?.takeIf { it.isNotEmpty() }
+                val firstPageRows = historicalPage?.items?.takeIf {
+                    it.isNotEmpty() && it.size <= 60
+                }
                     ?.let { hits ->
                         canonicalPublicGenreRows(hits, todayIso, maxItems = hits.size)
                     }.orEmpty()
@@ -4040,7 +4042,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
               catch (_: Exception) { null }
             if (!gate.accept(ticket) || !canonicalGenrePagingEpoch.isCurrent(generation))
                 return@launch
-            val page = (result as? MusicBrainzCatalogSearchResult.Success)
+            val page = (result as?
+                MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)
                 ?.page
             val date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
             _canonicalGenrePaging.update { snapshot ->
