@@ -423,6 +423,44 @@ class CanonicalPublicDiscoveryTest {
         assertTrue(home.none { it.title == "Em alta" })
     }
 
+    @Test fun historicalWorldwideGroupsRemainBrowseableButNeverBecomeFreshLaunches() {
+        val historicalAlbum = recent.copy(
+            musicBrainzId = "77777777-1111-4111-8111-111111111111",
+            firstReleaseDate = "2025-02-15", title = "Verified old album",
+        )
+        val historicalSingle = another.copy(
+            musicBrainzId = "88888888-1111-4111-8111-111111111111",
+            firstReleaseDate = "2024-11-03", title = "Verified old single",
+        )
+        val rows = canonicalPublicReleaseRows(
+            listOf(historicalAlbum, historicalSingle),
+            "2024-01-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertTrue(home.none { it.title == "Lançamentos" })
+        assertTrue(home.any { it.title == "Álbuns" })
+        assertTrue(home.any { it.title == "Singles e EPs" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }.toSet()
+        assertEquals(setOf(
+            "catalog:RELEASE_GROUP:${historicalAlbum.musicBrainzId}",
+            "catalog:RELEASE_GROUP:${historicalSingle.musicBrainzId}",
+        ), ids)
+    }
+
+    @Test fun partialDatesCannotMasqueradeAsExactNinetyDayReleases() {
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent(null, "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2025-11-22", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11-24", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-13-01", "2026-11-23"))
+        assertTrue(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11-05", "2026-11-23"))
+        assertTrue(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-08-25", "2026-11-23"))
+    }
+
     @Test fun rankingShelfKeepsItsRealUpstreamEvidenceRatherThanInventingCharts() {
         val real = HomeShelf("Em alta", listOf(
             ShelfItem("Observed weekly song", "Artist", null, null,
