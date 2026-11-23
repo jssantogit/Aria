@@ -111,6 +111,23 @@ internal fun CanonicalProviderDetailHost(
             viewModel.loadMoreAppleEditorialArtist()
         }
     }
+    // Discogs artist pagination uses the exact same native shelf scroll as
+    // Apple, rather than a second provider-specific footer navigation.
+    val canContinueDiscogs = isDiscogs &&
+        discogsPage?.page?.type == com.music.bitchord.data.model.BrowseType.ARTIST &&
+        discogsPage.hasMore && !searching
+    LaunchedEffect(routeKey, canContinueDiscogs, discogsPage?.page?.sections) {
+        if (canContinueDiscogs) {
+            snapshotFlow {
+                val layout = listState.layoutInfo
+                listState.isScrollInProgress &&
+                    layout.totalItemsCount > 0 &&
+                    (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >=
+                    layout.totalItemsCount - 3
+            }.first { it }
+            viewModel.discogsNativeCatalog.loadNextArtistPage()
+        }
+    }
     DetailScreen(
         page = page,
         currentSong = null,
