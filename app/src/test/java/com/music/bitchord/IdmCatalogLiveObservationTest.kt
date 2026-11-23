@@ -46,7 +46,7 @@ class IdmCatalogLiveObservationTest {
         val parsed: Int? = null,
         val eligible: Int = 0,
         val visible: Int = 0,
-        val requests: Int = 0,
+        val requests: Int? = null,
         val artwork: Int = 0,
         val shelves: List<HomeShelf> = emptyList(),
     )
@@ -61,7 +61,7 @@ class IdmCatalogLiveObservationTest {
             "parsed_distinct" to (sample.parsed?.toString() ?: "null"),
             "editorial_eligible" to sample.eligible.toString(),
             "displayed_unique" to sample.visible.toString(),
-            "http_or_transport_reads" to sample.requests.toString(),
+            "http_or_transport_reads" to (sample.requests?.toString() ?: "null"),
             "displayed_with_artwork" to sample.artwork.toString(),
         )
         val json = buildString {
@@ -76,7 +76,7 @@ class IdmCatalogLiveObservationTest {
         File(dir, "live_" + scenario + ".json").writeText(json)
         println("IDM_CATALOG_LIVE|" + scenario + "|status=" + sample.status +
             "|eligible=" + sample.eligible + "|visible=" + sample.visible +
-            "|reads=" + sample.requests)
+            "|reads=" + (sample.requests?.toString() ?: "unknown"))
     }
 
     private fun cards(shelves: List<HomeShelf>): List<com.music.bitchord.data.model.ShelfItem> =
@@ -179,7 +179,7 @@ class IdmCatalogLiveObservationTest {
             // Its original HTTP row count is unavailable in this interface.
             raw = null, parsed = appleProbes?.matchingProducts,
             eligible = appleReleases.size, visible = appleItems.size,
-            requests = appleProbes?.probesMade ?: 0,
+            requests = appleProbes?.probesMade,
             artwork = appleItems.count { !it.thumbnailUrl.isNullOrBlank() },
             shelves = appleShelves,
         ))
@@ -226,9 +226,9 @@ class IdmCatalogLiveObservationTest {
             },
             raw = null, parsed = null, eligible = verifiedDiscogs.size,
             visible = discogsItems.size,
-            // The adapter performs nested master/release reads not exposed by
-            // a central counter yet. Reporting zero would be misleading.
-            requests = 0, artwork = discogsItems.count {
+            // The adapter performs nested reads not exposed here; null means
+            // unmeasured, not zero network requests.
+            requests = null, artwork = discogsItems.count {
                 !it.thumbnailUrl.isNullOrBlank()
             }, shelves = discogsShelves,
         ))
