@@ -239,6 +239,8 @@ internal class DiscogsNativeGenreEditorial(
         cursor: DiscogsEditorialCursor = DiscogsEditorialCursor(),
         knownMasterIds: Set<Long> = emptySet(),
         maxCandidates: Int = 4,
+        /** Fully verified source identity, emitted before the bounded batch ends. */
+        onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsGranularRead {
         fun interrupted(reason: DiscogsEditorialResult,
                         retry: DiscogsEditorialCursor = cursor,
@@ -343,13 +345,17 @@ internal class DiscogsNativeGenreEditorial(
                 !release.unofficial && release.title.isNotBlank() &&
                 release.artistNames.isNotEmpty()
             ) {
-                releases += DiscogsEditorialCandidate(
+                val verified = DiscogsEditorialCandidate(
                     masterId = masterId, releaseId = releaseId,
                     title = release.title, artist = release.artistNames.joinToString(", "),
                     year = release.year ?: master.year, formats = release.formats,
                     creditedArtists = if (release.artistIds.size == release.artistNames.size)
                         release.artistIds.zip(release.artistNames) else emptyList(),
                 )
+                releases += verified
+                // In-place streaming changes presentation latency, not source
+                // authorization, cursor advancement or HTTP request budget.
+                onVerified(verified)
             }
             position++
         }
