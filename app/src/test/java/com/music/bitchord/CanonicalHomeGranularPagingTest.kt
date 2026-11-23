@@ -148,7 +148,8 @@ class CanonicalHomeGranularPagingTest {
             publicPlaylistShelf = null, communityShelf = original[1],
             musicBrainzPaging = state,
         )
-        assertEquals(listOf("Lançamentos", "Comunidade", "Mais do catálogo"),
-            combined.map { it.title })
+        assertEquals(listOf(
+            "Lançamentos", "Comunidade", "Explore gêneros", "Mais do catálogo",
+        ), combined.map { it.title })
     }
 }
