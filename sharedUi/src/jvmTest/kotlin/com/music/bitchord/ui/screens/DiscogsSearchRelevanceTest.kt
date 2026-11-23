@@ -44,13 +44,37 @@ class DiscogsSearchRelevanceTest {
             ),
         )
         assertEquals(listOf(
-            DiscogsUnifiedSearchEntry.Artist(a),
             DiscogsUnifiedSearchEntry.Artist(b),
             DiscogsUnifiedSearchEntry.Release(release(101, "ILLIT - Magnetic")),
             DiscogsUnifiedSearchEntry.Release(release(103, "Illit (2) - Super Real Me")),
         ), rows)
         assertEquals("discogs:release:101",
-            (rows[2] as DiscogsUnifiedSearchEntry.Release).row.browseId)
+            (rows[1] as DiscogsUnifiedSearchEntry.Release).row.browseId)
+    }
+
+    @Test fun numberedHomonymsCollapseVisuallyWithoutCombiningSourceIds() {
+        val numbered = artist(18, "Illit (2)")
+        val plain = artist(17, "Illit")
+        assertEquals("Illit", discogsArtistDisplayName(numbered.name))
+        assertEquals(listOf(numbered), discogsSearchDistinctArtists(
+            "illit", listOf(numbered, plain)))
+        assertEquals(listOf(plain), discogsSearchDistinctArtists(
+            "illit", listOf(plain, numbered)))
+        assertEquals(listOf(numbered), discogsSearchDistinctArtists(
+            "illit (2)", listOf(plain, numbered)))
+        assertEquals(listOf(
+            DiscogsUnifiedSearchEntry.Artist(numbered),
+            DiscogsUnifiedSearchEntry.Release(release(101, "ILLIT - Magnetic")),
+        ), discogsUnifiedSearchEntries("illit", listOf(numbered, plain),
+            listOf(release(101, "ILLIT - Magnetic"))))
+        assertEquals("discogs:artist:18", numbered.browseId)
+        assertEquals("discogs:artist:17", plain.browseId)
+        assertEquals(listOf(artist(1, "Beyoncé")),
+            discogsSearchDistinctArtists("beyonce", listOf(
+                artist(1, "Beyoncé"), artist(2, "Beyonce (2)"))))
+        assertEquals(listOf(artist(3, "Illit Grondal")),
+            discogsSearchDistinctArtists("illit",
+                listOf(artist(3, "Illit Grondal"))))
     }
 
     @Test fun noExactArtistAllowsRealTitleQueriesButNotSubstrings() {

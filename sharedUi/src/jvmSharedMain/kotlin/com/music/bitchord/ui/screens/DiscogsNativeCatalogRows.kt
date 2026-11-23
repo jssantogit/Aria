@@ -34,8 +34,26 @@ private fun discogsSearchFold(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
+/** Discogs numeric suffix is an index discriminator, never a stage name. */
+fun discogsArtistDisplayName(value: String): String =
+    value.trim().replace(Regex(""" \([1-9][0-9]*\)$"""), "")
+
 private fun discogsCoreArtistName(value: String): String =
-    discogsSearchFold(value).replace(Regex(""" \([1-9][0-9]*\)$"""), "")
+    discogsSearchFold(discogsArtistDisplayName(value))
+
+/**
+ * Collapse duplicate visible names in Search only, never merge Discogs IDs.
+ * The Discogs result order is the bounded fallback: a suffix (or lack of one)
+ * does not establish popularity or the identity of a particular artist.
+ */
+fun discogsSearchDistinctArtists(
+    query: String,
+    artists: List<DiscogsNativeArtistSearchRow>,
+): List<DiscogsNativeArtistSearchRow> =
+    artists.asSequence()
+        .filter { discogsSearchArtistRank(query, it.name) != null }
+        .distinctBy { discogsSearchFold(discogsArtistDisplayName(it.name)) }
+        .toList()
 
 private fun discogsSearchWordStarts(text: String, query: String): Boolean =
     text.startsWith(query) && (text.length == query.length ||
@@ -104,12 +122,12 @@ fun discogsUnifiedSearchEntries(
     artists: List<DiscogsNativeArtistSearchRow>,
     releases: List<DiscogsNativeReleaseSearchRow>,
 ): List<DiscogsUnifiedSearchEntry> {
-    val rankedArtists = artists.mapNotNull { row ->
-        discogsSearchArtistRank(query, row.name)?.let { it to row }
-    }.distinctBy { it.second.artistId }.sortedWith(
-        compareBy<Pair<Int, DiscogsNativeArtistSearchRow>> { it.first }
-            .thenBy { it.second.artistId },
-    )
+    val rankedArtists = discogsSearchDistinctArtists(query, artists)
+        .mapNotNull { row ->
+            discogsSearchArtistRank(query, row.name)?.let { it to row }
+        }.sortedWith(compareBy<Pair<Int, DiscogsNativeArtistSearchRow>> {
+            it.first
+        })
     val exactArtist = rankedArtists.any { it.first <= 2 }
     val leaders = if (exactArtist) rankedArtists.filter { it.first <= 2 }.take(2)
         else rankedArtists.take(2)
