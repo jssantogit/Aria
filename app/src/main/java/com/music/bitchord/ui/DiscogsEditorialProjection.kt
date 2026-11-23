@@ -200,7 +200,10 @@ internal fun discogsEditorialShelves(
         make("Mais para explorar", unique.drop(2), 12),
         artistShelf,
     ) else listOfNotNull(
-        make("Lançamentos", unique.take(2), 2),
+        // Discogs Master/Search only establishes a release YEAR here, not
+        // a calendar day inside a recent window. A genre's first verified
+        // sample is discovery, never a fabricated "new release" chart.
+        make("Para descobrir", unique.take(2), 2),
         make("Álbuns", unique.filter { kind(it) == 1 }, 12),
         make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
         // Do not invent a second discovery rail from the only verified
