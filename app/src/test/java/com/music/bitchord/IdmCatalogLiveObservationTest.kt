@@ -427,6 +427,7 @@ class IdmCatalogLiveObservationTest {
         var matchingStyleHints = 0
         var discogsGranularScanner: DiscogsNativeGenreEditorial? = null
         var firstInitialVerifiedNs: Long? = null
+        var initialLandingCursor: DiscogsEditorialCursor? = null
         val initialStartedNs = System.nanoTime()
         val discogsRead = if (token == null) null else {
             val caps = setOf(ProviderCapability.CATALOG_SEARCH,
@@ -528,9 +529,10 @@ class IdmCatalogLiveObservationTest {
             discogsGranularScanner = native
             withTimeoutOrNull(95_000L) {
                 try {
-                    native.discover(
+                    native.discoverDistinct(
                         DiscogsEditorialQuery("K-Pop", isStyle = true),
-                        maxReleases = 3,
+                        maxReleases = 3, knownMasterIds = emptySet(),
+                        onCheckpoint = { initialLandingCursor = it },
                         onVerified = {
                             if (firstInitialVerifiedNs == null)
                                 firstInitialVerifiedNs = System.nanoTime()
@@ -599,11 +601,13 @@ class IdmCatalogLiveObservationTest {
         val beforeMasterReads = discogsMasterReads
         val beforeMasterFound = discogsMasterFound
         val beforeReleaseReads = discogsReleaseReads
+        val extraStart = initialLandingCursor ?: DiscogsEditorialCursor()
         val extraRead = if (discogsRead is DiscogsEditorialResult.Verified)
             withTimeoutOrNull(50_000L) {
                 try {
                     discogsGranularScanner?.discoverGranular(
                         query = DiscogsEditorialQuery("K-Pop", isStyle = true),
+                        cursor = extraStart,
                         knownMasterIds = verifiedDiscogs.map { it.masterId }.toSet(),
                         maxCandidates = 2,
                     )
@@ -649,9 +653,13 @@ class IdmCatalogLiveObservationTest {
                 "source_candidates_consumed" to when (extraRead) {
                     is DiscogsGranularRead.Page -> extraRead.consumedCandidates
                     is DiscogsGranularRead.Interrupted ->
-                        extraRead.retryCursor.candidatePosition
+                        (extraRead.retryCursor.candidatePosition -
+                            extraStart.candidatePosition).coerceAtLeast(0)
                     else -> 0
                 },
+                "landing_checkpoint_used" to if (extraStart.landingCheckpoint) 1 else 0,
+                "start_page" to extraStart.page,
+                "start_position" to extraStart.candidatePosition,
                 "retry_needed" to if (extraRead is DiscogsGranularRead.Interrupted) 1 else 0,
             ),
         ))

@@ -66,10 +66,13 @@ internal data class DiscogsEditorialCursor(
     val page: Int = 1,
     val candidatePosition: Int = 0,
     val pageSignature: Int? = null,
+    /** Only landing checkpoints may safely restart a predicate on drift. */
+    val landingCheckpoint: Boolean = false,
 ) {
     fun isValid(): Boolean = page in 1..1000 &&
         candidatePosition in 0..12 &&
-        (candidatePosition == 0 || pageSignature != null)
+        (candidatePosition == 0 || pageSignature != null) &&
+        (!landingCheckpoint || pageSignature != null)
 }
 
 internal sealed interface DiscogsGranularRead {
@@ -469,7 +472,14 @@ internal class DiscogsNativeGenreEditorial(
             if (index.hasNext) 1 else 0
         if (cursor.candidatePosition > index.masterIds.size ||
             (cursor.pageSignature != null && cursor.pageSignature != signature)
-        ) return interrupted(DiscogsEditorialResult.Unavailable)
+        ) {
+            // A landing checkpoint is an optimization, not an entitlement
+            // to skip source rows after drift. Restart with known IDs intact.
+            if (cursor.landingCheckpoint) return DiscogsGranularRead.Page(
+                emptyList(), DiscogsEditorialCursor(), 0, 0,
+            )
+            return interrupted(DiscogsEditorialResult.Unavailable)
+        }
         var position = cursor.candidatePosition
         var hydrated = 0
         val releases = mutableListOf<DiscogsEditorialCandidate>()
@@ -578,7 +588,7 @@ internal class DiscogsNativeGenreEditorial(
         /** Publish each fully verified source Release before the sample ends. */
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsEditorialResult = discoverDistinct(
-        query, maxReleases, emptySet(), onVerified,
+        query, maxReleases, emptySet(), onVerified = onVerified,
     )
 
     /** Fill the sample with new identities across overlapping predicates.
@@ -588,6 +598,8 @@ internal class DiscogsNativeGenreEditorial(
         query: DiscogsEditorialQuery,
         maxReleases: Int,
         knownMasterIds: Set<Long>,
+        /** Called only for a safely settled prefix of the landing scan. */
+        onCheckpoint: (DiscogsEditorialCursor) -> Unit = {},
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsEditorialResult {
         if (!query.isValid() || maxReleases !in 1..6)
@@ -606,6 +618,8 @@ internal class DiscogsNativeGenreEditorial(
         // index pages can legitimately repeat a Master; allow the next page
         // to retry an unresolved Master instead of permanently blacklisting it.
         val unresolvedMasterIds = HashSet<Long>()
+        var firstUnresolved: DiscogsEditorialCursor? = null
+        var checkpoint: DiscogsEditorialCursor? = null
         // Fill the caller's bounded sample with verified releases, not just
         // the first non-empty index page. Check all 12 advertised candidates
         // within each source page: an arbitrary first-five cut hides valid
@@ -651,8 +665,18 @@ internal class DiscogsNativeGenreEditorial(
                         DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unavailable
                 }
             }
-            for (masterId in index.masterIds) {
+            val signature = 31 * index.masterIds.hashCode() +
+                if (index.hasNext) 1 else 0
+            var nextPosition = 0
+            for ((position, masterId) in index.masterIds.withIndex()) {
                 if (verified.size >= maxReleases) break
+                nextPosition = position + 1
+                // The earliest unresolved position stays retryable even if
+                // later rows fill the sample. Replaying verified IDs is safe.
+                fun markUnresolved() {
+                    if (firstUnresolved == null) firstUnresolved =
+                        DiscogsEditorialCursor(pageNumber, position, signature, true)
+                }
                 // A successfully checked Master is deduplicated across pages.
                 // An unavailable/malformed transport response is NOT a check.
                 if (masterId in knownMasterIds || !hydratedMasterIds.add(masterId)) continue
@@ -682,6 +706,7 @@ internal class DiscogsNativeGenreEditorial(
                 ) {
                     hydratedMasterIds.remove(masterId)
                     unresolvedMasterIds.add(masterId)
+                    markUnresolved()
                     continue
                 }
                 // A definitive Master response (even Missing or a mismatched
@@ -713,6 +738,7 @@ internal class DiscogsNativeGenreEditorial(
                     // Master and its main Release. Never cache a failed read.
                     hydratedMasterIds.remove(masterId)
                     unresolvedMasterIds.add(masterId)
+                    markUnresolved()
                     continue
                 }
                 unresolvedMasterIds.remove(masterId)
@@ -725,8 +751,12 @@ internal class DiscogsNativeGenreEditorial(
                 verified += candidate
                 onVerified(candidate)
             }
+            // Even a completely consumed page is signed and rechecked
+            // before the continuation crosses its boundary.
+            checkpoint = DiscogsEditorialCursor(pageNumber, nextPosition, signature, true)
             if (!index.hasNext || verified.size >= maxReleases) break
         }
+        (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
         return if (verified.isEmpty() && unresolvedMasterIds.isNotEmpty())
             DiscogsEditorialResult.Unavailable
         else DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })

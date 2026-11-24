@@ -422,6 +422,98 @@ class DiscogsGranularEditorialCursorTest {
         assertEquals(listOf(1001L), releaseReads)
     }
 
+    @Test fun landingCheckpointSkipsSettledPrefixButRetriesUnresolvedPosition() = runBlocking {
+        for (transient in listOf(false, true)) {
+            val reads = mutableListOf<Long>()
+            var indexReads = 0
+            var failed = false
+            val client = DiscogsNativeGenreEditorial(
+                enabled = true, tokenProvider = { "A".repeat(32) },
+                admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+                transport = object : DiscogsGenreSearchTransport {
+                    override suspend fun search(
+                        query: DiscogsEditorialQuery, token: String,
+                        userAgent: String, page: Int,
+                    ): DiscogsHttpResponse {
+                        indexReads++
+                        val ids = (1..8).joinToString(",") {
+                            """{"id":$it,"type":"master"}"""
+                        }
+                        return DiscogsHttpResponse(200,
+                            """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[$ids]}""")
+                    }
+                },
+                editions = reader { id ->
+                    reads += id
+                    if (transient && id == 2L && !failed) {
+                        failed = true
+                        DiscogsLookupResult.Unavailable
+                    } else DiscogsLookupResult.FoundMaster(
+                        master(id).copy(genres = if (id == 1L) listOf("Jazz") else listOf("Rock")),
+                    )
+                },
+            )
+            val query = DiscogsEditorialQuery("Rock", false)
+            var cursor: DiscogsEditorialCursor? = null
+            val initial = client.discoverDistinct(
+                query, 2, emptySet(), onCheckpoint = { cursor = it },
+            ) as DiscogsEditorialResult.Verified
+            val saved = requireNotNull(cursor)
+            assertTrue(saved.landingCheckpoint)
+            assertEquals(if (transient) 1 else 3, saved.candidatePosition)
+            val next = client.discoverGranular(
+                query, saved, initial.releases.map { it.masterId }.toSet(),
+                maxCandidates = 4,
+            ) as DiscogsGranularRead.Page
+            assertEquals(2, indexReads)
+            assertEquals(1, reads.count { it == 1L })
+            if (transient) {
+                assertEquals(2, reads.count { it == 2L })
+                assertEquals(listOf(2L, 5L), next.releases.map { it.masterId })
+            } else {
+                assertEquals(listOf(4L, 5L, 6L, 7L), next.releases.map { it.masterId })
+            }
+        }
+    }
+
+    @Test fun shiftedLandingCheckpointRestartsWithoutAdmittingUnverifiedRows() = runBlocking {
+        var shifted = false
+        val reads = mutableListOf<Long>()
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    val ids = (if (shifted) listOf(3, 1, 2) else listOf(1, 2))
+                        .joinToString(",") { """{"id":$it,"type":"master"}""" }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[$ids]}""")
+                }
+            },
+            editions = reader { id ->
+                reads += id
+                DiscogsLookupResult.FoundMaster(master(id))
+            },
+        )
+        val query = DiscogsEditorialQuery("Rock", false)
+        var cursor: DiscogsEditorialCursor? = null
+        client.discoverDistinct(query, 1, emptySet(), onCheckpoint = { cursor = it })
+        shifted = true
+        val restart = client.discoverGranular(query, requireNotNull(cursor), setOf(1L))
+            as DiscogsGranularRead.Page
+        assertEquals(0, restart.consumedCandidates)
+        assertEquals(DiscogsEditorialCursor(), restart.nextCursor)
+        assertTrue(restart.releases.isEmpty())
+        assertEquals(listOf(1L), reads)
+        val next = client.discoverGranular(query, requireNotNull(restart.nextCursor), setOf(1L))
+            as DiscogsGranularRead.Page
+        assertEquals(listOf(3L, 2L), next.releases.map { it.masterId })
+        assertEquals(listOf(1L, 3L, 2L), reads)
+    }
+
     @Test fun overlappingLandingPredicatesFillSlotsWithNewVerifiedMasters() = runBlocking {
         val masterReads = mutableListOf<Long>()
         val releaseReads = mutableListOf<Long>()

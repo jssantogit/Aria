@@ -350,6 +350,7 @@ internal class DiscogsNativeCatalogSession(
         val job = scope.launch(Dispatchers.IO) {
             val verified = mutableListOf<DiscogsEditorialCandidate>()
             var failure: String? = null
+            val landingCursors = mutableMapOf<DiscogsEditorialQuery, DiscogsEditorialCursor>()
             // Diverse verified catalog slices instead of only Pop and Rock.
             // Publish incrementally and stop at the bounded Home target; no
             // implied chart order, genre-wide completeness or fabricated art.
@@ -370,6 +371,7 @@ internal class DiscogsNativeCatalogSession(
                     editorialClient.discoverDistinct(
                         request, maxReleases = budget,
                         knownMasterIds = verified.map { it.masterId }.toSet(),
+                        onCheckpoint = { landingCursors[request] = it },
                         onVerified = { candidate ->
                             if (lease.isCurrent() && homePagingEpoch == editorialEpoch &&
                                 candidate.masterId !in verified.map { it.masterId } &&
@@ -413,10 +415,15 @@ internal class DiscogsNativeCatalogSession(
             val shelves = discogsEditorialShelves(verified, home = true)
             _homeEditorial.value = if (shelves.isNotEmpty()) UiState.Success(shelves)
                 else UiState.Error(failure ?: "Nenhum lançamento Discogs verificado nesta amostra.")
-            if (shelves.isNotEmpty()) _homePaging.value =
-                initialDiscogsHomePageSnapshot(
-                    verified, discogsHomeGranularQueries().size,
+            if (shelves.isNotEmpty()) {
+                val granularQueries = discogsHomeGranularQueries()
+                _homePaging.value = initialDiscogsHomePageSnapshot(
+                    verified, granularQueries.size,
+                    granularQueries.mapIndexedNotNull { index, predicate ->
+                        landingCursors[predicate]?.let { index to it }
+                    }.toMap(),
                 )
+            }
         }
         homeEditorialJob = job
         val unregister = lease.cancelJobOnRevoke(job)
@@ -541,6 +548,7 @@ internal class DiscogsNativeCatalogSession(
         val job = scope.launch(Dispatchers.IO) {
             val verified = mutableListOf<DiscogsEditorialCandidate>()
             var failure: String? = null
+            val landingCursors = mutableMapOf<Int, DiscogsEditorialCursor>()
             // Source categories such as Metal / R&B require a union of
             // independently verified Discogs Styles, not an invented Genre.
             // Stop after a bounded set, and surface partial results promptly.
@@ -559,6 +567,7 @@ internal class DiscogsNativeCatalogSession(
                     editorialClient.discoverDistinct(
                         query, maxReleases = budget,
                         knownMasterIds = verified.map { it.masterId }.toSet(),
+                        onCheckpoint = { landingCursors[queryIndex] = it },
                         onVerified = { candidate ->
                             if (lease.isCurrent() && genrePagingEpoch == editorialEpoch &&
                                 genreEditorialTag == tag &&
@@ -611,12 +620,13 @@ internal class DiscogsNativeCatalogSession(
                 "Nenhum lançamento com classificação Discogs verificada nesta amostra."))
             // The initial sampler is deliberately short, not an exhaustive
             // Discogs index scan. Scroll continues in four-candidate chunks,
-            // repeating only the index reads needed to establish the cursor.
-            // Already verified Masters are not rehydrated.
+            // beginning at each settled landing prefix. Signed checkpoints
+            // must still be revalidated against the current source index.
             if (shelves.isNotEmpty()) {
                 _genrePaging.value = DiscogsGenrePageSnapshot(
-                    tag = tag, cursor = DiscogsEditorialCursor(),
+                    tag = tag, cursor = landingCursors[0] ?: DiscogsEditorialCursor(),
                     knownMasterIds = verified.map { it.masterId }.toSet(),
+                    pendingLandingCursors = landingCursors.toMap(),
                 )
             }
         }

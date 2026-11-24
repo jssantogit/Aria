@@ -17,6 +17,8 @@ internal data class DiscogsGenrePageSnapshot(
     val loading: Boolean = false,
     val failed: Boolean = false,
     val stoppedByPageLimit: Boolean = false,
+    /** Initial samples of subsequent source predicates, scoped to this tag. */
+    val pendingLandingCursors: Map<Int, DiscogsEditorialCursor> = emptyMap(),
 ) {
     val hasMore: Boolean get() = tag != null && cursor != null
 }
@@ -82,11 +84,13 @@ internal fun advanceDiscogsGenrePage(
             val nextQuery = if (completeQuery) prior.queryIndex + 1
                 else prior.queryIndex
             val nextCursor = if (!completeQuery) read.nextCursor
-                else if (nextQuery < queryCount) DiscogsEditorialCursor()
+                else if (nextQuery < queryCount)
+                    prior.pendingLandingCursors[nextQuery] ?: DiscogsEditorialCursor()
                 else null
             prior.copy(
                 queryIndex = nextQuery.coerceAtMost(queryCount),
                 cursor = nextCursor,
+                pendingLandingCursors = prior.pendingLandingCursors - prior.queryIndex,
                 knownMasterIds = known,
                 releases = prior.releases + added,
                 loading = false,

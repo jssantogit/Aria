@@ -30,10 +30,11 @@ internal data class DiscogsHomePageSnapshot(
 internal fun initialDiscogsHomePageSnapshot(
     alreadyVerified: List<DiscogsEditorialCandidate>,
     queryCount: Int,
+    landingCursors: Map<Int, DiscogsEditorialCursor> = emptyMap(),
 ): DiscogsHomePageSnapshot {
     require(queryCount in 0..40)
     return DiscogsHomePageSnapshot(
-        cursors = List(queryCount) { DiscogsEditorialCursor() },
+        cursors = List(queryCount) { landingCursors[it] ?: DiscogsEditorialCursor() },
         nextQueryIndex = if (queryCount > 0) 0 else null,
         knownMasterIds = alreadyVerified.map { it.masterId }.toSet(),
     )
