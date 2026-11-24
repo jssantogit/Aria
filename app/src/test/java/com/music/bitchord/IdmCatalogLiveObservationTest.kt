@@ -1905,6 +1905,17 @@ class IdmCatalogLiveObservationTest {
                                     while (hasMore && visible < target && gestures <= 12) {
                                         val window = discogsCatalog.loadWindow(
                                             artist.artistId, page, known.toList(),
+                                            onProgress = { partial ->
+                                                val preview = discogsArtistPage(
+                                                    com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow(
+                                                        artist.artistId, artist.name,
+                                                    ),
+                                                    discogsMergeArtistPageReleases(known + partial),
+                                                    true, incomplete,
+                                                )
+                                                observe(preview.page.sections, "discogs:release:")
+                                                tracks = preview.tracks.size
+                                            },
                                         )
                                         val result = window.result as? DiscogsNativeArtistLoad.Success
                                         if (result == null) { failed = true; break }
@@ -1922,6 +1933,7 @@ class IdmCatalogLiveObservationTest {
                                         )
                                         assertEquals(artist.browseId, detail.page.browseId)
                                         observe(detail.page.sections, "discogs:release:")
+                                        if (gestures == 0) landing = visible
                                         tracks = detail.tracks.size
                                         assertTrue(tracks <= 16)
                                         assertTrue(detail.tracks.all { track ->

@@ -143,17 +143,18 @@ class DiscogsEvidenceContractTest {
         assertEquals(4, native.tracks.size)
     }
 
-    @Test fun malformedNestedTracklistDoesNotBecomeVerifiedNativeRowsOrInvalidateReleaseIdentity() {
+    @Test fun malformedNestedTracklistPreservesVerifiedSiblingsAndReleaseIdentity() {
         val record = requireNotNull(DiscogsRecordParser.parse(
             DiscogsLink(DiscogsKind.RELEASE, 777),
             """{"id":777,"title":"Box set","tracklist":[
                 {"type_":"track","position":"1","title":"Track"},
-                {"type_":"index","title":"Suite","sub_tracks":[42]}
+                {"type_":"index","title":"Suite","sub_tracks":[42]},
+                {"type_":"track","position":"3","title":"Later Track"}
             ]}""",
         ))
-        assertEquals(listOf("1" to "Track"), record.tracklist)
+        assertEquals(listOf("1" to "Track", "3" to "Later Track"), record.tracklist)
         assertTrue(record.nativeTracklistIncomplete)
-        assertTrue(record.displayTracks.isEmpty())
+        assertEquals(listOf("Track", "Later Track"), record.displayTracks.map { it.title })
         assertTrue(com.music.bitchord.ui.discogsReleasePage("Main", record).incomplete)
     }
 

@@ -242,8 +242,8 @@ internal object DiscogsRecordParser {
             DiscogsRecord(
                 link = expected,
                 title = title,
-                nativeTracklist = nativeTracks ?: emptyList(),
-                nativeTracklistIncomplete = nativeTracks == null,
+                nativeTracklist = nativeTracks.tracks,
+                nativeTracklistIncomplete = nativeTracks.incomplete,
                 artistNames = names,
                 artistIds = artistIds,
                 country = obj.clean("country", 80),
@@ -270,12 +270,18 @@ internal object DiscogsRecordParser {
      * are non-audio extras. Preserve the source order, not inferred numbering.
      * Keep a separate representation so edition-match evidence is unchanged.
      */
-    private fun parseNativeTracklist(tracks: List<JsonObject>): List<DiscogsNativeTrack>? {
+    private data class NativeTracklistRead(
+        val tracks: List<DiscogsNativeTrack>,
+        val incomplete: Boolean,
+    )
+
+    private fun parseNativeTracklist(tracks: List<JsonObject>): NativeTracklistRead {
         val result = mutableListOf<DiscogsNativeTrack>()
         var visited = 0
         val videoPosition = Regex("(?i)^video(?:\\s|[-.:]|[0-9]|$)")
         fun visit(rows: List<JsonObject>, context: String?, depth: Int): Boolean {
             if (depth > 4) return false
+            var complete = true
             for (row in rows) {
                 if (++visited > 1024) return false
                 val type = row.clean("type_", 32)?.lowercase(Locale.ROOT)
@@ -283,16 +289,17 @@ internal object DiscogsRecordParser {
                 if (type == "video" || position?.let { videoPosition.containsMatchIn(it) } == true)
                     continue
                 if (type !in setOf(null, "track", "heading", "index")) continue
-                val children = row.objects("sub_tracks", 256) ?: return false
+                val children = row.objects("sub_tracks", 256)
+                if (children == null) { complete = false; continue }
                 val title = row.clean("title", 240)
                 if (children.isNotEmpty()) {
                     val childContext = if (type == "heading") context else
                         listOfNotNull(context, title).joinToString(" · ").takeIf(String::isNotBlank)
-                    if (!visit(children, childContext, depth + 1)) return false
+                    if (!visit(children, childContext, depth + 1)) complete = false
                     continue
                 }
                 if (type == "heading" || type == "index") continue
-                if (title == null) return false
+                if (title == null) { complete = false; continue }
                 val artists = row.objects("artists", 32)
                 val names = artists?.mapNotNull { it.clean("name", 180) }
                 val credit = names?.takeIf {
@@ -305,9 +312,10 @@ internal object DiscogsRecordParser {
                     durationMs = parseNativeDuration(row.clean("duration", 32)),
                 )
             }
-            return true
+            return complete
         }
-        return result.takeIf { visit(tracks, null, 0) }?.toList()
+        val complete = visit(tracks, null, 0)
+        return NativeTracklistRead(result.toList(), !complete)
     }
 
     private fun parseNativeDuration(raw: String?): Long? {
