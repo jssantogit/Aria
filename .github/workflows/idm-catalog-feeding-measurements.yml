@@ -42,6 +42,16 @@ on:
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
   workflow_dispatch:
+    inputs:
+      discogs_capacity_target:
+        description: 'Cumulative verified Discogs Home capacity target (same Android gestures)'
+        required: true
+        default: '30'
+        type: choice
+        options:
+          - '30'
+          - '100'
+          - '300'
 
 permissions:
   contents: read
@@ -215,9 +225,10 @@ jobs:
       group: idm-catalog-live-discogs
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       IDM_CATALOG_LIVE: '1'
+      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '30' }}
       IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
       IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
 
@@ -271,6 +282,10 @@ jobs:
                       "discogs_genre_12_positions", "discogs_overlapping_landing",
                       "discogs_home_landing", "discogs_artist_30_target",
                       "collective"}
+          capacity_target = int(os.environ.get("IDM_CATALOG_DISCOGS_CAPACITY_TARGET", "30"))
+          capacity_scenarios = [f"discogs_home_capacity_{n}" for n in (30, 100, 300)
+                                if n <= capacity_target]
+          required.update(capacity_scenarios)
           data = {
               f.stem.removeprefix("live_"): json.loads(f.read_text())
               for f in path.glob("live_*.json")
@@ -286,7 +301,7 @@ jobs:
                            "discogs", "discogs_granular", "discogs_home_granular",
                            "discogs_genre_12_positions", "discogs_overlapping_landing",
                            "discogs_home_landing", "discogs_artist_30_target",
-                           "collective"):
+                           *capacity_scenarios, "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
                       raise SystemExit("Incorrect live report type")
@@ -306,6 +321,7 @@ jobs:
                           "known_verified_masters", "new_verified_emitted",
                           "source_queries_attempted", "landing_checkpoints",
                           "source_pages_completed", "incomplete_coverage",
+                          "source_gestures", "source_chunks_attempted",
                           "next_window_has_more")
                   aggregate = {key: row[key] for key in keys if key in row}
                   print("IDM_LIVE_AGGREGATE", name, json.dumps(aggregate, sort_keys=True))

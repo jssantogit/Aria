@@ -883,6 +883,111 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
 
+        // Cumulative real Home capacity: the first gesture and landing
+        // above are part of the same session, not separate fresh samples.
+        // The optional larger curve uses exactly the same eight-release /
+        // twelve-position gesture as Android, never an enlarged API quota.
+        val capacityTarget = System.getenv("IDM_CATALOG_DISCOGS_CAPACITY_TARGET")
+            ?.toIntOrNull()?.takeIf { it in listOf(30, 100, 300) } ?: 30
+        val milestones = listOf(30, 100, 300).filter { it <= capacityTarget }
+        val capacityDeadline = when (capacityTarget) {
+            300 -> 1_200_000L
+            100 -> 450_000L
+            else -> 180_000L
+        }
+        var capacityState = discogsHomeNext ?: discogsHomeInitial
+        var capacityGestures = if (homeGesture != null) 1 else 0
+        var capacityPositions = homeConsumed
+        var capacityChunks = homeChunks
+        var capacityStalled = false
+        var capacityFailed = capacityState.failed || homeTransportException
+        val recordedMilestones = mutableSetOf<Int>()
+        fun reportCapacity(target: Int, status: String) {
+            val appended = discogsHomeContinuationShelf(discogs, discogsHomeShelves, capacityState)
+            val visibleReleases = cards(discogsHomeShelves + listOfNotNull(appended))
+                .count { it.browseId.orEmpty().startsWith("discogs:release:") }
+            val verifiedCount = capacityState.knownMasterIds.size
+            check(visibleReleases == verifiedCount)
+            report("discogs_home_capacity_" + target, Sample(
+                status = status,
+                raw = if (token == null) null else discogsIndexCandidates - homeLandingRawBefore,
+                eligible = verifiedCount,
+                visible = visibleReleases,
+                requests = if (token == null) null else
+                    discogsIndexReads - homeLandingIndexBefore +
+                    discogsMasterReads - homeLandingMasterBefore +
+                    discogsReleaseReads - homeLandingReleaseBefore,
+                counts = mapOf(
+                    "verified_target" to target,
+                    "source_gestures" to capacityGestures,
+                    "source_candidates_consumed" to capacityPositions,
+                    "source_chunks_attempted" to capacityChunks,
+                    "source_index_reads" to discogsIndexReads - homeLandingIndexBefore,
+                    "source_master_reads" to discogsMasterReads - homeLandingMasterBefore,
+                    "source_release_reads" to discogsReleaseReads - homeLandingReleaseBefore,
+                    "next_window_has_more" to if (capacityState.hasMore && homeCanStart) 1 else 0,
+                    "elapsed_ms" to ((System.nanoTime() - homeLandingStarted) / 1_000_000L)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                ),
+            ))
+            recordedMilestones += target
+        }
+        fun recordReachedMilestones() {
+            milestones.filter { it !in recordedMilestones &&
+                capacityState.knownMasterIds.size >= it
+            }.forEach { reportCapacity(it, "target_reached") }
+        }
+        recordReachedMilestones()
+        val capacityScanner = discogsGranularScanner
+        val capacityCompleted = if (homeCanStart && homeGesture != null &&
+            capacityScanner != null && !capacityFailed
+        ) withTimeoutOrNull(capacityDeadline) {
+            // Bound both candidate throughput and wall clock, and stop on
+            // interruption rather than automatically hammering a 429.
+            val maxGestures = maxOf(12, capacityTarget / 2)
+            while (capacityState.hasMore && capacityState.knownMasterIds.size < capacityTarget &&
+                capacityGestures < maxGestures
+            ) {
+                val previous = capacityState
+                val gesture = scanDiscogsHomeGesture(
+                    capacityState, homeQueries, capacityScanner,
+                ) ?: run { capacityFailed = true; null }
+                if (gesture == null) break
+                capacityGestures++
+                capacityPositions += gesture.consumedCandidates
+                capacityChunks += gesture.chunksAttempted
+                capacityState = gesture.state
+                check(gesture.consumedCandidates in 0..12)
+                check(capacityState.knownMasterIds.containsAll(previous.knownMasterIds))
+                check(capacityState.knownMasterIds.size - previous.knownMasterIds.size in 0..8)
+                recordReachedMilestones()
+                if (capacityState.failed || gesture.transportException) {
+                    capacityFailed = true
+                    break
+                }
+                if (capacityState.cursors == previous.cursors &&
+                    capacityState.nextQueryIndex == previous.nextQueryIndex &&
+                    capacityState.knownMasterIds == previous.knownMasterIds
+                ) {
+                    capacityStalled = true
+                    break
+                }
+            }
+            true
+        } else null
+        for (target in milestones.filter { it !in recordedMilestones }) {
+            reportCapacity(target, when {
+                token == null -> "token_not_configured"
+                !homeCanStart -> "initial_unverified"
+                capacityFailed -> "retryable_interruption"
+                capacityCompleted == null -> "timeout_or_unavailable"
+                capacityStalled -> "cursor_stalled"
+                !capacityState.hasMore && capacityState.sourceCeilingHit -> "source_page_ceiling"
+                !capacityState.hasMore -> "source_exhausted_below_target"
+                else -> "gesture_budget_below_target"
+            })
+        }
+
         // Exercise one REAL canonical genre scroll using the new in-gesture
         // twelve-position budget. Compare actual network deltas separately:
         // returning to a K-Pop category reuses only a fresh source index;
