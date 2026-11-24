@@ -2,6 +2,7 @@ package com.music.bitchord
 
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.providers.*
+import com.music.bitchord.ui.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -41,6 +42,91 @@ class DiscogsGranularEditorialCursorTest {
             override suspend fun release(id: Long): DiscogsLookupResult =
                 DiscogsLookupResult.Found(this@DiscogsGranularEditorialCursorTest.release(id - 1000))
         }
+
+    @Test fun canonicalGenreGestureTraversesThirtyHundredAndThreeHundredVerifiedRows() = runBlocking {
+        for (total in listOf(30, 100, 300)) {
+            val masterReads = mutableListOf<Long>()
+            val indexReads = mutableListOf<Int>()
+            val client = DiscogsNativeGenreEditorial(
+                enabled = true, tokenProvider = { "A".repeat(32) },
+                admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+                transport = object : DiscogsGenreSearchTransport {
+                    override suspend fun search(
+                        query: DiscogsEditorialQuery, token: String,
+                        userAgent: String, page: Int,
+                    ): DiscogsHttpResponse {
+                        indexReads += page
+                        val pages = (total + 11) / 12
+                        val ids = ((page - 1) * 12 + 1..minOf(page * 12, total))
+                            .joinToString(",") { """{"id":$it,"type":"master"}""" }
+                        return DiscogsHttpResponse(200,
+                            """{"pagination":{"page":$page,"pages":$pages,"per_page":12},"results":[$ids]}""")
+                    }
+                },
+                editions = reader { id ->
+                    masterReads += id
+                    DiscogsLookupResult.FoundMaster(master(id))
+                },
+            )
+            val query = listOf(DiscogsEditorialQuery("Rock", false))
+            var state = DiscogsGenrePageSnapshot(tag = "rock", cursor = DiscogsEditorialCursor())
+            var gestures = 0
+            val emitted = mutableListOf<Long>()
+            while (state.hasMore) {
+                val previousCount = state.releases.size
+                val gesture = requireNotNull(scanDiscogsGenreGesture(
+                    state, "rock", query, client, onVerified = { emitted += it.masterId },
+                ))
+                assertTrue(gesture.consumedCandidates in 1..12)
+                assertTrue(gesture.chunksAttempted in 1..3)
+                assertFalse(gesture.state.failed)
+                assertTrue(gesture.state.releases.size - previousCount in 1..8)
+                state = gesture.state
+                assertTrue(++gestures <= total)
+            }
+            assertEquals((1L..total.toLong()).toList(), masterReads)
+            assertEquals(masterReads, emitted)
+            assertEquals(masterReads, state.releases.map { it.masterId })
+            assertEquals((total + 11) / 12, indexReads.distinct().size)
+        }
+    }
+
+    @Test fun sharedHomeGestureStopsAtEightAndRotatesWithoutLosingRows() = runBlocking {
+        val queries = listOf(DiscogsEditorialQuery("Rock", false),
+            DiscogsEditorialQuery("Indie Rock", true), DiscogsEditorialQuery("Rock", false, null))
+            .distinct()
+        val indexReads = mutableListOf<DiscogsEditorialQuery>()
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String, userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    indexReads += query
+                    val ids = (if (query.isStyle) 13..24 else 1..12)
+                        .joinToString(",") { """{"id":$it,"type":"master"}""" }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[$ids]}""")
+                }
+            },
+            editions = reader { id -> DiscogsLookupResult.FoundMaster(master(id)) },
+        )
+        val initial = initialDiscogsHomePageSnapshot(emptyList(), queries.size)
+        val emitted = mutableListOf<Long>()
+        val first = requireNotNull(scanDiscogsHomeGesture(
+            initial, queries, client, onVerified = { emitted += it.masterId },
+        ))
+        assertEquals(8, first.state.releases.size)
+        assertEquals(8, first.consumedCandidates)
+        assertEquals(2, first.chunksAttempted)
+        assertEquals(queries, indexReads)
+        assertEquals(listOf(1L, 2L, 3L, 4L, 13L, 14L, 15L, 16L), emitted)
+        val second = requireNotNull(scanDiscogsHomeGesture(first.state, queries, client))
+        assertEquals(16, second.state.releases.size)
+        assertEquals(16, second.state.knownMasterIds.size)
+        assertEquals(0, second.state.nextQueryIndex)
+    }
 
     @Test fun loadsThirtyHundredAndThreeHundredCandidatesWithRealCursor() = runBlocking {
         for (total in listOf(30, 100, 300)) {

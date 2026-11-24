@@ -447,54 +447,21 @@ internal class DiscogsNativeCatalogSession(
         val epoch = ++homePagingEpoch
         _homePaging.value = current.copy(loading = true, failed = false)
         val job = scope.launch(Dispatchers.IO) {
-            var state = current
-            for (batch in 1..3) {
-                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
-                    (state.releases.size - current.releases.size)
-                if (remainingTarget <= 0) break
-                val index = state.nextQueryIndex ?: break
-                val cursor = state.cursors.getOrNull(index) ?: break
-                val query = queries.getOrNull(index) ?: break
-                val response = try {
-                    editorialClient.discoverGranular(
-                        query = query, cursor = cursor,
-                        knownMasterIds = state.knownMasterIds,
-                        maxCandidates = 4,
-                        maxVerifiedReleases = minOf(4, remainingTarget),
-                        onVerified = { candidate ->
-                            // Publish only after both native Master and
-                            // Release are verified. Keep the cursor in the
-                            // request-local state until the page resolves.
-                            if (lease.isCurrent() && homePagingEpoch == epoch) {
-                                val visible = _homePaging.value
-                                if (candidate.masterId !in visible.knownMasterIds) {
-                                    _homePaging.value = visible.copy(
-                                        knownMasterIds =
-                                            visible.knownMasterIds + candidate.masterId,
-                                        releases = visible.releases + candidate,
-                                        loading = true,
-                                    )
-                                }
-                            }
-                        },
-                    )
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: Exception) {
-                      DiscogsGranularRead.Interrupted(
-                          emptyList(), cursor, DiscogsEditorialResult.Unavailable,
-                      )
-                  }
-                if (!lease.isCurrent() || homePagingEpoch != epoch) return@launch
-                state = advanceDiscogsHomePage(
-                    state, index, response,
-                ) ?: state.copy(loading = false, failed = true)
-                if (state.failed || !state.hasMore ||
-                    state.releases.size - current.releases.size >=
-                        DISCOGS_SCROLL_VERIFIED_TARGET
-                ) break
-            }
+            val gesture = scanDiscogsHomeGesture(
+                current, queries, editorialClient,
+                stillCurrent = { lease.isCurrent() && homePagingEpoch == epoch },
+                onVerified = { candidate ->
+                    val visible = _homePaging.value
+                    if (candidate.masterId !in visible.knownMasterIds) {
+                        _homePaging.value = visible.copy(
+                            knownMasterIds = visible.knownMasterIds + candidate.masterId,
+                            releases = visible.releases + candidate, loading = true,
+                        )
+                    }
+                },
+            ) ?: return@launch
             if (lease.isCurrent() && homePagingEpoch == epoch)
-                _homePaging.value = state.copy(loading = false)
+                _homePaging.value = gesture.state
         }
         homePagingJob = job
         val unregister = lease.cancelJobOnRevoke(job)
@@ -645,9 +612,9 @@ internal class DiscogsNativeCatalogSession(
             (_genreEditorial.value[tag] as? UiState.Success<List<HomeShelf>>)?.data.isNullOrEmpty()
         ) return
         val current = _genrePaging.value
-        val cursor = current.cursor ?: return
+        if (current.cursor == null) return
         val queries = discogsEditorialQueriesForTag(tag)
-        val query = queries.getOrNull(current.queryIndex) ?: return
+        if (queries.getOrNull(current.queryIndex) == null) return
         if (current.tag != tag || current.loading ||
             genrePagingJob?.isActive == true
         ) return
@@ -655,70 +622,18 @@ internal class DiscogsNativeCatalogSession(
         val epoch = ++genrePagingEpoch
         _genrePaging.value = current.copy(loading = true, failed = false)
         val job = scope.launch(Dispatchers.IO) {
-            var accumulated = current
-            var positionsConsumed = 0
-            // The previous three four-position reads could download the SAME
-            // Discogs index page three times in a single gesture. Visit at
-            // most 12 source positions to fill a bounded verified output
-            // target, sharing the index snapshot within each page read. A *new* gesture
-            // still validates a partial cursor against the current source.
-            for (batch in 1..3) {
-                val remaining = 12 - positionsConsumed
-                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
-                    (accumulated.releases.size - current.releases.size)
-                if (remaining <= 0 || remainingTarget <= 0) break
-                val nextCursor = accumulated.cursor ?: break
-                val nextQuery = queries.getOrNull(accumulated.queryIndex) ?: break
-                val read = try {
-                    editorialClient.discoverGranular(
-                        query = nextQuery, cursor = nextCursor,
-                        knownMasterIds = accumulated.knownMasterIds,
-                        maxCandidates = remaining,
-                        maxVerifiedReleases = minOf(remaining, remainingTarget),
-                        onVerified = { candidate ->
-                            // Source Master+Release have both passed admission.
-                            // Publish during hydration but never advance the
-                            // persistent cursor before this chunk resolves.
-                            if (lease.isCurrent() && genrePagingEpoch == epoch &&
-                                genreEditorialTag == tag
-                            ) {
-                                val visible = _genrePaging.value
-                                appendDiscogsGenreVerified(visible, tag, candidate)?.let {
-                                    _genrePaging.value = it
-                                }
-                            }
-                        },
-                    )
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: Exception) {
-                      DiscogsGranularRead.Interrupted(
-                          emptyList(), nextCursor, DiscogsEditorialResult.Unavailable,
-                      )
-                  }
-                if (!lease.isCurrent() || genrePagingEpoch != epoch ||
-                    genreEditorialTag != tag
-                ) return@launch
-                val progressed = when (read) {
-                    is DiscogsGranularRead.Page -> read.consumedCandidates
-                    is DiscogsGranularRead.Interrupted -> if (
-                        read.retryCursor.page == nextCursor.page
-                    ) (read.retryCursor.candidatePosition -
-                        nextCursor.candidatePosition).coerceAtLeast(0) else 0
-                }
-                positionsConsumed += progressed
-                val previousQueryIndex = accumulated.queryIndex
-                accumulated = advanceDiscogsGenrePage(
-                    accumulated, tag, queries.size, read,
-                ) ?: accumulated.copy(loading = false, failed = true)
-                if (accumulated.failed || !accumulated.hasMore ||
-                    accumulated.releases.size - current.releases.size >=
-                        DISCOGS_SCROLL_VERIFIED_TARGET ||
-                    positionsConsumed >= 12 ||
-                    (progressed == 0 && accumulated.cursor == nextCursor &&
-                        accumulated.queryIndex == previousQueryIndex)
-                ) break
-            }
-            _genrePaging.value = accumulated.copy(loading = false)
+            val gesture = scanDiscogsGenreGesture(
+                current, tag, queries, editorialClient,
+                stillCurrent = { lease.isCurrent() && genrePagingEpoch == epoch &&
+                    genreEditorialTag == tag },
+                onVerified = { candidate ->
+                    appendDiscogsGenreVerified(_genrePaging.value, tag, candidate)?.let {
+                        _genrePaging.value = it
+                    }
+                },
+            ) ?: return@launch
+            if (lease.isCurrent() && genrePagingEpoch == epoch && genreEditorialTag == tag)
+                _genrePaging.value = gesture.state
         }
         genrePagingJob = job
         val unregister = lease.cancelJobOnRevoke(job)

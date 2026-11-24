@@ -806,48 +806,21 @@ class IdmCatalogLiveObservationTest {
         // a timed-out network sample an exhausted catalog.
         val homeCanStart = homeLandingCompleted == true &&
             discogsHomeShelves.isNotEmpty() && homeQueries.isNotEmpty()
-        val discogsHomeNext = if (homeCanStart) withTimeoutOrNull(110_000L) {
-            var state = discogsHomeInitial
-            for (batch in 1..3) {
-                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
-                    (state.releases.size - discogsHomeInitial.releases.size)
-                if (remainingTarget <= 0) break
-                val index = state.nextQueryIndex ?: break
-                val cursor = state.cursors.getOrNull(index) ?: break
-                val query = homeQueries.getOrNull(index) ?: break
-                val response = try {
-                    discogsGranularScanner?.discoverGranular(
-                        query = query, cursor = cursor,
-                        knownMasterIds = state.knownMasterIds,
-                        maxCandidates = 4,
-                        maxVerifiedReleases = minOf(4, remainingTarget),
-                        onVerified = {
-                            if (firstHomeVerifiedNs == null)
-                                firstHomeVerifiedNs = System.nanoTime()
-                        },
-                    ) ?: break
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    homeTransportException = true
-                    break
-                }
-                homeChunks++
-                homeConsumed += when (response) {
-                    is DiscogsGranularRead.Page -> response.consumedCandidates
-                    is DiscogsGranularRead.Interrupted ->
-                        (response.retryCursor.candidatePosition -
-                            cursor.candidatePosition).coerceAtLeast(0)
-                }
-                state = advanceDiscogsHomePage(state, index, response)
-                    ?: state.copy(loading = false, failed = true)
-                if (state.failed || !state.hasMore ||
-                    state.releases.size - discogsHomeInitial.releases.size >=
-                        DISCOGS_SCROLL_VERIFIED_TARGET
-                ) break
+        val homeGesture = if (homeCanStart) withTimeoutOrNull(110_000L) {
+            discogsGranularScanner?.let { scanner ->
+                scanDiscogsHomeGesture(
+                    discogsHomeInitial, homeQueries, scanner,
+                    onVerified = {
+                        if (firstHomeVerifiedNs == null)
+                            firstHomeVerifiedNs = System.nanoTime()
+                    },
+                )
             }
-            state
         } else null
+        val discogsHomeNext = homeGesture?.state
+        homeChunks = homeGesture?.chunksAttempted ?: 0
+        homeConsumed = homeGesture?.consumedCandidates ?: 0
+        homeTransportException = homeGesture?.transportException ?: false
         val homeElapsedMs = ((System.nanoTime() - homeStartNs) / 1_000_000L)
             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         val firstHomeVerifiedMs = firstHomeVerifiedNs?.let { first ->
@@ -931,56 +904,21 @@ class IdmCatalogLiveObservationTest {
         )
         val genreCanStart = discogsRead is DiscogsEditorialResult.Verified &&
             discogsShelves.isNotEmpty()
-        val scrolledGenre = if (genreCanStart) withTimeoutOrNull(95_000L) {
-            var current = initialGenreState
-            for (batch in 1..3) {
-                val remaining = 12 - genrePositions
-                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
-                    (current.releases.size - initialGenreState.releases.size)
-                if (remaining <= 0 || remainingTarget <= 0) break
-                val cursor = current.cursor ?: break
-                val predicate = discogsEditorialQueriesForTag("k-pop")
-                    .getOrNull(current.queryIndex) ?: break
-                val response = try {
-                    discogsGranularScanner?.discoverGranular(
-                        query = predicate, cursor = cursor,
-                        knownMasterIds = current.knownMasterIds,
-                        maxCandidates = remaining,
-                        maxVerifiedReleases = minOf(remaining, remainingTarget),
-                        onVerified = {
-                            if (firstGenreVerifiedNs == null)
-                                firstGenreVerifiedNs = System.nanoTime()
-                        },
-                    ) ?: break
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    genreTransportException = true
-                    break
-                }
-                genreChunks++
-                val consumed = when (response) {
-                    is DiscogsGranularRead.Page -> response.consumedCandidates
-                    is DiscogsGranularRead.Interrupted -> if (
-                        response.retryCursor.page == cursor.page
-                    ) (response.retryCursor.candidatePosition -
-                        cursor.candidatePosition).coerceAtLeast(0) else 0
-                }
-                genrePositions += consumed
-                val priorQuery = current.queryIndex
-                current = advanceDiscogsGenrePage(
-                    current, "k-pop", discogsEditorialQueriesForTag("k-pop").size,
-                    response,
-                ) ?: current.copy(loading = false, failed = true)
-                if (current.failed || !current.hasMore ||
-                    current.releases.size - initialGenreState.releases.size >=
-                        DISCOGS_SCROLL_VERIFIED_TARGET || genrePositions >= 12 ||
-                    (consumed == 0 && current.cursor == cursor &&
-                        current.queryIndex == priorQuery)
-                ) break
+        val genreGesture = if (genreCanStart) withTimeoutOrNull(95_000L) {
+            discogsGranularScanner?.let { scanner ->
+                scanDiscogsGenreGesture(
+                    initialGenreState, "k-pop", discogsEditorialQueriesForTag("k-pop"), scanner,
+                    onVerified = {
+                        if (firstGenreVerifiedNs == null)
+                            firstGenreVerifiedNs = System.nanoTime()
+                    },
+                )
             }
-            current
         } else null
+        val scrolledGenre = genreGesture?.state
+        genreChunks = genreGesture?.chunksAttempted ?: 0
+        genrePositions = genreGesture?.consumedCandidates ?: 0
+        genreTransportException = genreGesture?.transportException ?: false
         val genreElapsedMs = ((System.nanoTime() - genreStartedNs) / 1_000_000L)
             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         check(genrePositions in 0..12)
