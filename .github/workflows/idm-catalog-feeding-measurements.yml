@@ -25,6 +25,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt
       - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
       - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
@@ -55,6 +56,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt
       - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
       - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
@@ -140,6 +142,7 @@ jobs:
             --tests 'com.music.bitchord.DiscogsClientContractTest' \
             --tests 'com.music.bitchord.DiscogsTransportSafetyTest' \
             --tests 'com.music.bitchord.DiscogsNativeArtistCatalogTest' \
+            --tests 'com.music.bitchord.DiscogsNativeReleaseSearchTest' \
             --tests 'com.music.bitchord.NativeArtistTrackOriginTest' \
             --tests 'com.music.bitchord.DiscogsEvidenceContractTest' \
             --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
@@ -227,6 +230,7 @@ jobs:
               "DiscogsClientContractTest",
               "DiscogsTransportSafetyTest",
               "DiscogsNativeArtistCatalogTest",
+              "DiscogsNativeReleaseSearchTest",
               "NativeArtistTrackOriginTest",
               "DiscogsEvidenceContractTest",
               "NativeMetadataAlbumPresentationTest",
@@ -519,6 +523,7 @@ jobs:
                   "source_track_durations", "artist_route_verified", "related_release_cards",
                   "version_cards", "version_coverage_uncertain", "detail_candidates_read",
                   "native_search_gestures", "partial_apple_candidates",
+                  "discogs_format_queries",
                   "source_interruption", "elapsed_ms")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #229 fixed album matrix (decoded endpoint and canonical projection)\n\n")
