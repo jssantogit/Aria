@@ -26,6 +26,15 @@ internal data class DiscogsNativeReleaseSearchHit(
     val browseId: String get() = "discogs:release:$releaseId"
 }
 
+/** Balance two source candidate streams without exceeding the existing detail
+ * budget. Source IDs remain candidates until independently hydrated. */
+internal fun discogsMultidiscSearchCandidates(
+    cd: List<DiscogsNativeReleaseSearchHit>,
+    unfiltered: List<DiscogsNativeReleaseSearchHit>,
+): List<DiscogsNativeReleaseSearchHit> =
+    (cd.take(4) + unfiltered.take(4) + cd + unfiltered)
+        .distinctBy { it.releaseId }.take(8)
+
 internal data class DiscogsNativeReleaseSearchPage(
     val releases: List<DiscogsNativeReleaseSearchHit>,
     val nextPage: Int?,
