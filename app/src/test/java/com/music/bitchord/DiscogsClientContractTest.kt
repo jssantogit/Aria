@@ -126,6 +126,26 @@ class DiscogsClientContractTest {
         assertEquals(listOf(0L, 3_000L, 6_000L), starts)
     }
 
+    @Test fun sharedDefaultBudgetStaysBelowAnonymousRollingMinuteLimit() = runBlocking {
+        // 25 anonymous requests/minute: ensure the twenty-fifth request
+        // cannot begin within the first rolling minute, even if transport
+        // responses are instantaneous. Authenticated searches still share
+        // the same conservative limiter with anonymous Master/Release reads.
+        var now = 0L
+        val starts = mutableListOf<Long>()
+        val limiter = DiscogsRateLimiter(
+            nowMillis = { now }, delayMillis = { now += it },
+        )
+        repeat(25) { limiter.runLimited { starts += now } }
+        assertEquals(25, starts.size)
+        assertEquals(0L, starts.first())
+        assertTrue(starts.last() >= 60_000L)
+        assertTrue(starts.count { it < 60_000L } <= 24)
+        assertEquals(
+            24L * DISCOGS_SAFE_MIN_INTERVAL_MS, starts.last(),
+        )
+    }
+
     @Test fun sourceOnlyCacheFailsClosedOnExpiredEvidenceAndClockRollback() {
         val link = DiscogsLink(DiscogsKind.RELEASE, 42)
         val record = DiscogsRecord(link, "Album", listOf("Artist"), "KR", 2024,
