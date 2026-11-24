@@ -23,6 +23,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
       - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
@@ -52,6 +53,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
       - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
@@ -136,6 +138,7 @@ jobs:
             --tests 'com.music.bitchord.DiscogsGenreGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest' \
             --tests 'com.music.bitchord.DiscogsClientContractTest' \
+            --tests 'com.music.bitchord.DiscogsTransportSafetyTest' \
             --tests 'com.music.bitchord.DiscogsNativeArtistCatalogTest' \
             --tests 'com.music.bitchord.NativeArtistTrackOriginTest' \
             --tests 'com.music.bitchord.DiscogsEvidenceContractTest' \
@@ -221,6 +224,7 @@ jobs:
               "DiscogsGenreGranularPagingTest",
               "DiscogsGranularEditorialCursorTest",
               "DiscogsClientContractTest",
+              "DiscogsTransportSafetyTest",
               "DiscogsNativeArtistCatalogTest",
               "NativeArtistTrackOriginTest",
               "DiscogsEvidenceContractTest",
