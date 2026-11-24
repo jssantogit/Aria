@@ -1,5 +1,7 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.catalog.metadata.discogs.DISCOGS_RELEASE_BODY_BYTES
+import com.music.bitchord.data.catalog.metadata.discogs.DISCOGS_STANDARD_BODY_BYTES
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsHttpResponse
 import com.music.bitchord.data.catalog.metadata.discogs.KtorDiscogsTransport
 import kotlinx.coroutines.runBlocking
@@ -39,8 +41,8 @@ class DiscogsTransportSafetyTest {
     @Test fun oversizedBodyOrServerAnnouncedLengthIsRejectedWithoutParsing() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(200)
-                .setBody("a".repeat(140_000))
-                .setHeader("Content-Length", "140000"))
+                .setBody("a".repeat(DISCOGS_RELEASE_BODY_BYTES + 1))
+)
             val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
             val response = transport.get("releases/42", "BitChord/Test")
             assertEquals(413, response.status)
@@ -49,12 +51,37 @@ class DiscogsTransportSafetyTest {
         }
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(200)
-                .setChunkedBody("a".repeat(140_000), 8_192))
+                .setChunkedBody("a".repeat(DISCOGS_RELEASE_BODY_BYTES + 1), 8_192))
             val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
             val response = transport.get("releases/42", "BitChord/Test")
             assertEquals(413, response.status)
             assertTrue(response.localBodyLimitExceeded)
             assertTrue(response.body.isEmpty())
+        }
+    }
+
+    @Test fun largerReleaseBudgetDoesNotExpandMasterOrVersionBudgets() = runBlocking {
+        MockWebServer().use { server ->
+            val payload = "a".repeat(DISCOGS_STANDARD_BODY_BYTES + 1)
+            server.enqueue(MockResponse().setChunkedBody(payload, 8_192))
+            server.enqueue(MockResponse().setBody(payload))
+            server.enqueue(MockResponse().setChunkedBody(payload, 8_192))
+            server.enqueue(MockResponse().setBody("a".repeat(DISCOGS_RELEASE_BODY_BYTES)))
+            val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
+            val release = transport.get("releases/42", "BitChord/Test")
+            assertEquals(200, release.status)
+            assertEquals(payload, release.body)
+            assertFalse(release.localBodyLimitExceeded)
+            for (path in listOf("masters/42", "masters/42/versions?page=1&per_page=8")) {
+                val result = transport.get(path, "BitChord/Test")
+                assertEquals(413, result.status)
+                assertTrue(result.localBodyLimitExceeded)
+                assertTrue(result.body.isEmpty())
+            }
+            val exactBoundary = transport.get("releases/42", "BitChord/Test")
+            assertEquals(200, exactBoundary.status)
+            assertEquals(DISCOGS_RELEASE_BODY_BYTES, exactBoundary.body.length)
+            assertEquals(4, server.requestCount)
         }
     }
 
