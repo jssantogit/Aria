@@ -2265,6 +2265,13 @@ class IdmCatalogLiveObservationTest {
                 var searchGestures = 0
                 var partialAppleCandidates = 0
                 var discogsFormatQueries = 0
+                var appleSearchRequests = 0
+                var appleSearchRawRows = 0
+                var appleSearchCreditMatches = 0
+                var appleSearchTitleMatches = 0
+                var appleSearchWorkMatches = 0
+                var appleSearchWorkRankAdmitted = 0
+                var appleAlbumDiagnostics: AppleAlbumReadDiagnostics? = null
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2341,8 +2348,32 @@ class IdmCatalogLiveObservationTest {
                                 // Use the actual native search pager, not a separate raw
                                 // 50-result repository query. Frozen title/credit labels still
                                 // independently select the identity; no corpus substitutions.
+                                val actualSource = ItunesPublicSearchSource(appleClient)
+                                val observedSource = object : ApplePublicSearchSource {
+                                    override suspend fun search(
+                                        term: String, entity: ItunesCatalogEntity, country: String,
+                                        attribute: ItunesCatalogSearchAttribute?,
+                                    ): ItunesCatalogResult {
+                                        appleSearchRequests++
+                                        val response = actualSource.search(term, entity, country, attribute)
+                                        if (response is ItunesCatalogResult.Success) {
+                                            val rows = response.items
+                                            appleSearchRawRows += rows.size
+                                            appleSearchCreditMatches += rows.count { case.matchesArtist(it.artistName) }
+                                            appleSearchTitleMatches += rows.count { case.matchesTitle(it.title) }
+                                            val exact = rows.filter {
+                                                case.matchesTitle(it.title) && case.matchesArtist(it.artistName)
+                                            }
+                                            appleSearchWorkMatches += exact.size
+                                            appleSearchWorkRankAdmitted += exact.count {
+                                                applePublicSearchMatchRank(query, it) != null
+                                            }
+                                        }
+                                        return response
+                                    }
+                                }
                                 val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM,
-                                    "br", source = ItunesPublicSearchSource(appleClient))
+                                    "br", source = observedSource)
                                 val candidateBudget = if (case.kind == "multi") 6 else 3
                                 var search = pager.start()
                                 fun matchingCandidates() = pager.snapshot().visible.filter {
@@ -2388,6 +2419,7 @@ class IdmCatalogLiveObservationTest {
                                 }
                                 if (selected != null && result != null) {
                                     val record = selected
+                                    appleAlbumDiagnostics = result.albumDiagnostics
                                     matched = true
                                     val detail = requireNotNull(appleNativeAlbumDetail(result, record.appleScopedId))
                                     val page = requireNotNull(com.music.bitchord.ui.screens.appleAlbumAsSharedDetail(detail))
@@ -2582,6 +2614,25 @@ class IdmCatalogLiveObservationTest {
                         "native_search_gestures" to searchGestures,
                         "partial_apple_candidates" to partialAppleCandidates,
                         "discogs_format_queries" to discogsFormatQueries,
+                        "apple_search_requests" to appleSearchRequests,
+                        "apple_search_decoded_rows" to appleSearchRawRows,
+                        "apple_search_credit_matches" to appleSearchCreditMatches,
+                        "apple_search_title_matches" to appleSearchTitleMatches,
+                        "apple_search_work_matches" to appleSearchWorkMatches,
+                        "apple_search_work_rank_admitted" to appleSearchWorkRankAdmitted,
+                        "apple_lookup_declared_track_count" to (appleAlbumDiagnostics?.declaredTrackCount ?: 0),
+                        "apple_lookup_track_count_known" to if (appleAlbumDiagnostics?.declaredTrackCount != null) 1 else 0,
+                        "apple_lookup_decoded_tracks" to (appleAlbumDiagnostics?.decodedTracks ?: 0),
+                        "apple_lookup_positionless_tracks" to (appleAlbumDiagnostics?.positionlessTracks ?: 0),
+                        "apple_lookup_duplicate_positions" to (appleAlbumDiagnostics?.duplicatePositions ?: 0),
+                        "apple_lookup_possibly_truncated" to if (appleAlbumDiagnostics?.sourcePossiblyTruncated == true) 1 else 0,
+                        "apple_lookup_declared_rows" to (appleAlbumDiagnostics?.lookup?.declaredResults ?: 0),
+                        "apple_lookup_raw_rows" to (appleAlbumDiagnostics?.lookup?.rawRows ?: 0),
+                        "apple_lookup_matching_songs" to (appleAlbumDiagnostics?.lookup?.matchingSongRows ?: 0),
+                        "apple_lookup_matching_non_songs" to (appleAlbumDiagnostics?.lookup?.matchingNonSongRows ?: 0),
+                        "apple_lookup_foreign_songs" to (appleAlbumDiagnostics?.lookup?.foreignSongRows ?: 0),
+                        "apple_lookup_rejected_songs" to (appleAlbumDiagnostics?.lookup?.rejectedSongRows ?: 0),
+                        "apple_lookup_removed_duplicate_songs" to (appleAlbumDiagnostics?.lookup?.removedDuplicateOrDisputedSongs ?: 0),
                         "source_interruption" to if (failed) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
