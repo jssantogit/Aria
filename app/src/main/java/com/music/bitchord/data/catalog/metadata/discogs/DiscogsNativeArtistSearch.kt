@@ -189,3 +189,71 @@ internal class DiscogsNativeArtistSearchClient(
         }
     }
 }
+
+
+/**
+ * Bare names can identify several Discogs artists. Keep one visible name,
+ * but prefer an exact source ID corroborated by the source's own ranked
+ * Release search and independently hydrated credits. This is relevance
+ * evidence, NOT popularity or proof of the user's intended homonym.
+ * No test anchor, cross-provider mapping or title-only identity inference.
+ */
+internal data class DiscogsArtistSearchResolution(
+    val rows: List<com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow>,
+    val ambiguousCandidates: Int = 0,
+    val detailReads: Int = 0,
+    val corroboratedSelection: Boolean = false,
+)
+
+internal suspend fun discogsResolveArtistSearchHomonyms(
+    query: String,
+    rows: List<com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow>,
+    stillCurrent: () -> Boolean,
+    searchReleases: suspend () -> DiscogsNativeReleaseSearchResult,
+    readRelease: suspend (Long) -> DiscogsLookupResult,
+): DiscogsArtistSearchResolution {
+    val exact = rows.filter {
+        (com.music.bitchord.ui.screens.discogsSearchArtistRank(query, it.name) ?: 99) <= 1
+    }.distinctBy { it.artistId }
+    if (exact.size < 2) return DiscogsArtistSearchResolution(rows)
+    val initial = DiscogsArtistSearchResolution(rows, ambiguousCandidates = exact.size)
+    if (!stillCurrent()) return initial
+    val index = searchReleases() as? DiscogsNativeReleaseSearchResult.Success ?: return initial
+    if (!stillCurrent()) return initial
+    val candidates = index.page.releases.filter {
+        (com.music.bitchord.ui.screens.discogsSearchReleaseRank(query, it.title) ?: 99) <= 2
+    }.distinctBy { it.releaseId }.take(3)
+    val exactIds = exact.map { it.artistId }.toSet()
+    val evidence = linkedMapOf<Long, MutableSet<String>>()
+    var reads = 0
+    for (candidate in candidates) {
+        if (!stillCurrent()) return initial.copy(detailReads = reads)
+        reads++
+        val lookup = readRelease(candidate.releaseId)
+        if (!stillCurrent()) return initial.copy(detailReads = reads)
+        if (lookup is DiscogsLookupResult.Throttled || lookup == DiscogsLookupResult.Disabled ||
+            lookup == DiscogsLookupResult.Unauthorized || lookup == DiscogsLookupResult.Unavailable
+        ) break
+        val record = (lookup as? DiscogsLookupResult.Found)?.record ?: continue
+        val creditId = record.artistIds.singleOrNull() ?: continue
+        val creditName = record.artistNames.singleOrNull() ?: continue
+        if (record.link.kind != DiscogsKind.RELEASE || record.link.id != candidate.releaseId ||
+            record.unofficial || creditId !in exactIds ||
+            (com.music.bitchord.ui.screens.discogsSearchArtistRank(query, creditName) ?: 99) > 1
+        ) continue
+        val work = record.masterId?.let { "master:$it" } ?: "release:${record.link.id}"
+        evidence.getOrPut(creditId) { linkedSetOf() }.add(work)
+    }
+    // Equal evidence keeps source artist order. Multiple pressings of one
+    // master do not vote multiple times for the same ambiguous credit.
+    val preferred = exact.maxByOrNull { evidence[it.artistId]?.size ?: 0 }
+        ?.takeIf { !evidence[it.artistId].isNullOrEmpty() }
+        ?: return initial.copy(detailReads = reads)
+    if (!stillCurrent()) return initial.copy(detailReads = reads)
+    val firstPosition = rows.indexOfFirst { it.artistId in exactIds }
+    val reordered = rows.toMutableList().apply {
+        removeAll { it.artistId == preferred.artistId }
+        add(firstPosition, preferred)
+    }
+    return DiscogsArtistSearchResolution(reordered, exact.size, reads, true)
+}
