@@ -25,6 +25,76 @@ class DiscogsNativeArtistCatalogTest {
         artistIds = listOf(artistId),
     )
 
+    @Test fun artistIndexUsesTokenOnlyWithExplicitAuthorizedTransport() = runBlocking {
+        var token: String? = "A".repeat(32)
+        val authenticatedCalls = mutableListOf<String>()
+        val anonymousCalls = mutableListOf<Int>()
+        val transport = object : DiscogsPublicArtistTransport {
+            override val supportsTokenAuthorization: Boolean get() = true
+            private fun page() = DiscogsHttpResponse(200,
+                """{"pagination":{"page":1,"pages":1},"releases":[
+                    {"id":50,"type":"release","role":"Main","title":"Album"}
+                ]}""")
+            override suspend fun list(
+                artistId: Long, page: Int, userAgent: String,
+            ): DiscogsHttpResponse {
+                anonymousCalls += page
+                return page()
+            }
+            override suspend fun listAuthenticated(
+                artistId: Long, page: Int, userAgent: String, token: String,
+            ): DiscogsHttpResponse {
+                authenticatedCalls += token
+                return page()
+            }
+        }
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true, admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = transport, tokenProvider = { token },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long) =
+                    DiscogsLookupResult.Found(this@DiscogsNativeArtistCatalogTest.release(id))
+            },
+        )
+        val first = source.load(17) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(50L), first.releases.map { it.releaseId })
+        assertEquals(listOf("A".repeat(32)), authenticatedCalls)
+        assertTrue(anonymousCalls.isEmpty())
+        token = "invalid token"
+        assertEquals(1, (source.load(17) as DiscogsNativeArtistLoad.Success).releases.size)
+        token = null
+        assertEquals(1, (source.load(17) as DiscogsNativeArtistLoad.Success).releases.size)
+        assertEquals(listOf(1, 1), anonymousCalls)
+        assertEquals(1, authenticatedCalls.size)
+    }
+
+    @Test fun publicArtistTransportWithoutOptInCannotReceiveSourceToken() = runBlocking {
+        var anonymousReads = 0
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true, admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            tokenProvider = { "A".repeat(32) },
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(
+                    artistId: Long, page: Int, userAgent: String,
+                ): DiscogsHttpResponse {
+                    anonymousReads++
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1},"releases":[]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long) = DiscogsLookupResult.Missing
+            },
+        )
+        val result = source.load(17) as DiscogsNativeArtistLoad.Success
+        assertTrue(result.releases.isEmpty())
+        assertEquals(1, anonymousReads)
+    }
+
     @Test fun sourceScopedArtistCanProduceReleasesWithoutAnyMusicBrainzId() {
         val rows = discogsNativeArtistReleases(17, listOf(
             DiscogsArtistIndexEntry(DiscogsKind.MASTER, 90) to
