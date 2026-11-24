@@ -125,6 +125,31 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(1, lookup.removedDuplicateOrDisputedSongs)
     }
 
+    @Test fun videoLookupCountsOnlyUniqueExactCollectionMembersAndNeverReturnsMedia() = runBlocking {
+        val source = Source("""{"resultCount":7,"results":[
+            ${album(123, count = 3)},
+            ${track(101, 123)},
+            {"wrapperType":"track","kind":"music-video","trackId":102,"collectionId":123,"trackName":"Video"},
+            {"wrapperType":"track","kind":"music-video","trackId":103,"collectionId":123,"trackName":"Duplicate"},
+            {"wrapperType":"track","kind":"music-video","trackId":103,"collectionId":123,"trackName":"Duplicate"},
+            {"wrapperType":"track","kind":"music-video","trackId":104,"collectionId":999,"trackName":"Foreign"},
+            {"wrapperType":"track","kind":"music-video","trackId":101,"collectionId":123,"trackName":"Song ID collision"}
+        ]}""")
+        val result = ItunesCatalogClient(source).observeAlbumMusicVideoRows(123) as ItunesCatalogResult.Success
+        assertEquals("123", source.parameters["id"])
+        assertEquals("musicVideo", source.parameters["entity"])
+        val observation = requireNotNull(result.albumLookupObservation)
+        assertEquals(4, observation.matchingNonSongRows)
+        assertEquals(1, observation.verifiedMusicVideoRows)
+        assertEquals(2, result.items.size)
+        assertTrue(result.items.none { it.isPlayable })
+        // Observation is not permission to mark an incomplete audio read complete.
+        val detail = AppleEditorialCatalogRepository(ItunesCatalogClient(source))
+            .albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST, detail.state)
+        assertEquals(1, detail.releases.single().tracks.size)
+    }
+
     @Test fun albumWithAllOrderedTracksReportsVerifiedSourceCompleteness() = runBlocking {
         val source = Source("""{"resultCount":2,"results":[
             ${album(123, count = 1)}, ${track(101, 123)}
