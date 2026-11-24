@@ -1109,17 +1109,18 @@ class IdmCatalogLiveObservationTest {
         var artistInterrupted = false
         var artistIncomplete = false
         var artistHasMore = true
-        val artistCompleted = if (artistId != null && discogsArtistScanner != null)
+        val artistScanner = discogsArtistScanner
+        val artistCompleted = if (artistId != null && artistScanner != null)
             withTimeoutOrNull(150_000L) {
                 while (artistPagesCompleted < 10 && artistHasMore && artistVerified.size < 30) {
-                    val window = discogsArtistScanner?.loadWindow(
+                    val window = artistScanner.loadWindow(
                         artistId, artistPagesCompleted + 1, artistVerified.toList(),
                         maxPages = minOf(3, 10 - artistPagesCompleted),
                     ) { rows ->
                         if (rows.isNotEmpty() && artistFirstNs == null)
                             artistFirstNs = System.nanoTime()
                     }
-                    val response = window?.result
+                    val response = window.result
                     if (response !is DiscogsNativeArtistLoad.Success) {
                         artistInterrupted = true
                         break
@@ -1156,7 +1157,8 @@ class IdmCatalogLiveObservationTest {
                 !artistHasMore -> "incomplete_source_below_target"
                 else -> "page_budget_below_target"
             },
-            raw = if (token == null) null else artistIndexCandidates,
+            // The artist parser returns typed Main entries, not every raw role.
+            parsed = if (token == null) null else artistIndexCandidates,
             eligible = artistVerified.size,
             visible = artistVisible,
             requests = if (token == null) null else artistIndexReads +

@@ -285,7 +285,7 @@ jobs:
                            "musicbrainz_home_granular", "itunes", "itunes_home_granular",
                            "discogs", "discogs_granular", "discogs_home_granular",
                            "discogs_genre_12_positions", "discogs_overlapping_landing",
-                      "discogs_home_landing", "discogs_artist_30_target",
+                           "discogs_home_landing", "discogs_artist_30_target",
                            "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
