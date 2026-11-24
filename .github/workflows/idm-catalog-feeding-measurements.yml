@@ -146,7 +146,8 @@ jobs:
             --tests 'com.music.bitchord.AppleEditorialNativeSearchBridgeTest' \
             --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
             --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
-            --tests 'com.music.bitchord.ApplePublicSearchPagerTest'
+            --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork'
 
       - name: Exercise shared native search presentation and relevance
         run: |
@@ -254,6 +255,17 @@ jobs:
                             " | ".join(map(str, data)) + " |\n")
               out.write("\nThis validates code paths with fixture transports; ")
               out.write("it does not establish remote pagination completeness.\n")
+          # This exact test is deliberately secretless and must pass before
+          # the expensive live job starts, not merely appear as a skipped suite.
+          schema_report = Path("app/build/test-results/testDevDebugUnitTest/TEST-com.music.bitchord.IdmCatalogLiveObservationTest.xml")
+          if not schema_report.is_file():
+              raise SystemExit("Missing offline live-report schema regression")
+          schema_tests = ET.parse(schema_report).getroot().findall("testcase")
+          schema_case = [case for case in schema_tests if case.get("name", "").startswith(
+              "aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork")]
+          if len(schema_case) != 1 or any(schema_case[0].find(tag) is not None
+                                       for tag in ("failure", "error", "skipped")):
+              raise SystemExit("Offline live-report schema regression did not pass")
           # Require all shared native relevance/navigation suites as well.
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### Shared search regressions\n\n")
