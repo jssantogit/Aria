@@ -44,6 +44,8 @@ internal data class DiscogsHttpResponse(
     val status: Int,
     val body: String,
     val retryAfterSeconds: Long? = null,
+    /** Local transport safety rejection, distinct from an upstream HTTP 413. */
+    val localBodyLimitExceeded: Boolean = false,
 )
 
 internal class KtorDiscogsTransport(
@@ -87,7 +89,7 @@ internal class KtorDiscogsTransport(
         val size = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (size != null && size > MAX_RESPONSE_BYTES) {
             response.bodyAsChannel().cancel()
-            return DiscogsHttpResponse(413, "")
+            return DiscogsHttpResponse(413, "", localBodyLimitExceeded = true)
         }
         // Body size cannot rely on Content-Length: chunked/malicious responses
         // must be rejected BEFORE Ktor builds a potentially unbounded String.
@@ -100,7 +102,7 @@ internal class KtorDiscogsTransport(
             if (count == 0) continue
             if (output.size().toLong() + count > MAX_RESPONSE_BYTES) {
                 channel.cancel()
-                return DiscogsHttpResponse(413, "")
+                return DiscogsHttpResponse(413, "", localBodyLimitExceeded = true)
             }
             output.write(buffer, 0, count)
         }
