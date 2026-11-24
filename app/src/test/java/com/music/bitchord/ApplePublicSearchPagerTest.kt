@@ -294,6 +294,49 @@ class ApplePublicSearchPagerTest {
         assertEquals(4, calls.size)
     }
 
+    @Test fun unevenCompoundRecoveryUsesSourceCreditRatherThanBlindMidpoint() = runBlocking {
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val original = "Aphex Twin Come to Daddy"
+        val right = album(1, title = "Come to Daddy - EP").copy(artistName = "Aphex Twin")
+        val hint = album(2, title = "Unrelated Album").copy(artistName = "Aphex Twin")
+        val wrong = right.copy(id = 3, artistName = "Aphex Twins")
+        val foreignHint = hint.copy(id = 4, storefront = "us", artistName = "Aphex Twin Come")
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                calls += query to attribute
+                return ItunesCatalogResult.Success(when {
+                    query == original && attribute == null -> listOf(foreignHint, hint)
+                    query == "come to daddy" -> listOf(wrong, right)
+                    else -> emptyList()
+                })
+            }
+        }
+        val pager = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM,
+            "br", source = source)
+        val snapshot = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L), snapshot.visible.map { it.id })
+        assertEquals(listOf(
+            original to null,
+            original to ItunesCatalogSearchAttribute.ALBUM_TERM,
+            original to ItunesCatalogSearchAttribute.ARTIST_TERM,
+            "come to daddy" to ItunesCatalogSearchAttribute.ALBUM_TERM,
+        ), calls)
+        assertFalse(snapshot.hasMore)
+    }
+
+    @Test fun sourceCreditHintsSupportUnevenReverseAndAccentedQueriesWithoutSubstringSplits() {
+        val credit = album(1).copy(artistName = "João Gilberto")
+        assertEquals(listOf("chega de saudade"), applePublicSearchWorkHints(
+            "Chega de Saudade Joao Gilberto", listOf(credit)))
+        assertEquals(listOf("chega de saudade"), applePublicSearchWorkHints(
+            "Joao Gilberto - Chega de Saudade", listOf(credit)))
+        assertTrue(applePublicSearchWorkHints("Joao Gilbertos", listOf(credit)).isEmpty())
+        assertTrue(applePublicSearchWorkHints("Joao Gilberto", listOf(credit)).isEmpty())
+    }
+
     @Test fun explicitCompoundRecoveryStopsAfterTwoExtraProbesAndRetriesFailedTerm() = runBlocking {
         val calls = mutableListOf<String>()
         var fail = true
