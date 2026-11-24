@@ -96,6 +96,35 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(1, result.releases.single().tracks.size)
     }
 
+    @Test fun partialAlbumDiagnosticsSeparateSongsVideosAndConflictingRows() = runBlocking {
+        val source = Source("""{"resultCount":8,"results":[
+            ${album(123, count = 5)},
+            ${track(101, 123)},
+            ${track(101, 123)},
+            ${track(102, 123)},
+            ${track(103, 999)},
+            {"wrapperType":"track","kind":"music-video","trackId":104,"collectionId":123,"trackName":"Video"},
+            {"wrapperType":"track","kind":"song","collectionId":123,"trackName":"No identity"},
+            {"wrapperType":"track","kind":"song","trackId":105,"collectionId":123,"trackName":"No position"}
+        ]}""")
+        val result = AppleEditorialCatalogRepository(ItunesCatalogClient(source))
+            .albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST, result.state)
+        val diagnostic = requireNotNull(result.albumDiagnostics)
+        assertEquals(5, diagnostic.declaredTrackCount)
+        assertEquals(3, diagnostic.decodedTracks)
+        assertEquals(1, diagnostic.positionlessTracks)
+        assertEquals(1, diagnostic.duplicatePositions)
+        val lookup = requireNotNull(diagnostic.lookup)
+        assertEquals(8, lookup.declaredResults)
+        assertEquals(8, lookup.rawRows)
+        assertEquals(5, lookup.matchingSongRows)
+        assertEquals(1, lookup.matchingNonSongRows)
+        assertEquals(1, lookup.foreignSongRows)
+        assertEquals(1, lookup.rejectedSongRows)
+        assertEquals(1, lookup.removedDuplicateOrDisputedSongs)
+    }
+
     @Test fun albumWithAllOrderedTracksReportsVerifiedSourceCompleteness() = runBlocking {
         val source = Source("""{"resultCount":2,"results":[
             ${album(123, count = 1)}, ${track(101, 123)}
