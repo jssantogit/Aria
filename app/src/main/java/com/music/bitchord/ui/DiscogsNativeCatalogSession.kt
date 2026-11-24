@@ -640,17 +640,23 @@ internal class DiscogsNativeCatalogSession(
         _genrePaging.value = current.copy(loading = true, failed = false)
         val job = scope.launch(Dispatchers.IO) {
             var accumulated = current
-            // One scroll gesture may encounter only already-published Masters.
-            // Progress across at most three bounded source chunks, never an
-            // unbounded scan or a change of editorial ownership.
+            var positionsConsumed = 0
+            // The previous three four-position reads could download the SAME
+            // Discogs index page three times in a single gesture. Visit at
+            // most 12 source positions in bounded four-position chunks, but
+            // share the index snapshot within each page read. A *new* gesture
+            // still validates a partial cursor against the current source.
             for (batch in 1..3) {
+                val remaining = 12 - positionsConsumed
+                if (remaining <= 0) break
                 val nextCursor = accumulated.cursor ?: break
                 val nextQuery = queries.getOrNull(accumulated.queryIndex) ?: break
                 val read = try {
                     editorialClient.discoverGranular(
                         query = nextQuery, cursor = nextCursor,
                         knownMasterIds = accumulated.knownMasterIds,
-                        maxCandidates = 4,
+                        maxCandidates = remaining,
+                        stopAfterVerifiedChunk = if (remaining >= 4) 4 else null,
                         onVerified = { candidate ->
                             // Source Master+Release have both passed admission.
                             // Publish during hydration but never advance the
@@ -674,12 +680,23 @@ internal class DiscogsNativeCatalogSession(
                 if (!lease.isCurrent() || genrePagingEpoch != epoch ||
                     genreEditorialTag != tag
                 ) return@launch
+                val progressed = when (read) {
+                    is DiscogsGranularRead.Page -> read.consumedCandidates
+                    is DiscogsGranularRead.Interrupted -> if (
+                        read.retryCursor.page == nextCursor.page
+                    ) (read.retryCursor.candidatePosition -
+                        nextCursor.candidatePosition).coerceAtLeast(0) else 0
+                }
+                positionsConsumed += progressed
+                val previousQueryIndex = accumulated.queryIndex
                 accumulated = advanceDiscogsGenrePage(
                     accumulated, tag, queries.size, read,
                 ) ?: accumulated.copy(loading = false, failed = true)
-                if (!discogsShouldContinueEmptyCandidateScan(
-                        current, accumulated, batch,
-                    )
+                if (accumulated.failed || !accumulated.hasMore ||
+                    accumulated.releases.size > current.releases.size ||
+                    positionsConsumed >= 12 ||
+                    (progressed == 0 && accumulated.cursor == nextCursor &&
+                        accumulated.queryIndex == previousQueryIndex)
                 ) break
             }
             _genrePaging.value = accumulated.copy(loading = false)
