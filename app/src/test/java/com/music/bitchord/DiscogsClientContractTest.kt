@@ -14,6 +14,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiscogsClientContractTest {
+    private fun admittedNativeDiscogs(): RateLimitedProviderTransport {
+        val key = BuiltInProviderKeys.DISCOGS
+        val capability = ProviderCapability.EDITORIAL_DISCOGRAPHY
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(com.music.bitchord.data.providers.ProviderDescriptor(
+                key, setOf(capability),
+                com.music.bitchord.data.providers.ProviderReadiness.READY,
+            )),
+            choices = mapOf(capability to listOf(ProviderChoice(key, true, 0))),
+        ))
+        return RateLimitedProviderTransport { gate }
+    }
+
     @Test fun editionGateBlocksAllRealLookupEntryPointsBeforeHttp() = runBlocking {
         val discogs = BuiltInProviderKeys.DISCOGS
         val descriptors = listOf(BuiltInProviderDescriptors.discogs(
@@ -295,6 +308,7 @@ class DiscogsClientContractTest {
         val source = DiscogsClient(
             transport = transport, enabled = true,
             capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = admittedNativeDiscogs(),
             tokenProvider = { token }, clockMs = { now },
             limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
         )
@@ -343,6 +357,7 @@ class DiscogsClientContractTest {
         val client = DiscogsClient(
             enabled = true,
             capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = admittedNativeDiscogs(),
             limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
             transport = object : DiscogsTransport {
                 override suspend fun get(
