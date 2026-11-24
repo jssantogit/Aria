@@ -265,6 +265,7 @@ jobs:
                       "musicbrainz_home_granular", "itunes", "itunes_home_granular",
                       "discogs", "discogs_granular", "discogs_home_granular",
                       "discogs_genre_12_positions", "discogs_overlapping_landing",
+                      "discogs_home_landing", "discogs_artist_30_target",
                       "collective"}
           data = {
               f.stem.removeprefix("live_"): json.loads(f.read_text())
@@ -280,6 +281,7 @@ jobs:
                            "musicbrainz_home_granular", "itunes", "itunes_home_granular",
                            "discogs", "discogs_granular", "discogs_home_granular",
                            "discogs_genre_12_positions", "discogs_overlapping_landing",
+                      "discogs_home_landing", "discogs_artist_30_target",
                            "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
@@ -297,7 +299,10 @@ jobs:
                           "source_release_reads", "elapsed_ms", "first_verified_ms",
                           "landing_checkpoint_used", "start_page", "start_position",
                           "initial_elapsed_ms", "initial_first_verified_ms",
-                          "known_verified_masters", "new_verified_emitted")
+                          "known_verified_masters", "new_verified_emitted",
+                          "source_queries_attempted", "landing_checkpoints",
+                          "source_pages_completed", "incomplete_coverage",
+                          "next_window_has_more")
                   aggregate = {key: row[key] for key in keys if key in row}
                   print("IDM_LIVE_AGGREGATE", name, json.dumps(aggregate, sort_keys=True))
               out.write("\nA null count means unavailable telemetry, not zero. ")

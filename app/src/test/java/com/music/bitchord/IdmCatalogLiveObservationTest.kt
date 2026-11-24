@@ -426,6 +426,9 @@ class IdmCatalogLiveObservationTest {
         var matchingGenreHints = 0
         var matchingStyleHints = 0
         var discogsGranularScanner: DiscogsNativeGenreEditorial? = null
+        var discogsArtistScanner: DiscogsNativeArtistCatalog? = null
+        var artistIndexReads = 0
+        var artistIndexCandidates = 0
         var firstInitialVerifiedNs: Long? = null
         var initialLandingCursor: DiscogsEditorialCursor? = null
         val initialStartedNs = System.nanoTime()
@@ -467,6 +470,36 @@ class IdmCatalogLiveObservationTest {
                     // Release hydration as the actual Android session.
                     tokenProvider = { token },
                 ),
+            )
+            val liveArtistIndex = KtorDiscogsPublicArtistTransport(perPage = 6)
+            discogsArtistScanner = DiscogsNativeArtistCatalog(
+                enabled = true, admission = guard, tokenProvider = { token },
+                editions = editions,
+                transport = object : DiscogsPublicArtistTransport {
+                    override val supportsTokenAuthorization: Boolean get() = true
+                    private fun counted(response: DiscogsHttpResponse, page: Int):
+                        DiscogsHttpResponse {
+                        if (response.status == 200) artistIndexCandidates +=
+                            DiscogsPublicArtistParsing.page(response.body, page)
+                                ?.entries?.size ?: 0
+                        return response
+                    }
+                    override suspend fun list(
+                        artistId: Long, page: Int, userAgent: String,
+                    ): DiscogsHttpResponse {
+                        artistIndexReads++
+                        return counted(liveArtistIndex.list(artistId, page, userAgent), page)
+                    }
+                    override suspend fun listAuthenticated(
+                        artistId: Long, page: Int, userAgent: String, token: String,
+                    ): DiscogsHttpResponse {
+                        artistIndexReads++
+                        return counted(
+                            liveArtistIndex.listAuthenticated(artistId, page, userAgent, token),
+                            page,
+                        )
+                    }
+                },
             )
             val native = DiscogsNativeGenreEditorial(
                 enabled = true, tokenProvider = { token },
@@ -668,9 +701,88 @@ class IdmCatalogLiveObservationTest {
         // index positions. Production checks up to three four-candidate
         // chunks, rotating to the next source Genre/Style predicate when
         // the current chunk does not yield a new verified Master.
+        // Reproduce the actual Android Home landing, including each
+        // source predicate's separate signed checkpoint. K-Pop alone is
+        // a genre sample, not a valid stand-in for the Home load.
         val homeQueries = discogsHomeGranularQueries()
+        val homeLandingVerified = mutableListOf<DiscogsEditorialCandidate>()
+        val homeLandingCursors = mutableMapOf<DiscogsEditorialQuery, DiscogsEditorialCursor>()
+        val homeLandingStarted = System.nanoTime()
+        var homeLandingFirstNs: Long? = null
+        val homeLandingIndexBefore = discogsIndexReads
+        val homeLandingRawBefore = discogsIndexCandidates
+        val homeLandingMasterBefore = discogsMasterReads
+        val homeLandingReleaseBefore = discogsReleaseReads
+        var homePredicatesAttempted = 0
+        var homeLandingInterrupted = false
+        val homeLandingCompleted = if (token != null) withTimeoutOrNull(180_000L) {
+            for ((index, tag) in discogsHomeDiscoveryTags.withIndex()) {
+                if (homeLandingVerified.size >= 10) break
+                val predicate = discogsEditorialQueriesForTag(tag).firstOrNull() ?: continue
+                val budget = discogsMultiStylePageBudget(
+                    homeLandingVerified.size, discogsHomeDiscoveryTags.size - index - 1,
+                    totalSlots = 10,
+                ).coerceAtMost(2)
+                homePredicatesAttempted++
+                val read = discogsGranularScanner?.discoverDistinct(
+                    predicate, budget, homeLandingVerified.map { it.masterId }.toSet(),
+                    onCheckpoint = { homeLandingCursors[predicate] = it },
+                    onVerified = {
+                        if (homeLandingFirstNs == null) homeLandingFirstNs = System.nanoTime()
+                        if (homeLandingVerified.none { prior -> prior.masterId == it.masterId })
+                            homeLandingVerified += it
+                    },
+                )
+                when (read) {
+                    is DiscogsEditorialResult.Verified -> Unit
+                    DiscogsEditorialResult.Unauthorized, DiscogsEditorialResult.Disabled,
+                    is DiscogsEditorialResult.Throttled -> {
+                        homeLandingInterrupted = true
+                        break
+                    }
+                    else -> homeLandingInterrupted = true
+                }
+            }
+            true
+        } else null
+        val discogsHomeShelves = discogsEditorialShelves(homeLandingVerified, home = true)
+        check(homeLandingVerified.size <= 10)
+        check(homeLandingVerified.map { it.masterId }.distinct().size == homeLandingVerified.size)
+        report("discogs_home_landing", Sample(
+            status = when {
+                token == null -> "token_not_configured"
+                homeLandingCompleted == null -> "timeout_or_partial"
+                homeLandingInterrupted -> "source_interruption"
+                homeLandingVerified.isEmpty() -> "no_new_verified_records"
+                else -> "verified"
+            },
+            raw = if (token == null) null else discogsIndexCandidates - homeLandingRawBefore,
+            eligible = homeLandingVerified.size,
+            visible = cards(discogsHomeShelves).size,
+            requests = if (token == null) null else
+                discogsIndexReads - homeLandingIndexBefore +
+                    discogsMasterReads - homeLandingMasterBefore +
+                    discogsReleaseReads - homeLandingReleaseBefore,
+            counts = mapOf(
+                "source_queries_attempted" to homePredicatesAttempted,
+                "verified_target" to 10,
+                "landing_checkpoints" to homeLandingCursors.size,
+                "source_index_reads" to discogsIndexReads - homeLandingIndexBefore,
+                "source_master_reads" to discogsMasterReads - homeLandingMasterBefore,
+                "source_release_reads" to discogsReleaseReads - homeLandingReleaseBefore,
+                "elapsed_ms" to ((System.nanoTime() - homeLandingStarted) / 1_000_000L)
+                    .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                "first_verified_ms" to (homeLandingFirstNs?.let {
+                    ((it - homeLandingStarted) / 1_000_000L)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                } ?: 0),
+            ),
+        ))
         val discogsHomeInitial = initialDiscogsHomePageSnapshot(
-            verifiedDiscogs, homeQueries.size,
+            homeLandingVerified, homeQueries.size,
+            homeQueries.mapIndexedNotNull { index, predicate ->
+                homeLandingCursors[predicate]?.let { index to it }
+            }.toMap(),
         )
         val beforeHomeIndexes = discogsIndexReads
         val beforeHomeCandidates = discogsIndexCandidates
@@ -692,8 +804,8 @@ class IdmCatalogLiveObservationTest {
         // The UI has no network deadline of its own. This observational
         // watchdog classifies excessive latency instead of falsely calling
         // a timed-out network sample an exhausted catalog.
-        val homeCanStart = discogsRead is DiscogsEditorialResult.Verified &&
-            discogsShelves.isNotEmpty() && homeQueries.isNotEmpty()
+        val homeCanStart = homeLandingCompleted == true &&
+            discogsHomeShelves.isNotEmpty() && homeQueries.isNotEmpty()
         val discogsHomeNext = if (homeCanStart) withTimeoutOrNull(110_000L) {
             var state = discogsHomeInitial
             for (batch in 1..3) {
@@ -746,13 +858,12 @@ class IdmCatalogLiveObservationTest {
         check(homeChunks in 0..3)
         check(homeConsumed in 0..12)
         val discogsHomeExtra = discogsHomeNext?.let {
-            discogsHomeContinuationShelf(discogs, discogsShelves, it)
+            discogsHomeContinuationShelf(discogs, discogsHomeShelves, it)
         }
         report("discogs_home_granular", Sample(
             status = when {
                 token == null -> "token_not_configured"
-                discogsRead !is DiscogsEditorialResult.Verified ->
-                    "initial_unverified"
+                homeLandingCompleted != true -> "initial_unverified"
                 !homeCanStart -> "initial_no_editorial"
                 homeTransportException -> "source_error"
                 discogsHomeNext == null -> "timeout_or_unavailable"
@@ -815,7 +926,7 @@ class IdmCatalogLiveObservationTest {
         var genreTransportException = false
         var firstGenreVerifiedNs: Long? = null
         val initialGenreState = DiscogsGenrePageSnapshot(
-            tag = "k-pop", cursor = DiscogsEditorialCursor(),
+            tag = "k-pop", cursor = initialLandingCursor ?: DiscogsEditorialCursor(),
             knownMasterIds = verifiedDiscogs.map { it.masterId }.toSet(),
         )
         val genreCanStart = discogsRead is DiscogsEditorialResult.Verified &&
@@ -982,6 +1093,82 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
 
+        // Real native artist catalog: choose an exact artist ID credited by
+        // a verified source Release, then traverse bounded actual pages.
+        // A small artist discography or deadline is not a successful 30-row test.
+        val artistId = (homeLandingVerified + verifiedDiscogs + repeatNew)
+            .asSequence().flatMap { it.creditedArtists.asSequence() }
+            .map { it.first }.firstOrNull()
+        val artistVerified = mutableListOf<DiscogsNativeArtistRelease>()
+        val artistMasterBefore = discogsMasterReads
+        val artistReleaseBefore = discogsReleaseReads
+        val artistStarted = System.nanoTime()
+        var artistFirstNs: Long? = null
+        var artistPagesCompleted = 0
+        var artistInterrupted = false
+        var artistIncomplete = false
+        var artistHasMore = true
+        val artistCompleted = if (artistId != null && discogsArtistScanner != null)
+            withTimeoutOrNull(150_000L) {
+                for (page in 1..10) {
+                    if (!artistHasMore || artistVerified.size >= 30) break
+                    val response = discogsArtistScanner?.loadDistinct(
+                        artistId, page, artistVerified.toList(),
+                    ) { rows ->
+                        if (rows.isNotEmpty() && artistFirstNs == null)
+                            artistFirstNs = System.nanoTime()
+                    }
+                    if (response !is DiscogsNativeArtistLoad.Success) {
+                        artistInterrupted = true
+                        break
+                    }
+                    artistVerified += response.releases
+                    artistIncomplete = artistIncomplete || response.incomplete
+                    artistHasMore = response.hasMore || response.retryCurrentPage
+                    if (response.retryCurrentPage) {
+                        artistInterrupted = true
+                        break
+                    }
+                    artistPagesCompleted++
+                }
+                true
+            } else null
+        check(artistVerified.size == discogsMergeArtistPageReleases(artistVerified).size)
+        check(artistVerified.all { it.artistId == artistId })
+        report("discogs_artist_30_target", Sample(
+            status = when {
+                token == null -> "token_not_configured"
+                artistId == null -> "no_verified_artist_credit"
+                artistCompleted == null -> "timeout_or_partial"
+                artistInterrupted -> "retryable_interruption"
+                artistVerified.size >= 30 -> "target_reached"
+                !artistHasMore && !artistIncomplete -> "source_exhausted_below_target"
+                !artistHasMore -> "incomplete_source_below_target"
+                else -> "page_budget_below_target"
+            },
+            raw = if (token == null) null else artistIndexCandidates,
+            eligible = artistVerified.size,
+            visible = artistVerified.size,
+            requests = if (token == null) null else artistIndexReads +
+                discogsMasterReads - artistMasterBefore +
+                discogsReleaseReads - artistReleaseBefore,
+            counts = mapOf(
+                "verified_target" to 30,
+                "source_pages_completed" to artistPagesCompleted,
+                "source_index_reads" to artistIndexReads,
+                "source_master_reads" to discogsMasterReads - artistMasterBefore,
+                "source_release_reads" to discogsReleaseReads - artistReleaseBefore,
+                "next_window_has_more" to if (artistHasMore && artistId != null) 1 else 0,
+                "incomplete_coverage" to if (artistIncomplete) 1 else 0,
+                "elapsed_ms" to ((System.nanoTime() - artistStarted) / 1_000_000L)
+                    .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                "first_verified_ms" to (artistFirstNs?.let {
+                    ((it - artistStarted) / 1_000_000L)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                } ?: 0),
+            ),
+        ))
+
         // Same Home priority and fallback selection as MainActivity, evaluated
         // for every possible explicit provider order. No cross-provider IDs.
         val orders = listOf(
@@ -1001,7 +1188,7 @@ class IdmCatalogLiveObservationTest {
                 canonicalWorldwideLoading = false,
                 releasesHeading = "Lançamentos", discoveryHeading = "Descobrir",
                 todayIsoDate = date, musicBrainzRows = appMbRows,
-                discogsEditorial = UiState.Success(discogsShelves),
+                discogsEditorial = UiState.Success(discogsHomeShelves),
             )
             val owner = selection.provider
             val sourceItems = (selection.state as? UiState.Success)?.data
