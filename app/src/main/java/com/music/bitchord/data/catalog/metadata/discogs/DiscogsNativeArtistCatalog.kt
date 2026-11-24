@@ -114,6 +114,7 @@ internal class DiscogsNativeArtistCatalog(
     private val enabled: Boolean = false,
     private val limiter: DiscogsRateLimiter = DiscogsRequestBudget.limiter,
     private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
+    private val tokenProvider: () -> String? = { null },
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
@@ -127,12 +128,23 @@ internal class DiscogsNativeArtistCatalog(
         if (!enabled || !admission.permitted(
             ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
         )) return DiscogsNativeArtistLoad.Disabled
+        // A source-owned Discogs token allows the typed Artist index to
+        // share the authenticated budget with Master/Release hydration.
+        // No token or unsupported transport remains strictly anonymous.
+        val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
+            ?.takeIf { transport.supportsTokenAuthorization }
         val response = try {
             admission.execute(
                 capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                 provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                networkCall = { transport.list(artistId, page, userAgent) },
+                scheduleLimited = { block ->
+                    limiter.runHttpLimited(authenticated = token != null) { block() }
+                },
+                networkCall = {
+                    if (token != null) transport.listAuthenticated(
+                        artistId, page, userAgent, token,
+                    ) else transport.list(artistId, page, userAgent)
+                },
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
