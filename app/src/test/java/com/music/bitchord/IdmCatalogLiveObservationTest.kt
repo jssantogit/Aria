@@ -211,12 +211,21 @@ class IdmCatalogLiveObservationTest {
         // through the same bounded raw-offset scanner that MainViewModel uses.
         // The separate 50-day single-page report above isolates date defects;
         // this report measures the complete Home feeding decision.
+        val mbLandingTags = mutableMapOf<String, Set<String>>()
+        fun observeMbTags(rows: List<MusicBrainzReleaseGroupHit>) {
+            rows.forEach { row ->
+                mbLandingTags[row.musicBrainzId] =
+                    mbLandingTags[row.musicBrainzId].orEmpty() + row.editorialGenreTags
+            }
+        }
         val narrow = scanMusicBrainzRecentEditorial(
             musicBrainz, now.minusDays(30).toString(), date, maxPages = 3,
+            onSourcePage = ::observeMbTags,
         )
         val wide = if (canonicalPublicNeedsMoreEditorialRows(narrow.rows))
             scanMusicBrainzRecentEditorial(
                 musicBrainz, now.minusDays(90).toString(), date, maxPages = 2,
+                onSourcePage = ::observeMbTags,
             ) else null
         val currentRows = (narrow.rows + wide?.rows.orEmpty())
             .distinctBy { it.musicBrainzId }
@@ -224,6 +233,7 @@ class IdmCatalogLiveObservationTest {
             scanMusicBrainzRecentEditorial(
                 musicBrainz, now.minusDays(365).toString(),
                 now.minusDays(91).toString(), maxPages = 1,
+                onSourcePage = ::observeMbTags,
             ) else null
         val appMbRows = (currentRows + historical?.rows.orEmpty())
             .distinctBy { it.musicBrainzId }
@@ -261,6 +271,9 @@ class IdmCatalogLiveObservationTest {
                 "wide_window_reads" to (wide?.attempts ?: 0),
                 "historical_window_reads" to (historical?.attempts ?: 0),
                 "raw_cursor_windows_open" to scans.count { it.cursorRemaining },
+                "verified_landing_genres" to musicBrainzHomeVerifiedGenreCount(
+                    mbLandingTags, appMbItems.mapNotNull { it.browseId }.toSet(),
+                ),
             ),
             shelves = appMbShelves,
         ))
@@ -306,7 +319,13 @@ class IdmCatalogLiveObservationTest {
         report("musicbrainz_home_capacity_30", Sample(
             status = if (mbCumulativeReleases >= 30) "target_reached" else "below_target",
             eligible = mbCumulativeReleases, visible = mbCumulativeReleases,
-            counts = mapOf("verified_target" to 30, "source_gestures" to if (mbHomeNext != null) 1 else 0),
+            counts = mapOf(
+                "verified_target" to 30,
+                "source_gestures" to if (mbHomeNext != null) 1 else 0,
+                "verified_landing_genres" to musicBrainzHomeVerifiedGenreCount(
+                    mbLandingTags, mbInitiallyVisible,
+                ),
+            ),
         ))
         report("musicbrainz_home_granular", Sample(
             status = when {

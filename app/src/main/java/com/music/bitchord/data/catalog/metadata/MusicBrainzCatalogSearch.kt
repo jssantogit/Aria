@@ -64,6 +64,8 @@ internal data class MusicBrainzReleaseGroupHit(
     /** All credited artist MBIDs in source order. Null means incomplete proof.
      * Live search only: Room never reads or stores this field. */
     @Ignore var artistCreditMbids: List<String>? = null
+    /** Search-only source tags, not persisted genre assignments. */
+    @Ignore var editorialGenreTags: List<String> = emptyList()
 }
 
 internal data class MusicBrainzReleaseHit(
@@ -357,7 +359,15 @@ internal class MusicBrainzCatalogSearch(
                         secondaryTypes = group.secondaryTypes
                             ?.map(String::trim)?.filter(String::isNotBlank)
                             ?.joinToString("|"),
-                    ).also { it.artistCreditMbids = group.artistCredit.completeArtistMbids() }
+                    ).also {
+                        it.artistCreditMbids = group.artistCredit.completeArtistMbids()
+                        it.editorialGenreTags = group.tags.orEmpty().asSequence()
+                            .filter { tag -> (tag.count ?: 0) > 0 }
+                            .mapNotNull { tag -> tag.name.nonEmpty()?.lowercase(Locale.ROOT) }
+                            .filter { tag -> tag.length in 2..50 &&
+                                tag.none(Character::isISOControl) }
+                            .distinct().take(64).toList()
+                    }
                 }
             }
         }
@@ -642,6 +652,12 @@ private data class SearchArtistEntry(
 )
 
 @Serializable
+private data class SearchReleaseGroupTag(
+    val name: String? = null,
+    val count: Int? = null,
+)
+
+@Serializable
 private data class SearchReleaseGroupEntry(
     val id: String? = null,
     val title: String? = null,
@@ -649,6 +665,7 @@ private data class SearchReleaseGroupEntry(
     @SerialName("secondary-types") val secondaryTypes: List<String>? = null,
     @SerialName("first-release-date") val firstReleaseDate: String? = null,
     @SerialName("artist-credit") val artistCredit: List<SearchArtistCredit>? = null,
+    val tags: List<SearchReleaseGroupTag>? = null,
 )
 
 @Serializable

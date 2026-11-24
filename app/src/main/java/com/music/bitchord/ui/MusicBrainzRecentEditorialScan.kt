@@ -89,3 +89,35 @@ internal suspend fun scanMusicBrainzRecentEditorial(
         parsedRows, cursorRemaining, sourceFailure, resumeOffset,
     )
 }
+
+/** Conservative positive genre evidence for the Home parity audit. Only
+ * displayed, source-owned ReleaseGroup IDs count. A single cross-tagged
+ * release cannot satisfy several diversity slots. */
+internal fun musicBrainzHomeVerifiedGenreCount(
+    sourceTagsByMbid: Map<String, Set<String>>,
+    displayedBrowseIds: Set<String>,
+): Int {
+    val aliases = listOf(
+        setOf("pop"), setOf("rock"), setOf("hip hop", "hip-hop"),
+        setOf("electronic", "electronica"), setOf("jazz"),
+        setOf("k-pop", "kpop"), setOf("metal", "heavy metal"),
+        setOf("r&b", "rhythm and blues", "rnb"), setOf("folk"), setOf("classical"),
+    )
+    val visible = sourceTagsByMbid.filterKeys {
+        "catalog:RELEASE_GROUP:$it" in displayedBrowseIds
+    }
+    // Maximum bipartite matching: each genre needs a distinct release.
+    val matched = mutableMapOf<String, Int>()
+    fun assign(genre: Int, visited: MutableSet<String>): Boolean {
+        for ((id, tags) in visible) {
+            if (tags.none { it in aliases[genre] } || !visited.add(id)) continue
+            val previous = matched[id]
+            if (previous == null || assign(previous, visited)) {
+                matched[id] = genre
+                return true
+            }
+        }
+        return false
+    }
+    return aliases.indices.count { assign(it, mutableSetOf()) }
+}

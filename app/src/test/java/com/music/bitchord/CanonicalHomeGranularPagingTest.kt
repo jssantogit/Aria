@@ -138,6 +138,44 @@ class CanonicalHomeGranularPagingTest {
         assertEquals("Mais do catálogo", rail.title)
     }
 
+    @Test fun landingGenreAuditUsesOnlyPositiveSourceTagsAndDistinctDisplayedGroups() = runBlocking {
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String = """{"count":3,"offset":0,"release-groups":[
+                    {"id":"${id(1)}","title":"First","primary-type":"Album",
+                     "first-release-date":"2026-11-01","artist-credit":[{"name":"Artist"}],
+                     "tags":[{"name":"Rock","count":2},{"name":"pop","count":1},
+                             {"name":"jazz","count":0},{"name":"folk","count":-1}]},
+                    {"id":"${id(2)}","title":"Second","primary-type":"Album",
+                     "first-release-date":"2026-11-02","artist-credit":[{"name":"Artist"}],
+                     "tags":[{"name":"rock","count":1}]},
+                    {"id":"${id(3)}","title":"Hidden","primary-type":"Album",
+                     "first-release-date":"2026-11-03","artist-credit":[{"name":"Artist"}],
+                     "tags":[{"name":"electronic","count":3}]}
+                ]}"""
+            },
+        ))
+        val evidence = mutableMapOf<String, Set<String>>()
+        scanMusicBrainzRecentEditorial(
+            source, "2026-10-24", date, maxPages = 1,
+            onSourcePage = { rows -> rows.forEach {
+                evidence[it.musicBrainzId] = it.editorialGenreTags.toSet()
+            } },
+        )
+        assertEquals(setOf("rock", "pop"), evidence[id(1)])
+        assertEquals(1, musicBrainzHomeVerifiedGenreCount(
+            evidence, setOf("catalog:RELEASE_GROUP:${id(1)}"),
+        ))
+        assertEquals(2, musicBrainzHomeVerifiedGenreCount(
+            evidence, setOf("catalog:RELEASE_GROUP:${id(1)}", "catalog:RELEASE_GROUP:${id(2)}"),
+        ))
+        assertEquals(3, musicBrainzHomeVerifiedGenreCount(
+            evidence, (1..3).map { "catalog:RELEASE_GROUP:${id(it)}" }.toSet(),
+        ))
+    }
+
     @Test fun alreadyFetchedMusicBrainzHomeOverflowNeverNeedsAnExtraApiRead() {
         val admitted = (1..100).map(::row)
         val nativeLanding = listOf(HomeShelf("Lançamentos",
