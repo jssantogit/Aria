@@ -2482,13 +2482,20 @@ class IdmCatalogLiveObservationTest {
                                     val multi = trial.tracks.mapNotNull { it.discNumber }.distinct().size >= 2
                                     val meetsDiscGoal = case.kind != "multi" || multi
                                     val completeTracks = !record.nativeTracklistIncomplete
-                                    val quality = (if (meetsDiscGoal) 2 else 0) +
-                                        (if (completeTracks) 1 else 0)
+                                    val typeMatches = record.formats.any { format ->
+                                        if (case.kind == "single_ep")
+                                            format.equals("Single", true) || format.equals("EP", true)
+                                        else format.equals("Album", true)
+                                    }
+                                    // A complete tracklist alone does not prove the requested
+                                    // release type. Continue within the existing detail budget.
+                                    val quality = (if (meetsDiscGoal) 4 else 0) +
+                                        (if (completeTracks) 2 else 0) + (if (typeMatches) 1 else 0)
                                     if (quality > selectedQuality) {
                                         chosen = record
                                         selectedQuality = quality
                                     }
-                                    if (meetsDiscGoal && completeTracks) break
+                                    if (meetsDiscGoal && completeTracks && typeMatches) break
                                 }
                                 if (chosen != null) {
                                     val record = chosen
