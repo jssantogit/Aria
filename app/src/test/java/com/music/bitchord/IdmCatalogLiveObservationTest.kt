@@ -696,8 +696,10 @@ class IdmCatalogLiveObservationTest {
             discogsShelves.isNotEmpty() && homeQueries.isNotEmpty()
         val discogsHomeNext = if (homeCanStart) withTimeoutOrNull(110_000L) {
             var state = discogsHomeInitial
-            val previouslyKnown = state.knownMasterIds
             for (batch in 1..3) {
+                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
+                    (state.releases.size - discogsHomeInitial.releases.size)
+                if (remainingTarget <= 0) break
                 val index = state.nextQueryIndex ?: break
                 val cursor = state.cursors.getOrNull(index) ?: break
                 val query = homeQueries.getOrNull(index) ?: break
@@ -706,6 +708,7 @@ class IdmCatalogLiveObservationTest {
                         query = query, cursor = cursor,
                         knownMasterIds = state.knownMasterIds,
                         maxCandidates = 4,
+                        maxVerifiedReleases = minOf(4, remainingTarget),
                         onVerified = {
                             if (firstHomeVerifiedNs == null)
                                 firstHomeVerifiedNs = System.nanoTime()
@@ -727,7 +730,8 @@ class IdmCatalogLiveObservationTest {
                 state = advanceDiscogsHomePage(state, index, response)
                     ?: state.copy(loading = false, failed = true)
                 if (state.failed || !state.hasMore ||
-                    state.knownMasterIds.any { it !in previouslyKnown }
+                    state.releases.size - discogsHomeInitial.releases.size >=
+                        DISCOGS_SCROLL_VERIFIED_TARGET
                 ) break
             }
             state
@@ -775,6 +779,7 @@ class IdmCatalogLiveObservationTest {
                 "next_window_has_more" to if (discogsHomeNext?.hasMore == true) 1 else 0,
                 "source_candidates_consumed" to homeConsumed,
                 "source_candidate_budget" to 12,
+                "verified_target" to DISCOGS_SCROLL_VERIFIED_TARGET,
                 "source_chunks_attempted" to homeChunks,
                 "source_index_reads" to discogsIndexReads - beforeHomeIndexes,
                 "source_master_reads" to discogsMasterReads - beforeHomeMasters,
@@ -808,6 +813,7 @@ class IdmCatalogLiveObservationTest {
         var genreChunks = 0
         var genrePositions = 0
         var genreTransportException = false
+        var firstGenreVerifiedNs: Long? = null
         val initialGenreState = DiscogsGenrePageSnapshot(
             tag = "k-pop", cursor = DiscogsEditorialCursor(),
             knownMasterIds = verifiedDiscogs.map { it.masterId }.toSet(),
@@ -818,7 +824,9 @@ class IdmCatalogLiveObservationTest {
             var current = initialGenreState
             for (batch in 1..3) {
                 val remaining = 12 - genrePositions
-                if (remaining <= 0) break
+                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
+                    (current.releases.size - initialGenreState.releases.size)
+                if (remaining <= 0 || remainingTarget <= 0) break
                 val cursor = current.cursor ?: break
                 val predicate = discogsEditorialQueriesForTag("k-pop")
                     .getOrNull(current.queryIndex) ?: break
@@ -827,7 +835,11 @@ class IdmCatalogLiveObservationTest {
                         query = predicate, cursor = cursor,
                         knownMasterIds = current.knownMasterIds,
                         maxCandidates = remaining,
-                        stopAfterVerifiedChunk = if (remaining >= 4) 4 else null,
+                        maxVerifiedReleases = minOf(remaining, remainingTarget),
+                        onVerified = {
+                            if (firstGenreVerifiedNs == null)
+                                firstGenreVerifiedNs = System.nanoTime()
+                        },
                     ) ?: break
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
@@ -850,7 +862,8 @@ class IdmCatalogLiveObservationTest {
                     response,
                 ) ?: current.copy(loading = false, failed = true)
                 if (current.failed || !current.hasMore ||
-                    current.releases.isNotEmpty() || genrePositions >= 12 ||
+                    current.releases.size - initialGenreState.releases.size >=
+                        DISCOGS_SCROLL_VERIFIED_TARGET || genrePositions >= 12 ||
                     (consumed == 0 && current.cursor == cursor &&
                         current.queryIndex == priorQuery)
                 ) break
@@ -890,6 +903,7 @@ class IdmCatalogLiveObservationTest {
             counts = mapOf(
                 "source_candidates_consumed" to genrePositions,
                 "source_candidate_budget" to 12,
+                "verified_target" to DISCOGS_SCROLL_VERIFIED_TARGET,
                 "source_chunks_attempted" to genreChunks,
                 "source_index_reads" to discogsIndexReads - genreIndexBefore,
                 "source_master_reads" to discogsMasterReads - genreMasterBefore,
@@ -897,6 +911,10 @@ class IdmCatalogLiveObservationTest {
                 "source_release_found" to discogsReleaseFound - genreReleaseFoundBefore,
                 "next_window_has_more" to if (scrolledGenre?.hasMore == true) 1 else 0,
                 "elapsed_ms" to genreElapsedMs,
+                "first_verified_ms" to (firstGenreVerifiedNs?.let {
+                    ((it - genreStartedNs) / 1_000_000L)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                } ?: 0),
             ),
         ))
 

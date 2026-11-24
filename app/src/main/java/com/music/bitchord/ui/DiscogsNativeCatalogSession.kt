@@ -448,8 +448,10 @@ internal class DiscogsNativeCatalogSession(
         _homePaging.value = current.copy(loading = true, failed = false)
         val job = scope.launch(Dispatchers.IO) {
             var state = current
-            val knownBefore = current.knownMasterIds
             for (batch in 1..3) {
+                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
+                    (state.releases.size - current.releases.size)
+                if (remainingTarget <= 0) break
                 val index = state.nextQueryIndex ?: break
                 val cursor = state.cursors.getOrNull(index) ?: break
                 val query = queries.getOrNull(index) ?: break
@@ -458,6 +460,7 @@ internal class DiscogsNativeCatalogSession(
                         query = query, cursor = cursor,
                         knownMasterIds = state.knownMasterIds,
                         maxCandidates = 4,
+                        maxVerifiedReleases = minOf(4, remainingTarget),
                         onVerified = { candidate ->
                             // Publish only after both native Master and
                             // Release are verified. Keep the cursor in the
@@ -486,7 +489,8 @@ internal class DiscogsNativeCatalogSession(
                     state, index, response,
                 ) ?: state.copy(loading = false, failed = true)
                 if (state.failed || !state.hasMore ||
-                    state.knownMasterIds.any { it !in knownBefore }
+                    state.releases.size - current.releases.size >=
+                        DISCOGS_SCROLL_VERIFIED_TARGET
                 ) break
             }
             if (lease.isCurrent() && homePagingEpoch == epoch)
@@ -655,12 +659,14 @@ internal class DiscogsNativeCatalogSession(
             var positionsConsumed = 0
             // The previous three four-position reads could download the SAME
             // Discogs index page three times in a single gesture. Visit at
-            // most 12 source positions in bounded four-position chunks, but
-            // share the index snapshot within each page read. A *new* gesture
+            // most 12 source positions to fill a bounded verified output
+            // target, sharing the index snapshot within each page read. A *new* gesture
             // still validates a partial cursor against the current source.
             for (batch in 1..3) {
                 val remaining = 12 - positionsConsumed
-                if (remaining <= 0) break
+                val remainingTarget = DISCOGS_SCROLL_VERIFIED_TARGET -
+                    (accumulated.releases.size - current.releases.size)
+                if (remaining <= 0 || remainingTarget <= 0) break
                 val nextCursor = accumulated.cursor ?: break
                 val nextQuery = queries.getOrNull(accumulated.queryIndex) ?: break
                 val read = try {
@@ -668,7 +674,7 @@ internal class DiscogsNativeCatalogSession(
                         query = nextQuery, cursor = nextCursor,
                         knownMasterIds = accumulated.knownMasterIds,
                         maxCandidates = remaining,
-                        stopAfterVerifiedChunk = if (remaining >= 4) 4 else null,
+                        maxVerifiedReleases = minOf(remaining, remainingTarget),
                         onVerified = { candidate ->
                             // Source Master+Release have both passed admission.
                             // Publish during hydration but never advance the
@@ -705,7 +711,8 @@ internal class DiscogsNativeCatalogSession(
                     accumulated, tag, queries.size, read,
                 ) ?: accumulated.copy(loading = false, failed = true)
                 if (accumulated.failed || !accumulated.hasMore ||
-                    accumulated.releases.size > current.releases.size ||
+                    accumulated.releases.size - current.releases.size >=
+                        DISCOGS_SCROLL_VERIFIED_TARGET ||
                     positionsConsumed >= 12 ||
                     (progressed == 0 && accumulated.cursor == nextCursor &&
                         accumulated.queryIndex == previousQueryIndex)

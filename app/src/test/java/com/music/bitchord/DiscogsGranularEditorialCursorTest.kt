@@ -908,6 +908,52 @@ class DiscogsGranularEditorialCursorTest {
         assertEquals(listOf(1005L, 1009L), releaseReads)
     }
 
+    @Test fun productiveGestureFillsEightNewReleasesWithoutLosingLaterPositions() = runBlocking {
+        var indexReads = 0
+        val masterReads = mutableListOf<Long>()
+        val emitted = mutableListOf<Long>()
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    indexReads++
+                    val rows = (1..12).joinToString(",") { """{"id":$it,"type":"master"}""" }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[$rows]}""")
+                }
+            },
+            editions = reader { id ->
+                masterReads += id
+                DiscogsLookupResult.FoundMaster(master(id))
+            },
+        )
+        val query = DiscogsEditorialQuery("Rock", false)
+        val first = client.discoverGranular(
+            query, maxCandidates = 12,
+            knownMasterIds = setOf(1L, 2L),
+            maxVerifiedReleases = DISCOGS_SCROLL_VERIFIED_TARGET,
+            onVerified = { emitted += it.masterId },
+        ) as DiscogsGranularRead.Page
+        assertEquals((3L..10L).toList(), emitted)
+        assertEquals(emitted, first.releases.map { it.masterId })
+        assertEquals(10, first.consumedCandidates)
+        assertEquals(8, first.hydratedCandidates)
+        assertEquals(1, indexReads)
+        val next = client.discoverGranular(
+            query, requireNotNull(first.nextCursor),
+            knownMasterIds = setOf(1L, 2L) + emitted,
+            maxCandidates = 12,
+        ) as DiscogsGranularRead.Page
+        assertEquals(listOf(11L, 12L), next.releases.map { it.masterId })
+        assertEquals((3L..12L).toList(), masterReads)
+        assertEquals(2, indexReads)
+        assertNull(next.nextCursor)
+    }
+
     @Test fun emptyGenreGestureExaminesAtMostTwelveWithOneSourceIndexRead() = runBlocking {
         var indexReads = 0
         var masterReads = 0

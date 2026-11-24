@@ -44,6 +44,9 @@ internal data class DiscogsEditorialQuery(
             requiredGenre.none { it == '\\' || it == '/' }))
 }
 
+/** Per-gesture verified output target; raw positions remain capped at twelve. */
+internal const val DISCOGS_SCROLL_VERIFIED_TARGET = 8
+
 internal data class DiscogsEditorialCandidate(
     val masterId: Long,
     val releaseId: Long,
@@ -419,6 +422,8 @@ internal class DiscogsNativeGenreEditorial(
          * verified records appear, without repeating the same source index.
          * A new gesture still rechecks signed partial cursor pages. */
         stopAfterVerifiedChunk: Int? = null,
+        /** Stop at a verified output target without consuming a later row. */
+        maxVerifiedReleases: Int = maxCandidates,
         /** Fully verified source identity, emitted before the bounded batch ends. */
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsGranularRead {
@@ -427,6 +432,7 @@ internal class DiscogsNativeGenreEditorial(
                         releases: List<DiscogsEditorialCandidate> = emptyList()) =
             DiscogsGranularRead.Interrupted(releases, retry, reason)
         if (!query.isValid() || !cursor.isValid() || maxCandidates !in 1..12 ||
+            maxVerifiedReleases !in 1..maxCandidates ||
             (stopAfterVerifiedChunk != null &&
                 (stopAfterVerifiedChunk !in 1..4 ||
                     maxCandidates < stopAfterVerifiedChunk))
@@ -486,7 +492,8 @@ internal class DiscogsNativeGenreEditorial(
         fun retryAtCurrent() = DiscogsEditorialCursor(cursor.page, position, signature)
 
         while (position < index.masterIds.size &&
-            position - cursor.candidatePosition < maxCandidates
+            position - cursor.candidatePosition < maxCandidates &&
+            releases.size < maxVerifiedReleases
         ) {
             // Only this single network snapshot is reused within one gesture.
             // On the NEXT gesture, a partial cursor must still fetch/compare
