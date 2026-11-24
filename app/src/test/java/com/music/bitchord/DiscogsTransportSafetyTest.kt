@@ -41,8 +41,7 @@ class DiscogsTransportSafetyTest {
     @Test fun oversizedBodyOrServerAnnouncedLengthIsRejectedWithoutParsing() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(200)
-                .setBody("a".repeat(DISCOGS_RELEASE_BODY_BYTES + 1))
-)
+                .setBody("a".repeat(DISCOGS_RELEASE_BODY_BYTES + 1)))
             val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
             val response = transport.get("releases/42", "BitChord/Test")
             assertEquals(413, response.status)
