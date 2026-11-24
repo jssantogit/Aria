@@ -236,9 +236,32 @@ internal class DiscogsNativeArtistCatalog(
             if (entry.kind == DiscogsKind.MASTER && entry.id in knownMasters ||
                 entry.kind == DiscogsKind.RELEASE && entry.id in seenReleaseIds
             ) continue
-            val releaseId = when (entry.kind) {
-                DiscogsKind.RELEASE -> entry.id
-                DiscogsKind.MASTER -> {
+            // The official Artist index can nominate the Master main Release.
+            // A successful exact Release read must independently establish both
+            // the artist and Master IDs before we can omit the redundant Master GET.
+            // Missing or mismatched hints fall back to the normal Master route.
+            var prefetched: DiscogsLookupResult? = null
+            val hintedId = entry.mainReleaseId?.takeIf {
+                entry.kind == DiscogsKind.MASTER && it !in seenReleaseIds
+            }
+            if (hintedId != null) {
+                val hinted = try { editions.release(hintedId) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { DiscogsLookupResult.Unavailable }
+                val record = (hinted as? DiscogsLookupResult.Found)?.record
+                if ((record != null && record.link.id == hintedId &&
+                        discogsNativeArtistReleases(artistId, listOf(entry to record)).isNotEmpty()) ||
+                    hinted is DiscogsLookupResult.Throttled ||
+                    hinted is DiscogsLookupResult.Disabled ||
+                    hinted is DiscogsLookupResult.Unauthorized ||
+                    hinted is DiscogsLookupResult.Unavailable ||
+                    hinted is DiscogsLookupResult.Malformed
+                ) prefetched = hinted
+            }
+            val releaseId = when {
+                prefetched != null -> checkNotNull(hintedId)
+                entry.kind == DiscogsKind.RELEASE -> entry.id
+                else -> {
                     val response = try { editions.master(entry.id) }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { DiscogsLookupResult.Unavailable }
@@ -279,7 +302,7 @@ internal class DiscogsNativeArtistCatalog(
                 if (entry.kind == DiscogsKind.MASTER) incomplete = true
                 continue
             }
-            val lookup = try { editions.release(releaseId) }
+            val lookup = prefetched ?: try { editions.release(releaseId) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (lookup is DiscogsLookupResult.Throttled) {
@@ -306,7 +329,7 @@ internal class DiscogsNativeArtistCatalog(
                 break
             }
             val record = (lookup as? DiscogsLookupResult.Found)?.record
-            if (record == null) {
+            if (record == null || record.link.id != releaseId) {
                 incomplete = true
                 continue
             }
