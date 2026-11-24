@@ -1699,9 +1699,45 @@ class IdmCatalogLiveObservationTest {
         val discogsAlbums = DiscogsNativeReleaseSearchClient(
             enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
         )
+        // Count HTTP outcomes separately from logical edition lookups:
+        // retries and positive cache hits otherwise obscure the cause of Unavailable.
+        var detailHttpReads = 0
+        var detailLocalBodyLimits = 0
+        var detailHttp413 = 0
+        var detailHttp5xx = 0
+        var detailHttpOther = 0
+        var detailIoFailures = 0
+        var detailOtherFailures = 0
+        val detailTransport = object : DiscogsTransport {
+            private val upstream = KtorDiscogsTransport()
+            override val supportsTokenAuthorization: Boolean get() = true
+            private suspend fun observed(read: suspend () -> DiscogsHttpResponse): DiscogsHttpResponse {
+                detailHttpReads++
+                val response = try { read() }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (failure: java.io.IOException) {
+                    detailIoFailures++
+                    throw failure
+                } catch (failure: Exception) {
+                    detailOtherFailures++
+                    throw failure
+                }
+                when {
+                    response.localBodyLimitExceeded -> detailLocalBodyLimits++
+                    response.status == 413 -> detailHttp413++
+                    response.status in 500..599 -> detailHttp5xx++
+                    response.status !in setOf(200, 401, 403, 404, 429) -> detailHttpOther++
+                }
+                return response
+            }
+            override suspend fun get(path: String, userAgent: String) =
+                observed { upstream.get(path, userAgent) }
+            override suspend fun getAuthenticated(path: String, userAgent: String, token: String) =
+                observed { upstream.getAuthenticated(path, userAgent, token) }
+        }
         val discogsDetails = DiscogsClient(
             enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
-            admission = discogsGuard, tokenProvider = { token },
+            admission = discogsGuard, tokenProvider = { token }, transport = detailTransport,
         )
         // Record only aggregate typed edition outcomes from the actual artist
         // loader. These are method calls (which may hit its positive cache),
@@ -1755,6 +1791,13 @@ class IdmCatalogLiveObservationTest {
                 val beforeUnauthorized = artistUnauthorized
                 val beforeMissing = artistMissing
                 val beforeDisabled = artistDisabled
+                val beforeHttpReads = detailHttpReads
+                val beforeLocalLimits = detailLocalBodyLimits
+                val beforeHttp413 = detailHttp413
+                val beforeHttp5xx = detailHttp5xx
+                val beforeHttpOther = detailHttpOther
+                val beforeIoFailures = detailIoFailures
+                val beforeOtherFailures = detailOtherFailures
                 val started = System.nanoTime()
                 var matched = false
                 var profile = false
@@ -2035,6 +2078,13 @@ class IdmCatalogLiveObservationTest {
                         "artist_edition_unauthorized" to (artistUnauthorized - beforeUnauthorized),
                         "artist_edition_missing" to (artistMissing - beforeMissing),
                         "artist_edition_disabled" to (artistDisabled - beforeDisabled),
+                        "detail_http_reads" to (detailHttpReads - beforeHttpReads),
+                        "detail_local_body_limits" to (detailLocalBodyLimits - beforeLocalLimits),
+                        "detail_upstream_http_413" to (detailHttp413 - beforeHttp413),
+                        "detail_http_5xx" to (detailHttp5xx - beforeHttp5xx),
+                        "detail_other_http_failures" to (detailHttpOther - beforeHttpOther),
+                        "detail_io_failures" to (detailIoFailures - beforeIoFailures),
+                        "detail_other_transport_failures" to (detailOtherFailures - beforeOtherFailures),
                         "release_sections" to sections,
                         "verified_track_rows" to tracks,
                         "first_profile_ms" to firstProfileMs,
