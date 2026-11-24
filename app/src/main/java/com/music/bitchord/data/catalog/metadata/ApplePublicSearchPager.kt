@@ -15,6 +15,12 @@ internal interface ApplePublicSearchSource {
         country: String,
         attribute: ItunesCatalogSearchAttribute?,
     ): ItunesCatalogResult
+    /** Optional exact collection discovery; test sources without this route
+     * continue to exercise the original bounded Search contract. */
+    val supportsSongCollectionDiscovery: Boolean get() = false
+    suspend fun discoverSongCollections(
+        originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
+    ): ItunesCatalogResult = ItunesCatalogResult.Success(emptyList())
 }
 
 internal class ItunesPublicSearchSource(
@@ -26,6 +32,50 @@ internal class ItunesPublicSearchSource(
         country: String,
         attribute: ItunesCatalogSearchAttribute?,
     ) = client.search(query, entity, country, limit = 200, attribute = attribute)
+
+    override val supportsSongCollectionDiscovery: Boolean get() = true
+
+    override suspend fun discoverSongCollections(
+        originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
+    ): ItunesCatalogResult {
+        val songs = client.search(workTerm, ItunesCatalogEntity.SONG, country,
+            limit = 100, attribute = ItunesCatalogSearchAttribute.SONG_TERM)
+        if (songs !is ItunesCatalogResult.Success) return songs
+        val hints = songs.items.asSequence().filter {
+            it.type == ItunesCatalogItemType.TRACK && it.storefront == country &&
+                it.collectionId != null && it.collectionId > 0 && it.collectionId !in knownIds &&
+                !it.collectionTitle.isNullOrBlank()
+        }.mapNotNull { song ->
+            // Synthetic projection is ONLY a relevance hint for nomination.
+            // Never return it or use the song's artist as album ownership.
+            val rank = applePublicSearchMatchRank(originalQuery, song.copy(
+                type = ItunesCatalogItemType.ALBUM, title = checkNotNull(song.collectionTitle),
+            )) ?: return@mapNotNull null
+            if (rank > 2) return@mapNotNull null
+            rank to checkNotNull(song.collectionId)
+        }.sortedBy { it.first }.map { it.second }.distinct().take(2).toList()
+        val verified = mutableListOf<ItunesCatalogItem>()
+        var uncertain = songs.possiblyTruncated
+        for (id in hints) {
+            when (val lookup = client.lookupSearchCollection(id, country)) {
+                is ItunesCatalogResult.Failure -> {
+                    if (verified.isEmpty()) return lookup
+                    uncertain = true
+                    break
+                }
+                is ItunesCatalogResult.Success -> {
+                    uncertain = uncertain || lookup.possiblyTruncated
+                    val album = lookup.items.singleOrNull {
+                        it.id == id && it.type == ItunesCatalogItemType.ALBUM &&
+                            it.storefront == country && !it.artistName.isNullOrBlank() &&
+                            (applePublicSearchMatchRank(originalQuery, it) ?: 99) <= 2
+                    }
+                    if (album != null) verified += album
+                }
+            }
+        }
+        return ItunesCatalogResult.Success(verified, uncertain)
+    }
 }
 
 internal data class ApplePublicSearchSnapshot(
@@ -217,6 +267,16 @@ internal class ApplePublicSearchPager(
     private var visibleCount = 0
     private var nextAttribute = 0
     private var nextCompoundTerm = 0
+    private var songCollectionAttempted = false
+    private fun songCollectionTerm(): String? {
+        if (entity != ItunesCatalogEntity.ALBUM || !source.supportsSongCollectionDiscovery ||
+            songCollectionAttempted || rows.size >= pageSize
+        ) return null
+        // Only a corroborated credit boundary or explicit compound query
+        // justifies an extra branch; plain title is useful only on empty search.
+        return creditHints.values.firstOrNull()?.work
+            ?: query.takeIf { rows.isEmpty() || query.contains(" - ") }
+    }
     private val creditHints = linkedMapOf<String, ApplePublicCompoundHint>()
     private data class CompoundProbe(val term: String, val attribute: ItunesCatalogSearchAttribute)
     private var frozenCompoundProbes: List<CompoundProbe>? = null
@@ -227,9 +287,12 @@ internal class ApplePublicSearchPager(
                 fallbackCompoundTerms.map { CompoundProbe(it, compoundAttribute) }
             ).distinct().take(2)
 
-    private fun hasPendingProbe(): Boolean =
+    private fun hasPendingFieldProbe(): Boolean =
         (probeAttributes && nextAttribute < extraAttributes.size) ||
             ((rows.isEmpty() || compoundContinuation) && nextCompoundTerm < compoundProbes.size)
+
+    private fun hasPendingProbe(): Boolean =
+        hasPendingFieldProbe() || songCollectionTerm() != null
 
     fun snapshot() = ApplePublicSearchSnapshot(
         visible = rows.values.take(visibleCount),
@@ -311,7 +374,7 @@ internal class ApplePublicSearchPager(
             visibleCount = minOf(rows.size, visibleCount + pageSize)
             return ApplePublicSearchPageLoad.Success(snapshot())
         }
-        while (hasPendingProbe()) {
+        while (hasPendingFieldProbe()) {
             val wholeQuery = probeAttributes && nextAttribute < extraAttributes.size
             if (!wholeQuery && frozenCompoundProbes == null) frozenCompoundProbes = compoundProbes
             val probe = if (wholeQuery) null else compoundProbes[nextCompoundTerm]
@@ -330,6 +393,23 @@ internal class ApplePublicSearchPager(
                     }
                     // Duplicate-only/irrelevant probes cannot strand the
                     // next legitimate official search attribute.
+                }
+            }
+        }
+        if (rows.size <= visibleCount && !hasPendingFieldProbe()) {
+            val term = songCollectionTerm()
+            if (term != null) {
+                // One song index plus at most two exact collection reads,
+                // under the same shared limiter. Never loop on a bad source.
+                songCollectionAttempted = true
+                when (val result = source.discoverSongCollections(query, term, country, rows.keys.toSet())) {
+                    is ItunesCatalogResult.Failure ->
+                        return ApplePublicSearchPageLoad.Failure(result.reason)
+                    is ItunesCatalogResult.Success -> {
+                        capped = capped || result.possiblyTruncated
+                        merge(result)
+                        visibleCount = minOf(rows.size, visibleCount + pageSize)
+                    }
                 }
             }
         }
