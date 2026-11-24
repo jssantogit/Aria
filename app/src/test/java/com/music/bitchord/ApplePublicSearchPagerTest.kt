@@ -98,6 +98,40 @@ class ApplePublicSearchPagerTest {
             .snapshot.visible.map { it.id })
     }
 
+    @Test fun uncappedIrrelevantLandingUsesBoundedAttributesButProductiveLandingDoesNot() = runBlocking {
+        val fake = Fake(
+            ItunesCatalogResult.Success(listOf(album(99).copy(artistName = "Other")), false),
+            mutableMapOf(
+                ItunesCatalogSearchAttribute.ALBUM_TERM to ItunesCatalogResult.Success(emptyList()),
+                ItunesCatalogSearchAttribute.ARTIST_TERM to ItunesCatalogResult.Success(listOf(album(1))),
+            ),
+        )
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ALBUM, "br", source = fake)
+        val snapshot = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L), snapshot.visible.map { it.id })
+        assertEquals(listOf(null, ItunesCatalogSearchAttribute.ALBUM_TERM,
+            ItunesCatalogSearchAttribute.ARTIST_TERM), fake.calls)
+        assertFalse(snapshot.hasMore)
+
+        val productive = Fake(ItunesCatalogResult.Success(listOf(album(1)), false))
+        val direct = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ALBUM, "br",
+            source = productive)
+        direct.start()
+        direct.loadMore()
+        assertEquals(listOf(null), productive.calls)
+        assertFalse(direct.snapshot().hasMore)
+    }
+
+    @Test fun emptyUncappedArtistSearchDoesNotInventMoreThanOneProbe() = runBlocking {
+        val fake = Fake(ItunesCatalogResult.Success(emptyList(), false))
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ARTIST, "br", source = fake)
+        val snapshot = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertTrue(snapshot.visible.isEmpty())
+        assertFalse(snapshot.hasMore)
+        pager.loadMore()
+        assertEquals(listOf(null, ItunesCatalogSearchAttribute.ARTIST_TERM), fake.calls)
+    }
+
     @Test fun failureDoesNotDiscardResultsAndNextClickRetriesSameAttribute() = runBlocking {
         val fake = Fake(ItunesCatalogResult.Success(listOf(album(1)), true),
             mutableMapOf(ItunesCatalogSearchAttribute.ALBUM_TERM to
