@@ -550,6 +550,100 @@ class DiscogsGranularEditorialCursorTest {
         assertEquals(1, releaseReads)
     }
 
+    @Test fun initialSamplerReusesIndexAndPairWithoutNewReads() = runBlocking {
+        var token = "A".repeat(32)
+        var now = 0L
+        var indexes = 0
+        var masters = 0
+        var releases = 0
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { token },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            clockMs = { now },
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    indexes++
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":1,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    masters++
+                    return DiscogsLookupResult.FoundMaster(
+                        this@DiscogsGranularEditorialCursorTest.master(id))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    releases++
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsGranularEditorialCursorTest.release(id - 1000L))
+                }
+            },
+        )
+        val query = DiscogsEditorialQuery("Rock", false)
+        repeat(2) {
+            val rows = client.discover(query, maxReleases = 1)
+                as DiscogsEditorialResult.Verified
+            assertEquals(listOf(1L), rows.releases.map { it.masterId })
+        }
+        assertEquals(1, indexes)
+        assertEquals(1, masters)
+        assertEquals(1, releases)
+        // Credential rotation cannot replay source evidence from a prior
+        // personal token, even if the snapshot is still inside its TTL.
+        token = "B".repeat(32)
+        assertTrue(client.discover(query, maxReleases = 1)
+            is DiscogsEditorialResult.Verified)
+        assertEquals(2, indexes)
+        assertEquals(2, masters)
+        assertEquals(2, releases)
+        now = 120_001L
+        assertTrue(client.discover(query, maxReleases = 1)
+            is DiscogsEditorialResult.Verified)
+        assertEquals(3, indexes)
+        assertEquals(3, masters)
+        assertEquals(3, releases)
+    }
+
+    @Test fun newInitialSamplerReusesIndexFoundByGranularButNotPartialCursor() = runBlocking {
+        var calls = 0
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    calls++
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":1,"type":"master"},
+                                       {"id":2,"type":"master"}]}""")
+                }
+            },
+            editions = reader { id -> DiscogsLookupResult.FoundMaster(master(id)) },
+        )
+        val q = DiscogsEditorialQuery("Rock", false)
+        val first = client.discoverGranular(q, maxCandidates = 1)
+            as DiscogsGranularRead.Page
+        assertEquals(1, calls)
+        assertEquals(1, first.consumedCandidates)
+        val initial = client.discover(q, maxReleases = 2)
+            as DiscogsEditorialResult.Verified
+        assertEquals(2, initial.releases.size)
+        assertEquals(1, calls)
+        // In-progress cursor MUST still read the real page to detect drift.
+        val next = client.discoverGranular(q, first.nextCursor!!, maxCandidates = 1)
+            as DiscogsGranularRead.Page
+        assertEquals(1, next.consumedCandidates)
+        assertEquals(2, calls)
+    }
+
     @Test fun initialSamplerStreamsVerifiedReleasesBeforeItsWholeIndexFinishes() = runBlocking {
         val events = mutableListOf<String>()
         val client = DiscogsNativeGenreEditorial(
