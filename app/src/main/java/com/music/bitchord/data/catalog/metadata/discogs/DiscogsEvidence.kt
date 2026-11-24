@@ -171,11 +171,31 @@ internal data class DiscogsMasterRecord(
 
 internal object DiscogsRecordParser {
     private val json = Json { ignoreUnknownKeys = true; isLenient = false }
-    private const val MAX_BYTES = 131_072
+    // Reject deeply nested unknown JSON fields before the recursive decoder
+    // allocates a tree. The byte ceiling also applies to injected transports.
+    private fun boundedDetail(raw: String, maxBytes: Int): Boolean {
+        if (raw.length > maxBytes || raw.toByteArray(Charsets.UTF_8).size > maxBytes)
+            return false
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (char in raw) {
+            if (quoted) {
+                if (escaped) escaped = false
+                else if (char == '\\') escaped = true
+                else if (char == '"') quoted = false
+            } else when (char) {
+                '"' -> quoted = true
+                '{', '[' -> if (++depth > 64) return false
+                '}', ']' -> if (--depth < 0) return false
+            }
+        }
+        return depth == 0 && !quoted
+    }
 
     /** Safely parse group-level context; never import images, release tracks or user data. */
     fun parseMaster(expected: DiscogsLink, raw: String): DiscogsMasterRecord? {
-        if (expected.kind != DiscogsKind.MASTER || raw.length > MAX_BYTES) return null
+        if (expected.kind != DiscogsKind.MASTER || !boundedDetail(raw, DISCOGS_STANDARD_BODY_BYTES)) return null
         return try {
             val obj = json.parseToJsonElement(raw) as? JsonObject ?: return null
             if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id) return null
@@ -200,7 +220,7 @@ internal object DiscogsRecordParser {
     }
 
     fun parse(expected: DiscogsLink, raw: String): DiscogsRecord? {
-        if (expected.kind != DiscogsKind.RELEASE || raw.length > MAX_BYTES) return null
+        if (expected.kind != DiscogsKind.RELEASE || !boundedDetail(raw, DISCOGS_RELEASE_BODY_BYTES)) return null
         return try {
             val obj = json.parseToJsonElement(raw) as? JsonObject ?: return null
             if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id) return null
