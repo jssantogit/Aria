@@ -112,6 +112,96 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, recoveryCalls)
     }
 
+    @Test fun exactArtistCollectionRecoveryNeverUsesAmbiguousCreditsOrReordersPublishedRows() = runBlocking {
+        val original = "Example Artist Example Work"
+        val first = album(1, title = "Example Work Extended").copy(artistName = "Example Artist")
+        val recovered = album(2, title = "Example Work (2022 Digital Master) - Single")
+            .copy(artistName = "Example Artist")
+        var ambiguous = false
+        var lookups = 0
+        val source = object : ApplePublicSearchSource {
+            override val supportsArtistCollectionDiscovery = true
+            override suspend fun search(query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?): ItunesCatalogResult =
+                ItunesCatalogResult.Success(if (attribute == null) {
+                    if (ambiguous) listOf(first, first.copy(id = 3, artistId = 88)) else listOf(first)
+                } else emptyList())
+            override suspend fun discoverArtistCollections(originalQuery: String, artistId: Long,
+                credit: String, country: String, knownIds: Set<Long>): ItunesCatalogResult {
+                lookups++
+                assertEquals(original, originalQuery)
+                assertEquals(77L, artistId)
+                assertEquals("example artist", credit)
+                assertEquals("br", country)
+                assertEquals(setOf(1L), knownIds)
+                return ItunesCatalogResult.Success(listOf(recovered))
+            }
+        }
+        val pager = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM, "br", source = source)
+        assertEquals(listOf(1L), (pager.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.map { it.id })
+        assertEquals(0, lookups)
+        val continuation = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L, 2L), continuation.visible.map { it.id })
+        assertEquals(1, lookups)
+        assertFalse(continuation.hasMore)
+        ambiguous = true
+        val second = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM, "br", source = source)
+        second.start()
+        repeat(3) { second.loadMore() }
+        assertEquals(1, lookups)
+    }
+
+    @Test fun exactArtistDiscoveryUsesSearchConsentAndRejectsForeignCreditsAndKnownCollections() = runBlocking {
+        val transport = object : ItunesCatalogTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>): String =
+                error("Capability-aware call required")
+            override suspend fun get(path: String, parameters: Map<String, String>,
+                capability: com.music.bitchord.data.providers.ProviderCapability): String {
+                assertEquals("lookup", path)
+                assertEquals("77", parameters["id"])
+                assertEquals("album", parameters["entity"])
+                assertEquals("200", parameters["limit"])
+                assertEquals("br", parameters["country"])
+                assertEquals(com.music.bitchord.data.providers.ProviderCapability.CATALOG_SEARCH, capability)
+                return """{"resultCount":6,"results":[
+                    {"wrapperType":"artist","artistId":77,"artistName":"Example Artist"},
+                    {"wrapperType":"collection","collectionType":"Album","collectionId":1,"collectionName":"Example Work","artistId":77,"artistName":"Example Artist"},
+                    {"wrapperType":"collection","collectionType":"Album","collectionId":2,"collectionName":"Example Work (2020 Digital Master)","artistId":77,"artistName":"Example Artist"},
+                    {"wrapperType":"collection","collectionType":"Album","collectionId":3,"collectionName":"Example Work","artistId":88,"artistName":"Example Artist"},
+                    {"wrapperType":"collection","collectionType":"Album","collectionId":4,"collectionName":"Example Work","artistId":77,"artistName":"Other Artist"},
+                    {"wrapperType":"collection","collectionType":"Album","collectionId":5,"collectionName":"Unrelated","artistId":77,"artistName":"Example Artist"}
+                ]}"""
+            }
+        }
+        val source = ItunesPublicSearchSource(ItunesCatalogClient(transport))
+        val result = source.discoverArtistCollections("Example Artist Example Work", 77, "example artist",
+            "br", setOf(1L)) as ItunesCatalogResult.Success
+        assertEquals(listOf(2L), result.items.map { it.id })
+    }
+
+    @Test fun commercialEditionWorkKeysPreserveDistinctWorksAndPreferVerifiedTextualMatches() = runBlocking {
+        assertEquals("example work", applePublicAlbumWorkKey("Example Work (2022 Digital Master) - Single"))
+        assertEquals("example work", applePublicAlbumWorkKey("Example Work [Remastered 2012]"))
+        assertEquals("example work", applePublicAlbumWorkKey("Example Work (30th Anniversary Edition)"))
+        assertEquals("example work 2011", applePublicAlbumWorkKey("Example Work 2011 - EP"))
+        assertEquals("example work (live)", applePublicAlbumWorkKey("Example Work (Live)"))
+        assertEquals("example work (tribute)", applePublicAlbumWorkKey("Example Work (Tribute)"))
+        assertEquals("example work 2", applePublicAlbumWorkKey("Example Work 2"))
+        val qualified = album(2, title = "Example Work (2022 Digital Master) - Single")
+            .copy(artistName = "Example Artist")
+        val prefix = qualified.copy(id = 1, title = "Example Work Extended")
+        val exact = qualified.copy(id = 3, title = "Example Work")
+        assertTrue(applePublicQualifiedAlbumMatch("Example Artist Example Work", qualified))
+        assertTrue(applePublicQualifiedAlbumMatch("Example Work Example Artist", qualified))
+        assertFalse(applePublicQualifiedAlbumMatch("Other Artist Example Work", qualified))
+        assertFalse(applePublicQualifiedAlbumMatch("Example Work (2020 Digital Master)", qualified))
+        val fake = Fake(ItunesCatalogResult.Success(listOf(prefix, qualified, exact)))
+            .apply { expectedQuery = "Example Artist Example Work" }
+        val pager = ApplePublicSearchPager(fake.expectedQuery, ItunesCatalogEntity.ALBUM, "br", source = fake)
+        assertEquals(listOf(3L, 2L, 1L),
+            (pager.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.map { it.id })
+    }
+
     @Test fun firstTwoHundredAreLocalPagesWithoutFictitiousOffsets() = runBlocking {
         val fake = Fake(ItunesCatalogResult.Success(
             (1L..200L).map { album(it) }, possiblyTruncated = true))
