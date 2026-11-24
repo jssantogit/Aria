@@ -56,9 +56,6 @@ internal data class ItunesEditorialRelease(
     val musicBrainzReleaseId: String? = null,
     /** The exact Apple-supplied product URL, not a title-based guess. */
     val storeUrl: String? = null,
-    /** Storefront category derived from a complete, verified audio list;
-     * never an explicit original-release type from a provider field. */
-    val formatDerivedFromAudioCount: Boolean = false,
 )
 
 internal object ItunesEditorialCatalog {
@@ -97,35 +94,13 @@ internal object ItunesEditorialCatalog {
         val normalized = title.trim().lowercase(Locale.ROOT)
         return when {
             normalized.endsWith(" - ep") || normalized.endsWith(" – ep") ||
-                normalized.endsWith(" — ep") -> ItunesEditorialReleaseFormat.EP
+                normalized.endsWith(" — ep") || normalized.endsWith(" (ep)") ||
+                normalized.endsWith(" [ep]") -> ItunesEditorialReleaseFormat.EP
             normalized.endsWith(" - single") || normalized.endsWith(" – single") ||
-                normalized.endsWith(" — single") -> ItunesEditorialReleaseFormat.SINGLE
+                normalized.endsWith(" — single") || normalized.endsWith(" (single)") ||
+                normalized.endsWith(" [single]") -> ItunesEditorialReleaseFormat.SINGLE
             else -> ItunesEditorialReleaseFormat.UNCLASSIFIED
         }
-    }
-
-    /**
-     * Apple Music Style Guide 3.3–3.4 excludes releases with seven or more
-     * songs from its Single/EP categories. This is a conservative storefront
-     * classification, not a claim about the original physical release.
-     * https://help.apple.com/itc/musicstyleguide/en.lproj/static.html
-     * Only use a fully verified exact collection lookup, not search counts,
-     * partial tracks, video rows or another provider's metadata.
-     */
-    fun classifyCompleteAudioAlbum(
-        release: ItunesEditorialRelease, complete: Boolean,
-    ): ItunesEditorialRelease {
-        if (!complete || release.format != ItunesEditorialReleaseFormat.UNCLASSIFIED ||
-            release.trackCount != release.tracks.size || release.tracks.size < 7 ||
-            release.tracks.any { it.type != ItunesCatalogItemType.TRACK ||
-                it.collectionId != release.appleCollectionId || it.storefront != release.storefront ||
-                it.discNumber == null || it.trackNumber == null ||
-                it.discNumber <= 0 || it.trackNumber <= 0 } ||
-            release.tracks.map { it.scopedId }.distinct().size != release.tracks.size ||
-            release.tracks.map { it.discNumber to it.trackNumber }.distinct().size != release.tracks.size
-        ) return release
-        return release.copy(format = ItunesEditorialReleaseFormat.ALBUM,
-            formatDerivedFromAudioCount = true)
     }
 
     /**
