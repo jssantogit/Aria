@@ -1636,4 +1636,340 @@ class IdmCatalogLiveObservationTest {
         }
     }
 
+    private data class ArtistParityCase(
+        val name: String, val anchor: String, val extensive: Boolean,
+    )
+
+    // Frozen before the campaign. The anchor is an independent discography
+    // fact for human-labelled identity, not a cross-provider ID mapping.
+    private val artistParityCases = listOf(
+        ArtistParityCase("David Bowie", "Hunky Dory", true),
+        ArtistParityCase("Bob Dylan", "Blood on the Tracks", true),
+        ArtistParityCase("Madonna", "Like a Prayer", true),
+        ArtistParityCase("Iron Maiden", "Powerslave", true),
+        ArtistParityCase("Depeche Mode", "Violator", true),
+        ArtistParityCase("Portishead", "Dummy", false),
+        ArtistParityCase("Massive Attack", "Mezzanine", false),
+        ArtistParityCase("BLACKPINK", "BORN PINK", false),
+        ArtistParityCase("CHVRCHES", "Every Open Eye", false),
+        ArtistParityCase("The xx", "Coexist", false),
+    )
+
+    private fun artistParityFold(value: String?): String =
+        java.text.Normalizer.normalize(value.orEmpty().trim(), java.text.Normalizer.Form.NFKC)
+            .lowercase(java.util.Locale.ROOT).replace(Regex("\\s+"), " ")
+
+    /**
+     * #228: the exact source-owned artist must appear in artist search AND in
+     * the independently returned credit of its frozen anchor album. A name
+     * alone (including a Discogs numbered suffix) never selects the identity.
+     * Exercise production discography adapters and canonical shelf compositors.
+     * This is not an instrumented Activity/back-stack or scroll-restoration test.
+     */
+    @Test fun live_artist_parity_matrix() = runBlocking {
+        assumeTrue("Only the observational CI job may access remote services",
+            System.getenv("IDM_CATALOG_LIVE") == "1")
+        val caps = setOf(ProviderCapability.CATALOG_SEARCH,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val mbGate = gateFor(mb, caps)
+        val mbClient = MusicBrainzClient(admission = { mbGate })
+        val mbSearch = MusicBrainzCatalogSearch(mbClient)
+        val mbGraph = MusicBrainzCatalogGraph(mbClient)
+        val appleGate = gateFor(apple, caps)
+        val appleRepo = AppleEditorialCatalogRepository(ItunesCatalogClient(
+            transport = KtorItunesCatalogTransport(
+                admission = RateLimitedProviderTransport { appleGate },
+            ),
+        ))
+        val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
+            ?.trim()?.takeIf(String::isNotBlank)
+        // Keep one stable gate and limiter for the whole matrix.
+        val discogsGate = gateFor(discogs, caps)
+        val discogsGuard = RateLimitedProviderTransport { discogsGate }
+        val discogsArtists = DiscogsNativeArtistSearchClient(
+            enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
+        )
+        val discogsAlbums = DiscogsNativeReleaseSearchClient(
+            enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
+        )
+        val discogsDetails = DiscogsClient(
+            enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = discogsGuard, tokenProvider = { token },
+        )
+        val discogsCatalog = DiscogsNativeArtistCatalog(
+            enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
+            editions = DiscogsNativeEditionClient(discogsDetails),
+        )
+        for (provider in listOf(mb, apple, discogs)) {
+            val sourceName = when (provider) {
+                mb -> "musicbrainz"
+                apple -> "itunes"
+                else -> "discogs"
+            }
+            for ((index, case) in artistParityCases.withIndex()) {
+                val target = if (case.extensive) 30 else 1
+                val started = System.nanoTime()
+                var matched = false
+                var profile = false
+                var failed = false
+                var incomplete = false
+                var exhausted = false
+                var visible = 0
+                var landing = 0
+                var gestures = 0
+                var autoPages = 0
+                var sections = 0
+                var tracks = 0
+                var profileStarted: Long? = null
+                var firstProfileMs = 0
+                fun observe(shelves: List<HomeShelf>, prefix: String) {
+                    val ids = shelves.flatMap { it.items }.mapNotNull { it.browseId }
+                    assertEquals("Duplicate artist release $sourceName/$index", ids.size, ids.distinct().size)
+                    assertTrue("Foreign artist release $sourceName/$index", ids.all { it.startsWith(prefix) })
+                    assertTrue("Artist profile lost releases $sourceName/$index", ids.size >= visible)
+                    visible = ids.size
+                    sections = shelves.size
+                    if (!profile && visible > 0) {
+                        profile = true
+                        landing = visible
+                        firstProfileMs = ((System.nanoTime() - (profileStarted ?: started)) / 1_000_000L)
+                            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                    }
+                }
+                val complete = try {
+                    withTimeoutOrNull(if (case.extensive) 210_000L else 100_000L) {
+                        val nameKey = artistParityFold(case.name)
+                        val titleKey = artistParityFold(case.anchor)
+                        val query = case.name + " " + case.anchor
+                        when (provider) {
+                            mb -> {
+                                val artists = (mbSearch.searchArtists(case.name, 50)
+                                    as? MusicBrainzCatalogSearchResult.Success)?.page?.items
+                                val anchors = (mbSearch.searchReleaseGroups(query, 50)
+                                    as? MusicBrainzCatalogSearchResult.Success)?.page?.items
+                                if (artists == null || anchors == null) failed = true
+                                val creditedIds = anchors.orEmpty()
+                                    .filter { artistParityFold(it.title) == titleKey }
+                                    .flatMap { it.artistCreditMbids.orEmpty() }.toSet()
+                                val artist = artists.orEmpty().filter {
+                                    artistParityFold(it.name) == nameKey &&
+                                        it.musicBrainzId in creditedIds
+                                }.distinctBy { it.musicBrainzId }.singleOrNull()
+                                if (artist != null) {
+                                    matched = true
+                                    profileStarted = System.nanoTime()
+                                    val first = (retryTransientArtistDiscography(fetch = {
+                                        mbGraph.browseReleaseGroupsForArtist(artist.musicBrainzId, limit = 75)
+                                    }) as? MusicBrainzCatalogGraphResult.Success)?.value
+                                    if (first == null) failed = true
+                                    else {
+                                        val groups = linkedMapOf<String, MusicBrainzReleaseGroupHit>()
+                                        fun publish(hits: List<MusicBrainzReleaseGroupHit>) {
+                                            hits.forEach { groups.putIfAbsent(it.musicBrainzId, it) }
+                                            val rows = groups.values.map { hit ->
+                                                com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+                                                    hit.musicBrainzId,
+                                                    com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE_GROUP,
+                                                    hit.title, hit.artistDisplay,
+                                                    releaseDate = hit.firstReleaseDate,
+                                                    releaseKind = hit.primaryType,
+                                                    secondaryTypes = hit.secondaryTypes,
+                                                    artistScopeMbid = artist.musicBrainzId,
+                                                )
+                                            }
+                                            observe(canonicalNativeSections(
+                                                com.music.bitchord.ui.screens.CanonicalSearchKind.ARTIST,
+                                                rows, "Álbuns", "Álbuns", "Singles e EPs",
+                                            ), "catalog:RELEASE_GROUP:")
+                                        }
+                                        publish(first.items)
+                                        val auto = MusicBrainzArtistDiscographyPager.collect(
+                                            first, maxAdditionalPages = 4,
+                                            fetch = { offset ->
+                                                mbGraph.browseReleaseGroupsForArtist(artist.musicBrainzId, 75, offset)
+                                            },
+                                            onPage = { hits, _ -> autoPages++; publish(hits) },
+                                        )
+                                        var offset = auto.nextOffset
+                                        while (visible < target && offset != null && gestures < 12) {
+                                            val previous = offset
+                                            val page = (mbGraph.browseReleaseGroupsForArtist(
+                                                artist.musicBrainzId, offset = previous,
+                                            ) as? MusicBrainzCatalogGraphResult.Success)?.value
+                                            gestures++
+                                            if (page == null || page.offset != previous ||
+                                                page.nextOffset?.let { it <= previous } == true ||
+                                                (page.consumedCount == 0 && page.total > previous)
+                                            ) { failed = true; break }
+                                            publish(page.items)
+                                            offset = page.nextOffset
+                                        }
+                                        exhausted = offset == null
+                                        incomplete = !auto.complete && offset != null
+                                    }
+                                }
+                            }
+                            apple -> {
+                                val artists = appleRepo.searchArtists(case.name, "br", 50)
+                                    as? AppleEditorialArtistLoad.Success
+                                val anchors = appleRepo.searchAlbums(query, "br", 50)
+                                    as? AppleEditorialLoad.Success
+                                if (artists == null || anchors == null) failed = true
+                                val creditedIds = anchors?.releases.orEmpty().filter {
+                                    artistParityFold(it.title) == titleKey &&
+                                        artistParityFold(it.artistName) == nameKey
+                                }.mapNotNull { it.artistId }.toSet()
+                                val artist = artists?.artists.orEmpty().filter {
+                                    artistParityFold(it.title) == nameKey && it.id in creditedIds
+                                }.distinctBy { it.id }.singleOrNull()
+                                if (artist != null) {
+                                    matched = true
+                                    profileStarted = System.nanoTime()
+                                    val pager = AppleArtistDiscographyPager(
+                                        artist.id, artist.title, "br", pageSize = 24,
+                                        source = ItunesArtistAlbumDiscoverySource(appleRepo),
+                                    )
+                                    fun publish(snapshot: AppleArtistPageSnapshot) {
+                                        assertTrue(snapshot.visible.all {
+                                            it.artistId == artist.id && it.storefront == "br"
+                                        })
+                                        val detail = appleNativeArtistDetail(
+                                            AppleEditorialLoad.Success(snapshot.visible,
+                                                if (snapshot.coverageUncertain)
+                                                    AppleEditorialReadState.POSSIBLY_TRUNCATED
+                                                else AppleEditorialReadState.COMPLETE),
+                                            artist.scopedId, artist.title,
+                                        )
+                                        val native = detail?.let {
+                                            com.music.bitchord.ui.screens.appleArtistAsSharedDetail(it)
+                                        }
+                                        assertNotNull("Apple shared detail missing", native)
+                                        assertEquals(artist.scopedId, native?.page?.browseId)
+                                        observe(native?.page?.sections.orEmpty(), "itunes:br:album:")
+                                        incomplete = snapshot.coverageUncertain
+                                    }
+                                    var result = pager.start()
+                                    if (result !is AppleArtistPageLoad.Success) failed = true
+                                    else {
+                                        publish(result.snapshot)
+                                        while (visible < target && result is AppleArtistPageLoad.Success &&
+                                            result.snapshot.hasMore && gestures < 12
+                                        ) {
+                                            result = pager.loadMore()
+                                            gestures++
+                                            if (result is AppleArtistPageLoad.Success) publish(result.snapshot)
+                                            else failed = true
+                                        }
+                                        exhausted = !pager.snapshot().hasMore && !pager.snapshot().coverageUncertain
+                                        val trackResult = appleRepo.artistTracks(artist.id, "br", 40)
+                                            as? AppleEditorialTrackLoad.Success
+                                        tracks = trackResult?.let(::appleNativeTrackSearchRows).orEmpty()
+                                            .count { it.artistBrowseId == artist.scopedId }
+                                    }
+                                }
+                            }
+                            else -> if (token != null) {
+                                val artists = (discogsArtists.search(case.name)
+                                    as? DiscogsNativeArtistSearchResult.Success)?.page?.artists
+                                val anchors = (discogsAlbums.search(query)
+                                    as? DiscogsNativeReleaseSearchResult.Success)?.page?.releases
+                                if (artists == null || anchors == null) failed = true
+                                val searchIds = artists.orEmpty().filter {
+                                    artistParityFold(com.music.bitchord.ui.screens.discogsArtistDisplayName(it.name)) == nameKey
+                                }.map { it.artistId }.toSet()
+                                val credited = linkedSetOf<Long>()
+                                for (candidate in anchors.orEmpty().filter {
+                                    artistParityFold(it.title).contains(titleKey)
+                                }.take(5)) {
+                                    val response = discogsDetails.fetchRelease(candidate.releaseId)
+                                    if (response is DiscogsLookupResult.Throttled ||
+                                        response is DiscogsLookupResult.Unauthorized ||
+                                        response is DiscogsLookupResult.Disabled) {
+                                        failed = true
+                                        break
+                                    }
+                                    val record = (response as? DiscogsLookupResult.Found)?.record ?: continue
+                                    if (record.link.id != candidate.releaseId || record.unofficial ||
+                                        artistParityFold(record.title) != titleKey) continue
+                                    val id = record.artistIds.singleOrNull() ?: continue
+                                    if (id in searchIds) credited += id
+                                }
+                                val artist = artists.orEmpty().filter { it.artistId in credited }
+                                    .distinctBy { it.artistId }.singleOrNull()
+                                if (artist != null && !failed) {
+                                    matched = true
+                                    profileStarted = System.nanoTime()
+                                    val known = mutableListOf<DiscogsNativeArtistRelease>()
+                                    var page = 1
+                                    var hasMore = true
+                                    while (hasMore && visible < target && gestures <= 12) {
+                                        val window = discogsCatalog.loadWindow(
+                                            artist.artistId, page, known.toList(),
+                                        )
+                                        val result = window.result as? DiscogsNativeArtistLoad.Success
+                                        if (result == null) { failed = true; break }
+                                        assertTrue(result.releases.all { it.artistId == artist.artistId })
+                                        known += result.releases
+                                        assertEquals(known.size, discogsMergeArtistPageReleases(known).size)
+                                        page += window.completedPages
+                                        incomplete = incomplete || window.settledIncomplete
+                                        hasMore = result.hasMore || result.retryCurrentPage
+                                        val detail = discogsArtistPage(
+                                            com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow(
+                                                artist.artistId, artist.name,
+                                            ),
+                                            known, hasMore, incomplete,
+                                        )
+                                        assertEquals(artist.browseId, detail.page.browseId)
+                                        observe(detail.page.sections, "discogs:release:")
+                                        if (result.retryCurrentPage) { failed = true; break }
+                                        if (window.completedPages == 0) break
+                                        if (visible < target && hasMore) {
+                                            if (gestures == 12) break
+                                            gestures++
+                                        }
+                                    }
+                                    exhausted = !hasMore
+                                }
+                            }
+                        }
+                        true
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    failed = true
+                    false
+                }
+                val status = when {
+                    provider == discogs && token == null -> "token_not_configured"
+                    complete == null -> "timeout_or_partial"
+                    failed -> "source_interruption"
+                    !matched -> "identity_not_corroborated"
+                    profile && visible >= target -> "target_reached"
+                    exhausted && !incomplete -> "source_exhausted_below_target"
+                    incomplete -> "incomplete_coverage_below_target"
+                    else -> "gesture_budget_below_target"
+                }
+                report("artist_matrix_" + sourceName + "_" + (index + 1).toString().padStart(2, '0'), Sample(
+                    status = status, eligible = visible, visible = visible,
+                    counts = mapOf(
+                        "anchor_verified" to if (matched) 1 else 0,
+                        "profile_projection_verified" to if (profile) 1 else 0,
+                        "verified_target" to target,
+                        "landing_visible_releases" to landing,
+                        "source_gestures" to gestures,
+                        "automatic_pages" to autoPages,
+                        "release_sections" to sections,
+                        "verified_track_rows" to tracks,
+                        "first_profile_ms" to firstProfileMs,
+                        "incomplete_coverage" to if (incomplete) 1 else 0,
+                        "elapsed_ms" to ((System.nanoTime() - started) / 1_000_000L)
+                            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                    ),
+                ))
+            }
+        }
+    }
+
 }
