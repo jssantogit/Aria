@@ -1456,8 +1456,8 @@ class IdmCatalogLiveObservationTest {
                     val shelves = (state as? UiState.Success)?.data.orEmpty()
                     for (shelf in shelves) {
                         val ids = shelf.items.mapNotNull { it.browseId }
-                        check(ids.distinct().size == ids.size)
-                        check(ids.none {
+                        assertEquals("Duplicate identity in $name/$tag", ids.size, ids.distinct().size)
+                        assertTrue("Foreign provider release in $name/$tag", ids.none {
                             (it.startsWith("catalog:RELEASE_GROUP:") ||
                                 it.startsWith("itunes:br:album:") ||
                                 it.startsWith("discogs:release:")) && !it.startsWith(prefix)
@@ -1517,7 +1517,7 @@ class IdmCatalogLiveObservationTest {
                                     paging = next
                                     val before = visible
                                     visible = count(project())
-                                    check(visible >= before)
+                                    assertTrue("Continuation lost visible releases in $name/$tag", visible >= before)
                                     if (gestures == 1) firstScrollVisible = visible - before
                                 }
                                 sourceExhausted = historical != null && paging.nextOffset == null
@@ -1545,7 +1545,7 @@ class IdmCatalogLiveObservationTest {
                                         revealed = minOf(revealed + 24, rows.size)
                                         gestures++
                                         visible = count(project())
-                                        check(visible >= before)
+                                        assertTrue("Continuation lost visible releases in $name/$tag", visible >= before)
                                         if (gestures == 1) firstScrollVisible = visible - before
                                     }
                                     indexCeiling = result?.state == AppleEditorialReadState.POSSIBLY_TRUNCATED
@@ -1556,7 +1556,14 @@ class IdmCatalogLiveObservationTest {
                                 val predicates = discogsEditorialQueriesForTag(tag)
                                 mapped = predicates.isNotEmpty()
                                 if (token != null && mapped) {
-                                    val landing = scanDiscogsGenreLanding(predicates, discogsSource)
+                                    val landing = scanDiscogsGenreLanding(
+                                        predicates, discogsSource,
+                                        onProgress = { rows ->
+                                            // Preserve the actually visible partial on a deadline.
+                                            landingVisible = count(UiState.Success(discogsEditorialShelves(rows)))
+                                            visible = landingVisible
+                                        },
+                                    )
                                     sourceQueries = landing?.queriesAttempted ?: 0
                                     if (landing == null || landing.failure != null) failed = true
                                     val shelves = discogsEditorialShelves(landing?.releases.orEmpty())
@@ -1581,7 +1588,7 @@ class IdmCatalogLiveObservationTest {
                                         sourceQueries += next.chunksAttempted
                                         paging = next.state
                                         visible = count(project())
-                                        check(visible >= before && visible - before <= 8)
+                                        assertTrue("Invalid Discogs gesture delta in $tag", visible >= before && visible - before <= 8)
                                         if (gestures == 1) firstScrollVisible = visible - before
                                         if (paging.failed || next.transportException ||
                                             (paging.cursor == prior.cursor &&
