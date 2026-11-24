@@ -29,6 +29,7 @@ on:
       - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialNativeSearchBridgeTest.kt
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -54,6 +55,7 @@ on:
       - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialNativeSearchBridgeTest.kt
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -133,7 +135,8 @@ jobs:
             --tests 'com.music.bitchord.DiscogsEvidenceContractTest' \
             --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
             --tests 'com.music.bitchord.AppleEditorialNativeSearchBridgeTest' \
-            --tests 'com.music.bitchord.AppleSharedDetailAdapterTest'
+            --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
+            --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest'
 
       - name: Check completeness and write aggregate comparison
         shell: bash
@@ -209,6 +212,7 @@ jobs:
               "NativeMetadataAlbumPresentationTest",
               "AppleEditorialNativeSearchBridgeTest",
               "AppleSharedDetailAdapterTest",
+              "DiscogsMasterVersionPreviewTest",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### Home granular flows (controlled full-adapter regressions)\n\n")

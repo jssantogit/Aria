@@ -60,4 +60,38 @@ class DiscogsMasterVersionPreviewTest {
             assertEquals(DiscogsMasterVersionPreviewResult.Malformed,
                 client.fetchMasterVersionPreview(-1))
         }
+
+    @Test fun nativeVersionSampleSharesAppBoundaryAndStopsOnThrottleWithoutDiscardingVerifiedRows() = runBlocking {
+        fun edition(id: Long, master: Long = 90, unofficial: Boolean = false) = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, id), title = "Work",
+            artistNames = listOf("Artist"), country = "Brazil", year = 2020,
+            labels = emptyList(), barcodes = emptyList(), formats = listOf("Album"),
+            tracklist = emptyList(), unofficial = unofficial, masterId = master,
+            artistIds = listOf(17L),
+        )
+        val selected = edition(500)
+        val requested = mutableListOf<Long>()
+        val page = requireNotNull(discogsMasterVersionPreviewPage(paged))
+        val partial = com.music.bitchord.ui.sampleDiscogsVerifiedVersions(
+            selected, readIndex = { id ->
+                assertEquals(90L, id)
+                DiscogsMasterVersionPreviewResult.Page(page)
+            }, readRelease = { id ->
+                requested += id
+                if (id == 501L) DiscogsLookupResult.Found(edition(id))
+                else DiscogsLookupResult.Throttled(10)
+            },
+        )
+        assertEquals(listOf(501L, 502L), requested)
+        assertEquals(listOf(501L), partial.records.map { it.link.id })
+        assertTrue(partial.incomplete)
+        assertEquals(listOf("discogs:release:501"),
+            com.music.bitchord.ui.discogsMasterVersionsShelf(selected, partial.records)
+                ?.items?.map { it.browseId })
+        assertNull(com.music.bitchord.ui.discogsMasterVersionsShelf(
+            selected.copy(unofficial = true), partial.records))
+        assertNull(com.music.bitchord.ui.discogsMasterVersionsShelf(selected,
+            listOf(edition(503, master = 91), edition(504, unofficial = true))))
+    }
+
 }

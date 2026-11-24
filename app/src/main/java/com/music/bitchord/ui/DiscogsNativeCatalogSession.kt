@@ -786,54 +786,9 @@ internal class DiscogsNativeCatalogSession(
         job.invokeOnCompletion { unregister() }
     }
 
-    private data class VerifiedVersionSample(
-        val records: List<DiscogsRecord> = emptyList(),
-        val incomplete: Boolean = false,
-    )
-
-    /**
-     * A Master version index supplies candidate IDs ONLY. For a native
-     * versions carousel we independently hydrate up to three editions and
-     * verify their Master membership, unofficial flag and exact Release IDs.
-     * The exhaustive edition cross-source matcher is intentionally separate.
-     */
-    private suspend fun sampleVerifiedVersions(
-        source: DiscogsRecord,
-    ): VerifiedVersionSample {
-        val masterId = source.masterId ?: return VerifiedVersionSample()
-        if (source.unofficial || source.link.kind != DiscogsKind.RELEASE)
-            return VerifiedVersionSample()
-        val index = try { editionClient.fetchMasterVersionPreview(masterId) }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { DiscogsMasterVersionPreviewResult.Unavailable }
-        // A Release with an explicit Master link may have other editions.
-        // Failure to read its version index is uncertainty, not proof that
-        // no other editions exist. Do not invent a Versões shelf.
-        val page = (index as? DiscogsMasterVersionPreviewResult.Page)?.result
-            ?: return VerifiedVersionSample(incomplete = true)
-        val candidates = page.releaseIds.filter { it != source.link.id }
-        val verified = mutableListOf<DiscogsRecord>()
-        var incomplete = page.hasMore || candidates.size > 3
-        for (id in candidates.take(3)) {
-            val response = try { editionClient.fetchRelease(id) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { DiscogsLookupResult.Unavailable }
-            val record = (response as? DiscogsLookupResult.Found)?.record
-            if (record == null || record.link.kind != DiscogsKind.RELEASE ||
-                record.link.id != id || record.masterId != masterId ||
-                record.unofficial
-            ) {
-                incomplete = true
-                if (response is DiscogsLookupResult.Throttled ||
-                    response is DiscogsLookupResult.Disabled ||
-                    response is DiscogsLookupResult.Unauthorized
-                ) break
-                continue
-            }
-            verified += record
-        }
-        return VerifiedVersionSample(verified, incomplete)
-    }
+    private suspend fun sampleVerifiedVersions(source: DiscogsRecord): DiscogsVerifiedVersionSample =
+        sampleDiscogsVerifiedVersions(source, editionClient::fetchMasterVersionPreview,
+            editionClient::fetchRelease)
 
     /**
      * Exact typed Discogs Release search selection. Hydrate the chosen source
@@ -1358,13 +1313,64 @@ internal fun discogsReleaseMetadataFacts(record: DiscogsRecord): List<Pair<Strin
  * (potentially extensive) search/versions index. This is a bounded preview,
  * never an exhaustive edition-matching or ranking claim.
  */
+internal data class DiscogsVerifiedVersionSample(
+    val records: List<DiscogsRecord> = emptyList(),
+    val incomplete: Boolean = false,
+)
+
+/**
+ * A Master version index supplies candidate IDs ONLY. For a native
+ * versions carousel we independently hydrate up to three editions and
+ * verify their Master membership, unofficial flag and exact Release IDs.
+ * The exhaustive edition cross-source matcher is intentionally separate.
+ */
+internal suspend fun sampleDiscogsVerifiedVersions(
+    source: DiscogsRecord,
+    readIndex: suspend (Long) -> DiscogsMasterVersionPreviewResult,
+    readRelease: suspend (Long) -> DiscogsLookupResult,
+): DiscogsVerifiedVersionSample {
+    val masterId = source.masterId ?: return DiscogsVerifiedVersionSample()
+    if (source.unofficial || source.link.kind != DiscogsKind.RELEASE)
+        return DiscogsVerifiedVersionSample()
+    val index = try { readIndex(masterId) }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { DiscogsMasterVersionPreviewResult.Unavailable }
+    // A Release with an explicit Master link may have other editions.
+    // Failure to read its version index is uncertainty, not proof that
+    // no other editions exist. Do not invent a Versões shelf.
+    val page = (index as? DiscogsMasterVersionPreviewResult.Page)?.result
+        ?: return DiscogsVerifiedVersionSample(incomplete = true)
+    val candidates = page.releaseIds.filter { it != source.link.id }
+    val verified = mutableListOf<DiscogsRecord>()
+    var incomplete = page.hasMore || candidates.size > 3
+    for (id in candidates.take(3)) {
+        val response = try { readRelease(id) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { DiscogsLookupResult.Unavailable }
+        val record = (response as? DiscogsLookupResult.Found)?.record
+        if (record == null || record.link.kind != DiscogsKind.RELEASE ||
+            record.link.id != id || record.masterId != masterId ||
+            record.unofficial
+        ) {
+            incomplete = true
+            if (response is DiscogsLookupResult.Throttled ||
+                response is DiscogsLookupResult.Disabled ||
+                response is DiscogsLookupResult.Unauthorized
+            ) break
+            continue
+        }
+        verified += record
+    }
+    return DiscogsVerifiedVersionSample(verified, incomplete)
+}
+
 internal fun discogsMasterVersionsShelf(
     source: DiscogsRecord,
     editionCandidates: List<DiscogsRecord>,
 ): HomeShelf? {
     val masterId = source.masterId?.takeIf { it in 1..999_999_999_999L }
         ?: return null
-    if (source.link.kind != DiscogsKind.RELEASE) return null
+    if (source.link.kind != DiscogsKind.RELEASE || source.unofficial) return null
     val verified = editionCandidates
         .filter { candidate ->
             candidate.link.kind == DiscogsKind.RELEASE &&
