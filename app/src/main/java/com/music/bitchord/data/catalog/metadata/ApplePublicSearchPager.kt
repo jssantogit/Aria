@@ -72,12 +72,15 @@ internal class ItunesPublicSearchSource(
         }.mapNotNull { song ->
             // Synthetic projection is ONLY a relevance hint for nomination.
             // Never return it or use the song's artist as album ownership.
-            val rank = applePublicSearchMatchRank(originalQuery, song.copy(
+            val nomination = song.copy(
                 type = ItunesCatalogItemType.ALBUM, title = checkNotNull(song.collectionTitle),
-            )) ?: return@mapNotNull null
+            )
+            val rank = applePublicSearchMatchRank(originalQuery, nomination) ?: return@mapNotNull null
             if (rank > 2) return@mapNotNull null
-            rank to checkNotNull(song.collectionId)
-        }.sortedBy { it.first }.map { it.second }.distinct().take(2).toList()
+            Triple(rank, if (applePublicQualifiedAlbumMatch(originalQuery, nomination)) 0 else 1,
+                checkNotNull(song.collectionId))
+        }.sortedWith(compareBy<Triple<Int, Int, Long>> { it.first }.thenBy { it.second })
+            .map { it.third }.distinct().take(2).toList()
         val verified = mutableListOf<ItunesCatalogItem>()
         var uncertain = songs.possiblyTruncated
         for (id in hints) {
@@ -425,7 +428,7 @@ internal class ApplePublicSearchPager(
             if (prev == null) {
                 rows[row.id] = row
             } else if (prev.title != row.title || prev.artistId != row.artistId ||
-                prev.collectionId != row.collectionId
+                prev.artistName != row.artistName || prev.collectionId != row.collectionId
             ) {
                 rows.remove(row.id)
                 disputed.add(row.id)
