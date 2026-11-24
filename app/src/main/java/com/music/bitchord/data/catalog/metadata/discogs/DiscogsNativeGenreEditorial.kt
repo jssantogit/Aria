@@ -409,7 +409,9 @@ internal class DiscogsNativeGenreEditorial(
                 admission.execute(
                     capability = ProviderCapability.CATALOG_SEARCH,
                     provider = BuiltInProviderKeys.DISCOGS,
-                    scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                    scheduleLimited = { block ->
+                        limiter.runHttpLimited(authenticated = true) { block() }
+                    },
                     networkCall = { transport.search(query, token, userAgent, cursor.page) },
                 )
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -566,7 +568,9 @@ internal class DiscogsNativeGenreEditorial(
                     admission.execute(
                         capability = ProviderCapability.CATALOG_SEARCH,
                         provider = BuiltInProviderKeys.DISCOGS,
-                        scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                        scheduleLimited = { block ->
+                        limiter.runHttpLimited(authenticated = true) { block() }
+                    },
                         networkCall = {
                             transport.search(query, token, userAgent, pageNumber)
                         },
