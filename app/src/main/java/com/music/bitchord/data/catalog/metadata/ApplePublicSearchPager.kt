@@ -122,6 +122,45 @@ private fun applePublicSearchFold(value: String?): String = java.text.Normalizer
     .replace(Regex("\\s+"), " ")
     .trim()
 
+/**
+ * Textual work relevance only, not an edition crosswalk or a type inference.
+ * Strip a narrow allowlist of trailing commercial edition labels. Preserve
+ * bare years, sequel numbers, remix/live/tribute names and unknown qualifiers.
+ * Never change the source title or collection ID presented to the user.
+ */
+internal fun applePublicAlbumWorkKey(title: String): String {
+    var key = applePublicSearchFold(title)
+    val format = Regex("""(?:\s+[-–—]\s+(?:single|ep)|\s+\((?:single|ep)\)|\s+\[(?:single|ep)\])$""")
+    val qualifiers = Regex("""(?:\s+\(([^()]{1,60})\)|\s+\[([^\[\]]{1,60})\])$""")
+    val recognized = Regex("""(?:(?:19|20)\d{2}\s+)?(?:digital master|remaster(?:ed)?)(?:\s+(?:19|20)\d{2})?|(?:super\s+)?deluxe(?:\s+(?:edition|version))?|expanded\s+(?:edition|version)|\d{1,3}(?:st|nd|rd|th)\s+anniversary\s+edition""")
+    repeat(3) {
+        val withoutFormat = key.replace(format, "").trimEnd()
+        if (withoutFormat != key && withoutFormat.isNotBlank()) {
+            key = withoutFormat
+        } else {
+            val match = qualifiers.find(key) ?: return key
+            val qualifier = match.groupValues[1].ifBlank { match.groupValues[2] }
+            if (!recognized.matches(qualifier)) return key
+            val base = key.substring(0, match.range.first).trimEnd()
+            if (base.isBlank()) return key
+            key = base
+        }
+    }
+    return key
+}
+
+internal fun applePublicQualifiedAlbumMatch(query: String, row: ItunesCatalogItem): Boolean {
+    if (row.type != ItunesCatalogItemType.ALBUM) return false
+    val title = applePublicSearchFold(row.title)
+    val work = applePublicAlbumWorkKey(row.title)
+    if (work == title) return false
+    val term = applePublicSearchFold(query)
+    val credit = applePublicSearchFold(row.artistName)
+    return term == work || (credit.isNotBlank() && term in listOf(
+        "$credit $work", "$work $credit", "$credit - $work", "$work - $credit",
+    ))
+}
+
 /** A returned source credit may reveal the correct boundary of a compound
  * query even when its other field is irrelevant. This nominates a search term
  * only: every recovered item still has to match the entire original query. */
@@ -379,7 +418,8 @@ internal class ApplePublicSearchPager(
             .mapNotNull { row ->
                 applePublicSearchMatchRank(query, row)?.let { it to row }
             }
-            .sortedBy { it.first }
+            .sortedWith(compareBy<Pair<Int, ItunesCatalogItem>> { it.first }
+                .thenBy { if (applePublicQualifiedAlbumMatch(query, it.second)) 0 else 1 })
             .forEach { (_, row) ->
             val prev = rows[row.id]
             if (prev == null) {
