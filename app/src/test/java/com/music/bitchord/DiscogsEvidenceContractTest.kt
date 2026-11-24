@@ -187,6 +187,43 @@ class DiscogsEvidenceContractTest {
         assertNull(DiscogsRecordParser.parse(link, """{"id":3,"title":"X","images":[1]}""".repeat(50_000)))
     }
 
+    @Test fun nativeBoxSetAcceptsFlatTracklistsWithinExistingTraversalBudgetOnly() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        fun payload(count: Int) = """{"id":3,"title":"Box set","artists":[{"id":17,"name":"Artist"}],
+            "tracklist":[${(1..count).joinToString(",") { """{"position":"$it","title":"Track $it"}""" }}]}"""
+        val reasons = mutableListOf<DiscogsReleaseParseRejection>()
+        val raw = payload(300)
+        assertNull(DiscogsRecordParser.parse(link, raw, onRejected = { reasons += it }))
+        assertEquals(listOf(DiscogsReleaseParseRejection.TRACKLIST_LIMIT), reasons)
+        reasons.clear()
+        val native = requireNotNull(DiscogsRecordParser.parse(link, raw,
+            nativeCatalog = true, onRejected = { reasons += it }))
+        assertEquals(300, native.displayTracks.size)
+        assertEquals("300", native.displayTracks.last().position)
+        assertFalse(native.nativeTracklistIncomplete)
+        assertTrue(reasons.isEmpty())
+        assertNull(DiscogsRecordParser.parse(link, payload(1025),
+            nativeCatalog = true, onRejected = { reasons += it }))
+        assertEquals(listOf(DiscogsReleaseParseRejection.TRACKLIST_LIMIT), reasons)
+    }
+
+    @Test fun releaseRejectionDiagnosticsAreSpecificAndNeverRetainPayload() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        val cases = listOf(
+            """{"id":4,"title":"Album"}""" to DiscogsReleaseParseRejection.IDENTITY,
+            """{"id":3,"title":"Album","identifiers":false}""" to DiscogsReleaseParseRejection.IDENTIFIERS,
+            """{"id":3,"title":"Album","formats":[{"descriptions":[{}]}]}""" to DiscogsReleaseParseRejection.FORMAT_DESCRIPTIONS,
+            """{"id":3,"title":"Album","tracklist":[{}]}""" to DiscogsReleaseParseRejection.TRACK_TITLE,
+            """{"id":3,"title":"Album","tracklist":[1]}""" to DiscogsReleaseParseRejection.TRACKLIST,
+        )
+        for ((body, expected) in cases) {
+            val reasons = mutableListOf<DiscogsReleaseParseRejection>()
+            assertNull(DiscogsRecordParser.parse(link, body, nativeCatalog = true,
+                onRejected = { reasons += it }))
+            assertEquals(listOf(expected), reasons)
+        }
+    }
+
     @Test fun largerReleasePayloadKeepsOnlyBoundedVerifiedFields() {
         val link = DiscogsLink(DiscogsKind.RELEASE, 3)
         val padding = "z".repeat(DISCOGS_STANDARD_BODY_BYTES + 1)
