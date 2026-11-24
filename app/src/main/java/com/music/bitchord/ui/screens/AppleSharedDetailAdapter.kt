@@ -146,6 +146,11 @@ internal fun appleAlbumAsSharedDetail(
     }
     val credit = listOfNotNull(source.album.artistName.takeIf(String::isNotBlank), year)
         .joinToString(" • ")
+    val sourceArtistRoute = AppleCatalogBrowseRoute.parse(source.album.artistBrowseId)
+        ?.takeIf {
+            it.kind == ItunesCatalogItemType.ARTIST &&
+                it.storefront == route.storefront
+        }
     val otherReleases = source.relatedAlbums.asSequence()
         .filter { candidate ->
             val candidateRoute = AppleCatalogBrowseRoute.parse(candidate.browseId)
@@ -154,7 +159,8 @@ internal fun appleAlbumAsSharedDetail(
                 candidateRoute.storefront == route.storefront &&
                 candidate.browseId != source.album.browseId &&
                 candidate.title.isNotBlank() &&
-                candidate.artistName == source.album.artistName
+                sourceArtistRoute != null &&
+                AppleCatalogBrowseRoute.parse(candidate.artistBrowseId) == sourceArtistRoute
         }
         .distinctBy { it.browseId }
         .take(12)
@@ -167,11 +173,6 @@ internal fun appleAlbumAsSharedDetail(
                 browseId = candidate.browseId,
             )
         }.toList()
-    val sourceArtistRoute = AppleCatalogBrowseRoute.parse(source.album.artistBrowseId)
-        ?.takeIf {
-            it.kind == ItunesCatalogItemType.ARTIST &&
-                it.storefront == route.storefront
-        }
     return AppleSharedDetail(
         albumArtistBrowseId = sourceArtistRoute?.let {
             "itunes:${it.storefront}:artist:${it.id}"
@@ -201,6 +202,7 @@ internal fun appleAlbumAsSharedDetail(
                 credit = track.artistName,
                 trackNumber = track.trackNumber,
                 discNumber = track.discNumber,
+                durationMs = track.durationMs?.takeIf { it >= 0L },
             )
         },
         notice = if (source.partialTracklist)

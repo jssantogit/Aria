@@ -95,6 +95,22 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
+    @Test fun albumTrackDurationIsPreservedWithoutInventingMissingValues() {
+        val selected = album(20, AppleEditorialReleaseCategory.EP)
+        val page = AppleEditorialAlbumDetailPage(
+            album = selected,
+            tracks = listOf(
+                AppleEditorialTrackRow("itunes:br:track:101", "Track", "NewJeans", 1, 1,
+                    durationMs = 183000L),
+                AppleEditorialTrackRow("itunes:br:track:102", "Other", "NewJeans", 1, 2),
+            ), partialTracklist = false,
+        )
+        val adapted = requireNotNull(appleAlbumAsSharedDetail(page))
+        assertEquals(listOf(183000L, null), adapted.metadataTracks.map { it.durationMs })
+        assertEquals("3:03", com.music.bitchord.ui.screens.nativeMetadataAlbumTrackSubtitle(
+            adapted.metadataTracks.first(), "NewJeans"))
+    }
+
     @Test fun albumArtistCreditUsesOnlyExactMatchingStorefrontArtistId() {
         val selected = album(20, AppleEditorialReleaseCategory.ALBUM)
             .copy(artistBrowseId = "itunes:br:artist:1656329288")
@@ -155,15 +171,20 @@ class AppleSharedDetailAdapterTest {
 
     @Test fun albumMoreFromArtistUsesOnlyExactAppleStorefrontSiblingIDs() {
         val selected = album(20, AppleEditorialReleaseCategory.EP)
+            .copy(artistBrowseId = artist.browseId)
         val sibling = album(21, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = artist.browseId)
         val crossStore = sibling.copy(browseId = "itunes:us:album:21")
+        // Same display name, but a different source-owned artist.
         val wrongArtist = sibling.copy(browseId = "itunes:br:album:22",
-            artistName = "Unrelated artist")
+            artistBrowseId = "itunes:br:artist:999")
+        val missingCredit = sibling.copy(browseId = "itunes:br:album:23",
+            artistBrowseId = null)
         val sameAlbum = sibling.copy(browseId = selected.browseId)
         val page = requireNotNull(appleAlbumAsSharedDetail(
             AppleEditorialAlbumDetailPage(
                 album = selected, tracks = emptyList(), partialTracklist = false,
-                relatedAlbums = listOf(sibling, sibling, crossStore, wrongArtist, sameAlbum),
+                relatedAlbums = listOf(sibling, sibling, crossStore, wrongArtist, missingCredit, sameAlbum),
             ),
         ))
         assertEquals(listOf("Mais de NewJeans"), page.page.sections.map { it.title })

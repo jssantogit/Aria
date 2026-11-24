@@ -262,6 +262,7 @@ class AppleEditorialNativeSearchBridgeTest {
         assertEquals(listOf("First song", "Second song"), result?.tracks?.map { it.title })
         assertEquals(listOf("itunes:br:track:1", "itunes:br:track:2"),
             result?.tracks?.map { it.key })
+        assertEquals(listOf(180000L, 180000L), result?.tracks?.map { it.durationMs })
         assertEquals(false, result?.partialTracklist)
     }
 

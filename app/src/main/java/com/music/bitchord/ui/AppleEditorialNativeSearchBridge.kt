@@ -122,6 +122,7 @@ internal fun appleNativeAlbumDetail(
                 artistName = it.artistName,
                 discNumber = it.discNumber,
                 trackNumber = it.trackNumber,
+                durationMs = it.durationMs,
             )
         }
     val complete = source.state == AppleEditorialReadState.COMPLETE &&

@@ -42,6 +42,8 @@ data class AppleEditorialTrackRow(
     val artistName: String?,
     val discNumber: Int?,
     val trackNumber: Int?,
+    /** Exact duration of the selected storefront track, when supplied. */
+    val durationMs: Long? = null,
 )
 
 data class AppleEditorialAlbumDetailPage(
