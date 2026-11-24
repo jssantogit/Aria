@@ -360,6 +360,57 @@ class ApplePublicSearchPagerTest {
         assertEquals(listOf(10L, 11L), pager.snapshot().visible.map { it.id })
     }
 
+    @Test fun artistFieldFallbackUsesActualCreditAfterTitleProbeMisses() = runBlocking {
+        val original = "Aphex Twin Come to Daddy"
+        val first = album(1, title = "Come to Daddy Tribute").copy(artistName = "Aphex Twin")
+        val correct = album(2, title = "Come to Daddy - EP").copy(artistName = "Aphex Twin")
+        val wrong = correct.copy(id = 3, artistName = "Aphex Twins")
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                calls += query to attribute
+                return ItunesCatalogResult.Success(when (query to attribute) {
+                    original to null -> listOf(first)
+                    "aphex twin" to ItunesCatalogSearchAttribute.ARTIST_TERM -> listOf(wrong, correct)
+                    else -> emptyList()
+                })
+            }
+        }
+        val pager = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM, "br", source = source)
+        pager.start()
+        assertTrue(pager.snapshot().hasMore)
+        pager.loadMore()
+        assertEquals(listOf(1L, 2L), pager.snapshot().visible.map { it.id })
+        assertEquals(listOf(original to null,
+            "come to daddy" to ItunesCatalogSearchAttribute.ALBUM_TERM,
+            "aphex twin" to ItunesCatalogSearchAttribute.ARTIST_TERM), calls)
+        assertFalse(pager.snapshot().hasMore)
+    }
+
+    @Test fun longCompoundEmptySearchCanProbeWholeWorkRatherThanBisectTitle() = runBlocking {
+        val original = "The Smashing Pumpkins Mellon Collie and the Infinite Sadness"
+        val work = "Mellon Collie and the Infinite Sadness"
+        val correct = album(1, title = work).copy(artistName = "The Smashing Pumpkins")
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                calls += query to attribute
+                return ItunesCatalogResult.Success(if (query == work) listOf(correct) else emptyList())
+            }
+        }
+        val pager = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM, "br", source = source)
+        assertEquals(listOf(1L), (pager.start() as ApplePublicSearchPageLoad.Success)
+            .snapshot.visible.map { it.id })
+        assertEquals(work to ItunesCatalogSearchAttribute.ALBUM_TERM, calls.last())
+        assertTrue(calls.size <= 5)
+    }
+
     @Test fun sourceCreditHintsSupportUnevenReverseAndAccentedQueriesWithoutSubstringSplits() {
         val credit = album(1).copy(artistName = "João Gilberto")
         assertEquals(listOf("chega de saudade"), applePublicSearchWorkHints(
