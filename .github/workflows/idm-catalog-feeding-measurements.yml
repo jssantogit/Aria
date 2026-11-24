@@ -474,7 +474,11 @@ jobs:
                               "artist_master_lookup_calls", "artist_release_lookup_calls",
                               "artist_edition_malformed", "artist_edition_unavailable",
                               "artist_edition_throttled", "artist_edition_unauthorized",
-                              "artist_edition_missing", "artist_edition_disabled")
+                              "artist_edition_missing", "artist_edition_disabled",
+                              "detail_http_reads", "detail_local_body_limits",
+                              "detail_upstream_http_413", "detail_http_5xx",
+                              "detail_other_http_failures", "detail_io_failures",
+                              "detail_other_transport_failures")
                       print("IDM_ARTIST_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
                       out.write(f"| {provider} | {i:02d} | {row['anchor_verified']} | "
                                 f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
