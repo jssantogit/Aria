@@ -1385,4 +1385,248 @@ class IdmCatalogLiveObservationTest {
         ))
         assertEquals(6, orders.size)
     }
+
+    /**
+     * #227 fixed live corpus: all 15 categories per source, with cumulative
+     * continuation on the three frozen capacity genres. This is observational;
+     * every source error receives a report, not a fabricated passing fixture.
+     */
+    @Test fun live_genre_parity_matrix() = runBlocking {
+        assumeTrue("Only the observational CI job may access remote services",
+            System.getenv("IDM_CATALOG_LIVE") == "1")
+        val today = LocalDate.now(ZoneOffset.UTC)
+        val date = today.toString()
+        val matrix = idmParityMainGenres + idmParitySubgenres
+        val caps = setOf(ProviderCapability.CATALOG_SEARCH,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val mbGate = gateFor(mb, caps)
+        val mbSource = MusicBrainzCatalogSearch(
+            MusicBrainzClient(admission = { mbGate }),
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        )
+        val appleGate = gateFor(apple, caps)
+        val appleRepo = AppleEditorialCatalogRepository(ItunesCatalogClient(
+            transport = KtorItunesCatalogTransport(
+                admission = RateLimitedProviderTransport { appleGate },
+            ),
+        ))
+        val appleSource = AppleExploreGenreDiscovery(
+            nativeSource = AppleNativeGenreSearchSource { term, storefront ->
+                appleRepo.searchAlbums(term, storefront, limit = 200,
+                    capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                    attribute = ItunesCatalogSearchAttribute.GENRE_INDEX)
+            },
+        )
+        val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
+            ?.trim()?.takeIf(String::isNotBlank)
+        val discogsGate = gateFor(discogs, caps)
+        val guard = RateLimitedProviderTransport { discogsGate }
+        val discogsSource = DiscogsNativeGenreEditorial(
+            enabled = token != null, tokenProvider = { token }, admission = guard,
+            editions = DiscogsNativeEditionClient(DiscogsClient(
+                enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                admission = guard, tokenProvider = { token },
+            )),
+        )
+        for (provider in listOf(mb, apple, discogs)) {
+            val name = when (provider) {
+                mb -> "musicbrainz"
+                apple -> "itunes"
+                else -> "discogs"
+            }
+            val prefix = when (provider) {
+                mb -> "catalog:RELEASE_GROUP:"
+                apple -> "itunes:br:album:"
+                else -> "discogs:release:"
+            }
+            for (tag in matrix) {
+                val landingTarget = if (tag in idmParityMainGenres) 6 else 4
+                val capacity = tag in idmParityCapacityGenres
+                var landingVisible = 0
+                var visible = 0
+                var gestures = 0
+                var failed = false
+                var mapped = true
+                var sourceExhausted = false
+                var indexCeiling = false
+                var sourceQueries = 0
+                var firstScrollVisible = 0
+                val start = System.nanoTime()
+                fun count(state: UiState<List<HomeShelf>>): Int {
+                    val shelves = (state as? UiState.Success)?.data.orEmpty()
+                    for (shelf in shelves) {
+                        val ids = shelf.items.mapNotNull { it.browseId }
+                        check(ids.distinct().size == ids.size)
+                        check(ids.none {
+                            (it.startsWith("catalog:RELEASE_GROUP:") ||
+                                it.startsWith("itunes:br:album:") ||
+                                it.startsWith("discogs:release:")) && !it.startsWith(prefix)
+                        })
+                    }
+                    return cards(shelves).count { it.browseId.orEmpty().startsWith(prefix) }
+                }
+                val complete = try {
+                    withTimeoutOrNull(if (capacity) 210_000L else 85_000L) {
+                        when (provider) {
+                            mb -> {
+                                sourceQueries++
+                                val historical = (mbSource.searchReleaseGroupsForTag(tag, 60)
+                                    as? MusicBrainzCatalogSearchResult.Success)?.page
+                                sourceQueries++
+                                val recent = (mbSource.searchRecentReleaseGroupsForTag(
+                                    tag, today.minusDays(180).toString(), date, 40,
+                                ) as? MusicBrainzCatalogSearchResult.Success)?.page
+                                if (historical == null && recent == null) failed = true
+                                val hits = (historical?.items.orEmpty() + recent?.items.orEmpty())
+                                    .distinctBy { it.musicBrainzId }
+                                var rows = canonicalPublicGenreRows(hits, date)
+                                if (!failed && rows.none { canonicalEditorialReleaseType(it) == "Album" }) {
+                                    sourceQueries++
+                                    val albums = (mbSource.searchAlbumReleaseGroupsForTag(tag, 24)
+                                        as? MusicBrainzCatalogSearchResult.Success)?.page
+                                    val enriched = canonicalPublicGenreRows(
+                                        hits + albums?.items.orEmpty(), date,
+                                    )
+                                    if (enriched.any { canonicalEditorialReleaseType(it) == "Album" })
+                                        rows = enriched
+                                }
+                                var paging = CanonicalGenrePageSnapshot(
+                                    tag = tag, nextOffset = historical?.nextOffset,
+                                    rows = historical?.items.orEmpty().let { initial ->
+                                        if (initial.isEmpty()) emptyList()
+                                        else canonicalPublicGenreRows(initial, date, maxItems = initial.size)
+                                    },
+                                )
+                                fun project() = projectCanonicalGenreState(
+                                    tag, emptyList(), "Playlists", emptyMap(),
+                                    UiState.Success(rows), listOf(mb), "Lançamentos",
+                                    todayIsoDate = date, musicBrainzPaging = paging,
+                                )
+                                landingVisible = count(project())
+                                visible = landingVisible
+                                while (capacity && visible < 30 && gestures < 12 && !failed) {
+                                    val offset = paging.nextOffset ?: break
+                                    sourceQueries++
+                                    val page = (mbSource.searchReleaseGroupsForTag(tag, 60, offset)
+                                        as? MusicBrainzCatalogSearchResult.Success)?.page
+                                    gestures++
+                                    val next = page?.let {
+                                        appendCanonicalGenrePage(paging, tag, offset, 60, it, date)
+                                    }
+                                    if (next == null) { failed = true; break }
+                                    paging = next
+                                    val before = visible
+                                    visible = count(project())
+                                    check(visible >= before)
+                                    if (gestures == 1) firstScrollVisible = visible - before
+                                }
+                                sourceExhausted = historical != null && paging.nextOffset == null
+                            }
+                            apple -> {
+                                mapped = AppleExploreGenrePolicy.supports(tag)
+                                if (mapped) {
+                                    sourceQueries++
+                                    val response = appleSource.discoverNative(tag, "br")
+                                    val result = response as? AppleEditorialLoad.Success
+                                    if (result == null) failed = true
+                                    val rows = result?.releases.orEmpty()
+                                    var revealed = 24
+                                    fun project() = projectCanonicalGenreState(
+                                        tag, emptyList(), "Playlists", mapOf(tag to UiState.Success(rows)),
+                                        UiState.Success(emptyList()), listOf(apple), "Lançamentos",
+                                        todayIsoDate = date, appleVisibleCount = revealed,
+                                    )
+                                    landingVisible = count(project())
+                                    visible = landingVisible
+                                    while (capacity && visible < 30 && gestures < 12 &&
+                                        !failed && revealed < rows.size
+                                    ) {
+                                        val before = visible
+                                        revealed = minOf(revealed + 24, rows.size)
+                                        gestures++
+                                        visible = count(project())
+                                        check(visible >= before)
+                                        if (gestures == 1) firstScrollVisible = visible - before
+                                    }
+                                    indexCeiling = result?.state == AppleEditorialReadState.POSSIBLY_TRUNCATED
+                                    sourceExhausted = !failed && !indexCeiling && revealed >= rows.size
+                                }
+                            }
+                            else -> {
+                                val predicates = discogsEditorialQueriesForTag(tag)
+                                mapped = predicates.isNotEmpty()
+                                if (token != null && mapped) {
+                                    val landing = scanDiscogsGenreLanding(predicates, discogsSource)
+                                    sourceQueries = landing?.queriesAttempted ?: 0
+                                    if (landing == null || landing.failure != null) failed = true
+                                    val shelves = discogsEditorialShelves(landing?.releases.orEmpty())
+                                    var paging = landing?.paging(tag) ?: DiscogsGenrePageSnapshot(tag = tag)
+                                    fun project() = projectCanonicalGenreState(
+                                        tag, emptyList(), "Playlists", emptyMap(),
+                                        UiState.Success(emptyList()), listOf(discogs), "Lançamentos",
+                                        todayIsoDate = date,
+                                        discogsByTag = mapOf(tag to UiState.Success(shelves)),
+                                        discogsPaging = paging,
+                                    )
+                                    landingVisible = count(project())
+                                    visible = landingVisible
+                                    while (capacity && visible < 30 && gestures < 12 &&
+                                        !failed && paging.hasMore && landingVisible > 0
+                                    ) {
+                                        val before = visible
+                                        val prior = paging
+                                        val next = scanDiscogsGenreGesture(paging, tag, predicates, discogsSource)
+                                        gestures++
+                                        if (next == null) { failed = true; break }
+                                        sourceQueries += next.chunksAttempted
+                                        paging = next.state
+                                        visible = count(project())
+                                        check(visible >= before && visible - before <= 8)
+                                        if (gestures == 1) firstScrollVisible = visible - before
+                                        if (paging.failed || next.transportException ||
+                                            (paging.cursor == prior.cursor &&
+                                                paging.queryIndex == prior.queryIndex && visible == before)
+                                        ) failed = true
+                                    }
+                                    indexCeiling = paging.stoppedByPageLimit
+                                    sourceExhausted = !paging.hasMore && !indexCeiling
+                                }
+                            }
+                        }
+                        true
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    failed = true
+                    false
+                }
+                val status = when {
+                    provider == discogs && token == null -> "token_not_configured"
+                    !mapped -> "no_source_mapping"
+                    complete == null -> "timeout_or_partial"
+                    failed -> "source_interruption"
+                    landingVisible >= landingTarget && (!capacity || visible >= 30) -> "target_reached"
+                    indexCeiling -> "source_ceiling_below_target"
+                    sourceExhausted -> "source_exhausted_below_target"
+                    else -> "sample_below_target"
+                }
+                report("genre_matrix_" + name + "_" + tag.replace(' ', '_').replace('-', '_'), Sample(
+                    status = status, eligible = visible, visible = visible,
+                    counts = mapOf(
+                        "landing_visible_releases" to landingVisible,
+                        "landing_target" to landingTarget,
+                        "verified_target" to if (capacity) 30 else landingTarget,
+                        "source_gestures" to gestures,
+                        "first_scroll_new_releases" to firstScrollVisible,
+                        // Source adapter calls, NOT necessarily HTTP GETs.
+                        "source_queries_attempted" to sourceQueries,
+                        "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
+                            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                    ),
+                ))
+            }
+        }
+    }
+
 }

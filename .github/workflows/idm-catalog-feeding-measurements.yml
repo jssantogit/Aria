@@ -236,7 +236,7 @@ jobs:
       group: idm-catalog-live-discogs
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       IDM_CATALOG_LIVE: '1'
       IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
@@ -278,7 +278,7 @@ jobs:
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
-            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest'
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_sources_and_collective_fallback_use_canonical_pipeline'
 
       - name: Summarize exact live results and capability blocks
         shell: bash
@@ -342,6 +342,46 @@ jobs:
               out.write("\nA null count means unavailable telemetry, not zero. ")
               out.write("Discogs without a CI token is **not measured**. ")
               out.write("This is one sampled observation, not exhaustive source coverage.\n")
+          PY
+
+      - name: Observe fixed live genre matrix (#227)
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_genre_parity_matrix'
+
+      - name: Summarize all 45 genre matrix cells
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          tags = ("pop", "rock", "hip_hop", "electronic", "jazz", "k_pop",
+                  "metal", "rnb", "folk", "hard_rock", "house", "techno", "trance",
+                  "smooth_jazz", "bluegrass")
+          capacity = {"rock", "electronic", "jazz"}
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #227 fixed genre matrix (live observations)\n\n")
+              out.write("| Provider | Tag | Landing | Cumulative | Gestures | Status |\n")
+              out.write("|---|---|---:|---:|---:|---|\n")
+              for provider in ("musicbrainz", "itunes", "discogs"):
+                  for tag in tags:
+                      name = f"genre_matrix_{provider}_{tag}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong report mode")
+                      expected_landing = 6 if tag in tags[:9] else 4
+                      expected_target = 30 if tag in capacity else expected_landing
+                      if row["landing_target"] != expected_landing or row["verified_target"] != expected_target:
+                          raise SystemExit("Frozen parity target mismatch")
+                      keys = ("status", "landing_visible_releases", "landing_target",
+                              "displayed_unique", "verified_target", "source_gestures",
+                              "first_scroll_new_releases", "source_queries_attempted", "elapsed_ms")
+                      aggregate = {key: row[key] for key in keys}
+                      print("IDM_GENRE_MATRIX", name, json.dumps(aggregate, sort_keys=True))
+                      out.write(f"| {provider} | {tag} | {row['landing_visible_releases']} | "
+                                f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
           PY
 
       - name: Archive aggregate live observations and test results
