@@ -2124,11 +2124,12 @@ class IdmCatalogLiveObservationTest {
         val mbSearch = MusicBrainzCatalogSearch(mbClient)
         val mbGraph = MusicBrainzCatalogGraph(mbClient)
         val appleGate = gateFor(apple, caps)
-        val appleRepo = AppleEditorialCatalogRepository(ItunesCatalogClient(
+        val appleClient = ItunesCatalogClient(
             transport = KtorItunesCatalogTransport(
                 admission = RateLimitedProviderTransport { appleGate },
             ),
-        ))
+        )
+        val appleRepo = AppleEditorialCatalogRepository(appleClient)
         val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
             ?.trim()?.takeIf(String::isNotBlank)
         val discogsGate = gateFor(discogs, caps)
@@ -2167,6 +2168,8 @@ class IdmCatalogLiveObservationTest {
                 var versions = 0
                 var versionCoverageUncertain = false
                 var candidatesRead = 0
+                var searchGestures = 0
+                var partialAppleCandidates = 0
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2240,29 +2243,53 @@ class IdmCatalogLiveObservationTest {
                                 }
                             }
                             apple -> {
-                                val search = appleRepo.searchAlbums(query, "br", 50)
-                                    as? AppleEditorialLoad.Success
-                                if (search == null) failed = true
-                                val candidates = search?.releases.orEmpty().filter {
+                                // Use the actual native search pager, not a separate raw
+                                // 50-result repository query. Frozen title/credit labels still
+                                // independently select the identity; no corpus substitutions.
+                                val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM,
+                                    "br", source = ItunesPublicSearchSource(appleClient))
+                                val candidateBudget = if (case.kind == "multi") 6 else 3
+                                var search = pager.start()
+                                fun matchingCandidates() = pager.snapshot().visible.filter {
                                     case.matchesTitle(it.title) && case.matchesArtist(it.artistName)
                                 }
+                                while (search is ApplePublicSearchPageLoad.Success &&
+                                    matchingCandidates().size < candidateBudget &&
+                                    search.snapshot.hasMore && searchGestures < 12
+                                ) {
+                                    searchGestures++
+                                    search = pager.loadMore()
+                                }
+                                if (search is ApplePublicSearchPageLoad.Failure) failed = true
+                                val candidates = matchingCandidates()
                                 var selected: ItunesEditorialRelease? = null
                                 var result: AppleEditorialLoad.Success? = null
-                                for (candidate in candidates.take(if (case.kind == "multi") 6 else 3)) {
+                                var selectedQuality = -1
+                                for (candidate in candidates.take(candidateBudget)) {
                                     candidatesRead++
-                                    val response = appleRepo.albumDetail(candidate.appleCollectionId, "br")
+                                    val response = appleRepo.albumDetail(candidate.id, "br")
                                         as? AppleEditorialLoad.Success
                                     if (response == null) { failed = true; continue }
                                     val record = response.releases.singleOrNull() ?: continue
-                                    assertEquals(candidate.appleScopedId, record.appleScopedId)
+                                    assertEquals(candidate.scopedId, record.appleScopedId)
                                     if (!case.matchesTitle(record.title) || !case.matchesArtist(record.artistName) ||
                                         (candidate.artistId != null && candidate.artistId != record.artistId)
                                     ) continue
                                     if (record.tracks.isEmpty()) continue
-                                    selected = record
-                                    result = response
-                                    if (case.kind != "multi" ||
-                                        record.tracks.mapNotNull { it.discNumber }.distinct().size >= 2) break
+                                    val completeTracks = response.state == AppleEditorialReadState.COMPLETE
+                                    val multi = record.tracks.mapNotNull { it.discNumber }.distinct().size >= 2
+                                    if (!completeTracks) partialAppleCandidates++
+                                    val meetsDiscGoal = case.kind != "multi" || multi
+                                    // Prefer a positively complete requested edition. Keep a
+                                    // partial observation only when no better candidate exists.
+                                    val quality = (if (meetsDiscGoal) 2 else 0) +
+                                        (if (completeTracks) 1 else 0)
+                                    if (quality > selectedQuality) {
+                                        selected = record
+                                        result = response
+                                        selectedQuality = quality
+                                    }
+                                    if (completeTracks && meetsDiscGoal) break
                                 }
                                 if (selected != null && result != null) {
                                     val record = selected
@@ -2422,6 +2449,8 @@ class IdmCatalogLiveObservationTest {
                         "version_cards" to versions,
                         "version_coverage_uncertain" to if (versionCoverageUncertain) 1 else 0,
                         "detail_candidates_read" to candidatesRead,
+                        "native_search_gestures" to searchGestures,
+                        "partial_apple_candidates" to partialAppleCandidates,
                         "source_interruption" to if (failed) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
