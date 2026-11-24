@@ -557,35 +557,41 @@ internal class DiscogsNativeGenreEditorial(
         // once maxReleases is met; every hydration remains rate-limited and
         // only the existing two index pages may be requested.
         for (pageNumber in 1..2) {
-            val response = try {
-                admission.execute(
-                    capability = ProviderCapability.CATALOG_SEARCH,
-                    provider = BuiltInProviderKeys.DISCOGS,
-                    scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                    networkCall = {
-                        transport.search(query, token, userAgent, pageNumber)
-                    },
-                )
-            } catch (cancelled: CancellationException) { throw cancelled }
-              catch (_: ProviderRequestDeniedException) {
-                  return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                      else DiscogsEditorialResult.Disabled
-              } catch (_: Exception) {
-                  return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                      else DiscogsEditorialResult.Unavailable
-              }
-            val index = when (response.status) {
-                200 -> DiscogsEditorialMasterParsing.page(response.body, pageNumber)
-                    ?.also { recordIndex(query, pageNumber, it, tokenDigest) }
-                    ?: return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Unavailable
-                401, 403 -> return if (verified.isNotEmpty())
-                    DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unauthorized
-                429 -> return if (verified.isNotEmpty())
-                    DiscogsEditorialResult.Verified(verified)
-                    else DiscogsEditorialResult.Throttled(response.retryAfterSeconds)
-                else -> return if (verified.isNotEmpty())
-                    DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unavailable
+            // Initial Home/genre discovery may reuse a recent, source-verified
+            // index page from another canonical view. Permissions and the
+            // credential are validated above on every entry, while partial
+            // granular cursors still always re-read for signature drift.
+            val index = cachedIndex(query, pageNumber, tokenDigest) ?: run {
+                val response = try {
+                    admission.execute(
+                        capability = ProviderCapability.CATALOG_SEARCH,
+                        provider = BuiltInProviderKeys.DISCOGS,
+                        scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                        networkCall = {
+                            transport.search(query, token, userAgent, pageNumber)
+                        },
+                    )
+                } catch (cancelled: CancellationException) { throw cancelled }
+                  catch (_: ProviderRequestDeniedException) {
+                      return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                          else DiscogsEditorialResult.Disabled
+                  } catch (_: Exception) {
+                      return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                          else DiscogsEditorialResult.Unavailable
+                  }
+                when (response.status) {
+                    200 -> DiscogsEditorialMasterParsing.page(response.body, pageNumber)
+                        ?.also { recordIndex(query, pageNumber, it, tokenDigest) }
+                        ?: return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
+                            else DiscogsEditorialResult.Unavailable
+                    401, 403 -> return if (verified.isNotEmpty())
+                        DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unauthorized
+                    429 -> return if (verified.isNotEmpty())
+                        DiscogsEditorialResult.Verified(verified)
+                        else DiscogsEditorialResult.Throttled(response.retryAfterSeconds)
+                    else -> return if (verified.isNotEmpty())
+                        DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unavailable
+                }
             }
             for (masterId in index.masterIds) {
                 if (verified.size >= maxReleases) break
