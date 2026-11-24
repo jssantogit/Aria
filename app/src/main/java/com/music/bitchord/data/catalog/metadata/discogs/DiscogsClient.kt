@@ -244,6 +244,7 @@ internal class DiscogsClient(
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val onReleaseParseRejected: (DiscogsReleaseParseRejection) -> Unit = {},
 ) {
     /**
      * Positive source-owned parsed Master/Release evidence, shared between
@@ -526,8 +527,10 @@ internal class DiscogsClient(
         return when (response.status) {
             200 -> {
                 val link = DiscogsLink(DiscogsKind.RELEASE, id)
-                val record = DiscogsRecordParser.parse(link, response.body)
-                    ?: return DiscogsLookupResult.Malformed
+                val record = DiscogsRecordParser.parse(link, response.body,
+                    nativeCatalog = memoizeCatalogDetails,
+                    onRejected = onReleaseParseRejected,
+                ) ?: return DiscogsLookupResult.Malformed
                 DiscogsLookupResult.Found(record).also {
                     rememberDetail(DiscogsKind.RELEASE, id, token, it)
                 }
