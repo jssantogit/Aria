@@ -331,6 +331,37 @@ internal class DiscogsClient(
         if (token == null) transport.get(path, userAgent)
         else transport.getAuthenticated(path, userAgent, token)
 
+    /**
+     * Native catalog detail reads are idempotent. Recover once from an
+     * explicit transient HTTP/IO failure, using the SAME global limiter and
+     * a fresh admission check for each dispatch. No retries on 413, malformed
+     * payloads, auth failures, 429, or explicit Retry-After. The canonical
+     * edition reconciliation path keeps its original single-read contract.
+     */
+    private suspend fun readDetail(path: String, token: String?): DiscogsHttpResponse {
+        suspend fun dispatch(): DiscogsHttpResponse = admission.execute(
+            capability = capability,
+            provider = BuiltInProviderKeys.DISCOGS,
+            scheduleLimited = { block ->
+                limiter.runHttpLimited(authenticated = token != null) { block() }
+            },
+            networkCall = { sourceGet(path, token) },
+        )
+        fun canRetry(): Boolean = memoizeCatalogDetails &&
+            currentToken() == token && allowedDetailRead()
+        val response = try {
+            dispatch()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: java.io.IOException) {
+            if (!canRetry()) throw failure
+            return dispatch()
+        }
+        return if (response.status in setOf(408, 500, 502, 503, 504) &&
+            response.retryAfterSeconds == null && canRetry()
+        ) dispatch() else response
+    }
+
     /** Discogs Master is advisory group context only; never a verified Release. */
     suspend fun fetchMaster(id: Long): DiscogsLookupResult =
         coordinatedDetailRead(DiscogsKind.MASTER, id) { fetchMasterOnce(id) }
@@ -341,16 +372,8 @@ internal class DiscogsClient(
         if (!allowedDetailRead()) return DiscogsLookupResult.Disabled
         val token = currentToken()
         cachedDetail(DiscogsKind.MASTER, id, token)?.let { return it }
-        val authenticated = token != null
         val response = try {
-            admission.execute(
-                capability = capability,
-                provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block ->
-                    limiter.runHttpLimited(authenticated = authenticated) { block() }
-                },
-                networkCall = { sourceGet("masters/$id", token) },
-            )
+            readDetail("masters/$id", token)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: ProviderRequestDeniedException) {
@@ -482,16 +505,8 @@ internal class DiscogsClient(
         if (!allowedDetailRead()) return DiscogsLookupResult.Disabled
         val token = currentToken()
         cachedDetail(DiscogsKind.RELEASE, id, token)?.let { return it }
-        val authenticated = token != null
         val response = try {
-            admission.execute(
-                capability = capability,
-                provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block ->
-                    limiter.runHttpLimited(authenticated = authenticated) { block() }
-                },
-                networkCall = { sourceGet("releases/$id", token) },
-            )
+            readDetail("releases/$id", token)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: ProviderRequestDeniedException) {
