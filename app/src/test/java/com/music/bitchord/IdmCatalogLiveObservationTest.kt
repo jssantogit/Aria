@@ -414,6 +414,15 @@ class IdmCatalogLiveObservationTest {
         var discogsMasterFound = 0
         var discogsReleaseReads = 0
         var discogsReleaseFound = 0
+        // Source-only aggregate audit. Never export raw index rows, titles,
+        // IDs, artist names or authentication material in CI artifacts.
+        val discogsIndexHints = mutableMapOf<Long, DiscogsEditorialMasterIndexHint>()
+        var indexHintsWithMainRelease = 0
+        var indexHintsWithGenresAndStyles = 0
+        var checkedMasterHints = 0
+        var matchingMainReleaseHints = 0
+        var matchingGenreHints = 0
+        var matchingStyleHints = 0
         var discogsGranularScanner: DiscogsNativeGenreEditorial? = null
         var firstInitialVerifiedNs: Long? = null
         val initialStartedNs = System.nanoTime()
@@ -446,6 +455,12 @@ class IdmCatalogLiveObservationTest {
                         if (response.status == 200) {
                             val index = DiscogsEditorialMasterParsing.page(response.body, page)
                             discogsIndexCandidates += index?.masterIds?.size ?: 0
+                            index?.hints?.forEach { (masterId, hint) ->
+                                discogsIndexHints[masterId] = hint
+                                if (hint.mainReleaseId != null) indexHintsWithMainRelease++
+                                if (hint.genres != null && hint.styles != null)
+                                    indexHintsWithGenresAndStyles++
+                            }
                         }
                         return response
                     }
@@ -454,7 +469,25 @@ class IdmCatalogLiveObservationTest {
                     override suspend fun master(id: Long): DiscogsLookupResult {
                         discogsMasterReads++
                         return editions.master(id).also {
-                            if (it is DiscogsLookupResult.FoundMaster) discogsMasterFound++
+                            if (it is DiscogsLookupResult.FoundMaster) {
+                                discogsMasterFound++
+                                val hint = discogsIndexHints[id]
+                                if (hint != null) {
+                                    checkedMasterHints++
+                                    val record = it.record
+                                    if (hint.mainReleaseId != null &&
+                                        hint.mainReleaseId == record.mainReleaseId
+                                    ) matchingMainReleaseHints++
+                                    if (hint.genres != null &&
+                                        hint.genres.map(String::lowercase).toSet() ==
+                                            record.genres.map(String::lowercase).toSet()
+                                    ) matchingGenreHints++
+                                    if (hint.styles != null &&
+                                        hint.styles.map(String::lowercase).toSet() ==
+                                            record.styles.map(String::lowercase).toSet()
+                                    ) matchingStyleHints++
+                                }
+                            }
                         }
                     }
 
@@ -518,6 +551,12 @@ class IdmCatalogLiveObservationTest {
                 "discogs_master_found" to discogsMasterFound,
                 "discogs_release_reads" to discogsReleaseReads,
                 "discogs_release_found" to discogsReleaseFound,
+                "index_hints_with_main_release" to indexHintsWithMainRelease,
+                "index_hints_with_genre_and_style" to indexHintsWithGenresAndStyles,
+                "master_hints_compared" to checkedMasterHints,
+                "index_master_main_release_matches" to matchingMainReleaseHints,
+                "index_master_genre_matches" to matchingGenreHints,
+                "index_master_style_matches" to matchingStyleHints,
                 "discogs_hydration_rejections" to
                     (discogsMasterReads - discogsMasterFound) +
                     (discogsReleaseReads - discogsReleaseFound),
@@ -606,6 +645,12 @@ class IdmCatalogLiveObservationTest {
         val beforeHomeMasterFound = discogsMasterFound
         val beforeHomeReleases = discogsReleaseReads
         val beforeHomeReleaseFound = discogsReleaseFound
+        val beforeHomeHintCount = indexHintsWithMainRelease
+        val beforeHomeHintTags = indexHintsWithGenresAndStyles
+        val beforeHomeCompared = checkedMasterHints
+        val beforeHomeMainMatch = matchingMainReleaseHints
+        val beforeHomeGenreMatch = matchingGenreHints
+        val beforeHomeStyleMatch = matchingStyleHints
         var homeChunks = 0
         var homeConsumed = 0
         var homeTransportException = false
@@ -703,6 +748,14 @@ class IdmCatalogLiveObservationTest {
                 "source_master_found" to discogsMasterFound - beforeHomeMasterFound,
                 "source_release_reads" to discogsReleaseReads - beforeHomeReleases,
                 "source_release_found" to discogsReleaseFound - beforeHomeReleaseFound,
+                "index_hints_with_main_release" to indexHintsWithMainRelease - beforeHomeHintCount,
+                "index_hints_with_genre_and_style" to
+                    indexHintsWithGenresAndStyles - beforeHomeHintTags,
+                "master_hints_compared" to checkedMasterHints - beforeHomeCompared,
+                "index_master_main_release_matches" to
+                    matchingMainReleaseHints - beforeHomeMainMatch,
+                "index_master_genre_matches" to matchingGenreHints - beforeHomeGenreMatch,
+                "index_master_style_matches" to matchingStyleHints - beforeHomeStyleMatch,
                 "elapsed_ms" to homeElapsedMs,
                 "first_verified_ms" to firstHomeVerifiedMs,
             ),
