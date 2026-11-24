@@ -79,6 +79,19 @@ class AppleEditorialClassificationTest {
         assertEquals(originalTitle, apple.title)
     }
 
+    @Test fun countDerivedAppleCategoryDoesNotOverruleConflictingVerifiedEdition() {
+        val release = apple(label = ItunesEditorialReleaseFormat.ALBUM)
+            .copy(formatDerivedFromAudioCount = true)
+        val result = AppleEditorialClassification.resolve(
+            release, listOf(mb(ItunesEditorialReleaseFormat.EP)),
+        )
+        assertEquals(AppleEditorialFormatStatus.CONFLICT, result.status)
+        assertEquals(ItunesEditorialReleaseFormat.UNCLASSIFIED, result.format)
+        val isolated = AppleEditorialClassification.resolve(release, emptyList())
+        assertEquals(ItunesEditorialReleaseFormat.ALBUM, isolated.format)
+        assertEquals(AppleEditorialFormatStatus.DECIDED, isolated.status)
+    }
+
     @Test fun independentlyVerifiedMusicBrainzAndDiscogsCanFillAppleUnknownTogether() {
         val resolution = AppleEditorialClassification.resolve(
             apple(), listOf(
