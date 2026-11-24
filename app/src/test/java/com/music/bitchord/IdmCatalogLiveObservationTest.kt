@@ -1739,6 +1739,7 @@ class IdmCatalogLiveObservationTest {
         var detailHttpOther = 0
         var detailIoFailures = 0
         var detailOtherFailures = 0
+        val detailParseRejections = mutableMapOf<DiscogsReleaseParseRejection, Int>()
         val detailTransport = object : DiscogsTransport {
             private val upstream = KtorDiscogsTransport()
             override val supportsTokenAuthorization: Boolean get() = true
@@ -1769,6 +1770,9 @@ class IdmCatalogLiveObservationTest {
         val discogsDetails = DiscogsClient(
             enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
             admission = discogsGuard, tokenProvider = { token }, transport = detailTransport,
+            onReleaseParseRejected = { reason ->
+                detailParseRejections[reason] = (detailParseRejections[reason] ?: 0) + 1
+            },
         )
         // Record only aggregate typed edition outcomes from the actual artist
         // loader. These are method calls (which may hit its positive cache),
@@ -1829,6 +1833,7 @@ class IdmCatalogLiveObservationTest {
                 val beforeHttpOther = detailHttpOther
                 val beforeIoFailures = detailIoFailures
                 val beforeOtherFailures = detailOtherFailures
+                val beforeParseRejections = detailParseRejections.toMap()
                 val started = System.nanoTime()
                 var matched = false
                 var profile = false
@@ -2122,7 +2127,11 @@ class IdmCatalogLiveObservationTest {
                         "incomplete_coverage" to if (incomplete) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - started) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
-                    ),
+                    ) + DiscogsReleaseParseRejection.values().associate { reason ->
+                        "detail_parse_" + reason.name.lowercase(java.util.Locale.ROOT) to
+                            ((detailParseRejections[reason] ?: 0) -
+                                (beforeParseRejections[reason] ?: 0))
+                    },
                 ))
             }
         }
