@@ -32,6 +32,8 @@ internal data class DiscogsArtistIndexEntry(
     val kind: DiscogsKind,
     val id: Long,
     val title: String = "",
+    /** First-party index hint; the exact Release must still prove its Master and artist IDs. */
+    val mainReleaseId: Long? = null,
 )
 
 internal data class DiscogsArtistIndexPage(
@@ -112,13 +114,21 @@ internal object DiscogsPublicArtistParsing {
                 ?.takeIf { it in 1..999_999_999_999L } ?: continue
             val title = (row["title"] as? JsonPrimitive)?.contentOrNull
                 ?.takeIf { it.length in 1..240 }.orEmpty()
+            val mainReleaseId = if (kind == DiscogsKind.MASTER)
+                (row["main_release"] as? JsonPrimitive)?.longOrNull
+                    ?.takeIf { it in 1..999_999_999_999L }
+                else null
             val identity = kind to id
-            // A repeated index row must not erase a usable title. A later
-            // named row may enrich an earlier title-less row, but neither
-            // creates a second candidate nor changes the source identity.
+            // Preserve the first usable title. Conflicting duplicate hints
+            // must not nominate an edition; the caller will read the Master.
             val existing = results[identity]
-            if (existing == null || (existing.title.isBlank() && title.isNotBlank())) {
-                results[identity] = DiscogsArtistIndexEntry(kind, id, title)
+            if (existing == null) {
+                results[identity] = DiscogsArtistIndexEntry(kind, id, title, mainReleaseId)
+            } else {
+                results[identity] = existing.copy(
+                    title = existing.title.ifBlank { title },
+                    mainReleaseId = existing.mainReleaseId.takeIf { it == mainReleaseId },
+                )
             }
         }
         return DiscogsArtistIndexPage(results.values.take(12), pages)
