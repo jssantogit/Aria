@@ -25,6 +25,52 @@ class DiscogsNativeArtistCatalogTest {
         artistIds = listOf(artistId),
     )
 
+    @Test fun artistIndexMainReleaseHintSavesMasterReadOnlyAfterExactProof() = runBlocking {
+        val reads = mutableListOf<String>()
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true, admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String) =
+                    DiscogsHttpResponse(200, """
+                        {"pagination":{"page":1,"pages":1},"releases":[
+                        {"id":90,"role":"Main","type":"master","main_release":50},
+                        {"id":91,"role":"Main","type":"master","main_release":51},
+                        {"id":92,"role":"Main","type":"master","main_release":52},
+                        {"id":92,"role":"Main","type":"master","main_release":53}]}
+                    """)
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    reads += "master:$id"
+                    return DiscogsLookupResult.FoundMaster(DiscogsMasterRecord(
+                        DiscogsLink(DiscogsKind.MASTER, id),
+                        "Album", listOf("Artist"), 2024, if (id == 91L) 54 else 55,
+                        emptyList(), emptyList(),
+                    ))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    reads += "release:$id"
+                    val master = when (id) {
+                        50L -> 90L
+                        54L -> 91L
+                        55L -> 92L
+                        else -> 999L
+                    }
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsNativeArtistCatalogTest.release(id, masterId = master),
+                    )
+                }
+            },
+        )
+        val result = source.load(17) as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(50L, 54L, 55L), result.releases.map { it.releaseId })
+        assertEquals(listOf("release:50", "release:51", "master:91", "release:54",
+            "master:92", "release:55"), reads)
+        assertFalse(result.incomplete)
+        assertFalse(result.hasMore)
+    }
+
     @Test fun artistIndexUsesTokenOnlyWithExplicitAuthorizedTransport() = runBlocking {
         var token: String? = "A".repeat(32)
         val authenticatedCalls = mutableListOf<String>()
