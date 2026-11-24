@@ -267,6 +267,110 @@ class DiscogsClientContractTest {
         assertTrue(error is IllegalArgumentException)
     }
 
+
+    @Test fun exactVerifiedDetailEvidenceIsReusedAcrossViewsButNotAcrossTokensOrTtl() =
+        runBlocking {
+        var now = 1_000L
+        var token = "A".repeat(32)
+        val calls = mutableListOf<String>()
+        val transport = object : DiscogsTransport {
+            override val supportsTokenAuthorization: Boolean get() = true
+            override suspend fun get(path: String, userAgent: String) =
+                DiscogsHttpResponse(404, "")
+            override suspend fun getAuthenticated(
+                path: String, userAgent: String, token: String,
+            ): DiscogsHttpResponse {
+                calls += path
+                return if (path == "masters/1") DiscogsHttpResponse(200,
+                    """{"id":1,"title":"Master","artists":[{"id":9,"name":"Artist"}],
+                        "genres":["Rock"],"styles":["Indie Rock"],
+                        "main_release":1001}""")
+                else DiscogsHttpResponse(200,
+                    """{"id":1001,"title":"Release",
+                        "artists":[{"id":9,"name":"Artist"}],
+                        "master_id":1,"formats":[{"name":"CD",
+                        "descriptions":["Album"]}]}""")
+            }
+        }
+        val source = DiscogsClient(
+            transport = transport, enabled = true,
+            tokenProvider = { token }, clockMs = { now },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+        )
+        assertTrue(source.fetchMaster(1) is DiscogsLookupResult.FoundMaster)
+        assertTrue(source.fetchRelease(1001) is DiscogsLookupResult.Found)
+        assertTrue(source.fetchMaster(1) is DiscogsLookupResult.FoundMaster)
+        assertTrue(source.fetchRelease(1001) is DiscogsLookupResult.Found)
+        assertEquals(listOf("masters/1", "releases/1001"), calls)
+        token = "B".repeat(32)
+        assertTrue(source.fetchMaster(1) is DiscogsLookupResult.FoundMaster)
+        assertTrue(source.fetchRelease(1001) is DiscogsLookupResult.Found)
+        assertEquals(4, calls.size)
+        now = 121_001L
+        assertTrue(source.fetchRelease(1001) is DiscogsLookupResult.Found)
+        assertTrue(source.fetchMaster(1) is DiscogsLookupResult.FoundMaster)
+        assertEquals(6, calls.size)
+        now = 100L
+        assertTrue(source.fetchRelease(1001) is DiscogsLookupResult.Found)
+        assertEquals(7, calls.size)
+    }
+
+    @Test fun failedLookupsNeverEnterThePositiveEditionCache() = runBlocking {
+        var calls = 0
+        val client = DiscogsClient(
+            enabled = true, limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(
+                    path: String, userAgent: String,
+                ): DiscogsHttpResponse {
+                    calls++
+                    return if (calls == 1) DiscogsHttpResponse(404, "")
+                    else DiscogsHttpResponse(200,
+                        """{"id":51,"title":"Album","artists":[{"name":"Artist"}]}""")
+                }
+            },
+        )
+        assertEquals(DiscogsLookupResult.Missing, client.fetchRelease(51))
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertEquals(2, calls)
+    }
+
+    @Test fun capabilityRevocationInvalidatesPreviouslyVerifiedEditionCache() = runBlocking {
+        val key = BuiltInProviderKeys.DISCOGS
+        val cap = ProviderCapability.EDITION_METADATA
+        fun policy(on: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(com.music.bitchord.data.providers.ProviderDescriptor(
+                key, setOf(cap),
+                com.music.bitchord.data.providers.ProviderReadiness.READY,
+            )),
+            choices = mapOf(cap to listOf(ProviderChoice(key, on, 0))),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        var calls = 0
+        val client = DiscogsClient(
+            enabled = true,
+            admission = RateLimitedProviderTransport { gate },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+                    calls++
+                    return DiscogsHttpResponse(200,
+                        """{"id":51,"title":"Album","artists":[{"name":"Artist"}]}""")
+                }
+            },
+        )
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertEquals(1, calls)
+        gate.replace(policy(false))
+        assertEquals(DiscogsLookupResult.Disabled, client.fetchRelease(51))
+        assertEquals(1, calls)
+        gate.replace(policy(true))
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertEquals(2, calls)
+    }
+
     @Test fun sourceOnlyCacheFailsClosedOnExpiredEvidenceAndClockRollback() {
         val link = DiscogsLink(DiscogsKind.RELEASE, 42)
         val record = DiscogsRecord(link, "Album", listOf("Artist"), "KR", 2024,
