@@ -169,6 +169,12 @@ internal data class DiscogsMasterRecord(
     fun canSupplyArtwork(): Boolean = false
 }
 
+/** Fixed diagnostics only: no IDs, field values, payloads or exception messages. */
+internal enum class DiscogsReleaseParseRejection {
+    BODY_OR_STRUCTURE, ROOT, IDENTITY, TITLE, ARTISTS, LABELS, IDENTIFIERS,
+    FORMATS, TRACKLIST, TRACKLIST_LIMIT, FORMAT_DESCRIPTIONS, TRACK_TITLE, JSON,
+}
+
 internal object DiscogsRecordParser {
     private val json = Json { ignoreUnknownKeys = true; isLenient = false }
     // Reject deeply nested unknown JSON fields before the recursive decoder
@@ -219,17 +225,42 @@ internal object DiscogsRecordParser {
         }
     }
 
-    fun parse(expected: DiscogsLink, raw: String): DiscogsRecord? {
-        if (expected.kind != DiscogsKind.RELEASE || !boundedDetail(raw, DISCOGS_RELEASE_BODY_BYTES)) return null
+    fun parse(
+        expected: DiscogsLink, raw: String,
+        nativeCatalog: Boolean = false,
+        onRejected: (DiscogsReleaseParseRejection) -> Unit = {},
+    ): DiscogsRecord? {
+        fun reject(reason: DiscogsReleaseParseRejection): DiscogsRecord? {
+            onRejected(reason)
+            return null
+        }
+        if (expected.kind != DiscogsKind.RELEASE)
+            return reject(DiscogsReleaseParseRejection.IDENTITY)
+        if (!boundedDetail(raw, DISCOGS_RELEASE_BODY_BYTES))
+            return reject(DiscogsReleaseParseRejection.BODY_OR_STRUCTURE)
         return try {
-            val obj = json.parseToJsonElement(raw) as? JsonObject ?: return null
-            if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id) return null
-            val title = obj.clean("title", 240) ?: return null
-            val artists = obj.objects("artists", 32) ?: return null
-            val labels = obj.objects("labels", 64) ?: return null
-            val identifiers = obj.objects("identifiers", 128) ?: return null
-            val formats = obj.objects("formats", 32) ?: return null
-            val tracks = obj.objects("tracklist", 256) ?: return null
+            val obj = json.parseToJsonElement(raw) as? JsonObject
+                ?: return reject(DiscogsReleaseParseRejection.ROOT)
+            if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id)
+                return reject(DiscogsReleaseParseRejection.IDENTITY)
+            val title = obj.clean("title", 240)
+                ?: return reject(DiscogsReleaseParseRejection.TITLE)
+            val artists = obj.objects("artists", 32)
+                ?: return reject(DiscogsReleaseParseRejection.ARTISTS)
+            val labels = obj.objects("labels", 64)
+                ?: return reject(DiscogsReleaseParseRejection.LABELS)
+            val identifiers = obj.objects("identifiers", 128)
+                ?: return reject(DiscogsReleaseParseRejection.IDENTIFIERS)
+            val formats = obj.objects("formats", 32)
+                ?: return reject(DiscogsReleaseParseRejection.FORMATS)
+            // Native presentation already has a total traversal budget of
+            // 1024 rows. Permit large flat box sets within that same ceiling;
+            // the canonical edition matching path retains its 256-row cap.
+            val trackLimit = if (nativeCatalog) 1024 else 256
+            if (((obj["tracklist"] as? JsonArray)?.size ?: 0) > trackLimit)
+                return reject(DiscogsReleaseParseRejection.TRACKLIST_LIMIT)
+            val tracks = obj.objects("tracklist", trackLimit)
+                ?: return reject(DiscogsReleaseParseRejection.TRACKLIST)
             val names = artists.mapNotNull { it.clean("name", 180) }
             // Provider names like "Ive (16)" are not identity evidence.
             val ids = artists.map { (it["id"] as? JsonPrimitive)?.longOrNull }
@@ -246,7 +277,8 @@ internal object DiscogsRecordParser {
             }.mapNotNull { it.clean("value", 80) }
             val formatDescriptions = formats.flatMap { format ->
                 val name = format.clean("name", 80)
-                val descriptions = format.stringArray("descriptions", 24) ?: return null
+                val descriptions = format.stringArray("descriptions", 24)
+                    ?: return reject(DiscogsReleaseParseRejection.FORMAT_DESCRIPTIONS)
                 listOfNotNull(name) + descriptions
             }
             // Discogs tracklists may contain disc headings and index markers,
@@ -256,7 +288,8 @@ internal object DiscogsRecordParser {
                 track.clean("type_", 32)?.lowercase(Locale.ROOT) in setOf(null, "track")
             }.map { track ->
                 (track.clean("position", 40) ?: "") to
-                    (track.clean("title", 240) ?: return null)
+                    (track.clean("title", 240)
+                        ?: return reject(DiscogsReleaseParseRejection.TRACK_TITLE))
             }
             val nativeTracks = parseNativeTracklist(tracks)
             DiscogsRecord(
@@ -280,7 +313,7 @@ internal object DiscogsRecordParser {
                     ?.takeIf { it in 1..999_999_999_999L },
             )
         } catch (_: Exception) {
-            null
+            reject(DiscogsReleaseParseRejection.JSON)
         }
     }
 
