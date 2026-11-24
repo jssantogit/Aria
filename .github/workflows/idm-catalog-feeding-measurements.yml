@@ -261,7 +261,7 @@ jobs:
       group: idm-catalog-live-discogs
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       IDM_CATALOG_LIVE: '1'
       IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
@@ -439,6 +439,41 @@ jobs:
                       print("IDM_ARTIST_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
                       out.write(f"| {provider} | {i:02d} | {row['anchor_verified']} | "
                                 f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
+          PY
+
+      - name: Observe fixed live album matrix (#229)
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_album_parity_matrix'
+
+      - name: Summarize all 45 album matrix cells
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          keys = ("status", "identity_verified", "detail_projected",
+                  "editorial_eligible", "displayed_unique", "tracklist_partial",
+                  "type_verified", "source_discs_observed", "source_track_positions",
+                  "source_track_durations", "artist_route_verified", "related_release_cards",
+                  "version_cards", "version_coverage_uncertain", "detail_candidates_read",
+                  "source_interruption", "elapsed_ms")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #229 fixed album matrix (decoded endpoint and canonical projection)\n\n")
+              out.write("| Provider | Case | Detail | Decoded tracks | Visible tracks | Discs | Type | Status |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
+              for provider in ("musicbrainz", "itunes", "discogs"):
+                  for i in range(1, 16):
+                      name = f"album_matrix_{provider}_{i:02d}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong album matrix report mode")
+                      print("IDM_ALBUM_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      out.write(f"| {provider} | {i:02d} | {row['detail_projected']} | "
+                                f"{row['editorial_eligible']} | {row['displayed_unique']} | "
+                                f"{row['source_discs_observed']} | {row['type_verified']} | {row['status']} |\n")
           PY
 
       - name: Archive aggregate live observations and test results

@@ -1992,4 +1992,388 @@ class IdmCatalogLiveObservationTest {
         }
     }
 
+    private data class AlbumParityCase(
+        val artist: String, val title: String, val kind: String,
+        val artistAliases: Set<String> = emptySet(),
+        val titleAliases: Set<String> = emptySet(),
+    ) {
+        fun matchesArtist(value: String?): Boolean =
+            value != null && (artistAliases + artist).any {
+                artistParityKey(it) == artistParityKey(value)
+            }
+        fun matchesTitle(value: String?): Boolean =
+            value != null && (titleAliases + title).any {
+                artistParityKey(it) == artistParityKey(value)
+            }
+    }
+
+    companion object {
+        private fun artistParityKey(value: String): String =
+            java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFKC)
+                .lowercase(java.util.Locale.ROOT).replace(Regex("\\s+"), " ")
+    }
+
+    // A release can have different editions across stores. These cases
+    // identify works, not a fabricated equivalence of physical pressings.
+    // In the last five cases prefer a positively evidenced multidisc edition.
+    private val albumParityCases = listOf(
+        AlbumParityCase("David Bowie", "Hunky Dory", "album",
+            titleAliases = setOf("Hunky Dory (2015 Remaster)", "Hunky Dory (Remastered)")),
+        AlbumParityCase("Iron Maiden", "Powerslave", "album",
+            titleAliases = setOf("Powerslave (2015 Remaster)", "Powerslave (Remastered)")),
+        AlbumParityCase("Depeche Mode", "Violator", "album",
+            titleAliases = setOf("Violator (Deluxe)", "Violator (2006 Remaster)")),
+        AlbumParityCase("Portishead", "Dummy", "album"),
+        AlbumParityCase("Massive Attack", "Mezzanine", "album",
+            titleAliases = setOf("Mezzanine (Deluxe Edition)")),
+        AlbumParityCase("New Order", "Blue Monday", "single_ep",
+            titleAliases = setOf("Blue Monday - Single", "Blue Monday - EP")),
+        AlbumParityCase("Depeche Mode", "Personal Jesus", "single_ep",
+            titleAliases = setOf("Personal Jesus - Single", "Personal Jesus - EP")),
+        AlbumParityCase("New Order", "The Perfect Kiss", "single_ep",
+            titleAliases = setOf("The Perfect Kiss - Single", "The Perfect Kiss - EP")),
+        AlbumParityCase("Aphex Twin", "Come to Daddy", "single_ep",
+            titleAliases = setOf("Come to Daddy - EP", "Come To Daddy (EP)")),
+        AlbumParityCase("Joy Division", "Love Will Tear Us Apart", "single_ep",
+            titleAliases = setOf("Love Will Tear Us Apart - Single", "Love Will Tear Us Apart - EP")),
+        AlbumParityCase("Pink Floyd", "The Wall", "multi",
+            titleAliases = setOf("The Wall (Remastered)")),
+        AlbumParityCase("The Beatles", "The Beatles", "multi",
+            artistAliases = setOf("Beatles, The"),
+            titleAliases = setOf("The Beatles (White Album)", "The Beatles (Remastered)",
+                "The Beatles (White Album) [Super Deluxe]")),
+        AlbumParityCase("Led Zeppelin", "Physical Graffiti", "multi",
+            titleAliases = setOf("Physical Graffiti (Remastered)", "Physical Graffiti (Deluxe Edition)")),
+        AlbumParityCase("The Smashing Pumpkins", "Mellon Collie and the Infinite Sadness", "multi",
+            artistAliases = setOf("Smashing Pumpkins"),
+            titleAliases = setOf("Mellon Collie and the Infinite Sadness (Remastered)",
+                "Mellon Collie and the Infinite Sadness (Deluxe Edition)")),
+        AlbumParityCase("Nine Inch Nails", "The Fragile", "multi",
+            titleAliases = setOf("The Fragile (Remastered)")),
+    )
+
+    /**
+     * #229 fixed 45 cells. Select a source-owned candidate by labelled
+     * artist/title, then open its exact Release/collection route.
+     * The detailed comparison uses the same production projections as the
+     * app. It neither equates IDs across providers nor claims UI back-stack
+     * validation. Decoded endpoint counts are not raw network row counts.
+     */
+    @Test fun live_album_parity_matrix() = runBlocking {
+        assumeTrue("Only the observational CI job may access remote services",
+            System.getenv("IDM_CATALOG_LIVE") == "1")
+        val caps = setOf(ProviderCapability.CATALOG_SEARCH,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val mbGate = gateFor(mb, caps)
+        val mbClient = MusicBrainzClient(admission = { mbGate })
+        val mbSearch = MusicBrainzCatalogSearch(mbClient)
+        val mbGraph = MusicBrainzCatalogGraph(mbClient)
+        val appleGate = gateFor(apple, caps)
+        val appleRepo = AppleEditorialCatalogRepository(ItunesCatalogClient(
+            transport = KtorItunesCatalogTransport(
+                admission = RateLimitedProviderTransport { appleGate },
+            ),
+        ))
+        val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
+            ?.trim()?.takeIf(String::isNotBlank)
+        val discogsGate = gateFor(discogs, caps)
+        val discogsGuard = RateLimitedProviderTransport { discogsGate }
+        val discogsSearch = DiscogsNativeReleaseSearchClient(
+            enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
+        )
+        val discogsDetails = DiscogsClient(
+            enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = discogsGuard, tokenProvider = { token },
+        )
+        val discogsArtist = DiscogsNativeArtistCatalog(
+            enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
+            editions = DiscogsNativeEditionClient(discogsDetails),
+        )
+        for (provider in listOf(mb, apple, discogs)) {
+            val sourceName = when (provider) {
+                mb -> "musicbrainz"
+                apple -> "itunes"
+                else -> "discogs"
+            }
+            for ((index, case) in albumParityCases.withIndex()) {
+                val start = System.nanoTime()
+                var matched = false
+                var projected = false
+                var failed = false
+                var partial = false
+                var typeVerified = false
+                var decoded = 0
+                var displayed = 0
+                var discs = 0
+                var durations = 0
+                var positions = 0
+                var artistRoute = 0
+                var related = 0
+                var versions = 0
+                var versionCoverageUncertain = false
+                var candidatesRead = 0
+                val complete = try {
+                    withTimeoutOrNull(120_000L) {
+                        val query = case.artist + " " + case.title
+                        when (provider) {
+                            mb -> {
+                                val search = mbSearch.searchReleases(query, 50)
+                                    as? MusicBrainzCatalogSearchResult.Success
+                                if (search == null) failed = true
+                                val candidates = search?.page?.items.orEmpty().filter {
+                                    case.matchesTitle(it.title) && case.matchesArtist(it.artistDisplay) &&
+                                        isCuratedMusicBrainzRelease(it)
+                                }
+                                var chosen: MusicBrainzCatalogReleaseDetail? = null
+                                var selected: MusicBrainzReleaseHit? = null
+                                for (candidate in candidates.take(if (case.kind == "multi") 6 else 3)) {
+                                    candidatesRead++
+                                    val detail = (mbGraph.lookupRelease(candidate.musicBrainzId)
+                                        as? MusicBrainzCatalogGraphResult.Success)?.value
+                                    if (detail == null) { failed = true; continue }
+                                    assertEquals(candidate.musicBrainzId, detail.musicBrainzId)
+                                    if (!case.matchesTitle(detail.title) ||
+                                        !case.matchesArtist(detail.artistDisplay) ||
+                                        !detail.status.equals("Official", ignoreCase = true)
+                                    ) continue
+                                    val page = canonicalVerifiedLiveReleaseDetailPage(detail, null)
+                                    if (page == null) { partial = true; continue }
+                                    chosen = detail
+                                    selected = candidate
+                                    if (case.kind != "multi" ||
+                                        detail.tracks.map { it.mediumNumber }.distinct().size >= 2) break
+                                }
+                                if (chosen != null && selected != null) {
+                                    val detail = chosen
+                                    matched = true
+                                    val page = requireNotNull(canonicalVerifiedLiveReleaseDetailPage(detail, null))
+                                    assertEquals(detail.title, page.title)
+                                    val expected = detail.tracks.sortedWith(
+                                        compareBy<MusicBrainzCatalogTrack> { it.mediumNumber }
+                                            .thenBy { it.trackNumber },
+                                    )
+                                    assertEquals(expected.map { it.trackMbid }, page.rows.map { it.trackMbid })
+                                    assertEquals(expected.map { it.recordingMbid }, page.rows.map { it.musicBrainzId })
+                                    assertEquals(expected.map { it.durationMs }, page.rows.map { it.durationMs })
+                                    assertTrue(page.rows.none { it.hasCatalogedAsset })
+                                    decoded = expected.size
+                                    displayed = page.rows.size
+                                    discs = expected.map { it.mediumNumber }.distinct().size
+                                    positions = expected.size
+                                    durations = expected.count { it.durationMs != null }
+                                    projected = displayed > 0
+                                    partial = !detail.completeness.countsExplicitAndExact ||
+                                        !detail.completeness.positionsExplicitUnique
+                                    val group = detail.groupMbid
+                                    if (group != null) {
+                                        val groupDetail = (mbGraph.lookupReleaseGroup(group)
+                                            as? MusicBrainzCatalogGraphResult.Success)?.value
+                                        val primary = groupDetail?.primaryType
+                                        typeVerified = if (case.kind == "single_ep")
+                                            primary in setOf("Single", "EP") else primary == "Album"
+                                        val alternatives = (mbGraph.browseGroupReleases(group, 75)
+                                            as? MusicBrainzCatalogGraphResult.Success)?.value
+                                        if (alternatives != null) {
+                                            versions = canonicalReleaseGroupEditionRows(
+                                                group, alternatives.items, detail.musicBrainzId,
+                                            ).size
+                                            versionCoverageUncertain = alternatives.nextOffset != null
+                                        } else versionCoverageUncertain = true
+                                    }
+                                    // Artist relation navigation is not exercised by this direct
+                                    // release fallback projection; do not report it as verified.
+                                }
+                            }
+                            apple -> {
+                                val search = appleRepo.searchAlbums(query, "br", 50)
+                                    as? AppleEditorialLoad.Success
+                                if (search == null) failed = true
+                                val candidates = search?.releases.orEmpty().filter {
+                                    case.matchesTitle(it.title) && case.matchesArtist(it.artistName)
+                                }
+                                var selected: ItunesEditorialRelease? = null
+                                var result: AppleEditorialLoad.Success? = null
+                                for (candidate in candidates.take(if (case.kind == "multi") 6 else 3)) {
+                                    candidatesRead++
+                                    val response = appleRepo.albumDetail(candidate.appleCollectionId, "br")
+                                        as? AppleEditorialLoad.Success
+                                    if (response == null) { failed = true; continue }
+                                    val record = response.releases.singleOrNull() ?: continue
+                                    assertEquals(candidate.appleScopedId, record.appleScopedId)
+                                    if (!case.matchesTitle(record.title) || !case.matchesArtist(record.artistName) ||
+                                        (candidate.artistId != null && candidate.artistId != record.artistId)
+                                    ) continue
+                                    if (record.tracks.isEmpty()) continue
+                                    selected = record
+                                    result = response
+                                    if (case.kind != "multi" ||
+                                        record.tracks.mapNotNull { it.discNumber }.distinct().size >= 2) break
+                                }
+                                if (selected != null && result != null) {
+                                    val record = selected
+                                    matched = true
+                                    val detail = requireNotNull(appleNativeAlbumDetail(result, record.appleScopedId))
+                                    val page = requireNotNull(com.music.bitchord.ui.screens.appleAlbumAsSharedDetail(detail))
+                                    assertEquals(record.appleScopedId, page.page.browseId)
+                                    assertEquals(record.title, page.page.title)
+                                    val expected = record.tracks.sortedWith(
+                                        compareBy<ItunesCatalogItem> { it.discNumber ?: Int.MAX_VALUE }
+                                            .thenBy { it.trackNumber ?: Int.MAX_VALUE }.thenBy { it.id },
+                                    )
+                                    assertEquals(expected.map { it.scopedId }, page.metadataTracks.map { it.key })
+                                    assertEquals(expected.map { it.title }, page.metadataTracks.map { it.title })
+                                    assertEquals(expected.map { it.discNumber }, page.metadataTracks.map { it.discNumber })
+                                    assertEquals(expected.map { it.trackNumber }, page.metadataTracks.map { it.trackNumber })
+                                    assertEquals(expected.map { it.durationMs }, page.metadataTracks.map { it.durationMs })
+                                    decoded = expected.size
+                                    displayed = page.metadataTracks.size
+                                    discs = expected.mapNotNull { it.discNumber }.distinct().size
+                                    positions = expected.count { it.trackNumber != null }
+                                    durations = expected.count { it.durationMs != null }
+                                    projected = displayed > 0
+                                    partial = detail.partialTracklist
+                                    typeVerified = if (case.kind == "single_ep")
+                                        record.format in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+                                        else record.format == ItunesEditorialReleaseFormat.ALBUM
+                                    record.artistId?.let { artistId ->
+                                        assertEquals("itunes:br:artist:$artistId", page.albumArtistBrowseId)
+                                        artistRoute = 1
+                                        val siblings = appleRepo.artistDiscography(artistId, "br", 40)
+                                            as? AppleEditorialLoad.Success
+                                        if (siblings != null) {
+                                            val rows = appleNativeSearchRows(siblings.copy(
+                                                releases = siblings.releases.filter {
+                                                    it.artistId == artistId && it.appleCollectionId != record.appleCollectionId
+                                                },
+                                            ))
+                                            val enriched = requireNotNull(com.music.bitchord.ui.screens.appleAlbumAsSharedDetail(
+                                                detail.copy(relatedAlbums = rows),
+                                            ))
+                                            related = enriched.page.sections.sumOf { it.items.size }
+                                            assertTrue(enriched.page.sections.flatMap { it.items }.all { item ->
+                                                rows.any { it.browseId == item.browseId &&
+                                                    it.artistBrowseId == page.albumArtistBrowseId }
+                                            })
+                                        }
+                                    }
+                                }
+                            }
+                            else -> if (token != null) {
+                                val search = discogsSearch.search(query)
+                                    as? DiscogsNativeReleaseSearchResult.Success
+                                if (search == null) failed = true
+                                var chosen: DiscogsRecord? = null
+                                // Search titles are just a candidate hint, never the selected identity.
+                                for (candidate in search?.page?.releases.orEmpty().filter {
+                                    artistParityKey(it.title).contains(artistParityKey(case.title))
+                                }.take(if (case.kind == "multi") 8 else 5)) {
+                                    candidatesRead++
+                                    val response = discogsDetails.fetchRelease(candidate.releaseId)
+                                    if (response is DiscogsLookupResult.Throttled ||
+                                        response is DiscogsLookupResult.Unauthorized ||
+                                        response is DiscogsLookupResult.Disabled
+                                    ) { failed = true; break }
+                                    val record = (response as? DiscogsLookupResult.Found)?.record ?: continue
+                                    assertEquals(candidate.releaseId, record.link.id)
+                                    if (record.unofficial || !case.matchesTitle(record.title) ||
+                                        !case.matchesArtist(record.artistNames.singleOrNull()?.let {
+                                            com.music.bitchord.ui.screens.discogsArtistDisplayName(it)
+                                        }) || record.displayTracks.isEmpty()
+                                    ) continue
+                                    chosen = record
+                                    val trial = discogsReleasePage(record.artistNames.single(), record)
+                                    if (case.kind != "multi" ||
+                                        trial.tracks.mapNotNull { it.discNumber }.distinct().size >= 2) break
+                                }
+                                if (chosen != null) {
+                                    val record = chosen
+                                    matched = true
+                                    val page = discogsReleasePage(record.artistNames.single(), record)
+                                    assertEquals("discogs:release:${record.link.id}", page.page.browseId)
+                                    assertEquals(record.title, page.page.title)
+                                    assertEquals(record.displayTracks.map { it.title }, page.tracks.map { it.title })
+                                    assertEquals(record.displayTracks.map { it.position }, page.tracks.map { it.sourcePosition })
+                                    assertEquals(record.displayTracks.map { it.durationMs }, page.tracks.map { it.durationMs })
+                                    assertEquals(page.tracks.size, page.tracks.map { it.key }.distinct().size)
+                                    decoded = record.displayTracks.size
+                                    displayed = page.tracks.size
+                                    discs = page.tracks.mapNotNull { it.discNumber }.distinct().size
+                                    positions = page.tracks.count { it.sourcePosition != null }
+                                    durations = page.tracks.count { it.durationMs != null }
+                                    projected = displayed > 0
+                                    partial = record.nativeTracklistIncomplete
+                                    typeVerified = record.formats.any { format ->
+                                        if (case.kind == "single_ep")
+                                            format.equals("Single", true) || format.equals("EP", true)
+                                        else format.equals("Album", true)
+                                    }
+                                    val variants = if (!failed) sampleDiscogsVerifiedVersions(record,
+                                        discogsDetails::fetchMasterVersionPreview, discogsDetails::fetchRelease)
+                                        else DiscogsVerifiedVersionSample(incomplete = true)
+                                    versionCoverageUncertain = variants.incomplete
+                                    val artistId = record.artistIds.singleOrNull()
+                                    val siblings = if (artistId != null && !failed) {
+                                        assertEquals("discogs:artist:$artistId", page.albumArtistBrowseId)
+                                        artistRoute = 1
+                                        (discogsArtist.load(artistId, 1) as? DiscogsNativeArtistLoad.Success)
+                                            ?.releases.orEmpty()
+                                    } else emptyList()
+                                    val enriched = discogsReleasePage(record.artistNames.single(), record,
+                                        siblings, variants.records, variants.incomplete)
+                                    versions = enriched.page.sections.singleOrNull { it.title == "Versões" }
+                                        ?.items.orEmpty().size
+                                    related = enriched.page.sections.filter { it.title.startsWith("Mais de ") }
+                                        .sumOf { it.items.size }
+                                    assertTrue(enriched.page.sections.flatMap { it.items }.all { item ->
+                                        siblings.any { it.browseId == item.browseId && it.artistId == artistId } ||
+                                            variants.records.any { "discogs:release:${it.link.id}" == item.browseId &&
+                                                it.masterId == record.masterId && !it.unofficial }
+                                    })
+                                }
+                            }
+                        }
+                        true
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    failed = true
+                    false
+                }
+                // Coverage/type/navigation are explicit separate dimensions.
+                // A healthy page with unknown type does not prove #229 closed.
+                val status = when {
+                    provider == discogs && token == null -> "token_not_configured"
+                    complete == null -> "timeout_or_partial"
+                    projected && partial -> "partial_tracklist"
+                    projected && case.kind == "multi" && discs < 2 -> "multidisc_not_observed"
+                    projected && decoded == displayed -> "detail_verified"
+                    failed -> "source_interruption"
+                    matched -> "projection_unavailable"
+                    else -> "labelled_work_not_found"
+                }
+                report("album_matrix_" + sourceName + "_" + (index + 1).toString().padStart(2, '0'), Sample(
+                    status = status, eligible = decoded, visible = displayed,
+                    counts = mapOf(
+                        "identity_verified" to if (matched) 1 else 0,
+                        "detail_projected" to if (projected) 1 else 0,
+                        "tracklist_partial" to if (partial) 1 else 0,
+                        "type_verified" to if (typeVerified) 1 else 0,
+                        "source_discs_observed" to discs,
+                        "source_track_positions" to positions,
+                        "source_track_durations" to durations,
+                        "artist_route_verified" to artistRoute,
+                        "related_release_cards" to related,
+                        "version_cards" to versions,
+                        "version_coverage_uncertain" to if (versionCoverageUncertain) 1 else 0,
+                        "detail_candidates_read" to candidatesRead,
+                        "source_interruption" to if (failed) 1 else 0,
+                        "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
+                            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                    ),
+                ))
+            }
+        }
+    }
+
 }
