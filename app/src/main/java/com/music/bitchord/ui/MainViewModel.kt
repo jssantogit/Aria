@@ -3803,7 +3803,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val result = try {
                 com.music.bitchord.data.catalog.metadata
                     .AppleExploreGenreDiscovery().discoverNative(
-                        tag, "br",
+                        tag, "br", expandSparseCapacity = true,
                         onProgress = { releases ->
                             if (releases.isNotEmpty() && lease.isCurrent() &&
                                 lease.isCurrent() && appleGenreEpoch.isCurrent(generation) &&

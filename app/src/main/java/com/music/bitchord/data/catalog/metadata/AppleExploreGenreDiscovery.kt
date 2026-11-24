@@ -3,6 +3,7 @@ package com.music.bitchord.data.catalog.metadata
 import java.text.Normalizer
 import java.util.Locale
 import com.music.bitchord.data.providers.ProviderCapability
+import kotlinx.coroutines.CancellationException
 
 /**
  * MusicBrainz tag browse yields search hints, but cannot assign a category to
@@ -59,23 +60,34 @@ internal object AppleExploreGenrePolicy {
 
 internal fun interface AppleNativeGenreSearchSource {
     suspend fun search(term: String, storefront: String): AppleEditorialLoad
+
+    // Optional exact artist lookup; never query another provider.
+    suspend fun artistAlbums(artistId: Long, storefront: String): AppleEditorialLoad? = null
+}
+
+internal class ItunesNativeGenreSearchSource(
+    private val repository: AppleEditorialCatalogRepository = AppleEditorialCatalogRepository(),
+) : AppleNativeGenreSearchSource {
+    override suspend fun search(term: String, storefront: String): AppleEditorialLoad =
+        repository.searchAlbums(
+            query = term, storefront = storefront, limit = 200,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
+        )
+
+    override suspend fun artistAlbums(artistId: Long, storefront: String): AppleEditorialLoad =
+        repository.artistDiscography(artistId, storefront, limit = 200)
 }
 
 internal class AppleExploreGenreDiscovery(
     private val catalog: AppleHomeEditorialDiscovery = AppleHomeEditorialDiscovery(),
-    private val nativeSource: AppleNativeGenreSearchSource =
-        AppleNativeGenreSearchSource { term, storefront ->
-            AppleEditorialCatalogRepository().searchAlbums(
-                query = term, storefront = storefront, limit = 200,
-                capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
-                attribute = ItunesCatalogSearchAttribute.GENRE_INDEX,
-            )
-        },
+    private val nativeSource: AppleNativeGenreSearchSource = ItunesNativeGenreSearchSource(),
 ) {
     /** Independent Apple search. No MusicBrainz call, seed, MBID or title crosswalk. */
     suspend fun discoverNative(
         tag: String,
         storefront: String = "br",
+        expandSparseCapacity: Boolean = false,
         onProgress: suspend (List<ItunesEditorialRelease>) -> Unit = {},
     ): AppleEditorialLoad {
         val term = AppleExploreGenrePolicy.nativeSearchTerm(tag)
@@ -107,6 +119,15 @@ internal class AppleExploreGenreDiscovery(
                 // valid album beyond position 24 before the native pager
                 // has an opportunity to reveal it. The UI stays bounded.
                 onProgress(matching)
+                // The capped genre index is not an exhaustive catalog. Only on
+                // a dedicated capacity genre screen, use up to three exact Apple
+                // artist IDs already evidenced in that genre. Home stays at one
+                // request per genre. Every additional album must independently
+                // satisfy the same storefront, ID and primaryGenreName checks.
+                if (expandSparseCapacity && tag in setOf("rock", "electronic", "jazz") &&
+                    found.state == AppleEditorialReadState.POSSIBLY_TRUNCATED &&
+                    matching.isNotEmpty() && matching.size < 30
+                ) return expandNativePool(tag, storefront, matching, onProgress)
                 AppleEditorialLoad.Success(
                     matching,
                     when {
@@ -119,6 +140,82 @@ internal class AppleExploreGenreDiscovery(
                 )
             }
         }
+    }
+
+    private suspend fun expandNativePool(
+        tag: String,
+        storefront: String,
+        initial: List<ItunesEditorialRelease>,
+        onProgress: suspend (List<ItunesEditorialRelease>) -> Unit,
+    ): AppleEditorialLoad.Success {
+        val anchors = initial.mapNotNull { it.artistId }.distinct()
+        val pool = initial.associateByTo(linkedMapOf()) { it.appleScopedId }
+        val disputed = mutableSetOf<String>()
+        var probes = 1
+        var empty = 0
+        var failures = 0
+        var incomplete = 1
+        for (artistId in anchors.take(3)) {
+            if (pool.size >= 30) break
+            val response = try {
+                nativeSource.artistAlbums(artistId, storefront)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
+            } ?: break
+            probes++
+            if (response !is AppleEditorialLoad.Success) {
+                failures++
+                break
+            }
+            if (response.state == AppleEditorialReadState.POSSIBLY_TRUNCATED) incomplete++
+            val before = pool.keys.toList()
+            val rows = response.releases.filter {
+                it.artistId == artistId && it.storefront == storefront &&
+                    it.appleCollectionId > 0L &&
+                    it.appleScopedId == "itunes:$storefront:album:${it.appleCollectionId}" &&
+                    it.title.isNotBlank() && it.artistName.isNotBlank() &&
+                    AppleExploreGenrePolicy.matches(tag, it.genre)
+            }.map {
+                it.copy(
+                    musicBrainzReleaseGroupId = null, musicBrainzReleaseId = null,
+                    musicBrainzArtistId = null, musicBrainzRecordingIds = emptyMap(),
+                )
+            }.groupBy { it.appleScopedId }
+            var added = 0
+            for ((id, observations) in rows) {
+                if (id in disputed) continue
+                val row = observations.first()
+                val previous = pool[id]
+                if (observations.any { it != row } || previous != null &&
+                    (previous.artistId != row.artistId || previous.title != row.title ||
+                        previous.upc != null && row.upc != null && previous.upc != row.upc)
+                ) {
+                    pool.remove(id)
+                    disputed += id
+                    continue
+                }
+                if (previous == null && added < 12 && pool.size < 30) {
+                    pool[id] = row
+                    added++
+                }
+            }
+            if (added == 0) empty++
+            if (before != pool.keys.toList()) onProgress(pool.values.toList())
+        }
+        return AppleEditorialLoad.Success(
+            pool.values.toList(), AppleEditorialReadState.POSSIBLY_TRUNCATED,
+            AppleEditorialProbeReport(
+                eligibleSeeds = 1 + anchors.size,
+                probesMade = probes,
+                matchingProducts = pool.size,
+                withoutMatchingProducts = empty,
+                failedRequests = failures,
+                incompleteResponses = incomplete,
+                budgetLimited = anchors.size > probes - 1,
+            ),
+        )
     }
 
     suspend fun discover(

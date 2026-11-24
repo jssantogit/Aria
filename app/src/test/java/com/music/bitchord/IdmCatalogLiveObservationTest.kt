@@ -1411,11 +1411,7 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
         val appleSource = AppleExploreGenreDiscovery(
-            nativeSource = AppleNativeGenreSearchSource { term, storefront ->
-                appleRepo.searchAlbums(term, storefront, limit = 200,
-                    capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
-                    attribute = ItunesCatalogSearchAttribute.GENRE_INDEX)
-            },
+            nativeSource = ItunesNativeGenreSearchSource(appleRepo),
         )
         val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
             ?.trim()?.takeIf(String::isNotBlank)
@@ -1526,8 +1522,9 @@ class IdmCatalogLiveObservationTest {
                                 mapped = AppleExploreGenrePolicy.supports(tag)
                                 if (mapped) {
                                     sourceQueries++
-                                    val response = appleSource.discoverNative(tag, "br")
+                                    val response = appleSource.discoverNative(tag, "br", expandSparseCapacity = true)
                                     val result = response as? AppleEditorialLoad.Success
+                                    sourceQueries = result?.probeReport?.probesMade ?: 1
                                     if (result == null) failed = true
                                     val rows = result?.releases.orEmpty()
                                     var revealed = 24

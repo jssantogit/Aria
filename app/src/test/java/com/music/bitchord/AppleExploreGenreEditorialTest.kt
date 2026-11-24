@@ -71,6 +71,59 @@ class AppleExploreGenreEditorialTest {
         }
     }
 
+    @Test fun cappedRockPoolExpandsOnlyFromExactAppleArtistAndGenre() = runBlocking {
+        val artists = mutableListOf<Long>()
+        val progress = mutableListOf<Int>()
+        val source = object : AppleNativeGenreSearchSource {
+            override suspend fun search(term: String, storefront: String) =
+                AppleEditorialLoad.Success((1L..20L).map { edition(it, "Rock") },
+                    AppleEditorialReadState.POSSIBLY_TRUNCATED)
+
+            override suspend fun artistAlbums(artistId: Long, storefront: String): AppleEditorialLoad {
+                artists += artistId
+                assertEquals("br", storefront)
+                return AppleEditorialLoad.Success(
+                    listOf(edition(1, "Rock"), edition(91, "Pop"),
+                        edition(92, "Rock").copy(artistId = 99),
+                        edition(93, "Rock").copy(storefront = "us")) +
+                        (21L..35L).map { edition(it, "Rock") },
+                    AppleEditorialReadState.COMPLETE,
+                )
+            }
+        }
+        val discovery = AppleExploreGenreDiscovery(nativeSource = source)
+        val home = discovery.discoverNative("rock") as AppleEditorialLoad.Success
+        assertEquals(20, home.releases.size)
+        assertTrue(artists.isEmpty())
+        val result = discovery.discoverNative("rock", expandSparseCapacity = true,
+            onProgress = { progress += it.size }) as AppleEditorialLoad.Success
+        assertEquals(listOf(42L), artists)
+        assertEquals(listOf(20, 30), progress)
+        assertEquals((1L..30L).toList(), result.releases.map { it.appleCollectionId })
+        assertEquals(2, result.probeReport?.probesMade)
+        assertEquals(AppleEditorialReadState.POSSIBLY_TRUNCATED, result.state)
+    }
+
+    @Test fun failedSupplementRetainsOriginalPoolAndStopsProbes() = runBlocking {
+        val artists = mutableListOf<Long>()
+        val source = object : AppleNativeGenreSearchSource {
+            override suspend fun search(term: String, storefront: String) =
+                AppleEditorialLoad.Success((1L..20L).map {
+                    edition(it, "Rock").copy(artistId = 40L + it)
+                }, AppleEditorialReadState.POSSIBLY_TRUNCATED)
+            override suspend fun artistAlbums(artistId: Long, storefront: String): AppleEditorialLoad {
+                artists += artistId
+                return AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
+            }
+        }
+        val result = AppleExploreGenreDiscovery(nativeSource = source)
+            .discoverNative("rock", expandSparseCapacity = true) as AppleEditorialLoad.Success
+        assertEquals(20, result.releases.size)
+        assertEquals(listOf(41L), artists)
+        assertEquals(1, result.probeReport?.failedRequests)
+        assertEquals(2, result.probeReport?.probesMade)
+    }
+
     @Test fun unsupportedNativeGenreDoesNotContactAnySource() = runBlocking {
         var called = false
         val explorer = AppleExploreGenreDiscovery(
