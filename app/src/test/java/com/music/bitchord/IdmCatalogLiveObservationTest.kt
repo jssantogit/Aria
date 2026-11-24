@@ -52,6 +52,41 @@ class IdmCatalogLiveObservationTest {
         val counts: Map<String, Int> = emptyMap(),
     )
 
+    private fun appendAggregateCounts(
+        lines: MutableMap<String, String>, counts: Map<String, Int>,
+    ) {
+        counts.forEach { (key, value) ->
+            // Numeric HTTP classifications (413, 5xx) are valid metric
+            // names. Keep the JSON key grammar restricted and counts unsigned.
+            require(Regex("[a-z_][a-z0-9_]*").matches(key)) {
+                "Invalid aggregate metric name"
+            }
+            require(value >= 0) { "Negative aggregate metric count" }
+            require(key !in lines) { "Duplicate aggregate metric name" }
+            lines[key] = value.toString()
+        }
+    }
+
+    @Test fun aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork() {
+        val lines = linkedMapOf("schema" to "1")
+        appendAggregateCounts(lines, mapOf(
+            "detail_upstream_http_413" to 0,
+            "detail_http_5xx" to 2,
+            "detail_io_failures" to 1,
+        ))
+        assertEquals(mapOf("schema" to "1", "detail_upstream_http_413" to "0",
+            "detail_http_5xx" to "2", "detail_io_failures" to "1"), lines)
+        for (invalid in listOf(
+            mapOf("bad-key" to 1), mapOf("bad\"key" to 1),
+            mapOf("9invalid" to 1), mapOf("detail_http_5xx" to 1),
+            mapOf("negative_count" to -1),
+        )) {
+            assertTrue(runCatching { appendAggregateCounts(lines, invalid) }
+                .exceptionOrNull() is IllegalArgumentException)
+        }
+        assertEquals(4, lines.size)
+    }
+
     private fun report(scenario: String, sample: Sample) {
         val dir = File(System.getenv("IDM_CATALOG_METRICS_DIR")
             ?: "build/idm-catalog-metrics")
@@ -65,11 +100,7 @@ class IdmCatalogLiveObservationTest {
             "http_or_transport_reads" to (sample.requests?.toString() ?: "null"),
             "displayed_with_artwork" to sample.artwork.toString(),
         )
-        sample.counts.forEach { (key, value) ->
-            require(Regex("[a-z_]+").matches(key) && value >= 0)
-            require(key !in lines)
-            lines[key] = value.toString()
-        }
+        appendAggregateCounts(lines, sample.counts)
         val json = buildString {
             append("{\n  \"mode\": \"live-network-observation\",\n")
             append("  \"scenario\": \"").append(scenario).append("\",\n")
