@@ -1116,7 +1116,7 @@ internal class DiscogsNativeCatalogSession(
         val page = artistPage + 1
         val job = scope.launch(Dispatchers.IO) {
             val response = try {
-                artistClient.load(current.artistId, page) { verified ->
+                artistClient.loadDistinct(current.artistId, page, releases) { verified ->
                     if (artist == current && authorization.isCurrent() &&
                         _route.value == DiscogsNativeRoute.ARTIST &&
                         _browseId.value == current.browseId

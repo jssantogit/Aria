@@ -3,6 +3,9 @@ package com.music.bitchord
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.providers.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -297,6 +300,49 @@ class DiscogsGranularEditorialCursorTest {
             assertEquals(listOf(1001L, 1002L), releaseReads)
             assertNull(more.nextCursor)
         }
+
+    @Test fun overlappingFreshIndexReadsShareOneFetchButSignedCursorRereads() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        var indexReads = 0
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    indexReads++
+                    if (indexReads == 1) {
+                        entered.complete(Unit)
+                        resume.await()
+                    }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":1,"type":"master"},{"id":2,"type":"master"}]}""")
+                }
+            },
+            editions = reader { id -> DiscogsLookupResult.FoundMaster(master(id)) },
+        )
+        val query = DiscogsEditorialQuery("Rock", false)
+        val landing = async(start = CoroutineStart.UNDISPATCHED) {
+            client.discover(query, maxReleases = 1)
+        }
+        entered.await()
+        val scroll = async(start = CoroutineStart.UNDISPATCHED) {
+            client.discoverGranular(query, maxCandidates = 1)
+        }
+        resume.complete(Unit)
+        assertTrue(landing.await() is DiscogsEditorialResult.Verified)
+        val page = scroll.await() as DiscogsGranularRead.Page
+        assertEquals(1, indexReads)
+        val next = client.discoverGranular(
+            query, requireNotNull(page.nextCursor), setOf(1L),
+        ) as DiscogsGranularRead.Page
+        assertEquals(listOf(2L), next.releases.map { it.masterId })
+        assertEquals(2, indexReads)
+    }
 
     @Test fun expiredIndexIsRequeriedInsteadOfReplayingOldCandidates() = runBlocking {
         var nowMs = 0L

@@ -16,6 +16,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -277,6 +279,7 @@ internal class DiscogsNativeGenreEditorial(
     private val recentIndexes = linkedMapOf<IndexKey, IndexedAt>()
     private val indexTtlMs = 120_000L
     private val maxCachedIndexes = 20
+    private val indexReadLocks = Array(32) { Mutex() }
 
     private fun digestForCache(token: String): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(token.toByteArray(Charsets.UTF_8))
@@ -302,6 +305,62 @@ internal class DiscogsNativeGenreEditorial(
             recentIndexes[key] = IndexedAt(parsed, clockMs(), tokenDigest)
             if (recentIndexes.size > maxCachedIndexes) {
                 recentIndexes.remove(recentIndexes.keys.first())
+            }
+        }
+    }
+
+    private sealed interface IndexRead {
+        data class Ready(val page: DiscogsEditorialIndexPage) : IndexRead
+        data class Failed(val reason: DiscogsEditorialResult) : IndexRead
+    }
+
+    /** Coordinate fresh-page reads without sharing stale signed cursors.
+     * Recheck both permissions and the credential after waiting for a peer.
+     * Errors never enter the positive index cache. */
+    private suspend fun readIndex(
+        query: DiscogsEditorialQuery, page: Int, token: String,
+        tokenDigest: ByteArray, forceFresh: Boolean,
+    ): IndexRead {
+        val stripe = (IndexKey(query, page).hashCode() and Int.MAX_VALUE) %
+            indexReadLocks.size
+        return indexReadLocks[stripe].withLock {
+            if (!enabled || !admission.permitted(
+                    ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS,
+                ) || !admission.permitted(
+                    ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
+                )) return@withLock IndexRead.Failed(DiscogsEditorialResult.Disabled)
+            if (tokenProvider()?.trim() != token)
+                return@withLock IndexRead.Failed(DiscogsEditorialResult.Unauthorized)
+            if (!forceFresh) cachedIndex(query, page, tokenDigest)?.let {
+                return@withLock IndexRead.Ready(it)
+            }
+            val response = try {
+                admission.execute(
+                    capability = ProviderCapability.CATALOG_SEARCH,
+                    provider = BuiltInProviderKeys.DISCOGS,
+                    scheduleLimited = { block ->
+                        limiter.runHttpLimited(authenticated = true) { block() }
+                    },
+                    networkCall = { transport.search(query, token, userAgent, page) },
+                )
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: ProviderRequestDeniedException) {
+                  return@withLock IndexRead.Failed(DiscogsEditorialResult.Disabled)
+              } catch (_: Exception) {
+                  return@withLock IndexRead.Failed(DiscogsEditorialResult.Unavailable)
+              }
+            when (response.status) {
+                200 -> {
+                    val parsed = DiscogsEditorialMasterParsing.page(response.body, page)
+                        ?: return@withLock IndexRead.Failed(DiscogsEditorialResult.Unavailable)
+                    recordIndex(query, page, parsed, tokenDigest)
+                    IndexRead.Ready(parsed)
+                }
+                401, 403 -> IndexRead.Failed(DiscogsEditorialResult.Unauthorized)
+                429 -> IndexRead.Failed(
+                    DiscogsEditorialResult.Throttled(response.retryAfterSeconds),
+                )
+                else -> IndexRead.Failed(DiscogsEditorialResult.Unavailable)
             }
         }
     }
@@ -445,34 +504,12 @@ internal class DiscogsNativeGenreEditorial(
         val token = tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?: return interrupted(DiscogsEditorialResult.Unauthorized)
         val tokenDigest = digestForCache(token)
-        val reused = if (cursor.candidatePosition == 0 &&
-            cursor.pageSignature == null
-        ) cachedIndex(query, cursor.page, tokenDigest) else null
-        val index = if (reused != null) reused else {
-            val response = try {
-                admission.execute(
-                    capability = ProviderCapability.CATALOG_SEARCH,
-                    provider = BuiltInProviderKeys.DISCOGS,
-                    scheduleLimited = { block ->
-                        limiter.runHttpLimited(authenticated = true) { block() }
-                    },
-                    networkCall = { transport.search(query, token, userAgent, cursor.page) },
-                )
-            } catch (cancelled: CancellationException) { throw cancelled }
-              catch (_: ProviderRequestDeniedException) {
-                  return interrupted(DiscogsEditorialResult.Disabled)
-              } catch (_: Exception) {
-                  return interrupted(DiscogsEditorialResult.Unavailable)
-              }
-            when (response.status) {
-                200 -> DiscogsEditorialMasterParsing.page(response.body, cursor.page)
-                    ?.also { recordIndex(query, cursor.page, it, tokenDigest) }
-                    ?: return interrupted(DiscogsEditorialResult.Unavailable)
-                401, 403 -> return interrupted(DiscogsEditorialResult.Unauthorized)
-                429 -> return interrupted(
-                    DiscogsEditorialResult.Throttled(response.retryAfterSeconds))
-                else -> return interrupted(DiscogsEditorialResult.Unavailable)
-            }
+        val index = when (val read = readIndex(
+            query, cursor.page, token, tokenDigest,
+            forceFresh = cursor.pageSignature != null || cursor.candidatePosition != 0,
+        )) {
+            is IndexRead.Ready -> read.page
+            is IndexRead.Failed -> return interrupted(read.reason)
         }
         val signature = 31 * index.masterIds.hashCode() +
             if (index.hasNext) 1 else 0
@@ -638,39 +675,12 @@ internal class DiscogsNativeGenreEditorial(
             // index page from another canonical view. Permissions and the
             // credential are validated above on every entry, while partial
             // granular cursors still always re-read for signature drift.
-            val index = cachedIndex(query, pageNumber, tokenDigest) ?: run {
-                val response = try {
-                    admission.execute(
-                        capability = ProviderCapability.CATALOG_SEARCH,
-                        provider = BuiltInProviderKeys.DISCOGS,
-                        scheduleLimited = { block ->
-                        limiter.runHttpLimited(authenticated = true) { block() }
-                    },
-                        networkCall = {
-                            transport.search(query, token, userAgent, pageNumber)
-                        },
-                    )
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: ProviderRequestDeniedException) {
-                      return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                          else DiscogsEditorialResult.Disabled
-                  } catch (_: Exception) {
-                      return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                          else DiscogsEditorialResult.Unavailable
-                  }
-                when (response.status) {
-                    200 -> DiscogsEditorialMasterParsing.page(response.body, pageNumber)
-                        ?.also { recordIndex(query, pageNumber, it, tokenDigest) }
-                        ?: return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                            else DiscogsEditorialResult.Unavailable
-                    401, 403 -> return if (verified.isNotEmpty())
-                        DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unauthorized
-                    429 -> return if (verified.isNotEmpty())
-                        DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Throttled(response.retryAfterSeconds)
-                    else -> return if (verified.isNotEmpty())
-                        DiscogsEditorialResult.Verified(verified) else DiscogsEditorialResult.Unavailable
-                }
+            val index = when (val read = readIndex(
+                query, pageNumber, token, tokenDigest, forceFresh = false,
+            )) {
+                is IndexRead.Ready -> read.page
+                is IndexRead.Failed -> return if (verified.isNotEmpty())
+                    DiscogsEditorialResult.Verified(verified) else read.reason
             }
             val signature = 31 * index.masterIds.hashCode() +
                 if (index.hasNext) 1 else 0

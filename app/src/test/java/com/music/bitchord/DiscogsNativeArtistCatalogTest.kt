@@ -246,8 +246,9 @@ class DiscogsNativeArtistCatalogTest {
 
         // The session must request page 1 again rather than silently skipping
         // release 51. The duplicate verified release is safe to merge by ID.
-        val retried = source.load(17, 1) as DiscogsNativeArtistLoad.Success
-        assertEquals(listOf(50L, 51L), retried.releases.map { it.releaseId })
+        val retried = source.loadDistinct(17, 1, partial.releases)
+            as DiscogsNativeArtistLoad.Success
+        assertEquals(listOf(51L), retried.releases.map { it.releaseId })
         assertFalse(retried.incomplete)
         assertFalse(retried.retryCurrentPage)
         assertTrue(retried.hasMore)
@@ -257,10 +258,56 @@ class DiscogsNativeArtistCatalogTest {
         assertFalse(finalPage.retryCurrentPage)
         assertFalse(finalPage.hasMore)
         assertEquals(listOf(1, 1, 2), requestedPages)
-        assertEquals(listOf(50L, 51L, 50L, 51L, 52L), releaseCalls)
+        assertEquals(listOf(50L, 51L, 51L, 52L), releaseCalls)
         assertEquals(listOf(50L, 51L, 52L), discogsMergeArtistPageReleases(
             partial.releases + retried.releases + finalPage.releases,
         ).map { it.releaseId })
+    }
+
+    @Test fun laterArtistPageSkipsKnownMastersButVerifiesUnrelatedReleases() = runBlocking {
+        val masters = mutableListOf<Long>()
+        val releases = mutableListOf<Long>()
+        val known = DiscogsNativeArtistRelease(
+            artistId = 17, releaseId = 50, masterId = 90,
+            title = "Known", year = 2024, formats = listOf("Album"), tracklist = emptyList(),
+        )
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true, admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String) =
+                    DiscogsHttpResponse(200, """
+                        {"pagination":{"page":2,"pages":3},"releases":[
+                        {"id":90,"role":"Main","type":"master","title":"Known"},
+                        {"id":50,"role":"Main","type":"release","title":"Known"},
+                        {"id":51,"role":"Main","type":"release","title":"Other pressing"},
+                        {"id":52,"role":"Main","type":"release","title":"Different artist"},
+                        {"id":53,"role":"Main","type":"release","title":"New work"}]}
+                    """)
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    masters += id
+                    return DiscogsLookupResult.Missing
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    releases += id
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsNativeArtistCatalogTest.release(
+                            id, artistId = if (id == 52L) 18 else 17,
+                            masterId = if (id == 51L) 90 else null,
+                        ),
+                    )
+                }
+            },
+        )
+        val result = source.loadDistinct(17, 2, listOf(known))
+            as DiscogsNativeArtistLoad.Success
+        assertTrue(masters.isEmpty())
+        assertEquals(listOf(51L, 52L, 53L), releases)
+        assertEquals(listOf(53L), result.releases.map { it.releaseId })
+        assertTrue(result.hasMore)
+        assertTrue(result.incomplete)
     }
 
     @Test fun unexpectedSourceExceptionDoesNotEscapeArtistLoader() = runBlocking {

@@ -20,6 +20,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -36,6 +37,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -98,7 +100,8 @@ jobs:
             --tests 'com.music.bitchord.DiscogsHomeGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGenreGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest' \
-            --tests 'com.music.bitchord.DiscogsClientContractTest'
+            --tests 'com.music.bitchord.DiscogsClientContractTest' \
+            --tests 'com.music.bitchord.DiscogsNativeArtistCatalogTest'
 
       - name: Check completeness and write aggregate comparison
         shell: bash
@@ -165,6 +168,7 @@ jobs:
               "DiscogsGenreGranularPagingTest",
               "DiscogsGranularEditorialCursorTest",
               "DiscogsClientContractTest",
+              "DiscogsNativeArtistCatalogTest",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### Home granular flows (controlled full-adapter regressions)\n\n")

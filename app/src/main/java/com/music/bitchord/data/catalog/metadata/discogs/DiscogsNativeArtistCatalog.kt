@@ -122,6 +122,15 @@ internal class DiscogsNativeArtistCatalog(
         artistId: Long,
         page: Int = 1,
         onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
+    ): DiscogsNativeArtistLoad = loadDistinct(artistId, page, emptyList(), onProgress)
+
+    /** The caller supplies only already verified rows from this artist snapshot.
+     * Skip exact known Release/Master identities, never title or index hints. */
+    suspend fun loadDistinct(
+        artistId: Long,
+        page: Int,
+        knownVerified: List<DiscogsNativeArtistRelease>,
+        onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
     ): DiscogsNativeArtistLoad {
         if (artistId !in 1..999_999_999_999L || page !in 1..100)
             return DiscogsNativeArtistLoad.InvalidArtist
@@ -163,8 +172,13 @@ internal class DiscogsNativeArtistCatalog(
         var emitted = emptyList<DiscogsNativeArtistRelease>()
         var incomplete = index.entries.size > 6 || index.totalPages > 100
         var retryCurrentPage = false
-        val seenReleaseIds = HashSet<Long>()
+        val known = knownVerified.filter { it.artistId == artistId }
+        val knownMasters = known.mapNotNull { it.masterId }.toHashSet()
+        val seenReleaseIds = known.map { it.releaseId }.toHashSet()
         for (entry in index.entries.take(6)) {
+            if (entry.kind == DiscogsKind.MASTER && entry.id in knownMasters ||
+                entry.kind == DiscogsKind.RELEASE && entry.id in seenReleaseIds
+            ) continue
             val releaseId = when (entry.kind) {
                 DiscogsKind.RELEASE -> entry.id
                 DiscogsKind.MASTER -> {
@@ -187,7 +201,8 @@ internal class DiscogsNativeArtistCatalog(
                         break
                     }
                     if (response is DiscogsLookupResult.Unauthorized ||
-                        response is DiscogsLookupResult.Unavailable
+                        response is DiscogsLookupResult.Unavailable ||
+                        response is DiscogsLookupResult.Malformed
                     ) {
                         if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Unavailable
                         incomplete = true
@@ -201,7 +216,12 @@ internal class DiscogsNativeArtistCatalog(
                     id ?: continue
                 }
             }
-            if (!seenReleaseIds.add(releaseId)) continue
+            // A Master pointing to a known Release but not a known Master
+            // is a conflicting relation, not a settled duplicate.
+            if (releaseId in seenReleaseIds) {
+                if (entry.kind == DiscogsKind.MASTER) incomplete = true
+                continue
+            }
             val lookup = try { editions.release(releaseId) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
@@ -220,7 +240,8 @@ internal class DiscogsNativeArtistCatalog(
                 break
             }
             if (lookup is DiscogsLookupResult.Unauthorized ||
-                lookup is DiscogsLookupResult.Unavailable
+                lookup is DiscogsLookupResult.Unavailable ||
+                lookup is DiscogsLookupResult.Malformed
             ) {
                 if (hydrated.isEmpty()) return DiscogsNativeArtistLoad.Unavailable
                 incomplete = true
@@ -232,6 +253,15 @@ internal class DiscogsNativeArtistCatalog(
                 incomplete = true
                 continue
             }
+            val verified = discogsNativeArtistReleases(artistId, listOf(entry to record))
+                .singleOrNull()
+            if (verified == null) {
+                incomplete = true
+                continue
+            }
+            seenReleaseIds.add(verified.releaseId)
+            if (verified.masterId != null && !knownMasters.add(verified.masterId))
+                continue
             hydrated += entry to record
             // Publish as soon as a genuine source-scoped Release is verified.
             // Do not wait for all six (potentially rate-limited) hydrations.
