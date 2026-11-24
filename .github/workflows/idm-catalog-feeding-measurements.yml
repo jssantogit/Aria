@@ -34,6 +34,10 @@ on:
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesEditorialCatalogTest.kt
       - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
       - sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
@@ -66,6 +70,10 @@ on:
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesEditorialCatalogTest.kt
       - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
       - sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
@@ -153,6 +161,10 @@ jobs:
             --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
             --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
             --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
+            --tests 'com.music.bitchord.AppleEditorialCatalogRepositoryTest' \
+            --tests 'com.music.bitchord.AppleEditorialClassificationTest' \
+            --tests 'com.music.bitchord.ItunesCatalogClientTest' \
+            --tests 'com.music.bitchord.ItunesEditorialCatalogTest' \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork'
 
       - name: Exercise shared native search presentation and relevance
@@ -242,6 +254,10 @@ jobs:
               "AppleSharedDetailAdapterTest",
               "DiscogsMasterVersionPreviewTest",
               "ApplePublicSearchPagerTest",
+              "AppleEditorialCatalogRepositoryTest",
+              "AppleEditorialClassificationTest",
+              "ItunesCatalogClientTest",
+              "ItunesEditorialCatalogTest",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### Home granular flows (controlled full-adapter regressions)\n\n")
@@ -509,7 +525,7 @@ jobs:
                               "detail_parse_identifiers", "detail_parse_formats",
                               "detail_parse_tracklist", "detail_parse_tracklist_limit",
                               "detail_parse_format_descriptions", "detail_parse_track_title",
-                              "detail_parse_json")
+                              "detail_parse_json", "apple_anchor_title_queries", "apple_anchor_credit_matches")
                       print("IDM_ARTIST_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
                       out.write(f"| {provider} | {i:02d} | {row['anchor_verified']} | "
                                 f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
@@ -535,6 +551,17 @@ jobs:
                   "version_cards", "version_coverage_uncertain", "detail_candidates_read",
                   "native_search_gestures", "partial_apple_candidates",
                   "discogs_format_queries",
+                  "apple_search_requests", "apple_search_decoded_rows",
+                  "apple_search_credit_matches", "apple_search_title_matches",
+                  "apple_search_work_matches", "apple_search_work_rank_admitted",
+                  "apple_rule_type_matches",
+                  "apple_lookup_declared_track_count", "apple_lookup_track_count_known",
+                  "apple_lookup_decoded_tracks", "apple_lookup_positionless_tracks",
+                  "apple_lookup_duplicate_positions", "apple_lookup_possibly_truncated",
+                  "apple_lookup_declared_rows", "apple_lookup_raw_rows",
+                  "apple_lookup_matching_songs", "apple_lookup_matching_non_songs",
+                  "apple_lookup_foreign_songs", "apple_lookup_rejected_songs",
+                  "apple_lookup_removed_duplicate_songs",
                   "source_interruption", "elapsed_ms")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #229 fixed album matrix (decoded endpoint and canonical projection)\n\n")
