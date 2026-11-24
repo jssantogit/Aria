@@ -229,6 +229,25 @@ class AppleEditorialNativeSearchBridgeTest {
             source, album.appleScopedId,
             proof.copy(release = album.copy(appleCollectionId = 102)),
         ))
+        val derived = album.copy(format = ItunesEditorialReleaseFormat.ALBUM,
+            formatDerivedFromAudioCount = true)
+        val derivedSource = source.copy(releases = listOf(derived))
+        val conflict = proof.copy(release = derived,
+            classification = proof.classification.copy(
+                format = ItunesEditorialReleaseFormat.UNCLASSIFIED,
+                status = com.music.bitchord.data.catalog.metadata.AppleEditorialFormatStatus.CONFLICT,
+                disputedExternalFormats = setOf(ItunesEditorialReleaseFormat.EP),
+            ))
+        val resolvedConflict = com.music.bitchord.ui.appleNativeReconciledAlbumDetail(
+            derivedSource, derived.appleScopedId, conflict,
+        )!!
+        assertEquals(AppleEditorialReleaseCategory.UNCLASSIFIED, resolvedConflict.album.category)
+        assertEquals(before.tracks, resolvedConflict.tracks)
+        val wrongEdition = conflict.copy(release = derived.copy(appleCollectionId = 102))
+        assertEquals(AppleEditorialReleaseCategory.ALBUM,
+            com.music.bitchord.ui.appleNativeReconciledAlbumDetail(
+                derivedSource, derived.appleScopedId, wrongEdition,
+            )!!.album.category)
         val discogs = com.music.bitchord.data.catalog.metadata.discogs
             .DiscogsEditionPresentation(
                 country = "South Korea", editionYear = 2024,
