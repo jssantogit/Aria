@@ -316,6 +316,28 @@ class DiscogsClientContractTest {
         assertEquals(7, calls.size)
     }
 
+    @Test fun canonicalEditionMetadataDoesNotReuseNativeCatalogMemoization() = runBlocking {
+        var reads = 0
+        val client = DiscogsClient(
+            enabled = true, capability = ProviderCapability.EDITION_METADATA,
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(path: String, userAgent: String):
+                    DiscogsHttpResponse {
+                    reads++
+                    return DiscogsHttpResponse(200,
+                        """{"id":51,"title":"Canonical Edition",
+                            "artists":[{"name":"Artist"}]}""")
+                }
+            },
+        )
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        // The MB canonical enrichment layer owns its own TTL and clear()
+        // lifecycle, so an explicit re-read must always reach Discogs.
+        assertEquals(2, reads)
+    }
+
     @Test fun failedLookupsNeverEnterThePositiveEditionCache() = runBlocking {
         var calls = 0
         val client = DiscogsClient(
