@@ -28,6 +28,14 @@ import kotlinx.serialization.json.longOrNull
 /** Fixed paths only; no untrusted web link is ever used as an API URL. */
 internal interface DiscogsTransport {
     suspend fun get(path: String, userAgent: String): DiscogsHttpResponse
+
+    /** Explicit opt-in: a fake/anonymous transport cannot claim auth quota. */
+    val supportsTokenAuthorization: Boolean get() = false
+
+    /** The production adapter authenticates only requests to the fixed host. */
+    suspend fun getAuthenticated(
+        path: String, userAgent: String, token: String,
+    ): DiscogsHttpResponse = get(path, userAgent)
 }
 
 internal data class DiscogsHttpResponse(
@@ -53,11 +61,24 @@ internal class KtorDiscogsTransport(
         """^(?:releases|masters)/[1-9][0-9]{0,11}$|^masters/[1-9][0-9]{0,11}/versions\?page=1&per_page=8$""",
     )
 
-    override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+    override val supportsTokenAuthorization: Boolean get() = true
+
+    override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse =
+        request(path, userAgent, null)
+
+    override suspend fun getAuthenticated(
+        path: String, userAgent: String, token: String,
+    ): DiscogsHttpResponse = request(path, userAgent, token)
+
+    private suspend fun request(
+        path: String, userAgent: String, token: String?,
+    ): DiscogsHttpResponse {
         require(allowedPath.matches(path)) { "Invalid Discogs endpoint" }
+        require(token == null || isValidDiscogsSearchToken(token))
         val response = client.get("${baseUrl.trimEnd('/')}/$path") {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
+            if (token != null) header(HttpHeaders.Authorization, "Discogs token=$token")
         }
         val size = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (size != null && size > MAX_RESPONSE_BYTES) {
@@ -100,6 +121,8 @@ internal class KtorDiscogsTransport(
 internal const val DISCOGS_SAFE_MIN_INTERVAL_MS = 2_600L
 
 /** One conservative process-wide budget; never a limiter per endpoint. */
+internal const val DISCOGS_SAFE_AUTH_INTERVAL_MS = 1_100L
+
 internal class DiscogsRateLimiter(
     private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
     private val delayMillis: suspend (Long) -> Unit = { delay(it) },
@@ -107,46 +130,70 @@ internal class DiscogsRateLimiter(
 ) {
     private val mutex = Mutex()
     private var lastRequestAt: Long? = null
+    private var lastAnonymousAt: Long? = null
+    private var authTierRejected = false
     /** Monotonic deadline recorded under the same mutex as dispatch. */
     private var throttledUntilMs: Long? = null
 
     init { require(minimumIntervalMs >= 0L) }
 
-    suspend fun <T> runLimited(block: suspend () -> T): T {
+    /**
+     * Shared process budget: up to 55 total dispatches/min, of which no more
+     * than 24 may be anonymous. Search and hydration cannot independently
+     * spend more than the documented source quota. Tests may pass a lower
+     * minimumIntervalMs to use a deterministic virtual clock.
+     */
+    private suspend fun <T> schedule(
+        authenticated: Boolean, block: suspend () -> T,
+    ): T {
         mutex.lock()
         try {
-            lastRequestAt?.let {
-                val remaining = minimumIntervalMs - (nowMillis() - it)
-                val cooldown = throttledUntilMs?.minus(nowMillis()) ?: 0L
-                val pause = maxOf(remaining, cooldown)
-                if (pause > 0L) delayMillis(pause)
-            } ?: run {
-                val cooldown = throttledUntilMs?.minus(nowMillis()) ?: 0L
-                if (cooldown > 0L) delayMillis(cooldown)
-            }
-            lastRequestAt = nowMillis()
+            val authInterval = minOf(
+                minimumIntervalMs, DISCOGS_SAFE_AUTH_INTERVAL_MS,
+            )
+            val useAuthTier = authenticated && !authTierRejected
+            val now = nowMillis()
+            val totalPause = lastRequestAt?.let { authInterval - (now - it) } ?: 0L
+            val anonymousPause = if (useAuthTier) 0L else
+                lastAnonymousAt?.let { minimumIntervalMs - (now - it) } ?: 0L
+            val cooldown = throttledUntilMs?.minus(now) ?: 0L
+            val pause = maxOf(totalPause, anonymousPause, cooldown)
+            if (pause > 0L) delayMillis(pause)
+            val dispatchedAt = nowMillis()
+            lastRequestAt = dispatchedAt
+            if (!useAuthTier) lastAnonymousAt = dispatchedAt
             return block()
         } finally {
             mutex.unlock()
         }
     }
 
+    suspend fun <T> runLimited(block: suspend () -> T): T =
+        schedule(authenticated = false, block)
+
     /**
-     * Record a 429 cooldown before releasing the process-wide dispatch mutex,
-     * so a concurrent caller cannot race past Retry-After.
-     * A missing header uses a conservative 30s pause; an explicit longer
-     * retry period is honored up to 24 hours rather than retrying prematurely.
+     * All endpoints use the same mutex and 429 cooldown. Authentication is
+     * an explicit transport capability, never assumed from a stored token
+     * alone; a 401/403 demotes future dispatches to the anonymous budget
+     * until a successfully authenticated request restores confidence.
      */
-    suspend fun runHttpLimited(block: suspend () -> DiscogsHttpResponse): DiscogsHttpResponse =
-        runLimited {
-            val response = block()
-            if (response.status == 429) {
-                val seconds = (response.retryAfterSeconds ?: 30L).coerceIn(3L, 86_400L)
-                val target = nowMillis() + seconds * 1_000L
-                throttledUntilMs = maxOf(throttledUntilMs ?: Long.MIN_VALUE, target)
-            }
-            response
+    suspend fun runHttpLimited(
+        authenticated: Boolean = false,
+        block: suspend () -> DiscogsHttpResponse,
+    ): DiscogsHttpResponse = schedule(authenticated) {
+        val response = block()
+        if (response.status == 429) {
+            val seconds = (response.retryAfterSeconds ?: 30L).coerceIn(3L, 86_400L)
+            val target = nowMillis() + seconds * 1_000L
+            throttledUntilMs = maxOf(throttledUntilMs ?: Long.MIN_VALUE, target)
         }
+        if (authenticated && response.status in listOf(401, 403)) {
+            authTierRejected = true
+        } else if (authenticated && response.status == 200) {
+            authTierRejected = false
+        }
+        response
+    }
 }
 
 internal object DiscogsRequestBudget {
@@ -176,19 +223,33 @@ internal class DiscogsClient(
     private val capability: ProviderCapability = ProviderCapability.EDITION_METADATA,
     private val limiter: DiscogsRateLimiter = DiscogsRequestBudget.limiter,
     private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
+    /** Token never appears in source URLs, logs, cache keys or exported metrics. */
+    private val tokenProvider: () -> String? = { null },
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
+    private fun currentToken(): String? =
+        tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
+            ?.takeIf { transport.supportsTokenAuthorization }
+
+    private suspend fun sourceGet(path: String, token: String?): DiscogsHttpResponse =
+        if (token == null) transport.get(path, userAgent)
+        else transport.getAuthenticated(path, userAgent, token)
+
     /** Discogs Master is advisory group context only; never a verified Release. */
     suspend fun fetchMaster(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
+        val token = currentToken()
+        val authenticated = token != null
         val response = try {
             admission.execute(
                 capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                networkCall = { transport.get("masters/$id", userAgent) },
+                scheduleLimited = { block ->
+                    limiter.runHttpLimited(authenticated = authenticated) { block() }
+                },
+                networkCall = { sourceGet("masters/$id", token) },
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -220,12 +281,16 @@ internal class DiscogsClient(
     suspend fun fetchMasterVersions(id: Long): DiscogsMasterVersionsResult {
         if (!enabled) return DiscogsMasterVersionsResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsMasterVersionsResult.Malformed
+        val token = currentToken()
+        val authenticated = token != null
         val response = try {
             admission.execute(
                 capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                networkCall = { transport.get("masters/$id/versions?page=1&per_page=8", userAgent) },
+                scheduleLimited = { block ->
+                    limiter.runHttpLimited(authenticated = authenticated) { block() }
+                },
+                networkCall = { sourceGet("masters/$id/versions?page=1&per_page=8", token) },
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -277,13 +342,17 @@ internal class DiscogsClient(
         if (!enabled) return DiscogsMasterVersionPreviewResult.Disabled
         if (id !in 1..999_999_999_999L)
             return DiscogsMasterVersionPreviewResult.Malformed
+        val token = currentToken()
+        val authenticated = token != null
         val response = try {
             admission.execute(
                 capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                scheduleLimited = { block ->
+                    limiter.runHttpLimited(authenticated = authenticated) { block() }
+                },
                 networkCall = {
-                    transport.get("masters/$id/versions?page=1&per_page=8", userAgent)
+                    sourceGet("masters/$id/versions?page=1&per_page=8", token)
                 },
             )
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -305,12 +374,16 @@ internal class DiscogsClient(
     suspend fun fetchRelease(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
+        val token = currentToken()
+        val authenticated = token != null
         val response = try {
             admission.execute(
                 capability = capability,
                 provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
-                networkCall = { transport.get("releases/$id", userAgent) },
+                scheduleLimited = { block ->
+                    limiter.runHttpLimited(authenticated = authenticated) { block() }
+                },
+                networkCall = { sourceGet("releases/$id", token) },
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
