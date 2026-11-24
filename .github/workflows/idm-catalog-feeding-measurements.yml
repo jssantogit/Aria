@@ -556,6 +556,8 @@ jobs:
                   "apple_search_work_matches", "apple_search_work_rank_admitted",
                   "apple_seven_plus_audio_tracks",
                   "apple_song_collection_discovery_calls", "apple_song_collection_verified_candidates",
+                  "apple_independent_offer_attempted", "apple_independent_offer_verified",
+                  "apple_independent_detail_complete", "apple_independent_frozen_title_matches",
                   "apple_lookup_declared_track_count", "apple_lookup_track_count_known",
                   "apple_lookup_decoded_tracks", "apple_lookup_positionless_tracks",
                   "apple_lookup_duplicate_positions", "apple_lookup_possibly_truncated",
