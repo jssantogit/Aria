@@ -39,7 +39,8 @@ internal class ItunesPublicSearchSource(
         originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
     ): ItunesCatalogResult {
         val songs = client.search(workTerm, ItunesCatalogEntity.SONG, country,
-            limit = 100, attribute = ItunesCatalogSearchAttribute.SONG_TERM)
+            limit = 100, attribute = if (workTerm == originalQuery) null
+            else ItunesCatalogSearchAttribute.SONG_TERM)
         if (songs !is ItunesCatalogResult.Success) return songs
         val hints = songs.items.asSequence().filter {
             it.type == ItunesCatalogItemType.TRACK && it.storefront == country &&
@@ -272,10 +273,13 @@ internal class ApplePublicSearchPager(
         if (entity != ItunesCatalogEntity.ALBUM || !source.supportsSongCollectionDiscovery ||
             songCollectionAttempted || rows.size >= pageSize
         ) return null
-        // Only a corroborated credit boundary or explicit compound query
-        // justifies an extra branch; plain title is useful only on empty search.
+        // A corroborated credit boundary is preferred. Otherwise use the
+        // original query only for an empty or sparse work-oriented search,
+        // never an already productive exact artist-name listing.
         return creditHints.values.firstOrNull()?.work
-            ?: query.takeIf { rows.isEmpty() || query.contains(" - ") }
+            ?: query.takeIf { rows.isEmpty() || query.contains(" - ") ||
+                rows.values.none { applePublicSearchMatchRank(query, it) == 0 }
+            }
     }
     private val creditHints = linkedMapOf<String, ApplePublicCompoundHint>()
     private data class CompoundProbe(val term: String, val attribute: ItunesCatalogSearchAttribute)
@@ -405,8 +409,10 @@ internal class ApplePublicSearchPager(
                 // under the same shared limiter. Never loop on a bad source.
                 songCollectionAttempted = true
                 when (val result = source.discoverSongCollections(query, term, country, rows.keys.toSet())) {
-                    is ItunesCatalogResult.Failure ->
+                    is ItunesCatalogResult.Failure -> {
+                        capped = true
                         return ApplePublicSearchPageLoad.Failure(result.reason)
+                    }
                     is ItunesCatalogResult.Success -> {
                         capped = capped || result.possiblyTruncated
                         merge(result)
