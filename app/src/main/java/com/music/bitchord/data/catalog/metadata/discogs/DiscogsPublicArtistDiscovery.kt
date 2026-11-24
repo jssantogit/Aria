@@ -127,9 +127,18 @@ internal object DiscogsPublicArtistParsing {
 
 internal interface DiscogsPublicArtistTransport {
     suspend fun list(artistId: Long, page: Int, userAgent: String): DiscogsHttpResponse
+
+    /** Source-selected authorization; legacy public supplements stay anonymous. */
+    val supportsTokenAuthorization: Boolean get() = false
+
+    suspend fun listAuthenticated(
+        artistId: Long, page: Int, userAgent: String, token: String,
+    ): DiscogsHttpResponse = throw UnsupportedOperationException(
+        "Artist transport does not support authenticated reads",
+    )
 }
 
-/** Fixed public endpoint; token, image URLs and redirects are never used. */
+/** Fixed official endpoint, no images/redirects; optional bearer-free Discogs token. */
 internal class KtorDiscogsPublicArtistTransport(
     private val perPage: Int = 12,
     private val client: HttpClient = HttpClient(OkHttp) {
@@ -142,13 +151,25 @@ internal class KtorDiscogsPublicArtistTransport(
         }
     },
 ) : DiscogsPublicArtistTransport {
+    override val supportsTokenAuthorization: Boolean get() = true
+
     override suspend fun list(
         artistId: Long, page: Int, userAgent: String,
+    ): DiscogsHttpResponse = read(artistId, page, userAgent, null)
+
+    override suspend fun listAuthenticated(
+        artistId: Long, page: Int, userAgent: String, token: String,
+    ): DiscogsHttpResponse = read(artistId, page, userAgent, token)
+
+    private suspend fun read(
+        artistId: Long, page: Int, userAgent: String, token: String?,
     ): DiscogsHttpResponse {
         require(artistId in 1..999_999_999_999L && page in 1..100 && perPage in 1..12)
+        require(token == null || isValidDiscogsSearchToken(token))
         val response = client.get("https://api.discogs.com/artists/$artistId/releases") {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
+            if (token != null) header(HttpHeaders.Authorization, "Discogs token=$token")
             parameter("page", page)
             parameter("per_page", perPage)
             parameter("sort", "year")
