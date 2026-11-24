@@ -99,17 +99,21 @@ internal class KtorDiscogsNativeArtistSearchTransport(
             socketTimeoutMillis = 12_000L
         }
     },
+    /** Optional fixed discovery filter for explicit CD edition selection. */
+    private val cdEditionsOnly: Boolean = false,
 ) : DiscogsNativeArtistSearchTransport {
     override suspend fun search(
         term: String, page: Int, token: String, agent: String,
     ): DiscogsHttpResponse {
         require(entity in setOf("artist", "release") &&
+            (!cdEditionsOnly || entity == "release") &&
             page in 1..3 && term.length in 1..120 && isValidDiscogsSearchToken(token))
         val response = client.get("https://api.discogs.com/database/search") {
             header(HttpHeaders.UserAgent, agent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
             header(HttpHeaders.Authorization, "Discogs token=$token")
             parameter("type", entity)
+            if (cdEditionsOnly) parameter("format", "CD")
             parameter("q", term)
             parameter("page", page)
             parameter("per_page", 20)
