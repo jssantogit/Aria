@@ -414,6 +414,8 @@ class IdmCatalogLiveObservationTest {
         var discogsMasterFound = 0
         var discogsReleaseReads = 0
         var discogsReleaseFound = 0
+        var discogsMasterRejected = 0
+        var discogsReleaseRejected = 0
         // Source-only aggregate audit. Never export raw index rows, titles,
         // IDs, artist names or authentication material in CI artifacts.
         val discogsIndexHints = mutableMapOf<Long, DiscogsEditorialMasterIndexHint>()
@@ -432,11 +434,34 @@ class IdmCatalogLiveObservationTest {
             val discogsGate = gateFor(discogs, caps)
             val guard = RateLimitedProviderTransport { discogsGate }
             val liveIndex = KtorDiscogsGenreSearchTransport()
+            // Count actual HTTP transport calls, not methods answered by the
+            // new positive source evidence cache. A cached Master/Release
+            // must never be misreported as another network request.
+            fun countDetailTransport(path: String) {
+                if (path.startsWith("masters/")) discogsMasterReads++
+                if (path.startsWith("releases/")) discogsReleaseReads++
+            }
+            val liveDetailTransport = object : DiscogsTransport {
+                private val upstream = KtorDiscogsTransport()
+                override val supportsTokenAuthorization: Boolean get() = true
+                override suspend fun get(path: String, userAgent: String):
+                    DiscogsHttpResponse {
+                    countDetailTransport(path)
+                    return upstream.get(path, userAgent)
+                }
+                override suspend fun getAuthenticated(
+                    path: String, userAgent: String, token: String,
+                ): DiscogsHttpResponse {
+                    countDetailTransport(path)
+                    return upstream.getAuthenticated(path, userAgent, token)
+                }
+            }
             val editions = DiscogsNativeEditionClient(
                 DiscogsClient(
                     enabled = true,
                     capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                     admission = guard,
+                    transport = liveDetailTransport,
                     // The live Home runs the same token-bearing Master and
                     // Release hydration as the actual Android session.
                     tokenProvider = { token },
@@ -467,8 +492,9 @@ class IdmCatalogLiveObservationTest {
                 },
                 editions = object : DiscogsNativeEditionReader {
                     override suspend fun master(id: Long): DiscogsLookupResult {
-                        discogsMasterReads++
                         return editions.master(id).also {
+                            if (it !is DiscogsLookupResult.FoundMaster)
+                                discogsMasterRejected++
                             if (it is DiscogsLookupResult.FoundMaster) {
                                 discogsMasterFound++
                                 val hint = discogsIndexHints[id]
@@ -492,9 +518,9 @@ class IdmCatalogLiveObservationTest {
                     }
 
                     override suspend fun release(id: Long): DiscogsLookupResult {
-                        discogsReleaseReads++
                         return editions.release(id).also {
                             if (it is DiscogsLookupResult.Found) discogsReleaseFound++
+                            else discogsReleaseRejected++
                         }
                     }
                 },
@@ -558,8 +584,7 @@ class IdmCatalogLiveObservationTest {
                 "index_master_genre_matches" to matchingGenreHints,
                 "index_master_style_matches" to matchingStyleHints,
                 "discogs_hydration_rejections" to
-                    (discogsMasterReads - discogsMasterFound) +
-                    (discogsReleaseReads - discogsReleaseFound),
+                    discogsMasterRejected + discogsReleaseRejected,
                 "initial_elapsed_ms" to initialElapsedMs,
                 "initial_first_verified_ms" to firstInitialVerifiedMs,
                 "initial_first_verified_seen" to if (firstInitialVerifiedNs != null) 1 else 0,
