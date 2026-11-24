@@ -387,6 +387,7 @@ jobs:
                           "http_or_transport_reads", "source_candidates_consumed",
                           "source_candidate_budget", "verified_target",
                           "source_index_reads", "source_master_reads",
+                          "source_index_master_candidates", "source_index_main_release_hints",
                           "source_release_reads", "elapsed_ms", "first_verified_ms",
                           "landing_checkpoint_used", "start_page", "start_position",
                           "initial_elapsed_ms", "initial_first_verified_ms",
@@ -469,7 +470,11 @@ jobs:
                       keys = ("status", "anchor_verified", "profile_projection_verified",
                               "displayed_unique", "verified_target", "source_gestures",
                               "landing_visible_releases", "automatic_pages", "release_sections",
-                              "verified_track_rows", "first_profile_ms", "incomplete_coverage", "elapsed_ms")
+                              "verified_track_rows", "first_profile_ms", "incomplete_coverage", "elapsed_ms",
+                              "artist_master_lookup_calls", "artist_release_lookup_calls",
+                              "artist_edition_malformed", "artist_edition_unavailable",
+                              "artist_edition_throttled", "artist_edition_unauthorized",
+                              "artist_edition_missing", "artist_edition_disabled")
                       print("IDM_ARTIST_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
                       out.write(f"| {provider} | {i:02d} | {row['anchor_verified']} | "
                                 f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
