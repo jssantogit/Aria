@@ -31,7 +31,7 @@ class DiscogsNativeArtistCatalogTest {
         val anonymousCalls = mutableListOf<Int>()
         val transport = object : DiscogsPublicArtistTransport {
             override val supportsTokenAuthorization: Boolean get() = true
-            private fun page() = DiscogsHttpResponse(200,
+            private fun indexResponse() = DiscogsHttpResponse(200,
                 """{"pagination":{"page":1,"pages":1},"releases":[
                     {"id":50,"type":"release","role":"Main","title":"Album"}
                 ]}""")
@@ -39,13 +39,13 @@ class DiscogsNativeArtistCatalogTest {
                 artistId: Long, page: Int, userAgent: String,
             ): DiscogsHttpResponse {
                 anonymousCalls += page
-                return page()
+                return indexResponse()
             }
             override suspend fun listAuthenticated(
                 artistId: Long, page: Int, userAgent: String, token: String,
             ): DiscogsHttpResponse {
                 authenticatedCalls += token
-                return page()
+                return indexResponse()
             }
         }
         val source = DiscogsNativeArtistCatalog(
