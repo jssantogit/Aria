@@ -76,6 +76,8 @@ internal data class ItunesCatalogItem(
     val artworkUrl: String? = null,
     val upc: String? = null,
     val trackCount: Int? = null,
+    /** Source collection label on a song, a discovery hint only. */
+    val collectionTitle: String? = null,
 ) {
     val scopedId: String get() = "itunes:$storefront:${type.key}:$id"
 
@@ -285,6 +287,22 @@ internal class ItunesCatalogClient(
             ItunesCatalogEntity.ALBUM -> ItunesCatalogItemType.ALBUM
             ItunesCatalogEntity.SONG -> ItunesCatalogItemType.TRACK
         }, capability = capability)
+    }
+
+    /** A song can nominate a collection, but only this exact typed metadata
+     * lookup may publish the album in Search. It uses Search consent, not
+     * discography consent, and requests no song detail or playback assets. */
+    suspend fun lookupSearchCollection(
+        collectionId: Long,
+        country: String,
+    ): ItunesCatalogResult {
+        val storefront = normalizedStorefront(country)
+        if (collectionId <= 0L || storefront == null)
+            return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
+        return request("lookup", linkedMapOf(
+            "id" to collectionId.toString(), "country" to storefront,
+        ), storefront, expectedType = ItunesCatalogItemType.ALBUM,
+            collectionId = collectionId, capability = ProviderCapability.CATALOG_SEARCH)
     }
 
     suspend fun lookupAlbum(
@@ -573,5 +591,8 @@ private fun JsonObject.toCatalogItem(storefront: String): ItunesCatalogItem? {
             ?: safeAppleArtwork(text("artworkUrl30")),
         upc = text("upc")?.takeIf { Regex("[0-9]{8,14}").matches(it) },
         trackCount = positiveNumber("trackCount"),
+        collectionTitle = if (kind == ItunesCatalogItemType.TRACK)
+            text("collectionName")?.takeIf { it.length <= 300 && it.none(Char::isISOControl) }
+        else null,
     )
 }
