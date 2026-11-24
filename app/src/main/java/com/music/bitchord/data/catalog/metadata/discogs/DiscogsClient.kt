@@ -190,7 +190,11 @@ internal class DiscogsRateLimiter(
             throttledUntilMs = maxOf(throttledUntilMs ?: Long.MIN_VALUE, target)
         }
         if (authenticated && response.status in listOf(401, 403)) {
+            // Failed authentication may be billed against the anonymous
+            // source quota; count this dispatch conservatively in both
+            // buckets before allowing another credentialed attempt.
             authTierRejected = true
+            lastAnonymousAt = lastRequestAt
         } else if (authenticated && response.status == 200) {
             authTierRejected = false
         }
