@@ -624,8 +624,12 @@ class ApplePublicSearchPagerTest {
             null, null, null, null, null, null, null, null, null,
         )
         assertEquals(0, applePublicSearchMatchRank("Beyonce", artist))
-        assertEquals(3, applePublicSearchMatchRank("beatles",
+        assertEquals(1, applePublicSearchMatchRank("beatles",
             artist.copy(title = "The Beatles")))
+        assertEquals(2, applePublicSearchMatchRank("beatles",
+            artist.copy(title = "Beatles Revival")))
+        assertEquals(3, applePublicSearchMatchRank("beatles",
+            artist.copy(title = "The Beatles Revival")))
         assertNull(applePublicSearchMatchRank("illit", artist.copy(title = "Ill-It")))
         assertNull(applePublicSearchMatchRank("illit", artist.copy(title = "ILLITERATE")))
     }
@@ -641,6 +645,19 @@ class ApplePublicSearchPagerTest {
             assertTrue(pager.start() is ApplePublicSearchPageLoad.Failure)
             assertTrue(fake.calls.isEmpty())
         }
+
+    @Test fun conflictingArtistCreditsAcrossApplePagesInvalidateSameCollectionId() = runBlocking {
+        val fake = Fake(ItunesCatalogResult.Success(listOf(album(1)), true),
+            mutableMapOf(
+                ItunesCatalogSearchAttribute.ALBUM_TERM to ItunesCatalogResult.Success(
+                    listOf(album(1).copy(artistName = "Artist feat. Other"))),
+            ))
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ALBUM, "br", 1, fake)
+        pager.start()
+        pager.loadMore()
+        assertTrue(pager.snapshot().visible.isEmpty())
+        assertTrue(pager.snapshot().coverageUncertain)
+    }
 
     @Test fun contradictorySnapshotsForSameAppleIdAreExcludedNotPickedByFirstRow() =
         runBlocking {
