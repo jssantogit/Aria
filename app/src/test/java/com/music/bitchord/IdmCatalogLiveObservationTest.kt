@@ -2296,6 +2296,7 @@ class IdmCatalogLiveObservationTest {
                 var appleSearchWorkMatches = 0
                 var appleSearchWorkRankAdmitted = 0
                 var appleAlbumDiagnostics: AppleAlbumReadDiagnostics? = null
+                var appleRuleTypeMatches = false
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2465,9 +2466,11 @@ class IdmCatalogLiveObservationTest {
                                     durations = expected.count { it.durationMs != null }
                                     projected = displayed > 0
                                     partial = detail.partialTracklist
-                                    typeVerified = if (case.kind == "single_ep")
+                                    val formatMatches = if (case.kind == "single_ep")
                                         record.format in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
                                         else record.format == ItunesEditorialReleaseFormat.ALBUM
+                                    appleRuleTypeMatches = formatMatches && record.formatDerivedFromAudioCount
+                                    typeVerified = formatMatches && !record.formatDerivedFromAudioCount
                                     record.artistId?.let { artistId ->
                                         assertEquals("itunes:br:artist:$artistId", page.albumArtistBrowseId)
                                         artistRoute = 1
@@ -2639,6 +2642,7 @@ class IdmCatalogLiveObservationTest {
                         "partial_apple_candidates" to partialAppleCandidates,
                         "discogs_format_queries" to discogsFormatQueries,
                         "apple_search_requests" to appleSearchRequests,
+                        "apple_rule_type_matches" to if (appleRuleTypeMatches) 1 else 0,
                         "apple_search_decoded_rows" to appleSearchRawRows,
                         "apple_search_credit_matches" to appleSearchCreditMatches,
                         "apple_search_title_matches" to appleSearchTitleMatches,
