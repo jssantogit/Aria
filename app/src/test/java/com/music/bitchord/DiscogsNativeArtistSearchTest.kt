@@ -2,6 +2,8 @@ package com.music.bitchord
 
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.providers.*
+import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
+import com.music.bitchord.ui.screens.discogsSearchDistinctArtists
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -26,6 +28,91 @@ class DiscogsNativeArtistSearchTest {
             """{"pagination":{"page":2,"pages":1},"results":[]}""", 1))
         assertNull(DiscogsNativeArtistSearchParsing.page(
             """{"pagination":{"page":1,"pages":1},"results":null}""", 1))
+    }
+
+    @Test fun homonymSelectionUsesExactReleaseCreditNotSuffixOrSearchTitle() = runBlocking {
+        val rows = listOf(
+            DiscogsNativeArtistSearchRow(1, "Example"),
+            DiscogsNativeArtistSearchRow(2, "Example (2)"),
+        )
+        val reads = mutableListOf<Long>()
+        val resolved = discogsResolveArtistSearchHomonyms("Example", rows,
+            stillCurrent = { true },
+            searchReleases = {
+                DiscogsNativeReleaseSearchResult.Success(DiscogsNativeReleaseSearchPage(
+                    listOf(
+                        DiscogsNativeReleaseSearchHit(9, "Other - Example"),
+                        DiscogsNativeReleaseSearchHit(10, "Example - Work"),
+                        DiscogsNativeReleaseSearchHit(11, "Example - Work"),
+                        DiscogsNativeReleaseSearchHit(12, "Example - Another"),
+                        DiscogsNativeReleaseSearchHit(13, "Example - Later"),
+                    ), null, false,
+                ))
+            },
+            readRelease = { id ->
+                reads += id
+                val body = if (id == 10L)
+                    """{"id":999,"title":"Wrong","artists":[{"id":1,"name":"Example"}]}"""
+                else """{"id":$id,"title":"Verified","master_id":$id,
+                    "artists":[{"id":2,"name":"Example (2)"}]}"""
+                DiscogsLookupResult.Found(requireNotNull(DiscogsRecordParser.parse(
+                    DiscogsLink(DiscogsKind.RELEASE, if (id == 10L) 999 else id), body)))
+            },
+        )
+        assertEquals(listOf(10L, 11L, 12L), reads)
+        assertTrue(resolved.corroboratedSelection)
+        assertEquals(listOf(rows[1]), discogsSearchDistinctArtists("Example", resolved.rows))
+    }
+
+    @Test fun homonymResolutionNeverContactsSourceForExplicitSuffixOrRevokedLease() = runBlocking {
+        val rows = listOf(
+            DiscogsNativeArtistSearchRow(1, "Example"),
+            DiscogsNativeArtistSearchRow(2, "Example (2)"),
+        )
+        var searches = 0
+        suspend fun resolve(query: String, authorized: Boolean) = discogsResolveArtistSearchHomonyms(
+            query, rows, stillCurrent = { authorized },
+            searchReleases = { searches++; DiscogsNativeReleaseSearchResult.Unavailable },
+            readRelease = { error("Unexpected hydration") },
+        )
+        assertEquals(rows, resolve("Example (2)", true).rows)
+        assertEquals(rows, resolve("Example", false).rows)
+        assertEquals(0, searches)
+    }
+
+    @Test fun homonymEvidenceCannotSurviveMidReadRevocationOrDuplicatePressings() = runBlocking {
+        val rows = listOf(
+            DiscogsNativeArtistSearchRow(1, "Example"),
+            DiscogsNativeArtistSearchRow(2, "Example (2)"),
+        )
+        var current = true
+        var revoke = false
+        suspend fun resolve() = discogsResolveArtistSearchHomonyms("Example", rows,
+            stillCurrent = { current },
+            searchReleases = {
+                DiscogsNativeReleaseSearchResult.Success(DiscogsNativeReleaseSearchPage(
+                    (10L..12L).map { DiscogsNativeReleaseSearchHit(it, "Example - Work") },
+                    null, false,
+                ))
+            },
+            readRelease = { id ->
+                if (revoke) current = false
+                val artist = if (id == 12L) 1 else 2
+                val name = if (artist == 1) "Example" else "Example (2)"
+                DiscogsLookupResult.Found(requireNotNull(DiscogsRecordParser.parse(
+                    DiscogsLink(DiscogsKind.RELEASE, id),
+                    """{"id":$id,"title":"Work","master_id":$artist,
+                        "artists":[{"id":$artist,"name":"$name"}]}""",
+                )))
+            },
+        )
+        // Two pressings from the same Master do not outweigh one independent work.
+        assertEquals(rows, resolve().rows)
+        revoke = true
+        val revoked = resolve()
+        assertEquals(rows, revoked.rows)
+        assertFalse(revoked.corroboratedSelection)
+        assertEquals(1, revoked.detailReads)
     }
 
     @Test fun noConsentOrCredentialsMeansNoNetworkAndNoMusicBrainzFallback() = runBlocking {
