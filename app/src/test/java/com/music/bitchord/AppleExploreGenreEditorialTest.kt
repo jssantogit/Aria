@@ -40,6 +40,37 @@ class AppleExploreGenreEditorialTest {
         assertNull(found.releases.single().musicBrainzReleaseGroupId)
     }
 
+    @Test fun paritySubgenresRequireExactAppleStorefrontEvidence() = runBlocking {
+        val cases = mapOf(
+            "hard rock" to ("Hard Rock" to "Rock"),
+            "house" to ("House" to "Electronic"),
+            "techno" to ("Techno" to "Electronic"),
+            "trance" to ("Trance" to "Dance"),
+            "smooth jazz" to ("Smooth Jazz" to "Jazz"),
+            "bluegrass" to ("Bluegrass" to "Country"),
+        )
+        for ((tag, names) in cases) {
+            var requests = 0
+            val source = AppleExploreGenreDiscovery(
+                nativeSource = AppleNativeGenreSearchSource { term, storefront ->
+                    assertEquals(tag, term)
+                    assertEquals("br", storefront)
+                    requests++
+                    AppleEditorialLoad.Success(
+                        listOf(edition(1, names.first), edition(2, names.second),
+                            edition(3, null)),
+                        AppleEditorialReadState.COMPLETE,
+                    )
+                },
+            )
+            val result = source.discoverNative(tag) as AppleEditorialLoad.Success
+            assertEquals(listOf(1L), result.releases.map { it.appleCollectionId })
+            assertEquals(1, requests)
+            assertTrue(AppleExploreGenrePolicy.supports(tag))
+            assertFalse(AppleExploreGenrePolicy.matches(tag, names.second))
+        }
+    }
+
     @Test fun unsupportedNativeGenreDoesNotContactAnySource() = runBlocking {
         var called = false
         val explorer = AppleExploreGenreDiscovery(

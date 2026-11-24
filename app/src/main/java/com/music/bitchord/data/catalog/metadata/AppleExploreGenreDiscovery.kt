@@ -26,6 +26,14 @@ internal object AppleExploreGenrePolicy {
         "folk" to setOf("folk"),
         "ambient" to setOf("ambient"),
         "punk" to setOf("punk"),
+        // Exact storefront genre names from Apple's genre taxonomy.
+        // A search term alone, a parent genre or title text is not proof.
+        "hard rock" to setOf("hard rock"),
+        "house" to setOf("house"),
+        "techno" to setOf("techno"),
+        "trance" to setOf("trance"),
+        "smooth jazz" to setOf("smooth jazz"),
+        "bluegrass" to setOf("bluegrass"),
     )
     private fun normalized(raw: String): String =
         Normalizer.normalize(raw.trim(), Normalizer.Form.NFD)

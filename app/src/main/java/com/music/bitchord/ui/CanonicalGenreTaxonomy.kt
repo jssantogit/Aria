@@ -59,6 +59,15 @@ internal val canonicalExploreSubgenres: List<CanonicalExploreGenre> = listOf(
 internal val canonicalAllExploreGenres: List<CanonicalExploreGenre> =
     canonicalExploreGenres + canonicalExploreSubgenres
 
+/** Frozen #227 matrix. Do not replace sparse categories after observing live results. */
+internal val idmParityMainGenres = listOf(
+    "pop", "rock", "hip-hop", "electronic", "jazz", "k-pop", "metal", "rnb", "folk",
+)
+internal val idmParitySubgenres = listOf(
+    "hard rock", "house", "techno", "trance", "smooth jazz", "bluegrass",
+)
+internal val idmParityCapacityGenres = listOf("rock", "electronic", "jazz")
+
 internal fun canonicalGenreBrowseId(genre: CanonicalExploreGenre): String =
     "catalog:GENRE:" + genre.tag
 

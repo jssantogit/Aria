@@ -69,4 +69,27 @@ class CanonicalGenreTaxonomyTest {
 
     private fun com.music.bitchord.data.model.HomeShelf?.orEmptyItems() =
         this?.items.orEmpty()
+
+    @Test fun frozenParityMatrixHasExplicitTypedMappingsAndCanonicalRelations() {
+        assertEquals(9, com.music.bitchord.ui.idmParityMainGenres.distinct().size)
+        assertEquals(6, com.music.bitchord.ui.idmParitySubgenres.distinct().size)
+        val matrix = com.music.bitchord.ui.idmParityMainGenres +
+            com.music.bitchord.ui.idmParitySubgenres
+        for (tag in matrix) {
+            val category = com.music.bitchord.ui.canonicalAllExploreGenres.single { it.tag == tag }
+            assertTrue(com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag))
+            assertTrue(com.music.bitchord.ui.discogsEditorialQueriesForTag(tag).isNotEmpty())
+            if (tag in com.music.bitchord.ui.idmParitySubgenres) {
+                assertNotNull(category.parentTag)
+                val parent = com.music.bitchord.ui.canonicalAllExploreGenres.single {
+                    it.tag == category.parentTag
+                }
+                assertTrue(com.music.bitchord.ui.canonicalExploreGenreRelationsShelf(parent)
+                    ?.items.orEmpty().any { it.browseId == "catalog:GENRE:$tag" })
+                assertFalse(com.music.bitchord.ui.canonicalExploreGenreRelationsShelf(category)
+                    ?.items.orEmpty().any { it.browseId == "catalog:GENRE:$tag" })
+            }
+        }
+    }
+
 }
