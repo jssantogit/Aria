@@ -51,10 +51,12 @@ private fun applePublicSearchFold(value: String?): String = java.text.Normalizer
 /** A returned source credit may reveal the correct boundary of a compound
  * query even when its other field is irrelevant. This nominates a search term
  * only: every recovered item still has to match the entire original query. */
-internal fun applePublicSearchWorkHints(
+internal data class ApplePublicCompoundHint(val work: String, val credit: String)
+
+internal fun applePublicSearchCompoundHints(
     query: String,
     rows: List<ItunesCatalogItem>,
-): List<String> {
+): List<ApplePublicCompoundHint> {
     val term = applePublicSearchFold(query)
     if (term.isBlank()) return emptyList()
     return rows.asSequence().filter { it.type != ItunesCatalogItemType.ARTIST }
@@ -69,13 +71,18 @@ internal fun applePublicSearchWorkHints(
                 else -> return@mapNotNull null
             }.trim()
             work.takeIf { it.length in 1..120 && it.any(Char::isLetterOrDigit) }
-                ?.let { credit.length to it }
+                ?.let { ApplePublicCompoundHint(it, credit) }
         }
         // A longer complete credit is a more informative boundary than a
         // short overlapping credit. No artist ID is inferred from this.
-        .sortedByDescending { it.first }
-        .map { it.second }.distinct().take(2).toList()
+        .sortedByDescending { it.credit.length }
+        .distinctBy { it.work }.take(2).toList()
 }
+
+internal fun applePublicSearchWorkHints(
+    query: String,
+    rows: List<ItunesCatalogItem>,
+): List<String> = applePublicSearchCompoundHints(query, rows).map { it.work }
 
 /**
  * Public iTunes search is fuzzy; only an independently visible title or artist
@@ -181,6 +188,15 @@ internal class ApplePublicSearchPager(
                 listOf(words.take(cut).joinToString(" "), words.drop(cut).joinToString(" "))
                     .distinct()
             }
+            // Longer compound works cannot be split at the midpoint without
+            // frequently bisecting the title. Probe the complement of a
+            // short leading/trailing credit only when other discovery is empty.
+            explicit.size == 1 && words.size in 9..14 -> {
+                val left = if (words.first().equals("the", true)) 3 else 2
+                val right = if (words[words.size - 3].equals("the", true)) 3 else 2
+                listOf(words.drop(left).joinToString(" "), words.dropLast(right).joinToString(" "))
+                    .distinct()
+            }
             else -> emptyList()
         }
     }
@@ -201,30 +217,38 @@ internal class ApplePublicSearchPager(
     private var visibleCount = 0
     private var nextAttribute = 0
     private var nextCompoundTerm = 0
-    private val creditHints = linkedSetOf<String>()
-    private var frozenCompoundTerms: List<String>? = null
-    private val compoundTerms: List<String>
-        get() = frozenCompoundTerms ?: (creditHints + fallbackCompoundTerms).take(2)
+    private val creditHints = linkedMapOf<String, ApplePublicCompoundHint>()
+    private data class CompoundProbe(val term: String, val attribute: ItunesCatalogSearchAttribute)
+    private var frozenCompoundProbes: List<CompoundProbe>? = null
+    private val compoundProbes: List<CompoundProbe>
+        get() = frozenCompoundProbes ?: (
+            creditHints.values.map { CompoundProbe(it.work, compoundAttribute) } +
+                creditHints.values.map { CompoundProbe(it.credit, ItunesCatalogSearchAttribute.ARTIST_TERM) } +
+                fallbackCompoundTerms.map { CompoundProbe(it, compoundAttribute) }
+            ).distinct().take(2)
 
     private fun hasPendingProbe(): Boolean =
         (probeAttributes && nextAttribute < extraAttributes.size) ||
-            ((rows.isEmpty() || compoundContinuation) && nextCompoundTerm < compoundTerms.size)
+            ((rows.isEmpty() || compoundContinuation) && nextCompoundTerm < compoundProbes.size)
 
     fun snapshot() = ApplePublicSearchSnapshot(
         visible = rows.values.take(visibleCount),
         discoveredCount = rows.size,
         hasMore = rows.size > visibleCount || (initialized && hasPendingProbe()),
         coverageUncertain = capped || disputed.isNotEmpty() ||
-            (initialized && compoundContinuation && nextCompoundTerm < compoundTerms.size),
+            (initialized && compoundContinuation && nextCompoundTerm < compoundProbes.size),
     )
 
     private fun merge(result: ItunesCatalogResult.Success) {
-        if (entity != ItunesCatalogEntity.ARTIST && frozenCompoundTerms == null &&
+        if (entity != ItunesCatalogEntity.ARTIST && frozenCompoundProbes == null &&
             creditHints.size < 2
         ) {
             val scoped = result.items.filter { it.type == expected && it.storefront == country &&
                 it.id > 0L && it.title.isNotBlank() && it.id !in disputed }
-            creditHints += applePublicSearchWorkHints(query, scoped).take(2 - creditHints.size)
+            for (hint in applePublicSearchCompoundHints(query, scoped)) {
+                if (creditHints.size >= 2) break
+                creditHints.putIfAbsent(hint.work, hint)
+            }
         }
         // Rank each incoming official batch once, then append new verified
         // IDs. Never re-sort previously visible pages as portraits or later
@@ -289,9 +313,10 @@ internal class ApplePublicSearchPager(
         }
         while (hasPendingProbe()) {
             val wholeQuery = probeAttributes && nextAttribute < extraAttributes.size
-            val attribute = if (wholeQuery) extraAttributes[nextAttribute] else compoundAttribute
-            if (!wholeQuery && frozenCompoundTerms == null) frozenCompoundTerms = compoundTerms
-            val term = if (wholeQuery) query else compoundTerms[nextCompoundTerm]
+            if (!wholeQuery && frozenCompoundProbes == null) frozenCompoundProbes = compoundProbes
+            val probe = if (wholeQuery) null else compoundProbes[nextCompoundTerm]
+            val attribute = probe?.attribute ?: extraAttributes[nextAttribute]
+            val term = probe?.term ?: query
             when (val result = source.search(term, entity, country, attribute)) {
                 is ItunesCatalogResult.Failure ->
                     return ApplePublicSearchPageLoad.Failure(result.reason)
