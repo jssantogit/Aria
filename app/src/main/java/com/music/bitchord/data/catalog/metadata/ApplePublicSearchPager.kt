@@ -243,6 +243,7 @@ internal fun applePublicSearchMatchRank(
     return when (row.type) {
         ItunesCatalogItemType.ARTIST -> when {
             title == term -> 0
+            title.startsWith("the ") && title.drop(4) == term -> 1
             beginsAsWholeTerm(title, term) -> 2
             title.startsWith("the ") && beginsAsWholeTerm(title.drop(4), term) -> 3
             else -> null
