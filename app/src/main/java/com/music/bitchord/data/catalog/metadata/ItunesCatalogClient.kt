@@ -105,6 +105,8 @@ internal data class ItunesAlbumLookupObservation(
     val foreignSongRows: Int,
     val rejectedSongRows: Int,
     val removedDuplicateOrDisputedSongs: Int,
+    /** Exact collection-owned unique video IDs; never returned as media. */
+    val verifiedMusicVideoRows: Int = 0,
 )
 
 internal sealed interface ItunesCatalogResult {
@@ -319,6 +321,25 @@ internal class ItunesCatalogClient(
         ), storefront, collectionId = collectionId)
     }
 
+    /**
+     * Observational lookup for an album declaring more items than its song
+     * response returns. The public musicVideo entity is a probe, not proof
+     * that every collection supports this relationship. No video objects,
+     * URLs or playback assets escape the existing audio-only decoder.
+     */
+    suspend fun observeAlbumMusicVideoRows(
+        collectionId: Long,
+        country: String = "br",
+    ): ItunesCatalogResult {
+        val storefront = normalizedStorefront(country)
+        if (collectionId <= 0L || storefront == null)
+            return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
+        return request("lookup", linkedMapOf(
+            "id" to collectionId.toString(), "country" to storefront,
+            "entity" to "musicVideo", "limit" to "200",
+        ), storefront, collectionId = collectionId)
+    }
+
     suspend fun lookupArtistAlbums(
         artistId: Long,
         country: String = "br",
@@ -420,6 +441,12 @@ internal class ItunesCatalogClient(
                 val matching = rawTracks.filter { it.positiveId("collectionId") == requested }
                 val matchingSongs = matching.count { it.text("kind") == "song" }
                 val parsedSongs = filtered.count { it.type == ItunesCatalogItemType.TRACK }
+                val videoIds = matching.filter { it.text("kind") == "music-video" }
+                    .mapNotNull { it.positiveId("trackId") }
+                val songIds = matching.filter { it.text("kind") == "song" }
+                    .mapNotNull { it.positiveId("trackId") }.toSet()
+                val verifiedVideos = videoIds.groupingBy { it }.eachCount()
+                    .count { (id, occurrences) -> occurrences == 1 && id !in songIds }
                 ItunesAlbumLookupObservation(
                     declaredResults = count,
                     rawRows = rows.size,
@@ -433,6 +460,7 @@ internal class ItunesCatalogClient(
                     rejectedSongRows = (matchingSongs - parsedSongs).coerceAtLeast(0),
                     removedDuplicateOrDisputedSongs = parsedSongs -
                         items.count { it.type == ItunesCatalogItemType.TRACK },
+                    verifiedMusicVideoRows = verifiedVideos,
                 )
             }
             // The editorial listing and Apple CDN imagery have separate opt-
