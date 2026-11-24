@@ -498,7 +498,14 @@ jobs:
                               "detail_http_reads", "detail_local_body_limits",
                               "detail_upstream_http_413", "detail_http_5xx",
                               "detail_other_http_failures", "detail_io_failures",
-                              "detail_other_transport_failures")
+                              "detail_other_transport_failures",
+                              "detail_parse_body_or_structure", "detail_parse_root",
+                              "detail_parse_identity", "detail_parse_title",
+                              "detail_parse_artists", "detail_parse_labels",
+                              "detail_parse_identifiers", "detail_parse_formats",
+                              "detail_parse_tracklist", "detail_parse_tracklist_limit",
+                              "detail_parse_format_descriptions", "detail_parse_track_title",
+                              "detail_parse_json")
                       print("IDM_ARTIST_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
                       out.write(f"| {provider} | {i:02d} | {row['anchor_verified']} | "
                                 f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
