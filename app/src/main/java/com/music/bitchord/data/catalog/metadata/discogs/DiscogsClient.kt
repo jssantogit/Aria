@@ -252,6 +252,14 @@ internal class DiscogsClient(
     private val detailTtlMs = 120_000L
     private val maxCachedDetails = 80
 
+    // The canonical MB Release enrichment pipeline has its OWN five-hour
+    // evidence lifecycle and explicit clear()/expiry semantics. A second
+    // hidden two-minute cache must never bypass an authorized re-verification
+    // after that pipeline's evidence is cleared. Memoize only the independent
+    // Discogs-native catalog navigation reads.
+    private val memoizeCatalogDetails: Boolean =
+        capability == ProviderCapability.EDITORIAL_DISCOGRAPHY
+
     private fun fingerprint(token: String?): ByteArray =
         if (token == null) byteArrayOf() else
             MessageDigest.getInstance("SHA-256")
@@ -260,6 +268,7 @@ internal class DiscogsClient(
     private fun cachedDetail(
         kind: DiscogsKind, id: Long, token: String?,
     ): DiscogsLookupResult? = synchronized(details) {
+        if (!memoizeCatalogDetails) return@synchronized null
         val key = DetailKey(kind, id)
         val value = details[key] ?: return@synchronized null
         if (clockMs() - value.atMs !in 0L until detailTtlMs ||
@@ -282,7 +291,7 @@ internal class DiscogsClient(
                     DiscogsLink(DiscogsKind.MASTER, id)
             else -> false
         }
-        if (!matched) return
+        if (!matched || !memoizeCatalogDetails) return
         synchronized(details) {
             val key = DetailKey(kind, id)
             details.remove(key)
