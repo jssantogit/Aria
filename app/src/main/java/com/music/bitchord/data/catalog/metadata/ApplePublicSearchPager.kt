@@ -72,6 +72,19 @@ internal fun applePublicSearchMatchRank(
     val compound = if (artist.isNotEmpty() && title.isNotEmpty()) listOf(
         "$artist $title", "$title $artist", "$artist - $title", "$title - $artist",
     ) else emptyList()
+    // A title-first query must match the complete artist credit even when
+    // Apple appends an edition qualifier to the work title.
+    val titleFirstWork = if (artist.isNotEmpty()) {
+        listOf(" - $artist", " $artist").firstNotNullOfOrNull { suffix ->
+            term.takeIf { it.endsWith(suffix) }?.removeSuffix(suffix)
+                ?.takeIf { it.isNotBlank() }
+        }
+    } else null
+    val titleFirstEdition = titleFirstWork?.let { work ->
+        beginsAsWholeTerm(title, work) && title.length > work.length &&
+            title.substring(work.length).trimStart().firstOrNull() in
+                listOf('(', '[', '-', '–', '—')
+    } == true
     return when (row.type) {
         ItunesCatalogItemType.ARTIST -> when {
             title == term -> 0
@@ -83,7 +96,7 @@ internal fun applePublicSearchMatchRank(
             artist == term -> 0
             title == term || term in compound -> 1
             beginsAsWholeTerm(title, term) ||
-                compound.any { beginsAsWholeTerm(it, term) } -> 2
+                compound.any { beginsAsWholeTerm(it, term) } || titleFirstEdition -> 2
             beginsAsWholeTerm(artist, term) -> 3
             else -> null
         }
