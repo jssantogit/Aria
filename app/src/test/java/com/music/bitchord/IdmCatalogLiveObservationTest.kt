@@ -892,6 +892,70 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
 
+        // Revisit the exact initial live predicate with genuinely verified
+        // identities already present in the current snapshot. This is a
+        // deliberately overlapping sampler, not a claim about natural overlap
+        // between two distinct genres. It exercises the same landing method
+        // used by Home/genre when predicates overlap.
+        val repeatKnown = (verifiedDiscogs + scrolledGenre?.releases.orEmpty())
+            .map { it.masterId }.toSet()
+        val repeatIndexBefore = discogsIndexReads
+        val repeatRawBefore = discogsIndexCandidates
+        val repeatMasterBefore = discogsMasterReads
+        val repeatMasterFoundBefore = discogsMasterFound
+        val repeatReleaseBefore = discogsReleaseReads
+        val repeatStartedNs = System.nanoTime()
+        val repeatEmitted = mutableListOf<Long>()
+        val repeatedSample = if (genreCanStart) withTimeoutOrNull(45_000L) {
+            try {
+                discogsGranularScanner?.discoverDistinct(
+                    DiscogsEditorialQuery("K-Pop", isStyle = true),
+                    maxReleases = 3, knownMasterIds = repeatKnown,
+                    onVerified = { repeatEmitted += it.masterId },
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { DiscogsEditorialResult.Unavailable }
+        } else null
+        val repeatNew = (repeatedSample as? DiscogsEditorialResult.Verified)
+            ?.releases.orEmpty()
+        check(repeatEmitted.none { it in repeatKnown })
+        check(repeatEmitted.distinct().size == repeatEmitted.size)
+        check(repeatNew.none { it.masterId in repeatKnown })
+        check(repeatNew.size <= 3)
+        val repeatShelves = discogsEditorialShelves(repeatNew)
+        report("discogs_overlapping_landing", Sample(
+            status = when {
+                token == null -> "token_not_configured"
+                !genreCanStart -> "initial_unverified"
+                repeatedSample == null -> "timeout_or_unavailable"
+                repeatedSample is DiscogsEditorialResult.Throttled -> "throttled"
+                repeatedSample is DiscogsEditorialResult.Unauthorized -> "unauthorized"
+                repeatedSample is DiscogsEditorialResult.Disabled -> "disabled"
+                repeatedSample !is DiscogsEditorialResult.Verified -> "source_error"
+                repeatNew.isEmpty() -> "no_new_verified_records"
+                else -> "verified"
+            },
+            raw = if (token == null) null else discogsIndexCandidates - repeatRawBefore,
+            parsed = if (token == null) null else discogsMasterFound - repeatMasterFoundBefore,
+            eligible = repeatNew.size,
+            visible = cards(repeatShelves).size,
+            requests = if (token == null) null else
+                discogsIndexReads - repeatIndexBefore +
+                discogsMasterReads - repeatMasterBefore +
+                discogsReleaseReads - repeatReleaseBefore,
+            counts = mapOf(
+                "known_verified_masters" to repeatKnown.size,
+                "new_verified_target" to 3,
+                "new_verified_emitted" to repeatEmitted.size,
+                "source_index_reads" to discogsIndexReads - repeatIndexBefore,
+                "source_master_reads" to discogsMasterReads - repeatMasterBefore,
+                "source_release_reads" to discogsReleaseReads - repeatReleaseBefore,
+                "elapsed_ms" to ((System.nanoTime() - repeatStartedNs) / 1_000_000L)
+                    .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+            ),
+        ))
+
         // Same Home priority and fallback selection as MainActivity, evaluated
         // for every possible explicit provider order. No cross-provider IDs.
         val orders = listOf(

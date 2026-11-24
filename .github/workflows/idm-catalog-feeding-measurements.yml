@@ -252,6 +252,7 @@ jobs:
           required = {"musicbrainz", "musicbrainz_app_flow",
                       "musicbrainz_home_granular", "itunes", "itunes_home_granular",
                       "discogs", "discogs_granular", "discogs_home_granular",
+                      "discogs_genre_12_positions", "discogs_overlapping_landing",
                       "collective"}
           data = {
               f.stem.removeprefix("live_"): json.loads(f.read_text())
@@ -266,6 +267,7 @@ jobs:
               for name in ("musicbrainz", "musicbrainz_app_flow",
                            "musicbrainz_home_granular", "itunes", "itunes_home_granular",
                            "discogs", "discogs_granular", "discogs_home_granular",
+                           "discogs_genre_12_positions", "discogs_overlapping_landing",
                            "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
