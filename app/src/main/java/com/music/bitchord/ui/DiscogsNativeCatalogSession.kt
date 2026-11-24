@@ -367,8 +367,9 @@ internal class DiscogsNativeCatalogSession(
                 ).coerceAtMost(2)
                 val inflight = mutableListOf<DiscogsEditorialCandidate>()
                 val result = try {
-                    editorialClient.discover(
+                    editorialClient.discoverDistinct(
                         request, maxReleases = budget,
+                        knownMasterIds = verified.map { it.masterId }.toSet(),
                         onVerified = { candidate ->
                             if (lease.isCurrent() && homePagingEpoch == editorialEpoch &&
                                 candidate.masterId !in verified.map { it.masterId } &&
@@ -555,8 +556,9 @@ internal class DiscogsNativeCatalogSession(
                 )
                 val inflight = mutableListOf<DiscogsEditorialCandidate>()
                 val result = try {
-                    editorialClient.discover(
+                    editorialClient.discoverDistinct(
                         query, maxReleases = budget,
+                        knownMasterIds = verified.map { it.masterId }.toSet(),
                         onVerified = { candidate ->
                             if (lease.isCurrent() && genrePagingEpoch == editorialEpoch &&
                                 genreEditorialTag == tag &&

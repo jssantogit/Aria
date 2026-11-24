@@ -422,6 +422,61 @@ class DiscogsGranularEditorialCursorTest {
         assertEquals(listOf(1001L), releaseReads)
     }
 
+    @Test fun overlappingLandingPredicatesFillSlotsWithNewVerifiedMasters() = runBlocking {
+        val masterReads = mutableListOf<Long>()
+        val releaseReads = mutableListOf<Long>()
+        val indexReads = mutableListOf<Pair<String, Int>>()
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    indexReads += query.sourceName to page
+                    val ids = if (!query.isStyle) listOf(1L, 2L)
+                        else if (page == 1) (1L..12L).toList()
+                        else listOf(13L, 14L, 15L)
+                    val pages = if (query.isStyle) 2 else 1
+                    val rows = ids.joinToString(",") { """{"id":$it,"type":"master"}""" }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":$page,"pages":$pages,"per_page":12},"results":[$rows]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    masterReads += id
+                    return DiscogsLookupResult.FoundMaster(
+                        this@DiscogsGranularEditorialCursorTest.master(id).copy(
+                            styles = if (id in 3L..12L) listOf("Other") else listOf("Indie Rock"),
+                        ),
+                    )
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    releaseReads += id
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsGranularEditorialCursorTest.release(id - 1000),
+                    )
+                }
+            },
+        )
+        val initial = client.discover(DiscogsEditorialQuery("Rock", false), 2)
+            as DiscogsEditorialResult.Verified
+        val emitted = mutableListOf<Long>()
+        val additional = client.discoverDistinct(
+            DiscogsEditorialQuery("Indie Rock", true, "Rock"), 2,
+            initial.releases.map { it.masterId }.toSet(),
+            onVerified = { emitted += it.masterId },
+        ) as DiscogsEditorialResult.Verified
+        assertEquals(listOf(1L, 2L), initial.releases.map { it.masterId })
+        assertEquals(listOf(13L, 14L), additional.releases.map { it.masterId })
+        assertEquals(listOf(13L, 14L), emitted)
+        assertEquals((1L..14L).toList(), masterReads)
+        assertEquals(listOf(1001L, 1002L, 1013L, 1014L), releaseReads)
+        assertEquals(listOf("Rock" to 1, "Indie Rock" to 1, "Indie Rock" to 2), indexReads)
+    }
+
     @Test fun verifiedPairExpiresBeforeItCanBeReusedAcrossPredicates() = runBlocking {
         var nowMs = 0L
         var masterReads = 0

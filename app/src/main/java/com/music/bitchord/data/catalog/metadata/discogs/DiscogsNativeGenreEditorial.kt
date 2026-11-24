@@ -577,6 +577,18 @@ internal class DiscogsNativeGenreEditorial(
         maxReleases: Int = 4,
         /** Publish each fully verified source Release before the sample ends. */
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
+    ): DiscogsEditorialResult = discoverDistinct(
+        query, maxReleases, emptySet(), onVerified,
+    )
+
+    /** Fill the sample with new identities across overlapping predicates.
+     * Already-published Masters belong to this caller's current snapshot;
+     * they cannot consume another predicate's verified-release slots. */
+    suspend fun discoverDistinct(
+        query: DiscogsEditorialQuery,
+        maxReleases: Int,
+        knownMasterIds: Set<Long>,
+        onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsEditorialResult {
         if (!query.isValid() || maxReleases !in 1..6)
             return DiscogsEditorialResult.InvalidQuery
@@ -643,7 +655,7 @@ internal class DiscogsNativeGenreEditorial(
                 if (verified.size >= maxReleases) break
                 // A successfully checked Master is deduplicated across pages.
                 // An unavailable/malformed transport response is NOT a check.
-                if (!hydratedMasterIds.add(masterId)) continue
+                if (masterId in knownMasterIds || !hydratedMasterIds.add(masterId)) continue
                 val previouslyVerified = cachedCandidate(masterId, query, tokenDigest)
                 if (previouslyVerified != null) {
                     verified += previouslyVerified
