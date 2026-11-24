@@ -2290,6 +2290,8 @@ class IdmCatalogLiveObservationTest {
                 var partialAppleCandidates = 0
                 var discogsFormatQueries = 0
                 var appleSearchRequests = 0
+                var appleSongCollectionDiscoveryCalls = 0
+                var appleSongCollectionVerifiedCandidates = 0
                 var appleSearchRawRows = 0
                 var appleSearchCreditMatches = 0
                 var appleSearchTitleMatches = 0
@@ -2375,6 +2377,18 @@ class IdmCatalogLiveObservationTest {
                                 // independently select the identity; no corpus substitutions.
                                 val actualSource = ItunesPublicSearchSource(appleClient)
                                 val observedSource = object : ApplePublicSearchSource {
+                                    override val supportsSongCollectionDiscovery = actualSource.supportsSongCollectionDiscovery
+                                    override suspend fun discoverSongCollections(
+                                        originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
+                                    ): ItunesCatalogResult {
+                                        appleSongCollectionDiscoveryCalls++
+                                        val response = actualSource.discoverSongCollections(
+                                            originalQuery, workTerm, country, knownIds,
+                                        )
+                                        if (response is ItunesCatalogResult.Success)
+                                            appleSongCollectionVerifiedCandidates += response.items.size
+                                        return response
+                                    }
                                     override suspend fun search(
                                         term: String, entity: ItunesCatalogEntity, country: String,
                                         attribute: ItunesCatalogSearchAttribute?,
@@ -2642,6 +2656,8 @@ class IdmCatalogLiveObservationTest {
                         "partial_apple_candidates" to partialAppleCandidates,
                         "discogs_format_queries" to discogsFormatQueries,
                         "apple_search_requests" to appleSearchRequests,
+                        "apple_song_collection_discovery_calls" to appleSongCollectionDiscoveryCalls,
+                        "apple_song_collection_verified_candidates" to appleSongCollectionVerifiedCandidates,
                         "apple_rule_type_matches" to if (appleRuleTypeMatches) 1 else 0,
                         "apple_search_decoded_rows" to appleSearchRawRows,
                         "apple_search_credit_matches" to appleSearchCreditMatches,
