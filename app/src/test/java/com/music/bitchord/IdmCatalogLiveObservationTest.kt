@@ -2723,6 +2723,9 @@ class IdmCatalogLiveObservationTest {
                 var failed = false
                 var categoryRoute = false
                 var releasePath = false
+                var homonymCandidates = 0
+                var homonymDetailReads = 0
+                var homonymCorroborated = false
                 val supported = provider != discogs || case.kind != "track"
                 val complete = try {
                     withTimeoutOrNull(100_000L) {
@@ -2884,8 +2887,17 @@ class IdmCatalogLiveObservationTest {
                                         val source = answer.page.artists.map {
                                             com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow(it.artistId, it.name)
                                         }
+                                        val resolved = if (page == 1) discogsResolveArtistSearchHomonyms(
+                                            query = case.query, rows = source,
+                                            stillCurrent = { true },
+                                            searchReleases = { discogsReleases.search(case.query) },
+                                            readRelease = discogsDetails::fetchRelease,
+                                        ) else DiscogsArtistSearchResolution(source)
+                                        homonymCandidates += resolved.ambiguousCandidates
+                                        homonymDetailReads += resolved.detailReads
+                                        homonymCorroborated = homonymCorroborated || resolved.corroboratedSelection
                                         val candidates = com.music.bitchord.ui.screens.discogsSearchDistinctArtists(
-                                            case.query, source,
+                                            case.query, resolved.rows,
                                         )
                                         val exact = candidates.any {
                                             (com.music.bitchord.ui.screens.discogsSearchArtistRank(case.query, it.name) ?: 99) <= 2
@@ -3026,6 +3038,9 @@ class IdmCatalogLiveObservationTest {
                         "native_search_supported" to if (supported) 1 else 0,
                         "release_track_path_verified" to if (releasePath) 1 else 0,
                         "source_interruption" to if (failed) 1 else 0,
+                        "homonym_candidates" to homonymCandidates,
+                        "homonym_detail_reads" to homonymDetailReads,
+                        "homonym_corroborated" to if (homonymCorroborated) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
                     ),
