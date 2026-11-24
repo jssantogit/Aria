@@ -165,7 +165,10 @@ internal class DiscogsNativeCatalogSession(
     }
     private val editions by lazy { DiscogsNativeEditionClient(editionClient) }
     private val artistClient by lazy {
-        DiscogsNativeArtistCatalog(enabled = true, editions = editions)
+        DiscogsNativeArtistCatalog(
+            enabled = true, editions = editions,
+            tokenProvider = { tokenVault.readForSearch() },
+        )
     }
     private val editorialClient by lazy {
         DiscogsNativeGenreEditorial(
