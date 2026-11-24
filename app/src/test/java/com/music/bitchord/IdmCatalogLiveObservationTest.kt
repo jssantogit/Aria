@@ -2218,6 +2218,10 @@ class IdmCatalogLiveObservationTest {
         val discogsSearch = DiscogsNativeReleaseSearchClient(
             enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
         )
+        val discogsCdSearch = DiscogsNativeReleaseSearchClient(
+            transport = KtorDiscogsNativeArtistSearchTransport(entity = "release", cdEditionsOnly = true),
+            enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
+        )
         val discogsDetails = DiscogsClient(
             enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
             admission = discogsGuard, tokenProvider = { token },
@@ -2251,6 +2255,7 @@ class IdmCatalogLiveObservationTest {
                 var candidatesRead = 0
                 var searchGestures = 0
                 var partialAppleCandidates = 0
+                var discogsFormatQueries = 0
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2426,10 +2431,32 @@ class IdmCatalogLiveObservationTest {
                                     as? DiscogsNativeReleaseSearchResult.Success
                                 if (search == null) failed = true
                                 var chosen: DiscogsRecord? = null
-                                // Search titles are just a candidate hint, never the selected identity.
-                                for (candidate in search?.page?.releases.orEmpty().filter {
+                                var selectedQuality = -1
+                                fun matching(hits: List<DiscogsNativeReleaseSearchHit>) = hits.filter {
                                     artistParityKey(it.title).contains(artistParityKey(case.title))
-                                }.take(if (case.kind == "multi") 8 else 5)) {
+                                }
+                                val normal = matching(search?.page?.releases.orEmpty())
+                                // Discogs vinyl sides can be auto-coupled. Do not
+                                // invent physical disc numbers from A/B/C/D.
+                                // For the frozen multidisc cases, sample CD
+                                // candidates as well as unfiltered editions, using
+                                // the same eight-detail budget and exact ID route.
+                                val cd = if (case.kind == "multi" && search != null) {
+                                    discogsFormatQueries++
+                                    val filtered = discogsCdSearch.search(query)
+                                    if (filtered is DiscogsNativeReleaseSearchResult.Success)
+                                        matching(filtered.page.releases)
+                                    else {
+                                        failed = true
+                                        emptyList()
+                                    }
+                                } else emptyList()
+                                val candidates = if (case.kind == "multi")
+                                    (cd.take(4) + normal.take(4) + cd + normal)
+                                        .distinctBy { it.releaseId }.take(8)
+                                else normal.take(5)
+                                // Search titles/format are hints, never the selected identity.
+                                for (candidate in candidates) {
                                     candidatesRead++
                                     val response = discogsDetails.fetchRelease(candidate.releaseId)
                                     if (response is DiscogsLookupResult.Throttled ||
@@ -2443,10 +2470,17 @@ class IdmCatalogLiveObservationTest {
                                             com.music.bitchord.ui.screens.discogsArtistDisplayName(it)
                                         }) || record.displayTracks.isEmpty()
                                     ) continue
-                                    chosen = record
                                     val trial = discogsReleasePage(record.artistNames.single(), record)
-                                    if (case.kind != "multi" ||
-                                        trial.tracks.mapNotNull { it.discNumber }.distinct().size >= 2) break
+                                    val multi = trial.tracks.mapNotNull { it.discNumber }.distinct().size >= 2
+                                    val meetsDiscGoal = case.kind != "multi" || multi
+                                    val completeTracks = !record.nativeTracklistIncomplete
+                                    val quality = (if (meetsDiscGoal) 2 else 0) +
+                                        (if (completeTracks) 1 else 0)
+                                    if (quality > selectedQuality) {
+                                        chosen = record
+                                        selectedQuality = quality
+                                    }
+                                    if (meetsDiscGoal && completeTracks) break
                                 }
                                 if (chosen != null) {
                                     val record = chosen
@@ -2532,6 +2566,7 @@ class IdmCatalogLiveObservationTest {
                         "detail_candidates_read" to candidatesRead,
                         "native_search_gestures" to searchGestures,
                         "partial_apple_candidates" to partialAppleCandidates,
+                        "discogs_format_queries" to discogsFormatQueries,
                         "source_interruption" to if (failed) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
