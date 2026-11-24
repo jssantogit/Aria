@@ -17,6 +17,7 @@ import io.ktor.http.HttpHeaders
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import java.security.MessageDigest
 import java.util.Locale
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -233,7 +234,70 @@ internal class DiscogsClient(
     private val tokenProvider: () -> String? = { null },
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
+    private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) {
+    /**
+     * Positive source-owned parsed Master/Release evidence, shared between
+     * Home, native artist pagination and DetailPage. Never store errors,
+     * raw JSON, artwork, tokens or user data. Recheck the capability BEFORE
+     * any cache hit, and bind every entry to its current credential digest.
+     */
+    private data class DetailKey(val kind: DiscogsKind, val id: Long)
+    private data class CachedDetail(
+        val result: DiscogsLookupResult,
+        val atMs: Long,
+        val credentialDigest: ByteArray,
+    )
+    private val details = linkedMapOf<DetailKey, CachedDetail>()
+    private val detailTtlMs = 120_000L
+    private val maxCachedDetails = 80
+
+    private fun fingerprint(token: String?): ByteArray =
+        if (token == null) byteArrayOf() else
+            MessageDigest.getInstance("SHA-256")
+                .digest(token.toByteArray(Charsets.UTF_8))
+
+    private fun cachedDetail(
+        kind: DiscogsKind, id: Long, token: String?,
+    ): DiscogsLookupResult? = synchronized(details) {
+        val key = DetailKey(kind, id)
+        val value = details[key] ?: return@synchronized null
+        if (clockMs() - value.atMs !in 0L until detailTtlMs ||
+            !value.credentialDigest.contentEquals(fingerprint(token))
+        ) {
+            details.remove(key)
+            null
+        } else value.result
+    }
+
+    private fun rememberDetail(
+        kind: DiscogsKind, id: Long, token: String?, result: DiscogsLookupResult,
+    ) {
+        val matched = when (result) {
+            is DiscogsLookupResult.Found ->
+                kind == DiscogsKind.RELEASE && result.record.link ==
+                    DiscogsLink(DiscogsKind.RELEASE, id)
+            is DiscogsLookupResult.FoundMaster ->
+                kind == DiscogsKind.MASTER && result.record.link ==
+                    DiscogsLink(DiscogsKind.MASTER, id)
+            else -> false
+        }
+        if (!matched) return
+        synchronized(details) {
+            val key = DetailKey(kind, id)
+            details.remove(key)
+            details[key] = CachedDetail(result, clockMs(), fingerprint(token))
+            if (details.size > maxCachedDetails)
+                details.remove(details.keys.first())
+        }
+    }
+
+    private fun allowedDetailRead(): Boolean {
+        val allowed = admission.permitted(capability, BuiltInProviderKeys.DISCOGS)
+        if (!allowed) synchronized(details) { details.clear() }
+        return allowed
+    }
+
     private fun currentToken(): String? =
         tokenProvider()?.trim()?.takeIf(::isValidDiscogsSearchToken)
             ?.takeIf { transport.supportsTokenAuthorization }
@@ -246,7 +310,9 @@ internal class DiscogsClient(
     suspend fun fetchMaster(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
+        if (!allowedDetailRead()) return DiscogsLookupResult.Disabled
         val token = currentToken()
+        cachedDetail(DiscogsKind.MASTER, id, token)?.let { return it }
         val authenticated = token != null
         val response = try {
             admission.execute(
@@ -270,7 +336,9 @@ internal class DiscogsClient(
                 val link = DiscogsLink(DiscogsKind.MASTER, id)
                 val record = DiscogsRecordParser.parseMaster(link, response.body)
                     ?: return DiscogsLookupResult.Malformed
-                DiscogsLookupResult.FoundMaster(record)
+                DiscogsLookupResult.FoundMaster(record).also {
+                    rememberDetail(DiscogsKind.MASTER, id, token, it)
+                }
             }
             401, 403 -> DiscogsLookupResult.Unauthorized
             404 -> DiscogsLookupResult.Missing
@@ -380,7 +448,9 @@ internal class DiscogsClient(
     suspend fun fetchRelease(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
+        if (!allowedDetailRead()) return DiscogsLookupResult.Disabled
         val token = currentToken()
+        cachedDetail(DiscogsKind.RELEASE, id, token)?.let { return it }
         val authenticated = token != null
         val response = try {
             admission.execute(
@@ -404,7 +474,9 @@ internal class DiscogsClient(
                 val link = DiscogsLink(DiscogsKind.RELEASE, id)
                 val record = DiscogsRecordParser.parse(link, response.body)
                     ?: return DiscogsLookupResult.Malformed
-                DiscogsLookupResult.Found(record)
+                DiscogsLookupResult.Found(record).also {
+                    rememberDetail(DiscogsKind.RELEASE, id, token, it)
+                }
             }
             401, 403 -> DiscogsLookupResult.Unauthorized
             404 -> DiscogsLookupResult.Missing
