@@ -294,6 +294,7 @@ class DiscogsClientContractTest {
         }
         val source = DiscogsClient(
             transport = transport, enabled = true,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
             tokenProvider = { token }, clockMs = { now },
             limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
         )
@@ -318,7 +319,9 @@ class DiscogsClientContractTest {
     @Test fun failedLookupsNeverEnterThePositiveEditionCache() = runBlocking {
         var calls = 0
         val client = DiscogsClient(
-            enabled = true, limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            enabled = true,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
             transport = object : DiscogsTransport {
                 override suspend fun get(
                     path: String, userAgent: String,
@@ -338,7 +341,7 @@ class DiscogsClientContractTest {
 
     @Test fun capabilityRevocationInvalidatesPreviouslyVerifiedEditionCache() = runBlocking {
         val key = BuiltInProviderKeys.DISCOGS
-        val cap = ProviderCapability.EDITION_METADATA
+        val cap = ProviderCapability.EDITORIAL_DISCOGRAPHY
         fun policy(on: Boolean) = ProviderCapabilityPolicy(
             descriptors = listOf(com.music.bitchord.data.providers.ProviderDescriptor(
                 key, setOf(cap),
@@ -350,6 +353,7 @@ class DiscogsClientContractTest {
         var calls = 0
         val client = DiscogsClient(
             enabled = true,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
             admission = RateLimitedProviderTransport { gate },
             limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
             transport = object : DiscogsTransport {
