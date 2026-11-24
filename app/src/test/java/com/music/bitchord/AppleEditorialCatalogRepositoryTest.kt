@@ -135,7 +135,7 @@ class AppleEditorialCatalogRepositoryTest {
             (result as AppleEditorialLoad.Success).state)
     }
 
-    @Test fun albumFormatIsDerivedOnlyFromCompleteSevenSongAudioLookup() = runBlocking {
+    @Test fun trackCountCannotClassifyHistoricalEpOrUnlabelledAlbum() = runBlocking {
         fun rows(count: Int, title: String = "Release 123", declared: Int = count): String {
             val songs = (1..count).joinToString(",") { n ->
                 track(100 + n, 123).replace("\"trackNumber\":1", "\"trackNumber\":$n")
@@ -147,22 +147,18 @@ class AppleEditorialCatalogRepositoryTest {
             .albumDetail(123) as AppleEditorialLoad.Success
         val complete = read(rows(7))
         assertEquals(AppleEditorialReadState.COMPLETE, complete.state)
-        assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.ALBUM,
+        assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED,
             complete.releases.single().format)
-        assertTrue(complete.releases.single().formatDerivedFromAudioCount)
         val partial = read(rows(7, declared = 8))
         assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST, partial.state)
         assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED,
             partial.releases.single().format)
-        assertFalse(partial.releases.single().formatDerivedFromAudioCount)
         val short = read(rows(6))
-        assertFalse(short.releases.single().formatDerivedFromAudioCount)
         assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED,
             short.releases.single().format)
-        val explicit = read(rows(7, title = "Release 123 - EP"))
+        val explicit = read(rows(7, title = "Release 123 (EP)"))
         assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.EP,
             explicit.releases.single().format)
-        assertFalse(explicit.releases.single().formatDerivedFromAudioCount)
     }
 
     @Test fun missingStorefrontAlbumIsDifferentFromTransportFailure() = runBlocking {
