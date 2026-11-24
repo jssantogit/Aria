@@ -2452,8 +2452,7 @@ class IdmCatalogLiveObservationTest {
                                     }
                                 } else emptyList()
                                 val candidates = if (case.kind == "multi")
-                                    (cd.take(4) + normal.take(4) + cd + normal)
-                                        .distinctBy { it.releaseId }.take(8)
+                                    discogsMultidiscSearchCandidates(cd, normal)
                                 else normal.take(5)
                                 // Search titles/format are hints, never the selected identity.
                                 for (candidate in candidates) {
