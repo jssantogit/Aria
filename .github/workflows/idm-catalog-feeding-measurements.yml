@@ -555,9 +555,13 @@ jobs:
                   "apple_search_credit_matches", "apple_search_title_matches",
                   "apple_search_work_matches", "apple_search_work_rank_admitted",
                   "apple_seven_plus_audio_tracks",
+                  "apple_artist_collection_discovery_calls", "apple_artist_collection_verified_candidates",
                   "apple_song_collection_discovery_calls", "apple_song_collection_verified_candidates",
                   "apple_independent_offer_attempted", "apple_independent_offer_verified",
                   "apple_independent_detail_complete", "apple_independent_frozen_title_matches",
+                  "apple_frozen_title_verified", "apple_qualified_edition_verified",
+                  "apple_video_probe_attempted", "apple_video_probe_same_collection",
+                  "apple_video_probe_verified_rows", "apple_video_probe_count_reconciled",
                   "apple_lookup_declared_track_count", "apple_lookup_track_count_known",
                   "apple_lookup_decoded_tracks", "apple_lookup_positionless_tracks",
                   "apple_lookup_duplicate_positions", "apple_lookup_possibly_truncated",
@@ -599,7 +603,11 @@ jobs:
                   "labelled_target_rows", "labelled_non_target_rows", "unjudged_rows",
                   "local_category_route_verified", "native_search_supported",
                   "release_track_path_verified",
-                              "homonym_candidates", "homonym_detail_reads", "homonym_corroborated", "source_interruption", "elapsed_ms")
+                              "homonym_candidates", "homonym_detail_reads", "homonym_corroborated",
+                  "apple_qualified_title_top_five", "apple_qualified_anchor_top_five",
+                  "apple_continuation_gestures", "apple_continuation_target_recovered",
+                  "apple_continuation_qualified_recovered", "apple_continuation_interrupted",
+                  "source_interruption", "elapsed_ms")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #230 fixed search targets (not general relevance adjudication)\n\n")
               out.write("| Provider | Case | Target | Top 5 | Labelled match | Non-target | Unjudged | Status |\n")
