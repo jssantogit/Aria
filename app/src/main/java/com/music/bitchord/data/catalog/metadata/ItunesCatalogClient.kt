@@ -93,11 +93,24 @@ internal enum class ItunesCatalogFailure {
     MALFORMED_RESPONSE,
 }
 
+/** Counts only, never raw source payloads or IDs. Kept separate from
+ * completeness: a collection count may include rows outside the song entity. */
+internal data class ItunesAlbumLookupObservation(
+    val declaredResults: Int,
+    val rawRows: Int,
+    val matchingSongRows: Int,
+    val matchingNonSongRows: Int,
+    val foreignSongRows: Int,
+    val rejectedSongRows: Int,
+    val removedDuplicateOrDisputedSongs: Int,
+)
+
 internal sealed interface ItunesCatalogResult {
     data class Success(
         val items: List<ItunesCatalogItem>,
         /** Returned rows filled the API's cap; completeness is unproven. */
         val possiblyTruncated: Boolean = false,
+        val albumLookupObservation: ItunesAlbumLookupObservation? = null,
     ) : ItunesCatalogResult
     data class Failure(val reason: ItunesCatalogFailure) : ItunesCatalogResult
 }
@@ -380,6 +393,27 @@ internal class ItunesCatalogClient(
             val items = filtered.filterNot { it.scopedId in disputed }
                 .distinctBy { it.scopedId }
             val requestedLimit = params["limit"]?.toIntOrNull()
+            val albumObservation = collectionId?.let { requested ->
+                val rawTracks = rows.mapNotNull { it as? JsonObject }
+                    .filter { it.text("wrapperType") == "track" }
+                val matching = rawTracks.filter { it.positiveId("collectionId") == requested }
+                val matchingSongs = matching.count { it.text("kind") == "song" }
+                val parsedSongs = filtered.count { it.type == ItunesCatalogItemType.TRACK }
+                ItunesAlbumLookupObservation(
+                    declaredResults = count,
+                    rawRows = rows.size,
+                    matchingSongRows = matchingSongs,
+                    matchingNonSongRows = matching.count {
+                        it.text("kind")?.let { kind -> kind != "song" } == true
+                    },
+                    foreignSongRows = rawTracks.count {
+                        it.text("kind") == "song" && it.positiveId("collectionId") != requested
+                    },
+                    rejectedSongRows = (matchingSongs - parsedSongs).coerceAtLeast(0),
+                    removedDuplicateOrDisputedSongs = parsedSongs -
+                        items.count { it.type == ItunesCatalogItemType.TRACK },
+                )
+            }
             // The editorial listing and Apple CDN imagery have separate opt-
             // outs. Keep catalog metadata visible without publishing images
             // (including low-res fallbacks) from a revoked artwork capability.
@@ -395,6 +429,7 @@ internal class ItunesCatalogClient(
                 possiblyTruncated = disputed.isNotEmpty() ||
                     (requestedLimit != null && rows.size >= requestedLimit) ||
                     count > rows.size,
+                albumLookupObservation = albumObservation,
             )
         } catch (_: Exception) {
             ItunesCatalogResult.Failure(ItunesCatalogFailure.MALFORMED_RESPONSE)
