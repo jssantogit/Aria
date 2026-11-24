@@ -262,6 +262,67 @@ class ApplePublicSearchPagerTest {
             .snapshot.visible.map { it.id })
     }
 
+    @Test fun emptyCompoundQueryUsesBoundedTitleProbesButNeverAcceptsWrongCredit() = runBlocking {
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val correct = album(1, title = "Blue Monday - Single").copy(artistName = "New Order")
+        val wrong = correct.copy(id = 2, artistName = "Another Artist")
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                calls += query to attribute
+                assertEquals(ItunesCatalogEntity.ALBUM, entity)
+                assertEquals("br", country)
+                return ItunesCatalogResult.Success(
+                    if (query == "Blue Monday") listOf(wrong, correct) else emptyList()
+                )
+            }
+        }
+        val pager = ApplePublicSearchPager("Blue Monday New Order", ItunesCatalogEntity.ALBUM,
+            "br", source = source)
+        val snapshot = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L), snapshot.visible.map { it.id })
+        assertEquals(listOf(
+            "Blue Monday New Order" to null,
+            "Blue Monday New Order" to ItunesCatalogSearchAttribute.ALBUM_TERM,
+            "Blue Monday New Order" to ItunesCatalogSearchAttribute.ARTIST_TERM,
+            "Blue Monday" to ItunesCatalogSearchAttribute.ALBUM_TERM,
+        ), calls)
+        assertFalse(snapshot.hasMore)
+        pager.loadMore()
+        assertEquals(4, calls.size)
+    }
+
+    @Test fun explicitCompoundRecoveryStopsAfterTwoExtraProbesAndRetriesFailedTerm() = runBlocking {
+        val calls = mutableListOf<String>()
+        var fail = true
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                calls += query
+                if (query == "New Order" && fail) {
+                    fail = false
+                    return ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE)
+                }
+                return ItunesCatalogResult.Success(emptyList())
+            }
+        }
+        val pager = ApplePublicSearchPager("New Order - Blue Monday", ItunesCatalogEntity.ALBUM,
+            "br", source = source)
+        assertTrue(pager.start() is ApplePublicSearchPageLoad.Failure)
+        assertTrue(pager.snapshot().hasMore)
+        val recovered = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertFalse(recovered.hasMore)
+        assertTrue(recovered.visible.isEmpty())
+        assertEquals(listOf("New Order - Blue Monday", "New Order - Blue Monday",
+            "New Order - Blue Monday", "New Order", "New Order", "Blue Monday"), calls)
+        pager.loadMore()
+        assertEquals(6, calls.size)
+    }
+
     @Test fun accentsAndArticlesAreNormalizedWithoutRemovingSourcePunctuation() {
         val artist = ItunesCatalogItem(
             ItunesCatalogItemType.ARTIST, 17L, "br", "Beyoncé",
