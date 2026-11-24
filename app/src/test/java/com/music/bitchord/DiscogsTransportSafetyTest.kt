@@ -42,13 +42,29 @@ class DiscogsTransportSafetyTest {
                 .setBody("a".repeat(140_000))
                 .setHeader("Content-Length", "140000"))
             val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
-            assertEquals(413, transport.get("releases/42", "BitChord/Test").status)
+            val response = transport.get("releases/42", "BitChord/Test")
+            assertEquals(413, response.status)
+            assertTrue(response.localBodyLimitExceeded)
+            assertTrue(response.body.isEmpty())
         }
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(200)
                 .setChunkedBody("a".repeat(140_000), 8_192))
             val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
-            assertEquals(413, transport.get("releases/42", "BitChord/Test").status)
+            val response = transport.get("releases/42", "BitChord/Test")
+            assertEquals(413, response.status)
+            assertTrue(response.localBodyLimitExceeded)
+            assertTrue(response.body.isEmpty())
+        }
+    }
+
+    @Test fun upstream413IsNotReportedAsLocalBodyLimit() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(413).setBody(""))
+            val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
+            val response = transport.get("releases/42", "BitChord/Test")
+            assertEquals(413, response.status)
+            assertFalse(response.localBodyLimitExceeded)
         }
     }
 
