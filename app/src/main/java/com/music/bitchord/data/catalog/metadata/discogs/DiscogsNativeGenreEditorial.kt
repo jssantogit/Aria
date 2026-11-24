@@ -164,9 +164,21 @@ internal class KtorDiscogsGenreSearchTransport(
 
 /** A structured search row is only a candidate until the Master and its
  * main Release independently corroborate its tag and source-owned linkage. */
+/**
+ * Source search hints are OBSERVATIONS, not identity/admission evidence.
+ * A Master/Release still needs independent detail verification before it
+ * enters canonical Home/genre/artist shelves.
+ */
+internal data class DiscogsEditorialMasterIndexHint(
+    val mainReleaseId: Long?,
+    val genres: List<String>?,
+    val styles: List<String>?,
+)
+
 internal data class DiscogsEditorialIndexPage(
     val masterIds: List<Long>,
     val hasNext: Boolean,
+    val hints: Map<Long, DiscogsEditorialMasterIndexHint> = emptyMap(),
 )
 
 internal object DiscogsEditorialMasterParsing {
@@ -188,15 +200,31 @@ internal object DiscogsEditorialMasterParsing {
         if (perPage != null && perPage !in 1..12) return null
         val rows = root["results"] as? JsonArray ?: return null
         if (rows.size > 12) return null
+        fun tags(obj: JsonObject, key: String): List<String>? {
+            val field = obj[key] as? JsonArray ?: return null
+            if (field.size > 64) return null
+            return field.map { (it as? JsonPrimitive)?.contentOrNull
+                ?.takeIf { name -> name.length in 2..80 &&
+                    name.none(Character::isISOControl) } ?: return null
+            }
+        }
+        val hints = linkedMapOf<Long, DiscogsEditorialMasterIndexHint>()
         val ids = rows.mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
             if ((obj["type"] as? JsonPrimitive)?.contentOrNull != "master") {
                 return@mapNotNull null
             }
-            (obj["id"] as? JsonPrimitive)?.longOrNull
-                ?.takeIf { it in 1..999_999_999_999L }
+            val id = (obj["id"] as? JsonPrimitive)?.longOrNull
+                ?.takeIf { it in 1..999_999_999_999L } ?: return@mapNotNull null
+            hints.putIfAbsent(id, DiscogsEditorialMasterIndexHint(
+                mainReleaseId = (obj["main_release"] as? JsonPrimitive)?.longOrNull
+                    ?.takeIf { it in 1..999_999_999_999L },
+                genres = tags(obj, "genre"),
+                styles = tags(obj, "style"),
+            ))
+            id
         }.distinct()
-        return DiscogsEditorialIndexPage(ids, expectedPage < pages)
+        return DiscogsEditorialIndexPage(ids, expectedPage < pages, hints)
     }
 
     /** Kept for the original first-page contract and callers. */
