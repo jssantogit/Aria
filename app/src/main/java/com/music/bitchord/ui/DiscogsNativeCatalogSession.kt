@@ -683,9 +683,23 @@ internal class DiscogsNativeCatalogSession(
                         // while a click retains the selected exact source ID.
                         // We never claim that two Discogs IDs are the same
                         // identity outside this search presentation.
-                        val candidates = discogsSearchDistinctArtists(
-                            subject, (previous + rows).distinctBy { it.artistId },
-                        )
+                        val combined = (previous + rows).distinctBy { it.artistId }
+                        // Do not reorder already published artist cards on continuation.
+                        // Corroborate homonyms only on the first landing and only
+                        // while both source capabilities remain authorized.
+                        val editorialLease = if (currentPage == 1 && previous.isEmpty())
+                            lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) else null
+                        val resolved = if (editorialLease != null) {
+                            discogsResolveArtistSearchHomonyms(
+                                query = subject, rows = combined,
+                                stillCurrent = { query == subject && authorization.isCurrent() &&
+                                    editorialLease.isCurrent() },
+                                searchReleases = { releaseSearchClient.search(subject) },
+                                readRelease = editionClient::fetchRelease,
+                            ).rows.takeIf { editorialLease.isCurrent() } ?: combined
+                        } else combined
+                        if (query != subject || !authorization.isCurrent()) return@launch
+                        val candidates = discogsSearchDistinctArtists(subject, resolved)
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
                         }
