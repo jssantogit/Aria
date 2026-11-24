@@ -196,7 +196,8 @@ jobs:
               out.write("|---|---:|---:|---:|---:|\n")
               for suite in suites:
                   path = Path("app/build/test-results/testDevDebugUnitTest") / (
-                      "TEST-com.music.bitchord." + suite + ".xml"
+                      ("TEST-com.music.bitchord.ui." if suite == "CanonicalGenreTaxonomyTest"
+                       else "TEST-com.music.bitchord.") + suite + ".xml"
                   )
                   if not path.is_file():
                       raise SystemExit("Missing Home granular regression suite: " + suite)
