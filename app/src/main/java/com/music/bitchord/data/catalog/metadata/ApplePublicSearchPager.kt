@@ -131,6 +131,32 @@ internal class ApplePublicSearchPager(
             ItunesCatalogSearchAttribute.ARTIST_TERM,
         )
     }
+    // Attribute probes with the complete query may still miss a compound
+    // title/credit: albumTerm and songTerm address a single source field.
+    // Use at most two additional field-specific probes only after a wholly
+    // empty result, and always rank returned rows against the ORIGINAL query.
+    // A split is a discovery hint, never identity evidence.
+    private val compoundTerms: List<String> = if (entity == ItunesCatalogEntity.ARTIST) {
+        emptyList()
+    } else {
+        val explicit = query.split(" - ")
+        val words = query.trim().split(Regex("\\s+"))
+        when {
+            explicit.size == 2 && explicit.all { it.isNotBlank() } ->
+                explicit.map(String::trim).distinct()
+            explicit.size == 1 && words.size in 4..8 -> {
+                val cut = (words.size + 1) / 2
+                listOf(words.take(cut).joinToString(" "), words.drop(cut).joinToString(" "))
+                    .distinct()
+            }
+            else -> emptyList()
+        }
+    }
+    private val compoundAttribute = when (entity) {
+        ItunesCatalogEntity.ARTIST -> ItunesCatalogSearchAttribute.ARTIST_TERM
+        ItunesCatalogEntity.ALBUM -> ItunesCatalogSearchAttribute.ALBUM_TERM
+        ItunesCatalogEntity.SONG -> ItunesCatalogSearchAttribute.SONG_TERM
+    }
     private val expected = when (entity) {
         ItunesCatalogEntity.ARTIST -> ItunesCatalogItemType.ARTIST
         ItunesCatalogEntity.ALBUM -> ItunesCatalogItemType.ALBUM
@@ -141,11 +167,16 @@ internal class ApplePublicSearchPager(
     private var probeAttributes = false
     private var visibleCount = 0
     private var nextAttribute = 0
+    private var nextCompoundTerm = 0
+
+    private fun hasPendingProbe(): Boolean =
+        (probeAttributes && nextAttribute < extraAttributes.size) ||
+            (rows.isEmpty() && nextCompoundTerm < compoundTerms.size)
 
     fun snapshot() = ApplePublicSearchSnapshot(
         visible = rows.values.take(visibleCount),
         discoveredCount = rows.size,
-        hasMore = rows.size > visibleCount || (probeAttributes && nextAttribute < extraAttributes.size),
+        hasMore = rows.size > visibleCount || (initialized && hasPendingProbe()),
         coverageUncertain = capped || disputed.isNotEmpty(),
     )
 
@@ -203,13 +234,15 @@ internal class ApplePublicSearchPager(
             visibleCount = minOf(rows.size, visibleCount + pageSize)
             return ApplePublicSearchPageLoad.Success(snapshot())
         }
-        while (probeAttributes && nextAttribute < extraAttributes.size) {
-            val attribute = extraAttributes[nextAttribute]
-            when (val result = source.search(query, entity, country, attribute)) {
+        while (hasPendingProbe()) {
+            val wholeQuery = probeAttributes && nextAttribute < extraAttributes.size
+            val attribute = if (wholeQuery) extraAttributes[nextAttribute] else compoundAttribute
+            val term = if (wholeQuery) query else compoundTerms[nextCompoundTerm]
+            when (val result = source.search(term, entity, country, attribute)) {
                 is ItunesCatalogResult.Failure ->
                     return ApplePublicSearchPageLoad.Failure(result.reason)
                 is ItunesCatalogResult.Success -> {
-                    nextAttribute++
+                    if (wholeQuery) nextAttribute++ else nextCompoundTerm++
                     capped = capped || result.possiblyTruncated
                     merge(result)
                     if (rows.size > visibleCount) {
