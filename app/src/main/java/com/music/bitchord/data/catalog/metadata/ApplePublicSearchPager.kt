@@ -299,7 +299,8 @@ internal class ApplePublicSearchPager(
         discoveredCount = rows.size,
         hasMore = rows.size > visibleCount || (initialized && hasPendingProbe()),
         coverageUncertain = capped || disputed.isNotEmpty() ||
-            (initialized && compoundContinuation && nextCompoundTerm < compoundProbes.size),
+            (initialized && compoundContinuation && nextCompoundTerm < compoundProbes.size) ||
+            (initialized && songCollectionTerm() != null),
     )
 
     private fun merge(result: ItunesCatalogResult.Success) {
@@ -374,6 +375,7 @@ internal class ApplePublicSearchPager(
             visibleCount = minOf(rows.size, visibleCount + pageSize)
             return ApplePublicSearchPageLoad.Success(snapshot())
         }
+        val before = visibleCount
         while (hasPendingFieldProbe()) {
             val wholeQuery = probeAttributes && nextAttribute < extraAttributes.size
             if (!wholeQuery && frozenCompoundProbes == null) frozenCompoundProbes = compoundProbes
@@ -396,7 +398,7 @@ internal class ApplePublicSearchPager(
                 }
             }
         }
-        if (rows.size <= visibleCount && !hasPendingFieldProbe()) {
+        if (visibleCount == before && rows.size <= visibleCount && !hasPendingFieldProbe()) {
             val term = songCollectionTerm()
             if (term != null) {
                 // One song index plus at most two exact collection reads,
