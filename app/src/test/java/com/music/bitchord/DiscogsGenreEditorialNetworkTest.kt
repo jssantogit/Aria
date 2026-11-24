@@ -381,8 +381,10 @@ class DiscogsGenreEditorialNetworkTest {
         assertTrue(result is DiscogsEditorialResult.Verified)
         assertEquals(listOf("discogs:release:502"),
             (result as DiscogsEditorialResult.Verified).releases.map { it.browseId })
+        // The first Master was valid source evidence; a failed Release
+        // must be retried, but the Master need not be downloaded again.
         assertEquals(listOf("index:1", "master:77", "release:502",
-            "index:2", "master:77", "release:502"), calls)
+            "index:2", "release:502"), calls)
     }
 
     @Test fun failedMasterHydrationIsUnavailableNotProofOfEmptyDiscogsGenre() = runBlocking {
