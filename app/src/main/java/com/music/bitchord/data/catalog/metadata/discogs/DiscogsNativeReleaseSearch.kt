@@ -101,7 +101,9 @@ internal class DiscogsNativeReleaseSearchClient(
             admission.execute(
                 capability = ProviderCapability.CATALOG_SEARCH,
                 provider = BuiltInProviderKeys.DISCOGS,
-                scheduleLimited = { block -> limiter.runHttpLimited { block() } },
+                scheduleLimited = { block ->
+                        limiter.runHttpLimited(authenticated = true) { block() }
+                    },
                 networkCall = { transport.search(query, page, token, userAgent) },
             )
         } catch (cancelled: CancellationException) {
