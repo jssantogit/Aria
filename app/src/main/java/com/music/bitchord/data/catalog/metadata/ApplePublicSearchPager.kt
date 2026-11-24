@@ -40,6 +40,42 @@ internal sealed interface ApplePublicSearchPageLoad {
 }
 
 
+private fun applePublicSearchFold(value: String?): String = java.text.Normalizer.normalize(
+    value.orEmpty(), java.text.Normalizer.Form.NFKD,
+).replace(Regex("\\p{M}+"), "")
+    .lowercase(java.util.Locale.ROOT)
+    .replace(Regex("\\s+"), " ")
+    .trim()
+
+/** A returned source credit may reveal the correct boundary of a compound
+ * query even when its other field is irrelevant. This nominates a search term
+ * only: every recovered item still has to match the entire original query. */
+internal fun applePublicSearchWorkHints(
+    query: String,
+    rows: List<ItunesCatalogItem>,
+): List<String> {
+    val term = applePublicSearchFold(query)
+    if (term.isBlank()) return emptyList()
+    return rows.asSequence().filter { it.type != ItunesCatalogItemType.ARTIST }
+        .mapNotNull { row ->
+            val credit = applePublicSearchFold(row.artistName)
+            if (credit.isBlank() || credit == term) return@mapNotNull null
+            val prefix = listOf("$credit - ", "$credit ").firstOrNull(term::startsWith)
+            val suffix = listOf(" - $credit", " $credit").firstOrNull(term::endsWith)
+            val work = when {
+                prefix != null -> term.removePrefix(prefix)
+                suffix != null -> term.removeSuffix(suffix)
+                else -> return@mapNotNull null
+            }.trim()
+            work.takeIf { it.length in 1..120 && it.any(Char::isLetterOrDigit) }
+                ?.let { credit.length to it }
+        }
+        // A longer complete credit is a more informative boundary than a
+        // short overlapping credit. No artist ID is inferred from this.
+        .sortedByDescending { it.first }
+        .map { it.second }.distinct().take(2).toList()
+}
+
 /**
  * Public iTunes search is fuzzy; only an independently visible title or artist
  * credit can make an item relevant to the typed query. This is textual search
@@ -53,20 +89,14 @@ internal fun applePublicSearchMatchRank(
     query: String,
     row: ItunesCatalogItem,
 ): Int? {
-    fun fold(value: String?): String = java.text.Normalizer.normalize(
-        value.orEmpty(), java.text.Normalizer.Form.NFKD,
-    ).replace(Regex("\\p{M}+"), "")
-        .lowercase(java.util.Locale.ROOT)
-        .replace(Regex("\\s+"), " ")
-        .trim()
     fun beginsAsWholeTerm(field: String, term: String): Boolean =
         field.startsWith(term) &&
             (field.length == term.length || !field[term.length].isLetterOrDigit())
 
-    val term = fold(query)
+    val term = applePublicSearchFold(query)
     if (term.isEmpty()) return null
-    val title = fold(row.title)
-    val artist = fold(row.artistName)
+    val title = applePublicSearchFold(row.title)
+    val artist = applePublicSearchFold(row.artistName)
     // "artist title" and "title - artist" are common disambiguating
     // queries. Both fields must be present; do not strip punctuation or
     // accept arbitrary token/substring overlap.
@@ -136,7 +166,7 @@ internal class ApplePublicSearchPager(
     // Use at most two additional field-specific probes only after a wholly
     // empty result, and always rank returned rows against the ORIGINAL query.
     // A split is a discovery hint, never identity evidence.
-    private val compoundTerms: List<String> = if (entity == ItunesCatalogEntity.ARTIST) {
+    private val fallbackCompoundTerms: List<String> = if (entity == ItunesCatalogEntity.ARTIST) {
         emptyList()
     } else {
         val explicit = query.split(" - ")
@@ -168,6 +198,10 @@ internal class ApplePublicSearchPager(
     private var visibleCount = 0
     private var nextAttribute = 0
     private var nextCompoundTerm = 0
+    private val creditHints = linkedSetOf<String>()
+    private var frozenCompoundTerms: List<String>? = null
+    private val compoundTerms: List<String>
+        get() = frozenCompoundTerms ?: (creditHints + fallbackCompoundTerms).take(2)
 
     private fun hasPendingProbe(): Boolean =
         (probeAttributes && nextAttribute < extraAttributes.size) ||
@@ -181,6 +215,13 @@ internal class ApplePublicSearchPager(
     )
 
     private fun merge(result: ItunesCatalogResult.Success) {
+        if (entity != ItunesCatalogEntity.ARTIST && frozenCompoundTerms == null &&
+            creditHints.size < 2
+        ) {
+            val scoped = result.items.filter { it.type == expected && it.storefront == country &&
+                it.id > 0L && it.title.isNotBlank() && it.id !in disputed }
+            creditHints += applePublicSearchWorkHints(query, scoped).take(2 - creditHints.size)
+        }
         // Rank each incoming official batch once, then append new verified
         // IDs. Never re-sort previously visible pages as portraits or later
         // public Search attributes arrive.
@@ -237,6 +278,7 @@ internal class ApplePublicSearchPager(
         while (hasPendingProbe()) {
             val wholeQuery = probeAttributes && nextAttribute < extraAttributes.size
             val attribute = if (wholeQuery) extraAttributes[nextAttribute] else compoundAttribute
+            if (!wholeQuery && frozenCompoundTerms == null) frozenCompoundTerms = compoundTerms
             val term = if (wholeQuery) query else compoundTerms[nextCompoundTerm]
             when (val result = source.search(term, entity, country, attribute)) {
                 is ItunesCatalogResult.Failure ->
