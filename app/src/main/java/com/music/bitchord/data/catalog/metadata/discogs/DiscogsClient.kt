@@ -91,11 +91,19 @@ internal class KtorDiscogsTransport(
     }
 }
 
-/** Conservative separate budget; no bypass through one limiter per endpoint. */
+/**
+ * Discogs' documented anonymous ceiling is 25 requests in a moving minute.
+ * The app still makes some anonymous Master/Release reads, so it must NOT
+ * schedule at the higher authenticated-only rate. 2.6 s admits at most 24
+ * starts in any 60-second window, leaving a margin for scheduling jitter.
+ */
+internal const val DISCOGS_SAFE_MIN_INTERVAL_MS = 2_600L
+
+/** One conservative process-wide budget; never a limiter per endpoint. */
 internal class DiscogsRateLimiter(
     private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
     private val delayMillis: suspend (Long) -> Unit = { delay(it) },
-    private val minimumIntervalMs: Long = 3_000L,
+    private val minimumIntervalMs: Long = DISCOGS_SAFE_MIN_INTERVAL_MS,
 ) {
     private val mutex = Mutex()
     private var lastRequestAt: Long? = null
