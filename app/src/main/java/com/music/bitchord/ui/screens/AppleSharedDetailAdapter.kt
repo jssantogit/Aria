@@ -160,7 +160,8 @@ internal fun appleAlbumAsSharedDetail(
                 candidate.browseId != source.album.browseId &&
                 candidate.title.isNotBlank() &&
                 sourceArtistRoute != null &&
-                AppleCatalogBrowseRoute.parse(candidate.artistBrowseId) == sourceArtistRoute
+                candidate.artistBrowseId ==
+                    "itunes:${sourceArtistRoute.storefront}:artist:${sourceArtistRoute.id}"
         }
         .distinctBy { it.browseId }
         .take(12)
