@@ -786,6 +786,112 @@ class IdmCatalogLiveObservationTest {
             ),
         ))
 
+        // Exercise one REAL canonical genre scroll using the new in-gesture
+        // twelve-position budget. Compare actual network deltas separately:
+        // returning to a K-Pop category reuses only a fresh source index;
+        // a partial cursor from a later gesture would still re-read it.
+        val genreIndexBefore = discogsIndexReads
+        val genreCandidatesBefore = discogsIndexCandidates
+        val genreMasterBefore = discogsMasterReads
+        val genreMasterFoundBefore = discogsMasterFound
+        val genreReleaseBefore = discogsReleaseReads
+        val genreReleaseFoundBefore = discogsReleaseFound
+        val genreStartedNs = System.nanoTime()
+        var genreChunks = 0
+        var genrePositions = 0
+        var genreTransportException = false
+        val initialGenreState = DiscogsGenrePageSnapshot(
+            tag = "k-pop", cursor = DiscogsEditorialCursor(),
+            knownMasterIds = verifiedDiscogs.map { it.masterId }.toSet(),
+        )
+        val genreCanStart = discogsRead is DiscogsEditorialResult.Verified &&
+            discogsShelves.isNotEmpty()
+        val scrolledGenre = if (genreCanStart) withTimeoutOrNull(95_000L) {
+            var current = initialGenreState
+            for (batch in 1..3) {
+                val remaining = 12 - genrePositions
+                if (remaining <= 0) break
+                val cursor = current.cursor ?: break
+                val predicate = discogsEditorialQueriesForTag("k-pop")
+                    .getOrNull(current.queryIndex) ?: break
+                val response = try {
+                    discogsGranularScanner?.discoverGranular(
+                        query = predicate, cursor = cursor,
+                        knownMasterIds = current.knownMasterIds,
+                        maxCandidates = remaining,
+                        stopAfterVerifiedChunk = if (remaining >= 4) 4 else null,
+                    ) ?: break
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    genreTransportException = true
+                    break
+                }
+                genreChunks++
+                val consumed = when (response) {
+                    is DiscogsGranularRead.Page -> response.consumedCandidates
+                    is DiscogsGranularRead.Interrupted -> if (
+                        response.retryCursor.page == cursor.page
+                    ) (response.retryCursor.candidatePosition -
+                        cursor.candidatePosition).coerceAtLeast(0) else 0
+                }
+                genrePositions += consumed
+                val priorQuery = current.queryIndex
+                current = advanceDiscogsGenrePage(
+                    current, "k-pop", discogsEditorialQueriesForTag("k-pop").size,
+                    response,
+                ) ?: current.copy(loading = false, failed = true)
+                if (current.failed || !current.hasMore ||
+                    current.releases.isNotEmpty() || genrePositions >= 12 ||
+                    (consumed == 0 && current.cursor == cursor &&
+                        current.queryIndex == priorQuery)
+                ) break
+            }
+            current
+        } else null
+        val genreElapsedMs = ((System.nanoTime() - genreStartedNs) / 1_000_000L)
+            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        check(genrePositions in 0..12)
+        check(genreChunks in 0..3)
+        val genreExtra = scrolledGenre?.let {
+            discogsGenreContinuationShelf(
+                "k-pop", true,
+                discogsEditorialShelves(verifiedDiscogs), it,
+            )
+        }
+        report("discogs_genre_12_positions", Sample(
+            status = when {
+                token == null -> "token_not_configured"
+                !genreCanStart -> "initial_unverified"
+                genreTransportException -> "source_error"
+                scrolledGenre == null -> "timeout_or_unavailable"
+                scrolledGenre.failed -> "retryable_interruption"
+                genreExtra == null -> "no_new_verified_records"
+                else -> "verified"
+            },
+            raw = if (token == null) null
+                else discogsIndexCandidates - genreCandidatesBefore,
+            parsed = if (token == null) null
+                else discogsMasterFound - genreMasterFoundBefore,
+            eligible = scrolledGenre?.releases?.size ?: 0,
+            visible = genreExtra?.items?.size ?: 0,
+            requests = if (token == null) null else
+                discogsIndexReads - genreIndexBefore +
+                discogsMasterReads - genreMasterBefore +
+                discogsReleaseReads - genreReleaseBefore,
+            counts = mapOf(
+                "source_candidates_consumed" to genrePositions,
+                "source_candidate_budget" to 12,
+                "source_chunks_attempted" to genreChunks,
+                "source_index_reads" to discogsIndexReads - genreIndexBefore,
+                "source_master_reads" to discogsMasterReads - genreMasterBefore,
+                "source_release_reads" to discogsReleaseReads - genreReleaseBefore,
+                "source_release_found" to discogsReleaseFound - genreReleaseFoundBefore,
+                "next_window_has_more" to if (scrolledGenre?.hasMore == true) 1 else 0,
+                "elapsed_ms" to genreElapsedMs,
+            ),
+        ))
+
         // Same Home priority and fallback selection as MainActivity, evaluated
         // for every possible explicit provider order. No cross-provider IDs.
         val orders = listOf(
