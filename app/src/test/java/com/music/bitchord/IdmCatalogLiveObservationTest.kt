@@ -2376,4 +2376,447 @@ class IdmCatalogLiveObservationTest {
         }
     }
 
+    private data class SearchParityCase(
+        val query: String, val kind: String, val title: String,
+        val artist: String? = null, val anchor: String? = null,
+        val aliases: Set<String> = emptySet(), val artistAliases: Set<String> = emptySet(),
+        val explicitDiscogsSuffix: Boolean = false,
+    )
+
+    private data class SearchParityRow(
+        val id: String, val title: String, val artist: String? = null,
+    )
+
+    private fun searchLabelKey(text: String?): String =
+        java.text.Normalizer.normalize(text.orEmpty().trim(), java.text.Normalizer.Form.NFKD)
+            .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT)
+            .replace(Regex("\\s+"), " ")
+
+    private fun SearchParityCase.titleMatches(text: String?): Boolean =
+        text != null && (aliases + title).any { searchLabelKey(it) == searchLabelKey(text) }
+
+    private fun SearchParityCase.artistMatches(text: String?): Boolean =
+        text != null && (artistAliases + (artist ?: title)).any {
+            searchLabelKey(it) == searchLabelKey(text)
+        }
+
+    private fun searchAlbumCase(index: Int, query: String): SearchParityCase {
+        val work = albumParityCases[index]
+        return SearchParityCase(query, "album", work.title, work.artist,
+            aliases = work.titleAliases, artistAliases = work.artistAliases)
+    }
+
+    private val searchParityCases = listOf(
+        SearchParityCase("ILLIT", "artist", "ILLIT", anchor = "SUPER REAL ME"),
+        SearchParityCase("IVE", "artist", "IVE", anchor = "I'VE IVE"),
+        SearchParityCase("Beyonce", "artist", "Beyoncé", anchor = "Lemonade"),
+        SearchParityCase("Beatles", "artist", "The Beatles", anchor = "Abbey Road",
+            artistAliases = setOf("Beatles, The")),
+        SearchParityCase("Muse", "artist", "Muse", anchor = "Absolution"),
+        SearchParityCase("Ghost", "artist", "Ghost", anchor = "Meliora"),
+        SearchParityCase("Phoenix", "artist", "Phoenix", anchor = "Wolfgang Amadeus Phoenix"),
+        SearchParityCase("Joao Gilberto", "artist", "João Gilberto", anchor = "Chega de Saudade"),
+        SearchParityCase("Portishead", "artist", "Portishead", anchor = "Dummy"),
+        SearchParityCase("ILLIT (2)", "artist", "ILLIT", anchor = "SUPER REAL ME",
+            explicitDiscogsSuffix = true),
+        searchAlbumCase(0, "David Bowie Hunky Dory"),
+        searchAlbumCase(1, "Powerslave"),
+        searchAlbumCase(2, "Violator Depeche Mode"),
+        searchAlbumCase(3, "Dummy Portishead"),
+        searchAlbumCase(4, "Mezzanine"),
+        searchAlbumCase(5, "Blue Monday New Order"),
+        searchAlbumCase(7, "The Perfect Kiss"),
+        searchAlbumCase(9, "Love Will Tear Us Apart"),
+        SearchParityCase("Magnetic ILLIT", "track", "Magnetic", "ILLIT", "SUPER REAL ME"),
+        SearchParityCase("Hello", "track", "Hello", "Adele", "25"),
+        SearchParityCase("One Metallica", "track", "One", "Metallica", "...And Justice for All"),
+        SearchParityCase("Halo Beyonce", "track", "Halo", "Beyoncé", "I Am... Sasha Fierce"),
+        SearchParityCase("1901 Phoenix", "track", "1901", "Phoenix", "Wolfgang Amadeus Phoenix"),
+        SearchParityCase("Chega de Saudade Joao Gilberto", "track", "Chega de Saudade",
+            "João Gilberto", "Chega de Saudade"),
+        SearchParityCase("metal", "category", "metal"),
+        SearchParityCase("Eletronica", "category", "electronic"),
+        SearchParityCase("k-pop", "category", "k-pop"),
+        SearchParityCase("house", "category", "house"),
+        SearchParityCase("hard rock", "category", "hard rock"),
+        SearchParityCase("smooth jazz", "category", "smooth jazz"),
+    )
+
+    /**
+     * #230 prelabelled targets, not a synthetic popularity ranking. Target
+     * precision is a stricter and different metric from general relevance:
+     * same-title namesakes and unresolved artist credits remain unjudged.
+     * Independent offer probes stay in the same provider. For Discogs tracks
+     * the release path is separate and NEVER credited as a native track hit.
+     */
+    @Test fun live_search_parity_matrix() = runBlocking {
+        assumeTrue("Only the observational CI job may access remote services",
+            System.getenv("IDM_CATALOG_LIVE") == "1")
+        val caps = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val mbGate = gateFor(mb, caps)
+        val mbSearch = MusicBrainzCatalogSearch(MusicBrainzClient(admission = { mbGate }))
+        val appleGate = gateFor(apple, caps)
+        val appleClient = ItunesCatalogClient(transport = KtorItunesCatalogTransport(
+            admission = RateLimitedProviderTransport { appleGate },
+        ))
+        val appleRepo = AppleEditorialCatalogRepository(appleClient)
+        val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")?.trim()?.takeIf(String::isNotBlank)
+        val discogsGate = gateFor(discogs, caps)
+        val guard = RateLimitedProviderTransport { discogsGate }
+        val discogsArtists = DiscogsNativeArtistSearchClient(
+            enabled = token != null, tokenProvider = { token }, admission = guard,
+        )
+        val discogsReleases = DiscogsNativeReleaseSearchClient(
+            enabled = token != null, tokenProvider = { token }, admission = guard,
+        )
+        val discogsDetails = DiscogsClient(
+            enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = guard, tokenProvider = { token },
+        )
+
+        suspend fun anchorRecords(case: SearchParityCase): List<DiscogsRecord> {
+            val title = case.anchor ?: case.title
+            val artist = case.artist ?: case.title
+            val search = discogsReleases.search("$artist $title")
+                as? DiscogsNativeReleaseSearchResult.Success ?: return emptyList()
+            val records = mutableListOf<DiscogsRecord>()
+            for (candidate in search.page.releases.filter {
+                searchLabelKey(it.title).contains(searchLabelKey(title))
+            }.take(5)) {
+                val response = discogsDetails.fetchRelease(candidate.releaseId)
+                if (response is DiscogsLookupResult.Throttled ||
+                    response is DiscogsLookupResult.Unauthorized ||
+                    response is DiscogsLookupResult.Disabled) break
+                val record = (response as? DiscogsLookupResult.Found)?.record ?: continue
+                assertTrue(record.link.id == candidate.releaseId)
+                val credit = record.artistNames.singleOrNull()?.let {
+                    com.music.bitchord.ui.screens.discogsArtistDisplayName(it)
+                }
+                if (!record.unofficial && case.artistMatches(credit) &&
+                    searchLabelKey(record.title) == searchLabelKey(title)) records += record
+            }
+            return records
+        }
+
+        for (provider in listOf(mb, apple, discogs)) {
+            val sourceName = when (provider) { mb -> "musicbrainz"; apple -> "itunes"; else -> "discogs" }
+            for ((index, case) in searchParityCases.withIndex()) {
+                val start = System.nanoTime()
+                var rows: List<SearchParityRow> = emptyList()
+                val provenIds = mutableSetOf<String>()
+                var offered = false
+                var failed = false
+                var categoryRoute = false
+                var releasePath = false
+                val supported = provider != discogs || case.kind != "track"
+                val complete = try {
+                    withTimeoutOrNull(100_000L) {
+                        when {
+                            case.kind == "category" -> {
+                                val categories = canonicalExploreGenreSearchHits(case.query, limit = 10)
+                                assertTrue(categories.all {
+                                    it.subtitle == "Categoria" &&
+                                        it.browseId.orEmpty().startsWith("catalog:GENRE:")
+                                })
+                                rows = categories.mapNotNull { item ->
+                                    item.browseId?.let { SearchParityRow(it, item.title) }
+                                }
+                                categoryRoute = rows.any { it.id == "catalog:GENRE:${case.title}" }
+                                if (categoryRoute) provenIds += "catalog:GENRE:${case.title}"
+                            }
+                            provider == mb -> when (case.kind) {
+                                "artist" -> {
+                                    val response = mbSearch.searchArtists(case.query, 15)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    if (response == null) failed = true
+                                    rows = response?.page?.items.orEmpty().map {
+                                        SearchParityRow("catalog:ARTIST:${it.musicBrainzId}", it.name)
+                                    }
+                                    val anchors = mbSearch.searchReleaseGroups(case.title + " " + case.anchor, 50)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    val credits = anchors?.page?.items.orEmpty().filter {
+                                        searchLabelKey(it.title) == searchLabelKey(case.anchor) &&
+                                            case.artistMatches(it.artistDisplay)
+                                    }.flatMap { it.artistCreditMbids.orEmpty() }
+                                    provenIds += credits.map { "catalog:ARTIST:$it" }
+                                    offered = provenIds.isNotEmpty()
+                                }
+                                "track" -> {
+                                    val response = mbSearch.searchRecordings(case.query, 25)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    if (response == null) failed = true
+                                    rows = response?.page?.items.orEmpty().filter(::isCuratedMusicBrainzRecording)
+                                        .map { SearchParityRow("catalog:RECORDING:${it.musicBrainzId}", it.title, it.artistDisplay) }
+                                    val probe = mbSearch.searchRecordings(case.title + " " + case.artist, 50)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    offered = (response?.page?.items.orEmpty() + probe?.page?.items.orEmpty())
+                                        .any { case.titleMatches(it.title) && case.artistMatches(it.artistDisplay) &&
+                                            isCuratedMusicBrainzRecording(it) }
+                                }
+                                else -> {
+                                    val groups = mbSearch.searchReleaseGroups(case.query, 15)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    val editions = mbSearch.searchReleases(case.query, 15)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    if (groups == null || editions == null) failed = true
+                                    val groupHits = groups?.page?.items.orEmpty().filter(::isCuratedMusicBrainzReleaseGroup)
+                                    val releaseHits = editions?.page?.items.orEmpty().filter(::isCuratedMusicBrainzRelease)
+                                    val nativeRows = groupHits.map {
+                                        com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+                                            it.musicBrainzId, com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE_GROUP,
+                                            it.title, it.artistDisplay, releaseDate = it.firstReleaseDate,
+                                            releaseKind = it.primaryType, secondaryTypes = it.secondaryTypes,
+                                            artistCreditMbids = it.artistCreditMbids,
+                                        )
+                                    } + releaseHits.map {
+                                        com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+                                            it.musicBrainzId, com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE,
+                                            it.title, it.artistDisplay, releaseDate = it.releaseDate,
+                                            coverGroupMbid = it.releaseGroupMbid, artistCreditMbids = it.artistCreditMbids,
+                                        )
+                                    }
+                                    val credits = (groupHits.map {
+                                        "catalog:RELEASE_GROUP:${it.musicBrainzId}" to it.artistDisplay
+                                    } + releaseHits.map {
+                                        "catalog:RELEASE:${it.musicBrainzId}" to it.artistDisplay
+                                    }).toMap()
+                                    rows = canonicalSearchRowsWithoutRedundantEditions(
+                                        canonicalSearchRowsWithOfficialEditionTitles(nativeRows, editions?.page?.items.orEmpty()),
+                                    ).map {
+                                        val id = canonicalNativeBrowseId(it)
+                                        SearchParityRow(id, it.title, credits[id])
+                                    }
+                                    val probe = mbSearch.searchReleaseGroups(case.title + " " + case.artist, 50)
+                                        as? MusicBrainzCatalogSearchResult.Success
+                                    offered = (groupHits + probe?.page?.items.orEmpty()).any {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay) &&
+                                            isCuratedMusicBrainzReleaseGroup(it)
+                                    } || releaseHits.any {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
+                                    }
+                                }
+                            }
+                            provider == apple -> {
+                                val entity = when (case.kind) {
+                                    "artist" -> ItunesCatalogEntity.ARTIST
+                                    "track" -> ItunesCatalogEntity.SONG
+                                    else -> ItunesCatalogEntity.ALBUM
+                                }
+                                val pager = ApplePublicSearchPager(case.query, entity, "br", pageSize = 24,
+                                    source = ItunesPublicSearchSource(appleClient))
+                                val response = pager.start() as? ApplePublicSearchPageLoad.Success
+                                if (response == null) failed = true
+                                val visible = response?.snapshot?.visible.orEmpty()
+                                rows = when (case.kind) {
+                                    "artist" -> appleNativeArtistSearchRows(AppleEditorialArtistLoad.Success(
+                                        visible, response?.snapshot?.coverageUncertain == true,
+                                    )).map { SearchParityRow(it.browseId, it.title) }
+                                    "track" -> appleNativeTrackSearchRows(AppleEditorialTrackLoad.Success(
+                                        visible, response?.snapshot?.coverageUncertain == true,
+                                    )).map { SearchParityRow(it.key, it.title, it.artistName) }
+                                    else -> appleNativeAlbumSearchRowsInSourceOrder(visible, "br")
+                                        .map { SearchParityRow(it.browseId, it.title, it.artistName) }
+                                }
+                                when (case.kind) {
+                                    "artist" -> {
+                                        val probe = appleRepo.searchAlbums(case.title + " " + case.anchor, "br", 50)
+                                            as? AppleEditorialLoad.Success
+                                        provenIds += probe?.releases.orEmpty().filter {
+                                            searchLabelKey(it.title) == searchLabelKey(case.anchor) &&
+                                                case.artistMatches(it.artistName)
+                                        }.mapNotNull { it.artistId?.let { id -> "itunes:br:artist:$id" } }
+                                        offered = provenIds.isNotEmpty()
+                                    }
+                                    "track" -> {
+                                        val probe = appleRepo.searchTracks(case.title + " " + case.artist, "br", 100)
+                                            as? AppleEditorialTrackLoad.Success
+                                        offered = (visible + probe?.tracks.orEmpty()).any {
+                                            case.titleMatches(it.title) && case.artistMatches(it.artistName)
+                                        }
+                                    }
+                                    else -> {
+                                        val probe = appleRepo.searchAlbums(case.title + " " + case.artist, "br", 50)
+                                            as? AppleEditorialLoad.Success
+                                        offered = visible.any { case.titleMatches(it.title) && case.artistMatches(it.artistName) } ||
+                                            probe?.releases.orEmpty().any {
+                                                case.titleMatches(it.title) && case.artistMatches(it.artistName)
+                                            }
+                                    }
+                                }
+                            }
+                            token != null -> when (case.kind) {
+                                "track" -> {
+                                    // Discogs' database Search does not expose an
+                                    // independently typed recording route.
+                                    val records = anchorRecords(case)
+                                    for (record in records) {
+                                        val page = discogsReleasePage(record.artistNames.joinToString(", "), record)
+                                        assertTrue(page.page.browseId == "discogs:release:${record.link.id}")
+                                        if (page.tracks.any { case.titleMatches(it.title) }) {
+                                            releasePath = true
+                                            offered = true
+                                            break
+                                        }
+                                    }
+                                }
+                                "artist" -> {
+                                    var page = 1
+                                    var accepted = emptyList<com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow>()
+                                    while (page in 1..3) {
+                                        val answer = discogsArtists.search(case.query, page)
+                                            as? DiscogsNativeArtistSearchResult.Success
+                                        if (answer == null) { failed = true; break }
+                                        val source = answer.page.artists.map {
+                                            com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow(it.artistId, it.name)
+                                        }
+                                        val candidates = com.music.bitchord.ui.screens.discogsSearchDistinctArtists(
+                                            case.query, source,
+                                        )
+                                        val exact = candidates.any {
+                                            (com.music.bitchord.ui.screens.discogsSearchArtistRank(case.query, it.name) ?: 99) <= 2
+                                        }
+                                        accepted = if (exact) candidates.filter {
+                                            (com.music.bitchord.ui.screens.discogsSearchArtistRank(case.query, it.name) ?: 99) <= 2
+                                        } else candidates.take(12)
+                                        if (!com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage(
+                                            accepted.size, answer.page.nextPage,
+                                        )) break
+                                        page = answer.page.nextPage ?: break
+                                    }
+                                    assertTrue(accepted.map {
+                                        searchLabelKey(com.music.bitchord.ui.screens.discogsArtistDisplayName(it.name))
+                                    }.distinct().size == accepted.size)
+                                    rows = accepted.map { SearchParityRow(it.browseId, it.name) }
+                                    provenIds += anchorRecords(case).mapNotNull {
+                                        it.artistIds.singleOrNull()?.let { id -> "discogs:artist:$id" }
+                                    }
+                                    offered = provenIds.isNotEmpty() && (!case.explicitDiscogsSuffix ||
+                                        rows.any { it.id in provenIds && searchLabelKey(it.title) == searchLabelKey(case.query) })
+                                }
+                                else -> {
+                                    var page = 1
+                                    var accepted = emptyList<DiscogsNativeReleaseSearchHit>()
+                                    while (page in 1..3) {
+                                        val answer = discogsReleases.search(case.query, page)
+                                            as? DiscogsNativeReleaseSearchResult.Success
+                                        if (answer == null) { failed = true; break }
+                                        accepted = answer.page.releases.filter {
+                                            com.music.bitchord.ui.screens.discogsSearchReleaseRank(case.query, it.title) != null
+                                        }.sortedWith(compareBy<DiscogsNativeReleaseSearchHit> {
+                                            com.music.bitchord.ui.screens.discogsSearchReleaseRank(case.query, it.title)
+                                                ?: Int.MAX_VALUE
+                                        }.thenBy { it.releaseId })
+                                        if (!com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage(
+                                            accepted.size, answer.page.nextPage,
+                                        )) break
+                                        page = answer.page.nextPage ?: break
+                                    }
+                                    rows = accepted.map {
+                                        val display = com.music.bitchord.ui.screens.discogsSearchReleaseDisplay(it.title)
+                                        SearchParityRow(it.browseId, display.title,
+                                            display.artistCredit?.let { name ->
+                                                com.music.bitchord.ui.screens.discogsArtistDisplayName(name)
+                                            })
+                                    }
+                                    for (candidate in rows.take(10).filter {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artist)
+                                    }) {
+                                        val id = candidate.id.substringAfterLast(':').toLong()
+                                        val response = discogsDetails.fetchRelease(id)
+                                        if (response is DiscogsLookupResult.Throttled ||
+                                            response is DiscogsLookupResult.Unauthorized ||
+                                            response is DiscogsLookupResult.Disabled) { failed = true; break }
+                                        val record = (response as? DiscogsLookupResult.Found)?.record ?: continue
+                                        assertTrue(record.link.id == id)
+                                        val name = record.artistNames.singleOrNull()?.let {
+                                            com.music.bitchord.ui.screens.discogsArtistDisplayName(it)
+                                        }
+                                        if (!record.unofficial && case.titleMatches(record.title) && case.artistMatches(name))
+                                            provenIds += candidate.id
+                                    }
+                                    offered = provenIds.isNotEmpty()
+                                    if (!offered && !failed) offered = anchorRecords(case).isNotEmpty()
+                                }
+                            }
+                        }
+                        true
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    failed = true
+                    false
+                }
+                val prefix = when {
+                    case.kind == "category" -> "catalog:GENRE:"
+                    provider == mb && case.kind == "artist" -> "catalog:ARTIST:"
+                    provider == mb && case.kind == "track" -> "catalog:RECORDING:"
+                    provider == mb -> "catalog:RELEASE"
+                    provider == apple && case.kind == "artist" -> "itunes:br:artist:"
+                    provider == apple && case.kind == "track" -> "itunes:br:track:"
+                    provider == apple -> "itunes:br:album:"
+                    case.kind == "artist" -> "discogs:artist:"
+                    else -> "discogs:release:"
+                }
+                assertTrue(rows.all { it.id.startsWith(prefix) && it.title.isNotBlank() })
+                assertEquals(rows.size, rows.map { it.id }.distinct().size)
+                assertTrue(rows.none {
+                    searchLabelKey(it.title) in setOf("artista discogs", "lançamento discogs", "lancamento discogs")
+                })
+                // -1 = unresolved; 0 = not the prelabelled target; 1 = target.
+                // Unknown real namesakes must not disappear from the denominator.
+                val judgements = rows.take(10).map { row ->
+                    when {
+                        case.kind == "category" -> if (row.id in provenIds) 1 else -1
+                        case.kind == "artist" -> {
+                            val name = if (provider == discogs)
+                                com.music.bitchord.ui.screens.discogsArtistDisplayName(row.title)
+                            else row.title
+                            if (!case.artistMatches(name)) 0
+                            else if (row.id in provenIds && (!case.explicitDiscogsSuffix ||
+                                provider != discogs || searchLabelKey(row.title) == searchLabelKey(case.query))) 1
+                            else -1
+                        }
+                        !case.titleMatches(row.title) -> 0
+                        !case.artistMatches(row.artist) -> -1
+                        provider == discogs && row.id !in provenIds -> -1
+                        else -> 1
+                    }
+                }
+                val found = judgements.take(5).any { it == 1 }
+                val targetProven = offered || (case.kind == "category" && categoryRoute) ||
+                    judgements.any { it == 1 }
+                val status = when {
+                    case.kind == "category" -> if (categoryRoute) "local_category_verified" else "local_category_missing"
+                    provider == discogs && token == null -> "token_not_configured"
+                    !supported -> if (releasePath) "unsupported_track_search_release_path_verified"
+                        else "unsupported_track_search_release_path_unverified"
+                    complete == null -> "timeout_or_partial"
+                    found -> "target_in_top_five"
+                    failed -> "source_interruption"
+                    judgements.any { it == 1 } -> "target_below_top_five"
+                    targetProven -> "target_proven_not_visible"
+                    else -> "target_not_corroborated"
+                }
+                report("search_matrix_" + sourceName + "_" + (index + 1).toString().padStart(2, '0'), Sample(
+                    status = status, eligible = judgements.count { it == 1 }, visible = rows.size,
+                    counts = mapOf(
+                        "target_proven" to if (targetProven) 1 else 0,
+                        "top_five_target" to if (found) 1 else 0,
+                        "first_ten_rows" to judgements.size,
+                        "labelled_target_rows" to judgements.count { it == 1 },
+                        "labelled_non_target_rows" to judgements.count { it == 0 },
+                        "unjudged_rows" to judgements.count { it == -1 },
+                        "local_category_route_verified" to if (categoryRoute) 1 else 0,
+                        "native_search_supported" to if (supported) 1 else 0,
+                        "release_track_path_verified" to if (releasePath) 1 else 0,
+                        "source_interruption" to if (failed) 1 else 0,
+                        "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
+                            .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                    ),
+                ))
+            }
+        }
+    }
+
 }
