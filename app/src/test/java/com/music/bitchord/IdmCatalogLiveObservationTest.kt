@@ -2296,6 +2296,8 @@ class IdmCatalogLiveObservationTest {
                 var partialAppleCandidates = 0
                 var discogsFormatQueries = 0
                 var appleSearchRequests = 0
+                var appleArtistCollectionDiscoveryCalls = 0
+                var appleArtistCollectionVerifiedCandidates = 0
                 var appleSongCollectionDiscoveryCalls = 0
                 var appleSongCollectionVerifiedCandidates = 0
                 var appleSearchRawRows = 0
@@ -2309,6 +2311,12 @@ class IdmCatalogLiveObservationTest {
                 var appleIndependentOfferVerified = false
                 var appleIndependentDetailComplete = false
                 var appleIndependentFrozenTitleMatches = false
+                var appleFrozenTitleVerified = false
+                var appleQualifiedEditionVerified = false
+                var appleVideoProbeAttempted = false
+                var appleVideoProbeSameCollection = false
+                var appleVideoProbeVerifiedRows = 0
+                var appleVideoProbeCountReconciled = false
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2387,6 +2395,19 @@ class IdmCatalogLiveObservationTest {
                                 // independently select the identity; no corpus substitutions.
                                 val actualSource = ItunesPublicSearchSource(appleClient)
                                 val observedSource = object : ApplePublicSearchSource {
+                                    override val supportsArtistCollectionDiscovery = actualSource.supportsArtistCollectionDiscovery
+                                    override suspend fun discoverArtistCollections(
+                                        originalQuery: String, artistId: Long, credit: String,
+                                        country: String, knownIds: Set<Long>,
+                                    ): ItunesCatalogResult {
+                                        appleArtistCollectionDiscoveryCalls++
+                                        val response = actualSource.discoverArtistCollections(
+                                            originalQuery, artistId, credit, country, knownIds,
+                                        )
+                                        if (response is ItunesCatalogResult.Success)
+                                            appleArtistCollectionVerifiedCandidates += response.items.size
+                                        return response
+                                    }
                                     override val supportsSongCollectionDiscovery = actualSource.supportsSongCollectionDiscovery
                                     override suspend fun discoverSongCollections(
                                         originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
@@ -2424,9 +2445,18 @@ class IdmCatalogLiveObservationTest {
                                 val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM,
                                     "br", source = observedSource)
                                 val candidateBudget = if (case.kind == "multi") 6 else 3
+                                // The original frozen aliases remain independently reported.
+                                // Only explicitly recognized mastering/edition labels may nominate
+                                // another commercial edition of the same work, never a bare year
+                                // suffix, sequel, live recording or tribute.
+                                fun acceptedAppleTitle(value: String): Boolean =
+                                    case.matchesTitle(value) || (
+                                        applePublicAlbumWorkKey(value) != searchLabelKey(value) &&
+                                            applePublicAlbumWorkKey(value) == searchLabelKey(case.title)
+                                    )
                                 var search = pager.start()
                                 fun matchingCandidates() = pager.snapshot().visible.filter {
-                                    case.matchesTitle(it.title) && case.matchesArtist(it.artistName)
+                                    acceptedAppleTitle(it.title) && case.matchesArtist(it.artistName)
                                 }
                                 while (search is ApplePublicSearchPageLoad.Success &&
                                     matchingCandidates().size < candidateBudget &&
@@ -2447,8 +2477,8 @@ class IdmCatalogLiveObservationTest {
                                     if (response == null) { failed = true; continue }
                                     val record = response.releases.singleOrNull() ?: continue
                                     assertEquals(candidate.scopedId, record.appleScopedId)
-                                    if (!case.matchesTitle(record.title) || !case.matchesArtist(record.artistName) ||
-                                        (candidate.artistId != null && candidate.artistId != record.artistId)
+                                    if (!acceptedAppleTitle(record.title) || !case.matchesArtist(record.artistName) ||
+                                        candidate.artistId == null || candidate.artistId != record.artistId
                                     ) continue
                                     if (record.tracks.isEmpty()) continue
                                     val completeTracks = response.state == AppleEditorialReadState.COMPLETE
@@ -2476,13 +2506,21 @@ class IdmCatalogLiveObservationTest {
                                     5 -> 1526111071L to "Blue Monday (2020 Digital Master)"
                                     // https://music.apple.com/br/album/personal-jesus-2011-ep/665719937
                                     6 -> 665719937L to "Personal Jesus 2011 - EP"
+                                    // Public US offer; BR lookup must independently prove availability.
+                                    // https://music.apple.com/us/album/the-perfect-kiss-2022-digital-master-single/1677848600
+                                    7 -> 1677848600L to "The Perfect Kiss (2022 Digital Master) - Single"
                                     // https://music.apple.com/br/album/come-to-daddy/282478739
                                     8 -> 282478739L to "Come to Daddy"
+                                    // Public US offer, independently check BR and do not replace a partial result.
+                                    // https://music.apple.com/us/album/mellon-collie-and-the-infinite-sadness-remastered-2012/721224313
+                                    13 -> 721224313L to "Mellon Collie And The Infinite Sadness (2012 Remastered)"
                                     // https://music.apple.com/br/album/the-fragile/1440836334
                                     14 -> 1440836334L to "The Fragile"
                                     else -> null
                                 }
-                                if (selected == null && offer != null) {
+                                if ((selected == null || result?.state == AppleEditorialReadState.PARTIAL_TRACKLIST) &&
+                                    offer != null && selected?.appleCollectionId != offer.first
+                                ) {
                                     appleIndependentOfferAttempted = true
                                     val independent = appleRepo.albumDetail(offer.first, "br")
                                         as? AppleEditorialLoad.Success
@@ -2502,7 +2540,40 @@ class IdmCatalogLiveObservationTest {
                                 if (selected != null && result != null) {
                                     val record = selected
                                     appleAlbumDiagnostics = result.albumDiagnostics
+                                    appleFrozenTitleVerified = case.matchesTitle(record.title)
+                                    appleQualifiedEditionVerified = !appleFrozenTitleVerified &&
+                                        acceptedAppleTitle(record.title)
                                     matched = true
+                                    // An extra non-audio entity observation is diagnostic only.
+                                    // Do not infer missing songs from a video associated by name.
+                                    val expectedCount = record.trackCount
+                                    if (result.state == AppleEditorialReadState.PARTIAL_TRACKLIST &&
+                                        expectedCount != null && expectedCount > record.tracks.size &&
+                                        result.albumDiagnostics?.let {
+                                            !it.sourcePossiblyTruncated && it.positionlessTracks == 0 &&
+                                                it.duplicatePositions == 0 &&
+                                                it.lookup?.let { read ->
+                                                    read.rejectedSongRows == 0 &&
+                                                        read.removedDuplicateOrDisputedSongs == 0 &&
+                                                        read.foreignSongRows == 0
+                                                } == true
+                                        } == true
+                                    ) {
+                                        appleVideoProbeAttempted = true
+                                        val video = appleClient.observeAlbumMusicVideoRows(record.appleCollectionId, "br")
+                                            as? ItunesCatalogResult.Success
+                                        val same = video?.items?.singleOrNull {
+                                            it.type == ItunesCatalogItemType.ALBUM &&
+                                                it.id == record.appleCollectionId && it.storefront == "br" &&
+                                                it.title == record.title && it.artistId == record.artistId &&
+                                                it.trackCount == expectedCount
+                                        }
+                                        appleVideoProbeSameCollection = same != null
+                                        appleVideoProbeVerifiedRows = video?.albumLookupObservation?.verifiedMusicVideoRows ?: 0
+                                        appleVideoProbeCountReconciled = same != null &&
+                                            video?.possiblyTruncated == false &&
+                                            appleVideoProbeVerifiedRows == expectedCount - record.tracks.size
+                                    }
                                     val detail = requireNotNull(appleNativeAlbumDetail(result, record.appleScopedId))
                                     val page = requireNotNull(com.music.bitchord.ui.screens.appleAlbumAsSharedDetail(detail))
                                     assertEquals(record.appleScopedId, page.page.browseId)
@@ -2676,6 +2747,7 @@ class IdmCatalogLiveObservationTest {
                     complete == null -> "timeout_or_partial"
                     projected && partial -> "partial_tracklist"
                     projected && case.kind == "multi" && discs < 2 -> "multidisc_not_observed"
+                    projected && decoded == displayed && appleQualifiedEditionVerified -> "qualified_edition_detail_verified"
                     projected && decoded == displayed -> "detail_verified"
                     failed -> "source_interruption"
                     matched -> "projection_unavailable"
@@ -2700,12 +2772,20 @@ class IdmCatalogLiveObservationTest {
                         "partial_apple_candidates" to partialAppleCandidates,
                         "discogs_format_queries" to discogsFormatQueries,
                         "apple_search_requests" to appleSearchRequests,
+                        "apple_artist_collection_discovery_calls" to appleArtistCollectionDiscoveryCalls,
+                        "apple_artist_collection_verified_candidates" to appleArtistCollectionVerifiedCandidates,
                         "apple_song_collection_discovery_calls" to appleSongCollectionDiscoveryCalls,
                         "apple_song_collection_verified_candidates" to appleSongCollectionVerifiedCandidates,
                         "apple_independent_offer_attempted" to if (appleIndependentOfferAttempted) 1 else 0,
                         "apple_independent_offer_verified" to if (appleIndependentOfferVerified) 1 else 0,
                         "apple_independent_detail_complete" to if (appleIndependentDetailComplete) 1 else 0,
                         "apple_independent_frozen_title_matches" to if (appleIndependentFrozenTitleMatches) 1 else 0,
+                        "apple_frozen_title_verified" to if (appleFrozenTitleVerified) 1 else 0,
+                        "apple_qualified_edition_verified" to if (appleQualifiedEditionVerified) 1 else 0,
+                        "apple_video_probe_attempted" to if (appleVideoProbeAttempted) 1 else 0,
+                        "apple_video_probe_same_collection" to if (appleVideoProbeSameCollection) 1 else 0,
+                        "apple_video_probe_verified_rows" to appleVideoProbeVerifiedRows,
+                        "apple_video_probe_count_reconciled" to if (appleVideoProbeCountReconciled) 1 else 0,
                         "apple_seven_plus_audio_tracks" to if (appleSevenPlusAudioTracks) 1 else 0,
                         "apple_search_decoded_rows" to appleSearchRawRows,
                         "apple_search_credit_matches" to appleSearchCreditMatches,
