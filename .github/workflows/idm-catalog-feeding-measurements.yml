@@ -281,6 +281,17 @@ jobs:
                       row["displayed_unique"], row["displayed_with_artwork"],
                       row["http_or_transport_reads"]]
                   out.write("| " + " | ".join(map(str, fields)) + " |\n")
+                  # Emit only allowlisted aggregate telemetry, never source payloads.
+                  keys = ("status", "editorial_eligible", "displayed_unique",
+                          "http_or_transport_reads", "source_candidates_consumed",
+                          "source_candidate_budget", "verified_target",
+                          "source_index_reads", "source_master_reads",
+                          "source_release_reads", "elapsed_ms", "first_verified_ms",
+                          "landing_checkpoint_used", "start_page", "start_position",
+                          "initial_elapsed_ms", "initial_first_verified_ms",
+                          "known_verified_masters", "new_verified_emitted")
+                  aggregate = {key: row[key] for key in keys if key in row}
+                  print("IDM_LIVE_AGGREGATE", name, json.dumps(aggregate, sort_keys=True))
               out.write("\nA null count means unavailable telemetry, not zero. ")
               out.write("Discogs without a CI token is **not measured**. ")
               out.write("This is one sampled observation, not exhaustive source coverage.\n")
