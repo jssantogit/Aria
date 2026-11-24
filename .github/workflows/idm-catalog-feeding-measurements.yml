@@ -498,6 +498,7 @@ jobs:
                   "type_verified", "source_discs_observed", "source_track_positions",
                   "source_track_durations", "artist_route_verified", "related_release_cards",
                   "version_cards", "version_coverage_uncertain", "detail_candidates_read",
+                  "native_search_gestures", "partial_apple_candidates",
                   "source_interruption", "elapsed_ms")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #229 fixed album matrix (decoded endpoint and canonical projection)\n\n")
