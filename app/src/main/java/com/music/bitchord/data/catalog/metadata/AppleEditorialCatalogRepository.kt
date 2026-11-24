@@ -245,9 +245,8 @@ internal class AppleEditorialCatalogRepository(
                     release.tracks.map { it.discNumber to it.trackNumber }.distinct().size ==
                         release.tracks.size
                 val verifiedComplete = complete && !source.possiblyTruncated
-                val classified = ItunesEditorialCatalog.classifyCompleteAudioAlbum(release, verifiedComplete)
                 AppleEditorialLoad.Success(
-                    listOf(classified),
+                    listOf(release),
                     if (verifiedComplete) AppleEditorialReadState.COMPLETE
                     else AppleEditorialReadState.PARTIAL_TRACKLIST,
                     albumDiagnostics = AppleAlbumReadDiagnostics(
