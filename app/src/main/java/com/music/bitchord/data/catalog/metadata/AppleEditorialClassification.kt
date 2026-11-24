@@ -86,6 +86,14 @@ internal object AppleEditorialClassification {
         }.values.any { rows -> rows.map { it.format }.distinct().size > 1 }
 
         val apple = release.format
+        if (release.formatDerivedFromAudioCount && apple != ItunesEditorialReleaseFormat.UNCLASSIFIED &&
+            (conflictingSnapshots || externalFormats.any { it != apple })
+        ) return AppleEditorialFormatResolution(
+            format = ItunesEditorialReleaseFormat.UNCLASSIFIED,
+            status = AppleEditorialFormatStatus.CONFLICT,
+            sources = setOf(AppleEditorialFormatSource.APPLE) + facts.map { it.source },
+            disputedExternalFormats = externalFormats,
+        )
         if (apple != ItunesEditorialReleaseFormat.UNCLASSIFIED) {
             return AppleEditorialFormatResolution(
                 format = apple,
