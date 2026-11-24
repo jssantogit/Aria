@@ -2,8 +2,9 @@ package com.music.bitchord.data.catalog.metadata
 
 /**
  * PUBLIC iTunes Search API has a 200-item cap and no documented offset.
- * The app pages already-discovered Apple IDs locally and, *only when capped*,
- * probes different official search attributes. This is discovery, NOT a
+ * The app pages already-discovered Apple IDs locally and probes different
+ * official search attributes only when capped or the initial batch has no
+ * text-relevant rows. This is discovery, NOT a
  * server cursor or an assurance that the search results are exhaustive.
  */
 internal interface ApplePublicSearchSource {
@@ -137,13 +138,14 @@ internal class ApplePublicSearchPager(
     }
     private var initialized = false
     private var capped = false
+    private var probeAttributes = false
     private var visibleCount = 0
     private var nextAttribute = 0
 
     fun snapshot() = ApplePublicSearchSnapshot(
         visible = rows.values.take(visibleCount),
         discoveredCount = rows.size,
-        hasMore = rows.size > visibleCount || (capped && nextAttribute < extraAttributes.size),
+        hasMore = rows.size > visibleCount || (probeAttributes && nextAttribute < extraAttributes.size),
         coverageUncertain = capped || disputed.isNotEmpty(),
     )
 
@@ -185,9 +187,11 @@ internal class ApplePublicSearchPager(
                 capped = result.possiblyTruncated
                 merge(result)
                 visibleCount = minOf(pageSize, rows.size)
-                // A capped fuzzy batch may contain no relevant results.
-                // Spend only the existing bounded official attribute probes.
-                if (rows.isEmpty() && capped) loadMore()
+                // An uncapped fuzzy batch can also be entirely irrelevant.
+                // Spend the same bounded official attribute probes only for
+                // an otherwise empty landing, never for a productive uncapped batch.
+                probeAttributes = capped || rows.isEmpty()
+                if (rows.isEmpty() && probeAttributes) loadMore()
                 else ApplePublicSearchPageLoad.Success(snapshot())
             }
         }
@@ -199,13 +203,14 @@ internal class ApplePublicSearchPager(
             visibleCount = minOf(rows.size, visibleCount + pageSize)
             return ApplePublicSearchPageLoad.Success(snapshot())
         }
-        while (capped && nextAttribute < extraAttributes.size) {
+        while (probeAttributes && nextAttribute < extraAttributes.size) {
             val attribute = extraAttributes[nextAttribute]
             when (val result = source.search(query, entity, country, attribute)) {
                 is ItunesCatalogResult.Failure ->
                     return ApplePublicSearchPageLoad.Failure(result.reason)
                 is ItunesCatalogResult.Success -> {
                     nextAttribute++
+                    capped = capped || result.possiblyTruncated
                     merge(result)
                     if (rows.size > visibleCount) {
                         visibleCount = minOf(rows.size, visibleCount + pageSize)
