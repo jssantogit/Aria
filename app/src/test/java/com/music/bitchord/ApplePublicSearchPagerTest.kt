@@ -205,6 +205,29 @@ class ApplePublicSearchPagerTest {
             song.copy(artistName = "Illiterate")))
     }
 
+    @Test fun titleFirstEditionQueriesKeepExactArtistAndWorkBoundary() = runBlocking {
+        val single = album(1, title = "Blue Monday - Single").copy(artistName = "New Order")
+        val remaster = album(2, title = "Violator (2006 Remaster)").copy(artistName = "Depeche Mode")
+        assertEquals(2, applePublicSearchMatchRank("Blue Monday New Order", single))
+        assertEquals(2, applePublicSearchMatchRank("Blue Monday - New Order", single))
+        assertEquals(2, applePublicSearchMatchRank("Violator Depeche Mode", remaster))
+        assertNull(applePublicSearchMatchRank("Blue Monday New Order",
+            single.copy(artistName = "New Orders")))
+        assertNull(applePublicSearchMatchRank("Blue Monday New Order",
+            single.copy(artistName = "Other")))
+        assertNull(applePublicSearchMatchRank("Blue Monday New Order",
+            single.copy(title = "Blue Mondays - Single")))
+        assertNull(applePublicSearchMatchRank("Blue Monday New Order",
+            single.copy(title = "Blue Monday Tribute")))
+        val fake = Fake(ItunesCatalogResult.Success(listOf(
+            single.copy(id = 3, artistName = "New Orders"), single,
+        ))).apply { expectedQuery = "Blue Monday New Order" }
+        val pager = ApplePublicSearchPager(fake.expectedQuery, ItunesCatalogEntity.ALBUM,
+            "br", source = fake)
+        assertEquals(listOf(1L), (pager.start() as ApplePublicSearchPageLoad.Success)
+            .snapshot.visible.map { it.id })
+    }
+
     @Test fun accentsAndArticlesAreNormalizedWithoutRemovingSourcePunctuation() {
         val artist = ItunesCatalogItem(
             ItunesCatalogItemType.ARTIST, 17L, "br", "Beyoncé",
