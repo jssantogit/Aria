@@ -310,6 +310,69 @@ class DiscogsNativeArtistCatalogTest {
         assertTrue(result.incomplete)
     }
 
+    @Test fun artistWindowCrossesDuplicatePagesAndRetriesOnlyInterruptedPage() = runBlocking {
+        val pages = mutableListOf<Int>()
+        val reads = mutableListOf<Long>()
+        var interrupt = true
+        val known = DiscogsNativeArtistRelease(
+            artistId = 17, releaseId = 50, masterId = 90,
+            title = "Known", year = 2024, formats = listOf("Album"), tracklist = emptyList(),
+        )
+        val source = DiscogsNativeArtistCatalog(
+            enabled = true, admission = permittedDiscography(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsPublicArtistTransport {
+                override suspend fun list(artistId: Long, page: Int, userAgent: String): DiscogsHttpResponse {
+                    pages += page
+                    val ids = when (page) {
+                        1 -> listOf(50)
+                        2 -> listOf(51)
+                        3 -> listOf(52, 53)
+                        else -> listOf(54)
+                    }
+                    val rows = ids.joinToString(",") {
+                        """{"id":$it,"role":"Main","type":"release","title":"Album"}"""
+                    }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":$page,"pages":4},"releases":[$rows]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long) = DiscogsLookupResult.Missing
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    reads += id
+                    if (id == 53L && interrupt) {
+                        interrupt = false
+                        return DiscogsLookupResult.Throttled(9)
+                    }
+                    return DiscogsLookupResult.Found(
+                        this@DiscogsNativeArtistCatalogTest.release(id),
+                    )
+                }
+            },
+        )
+        val emitted = mutableListOf<List<Long>>()
+        val first = source.loadWindow(17, 1, listOf(known)) { rows ->
+            emitted += rows.map { it.releaseId }
+        }
+        val partial = first.result as DiscogsNativeArtistLoad.Success
+        assertEquals(2, first.completedPages)
+        assertFalse(first.settledIncomplete)
+        assertTrue(partial.retryCurrentPage)
+        assertEquals(listOf(51L, 52L), partial.releases.map { it.releaseId })
+        assertEquals(listOf(listOf(51L), listOf(51L, 52L)), emitted)
+        val second = source.loadWindow(
+            17, 1 + first.completedPages, listOf(known) + partial.releases,
+        )
+        val settled = second.result as DiscogsNativeArtistLoad.Success
+        assertEquals(2, second.completedPages)
+        assertFalse(settled.retryCurrentPage)
+        assertFalse(settled.hasMore)
+        assertEquals(listOf(53L, 54L), settled.releases.map { it.releaseId })
+        assertEquals(listOf(1, 2, 3, 3, 4), pages)
+        assertEquals(listOf(51L, 52L, 53L, 53L, 54L), reads)
+    }
+
     @Test fun unexpectedSourceExceptionDoesNotEscapeArtistLoader() = runBlocking {
         val source = DiscogsNativeArtistCatalog(
             enabled = true,

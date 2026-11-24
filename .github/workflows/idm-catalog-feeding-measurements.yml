@@ -46,13 +46,12 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: idm-catalog-measurements-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   canonical-feeding:
     name: Real adapters · deterministic MB/Apple/Discogs and collective
+    concurrency:
+      group: idm-catalog-controlled-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -210,8 +209,13 @@ jobs:
     # replaced by a fixture. A missing Discogs secret is explicitly blocked.
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     needs: canonical-feeding
+    # Let active source observations finish even when a new HEAD is pushed.
+    # All live jobs in this repository share the same Discogs credential budget.
+    concurrency:
+      group: idm-catalog-live-discogs
+      cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       IDM_CATALOG_LIVE: '1'
       IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics

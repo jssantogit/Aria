@@ -41,6 +41,13 @@ internal sealed interface DiscogsNativeArtistLoad {
     data class Throttled(val retryAfterSeconds: Long?) : DiscogsNativeArtistLoad
 }
 
+internal data class DiscogsNativeArtistWindow(
+    val result: DiscogsNativeArtistLoad,
+    /** Only settled source pages advance the session's persistent offset. */
+    val completedPages: Int = 0,
+    val settledIncomplete: Boolean = false,
+)
+
 /**
  * Source-scoped identity is proved twice: by an Artist/Release index with
  * role=Main and by the hydrated Release's explicit Discogs artist ID. Masters
@@ -118,6 +125,52 @@ internal class DiscogsNativeArtistCatalog(
     private val userAgent: String =
         "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)",
 ) {
+    /**
+     * One app gesture fills a small verified target across at most three
+     * six-position source pages. Finish each page before advancing; preserve
+     * earlier accepted rows if a later request is interrupted.
+     */
+    suspend fun loadWindow(
+        artistId: Long,
+        startPage: Int,
+        knownVerified: List<DiscogsNativeArtistRelease>,
+        maxPages: Int = 3,
+        onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
+    ): DiscogsNativeArtistWindow {
+        require(maxPages in 1..3)
+        val collected = mutableListOf<DiscogsNativeArtistRelease>()
+        var completed = 0
+        var settledIncomplete = false
+        for (offset in 0 until maxPages) {
+            val page = startPage + offset
+            val result = loadDistinct(artistId, page, knownVerified + collected) { partial ->
+                onProgress(discogsMergeArtistPageReleases(collected + partial))
+            }
+            if (result !is DiscogsNativeArtistLoad.Success) {
+                if (completed == 0 && collected.isEmpty())
+                    return DiscogsNativeArtistWindow(result)
+                return DiscogsNativeArtistWindow(
+                    DiscogsNativeArtistLoad.Success(
+                        collected.toList(), hasMore = true, incomplete = true,
+                        retryCurrentPage = true,
+                    ), completed, settledIncomplete,
+                )
+            }
+            collected += result.releases
+            if (result.retryCurrentPage) return DiscogsNativeArtistWindow(
+                result.copy(releases = collected.toList()), completed, settledIncomplete,
+            )
+            completed++
+            settledIncomplete = settledIncomplete || result.incomplete
+            if (!result.hasMore || collected.size >= 6 || offset == maxPages - 1)
+                return DiscogsNativeArtistWindow(
+                    result.copy(releases = collected.toList(), incomplete = settledIncomplete),
+                    completed, settledIncomplete,
+                )
+        }
+        error("Bounded artist window must return after its final page")
+    }
+
     suspend fun load(
         artistId: Long,
         page: Int = 1,

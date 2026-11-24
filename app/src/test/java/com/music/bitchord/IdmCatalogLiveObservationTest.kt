@@ -1096,9 +1096,10 @@ class IdmCatalogLiveObservationTest {
         // Real native artist catalog: choose an exact artist ID credited by
         // a verified source Release, then traverse bounded actual pages.
         // A small artist discography or deadline is not a successful 30-row test.
-        val artistId = (homeLandingVerified + verifiedDiscogs + repeatNew)
+        val artistCredit = (homeLandingVerified + verifiedDiscogs + repeatNew)
             .asSequence().flatMap { it.creditedArtists.asSequence() }
-            .map { it.first }.firstOrNull()
+            .firstOrNull { it.first > 0 && it.second.isNotBlank() }
+        val artistId = artistCredit?.first
         val artistVerified = mutableListOf<DiscogsNativeArtistRelease>()
         val artistMasterBefore = discogsMasterReads
         val artistReleaseBefore = discogsReleaseReads
@@ -1110,31 +1111,40 @@ class IdmCatalogLiveObservationTest {
         var artistHasMore = true
         val artistCompleted = if (artistId != null && discogsArtistScanner != null)
             withTimeoutOrNull(150_000L) {
-                for (page in 1..10) {
-                    if (!artistHasMore || artistVerified.size >= 30) break
-                    val response = discogsArtistScanner?.loadDistinct(
-                        artistId, page, artistVerified.toList(),
+                while (artistPagesCompleted < 10 && artistHasMore && artistVerified.size < 30) {
+                    val window = discogsArtistScanner?.loadWindow(
+                        artistId, artistPagesCompleted + 1, artistVerified.toList(),
+                        maxPages = minOf(3, 10 - artistPagesCompleted),
                     ) { rows ->
                         if (rows.isNotEmpty() && artistFirstNs == null)
                             artistFirstNs = System.nanoTime()
                     }
+                    val response = window?.result
                     if (response !is DiscogsNativeArtistLoad.Success) {
                         artistInterrupted = true
                         break
                     }
                     artistVerified += response.releases
-                    artistIncomplete = artistIncomplete || response.incomplete
+                    artistPagesCompleted += window.completedPages
+                    artistIncomplete = artistIncomplete || window.settledIncomplete
                     artistHasMore = response.hasMore || response.retryCurrentPage
                     if (response.retryCurrentPage) {
                         artistInterrupted = true
                         break
                     }
-                    artistPagesCompleted++
+                    if (window.completedPages == 0) break
                 }
                 true
             } else null
         check(artistVerified.size == discogsMergeArtistPageReleases(artistVerified).size)
         check(artistVerified.all { it.artistId == artistId })
+        val artistVisible = artistCredit?.let { credit ->
+            cards(discogsArtistPage(
+                com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow(credit.first, credit.second),
+                artistVerified, artistHasMore, artistIncomplete || artistInterrupted,
+            ).page.sections).size
+        } ?: 0
+        check(artistVisible == artistVerified.size)
         report("discogs_artist_30_target", Sample(
             status = when {
                 token == null -> "token_not_configured"
@@ -1148,7 +1158,7 @@ class IdmCatalogLiveObservationTest {
             },
             raw = if (token == null) null else artistIndexCandidates,
             eligible = artistVerified.size,
-            visible = artistVerified.size,
+            visible = artistVisible,
             requests = if (token == null) null else artistIndexReads +
                 discogsMasterReads - artistMasterBefore +
                 discogsReleaseReads - artistReleaseBefore,
@@ -1228,18 +1238,20 @@ class IdmCatalogLiveObservationTest {
                 }
             }
         }
+        val homeDiscogsItems = cards(discogsHomeShelves)
         val sourceVisibleCounts = listOf(
-            appMbItems.size, appleItems.size, discogsItems.size,
+            appMbItems.size, appleItems.size, homeDiscogsItems.size,
         )
         // Each order represents an alternate Home, not another shelf on
         // the same screen. Never sum repeated cards across permutations.
-        val sourceCandidates = appMbItems.size + appleItems.size + discogsItems.size
+        val sourceCandidates = appMbItems.size + appleItems.size + homeDiscogsItems.size
         report("collective", Sample(
             status = when {
                 token == null -> "partial_discogs_token_not_configured"
-                discogsRead !is DiscogsEditorialResult.Verified ->
+                homeDiscogsItems.isEmpty() ->
                     "partial_discogs_unverified"
-                successful == orders.size -> "all_sources_observed"
+                successful == orders.size && sourceVisibleCounts.all { it > 0 } ->
+                    "all_sources_observed"
                 else -> "partial_priority_fallback"
             },
             eligible = sourceCandidates,
@@ -1255,7 +1267,7 @@ class IdmCatalogLiveObservationTest {
                 "provider_sources_not_verified" to
                     listOf(mbResult !is MusicBrainzCatalogSearchResult.Success,
                         appleResult !is AppleEditorialLoad.Success,
-                        discogsRead !is DiscogsEditorialResult.Verified).count { it },
+                        homeDiscogsItems.isEmpty()).count { it },
                 "first_order_visible" to firstOrderVisible,
             ),
         ))

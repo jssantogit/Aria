@@ -1115,8 +1115,8 @@ internal class DiscogsNativeCatalogSession(
         }
         val page = artistPage + 1
         val job = scope.launch(Dispatchers.IO) {
-            val response = try {
-                artistClient.loadDistinct(current.artistId, page, releases) { verified ->
+            val window = try {
+                artistClient.loadWindow(current.artistId, page, releases) { verified ->
                     if (artist == current && authorization.isCurrent() &&
                         _route.value == DiscogsNativeRoute.ARTIST &&
                         _browseId.value == current.browseId
@@ -1132,23 +1132,20 @@ internal class DiscogsNativeCatalogSession(
                     }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-              catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
+              catch (_: Exception) {
+                  DiscogsNativeArtistWindow(DiscogsNativeArtistLoad.Unavailable)
+              }
             if (artist != current || !authorization.isCurrent() ||
                 _route.value != DiscogsNativeRoute.ARTIST ||
                 _browseId.value != current.browseId) return@launch
-            when (response) {
+            when (val response = window.result) {
                 is DiscogsNativeArtistLoad.Success -> {
                     releases = discogsMergeArtistPageReleases(releases + response.releases)
-                    // A throttled or interrupted hydration must not consume
-                    // the index page: retry the same page on the next request,
-                    // deduplicating the already verified Release/Master IDs.
-                    if (!response.retryCurrentPage) artistPage = page
+                    // Only settled source pages advance; the last interrupted
+                    // page stays retryable even after a productive earlier page.
+                    artistPage += window.completedPages
                     artistHasMore = response.hasMore || response.retryCurrentPage
-                    // A retryable gap is not a permanent missing-release
-                    // verdict; the successful retry can close it.
-                    if (!response.retryCurrentPage) {
-                        artistIncomplete = artistIncomplete || response.incomplete
-                    }
+                    artistIncomplete = artistIncomplete || window.settledIncomplete
                     val result = discogsArtistPage(current, releases,
                         artistHasMore, artistIncomplete || response.retryCurrentPage)
                     cachedArtistPage = result
