@@ -28,6 +28,26 @@ class DiscogsNativeReleaseSearchTest {
             """{"pagination":{"page":2,"pages":3},"results":[]}""", 1))
     }
 
+    @Test fun multidiscDiscoveryBalancesBothIndexesAndNeverExceedsEightUniqueDetails() {
+        fun hits(ids: LongRange) = ids.map { DiscogsNativeReleaseSearchHit(it, "Edition $it") }
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L),
+            discogsMultidiscSearchCandidates(hits(1L..7L), hits(3L..9L))
+                .map { it.releaseId })
+        assertEquals((10L..17L).toList(),
+            discogsMultidiscSearchCandidates(emptyList(), hits(10L..20L)).map { it.releaseId })
+        assertEquals((1L..8L).toList(),
+            discogsMultidiscSearchCandidates(hits(1L..10L), emptyList()).map { it.releaseId })
+    }
+
+    @Test fun cdEditionFilterCannotBeUsedWithArtistEntity() = runBlocking {
+        val transport = KtorDiscogsNativeArtistSearchTransport(
+            entity = "artist", cdEditionsOnly = true,
+        )
+        assertTrue(runCatching {
+            transport.search("Artist", 1, "A".repeat(32), "BitChord/Test")
+        }.exceptionOrNull() is IllegalArgumentException)
+    }
+
     @Test fun userConsentAndTokenAreNeededBeforeReleaseSearchNetwork() = runBlocking {
         val key = BuiltInProviderKeys.DISCOGS
         fun gate(enabled: Boolean) = ProviderPolicyGate(ProviderCapabilityPolicy(
