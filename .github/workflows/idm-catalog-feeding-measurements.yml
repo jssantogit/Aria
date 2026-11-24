@@ -113,7 +113,7 @@ jobs:
             --tests 'com.music.bitchord.AppleHomeVerifiedPoolCapacityTest' \
             --tests 'com.music.bitchord.AppleNativeHomeDiscoveryTest' \
             --tests 'com.music.bitchord.AppleExploreGenreEditorialTest' \
-            --tests 'com.music.bitchord.CanonicalGenreTaxonomyTest' \
+            --tests 'com.music.bitchord.ui.CanonicalGenreTaxonomyTest' \
             --tests 'com.music.bitchord.DiscogsHomeGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGenreGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest' \

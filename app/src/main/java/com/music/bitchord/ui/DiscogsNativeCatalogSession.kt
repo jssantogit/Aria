@@ -517,89 +517,32 @@ internal class DiscogsNativeCatalogSession(
         scheduleGenreEditorialExpiry()
         _genreEditorial.value = mapOf(tag to UiState.Loading)
         val job = scope.launch(Dispatchers.IO) {
-            val verified = mutableListOf<DiscogsEditorialCandidate>()
-            var failure: String? = null
-            val landingCursors = mutableMapOf<Int, DiscogsEditorialCursor>()
-            // Source categories such as Metal / R&B require a union of
-            // independently verified Discogs Styles, not an invented Genre.
-            // Stop after a bounded set, and surface partial results promptly.
-            for ((queryIndex, query) in queries.withIndex()) {
-                val distinctMasters = verified.distinctBy { it.masterId }.size
-                if (distinctMasters >= 6) break
-                // Keep slots for subsequent real Styles. A broad Metal
-                // category must not become just Heavy Metal because it was
-                // the first source query to return six verified releases.
-                val budget = discogsMultiStylePageBudget(
-                    verifiedMasters = distinctMasters,
-                    remainingQueries = queries.size - queryIndex - 1,
-                )
-                val inflight = mutableListOf<DiscogsEditorialCandidate>()
-                val result = try {
-                    editorialClient.discoverDistinct(
-                        query, maxReleases = budget,
-                        knownMasterIds = verified.map { it.masterId }.toSet(),
-                        onCheckpoint = { landingCursors[queryIndex] = it },
-                        onVerified = { candidate ->
-                            if (lease.isCurrent() && genrePagingEpoch == editorialEpoch &&
-                                genreEditorialTag == tag &&
-                                candidate.masterId !in verified.map { it.masterId } &&
-                                inflight.none { it.masterId == candidate.masterId }
-                            ) {
-                                inflight += candidate
-                                val preview = discogsEditorialShelves(verified + inflight)
-                                if (preview.isNotEmpty())
-                                    _genreEditorial.value =
-                                        mapOf(tag to UiState.Success(preview))
-                            }
-                        },
-                    )
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: Exception) { DiscogsEditorialResult.Unavailable }
-                if (!lease.isCurrent() || genrePagingEpoch != editorialEpoch ||
-                    genreEditorialTag != tag
-                ) return@launch
-                when (result) {
-                    is DiscogsEditorialResult.Verified -> {
-                        verified += result.releases
-                        val shelves = discogsEditorialShelves(verified)
-                        if (shelves.isNotEmpty()) {
-                            _genreEditorial.value = mapOf(tag to UiState.Success(shelves))
-                        }
-                    }
-                    DiscogsEditorialResult.Unauthorized -> {
-                        failure = "Configure o token do Discogs em Conexões."
-                        break
-                    }
-                    DiscogsEditorialResult.Disabled -> {
-                        failure = "Ative Busca e Discografia do Discogs em Provedores."
-                        break
-                    }
-                    is DiscogsEditorialResult.Throttled -> {
-                        failure = "O Discogs limitou temporariamente as consultas."
-                        break
-                    }
-                    else -> failure = "Não foi possível consultar este gênero no Discogs."
-                }
-            }
+            val landing = scanDiscogsGenreLanding(
+                queries, editorialClient,
+                stillCurrent = { lease.isCurrent() && genrePagingEpoch == editorialEpoch &&
+                    genreEditorialTag == tag },
+                onProgress = { rows ->
+                    val preview = discogsEditorialShelves(rows)
+                    if (preview.isNotEmpty()) _genreEditorial.value =
+                        mapOf(tag to UiState.Success(preview))
+                },
+            ) ?: return@launch
             if (!lease.isCurrent() || genrePagingEpoch != editorialEpoch ||
                 genreEditorialTag != tag
             ) return@launch
-            val shelves = discogsEditorialShelves(verified)
+            val failure = when (landing.failure) {
+                DiscogsEditorialResult.Unauthorized -> "Configure o token do Discogs em Conexões."
+                DiscogsEditorialResult.Disabled -> "Ative Busca e Discografia do Discogs em Provedores."
+                is DiscogsEditorialResult.Throttled -> "O Discogs limitou temporariamente as consultas."
+                null -> null
+                else -> "Não foi possível consultar este gênero no Discogs."
+            }
+            val shelves = discogsEditorialShelves(landing.releases)
             _genreEditorial.value = mapOf(tag to if (shelves.isNotEmpty()) {
                 UiState.Success(shelves)
             } else UiState.Error(failure ?:
                 "Nenhum lançamento com classificação Discogs verificada nesta amostra."))
-            // The initial sampler is deliberately short, not an exhaustive
-            // Discogs index scan. Scroll continues in four-candidate chunks,
-            // beginning at each settled landing prefix. Signed checkpoints
-            // must still be revalidated against the current source index.
-            if (shelves.isNotEmpty()) {
-                _genrePaging.value = DiscogsGenrePageSnapshot(
-                    tag = tag, cursor = landingCursors[0] ?: DiscogsEditorialCursor(),
-                    knownMasterIds = verified.map { it.masterId }.toSet(),
-                    pendingLandingCursors = landingCursors.toMap(),
-                )
-            }
+            if (shelves.isNotEmpty()) _genrePaging.value = landing.paging(tag)
         }
         genreEditorialJob = job
         val unregister = lease.cancelJobOnRevoke(job)

@@ -123,3 +123,66 @@ internal suspend fun scanDiscogsGenreGesture(
         state.copy(loading = false), consumed, chunks, transportException,
     )
 }
+
+/** The exact initial Discogs genre sampler, shared with the parity matrix. */
+internal data class DiscogsGenreLanding(
+    val releases: List<DiscogsEditorialCandidate>,
+    val checkpoints: Map<Int, DiscogsEditorialCursor>,
+    val failure: DiscogsEditorialResult?,
+    val queriesAttempted: Int,
+) {
+    fun paging(tag: String) = DiscogsGenrePageSnapshot(
+        tag = tag, cursor = checkpoints[0] ?: DiscogsEditorialCursor(),
+        knownMasterIds = releases.map { it.masterId }.toSet(),
+        pendingLandingCursors = checkpoints,
+    )
+}
+
+internal suspend fun scanDiscogsGenreLanding(
+    queries: List<DiscogsEditorialQuery>,
+    scanner: DiscogsNativeGenreEditorial,
+    stillCurrent: () -> Boolean = { true },
+    onProgress: suspend (List<DiscogsEditorialCandidate>) -> Unit = {},
+): DiscogsGenreLanding? {
+    if (!stillCurrent()) return null
+    val verified = linkedMapOf<Long, DiscogsEditorialCandidate>()
+    val checkpoints = mutableMapOf<Int, DiscogsEditorialCursor>()
+    var failure: DiscogsEditorialResult? = null
+    var attempted = 0
+    for ((index, query) in queries.withIndex()) {
+        if (!stillCurrent()) return null
+        if (verified.size >= 6) break
+        val budget = discogsMultiStylePageBudget(verified.size, queries.size - index - 1)
+        attempted++
+        val result = try {
+            scanner.discoverDistinct(
+                query, maxReleases = budget, knownMasterIds = verified.keys.toSet(),
+                onCheckpoint = { checkpoints[index] = it },
+                onVerified = { candidate ->
+                    if (stillCurrent() && verified.putIfAbsent(candidate.masterId, candidate) == null)
+                        onProgress(verified.values.toList())
+                },
+            )
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: Exception) { DiscogsEditorialResult.Unavailable }
+        if (!stillCurrent()) return null
+        when (result) {
+            is DiscogsEditorialResult.Verified -> {
+                result.releases.forEach { verified.putIfAbsent(it.masterId, it) }
+                // Early partial responses intentionally lack a signed checkpoint.
+                // Do not start more predicates immediately after that interruption.
+                if (index !in checkpoints) {
+                    failure = DiscogsEditorialResult.Unavailable
+                    break
+                }
+            }
+            DiscogsEditorialResult.Unauthorized, DiscogsEditorialResult.Disabled,
+            is DiscogsEditorialResult.Throttled -> {
+                failure = result
+                break
+            }
+            else -> failure = result
+        }
+    }
+    return DiscogsGenreLanding(verified.values.toList(), checkpoints.toMap(), failure, attempted)
+}

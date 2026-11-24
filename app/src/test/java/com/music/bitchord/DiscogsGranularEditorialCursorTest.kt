@@ -43,6 +43,39 @@ class DiscogsGranularEditorialCursorTest {
                 DiscogsLookupResult.Found(this@DiscogsGranularEditorialCursorTest.release(id - 1000))
         }
 
+    @Test fun sharedGenreLandingStopsAfterPartialFailureAndRetainsVerifiedIdentity() = runBlocking {
+        val requested = mutableListOf<DiscogsEditorialQuery>()
+        val query = DiscogsEditorialQuery("Rock", false)
+        val other = DiscogsEditorialQuery("Indie Rock", true)
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    requested += query
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[
+                            {"id":1,"type":"master"},{"id":2,"type":"master"}]}""")
+                }
+            },
+            editions = reader { id -> if (id == 2L) DiscogsLookupResult.Throttled(10)
+                else DiscogsLookupResult.FoundMaster(master(id)) },
+        )
+        val progress = mutableListOf<List<Long>>()
+        val landing = requireNotNull(scanDiscogsGenreLanding(listOf(query, other), client,
+            onProgress = { rows -> progress += rows.map { it.masterId } },
+        ))
+        assertEquals(listOf(query), requested)
+        assertNotNull(landing.failure)
+        assertEquals(listOf(1L), landing.releases.map { it.masterId })
+        assertEquals(listOf(listOf(1L)), progress)
+        assertEquals(setOf(1L), landing.paging("rock").knownMasterIds)
+        assertEquals(DiscogsEditorialCursor(), landing.paging("rock").cursor)
+    }
+
     @Test fun canonicalGenreGestureTraversesThirtyHundredAndThreeHundredVerifiedRows() = runBlocking {
         for (total in listOf(30, 100, 300)) {
             val masterReads = mutableListOf<Long>()
