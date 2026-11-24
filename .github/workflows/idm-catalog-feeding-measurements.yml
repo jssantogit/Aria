@@ -26,6 +26,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistSearchTest.kt
       - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
       - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
@@ -57,6 +58,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistSearchTest.kt
       - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
       - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
@@ -143,6 +145,7 @@ jobs:
             --tests 'com.music.bitchord.DiscogsTransportSafetyTest' \
             --tests 'com.music.bitchord.DiscogsNativeArtistCatalogTest' \
             --tests 'com.music.bitchord.DiscogsNativeReleaseSearchTest' \
+            --tests 'com.music.bitchord.DiscogsNativeArtistSearchTest' \
             --tests 'com.music.bitchord.NativeArtistTrackOriginTest' \
             --tests 'com.music.bitchord.DiscogsEvidenceContractTest' \
             --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
@@ -231,6 +234,7 @@ jobs:
               "DiscogsTransportSafetyTest",
               "DiscogsNativeArtistCatalogTest",
               "DiscogsNativeReleaseSearchTest",
+              "DiscogsNativeArtistSearchTest",
               "NativeArtistTrackOriginTest",
               "DiscogsEvidenceContractTest",
               "NativeMetadataAlbumPresentationTest",
@@ -564,7 +568,8 @@ jobs:
           keys = ("status", "target_proven", "top_five_target", "first_ten_rows",
                   "labelled_target_rows", "labelled_non_target_rows", "unjudged_rows",
                   "local_category_route_verified", "native_search_supported",
-                  "release_track_path_verified", "source_interruption", "elapsed_ms")
+                  "release_track_path_verified",
+                              "homonym_candidates", "homonym_detail_reads", "homonym_corroborated", "source_interruption", "elapsed_ms")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #230 fixed search targets (not general relevance adjudication)\n\n")
               out.write("| Provider | Case | Target | Top 5 | Labelled match | Non-target | Unjudged | Status |\n")
