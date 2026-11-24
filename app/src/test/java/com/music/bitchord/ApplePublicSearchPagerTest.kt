@@ -34,6 +34,84 @@ class ApplePublicSearchPagerTest {
         }
     }
 
+    @Test fun songCollectionRecoveryHydratesExactAlbumAndNeverPublishesSongCreditAsAlbum() = runBlocking {
+        val calls = mutableListOf<Pair<String, Map<String, String>>>()
+        val capabilities = mutableListOf<com.music.bitchord.data.providers.ProviderCapability>()
+        val transport = object : ItunesCatalogTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>): String =
+                error("Capability-aware call required")
+            override suspend fun get(path: String, parameters: Map<String, String>,
+                capability: com.music.bitchord.data.providers.ProviderCapability): String {
+                calls += path to parameters
+                capabilities += capability
+                return when {
+                    path == "search" -> """{"resultCount":4,"results":[
+                        {"wrapperType":"track","kind":"song","trackId":1,"collectionId":10,
+                         "collectionName":"Example Work","trackName":"Song","artistId":99,"artistName":"Example Artist"},
+                        {"wrapperType":"track","kind":"song","trackId":2,"collectionId":10,
+                         "collectionName":"Example Work","trackName":"Another","artistId":99,"artistName":"Example Artist"},
+                        {"wrapperType":"track","kind":"song","trackId":3,"collectionId":20,
+                         "collectionName":"Example Work","trackName":"Song","artistId":99,"artistName":"Example Artist"},
+                        {"wrapperType":"track","kind":"song","trackId":4,"collectionId":30,
+                         "collectionName":"Example Work","trackName":"Song","artistId":99,"artistName":"Example Artist"}
+                    ]}"""
+                    parameters["id"] == "10" -> """{"resultCount":1,"results":[
+                        {"wrapperType":"collection","collectionType":"Album","collectionId":10,
+                         "collectionName":"Example Work","artistId":77,"artistName":"Other Artist"}
+                    ]}"""
+                    parameters["id"] == "20" -> """{"resultCount":2,"results":[
+                        {"wrapperType":"collection","collectionType":"Album","collectionId":20,
+                         "collectionName":"Example Work (Remastered)","artistId":99,"artistName":"Example Artist"},
+                        {"wrapperType":"collection","collectionType":"Album","collectionId":21,
+                         "collectionName":"Example Work","artistId":99,"artistName":"Example Artist"}
+                    ]}"""
+                    else -> error("Unbounded lookup")
+                }
+            }
+        }
+        val source = ItunesPublicSearchSource(ItunesCatalogClient(transport))
+        val result = source.discoverSongCollections(
+            "Example Artist Example Work", "Example Work", "br", emptySet(),
+        ) as ItunesCatalogResult.Success
+        assertEquals(listOf(20L), result.items.map { it.id })
+        assertEquals("Example Work (Remastered)", result.items.single().title)
+        assertEquals(listOf("search", "lookup", "lookup"), calls.map { it.first })
+        assertEquals(listOf("10", "20"), calls.drop(1).map { it.second["id"] })
+        assertEquals("songTerm", calls.first().second["attribute"])
+        assertTrue(calls.all { it.second["country"] == "br" })
+        assertTrue(capabilities.all { it == com.music.bitchord.data.providers.ProviderCapability.CATALOG_SEARCH })
+        assertFalse(result.items.single().isPlayable)
+    }
+
+    @Test fun albumCollectionFallbackRunsOnceAfterEmptyFieldsAndRetainsExactIds() = runBlocking {
+        var recoveryCalls = 0
+        val source = object : ApplePublicSearchSource {
+            override val supportsSongCollectionDiscovery = true
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ) = ItunesCatalogResult.Success(emptyList())
+
+            override suspend fun discoverSongCollections(
+                originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
+            ): ItunesCatalogResult {
+                recoveryCalls++
+                assertTrue(knownIds.isEmpty())
+                return ItunesCatalogResult.Success(listOf(
+                    album(100, title = "Example Work"),
+                    album(200, country = "us", title = "Example Work"),
+                    album(300, title = "Unrelated"),
+                ))
+            }
+        }
+        val pager = ApplePublicSearchPager("Example Work", ItunesCatalogEntity.ALBUM, "br", source = source)
+        assertEquals(listOf(100L), (pager.start() as ApplePublicSearchPageLoad.Success)
+            .snapshot.visible.map { it.id })
+        assertFalse(pager.snapshot().hasMore)
+        pager.loadMore()
+        assertEquals(1, recoveryCalls)
+    }
+
     @Test fun firstTwoHundredAreLocalPagesWithoutFictitiousOffsets() = runBlocking {
         val fake = Fake(ItunesCatalogResult.Success(
             (1L..200L).map { album(it) }, possiblyTruncated = true))
