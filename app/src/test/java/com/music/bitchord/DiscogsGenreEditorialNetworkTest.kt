@@ -52,6 +52,42 @@ class DiscogsGenreEditorialNetworkTest {
         artistIds = listOf(99L),
     )
 
+    @Test fun sourceIndexHintsAreBoundedObservationsNotVerifiedCatalogEvidence() {
+        val result = DiscogsEditorialMasterParsing.page(
+            """{"pagination":{"page":1,"pages":1,"per_page":12},
+                "results":[
+                    {"id":9,"type":"master","main_release":501,
+                     "genre":["Rock"],"style":["Alternative Rock"]},
+                    {"id":10,"type":"master","main_release":"invalid",
+                     "genre":["Pop"],"style":[]},
+                    {"id":9,"type":"master","main_release":999,
+                     "genre":["Jazz"],"style":["Ambient"]},
+                    {"id":11,"type":"release","main_release":600}
+                ]}""", 1,
+        )!!
+        assertEquals(listOf(9L, 10L), result.masterIds)
+        assertFalse(result.hasNext)
+        assertEquals(501L, result.hints[9L]?.mainReleaseId)
+        assertEquals(listOf("Rock"), result.hints[9L]?.genres)
+        assertEquals(listOf("Alternative Rock"), result.hints[9L]?.styles)
+        assertNull(result.hints[10L]?.mainReleaseId)
+        assertEquals(emptyList<String>(), result.hints[10L]?.styles)
+        assertNull(result.hints[11L])
+        // No hint is ever sufficient to fabricate a verified Release or
+        // change cursor/identity: only this source index's typed IDs survive.
+        val missing = DiscogsEditorialMasterParsing.page(
+            """{"pagination":{"page":1,"pages":1,"per_page":12},
+                "results":[{"id":12,"type":"master"}]}""", 1,
+        )!!
+        assertEquals(DiscogsEditorialMasterIndexHint(null, null, null),
+            missing.hints[12L])
+        assertNull(DiscogsEditorialMasterParsing.page(
+            """{"pagination":{"page":1,"pages":1,"per_page":12},
+                "results":[{"id":13,"type":"master","genre":["Valid",
+                    "bad\\u0001control"]}]}""", 1,
+        )?.hints?.get(13L)?.genres)
+    }
+
     @Test fun partialFirstIndexPageFillsBudgetOnNextPageWithoutDuplicateHydration() = runBlocking {
         val calls = mutableListOf<String>()
         val source = DiscogsNativeGenreEditorial(
