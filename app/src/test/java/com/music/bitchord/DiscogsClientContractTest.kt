@@ -9,6 +9,9 @@ import com.music.bitchord.data.providers.ProviderChoice
 import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.RateLimitedProviderTransport
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -328,6 +331,77 @@ class DiscogsClientContractTest {
         now = 100L
         assertTrue(source.fetchRelease(1001) is DiscogsLookupResult.Found)
         assertEquals(7, calls.size)
+    }
+
+    @Test fun concurrentNativeReadersReuseCompletedPositiveEvidence() = runBlocking {
+        for (master in listOf(false, true)) {
+            val entered = CompletableDeferred<Unit>()
+            val resume = CompletableDeferred<Unit>()
+            var reads = 0
+            val client = DiscogsClient(
+                enabled = true, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                admission = admittedNativeDiscogs(),
+                limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+                transport = object : DiscogsTransport {
+                    override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+                        reads++
+                        entered.complete(Unit)
+                        resume.await()
+                        return if (master) DiscogsHttpResponse(200,
+                            """{"id":51,"title":"Master","artists":[{"id":9,"name":"Artist"}],
+                                "main_release":52,"genres":["Rock"]}""")
+                        else DiscogsHttpResponse(200,
+                            """{"id":51,"title":"Album","artists":[{"name":"Artist"}]}""")
+                    }
+                },
+            )
+            suspend fun read() = if (master) client.fetchMaster(51) else client.fetchRelease(51)
+            val first = async(start = CoroutineStart.UNDISPATCHED) { read() }
+            entered.await()
+            val others = List(3) { async(start = CoroutineStart.UNDISPATCHED) { read() } }
+            resume.complete(Unit)
+            val result = first.await()
+            assertTrue(if (master) result is DiscogsLookupResult.FoundMaster
+                else result is DiscogsLookupResult.Found)
+            others.forEach { assertEquals(result, it.await()) }
+            assertEquals(1, reads)
+        }
+    }
+
+    @Test fun queuedReaderRechecksCredentialInsteadOfReusingOldTokenEvidence() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        var token = "A".repeat(32)
+        val credentials = mutableListOf<String>()
+        val client = DiscogsClient(
+            enabled = true, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = admittedNativeDiscogs(), tokenProvider = { token },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override val supportsTokenAuthorization: Boolean get() = true
+                override suspend fun get(path: String, userAgent: String) =
+                    DiscogsHttpResponse(404, "")
+                override suspend fun getAuthenticated(
+                    path: String, userAgent: String, token: String,
+                ): DiscogsHttpResponse {
+                    credentials += token
+                    if (credentials.size == 1) {
+                        entered.complete(Unit)
+                        resume.await()
+                    }
+                    return DiscogsHttpResponse(200,
+                        """{"id":51,"title":"Album","artists":[{"name":"Artist"}]}""")
+                }
+            },
+        )
+        val first = async(start = CoroutineStart.UNDISPATCHED) { client.fetchRelease(51) }
+        entered.await()
+        val queued = async(start = CoroutineStart.UNDISPATCHED) { client.fetchRelease(51) }
+        token = "B".repeat(32)
+        resume.complete(Unit)
+        assertTrue(first.await() is DiscogsLookupResult.Found)
+        assertTrue(queued.await() is DiscogsLookupResult.Found)
+        assertEquals(listOf("A".repeat(32), "B".repeat(32)), credentials)
     }
 
     @Test fun canonicalEditionMetadataDoesNotReuseNativeCatalogMemoization() = runBlocking {

@@ -17,6 +17,7 @@ import io.ktor.http.HttpHeaders
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.util.Locale
 import kotlinx.serialization.json.Json
@@ -251,6 +252,21 @@ internal class DiscogsClient(
     private val details = linkedMapOf<DetailKey, CachedDetail>()
     private val detailTtlMs = 120_000L
     private val maxCachedDetails = 80
+    // A fixed set of stripes bounds memory even under many unique IDs.
+    // The global request limiter already serializes actual HTTP dispatch;
+    // this guard additionally makes competing identical reads recheck
+    // positive evidence AFTER the first caller has finished parsing it.
+    private val detailReadLocks = Array(64) { Mutex() }
+
+    private suspend fun coordinatedDetailRead(
+        kind: DiscogsKind, id: Long,
+        read: suspend () -> DiscogsLookupResult,
+    ): DiscogsLookupResult {
+        if (!memoizeCatalogDetails) return read()
+        val stripe = (DetailKey(kind, id).hashCode() and Int.MAX_VALUE) %
+            detailReadLocks.size
+        return detailReadLocks[stripe].withLock { read() }
+    }
 
     // The canonical MB Release enrichment pipeline has its OWN five-hour
     // evidence lifecycle and explicit clear()/expiry semantics. A second
@@ -316,7 +332,10 @@ internal class DiscogsClient(
         else transport.getAuthenticated(path, userAgent, token)
 
     /** Discogs Master is advisory group context only; never a verified Release. */
-    suspend fun fetchMaster(id: Long): DiscogsLookupResult {
+    suspend fun fetchMaster(id: Long): DiscogsLookupResult =
+        coordinatedDetailRead(DiscogsKind.MASTER, id) { fetchMasterOnce(id) }
+
+    private suspend fun fetchMasterOnce(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
         if (!allowedDetailRead()) return DiscogsLookupResult.Disabled
@@ -454,7 +473,10 @@ internal class DiscogsClient(
         }
     }
 
-    suspend fun fetchRelease(id: Long): DiscogsLookupResult {
+    suspend fun fetchRelease(id: Long): DiscogsLookupResult =
+        coordinatedDetailRead(DiscogsKind.RELEASE, id) { fetchReleaseOnce(id) }
+
+    private suspend fun fetchReleaseOnce(id: Long): DiscogsLookupResult {
         if (!enabled) return DiscogsLookupResult.Disabled
         if (id !in 1..999_999_999_999L) return DiscogsLookupResult.InvalidId
         if (!allowedDetailRead()) return DiscogsLookupResult.Disabled
