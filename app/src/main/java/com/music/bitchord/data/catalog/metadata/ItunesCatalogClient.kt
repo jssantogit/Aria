@@ -323,15 +323,18 @@ internal class ItunesCatalogClient(
         artistId: Long,
         country: String = "br",
         limit: Int = 30,
+        capability: ProviderCapability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
     ): ItunesCatalogResult {
         val storefront = normalizedStorefront(country)
-        if (artistId <= 0L || storefront == null || limit !in 1..200) {
+        if (artistId <= 0L || storefront == null || limit !in 1..200 ||
+            capability !in setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        ) {
             return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
         }
         return request("lookup", linkedMapOf(
             "id" to artistId.toString(), "country" to storefront,
             "entity" to "album", "limit" to limit.toString(),
-        ), storefront, artistId = artistId)
+        ), storefront, artistId = artistId, capability = capability)
     }
 
     /** Apple storefront tracks for ONE exact artist ID; never rank by title. */
