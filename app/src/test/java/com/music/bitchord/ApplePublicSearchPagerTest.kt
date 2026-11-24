@@ -327,6 +327,39 @@ class ApplePublicSearchPagerTest {
         assertFalse(snapshot.hasMore)
     }
 
+    @Test fun productiveCompoundLandingOffersBoundedFieldContinuationWithoutReordering() = runBlocking {
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val original = "New Order Blue Monday"
+        val first = album(10, title = "Blue Monday 1988").copy(artistName = "New Order")
+        val recovered = album(11, title = "Blue Monday - Single").copy(artistName = "New Order")
+        val wrong = recovered.copy(id = 12, artistName = "New Orders")
+        val foreign = recovered.copy(id = 13, storefront = "us")
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(
+                query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?,
+            ): ItunesCatalogResult {
+                calls += query to attribute
+                return ItunesCatalogResult.Success(when (query) {
+                    original -> listOf(first)
+                    "blue monday" -> listOf(wrong, foreign, recovered, first)
+                    else -> emptyList()
+                })
+            }
+        }
+        val pager = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM, "br", source = source)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(10L), initial.visible.map { it.id })
+        assertTrue(initial.hasMore)
+        assertEquals(listOf(original to null), calls)
+        val continued = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(10L, 11L), continued.visible.map { it.id })
+        assertEquals("blue monday" to ItunesCatalogSearchAttribute.ALBUM_TERM, calls.last())
+        while (pager.snapshot().hasMore) pager.loadMore()
+        assertTrue(calls.size <= 3)
+        assertEquals(listOf(10L, 11L), pager.snapshot().visible.map { it.id })
+    }
+
     @Test fun sourceCreditHintsSupportUnevenReverseAndAccentedQueriesWithoutSubstringSplits() {
         val credit = album(1).copy(artistName = "João Gilberto")
         assertEquals(listOf("chega de saudade"), applePublicSearchWorkHints(
