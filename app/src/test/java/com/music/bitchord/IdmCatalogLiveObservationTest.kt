@@ -1848,6 +1848,8 @@ class IdmCatalogLiveObservationTest {
                 var tracks = 0
                 var profileStarted: Long? = null
                 var firstProfileMs = 0
+                var appleAnchorTitleQueries = 0
+                var appleAnchorCreditMatches = 0
                 fun observe(shelves: List<HomeShelf>, prefix: String) {
                     val ids = shelves.flatMap { it.items }.mapNotNull { it.browseId }
                     assertEquals("Duplicate artist release $sourceName/$index", ids.size, ids.distinct().size)
@@ -1941,10 +1943,30 @@ class IdmCatalogLiveObservationTest {
                                 val anchors = appleRepo.searchAlbums(query, "br", 50)
                                     as? AppleEditorialLoad.Success
                                 if (artists == null || anchors == null) failed = true
-                                val creditedIds = anchors?.releases.orEmpty().filter {
-                                    artistParityFold(it.title) == titleKey &&
-                                        artistParityFold(it.artistName) == nameKey
-                                }.mapNotNull { it.artistId }.toSet()
+                                fun matchingCredits(load: AppleEditorialLoad.Success?): Set<Long> =
+                                    load?.releases.orEmpty().filter {
+                                        it.storefront == "br" && artistParityFold(it.title) == titleKey &&
+                                            artistParityFold(it.artistName) == nameKey
+                                    }.mapNotNull { it.artistId }.toSet()
+                                val creditedIds = matchingCredits(anchors).toMutableSet()
+                                val exactArtistIds = artists?.artists.orEmpty().filter {
+                                    artistParityFold(it.title) == nameKey
+                                }.map { it.id }.toSet()
+                                // Independently corroborate the frozen work by
+                                // its title field if the compound search omitted it.
+                                // Artist names alone still cannot establish identity.
+                                if (!failed && exactArtistIds.isNotEmpty() &&
+                                    creditedIds.intersect(exactArtistIds).isEmpty()
+                                ) {
+                                    appleAnchorTitleQueries++
+                                    val titleProbe = appleRepo.searchAlbums(
+                                        case.anchor, "br", 200,
+                                        attribute = ItunesCatalogSearchAttribute.ALBUM_TERM,
+                                    ) as? AppleEditorialLoad.Success
+                                    if (titleProbe == null) failed = true
+                                    creditedIds += matchingCredits(titleProbe)
+                                }
+                                appleAnchorCreditMatches = creditedIds.intersect(exactArtistIds).size
                                 val artist = artists?.artists.orEmpty().filter {
                                     artistParityFold(it.title) == nameKey && it.id in creditedIds
                                 }.distinctBy { it.id }.singleOrNull()
@@ -2106,6 +2128,8 @@ class IdmCatalogLiveObservationTest {
                         "landing_visible_releases" to landing,
                         "source_gestures" to gestures,
                         "automatic_pages" to autoPages,
+                        "apple_anchor_title_queries" to appleAnchorTitleQueries,
+                        "apple_anchor_credit_matches" to appleAnchorCreditMatches,
                         "artist_master_lookup_calls" to (artistMasterCalls - beforeMasterCalls),
                         "artist_release_lookup_calls" to (artistReleaseCalls - beforeReleaseCalls),
                         "artist_edition_malformed" to (artistMalformed - beforeMalformed),
