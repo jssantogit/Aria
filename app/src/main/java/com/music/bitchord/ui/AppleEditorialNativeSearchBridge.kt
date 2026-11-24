@@ -159,10 +159,7 @@ internal fun appleNativeReconciledAlbumDetail(
         com.music.bitchord.data.catalog.metadata.AppleMusicBrainzEditionMatch.Verified
         ?: return original
     val classification = proof.classification
-    if (classification.status !=
-            com.music.bitchord.data.catalog.metadata.AppleEditorialFormatStatus.DECIDED ||
-        classification.format == ItunesEditorialReleaseFormat.UNCLASSIFIED ||
-        match.appleScopedId != browseId ||
+    if (match.appleScopedId != browseId ||
         proof.release.appleScopedId != browseId ||
         proof.release.appleCollectionId != apple.appleCollectionId ||
         proof.release.storefront != apple.storefront ||
@@ -174,6 +171,22 @@ internal fun appleNativeReconciledAlbumDetail(
         proof.release.upc != apple.upc ||
         proof.release.trackCount != apple.trackCount ||
         proof.release.tracks != apple.tracks
+    ) return original
+    // A source-rule category is useful in isolated Apple mode, but an
+    // independently verified conflicting edition must not silently inherit it.
+    if (classification.status ==
+            com.music.bitchord.data.catalog.metadata.AppleEditorialFormatStatus.CONFLICT &&
+        apple.formatDerivedFromAudioCount
+    ) return appleNativeAlbumDetail(
+        source.copy(releases = listOf(apple.copy(
+            format = ItunesEditorialReleaseFormat.UNCLASSIFIED,
+            formatDerivedFromAudioCount = false,
+        ))),
+        browseId,
+    ) ?: original
+    if (classification.status !=
+            com.music.bitchord.data.catalog.metadata.AppleEditorialFormatStatus.DECIDED ||
+        classification.format == ItunesEditorialReleaseFormat.UNCLASSIFIED
     ) return original
     val refined = appleNativeAlbumDetail(
         source.copy(releases = listOf(apple.copy(format = classification.format))),
