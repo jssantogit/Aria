@@ -1213,7 +1213,11 @@ internal fun discogsArtistPage(
 ): DiscogsNativePage {
     fun has(release: DiscogsNativeArtistRelease, label: String) =
         release.formats.any { it.equals(label, ignoreCase = true) }
-    val buckets = releases.groupBy { release ->
+    val verified = discogsMergeArtistPageReleases(releases.filter {
+        it.artistId == artist.artistId && it.releaseId in 1..999_999_999_999L &&
+            it.title.isNotBlank()
+    })
+    val buckets = verified.groupBy { release ->
         val album = has(release, "Album")
         val epOrSingle = has(release, "EP") || has(release, "Single")
         val live = has(release, "Live")
@@ -1257,6 +1261,19 @@ internal fun discogsArtistPage(
                 }
             },
         ),
+        // Preserve source/position keys and the release title as context.
+        // A track on an artist's Release is not necessarily solely performed
+        // by that artist. Do not synthesize a recording ID or play action.
+        tracks = verified.asSequence().flatMap { release ->
+            release.tracklist.asSequence().take(4).mapIndexed { index, (position, title) ->
+                NativeMetadataTrack(
+                    key = "discogs:track:${release.releaseId}:$index",
+                    title = title, credit = release.title,
+                    trackNumber = position.toIntOrNull()?.takeIf { it > 0 },
+                    discNumber = null,
+                )
+            }
+        }.filter { it.title.isNotBlank() }.distinctBy { it.key }.take(16).toList(),
         hasMore = hasMore,
         incomplete = incomplete,
         attributionUrl = "https://www.discogs.com/artist/${artist.artistId}",

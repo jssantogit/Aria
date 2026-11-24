@@ -469,6 +469,7 @@ fun DetailScreen(
             onCanonicalPublicTopOpen != null,
         hasScopedCatalog = isArtist && scopedCanonicalArtistTracks.isNotEmpty(),
         hasOwnedAudio = isArtist && songs.isNotEmpty(),
+        hasSourceMetadata = isArtist && metadataTracks.isNotEmpty(),
     )
     val artistVisibleSections = nativeArtistVisibleSections(
         NativeArtistSectionEvidence(
@@ -861,7 +862,7 @@ fun DetailScreen(
 
             if (isArtist && (songs.isNotEmpty() || publicTopRows.isNotEmpty() ||
                 appleArtistTracks.isNotEmpty() || scopedCanonicalArtistTracks.isNotEmpty() ||
-                page.sections.isNotEmpty() ||
+                metadataTracks.isNotEmpty() || page.sections.isNotEmpty() ||
                 catalogRatingTarget?.entityType == "ARTIST")) {
                 item(key = "actions") {
                     // The native artist action row does not disappear merely
@@ -985,6 +986,12 @@ fun DetailScreen(
                 }
             }
 
+            if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA) {
+                item(key = "source-artist-tracks") {
+                    NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette)
+                }
+            }
+
             // An already verified catalog shelf is not hidden while an
             // unrelated legacy Song feed is loading or failed. Both online
             // and Library artists use the native track shelf geometry.
@@ -1016,9 +1023,9 @@ fun DetailScreen(
                         onRecordingHold = onCanonicalTrackHold,
                     )
                 }
-            } else if (isArtist &&
-                artistTrackOrigin == NativeArtistTrackOrigin.APPLE_METADATA) {
-                // Apple source track shelf was painted above; never draw a
+            } else if (isArtist && (artistTrackOrigin == NativeArtistTrackOrigin.APPLE_METADATA ||
+                artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA)) {
+                // The source track shelf was painted above; never draw a
                 // second MusicBrainz or Song rail by enrichment fallback.
             } else when (val state = page.songs) {
                 is UiState.Loading -> detailSkeleton(

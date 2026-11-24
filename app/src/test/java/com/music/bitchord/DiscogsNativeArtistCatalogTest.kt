@@ -115,7 +115,32 @@ class DiscogsNativeArtistCatalogTest {
         assertEquals(listOf("discogs:release:50"), rows.map { it.browseId })
         assertEquals(90L, rows.single().masterId)
         assertEquals("https://www.discogs.com/release/50", rows.single().attributionUrl)
-        assertTrue(rows.single().tracklist.isEmpty())
+        assertEquals(listOf("1" to "Track"), rows.single().tracklist)
+    }
+
+    @Test fun artistTracksAreBoundedReleaseSamplesWithoutForeignCreditsOrInventedIdentity() {
+        val exact = release(50).copy(tracklist = (1..10).map { "$it" to "Track $it" })
+        val compilation = release(51).copy(artistIds = listOf(17L, 18L),
+            artistNames = listOf("Artist", "Other"))
+        val verified = discogsNativeArtistReleases(17, listOf(
+            DiscogsArtistIndexEntry(DiscogsKind.RELEASE, 50) to exact,
+            DiscogsArtistIndexEntry(DiscogsKind.RELEASE, 51) to compilation,
+            DiscogsArtistIndexEntry(DiscogsKind.RELEASE, 52) to release(52, artistId = 18),
+        ))
+        assertEquals(4, verified.first().tracklist.size)
+        assertTrue(verified.last().tracklist.isEmpty())
+        val foreign = verified.first().copy(artistId = 18, releaseId = 99)
+        val page = com.music.bitchord.ui.discogsArtistPage(
+            com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow(17, "Artist"),
+            verified + foreign + verified.first(), false, false,
+        )
+        assertEquals(listOf("discogs:release:50", "discogs:release:51"),
+            page.page.sections.flatMap { it.items }.map { it.browseId })
+        assertEquals((0..3).map { "discogs:track:50:$it" }, page.tracks.map { it.key })
+        assertTrue(page.tracks.all { it.credit == "Album 50" })
+        assertEquals((1..4).map { "Track $it" }, page.tracks.map { it.title })
+        assertEquals(emptyList<com.music.bitchord.data.model.Song>(),
+            (page.page.songs as com.music.bitchord.data.model.UiState.Success).data)
     }
 
     private fun permittedDiscography(): RateLimitedProviderTransport {

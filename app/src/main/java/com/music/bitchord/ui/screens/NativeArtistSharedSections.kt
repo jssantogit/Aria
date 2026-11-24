@@ -11,6 +11,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.ui.draw.clip
+import com.music.bitchord.ui.components.CoverPlaceholder
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -48,17 +54,21 @@ internal val NATIVE_ARTIST_RELEASE_ITEM_SPACING = 14.dp
 internal val NATIVE_ARTIST_RELEASE_TOP_SPACING = 22.dp
 
 /** Exactly one leading track rail is eligible on the shared artist detail. */
-internal enum class NativeArtistTrackOrigin { APPLE_METADATA, VERIFIED_CATALOG, SCOPED_CATALOG, OWNED_AUDIO, NONE }
+internal enum class NativeArtistTrackOrigin {
+    APPLE_METADATA, VERIFIED_CATALOG, SCOPED_CATALOG, SOURCE_METADATA, OWNED_AUDIO, NONE,
+}
 
 internal fun nativeArtistTrackOrigin(
     hasAppleMetadata: Boolean,
     hasVerifiedCatalog: Boolean,
     hasScopedCatalog: Boolean,
     hasOwnedAudio: Boolean,
+    hasSourceMetadata: Boolean = false,
 ): NativeArtistTrackOrigin = when {
     hasAppleMetadata -> NativeArtistTrackOrigin.APPLE_METADATA
     hasVerifiedCatalog -> NativeArtistTrackOrigin.VERIFIED_CATALOG
     hasScopedCatalog -> NativeArtistTrackOrigin.SCOPED_CATALOG
+    hasSourceMetadata -> NativeArtistTrackOrigin.SOURCE_METADATA
     hasOwnedAudio -> NativeArtistTrackOrigin.OWNED_AUDIO
     else -> NativeArtistTrackOrigin.NONE
 }
@@ -274,6 +284,39 @@ internal fun NativeArtistInformationalTrackRow(
         showRatingSlot = false,
         actions = {},
     )
+}
+
+/** Non-ranked, non-playable release track metadata in the same native rail. */
+@Composable
+internal fun NativeArtistSourceMetadataTracksSection(
+    tracks: List<NativeMetadataTrack>,
+    query: String,
+    palette: ArtworkPalette,
+) {
+    val shown = tracks.filter { track ->
+        query.isBlank() || track.title.contains(query, ignoreCase = true) ||
+            track.credit?.contains(query, ignoreCase = true) == true
+    }.take(16)
+    NativeArtistTracksShelf(
+        title = "Faixas",
+        tracks = shown,
+        palette = palette,
+        itemKey = { it.key },
+        supportingText = "Amostra de faixas dos lançamentos verificados, sem ranking.",
+    ) { track ->
+        NativeArtistInformationalTrackRow(
+            title = track.title,
+            subtitle = track.credit,
+            palette = palette,
+            leading = {
+                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(palette.onBackground.copy(alpha = 0.08f))) {
+                    CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
+                }
+            },
+        )
+    }
 }
 
 private const val ARTIST_TRACK_LIMIT = 20

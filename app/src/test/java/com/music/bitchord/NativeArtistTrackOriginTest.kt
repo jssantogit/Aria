@@ -21,6 +21,17 @@ class NativeArtistTrackOriginTest {
         assertEquals(NativeArtistTrackOrigin.NONE,
             nativeArtistTrackOrigin(false, false, false, false))
     }
+    @Test fun verifiedSourceMetadataNeverCreatesASecondTrackRail() {
+        assertEquals(NativeArtistTrackOrigin.SOURCE_METADATA,
+            nativeArtistTrackOrigin(false, false, false, false, hasSourceMetadata = true))
+        assertEquals(NativeArtistTrackOrigin.APPLE_METADATA,
+            nativeArtistTrackOrigin(true, true, true, true, hasSourceMetadata = true))
+        assertEquals(NativeArtistTrackOrigin.VERIFIED_CATALOG,
+            nativeArtistTrackOrigin(false, true, true, true, hasSourceMetadata = true))
+        assertEquals(NativeArtistTrackOrigin.SCOPED_CATALOG,
+            nativeArtistTrackOrigin(false, false, true, true, hasSourceMetadata = true))
+    }
+
     @Test fun sameArtistVisualMetricsAcrossSources() {
         assertEquals(48f, NATIVE_ARTIST_TRACK_COVER_SIZE.value)
         assertEquals(14f, NATIVE_ARTIST_RELEASE_ITEM_SPACING.value)

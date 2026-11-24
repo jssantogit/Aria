@@ -1922,6 +1922,14 @@ class IdmCatalogLiveObservationTest {
                                         )
                                         assertEquals(artist.browseId, detail.page.browseId)
                                         observe(detail.page.sections, "discogs:release:")
+                                        tracks = detail.tracks.size
+                                        assertTrue(tracks <= 16)
+                                        assertTrue(detail.tracks.all { track ->
+                                            known.any { release ->
+                                                track.key.startsWith("discogs:track:${release.releaseId}:") &&
+                                                    track.credit == release.title
+                                            }
+                                        })
                                         if (result.retryCurrentPage) { failed = true; break }
                                         if (window.completedPages == 0) break
                                         if (visible < target && hasMore) {

@@ -75,9 +75,12 @@ internal fun discogsNativeArtistReleases(
             title = release.title,
             year = release.year,
             formats = release.formats,
-            // Artist shelves retain IDs and format evidence only; the exact
-            // Release tracklist is fetched again when the user opens its page.
-            tracklist = emptyList(),
+            // Reuse a bounded sample from the already hydrated Release.
+            // Only single-artist credits qualify; this proves album
+            // membership, NOT individual track authorship or popularity.
+            // Album navigation still loads the complete exact tracklist.
+            tracklist = if (release.artistIds.singleOrNull() == artistId)
+                release.tracklist.take(4) else emptyList(),
         )
     }.toList().let(::discogsMergeArtistPageReleases)
 }
