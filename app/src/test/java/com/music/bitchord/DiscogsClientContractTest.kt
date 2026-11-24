@@ -426,6 +426,87 @@ class DiscogsClientContractTest {
         assertEquals(2, reads)
     }
 
+    @Test fun nativeDetailRetriesTransientHttpAndIoOnlyOnceAndCachesOnlySuccess() = runBlocking {
+        val reads = mutableListOf<String>()
+        val client = DiscogsClient(
+            enabled = true,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = admittedNativeDiscogs(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+                    reads += path
+                    return when (reads.size) {
+                        1 -> DiscogsHttpResponse(503, "")
+                        2 -> DiscogsHttpResponse(200, """{"id":51,"title":"Album","artists":[{"name":"Artist"}]}""")
+                        3 -> throw java.io.IOException("synthetic transport interruption")
+                        else -> DiscogsHttpResponse(502, "")
+                    }
+                }
+            },
+        )
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertTrue(client.fetchRelease(51) is DiscogsLookupResult.Found)
+        assertEquals(DiscogsLookupResult.Unavailable, client.fetchRelease(52))
+        assertEquals(listOf("releases/51", "releases/51", "releases/52", "releases/52"), reads)
+    }
+
+    @Test fun nativeDetailDoesNotRetryBodyLimitsAuthorizationOrRetryAfter() = runBlocking {
+        val responses = ArrayDeque(listOf(
+            DiscogsHttpResponse(413, ""),
+            DiscogsHttpResponse(503, "", retryAfterSeconds = 20),
+            DiscogsHttpResponse(401, ""),
+            DiscogsHttpResponse(429, "", retryAfterSeconds = 3),
+        ))
+        var reads = 0
+        val client = DiscogsClient(
+            enabled = true,
+            capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            admission = admittedNativeDiscogs(),
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+                    reads++
+                    return responses.removeFirst()
+                }
+            },
+        )
+        assertEquals(DiscogsLookupResult.Unavailable, client.fetchRelease(51))
+        assertEquals(DiscogsLookupResult.Unavailable, client.fetchRelease(51))
+        assertEquals(DiscogsLookupResult.Unauthorized, client.fetchRelease(51))
+        assertEquals(DiscogsLookupResult.Throttled(3), client.fetchRelease(51))
+        assertEquals(4, reads)
+    }
+
+    @Test fun nativeDetailRetryDoesNotReuseRevokedAuthorization() = runBlocking {
+        val key = BuiltInProviderKeys.DISCOGS
+        val capability = ProviderCapability.EDITORIAL_DISCOGRAPHY
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(com.music.bitchord.data.providers.ProviderDescriptor(
+                key, setOf(capability),
+                com.music.bitchord.data.providers.ProviderReadiness.READY,
+            )),
+            choices = mapOf(capability to listOf(ProviderChoice(key, enabled, 0))),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        var reads = 0
+        val client = DiscogsClient(
+            enabled = true, capability = capability,
+            admission = RateLimitedProviderTransport { gate },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+                    reads++
+                    gate.replace(policy(false))
+                    return DiscogsHttpResponse(503, "")
+                }
+            },
+        )
+        val result = client.fetchRelease(51)
+        assertTrue(result == DiscogsLookupResult.Disabled || result == DiscogsLookupResult.Unavailable)
+        assertEquals(1, reads)
+    }
+
     @Test fun failedLookupsNeverEnterThePositiveEditionCache() = runBlocking {
         var calls = 0
         val client = DiscogsClient(
