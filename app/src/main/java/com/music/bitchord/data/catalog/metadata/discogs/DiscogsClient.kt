@@ -74,7 +74,9 @@ internal class KtorDiscogsTransport(
         path: String, userAgent: String, token: String?,
     ): DiscogsHttpResponse {
         require(allowedPath.matches(path)) { "Invalid Discogs endpoint" }
-        require(token == null || isValidDiscogsSearchToken(token))
+        require(token == null || (isValidDiscogsSearchToken(token) &&
+            baseUrl.trimEnd('/') == "https://api.discogs.com")
+        ) { "Discogs authorization requires the fixed official API host" }
         val response = client.get("${baseUrl.trimEnd('/')}/$path") {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
@@ -114,9 +116,9 @@ internal class KtorDiscogsTransport(
 
 /**
  * Discogs' documented anonymous ceiling is 25 requests in a moving minute.
- * The app still makes some anonymous Master/Release reads, so it must NOT
- * schedule at the higher authenticated-only rate. 2.6 s admits at most 24
- * starts in any 60-second window, leaving a margin for scheduling jitter.
+ * Some artist and fallback calls remain anonymous, so the global scheduler
+ * retains a separate 2.6 s anonymous floor. With a valid token, authenticated
+ * reads may use a 1.1 s floor, still below 60 total requests per minute.
  */
 internal const val DISCOGS_SAFE_MIN_INTERVAL_MS = 2_600L
 
