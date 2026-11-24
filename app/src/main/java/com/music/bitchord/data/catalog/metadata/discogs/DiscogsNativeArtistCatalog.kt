@@ -80,7 +80,8 @@ internal fun discogsNativeArtistReleases(
             // membership, NOT individual track authorship or popularity.
             // Album navigation still loads the complete exact tracklist.
             tracklist = if (release.artistIds.singleOrNull() == artistId)
-                release.tracklist.take(4) else emptyList(),
+                release.displayTracks.take(4).map { it.position.orEmpty() to it.title }
+                else emptyList(),
         )
     }.toList().let(::discogsMergeArtistPageReleases)
 }

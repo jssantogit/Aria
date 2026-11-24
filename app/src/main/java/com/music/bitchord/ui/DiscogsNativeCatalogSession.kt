@@ -1433,13 +1433,22 @@ internal fun discogsReleasePage(
         ),
     ),
     editionFacts = discogsReleaseMetadataFacts(record),
-    tracks = record.tracklist.mapIndexed { index, (position, title) ->
+    tracks = record.displayTracks.mapIndexed { index, track ->
+        val position = track.position
+        val discAndTrack = position?.let {
+            Regex("(?i)^(?:CD)?([0-9]+)-([0-9]+)$").matchEntire(it)
+        }
         NativeMetadataTrack(
             key = "discogs:track:${record.link.id}:$index",
-            title = title,
-            credit = artistCredit.takeIf(String::isNotBlank),
-            discNumber = null,
-            trackNumber = position.toIntOrNull()?.takeIf { it > 0 },
+            title = track.title,
+            credit = track.artistCredit ?: if (!track.creditSpecified &&
+                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null,
+            discNumber = discAndTrack?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 },
+            trackNumber = (discAndTrack?.groupValues?.get(2) ?: position)
+                ?.toIntOrNull()?.takeIf { it > 0 },
+            sourcePosition = position,
+            durationMs = track.durationMs,
+            workTitle = track.workTitle,
         )
     },
     attributionUrl = record.attributionUrl,
@@ -1457,5 +1466,5 @@ internal fun discogsReleasePage(
     // Even with zero verified cards, an interrupted Master lookup means
     // unknown coverage. The native source footer communicates this without
     // presenting a fabricated Versions carousel.
-    incomplete = versionsIncomplete,
+    incomplete = versionsIncomplete || record.nativeTracklistIncomplete,
 )

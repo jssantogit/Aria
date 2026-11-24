@@ -299,6 +299,10 @@ data class NativeMetadataTrack(
     val credit: String?,
     val trackNumber: Int?,
     val discNumber: Int?,
+    /** Preserve exact source positions such as A1 or CD2-3. */
+    val sourcePosition: String? = null,
+    val durationMs: Long? = null,
+    val workTitle: String? = null,
 )
 
 internal data class NativeDetailAttribution(
@@ -1141,10 +1145,7 @@ fun DetailScreen(
                             onMore = null,
                             textGap = PAGE_GUTTER,
                             leading = {
-                                NativeDetailTrackNumber(
-                                    number = nativeMetadataAlbumTrackNumber(track, originalIndex),
-                                    color = palette.onBackgroundVariant,
-                                )
+                                NativeMetadataAlbumTrackPosition(track, originalIndex, palette)
                             },
                             title = {
                                 Text(

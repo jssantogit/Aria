@@ -111,6 +111,52 @@ class DiscogsEvidenceContractTest {
         assertNull(DiscogsRecordParser.parse(DiscogsLink(DiscogsKind.MASTER,12345),raw))
     }
 
+    @Test fun nativeTracklistKeepsNestedMovementsCreditsDurationsAndExactPositions() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 777)
+        val raw = """{"id":777,"title":"Box set","artists":[{"id":17,"name":"Main"}],
+            "tracklist":[
+                {"type_":"heading","title":"CD 1"},
+                {"type_":"track","position":"CD1-1","title":"Opening","duration":"3:10"},
+                {"type_":"index","title":"Suite","sub_tracks":[
+                    {"type_":"track","position":"CD1-2.1","title":"Movement A","duration":"1.02"},
+                    {"type_":"track","position":"CD1-2.2","title":"Movement B","duration":"2:03",
+                     "artists":[{"id":18,"name":"Guest"}]}
+                ]},
+                {"type_":"track","position":"2-1","title":"Encore","duration":"1:02:03"},
+                {"type_":"track","position":"Video 1","title":"Interview"},
+                {"type_":"video","position":"DVD1-1","title":"Clip"}
+            ]}"""
+        val record = requireNotNull(DiscogsRecordParser.parse(link, raw))
+        assertEquals(listOf("CD1-1", "2-1", "Video 1"), record.tracklist.map { it.first })
+        val tracks = record.displayTracks
+        assertEquals(listOf("CD1-1", "CD1-2.1", "CD1-2.2", "2-1"), tracks.map { it.position })
+        assertEquals(listOf("Opening", "Movement A", "Movement B", "Encore"), tracks.map { it.title })
+        assertEquals(listOf(null, "Suite", "Suite", null), tracks.map { it.workTitle })
+        assertEquals(listOf(190000L, 62000L, 123000L, 3723000L), tracks.map { it.durationMs })
+        assertEquals("Guest", tracks[2].artistCredit)
+        assertFalse(record.nativeTracklistIncomplete)
+        val native = com.music.bitchord.ui.discogsReleasePage("Main", record)
+        assertEquals(tracks.map { it.position }, native.tracks.map { it.sourcePosition })
+        assertEquals("Guest", native.tracks[2].credit)
+        assertEquals(2, native.tracks.last().discNumber)
+        assertEquals(1, native.tracks.last().trackNumber)
+        assertEquals(4, native.tracks.size)
+    }
+
+    @Test fun malformedNestedTracklistDoesNotBecomeVerifiedNativeRowsOrInvalidateReleaseIdentity() {
+        val record = requireNotNull(DiscogsRecordParser.parse(
+            DiscogsLink(DiscogsKind.RELEASE, 777),
+            """{"id":777,"title":"Box set","tracklist":[
+                {"type_":"track","position":"1","title":"Track"},
+                {"type_":"index","title":"Suite","sub_tracks":[42]}
+            ]}""",
+        ))
+        assertEquals(listOf("1" to "Track"), record.tracklist)
+        assertTrue(record.nativeTracklistIncomplete)
+        assertTrue(record.displayTracks.isEmpty())
+        assertTrue(com.music.bitchord.ui.discogsReleasePage("Main", record).incomplete)
+    }
+
     @Test fun providerArtistIdsAreRetainedOnlyWhenEveryCreditHasValidIdentity() {
         val link = DiscogsLink(DiscogsKind.RELEASE, 777)
         fun payload(artists: String) = """{"id":777,"title":"New release",

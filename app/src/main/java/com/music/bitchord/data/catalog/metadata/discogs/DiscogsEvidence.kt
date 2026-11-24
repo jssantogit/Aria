@@ -116,6 +116,17 @@ private fun JsonObject.field(key: String): String? =
     (this[key] as? JsonPrimitive)?.contentOrNull
 
 /** Only CC0-style edition fields. Deliberately no images, Marketplace or user fields. */
+/** Native display evidence only. The edition matcher retains its original
+ * physical-track contract; nested movements must not change reconciliation. */
+internal data class DiscogsNativeTrack(
+    val position: String?,
+    val title: String,
+    val workTitle: String? = null,
+    val artistCredit: String? = null,
+    val creditSpecified: Boolean = false,
+    val durationMs: Long? = null,
+)
+
 internal data class DiscogsRecord(
     val link: DiscogsLink,
     val title: String,
@@ -131,8 +142,15 @@ internal data class DiscogsRecord(
     val masterId: Long? = null,
     /** All exact Discogs artist IDs, or empty when the credit identity is incomplete. */
     val artistIds: List<Long> = emptyList(),
+    /** null only for older/programmatically constructed records. */
+    val nativeTracklist: List<DiscogsNativeTrack>? = null,
+    val nativeTracklistIncomplete: Boolean = false,
 ) {
     val attributionUrl: String get() = link.attributionUrl
+    val displayTracks: List<DiscogsNativeTrack> get() =
+        nativeTracklist ?: tracklist.map { (position, title) ->
+            DiscogsNativeTrack(position.takeIf(String::isNotBlank), title)
+        }
 }
 
 /** A Discogs Master groups versions and must not be converted to an MB Release. */
@@ -220,9 +238,12 @@ internal object DiscogsRecordParser {
                 (track.clean("position", 40) ?: "") to
                     (track.clean("title", 240) ?: return null)
             }
+            val nativeTracks = parseNativeTracklist(tracks)
             DiscogsRecord(
                 link = expected,
                 title = title,
+                nativeTracklist = nativeTracks ?: emptyList(),
+                nativeTracklistIncomplete = nativeTracks == null,
                 artistNames = names,
                 artistIds = artistIds,
                 country = obj.clean("country", 80),
@@ -241,6 +262,68 @@ internal object DiscogsRecordParser {
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Discogs guidelines 12.2.9, 12.13 and 12.15: subtracks are named
+     * movements, index/heading are not audio rows, Video-prefixed positions
+     * are non-audio extras. Preserve the source order, not inferred numbering.
+     * Keep a separate representation so edition-match evidence is unchanged.
+     */
+    private fun parseNativeTracklist(tracks: List<JsonObject>): List<DiscogsNativeTrack>? {
+        val result = mutableListOf<DiscogsNativeTrack>()
+        var visited = 0
+        val videoPosition = Regex("(?i)^video(?:\\s|[-.:]|[0-9]|$)")
+        fun visit(rows: List<JsonObject>, context: String?, depth: Int): Boolean {
+            if (depth > 4) return false
+            for (row in rows) {
+                if (++visited > 1024) return false
+                val type = row.clean("type_", 32)?.lowercase(Locale.ROOT)
+                val position = row.clean("position", 40)
+                if (type == "video" || position?.let { videoPosition.containsMatchIn(it) } == true)
+                    continue
+                if (type !in setOf(null, "track", "heading", "index")) continue
+                val children = row.objects("sub_tracks", 256) ?: return false
+                val title = row.clean("title", 240)
+                if (children.isNotEmpty()) {
+                    val childContext = if (type == "heading") context else
+                        listOfNotNull(context, title).joinToString(" · ").takeIf(String::isNotBlank)
+                    if (!visit(children, childContext, depth + 1)) return false
+                    continue
+                }
+                if (type == "heading" || type == "index") continue
+                if (title == null) return false
+                val artists = row.objects("artists", 32)
+                val names = artists?.mapNotNull { it.clean("name", 180) }
+                val credit = names?.takeIf {
+                    it.isNotEmpty() && it.size == artists?.size
+                }?.joinToString(", ")
+                result += DiscogsNativeTrack(
+                    position = position, title = title, workTitle = context,
+                    artistCredit = credit,
+                    creditSpecified = artists == null || artists.isNotEmpty(),
+                    durationMs = parseNativeDuration(row.clean("duration", 32)),
+                )
+            }
+            return true
+        }
+        return result.takeIf { visit(tracks, null, 0) }?.toList()
+    }
+
+    private fun parseNativeDuration(raw: String?): Long? {
+        val parts = raw?.replace('.', ':')?.split(':') ?: return null
+        if (parts.size !in 2..3 || parts.any { it.isEmpty() || it.any { c -> !c.isDigit() } })
+            return null
+        val numbers = parts.map { it.toLongOrNull() ?: return null }
+        if (numbers.last() !in 0L..59L) return null
+        val seconds = if (numbers.size == 2) {
+            if (numbers[0] !in 0L..999L) return null
+            numbers[0] * 60 + numbers[1]
+        } else {
+            if (numbers[0] !in 0L..99L || numbers[1] !in 0L..59L) return null
+            numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+        }
+        return seconds * 1000
     }
 
     private fun JsonObject.objects(key: String, max: Int): List<JsonObject>? {

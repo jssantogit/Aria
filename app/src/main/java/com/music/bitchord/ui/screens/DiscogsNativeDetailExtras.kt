@@ -26,7 +26,7 @@ internal fun LazyListScope.discogsNativeDetailExtras(
 ) {
     if (page.incomplete) item(key = "discogs:artist:partial") {
         Text(
-            "Este é um recorte do catálogo Discogs; pode haver outros lançamentos.",
+            "Parte dos dados do Discogs pode estar incompleta; a cobertura não foi confirmada.",
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

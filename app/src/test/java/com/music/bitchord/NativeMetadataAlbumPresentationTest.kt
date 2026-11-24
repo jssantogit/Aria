@@ -29,6 +29,17 @@ class NativeMetadataAlbumPresentationTest {
         assertEquals(1, nativeMetadataAlbumTrackNumber(tracks[2], 2))
     }
 
+    @Test fun exactVinylAndNestedPositionsAndDurationRemainVisibleAfterSorting() {
+        val vinyl = NativeMetadataTrack("discogs:track:55:0", "Movement", "Guest", null, null,
+            sourcePosition = "A3.2", durationMs = 183000L, workTitle = "Suite")
+        assertEquals("A3.2", com.music.bitchord.ui.screens.nativeMetadataAlbumTrackPositionLabel(vinyl, 17))
+        assertEquals("Guest · Suite · 3:03", nativeMetadataAlbumTrackSubtitle(vinyl, "Artist"))
+        val cd = vinyl.copy(sourcePosition = "2-1", trackNumber = 1, discNumber = 2,
+            credit = "Artist", durationMs = null, workTitle = null)
+        assertEquals("2-1", com.music.bitchord.ui.screens.nativeMetadataAlbumTrackPositionLabel(cd, 5))
+        assertEquals("Disco 2", nativeMetadataAlbumTrackSubtitle(cd, "Artist"))
+    }
+
     @Test fun metadataOnlyTrackHasNoInventedArtistOrPlayableIdentity() {
         assertNull(nativeMetadataAlbumTrackSubtitle(tracks[0], "Artist"))
         assertEquals("Guest", nativeMetadataAlbumTrackSubtitle(tracks[1], "Artist"))
