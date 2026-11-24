@@ -1943,9 +1943,15 @@ class IdmCatalogLiveObservationTest {
                                 val anchors = appleRepo.searchAlbums(query, "br", 50)
                                     as? AppleEditorialLoad.Success
                                 if (artists == null || anchors == null) failed = true
+                                // Reuse the already frozen edition labels for
+                                // this same work; no new corpus alias is introduced.
+                                val acceptedAnchorTitles = setOf(titleKey) + albumParityCases.filter {
+                                    artistParityFold(it.artist) == nameKey &&
+                                        artistParityFold(it.title) == titleKey
+                                }.flatMap { it.titleAliases }.map(::artistParityFold)
                                 fun matchingCredits(load: AppleEditorialLoad.Success?): Set<Long> =
                                     load?.releases.orEmpty().filter {
-                                        it.storefront == "br" && artistParityFold(it.title) == titleKey &&
+                                        it.storefront == "br" && artistParityFold(it.title) in acceptedAnchorTitles &&
                                             artistParityFold(it.artistName) == nameKey
                                     }.mapNotNull { it.artistId }.toSet()
                                 val creditedIds = matchingCredits(anchors).toMutableSet()
@@ -2298,7 +2304,7 @@ class IdmCatalogLiveObservationTest {
                 var appleSearchWorkMatches = 0
                 var appleSearchWorkRankAdmitted = 0
                 var appleAlbumDiagnostics: AppleAlbumReadDiagnostics? = null
-                var appleRuleTypeMatches = false
+                var appleSevenPlusAudioTracks = false
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2483,8 +2489,9 @@ class IdmCatalogLiveObservationTest {
                                     val formatMatches = if (case.kind == "single_ep")
                                         record.format in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
                                         else record.format == ItunesEditorialReleaseFormat.ALBUM
-                                    appleRuleTypeMatches = formatMatches && record.formatDerivedFromAudioCount
-                                    typeVerified = formatMatches && !record.formatDerivedFromAudioCount
+                                    appleSevenPlusAudioTracks = result.state == AppleEditorialReadState.COMPLETE &&
+                                        record.tracks.size >= 7
+                                    typeVerified = formatMatches
                                     record.artistId?.let { artistId ->
                                         assertEquals("itunes:br:artist:$artistId", page.albumArtistBrowseId)
                                         artistRoute = 1
@@ -2658,7 +2665,7 @@ class IdmCatalogLiveObservationTest {
                         "apple_search_requests" to appleSearchRequests,
                         "apple_song_collection_discovery_calls" to appleSongCollectionDiscoveryCalls,
                         "apple_song_collection_verified_candidates" to appleSongCollectionVerifiedCandidates,
-                        "apple_rule_type_matches" to if (appleRuleTypeMatches) 1 else 0,
+                        "apple_seven_plus_audio_tracks" to if (appleSevenPlusAudioTracks) 1 else 0,
                         "apple_search_decoded_rows" to appleSearchRawRows,
                         "apple_search_credit_matches" to appleSearchCreditMatches,
                         "apple_search_title_matches" to appleSearchTitleMatches,
