@@ -428,6 +428,9 @@ class IdmCatalogLiveObservationTest {
                     enabled = true,
                     capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                     admission = guard,
+                    // The live Home runs the same token-bearing Master and
+                    // Release hydration as the actual Android session.
+                    tokenProvider = { token },
                 ),
             )
             val native = DiscogsNativeGenreEditorial(
