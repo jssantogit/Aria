@@ -276,9 +276,9 @@ class IdmCatalogFeedingMeasurementTest {
         val result = source.discover("br", today, onProgress = { updates += it.size })
         assertTrue(result is AppleEditorialLoad.Success)
         val verified = (result as AppleEditorialLoad.Success).releases
-        assertEquals(3, queries.size)
-        assertEquals(listOf(12, 24, 36), updates)
-        assertEquals(48, result.probeReport?.matchingProducts)
+        assertEquals(5, queries.size)
+        assertEquals(listOf(8, 15, 22, 29, 36), updates)
+        assertEquals(80, result.probeReport?.matchingProducts)
         assertEquals(36, verified.size)
         assertTrue(verified.all { it.musicBrainzReleaseGroupId == null })
 
@@ -299,7 +299,7 @@ class IdmCatalogFeedingMeasurementTest {
             AppleCatalogBrowseRoute.parse(item.browseId)?.storefront == "br" &&
                 item.videoId == null
         })
-        measure("itunes_isolated", raw = 54, parsed = 48, eligible = 36,
+        measure("itunes_isolated", raw = 90, parsed = 80, eligible = 36,
             displayed = unique.size, requests = queries.size,
             withArtwork = unique.count { key -> items.any {
                 it.browseId == key && !it.thumbnailUrl.isNullOrBlank()

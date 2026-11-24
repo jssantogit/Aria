@@ -52,8 +52,8 @@ class AppleHomeVerifiedPoolCapacityTest {
                         val index = tags.indexOf(tag)
                         assertTrue(index >= 0)
                         requests++
-                        val quantity = target / 3 + if (index < target % 3) 1 else 0
-                        val offset = target / 3 * index + minOf(index, target % 3)
+                        val quantity = target / tags.size + if (index < target % tags.size) 1 else 0
+                        val offset = target / tags.size * index + minOf(index, target % tags.size)
                         AppleEditorialLoad.Success(
                             (1..quantity).map { n -> album((offset + n).toLong(), tag) },
                             AppleEditorialReadState.COMPLETE,
@@ -64,7 +64,7 @@ class AppleHomeVerifiedPoolCapacityTest {
                 val result = client.discover(
                     "br", today.toString(), onVerifiedPool = { pool = it },
                 ) as AppleEditorialLoad.Success
-                assertEquals(3, requests)
+                assertEquals(5, requests)
                 assertEquals(target, pool.size)
                 assertEquals(target, pool.map { it.appleScopedId }.distinct().size)
                 assertEquals(minOf(target, 36), result.releases.size)

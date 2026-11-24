@@ -16,6 +16,7 @@ on:
       - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
       - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
+      - app/src/test/java/com/music/bitchord/AppleNativeHomeDiscoveryTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
@@ -33,6 +34,7 @@ on:
       - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
       - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
+      - app/src/test/java/com/music/bitchord/AppleNativeHomeDiscoveryTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
@@ -46,10 +48,9 @@ on:
       discogs_capacity_target:
         description: 'Cumulative verified Discogs Home capacity target (same Android gestures)'
         required: true
-        default: '30'
+        default: '100'
         type: choice
         options:
-          - '30'
           - '100'
           - '300'
 
@@ -106,6 +107,7 @@ jobs:
             --tests 'com.music.bitchord.IdmCatalogCapacityCurveTest' \
             --tests 'com.music.bitchord.CanonicalHomeGranularPagingTest' \
             --tests 'com.music.bitchord.AppleHomeVerifiedPoolCapacityTest' \
+            --tests 'com.music.bitchord.AppleNativeHomeDiscoveryTest' \
             --tests 'com.music.bitchord.DiscogsHomeGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGenreGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest' \
@@ -173,6 +175,7 @@ jobs:
           suites = [
               "CanonicalHomeGranularPagingTest",
               "AppleHomeVerifiedPoolCapacityTest",
+              "AppleNativeHomeDiscoveryTest",
               "DiscogsHomeGranularPagingTest",
               "DiscogsGenreGranularPagingTest",
               "DiscogsGranularEditorialCursorTest",
@@ -228,7 +231,7 @@ jobs:
     timeout-minutes: 45
     env:
       IDM_CATALOG_LIVE: '1'
-      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '30' }}
+      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
       IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
       IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
 
@@ -281,8 +284,9 @@ jobs:
                       "discogs", "discogs_granular", "discogs_home_granular",
                       "discogs_genre_12_positions", "discogs_overlapping_landing",
                       "discogs_home_landing", "discogs_artist_30_target",
+                      "musicbrainz_home_capacity_30", "itunes_home_capacity_30",
                       "collective"}
-          capacity_target = int(os.environ.get("IDM_CATALOG_DISCOGS_CAPACITY_TARGET", "30"))
+          capacity_target = int(os.environ.get("IDM_CATALOG_DISCOGS_CAPACITY_TARGET", "100"))
           capacity_scenarios = [f"discogs_home_capacity_{n}" for n in (30, 100, 300)
                                 if n <= capacity_target]
           required.update(capacity_scenarios)
@@ -301,6 +305,7 @@ jobs:
                            "discogs", "discogs_granular", "discogs_home_granular",
                            "discogs_genre_12_positions", "discogs_overlapping_landing",
                            "discogs_home_landing", "discogs_artist_30_target",
+                           "musicbrainz_home_capacity_30", "itunes_home_capacity_30",
                            *capacity_scenarios, "collective"):
                   row = data[name]
                   if row.get("mode") != "live-network-observation":
@@ -322,6 +327,7 @@ jobs:
                           "source_queries_attempted", "landing_checkpoints",
                           "source_pages_completed", "incomplete_coverage",
                           "source_gestures", "source_chunks_attempted",
+                          "continuation_elapsed_ms", "verified_landing_genres",
                           "next_window_has_more")
                   aggregate = {key: row[key] for key in keys if key in row}
                   print("IDM_LIVE_AGGREGATE", name, json.dumps(aggregate, sort_keys=True))

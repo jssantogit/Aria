@@ -57,15 +57,15 @@ class AppleNativeHomeDiscoveryTest {
                 },
             ) as AppleEditorialLoad.Success
             assertEquals(tags.map { "$it:br" }, queried)
-            assertEquals(3, result.releases.size)
+            assertEquals(5, result.releases.size)
             assertTrue(result.releases.all { it.appleScopedId.startsWith("itunes:br:album:") })
             assertTrue(result.releases.all { it.musicBrainzReleaseGroupId == null })
-            assertEquals(listOf(1, 2, 3), updates.map { it.size })
+            assertEquals(listOf(1, 2, 3, 4, 5), updates.map { it.size })
             assertTrue(result.releases.all { it.releaseDate == "2026-11-12" })
-            assertEquals(3, result.probeReport?.probesMade)
+            assertEquals(5, result.probeReport?.probesMade)
         }
 
-    @Test fun saturatedFirstGenresCannotStarveThirdAppleHomeCategory() = runBlocking {
+    @Test fun saturatedFirstGenresCannotStarveFifthAppleHomeCategory() = runBlocking {
         val day = LocalDate.parse("2026-11-17")
         val tags = AppleNativeHomeDiscovery.sampleTags(day)
         val progress = mutableListOf<List<Long>>()
@@ -82,11 +82,11 @@ class AppleNativeHomeDiscoveryTest {
         val result = home.discover("br", day.toString(),
             onProgress = { progress += it.map { row -> row.appleCollectionId } },
         ) as AppleEditorialLoad.Success
-        assertEquals(3, requests)
+        assertEquals(5, requests)
         assertEquals(36, result.releases.size)
-        assertEquals(listOf(12, 24, 36), progress.map { it.size })
-        assertEquals(72, result.probeReport?.matchingProducts)
-        assertEquals(3, tags.size)
+        assertEquals(listOf(8, 15, 22, 29, 36), progress.map { it.size })
+        assertEquals(120, result.probeReport?.matchingProducts)
+        assertEquals(5, tags.size)
         assertEquals(36, result.releases.map { it.appleScopedId }.distinct().size)
         assertTrue(progress.zipWithNext().all { (earlier, later) ->
             later.take(earlier.size) == earlier
@@ -94,7 +94,8 @@ class AppleNativeHomeDiscoveryTest {
         val shown = result.releases.map { it.appleCollectionId }
         tags.forEachIndexed { index, _ ->
             val start = (index + 1) * 1000L
-            assertEquals(12, shown.count { it in (start + 1)..(start + 24) })
+            assertEquals(if (index == 0) 8 else 7,
+                shown.count { it in (start + 1)..(start + 24) })
         }
     }
 
@@ -115,7 +116,7 @@ class AppleNativeHomeDiscoveryTest {
             onProgress = { updates += it.size },
         ) as AppleEditorialLoad.Success
         assertEquals(24, result.releases.size)
-        assertEquals(listOf(12, 24), updates)
+        assertEquals(listOf(8, 24), updates)
         assertEquals(24, result.probeReport?.matchingProducts)
         assertEquals(AppleEditorialReadState.COMPLETE, result.state)
         assertEquals((1L..24L).toList(), result.releases.map { it.appleCollectionId })
@@ -152,7 +153,7 @@ class AppleNativeHomeDiscoveryTest {
             },
         )
         val result = home.discover("br", "2026-11-17") as AppleEditorialLoad.Success
-        assertEquals(2, result.releases.size)
+        assertEquals(4, result.releases.size)
         assertEquals(1, result.probeReport?.failedRequests)
         assertEquals(AppleEditorialReadState.POSSIBLY_TRUNCATED, result.state)
     }

@@ -270,7 +270,7 @@ class IdmCatalogLiveObservationTest {
         // never an assertion that a source has any specific number of albums.
         val mbInitialPaging = initialCanonicalHomePageSnapshot(
             date, narrow, wide, historical,
-        )
+        ).copy(rows = appMbRows)
         val homeWindow = mbInitialPaging.nextWindow
         val homeOffset = homeWindow?.let(mbInitialPaging.offsets::get)
         val homeWindowDates = homeWindow?.let {
@@ -295,23 +295,34 @@ class IdmCatalogLiveObservationTest {
         val mbHomeExtra = mbHomeNext?.let {
             canonicalHomeContinuationShelf(mb, appMbShelves, it)
         }
+        val mbInitiallyVisible = cards(appMbShelves + listOfNotNull(
+            canonicalHomeContinuationShelf(mb, appMbShelves, mbInitialPaging),
+        )).mapNotNull { it.browseId }.toSet()
+        val mbNewVisible = mbHomeExtra?.items.orEmpty().filter {
+            it.browseId !in mbInitiallyVisible
+        }
+        val mbCumulativeReleases = (mbInitiallyVisible + mbNewVisible.mapNotNull { it.browseId })
+            .count { it.startsWith("catalog:RELEASE_GROUP:") || it.startsWith("catalog:RELEASE:") }
+        report("musicbrainz_home_capacity_30", Sample(
+            status = if (mbCumulativeReleases >= 30) "target_reached" else "below_target",
+            eligible = mbCumulativeReleases, visible = mbCumulativeReleases,
+            counts = mapOf("verified_target" to 30, "source_gestures" to if (mbHomeNext != null) 1 else 0),
+        ))
         report("musicbrainz_home_granular", Sample(
             status = when {
                 appMbItems.isEmpty() -> "initial_no_editorial"
                 !mbInitialPaging.hasMore -> "no_source_cursor"
                 mbHomeMore == null -> "timeout_or_unavailable"
                 mbHomeMore.sourceFailure -> "retryable_interruption"
-                mbHomeExtra == null -> "no_new_verified_records"
+                mbNewVisible.isEmpty() -> "no_new_verified_records"
                 else -> "verified"
             },
             raw = mbHomeMore?.sourcePositions,
             parsed = mbHomeMore?.parsedRows,
             eligible = mbHomeMore?.rows?.size ?: 0,
-            visible = mbHomeExtra?.items?.size ?: 0,
+            visible = mbNewVisible.size,
             requests = mbHomeMore?.attempts,
-            artwork = mbHomeExtra?.items?.count {
-                !it.thumbnailUrl.isNullOrBlank()
-            } ?: 0,
+            artwork = mbNewVisible.count { !it.thumbnailUrl.isNullOrBlank() },
             counts = mapOf(
                 "window_index" to (homeWindow ?: 3),
                 "cursor_after" to (mbHomeNext?.offsets
@@ -358,6 +369,12 @@ class IdmCatalogLiveObservationTest {
         )
         val appleItems = cards(appleShelves)
         val appleProbes = (appleResult as? AppleEditorialLoad.Success)?.probeReport
+        val appleShownIds = appleItems.mapNotNull { it.browseId }.toSet()
+        val appleShownGenres = AppleNativeHomeDiscovery.sampleTags(now).count { tag ->
+            appleReleases.any { row ->
+                row.appleScopedId in appleShownIds && AppleExploreGenrePolicy.matches(tag, row.genre)
+            }
+        }
         report("itunes", Sample(
             status = when {
                 appleResult is AppleEditorialLoad.Failure -> "source_error"
@@ -372,6 +389,7 @@ class IdmCatalogLiveObservationTest {
             requests = appleProbes?.probesMade,
             artwork = appleItems.count { !it.thumbnailUrl.isNullOrBlank() },
             shelves = appleShelves,
+            counts = mapOf("verified_landing_genres" to appleShownGenres),
         ))
 
         val appleHomeUnshown = appleHomeUnshownVerified(
@@ -402,6 +420,14 @@ class IdmCatalogLiveObservationTest {
                 "source_pool_distinct" to verifiedAppleHomePool.size,
                 "first_reveal_budget" to 24,
             ),
+        ))
+
+        val appleCumulativeReleases = cards(appleShelves + listOfNotNull(appleHomeMore))
+            .count { it.browseId.orEmpty().startsWith("itunes:br:album:") }
+        report("itunes_home_capacity_30", Sample(
+            status = if (appleCumulativeReleases >= 30) "target_reached" else "below_target",
+            eligible = appleCumulativeReleases, visible = appleCumulativeReleases,
+            counts = mapOf("verified_target" to 30, "source_gestures" to 1),
         ))
 
         val token = System.getenv("IDM_CATALOG_DISCOGS_TOKEN")
@@ -707,6 +733,7 @@ class IdmCatalogLiveObservationTest {
         val homeQueries = discogsHomeGranularQueries()
         val homeLandingVerified = mutableListOf<DiscogsEditorialCandidate>()
         val homeLandingCursors = mutableMapOf<DiscogsEditorialQuery, DiscogsEditorialCursor>()
+        val homeLandingGenres = mutableMapOf<String, MutableSet<String>>()
         val homeLandingStarted = System.nanoTime()
         var homeLandingFirstNs: Long? = null
         val homeLandingIndexBefore = discogsIndexReads
@@ -729,8 +756,10 @@ class IdmCatalogLiveObservationTest {
                     onCheckpoint = { homeLandingCursors[predicate] = it },
                     onVerified = {
                         if (homeLandingFirstNs == null) homeLandingFirstNs = System.nanoTime()
-                        if (homeLandingVerified.none { prior -> prior.masterId == it.masterId })
+                        if (homeLandingVerified.none { prior -> prior.masterId == it.masterId }) {
                             homeLandingVerified += it
+                            homeLandingGenres.getOrPut(tag) { mutableSetOf() }.add(it.browseId)
+                        }
                     },
                 )
                 when (read) {
@@ -746,6 +775,10 @@ class IdmCatalogLiveObservationTest {
             true
         } else null
         val discogsHomeShelves = discogsEditorialShelves(homeLandingVerified, home = true)
+        val homeLandingVisibleIds = cards(discogsHomeShelves).mapNotNull { it.browseId }.toSet()
+        val homeLandingGenreCount = homeLandingGenres.values.count { ids ->
+            ids.any { it in homeLandingVisibleIds }
+        }
         check(homeLandingVerified.size <= 10)
         check(homeLandingVerified.map { it.masterId }.distinct().size == homeLandingVerified.size)
         report("discogs_home_landing", Sample(
@@ -765,6 +798,7 @@ class IdmCatalogLiveObservationTest {
                     discogsReleaseReads - homeLandingReleaseBefore,
             counts = mapOf(
                 "source_queries_attempted" to homePredicatesAttempted,
+                "verified_landing_genres" to homeLandingGenreCount,
                 "verified_target" to 10,
                 "landing_checkpoints" to homeLandingCursors.size,
                 "source_index_reads" to discogsIndexReads - homeLandingIndexBefore,
@@ -888,12 +922,11 @@ class IdmCatalogLiveObservationTest {
         // The optional larger curve uses exactly the same eight-release /
         // twelve-position gesture as Android, never an enlarged API quota.
         val capacityTarget = System.getenv("IDM_CATALOG_DISCOGS_CAPACITY_TARGET")
-            ?.toIntOrNull()?.takeIf { it in listOf(30, 100, 300) } ?: 30
+            ?.toIntOrNull()?.takeIf { it in listOf(100, 300) } ?: 100
         val milestones = listOf(30, 100, 300).filter { it <= capacityTarget }
         val capacityDeadline = when (capacityTarget) {
             300 -> 1_200_000L
-            100 -> 450_000L
-            else -> 180_000L
+            else -> 300_000L
         }
         var capacityState = discogsHomeNext ?: discogsHomeInitial
         var capacityGestures = if (homeGesture != null) 1 else 0
@@ -903,6 +936,8 @@ class IdmCatalogLiveObservationTest {
         var capacityFailed = capacityState.failed || homeTransportException
         val recordedMilestones = mutableSetOf<Int>()
         fun reportCapacity(target: Int, status: String) {
+            val continuationMs = ((System.nanoTime() - homeStartNs) / 1_000_000L)
+                .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
             val appended = discogsHomeContinuationShelf(discogs, discogsHomeShelves, capacityState)
             val visibleReleases = cards(discogsHomeShelves + listOfNotNull(appended))
                 .count { it.browseId.orEmpty().startsWith("discogs:release:") }
@@ -920,6 +955,7 @@ class IdmCatalogLiveObservationTest {
                 counts = mapOf(
                     "verified_target" to target,
                     "source_gestures" to capacityGestures,
+                    "continuation_elapsed_ms" to continuationMs,
                     "source_candidates_consumed" to capacityPositions,
                     "source_chunks_attempted" to capacityChunks,
                     "source_index_reads" to discogsIndexReads - homeLandingIndexBefore,
@@ -935,13 +971,23 @@ class IdmCatalogLiveObservationTest {
         fun recordReachedMilestones() {
             milestones.filter { it !in recordedMilestones &&
                 capacityState.knownMasterIds.size >= it
-            }.forEach { reportCapacity(it, "target_reached") }
+            }.forEach { target ->
+                val continuationMs = (System.nanoTime() - homeStartNs) / 1_000_000L
+                reportCapacity(target, when {
+                    target == 30 && capacityGestures > 12 -> "target_reached_over_gesture_budget"
+                    target == 100 && continuationMs > 300_000L -> "target_reached_over_time_budget"
+                    else -> "target_reached"
+                })
+            }
         }
         recordReachedMilestones()
         val capacityScanner = discogsGranularScanner
         val capacityCompleted = if (homeCanStart && homeGesture != null &&
             capacityScanner != null && !capacityFailed
-        ) withTimeoutOrNull(capacityDeadline) {
+        ) withTimeoutOrNull(
+            (capacityDeadline - (System.nanoTime() - homeStartNs) / 1_000_000L)
+                .coerceAtLeast(1L),
+        ) {
             // Bound both candidate throughput and wall clock, and stop on
             // interruption rather than automatically hammering a 429.
             val maxGestures = maxOf(12, capacityTarget / 2)
@@ -961,6 +1007,8 @@ class IdmCatalogLiveObservationTest {
                 check(capacityState.knownMasterIds.containsAll(previous.knownMasterIds))
                 check(capacityState.knownMasterIds.size - previous.knownMasterIds.size in 0..8)
                 recordReachedMilestones()
+                if (capacityGestures == 12 && 30 !in recordedMilestones)
+                    reportCapacity(30, "gesture_budget_below_target")
                 if (capacityState.failed || gesture.transportException) {
                     capacityFailed = true
                     break

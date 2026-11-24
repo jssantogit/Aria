@@ -3333,7 +3333,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString()
-        val fingerprint = "itunes-native:br:$today:genre-v1"
+        val fingerprint = "itunes-native:br:$today:genre-v2"
         val now = System.currentTimeMillis()
         if (!force && fingerprint == appleHomeFingerprint &&
             (appleHomeJob?.isActive == true ||
@@ -3352,7 +3352,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val result = try {
                 com.music.bitchord.data.catalog.metadata
                     .AppleNativeHomeDiscovery().discover(
-                        storefront = "br", todayIsoDate = today, maxGenres = 3,
+                        storefront = "br", todayIsoDate = today,
                         onVerifiedPool = { pool ->
                             if (lease.isCurrent() && appleHomeEpoch.isCurrent(generation) &&
                                 isCanonicalDiscoverySelected()

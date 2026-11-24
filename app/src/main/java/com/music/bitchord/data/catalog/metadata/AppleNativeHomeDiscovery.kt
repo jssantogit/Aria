@@ -32,8 +32,8 @@ internal class AppleNativeHomeDiscovery(
         )
 
         /** Rotate a bounded genre sample by UTC date without any network seed. */
-        fun sampleTags(today: LocalDate, maxGenres: Int = 3): List<String> {
-            require(maxGenres in 1..3)
+        fun sampleTags(today: LocalDate, maxGenres: Int = 5): List<String> {
+            require(maxGenres in 1..5)
             val first = Math.floorMod(today.toEpochDay(), GENRES.size.toLong()).toInt()
             return (0 until maxGenres).map { index ->
                 GENRES[(first + index * 3) % GENRES.size]
@@ -44,30 +44,30 @@ internal class AppleNativeHomeDiscovery(
     suspend fun discover(
         storefront: String,
         todayIsoDate: String,
-        maxGenres: Int = 3,
+        maxGenres: Int = 5,
         onProgress: suspend (List<ItunesEditorialRelease>) -> Unit = {},
         /** Separately verified Apple products NOT clipped to Home's 36 cards. */
         onVerifiedPool: suspend (List<ItunesEditorialRelease>) -> Unit = {},
     ): AppleEditorialLoad {
         val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull()
             ?: return AppleEditorialLoad.Failure(ItunesCatalogFailure.INVALID_QUERY)
-        if (!Regex("^[a-z]{2}$").matches(storefront) || maxGenres !in 1..3) {
+        if (!Regex("^[a-z]{2}$").matches(storefront) || maxGenres !in 1..5) {
             return AppleEditorialLoad.Failure(ItunesCatalogFailure.INVALID_QUERY)
         }
         val tags = sampleTags(today, maxGenres)
         val verified = linkedMapOf<String, ItunesEditorialRelease>()
         val disputed = mutableSetOf<String>()
-        // Make all three source genres eligible before early probes fill the
+        // Make every sampled source genre eligible before early probes fill the
         // 36-card Home sample. Preserve source-local append order: do not
         // reshuffle existing cards after every incremental network response.
         val sourceIdsByGenre = tags.associateWith { linkedSetOf<String>() }
-        val perGenreShare = 36 / tags.size
         fun balancedSample(): List<ItunesEditorialRelease> {
             val ids = linkedSetOf<String>()
-            for (tag in tags) {
+            for ((index, tag) in tags.withIndex()) {
+                val share = 36 / tags.size + if (index < 36 % tags.size) 1 else 0
                 sourceIdsByGenre.getValue(tag).asSequence()
                     .filter { it in verified }
-                    .take(perGenreShare)
+                    .take(share)
                     .forEach { ids.add(it) }
             }
             return ids.mapNotNull(verified::get)
