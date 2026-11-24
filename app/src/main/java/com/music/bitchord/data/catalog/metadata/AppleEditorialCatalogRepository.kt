@@ -29,11 +29,23 @@ internal data class AppleEditorialProbeReport(
     val budgetLimited: Boolean,
 )
 
+/** Diagnostic evidence from one exact Apple collection lookup, not a
+ * fabricated count or a claim that every raw row is an audio track. */
+internal data class AppleAlbumReadDiagnostics(
+    val declaredTrackCount: Int?,
+    val decodedTracks: Int,
+    val positionlessTracks: Int,
+    val duplicatePositions: Int,
+    val sourcePossiblyTruncated: Boolean,
+    val lookup: ItunesAlbumLookupObservation?,
+)
+
 internal sealed interface AppleEditorialLoad {
     data class Success(
         val releases: List<ItunesEditorialRelease>,
         val state: AppleEditorialReadState,
         val probeReport: AppleEditorialProbeReport? = null,
+        val albumDiagnostics: AppleAlbumReadDiagnostics? = null,
     ) : AppleEditorialLoad
 
     data class Failure(
@@ -212,6 +224,16 @@ internal class AppleEditorialCatalogRepository(
             if (release == null) {
                 AppleEditorialLoad.Success(emptyList(), AppleEditorialReadState.NOT_IN_STOREFRONT)
             } else {
+                val positionless = release.tracks.count {
+                    it.discNumber == null || it.discNumber <= 0 ||
+                        it.trackNumber == null || it.trackNumber <= 0
+                }
+                val positioned = release.tracks.filter {
+                    it.discNumber != null && it.discNumber > 0 &&
+                        it.trackNumber != null && it.trackNumber > 0
+                }
+                val duplicatePositions = positioned.size -
+                    positioned.map { it.discNumber to it.trackNumber }.distinct().size
                 val complete = release.trackCount != null && release.trackCount > 0 &&
                     release.tracks.size == release.trackCount &&
                     release.tracks.all { track ->
@@ -226,6 +248,14 @@ internal class AppleEditorialCatalogRepository(
                     listOf(release),
                     if (complete && !source.possiblyTruncated) AppleEditorialReadState.COMPLETE
                     else AppleEditorialReadState.PARTIAL_TRACKLIST,
+                    albumDiagnostics = AppleAlbumReadDiagnostics(
+                        declaredTrackCount = release.trackCount,
+                        decodedTracks = release.tracks.size,
+                        positionlessTracks = positionless,
+                        duplicatePositions = duplicatePositions,
+                        sourcePossiblyTruncated = source.possiblyTruncated,
+                        lookup = source.albumLookupObservation,
+                    ),
                 )
             }
         }
