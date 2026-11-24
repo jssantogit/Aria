@@ -84,7 +84,7 @@ class DiscogsGenreEditorialNetworkTest {
         assertNull(DiscogsEditorialMasterParsing.page(
             """{"pagination":{"page":1,"pages":1,"per_page":12},
                 "results":[{"id":13,"type":"master","genre":["Valid",
-                    "bad\\u0001control"]}]}""", 1,
+                    "bad\u0001control"]}]}""", 1,
         )?.hints?.get(13L)?.genres)
     }
 
