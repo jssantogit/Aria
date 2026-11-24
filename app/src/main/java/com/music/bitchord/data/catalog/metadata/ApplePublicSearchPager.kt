@@ -3,8 +3,9 @@ package com.music.bitchord.data.catalog.metadata
 /**
  * PUBLIC iTunes Search API has a 200-item cap and no documented offset.
  * The app pages already-discovered Apple IDs locally and probes different
- * official search attributes only when capped or the initial batch has no
- * text-relevant rows. This is discovery, NOT a
+ * official search attributes when capped or empty, and bounded field-specific
+ * continuation for compound queries with a source-supported credit boundary.
+ * This is discovery, NOT a
  * server cursor or an assurance that the search results are exhaustive.
  */
 internal interface ApplePublicSearchSource {
@@ -163,8 +164,9 @@ internal class ApplePublicSearchPager(
     }
     // Attribute probes with the complete query may still miss a compound
     // title/credit: albumTerm and songTerm address a single source field.
-    // Use at most two additional field-specific probes only after a wholly
-    // empty result, and always rank returned rows against the ORIGINAL query.
+    // Use at most two additional field-specific probes after an empty result
+    // or on continuation of a source-supported compound landing. Always rank
+    // returned rows against the ORIGINAL query.
     // A split is a discovery hint, never identity evidence.
     private val fallbackCompoundTerms: List<String> = if (entity == ItunesCatalogEntity.ARTIST) {
         emptyList()
@@ -195,6 +197,7 @@ internal class ApplePublicSearchPager(
     private var initialized = false
     private var capped = false
     private var probeAttributes = false
+    private var compoundContinuation = false
     private var visibleCount = 0
     private var nextAttribute = 0
     private var nextCompoundTerm = 0
@@ -205,13 +208,14 @@ internal class ApplePublicSearchPager(
 
     private fun hasPendingProbe(): Boolean =
         (probeAttributes && nextAttribute < extraAttributes.size) ||
-            (rows.isEmpty() && nextCompoundTerm < compoundTerms.size)
+            ((rows.isEmpty() || compoundContinuation) && nextCompoundTerm < compoundTerms.size)
 
     fun snapshot() = ApplePublicSearchSnapshot(
         visible = rows.values.take(visibleCount),
         discoveredCount = rows.size,
         hasMore = rows.size > visibleCount || (initialized && hasPendingProbe()),
-        coverageUncertain = capped || disputed.isNotEmpty(),
+        coverageUncertain = capped || disputed.isNotEmpty() ||
+            (initialized && compoundContinuation && nextCompoundTerm < compoundTerms.size),
     )
 
     private fun merge(result: ItunesCatalogResult.Success) {
@@ -263,6 +267,14 @@ internal class ApplePublicSearchPager(
                 // Spend the same bounded official attribute probes only for
                 // an otherwise empty landing, never for a productive uncapped batch.
                 probeAttributes = capped || rows.isEmpty()
+                // A fuzzy but productive compound result can omit the intended
+                // edition. Offer bounded title-field continuation even when the
+                // first response is uncapped. Do not add landing latency or
+                // probe ordinary artist-only queries.
+                compoundContinuation = rows.isNotEmpty() && entity != ItunesCatalogEntity.ARTIST &&
+                    (creditHints.isNotEmpty() || query.split(" - ").let { parts ->
+                        parts.size == 2 && parts.all { it.isNotBlank() }
+                    })
                 if (rows.isEmpty() && probeAttributes) loadMore()
                 else ApplePublicSearchPageLoad.Success(snapshot())
             }
