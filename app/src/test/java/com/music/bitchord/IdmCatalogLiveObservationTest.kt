@@ -474,6 +474,8 @@ class IdmCatalogLiveObservationTest {
         var discogsArtistScanner: DiscogsNativeArtistCatalog? = null
         var artistIndexReads = 0
         var artistIndexCandidates = 0
+        var artistIndexMasterCandidates = 0
+        var artistIndexMainReleaseHints = 0
         var firstInitialVerifiedNs: Long? = null
         var initialLandingCursor: DiscogsEditorialCursor? = null
         val initialStartedNs = System.nanoTime()
@@ -524,9 +526,15 @@ class IdmCatalogLiveObservationTest {
                     override val supportsTokenAuthorization: Boolean get() = true
                     private fun counted(response: DiscogsHttpResponse, page: Int):
                         DiscogsHttpResponse {
-                        if (response.status == 200) artistIndexCandidates +=
-                            DiscogsPublicArtistParsing.page(response.body, page)
-                                ?.entries?.size ?: 0
+                        if (response.status == 200) {
+                            val entries = DiscogsPublicArtistParsing.page(response.body, page)
+                                ?.entries.orEmpty()
+                            artistIndexCandidates += entries.size
+                            artistIndexMasterCandidates += entries.count { it.kind == DiscogsKind.MASTER }
+                            artistIndexMainReleaseHints += entries.count {
+                                it.kind == DiscogsKind.MASTER && it.mainReleaseId != null
+                            }
+                        }
                         return response
                     }
                     override suspend fun list(
@@ -1278,6 +1286,8 @@ class IdmCatalogLiveObservationTest {
                 "verified_target" to 30,
                 "source_pages_completed" to artistPagesCompleted,
                 "source_index_reads" to artistIndexReads,
+                "source_index_master_candidates" to artistIndexMasterCandidates,
+                "source_index_main_release_hints" to artistIndexMainReleaseHints,
                 "source_master_reads" to discogsMasterReads - artistMasterBefore,
                 "source_release_reads" to discogsReleaseReads - artistReleaseBefore,
                 "next_window_has_more" to if (artistHasMore && artistId != null) 1 else 0,
@@ -1693,9 +1703,41 @@ class IdmCatalogLiveObservationTest {
             enabled = token != null, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
             admission = discogsGuard, tokenProvider = { token },
         )
+        // Record only aggregate typed edition outcomes from the actual artist
+        // loader. These are method calls (which may hit its positive cache),
+        // not HTTP counts. Never serialize source IDs, names or bodies.
+        var artistMasterCalls = 0
+        var artistReleaseCalls = 0
+        var artistMalformed = 0
+        var artistUnavailable = 0
+        var artistThrottled = 0
+        var artistUnauthorized = 0
+        var artistMissing = 0
+        var artistDisabled = 0
+        fun countArtistEdition(result: DiscogsLookupResult): DiscogsLookupResult {
+            when (result) {
+                DiscogsLookupResult.Malformed -> artistMalformed++
+                DiscogsLookupResult.Unavailable -> artistUnavailable++
+                is DiscogsLookupResult.Throttled -> artistThrottled++
+                DiscogsLookupResult.Unauthorized -> artistUnauthorized++
+                DiscogsLookupResult.Missing -> artistMissing++
+                DiscogsLookupResult.Disabled -> artistDisabled++
+                else -> Unit
+            }
+            return result
+        }
         val discogsCatalog = DiscogsNativeArtistCatalog(
             enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
-            editions = DiscogsNativeEditionClient(discogsDetails),
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    artistMasterCalls++
+                    return countArtistEdition(discogsDetails.fetchMaster(id))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    artistReleaseCalls++
+                    return countArtistEdition(discogsDetails.fetchRelease(id))
+                }
+            },
         )
         for (provider in listOf(mb, apple, discogs)) {
             val sourceName = when (provider) {
@@ -1705,6 +1747,14 @@ class IdmCatalogLiveObservationTest {
             }
             for ((index, case) in artistParityCases.withIndex()) {
                 val target = if (case.extensive) 30 else 1
+                val beforeMasterCalls = artistMasterCalls
+                val beforeReleaseCalls = artistReleaseCalls
+                val beforeMalformed = artistMalformed
+                val beforeUnavailable = artistUnavailable
+                val beforeThrottled = artistThrottled
+                val beforeUnauthorized = artistUnauthorized
+                val beforeMissing = artistMissing
+                val beforeDisabled = artistDisabled
                 val started = System.nanoTime()
                 var matched = false
                 var profile = false
@@ -1977,6 +2027,14 @@ class IdmCatalogLiveObservationTest {
                         "landing_visible_releases" to landing,
                         "source_gestures" to gestures,
                         "automatic_pages" to autoPages,
+                        "artist_master_lookup_calls" to (artistMasterCalls - beforeMasterCalls),
+                        "artist_release_lookup_calls" to (artistReleaseCalls - beforeReleaseCalls),
+                        "artist_edition_malformed" to (artistMalformed - beforeMalformed),
+                        "artist_edition_unavailable" to (artistUnavailable - beforeUnavailable),
+                        "artist_edition_throttled" to (artistThrottled - beforeThrottled),
+                        "artist_edition_unauthorized" to (artistUnauthorized - beforeUnauthorized),
+                        "artist_edition_missing" to (artistMissing - beforeMissing),
+                        "artist_edition_disabled" to (artistDisabled - beforeDisabled),
                         "release_sections" to sections,
                         "verified_track_rows" to tracks,
                         "first_profile_ms" to firstProfileMs,
