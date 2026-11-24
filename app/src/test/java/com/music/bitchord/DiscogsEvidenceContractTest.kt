@@ -187,6 +187,41 @@ class DiscogsEvidenceContractTest {
         assertNull(DiscogsRecordParser.parse(link, """{"id":3,"title":"X","images":[1]}""".repeat(50_000)))
     }
 
+    @Test fun largerReleasePayloadKeepsOnlyBoundedVerifiedFields() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        val padding = "z".repeat(DISCOGS_STANDARD_BODY_BYTES + 1)
+        val raw = """{"id":3,"title":"Verified Album","master_id":12,
+            "artists":[{"id":17,"name":"Artist"}],
+            "tracklist":[{"position":"1","title":"Track","duration":"3:10"}],
+            "notes":"$padding","images":[{"uri":"https://restricted.example/art"}]}"""
+        val record = requireNotNull(DiscogsRecordParser.parse(link, raw))
+        assertEquals(12L, record.masterId)
+        assertEquals(listOf(17L), record.artistIds)
+        assertEquals(listOf("1" to "Track"), record.tracklist)
+        assertEquals(190_000L, record.displayTracks.single().durationMs)
+        assertFalse(record.toString().contains(padding.take(100)))
+        assertFalse(record.toString().contains("restricted.example"))
+        assertNull(DiscogsRecordParser.parse(link.copy(id = 4), raw))
+        assertNull(DiscogsRecordParser.parseMaster(DiscogsLink(DiscogsKind.MASTER, 3), raw))
+    }
+
+    @Test fun releaseByteAndStructuralLimitsRemainFailClosed() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        val prefix = """{"id":3,"title":"X","notes":""""
+        val suffix = "\"}"
+        val boundary = prefix + "a".repeat(DISCOGS_RELEASE_BODY_BYTES - prefix.length - suffix.length) + suffix
+        assertNotNull(DiscogsRecordParser.parse(link, boundary))
+        assertNull(DiscogsRecordParser.parse(link, boundary + " "))
+        val unicode = prefix + "界".repeat(DISCOGS_RELEASE_BODY_BYTES / 3) + suffix
+        assertTrue(unicode.length < DISCOGS_RELEASE_BODY_BYTES)
+        assertNull(DiscogsRecordParser.parse(link, unicode))
+        val deep = """{"id":3,"title":"X","unknown":""" +
+            "[".repeat(65) + "0" + "]".repeat(65) + "}"
+        assertNull(DiscogsRecordParser.parse(link, deep))
+        val escaped = """{"id":3,"title":"X","notes":"escaped \" quote [ { \\"}"""
+        assertNotNull(DiscogsRecordParser.parse(link, escaped))
+    }
+
     @Test fun evidenceExpiresAndCannotSupplyPlayOrArtwork() {
         val observation = DiscogsObservation(
             canonicalMbid = releaseMbid,
