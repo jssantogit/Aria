@@ -2949,6 +2949,12 @@ class IdmCatalogLiveObservationTest {
                 var homonymCandidates = 0
                 var homonymDetailReads = 0
                 var homonymCorroborated = false
+                var appleQualifiedTitleTopFive = false
+                var appleQualifiedAnchorTopFive = false
+                var appleContinuationGestures = 0
+                var appleContinuationTargetRecovered = false
+                var appleContinuationQualifiedRecovered = false
+                var appleContinuationInterrupted = false
                 val supported = provider != discogs || case.kind != "track"
                 val complete = try {
                     withTimeoutOrNull(100_000L) {
@@ -3058,6 +3064,10 @@ class IdmCatalogLiveObservationTest {
                                     else -> appleNativeAlbumSearchRowsInSourceOrder(visible, "br")
                                         .map { SearchParityRow(it.browseId, it.title, it.artistName) }
                                 }
+                                val qualifiedAnchorIds = mutableSetOf<String>()
+                                fun qualifiedTitle(value: String): Boolean =
+                                    applePublicAlbumWorkKey(value) != searchLabelKey(value) &&
+                                        applePublicAlbumWorkKey(value) == searchLabelKey(case.title)
                                 when (case.kind) {
                                     "artist" -> {
                                         val probe = appleRepo.searchAlbums(case.title + " " + case.anchor, "br", 50)
@@ -3065,6 +3075,11 @@ class IdmCatalogLiveObservationTest {
                                         provenIds += probe?.releases.orEmpty().filter {
                                             searchLabelKey(it.title) == searchLabelKey(case.anchor) &&
                                                 case.artistMatches(it.artistName)
+                                        }.mapNotNull { it.artistId?.let { id -> "itunes:br:artist:$id" } }
+                                        qualifiedAnchorIds += probe?.releases.orEmpty().filter {
+                                            case.artistMatches(it.artistName) && it.storefront == "br" &&
+                                                applePublicAlbumWorkKey(it.title) != searchLabelKey(it.title) &&
+                                                applePublicAlbumWorkKey(it.title) == searchLabelKey(case.anchor)
                                         }.mapNotNull { it.artistId?.let { id -> "itunes:br:artist:$id" } }
                                         offered = provenIds.isNotEmpty()
                                     }
@@ -3082,6 +3097,50 @@ class IdmCatalogLiveObservationTest {
                                             probe?.releases.orEmpty().any {
                                                 case.titleMatches(it.title) && case.artistMatches(it.artistName)
                                             }
+                                    }
+                                }
+                                // Keep the original strict Top 5 independent of these
+                                // additional commercial-edition and continuation observations.
+                                appleQualifiedTitleTopFive = case.kind == "album" &&
+                                    rows.take(5).any { !case.titleMatches(it.title) &&
+                                        qualifiedTitle(it.title) && case.artistMatches(it.artist) }
+                                appleQualifiedAnchorTopFive = case.kind == "artist" &&
+                                    rows.take(5).any { it.id in qualifiedAnchorIds && it.id !in provenIds &&
+                                        case.artistMatches(it.title) }
+                                fun strictCandidate(item: ItunesCatalogItem): Boolean = when (case.kind) {
+                                    "artist" -> item.scopedId in provenIds && case.artistMatches(item.title)
+                                    else -> case.titleMatches(item.title) && case.artistMatches(item.artistName)
+                                }
+                                fun qualifiedCandidate(item: ItunesCatalogItem): Boolean = when (case.kind) {
+                                    "artist" -> item.scopedId in qualifiedAnchorIds &&
+                                        item.scopedId !in provenIds && case.artistMatches(item.title)
+                                    "album" -> !case.titleMatches(item.title) &&
+                                        qualifiedTitle(item.title) && case.artistMatches(item.artistName)
+                                    else -> false
+                                }
+                                // Measure later availability only if the initial page has
+                                // neither accepted strict nor edition-qualified target.
+                                // Never reorder or overwrite the first-page metric.
+                                if (response != null && visible.none { strictCandidate(it) || qualifiedCandidate(it) } &&
+                                    (case.kind != "artist" || provenIds.isNotEmpty() || qualifiedAnchorIds.isNotEmpty())
+                                ) {
+                                    var more = response.snapshot.hasMore
+                                    while (more && appleContinuationGestures < 2 &&
+                                        !appleContinuationTargetRecovered && !appleContinuationQualifiedRecovered
+                                    ) {
+                                        appleContinuationGestures++
+                                        when (val continuation = pager.loadMore()) {
+                                            is ApplePublicSearchPageLoad.Failure -> {
+                                                appleContinuationInterrupted = true
+                                                more = false
+                                            }
+                                            is ApplePublicSearchPageLoad.Success -> {
+                                                val candidates = continuation.snapshot.visible
+                                                appleContinuationTargetRecovered = candidates.any(::strictCandidate)
+                                                appleContinuationQualifiedRecovered = candidates.any(::qualifiedCandidate)
+                                                more = continuation.snapshot.hasMore
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3264,6 +3323,12 @@ class IdmCatalogLiveObservationTest {
                         "homonym_candidates" to homonymCandidates,
                         "homonym_detail_reads" to homonymDetailReads,
                         "homonym_corroborated" to if (homonymCorroborated) 1 else 0,
+                        "apple_qualified_title_top_five" to if (appleQualifiedTitleTopFive) 1 else 0,
+                        "apple_qualified_anchor_top_five" to if (appleQualifiedAnchorTopFive) 1 else 0,
+                        "apple_continuation_gestures" to appleContinuationGestures,
+                        "apple_continuation_target_recovered" to if (appleContinuationTargetRecovered) 1 else 0,
+                        "apple_continuation_qualified_recovered" to if (appleContinuationQualifiedRecovered) 1 else 0,
+                        "apple_continuation_interrupted" to if (appleContinuationInterrupted) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
                     ),
