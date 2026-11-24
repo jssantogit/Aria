@@ -150,6 +150,29 @@ class ApplePublicSearchPagerTest {
             ))
         }
 
+    @Test fun compoundArtistTitleQueriesUseBothFieldsWithoutAdmittingNamesakes() = runBlocking {
+        val exact = album(1, title = "Hunky Dory").copy(artistName = "David Bowie")
+        val other = exact.copy(id = 2, artistName = "David Bowies")
+        val unrelated = exact.copy(id = 3, artistName = "Other")
+        val alternate = exact.copy(id = 4, title = "Hunky Dory (2015 Remaster)")
+        assertEquals(1, applePublicSearchMatchRank("David Bowie Hunky Dory", exact))
+        assertEquals(1, applePublicSearchMatchRank("Hunky Dory - David Bowie", exact))
+        assertEquals(2, applePublicSearchMatchRank("David Bowie Hunky Dory", alternate))
+        assertNull(applePublicSearchMatchRank("David Bowie Hunky Dory", other))
+        assertNull(applePublicSearchMatchRank("David Bowie Hunky Dory", unrelated))
+        val fake = Fake(ItunesCatalogResult.Success(listOf(other, unrelated, alternate, exact)))
+            .apply { expectedQuery = "David Bowie Hunky Dory" }
+        val pager = ApplePublicSearchPager(fake.expectedQuery, ItunesCatalogEntity.ALBUM,
+            "br", source = fake)
+        assertEquals(listOf(1L, 4L), (pager.start() as ApplePublicSearchPageLoad.Success)
+            .snapshot.visible.map { it.id })
+        val song = exact.copy(type = ItunesCatalogItemType.TRACK, title = "Magnetic",
+            artistName = "ILLIT")
+        assertEquals(1, applePublicSearchMatchRank("Magnetic ILLIT", song))
+        assertNull(applePublicSearchMatchRank("Magnetic ILLIT",
+            song.copy(artistName = "Illiterate")))
+    }
+
     @Test fun accentsAndArticlesAreNormalizedWithoutRemovingSourcePunctuation() {
         val artist = ItunesCatalogItem(
             ItunesCatalogItemType.ARTIST, 17L, "br", "Beyoncé",

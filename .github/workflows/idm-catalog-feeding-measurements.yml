@@ -30,6 +30,9 @@ on:
       - app/src/test/java/com/music/bitchord/AppleEditorialNativeSearchBridgeTest.kt
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
+      - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
+      - sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -56,6 +59,9 @@ on:
       - app/src/test/java/com/music/bitchord/AppleEditorialNativeSearchBridgeTest.kt
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
+      - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
+      - sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
       - app/src/main/java/com/music/bitchord/ui/**
@@ -136,7 +142,8 @@ jobs:
             --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
             --tests 'com.music.bitchord.AppleEditorialNativeSearchBridgeTest' \
             --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
-            --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest'
+            --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
+            --tests 'com.music.bitchord.ApplePublicSearchPagerTest'
 
       - name: Check completeness and write aggregate comparison
         shell: bash
@@ -213,6 +220,7 @@ jobs:
               "AppleEditorialNativeSearchBridgeTest",
               "AppleSharedDetailAdapterTest",
               "DiscogsMasterVersionPreviewTest",
+              "ApplePublicSearchPagerTest",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### Home granular flows (controlled full-adapter regressions)\n\n")

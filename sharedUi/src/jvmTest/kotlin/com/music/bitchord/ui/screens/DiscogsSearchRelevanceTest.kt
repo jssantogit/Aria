@@ -77,6 +77,18 @@ class DiscogsSearchRelevanceTest {
                 listOf(artist(3, "Illit Grondal"))))
     }
 
+    @Test fun compoundTitleQueriesKeepSourceCreditWithoutAdmittingNamesakes() {
+        assertEquals(3, discogsSearchReleaseRank("David Bowie Hunky Dory", "David Bowie - Hunky Dory"))
+        assertEquals(3, discogsSearchReleaseRank("Hunky Dory - David Bowie", "David Bowie - Hunky Dory"))
+        assertEquals(4, discogsSearchReleaseRank("David Bowie Hunky Dory", "David Bowie - Hunky Dory (Remastered)"))
+        assertEquals(3, discogsSearchReleaseRank("illit magnetic", "Illit (2) - Magnetic"))
+        assertEquals(3, discogsSearchReleaseRank("illit (2) magnetic", "Illit (2) - Magnetic"))
+        assertNull(discogsSearchReleaseRank("illit (2) magnetic", "Illit - Magnetic"))
+        assertNull(discogsSearchReleaseRank("David Bowie Hunky Dory", "David Bowies - Hunky Dory"))
+        assertNull(discogsSearchReleaseRank("David Bowie Hunky Dory", "Other - Hunky Dory"))
+        assertNull(discogsSearchReleaseRank("illit magnetic", "Illiterate - Magnetic"))
+    }
+
     @Test fun noExactArtistAllowsRealTitleQueriesButNotSubstrings() {
         assertEquals(listOf(
             DiscogsUnifiedSearchEntry.Release(release(2, "Various - Magnetic")),

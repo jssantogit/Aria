@@ -97,10 +97,17 @@ fun discogsSearchReleaseRank(query: String, combinedTitle: String): Int? {
     val display = discogsSearchReleaseDisplay(combinedTitle)
     val artistRank = display.artistCredit?.let { discogsSearchArtistRank(query, it) }
     val title = discogsSearchFold(display.title)
+    val artist = display.artistCredit?.let(::discogsCoreArtistName).orEmpty()
+    val fullArtist = display.artistCredit?.let(::discogsSearchFold).orEmpty()
+    val compound = listOf(artist, fullArtist).filter(String::isNotBlank).distinct()
+        .flatMap { credit -> listOf(
+            "$credit $title", "$title $credit", "$credit - $title", "$title - $credit",
+        ) }
     return when {
         artistRank != null && artistRank <= 2 -> artistRank
-        title == q -> 3
-        discogsSearchWordStarts(title, q) -> 4
+        title == q || q in compound -> 3
+        discogsSearchWordStarts(title, q) ||
+            compound.any { discogsSearchWordStarts(it, q) } -> 4
         artistRank == 3 -> 5
         else -> null
     }

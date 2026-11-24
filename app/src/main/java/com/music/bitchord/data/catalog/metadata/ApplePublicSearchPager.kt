@@ -66,6 +66,12 @@ internal fun applePublicSearchMatchRank(
     if (term.isEmpty()) return null
     val title = fold(row.title)
     val artist = fold(row.artistName)
+    // "artist title" and "title - artist" are common disambiguating
+    // queries. Both fields must be present; do not strip punctuation or
+    // accept arbitrary token/substring overlap.
+    val compound = if (artist.isNotEmpty() && title.isNotEmpty()) listOf(
+        "$artist $title", "$title $artist", "$artist - $title", "$title - $artist",
+    ) else emptyList()
     return when (row.type) {
         ItunesCatalogItemType.ARTIST -> when {
             title == term -> 0
@@ -75,8 +81,9 @@ internal fun applePublicSearchMatchRank(
         }
         ItunesCatalogItemType.TRACK, ItunesCatalogItemType.ALBUM -> when {
             artist == term -> 0
-            title == term -> 1
-            beginsAsWholeTerm(title, term) -> 2
+            title == term || term in compound -> 1
+            beginsAsWholeTerm(title, term) ||
+                compound.any { beginsAsWholeTerm(it, term) } -> 2
             beginsAsWholeTerm(artist, term) -> 3
             else -> null
         }
