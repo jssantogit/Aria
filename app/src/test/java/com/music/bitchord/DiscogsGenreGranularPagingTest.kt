@@ -169,6 +169,29 @@ class DiscogsGenreGranularPagingTest {
             DiscogsGranularRead.Page(emptyList(), null, 0, 0)))
     }
 
+    @Test fun laterStyleResumesItsOwnLandingCheckpointWithoutReplayingCards() {
+        val firstCursor = DiscogsEditorialCursor(1, 4, 11, true)
+        val laterCursor = DiscogsEditorialCursor(2, 3, 22, true)
+        val initial = DiscogsGenrePageSnapshot(
+            tag = "metal", cursor = firstCursor, knownMasterIds = setOf(1L),
+            pendingLandingCursors = mapOf(0 to firstCursor, 1 to laterCursor),
+        )
+        val afterFirst = advanceDiscogsGenrePage(
+            initial, "metal", 3,
+            DiscogsGranularRead.Page(listOf(release(2L)), null, 1, 1),
+        )!!
+        assertEquals(1, afterFirst.queryIndex)
+        assertEquals(laterCursor, afterFirst.cursor)
+        val afterSecond = advanceDiscogsGenrePage(
+            afterFirst, "metal", 3,
+            DiscogsGranularRead.Page(listOf(release(2L), release(3L)), null, 2, 1),
+        )!!
+        assertEquals(2, afterSecond.queryIndex)
+        assertEquals(DiscogsEditorialCursor(), afterSecond.cursor)
+        assertTrue(afterSecond.pendingLandingCursors.isEmpty())
+        assertEquals(listOf(2L, 3L), afterSecond.releases.map { it.masterId })
+    }
+
     @Test fun appendShelfIsOnlyDiscogsAndDoesNotRepeatLandingCards() {
         val landing = listOf(
             HomeShelf("Álbuns", listOf(

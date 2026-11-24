@@ -17,6 +17,7 @@ on:
       - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
@@ -31,6 +32,7 @@ on:
       - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
       - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
       - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
@@ -92,6 +94,7 @@ jobs:
             --tests 'com.music.bitchord.CanonicalHomeGranularPagingTest' \
             --tests 'com.music.bitchord.AppleHomeVerifiedPoolCapacityTest' \
             --tests 'com.music.bitchord.DiscogsHomeGranularPagingTest' \
+            --tests 'com.music.bitchord.DiscogsGenreGranularPagingTest' \
             --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest'
 
       - name: Check completeness and write aggregate comparison
@@ -156,6 +159,7 @@ jobs:
               "CanonicalHomeGranularPagingTest",
               "AppleHomeVerifiedPoolCapacityTest",
               "DiscogsHomeGranularPagingTest",
+              "DiscogsGenreGranularPagingTest",
               "DiscogsGranularEditorialCursorTest",
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:

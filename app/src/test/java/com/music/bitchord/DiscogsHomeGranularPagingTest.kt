@@ -61,6 +61,26 @@ class DiscogsHomeGranularPagingTest {
             finished.releases.map { it.masterId })
     }
 
+    @Test fun landingCheckpointsRemainBoundToTheirOwnHomePredicates() {
+        val firstCursor = DiscogsEditorialCursor(1, 5, 101, true)
+        val thirdCursor = DiscogsEditorialCursor(2, 2, 303, true)
+        val first = initialDiscogsHomePageSnapshot(
+            listOf(edition(1L)), 3, mapOf(0 to firstCursor, 2 to thirdCursor),
+        )
+        assertEquals(listOf(firstCursor, DiscogsEditorialCursor(), thirdCursor), first.cursors)
+        assertEquals(setOf(1L), first.knownMasterIds)
+        val afterFirst = advanceDiscogsHomePage(
+            first, 0, DiscogsGranularRead.Page(listOf(edition(2L)), null, 1, 1),
+        )!!
+        assertEquals(1, afterFirst.nextQueryIndex)
+        val afterSecond = advanceDiscogsHomePage(
+            afterFirst, 1, DiscogsGranularRead.Page(emptyList(), null, 0, 0),
+        )!!
+        assertEquals(2, afterSecond.nextQueryIndex)
+        assertEquals(thirdCursor, afterSecond.cursors[2])
+        assertEquals(listOf(2L), afterSecond.releases.map { it.masterId })
+    }
+
     @Test fun throttledSourceRetainsCandidateAndDoesNotAdvanceToWrongGenre() {
         val previous = initialDiscogsHomePageSnapshot(emptyList(), 2)
         val retry = DiscogsEditorialCursor(1, 3, 99)
