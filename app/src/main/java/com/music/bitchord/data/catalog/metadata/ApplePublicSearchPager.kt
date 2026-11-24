@@ -172,7 +172,10 @@ internal class ApplePublicSearchPager(
                 capped = result.possiblyTruncated
                 merge(result)
                 visibleCount = minOf(pageSize, rows.size)
-                ApplePublicSearchPageLoad.Success(snapshot())
+                // A capped fuzzy batch may contain no relevant results.
+                // Spend only the existing bounded official attribute probes.
+                if (rows.isEmpty() && capped) loadMore()
+                else ApplePublicSearchPageLoad.Success(snapshot())
             }
         }
     }
@@ -183,19 +186,23 @@ internal class ApplePublicSearchPager(
             visibleCount = minOf(rows.size, visibleCount + pageSize)
             return ApplePublicSearchPageLoad.Success(snapshot())
         }
-        if (!capped || nextAttribute >= extraAttributes.size) {
-            return ApplePublicSearchPageLoad.Success(snapshot())
-        }
-        val attribute = extraAttributes[nextAttribute]
-        return when (val result = source.search(query, entity, country, attribute)) {
-            is ItunesCatalogResult.Failure ->
-                ApplePublicSearchPageLoad.Failure(result.reason)
-            is ItunesCatalogResult.Success -> {
-                nextAttribute++
-                merge(result)
-                visibleCount = minOf(rows.size, visibleCount + pageSize)
-                ApplePublicSearchPageLoad.Success(snapshot())
+        while (capped && nextAttribute < extraAttributes.size) {
+            val attribute = extraAttributes[nextAttribute]
+            when (val result = source.search(query, entity, country, attribute)) {
+                is ItunesCatalogResult.Failure ->
+                    return ApplePublicSearchPageLoad.Failure(result.reason)
+                is ItunesCatalogResult.Success -> {
+                    nextAttribute++
+                    merge(result)
+                    if (rows.size > visibleCount) {
+                        visibleCount = minOf(rows.size, visibleCount + pageSize)
+                        break
+                    }
+                    // Duplicate-only/irrelevant probes cannot strand the
+                    // next legitimate official search attribute.
+                }
             }
         }
+        return ApplePublicSearchPageLoad.Success(snapshot())
     }
 }

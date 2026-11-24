@@ -154,15 +154,14 @@ fun discogsUnifiedSearchEntries(
 
 /**
  * Fuzzy Discogs results can consume a whole server page without a legitimate
- * hit. Continue only if there are no displayed or newly accepted rows, and
- * only within the native Search client's existing three-page hard cap.
+ * hit. Continue when the page produced no new visible identity, including
+ * duplicate-only continuation pages after an already productive landing.
+ * Keep the native Search client's existing three-page hard cap.
  */
 fun discogsSearchNeedsNextRelevantPage(
-    previousAccepted: Int,
     freshAccepted: Int,
     nextPage: Int?,
-): Boolean = previousAccepted == 0 && freshAccepted == 0 &&
-    nextPage != null && nextPage in 2..3
+): Boolean = freshAccepted == 0 && nextPage != null && nextPage in 2..3
 
 enum class DiscogsUnifiedSearchNext { ARTISTS, RELEASES }
 

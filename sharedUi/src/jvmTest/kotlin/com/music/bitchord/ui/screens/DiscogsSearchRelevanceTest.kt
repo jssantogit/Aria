@@ -106,12 +106,11 @@ class DiscogsSearchRelevanceTest {
     }
 
     @Test fun initialServerPagesFullOfJunkAreSkippedWithinExistingHardCap() {
-        assertTrue(discogsSearchNeedsNextRelevantPage(0, 0, 2))
-        assertTrue(discogsSearchNeedsNextRelevantPage(0, 0, 3))
-        assertFalse(discogsSearchNeedsNextRelevantPage(0, 0, 4))
-        assertFalse(discogsSearchNeedsNextRelevantPage(0, 0, null))
-        assertFalse(discogsSearchNeedsNextRelevantPage(1, 0, 2))
-        assertFalse(discogsSearchNeedsNextRelevantPage(0, 1, 2))
+        assertTrue(discogsSearchNeedsNextRelevantPage(0, 2))
+        assertTrue(discogsSearchNeedsNextRelevantPage(0, 3))
+        assertFalse(discogsSearchNeedsNextRelevantPage(0, 4))
+        assertFalse(discogsSearchNeedsNextRelevantPage(0, null))
+        assertFalse(discogsSearchNeedsNextRelevantPage(1, 2))
     }
 
     @Test fun optionalPaginationDoesNotFloodExactArtistNamesakes() {

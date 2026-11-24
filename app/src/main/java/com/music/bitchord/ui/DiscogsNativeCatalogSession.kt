@@ -677,15 +677,6 @@ internal class DiscogsNativeCatalogSession(
                         val previous = (_artists.value as? UiState.Success)?.data.orEmpty()
                         searchPage = currentPage
                         _searchHasMore.value = result.page.nextPage != null
-                        // Don't show "nothing found" merely because the
-                        // public Discogs ranking filled page one with junk.
-                        if (discogsSearchNeedsNextRelevantPage(
-                                previous.size, rows.size, result.page.nextPage,
-                            )
-                        ) {
-                            currentPage = requireNotNull(result.page.nextPage)
-                            continue
-                        }
                         // "(2)" suffixes are Discogs disambiguators, not
                         // visible artist names. The native Artist tab must
                         // collapse duplicate display names just like General,
@@ -698,11 +689,21 @@ internal class DiscogsNativeCatalogSession(
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
                         }
-                        _artists.value = UiState.Success(
-                            if (exact) candidates.filter {
-                                (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
-                            } else candidates.take(12),
-                        )
+                        val projected = if (exact) candidates.filter {
+                            (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
+                        } else candidates.take(12)
+                        val seen = previous.map { it.artistId }.toSet()
+                        val fresh = projected.count { it.artistId !in seen }
+                        // Continue across duplicate-only/irrelevant pages even
+                        // after a productive first page, within the source cap.
+                        if (discogsSearchNeedsNextRelevantPage(
+                                fresh, result.page.nextPage,
+                            )
+                        ) {
+                            currentPage = requireNotNull(result.page.nextPage)
+                            continue
+                        }
+                        _artists.value = UiState.Success(projected)
                     }
                     DiscogsNativeArtistSearchResult.AuthenticationRequired ->
                         _artists.value = UiState.Error("discogs_token_required")
@@ -752,8 +753,9 @@ internal class DiscogsNativeCatalogSession(
                             (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
                         releaseSearchPage = currentPage
                         _releaseSearchHasMore.value = result.page.nextPage != null
+                        val known = previous.map { it.releaseId }.toSet()
                         if (discogsSearchNeedsNextRelevantPage(
-                                previous.size, rows.size, result.page.nextPage,
+                                rows.count { it.releaseId !in known }, result.page.nextPage,
                             )
                         ) {
                             currentPage = requireNotNull(result.page.nextPage)
