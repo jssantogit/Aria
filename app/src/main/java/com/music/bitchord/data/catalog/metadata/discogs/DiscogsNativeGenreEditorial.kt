@@ -412,6 +412,10 @@ internal class DiscogsNativeGenreEditorial(
         cursor: DiscogsEditorialCursor = DiscogsEditorialCursor(),
         knownMasterIds: Set<Long> = emptySet(),
         maxCandidates: Int = 4,
+        /** Optional in-gesture boundary: finish a four-position chunk once
+         * verified records appear, without repeating the same source index.
+         * A new gesture still rechecks signed partial cursor pages. */
+        stopAfterVerifiedChunk: Int? = null,
         /** Fully verified source identity, emitted before the bounded batch ends. */
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
     ): DiscogsGranularRead {
@@ -419,8 +423,11 @@ internal class DiscogsNativeGenreEditorial(
                         retry: DiscogsEditorialCursor = cursor,
                         releases: List<DiscogsEditorialCandidate> = emptyList()) =
             DiscogsGranularRead.Interrupted(releases, retry, reason)
-        if (!query.isValid() || !cursor.isValid() || maxCandidates !in 1..6)
-            return interrupted(DiscogsEditorialResult.InvalidQuery)
+        if (!query.isValid() || !cursor.isValid() || maxCandidates !in 1..12 ||
+            (stopAfterVerifiedChunk != null &&
+                (stopAfterVerifiedChunk !in 1..4 ||
+                    maxCandidates < stopAfterVerifiedChunk))
+        ) return interrupted(DiscogsEditorialResult.InvalidQuery)
         if (!enabled || !admission.permitted(
                 ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS,
             ) || !admission.permitted(
@@ -471,6 +478,13 @@ internal class DiscogsNativeGenreEditorial(
         while (position < index.masterIds.size &&
             position - cursor.candidatePosition < maxCandidates
         ) {
+            // Only this single network snapshot is reused within one gesture.
+            // On the NEXT gesture, a partial cursor must still fetch/compare
+            // its index signature; no unbounded or stale cache fast-path.
+            val consumed = position - cursor.candidatePosition
+            if (stopAfterVerifiedChunk != null && releases.isNotEmpty() &&
+                consumed > 0 && consumed % stopAfterVerifiedChunk == 0
+            ) break
             val masterId = index.masterIds[position]
             if (masterId in knownMasterIds) {
                 position++
