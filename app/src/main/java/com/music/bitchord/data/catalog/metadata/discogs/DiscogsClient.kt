@@ -48,6 +48,11 @@ internal data class DiscogsHttpResponse(
     val localBodyLimitExceeded: Boolean = false,
 )
 
+/** Shared transport/parser ceilings. Only exact Release detail bodies receive
+ * the larger budget; Master and version indexes retain the previous ceiling. */
+internal const val DISCOGS_STANDARD_BODY_BYTES = 128 * 1024
+internal const val DISCOGS_RELEASE_BODY_BYTES = 512 * 1024
+
 internal class KtorDiscogsTransport(
     private val baseUrl: String = "https://api.discogs.com",
     private val client: HttpClient = HttpClient(OkHttp) {
@@ -86,8 +91,10 @@ internal class KtorDiscogsTransport(
             header(HttpHeaders.Accept, "application/vnd.discogs.v2.discogs+json")
             if (token != null) header(HttpHeaders.Authorization, "Discogs token=$token")
         }
+        val maxResponseBytes = if (path.startsWith("releases/"))
+            DISCOGS_RELEASE_BODY_BYTES else DISCOGS_STANDARD_BODY_BYTES
         val size = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-        if (size != null && size > MAX_RESPONSE_BYTES) {
+        if (size != null && size > maxResponseBytes) {
             response.bodyAsChannel().cancel()
             return DiscogsHttpResponse(413, "", localBodyLimitExceeded = true)
         }
@@ -100,7 +107,7 @@ internal class KtorDiscogsTransport(
             val count = channel.readAvailable(buffer)
             if (count < 0) break
             if (count == 0) continue
-            if (output.size().toLong() + count > MAX_RESPONSE_BYTES) {
+            if (output.size().toLong() + count > maxResponseBytes) {
                 channel.cancel()
                 return DiscogsHttpResponse(413, "", localBodyLimitExceeded = true)
             }
@@ -113,7 +120,6 @@ internal class KtorDiscogsTransport(
     }
 
     private companion object {
-        const val MAX_RESPONSE_BYTES = 131_072L
         const val MAX_RETRY_AFTER = 86_400L
     }
 }
