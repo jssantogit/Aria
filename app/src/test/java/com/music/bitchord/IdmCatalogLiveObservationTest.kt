@@ -2305,6 +2305,10 @@ class IdmCatalogLiveObservationTest {
                 var appleSearchWorkRankAdmitted = 0
                 var appleAlbumDiagnostics: AppleAlbumReadDiagnostics? = null
                 var appleSevenPlusAudioTracks = false
+                var appleIndependentOfferAttempted = false
+                var appleIndependentOfferVerified = false
+                var appleIndependentDetailComplete = false
+                var appleIndependentFrozenTitleMatches = false
                 val complete = try {
                     withTimeoutOrNull(120_000L) {
                         val query = case.artist + " " + case.title
@@ -2461,6 +2465,39 @@ class IdmCatalogLiveObservationTest {
                                         selectedQuality = quality
                                     }
                                     if (completeTracks && meetsDiscGoal) break
+                                }
+                                // Independent storefront offers documented on 2026-11-24.
+                                // These public Apple BR URLs nominate an exact lookup ONLY.
+                                // They are not injected into production search, do not replace
+                                // the frozen corpus, and cannot turn a missing case green.
+                                // The 2011 EP is explicitly a different commercial edition.
+                                val offer = when (index) {
+                                    // https://music.apple.com/br/album/blue-monday-2020-digital-master/1526111071
+                                    5 -> 1526111071L to "Blue Monday (2020 Digital Master)"
+                                    // https://music.apple.com/br/album/personal-jesus-2011-ep/665719937
+                                    6 -> 665719937L to "Personal Jesus 2011 - EP"
+                                    // https://music.apple.com/br/album/come-to-daddy/282478739
+                                    8 -> 282478739L to "Come to Daddy"
+                                    // https://music.apple.com/br/album/the-fragile/1440836334
+                                    14 -> 1440836334L to "The Fragile"
+                                    else -> null
+                                }
+                                if (selected == null && offer != null) {
+                                    appleIndependentOfferAttempted = true
+                                    val independent = appleRepo.albumDetail(offer.first, "br")
+                                        as? AppleEditorialLoad.Success
+                                    val proof = independent?.releases?.singleOrNull()?.takeIf {
+                                        it.appleCollectionId == offer.first && it.storefront == "br" &&
+                                            case.matchesArtist(it.artistName) &&
+                                            artistParityKey(it.title) == artistParityKey(offer.second)
+                                    }
+                                    if (proof != null) {
+                                        appleIndependentOfferVerified = true
+                                        appleIndependentFrozenTitleMatches = case.matchesTitle(proof.title)
+                                        appleIndependentDetailComplete =
+                                            independent?.state == AppleEditorialReadState.COMPLETE &&
+                                                proof.tracks.isNotEmpty()
+                                    }
                                 }
                                 if (selected != null && result != null) {
                                     val record = selected
@@ -2665,6 +2702,10 @@ class IdmCatalogLiveObservationTest {
                         "apple_search_requests" to appleSearchRequests,
                         "apple_song_collection_discovery_calls" to appleSongCollectionDiscoveryCalls,
                         "apple_song_collection_verified_candidates" to appleSongCollectionVerifiedCandidates,
+                        "apple_independent_offer_attempted" to if (appleIndependentOfferAttempted) 1 else 0,
+                        "apple_independent_offer_verified" to if (appleIndependentOfferVerified) 1 else 0,
+                        "apple_independent_detail_complete" to if (appleIndependentDetailComplete) 1 else 0,
+                        "apple_independent_frozen_title_matches" to if (appleIndependentFrozenTitleMatches) 1 else 0,
                         "apple_seven_plus_audio_tracks" to if (appleSevenPlusAudioTracks) 1 else 0,
                         "apple_search_decoded_rows" to appleSearchRawRows,
                         "apple_search_credit_matches" to appleSearchCreditMatches,
