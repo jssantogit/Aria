@@ -153,16 +153,24 @@ internal class DiscogsNativeCatalogSession(
             enabled = true, tokenProvider = { tokenVault.readForSearch() },
         )
     }
-    private val artistClient by lazy { DiscogsNativeArtistCatalog(enabled = true) }
-    private val editorialClient by lazy {
-        DiscogsNativeGenreEditorial(
-            enabled = true, tokenProvider = { tokenVault.readForSearch() },
-        )
-    }
+    // Search and every source-owned hydration share the same credential,
+    // source gate and process-wide limiter. Anonymous fallback remains safe
+    // if the token is unavailable or its authorization is rejected.
     private val editionClient by lazy {
         DiscogsClient(
             enabled = true,
             capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            tokenProvider = { tokenVault.readForSearch() },
+        )
+    }
+    private val editions by lazy { DiscogsNativeEditionClient(editionClient) }
+    private val artistClient by lazy {
+        DiscogsNativeArtistCatalog(enabled = true, editions = editions)
+    }
+    private val editorialClient by lazy {
+        DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { tokenVault.readForSearch() },
+            editions = editions,
         )
     }
 
