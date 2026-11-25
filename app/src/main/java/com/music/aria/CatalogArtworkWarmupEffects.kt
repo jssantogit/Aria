@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 
 /**
  * Native screen artwork speculation, independent of MusicBrainz / Apple /
- * Navidrome. Kept outside BitChordApp because the root Compose renderer is
+ * Navidrome. Kept outside AriaApp because the root Compose renderer is
  * near the JVM's 64-KiB per-method bytecode limit.
  *
  * Always cancel stale speculative work on viewport/query changes; the visible

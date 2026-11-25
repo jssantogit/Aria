@@ -13,7 +13,7 @@ import com.music.aria.data.model.HomeShelf
 import com.music.aria.data.model.UiState
 
 /** Small state adapter: expensive Compose flows and effects live outside
- * BitChordApp, whose JVM method has a hard 64KB bytecode limit. */
+ * AriaApp, whose JVM method has a hard 64KB bytecode limit. */
 internal data class CanonicalPublicPlaylistUi(
     val playlists: Map<String, List<ListenBrainzPublicPlaylist>>,
     val detail: UiState<ListenBrainzPublicPlaylistDetail>,

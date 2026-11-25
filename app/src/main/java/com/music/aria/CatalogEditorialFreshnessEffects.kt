@@ -15,7 +15,7 @@ import com.music.aria.ui.canonicalPersonalRecommendationExpiresAtMs
 import kotlinx.coroutines.delay
 
 /** Preserve the same expiry-triggered refresh but keep Compose state machines
- * outside the giant BitChordApp renderer (JVM methods have a 64-KiB limit).
+ * outside the giant AriaApp renderer (JVM methods have a 64-KiB limit).
  * Expired data is never promoted to a current chart or personal shelf. */
 @Composable
 internal fun rememberCatalogSitewideFreshness(

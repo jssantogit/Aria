@@ -8,7 +8,7 @@ import com.music.aria.playback.CanonicalCollectionIntent
 
 /**
  * The Library route remains painted behind this full-screen Android Dialog.
- * Keep the Dialog/editor's expensive Compose call out of BitChordApp's huge
+ * Keep the Dialog/editor's expensive Compose call out of AriaApp's huge
  * route-host method: inlining it there exceeded the JVM 64 KiB method limit.
  * All playlist editor callbacks and the native wizard remain unchanged.
  */

@@ -274,7 +274,7 @@ internal fun canonicalGenreEditorialShelves(
 
 /**
  * Keep the historical MusicBrainz shelves and independent ListenBrainz
- * playlists together without inflating BitChordApp's Compose method.
+ * playlists together without inflating AriaApp's Compose method.
  * Failure of one remote source cannot blank verified rows from the other.
  */
 internal fun canonicalGenreDisplayState(

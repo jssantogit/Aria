@@ -13,7 +13,7 @@ import com.music.aria.data.model.UiState
 
 /**
  * Thin route adapter; the original native playlist detail frame owns the
- * layout. Keep extra Compose groups OUTSIDE the 64KB BitChordApp method,
+ * layout. Keep extra Compose groups OUTSIDE the 64KB AriaApp method,
  * which the Android and TV Gradle gates compile separately.
  */
 @Composable

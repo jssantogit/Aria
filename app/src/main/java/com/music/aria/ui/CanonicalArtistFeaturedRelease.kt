@@ -39,7 +39,7 @@ internal fun canonicalPublicArtistFeaturedRelease(
 }
 
 /**
- * Keep flow collection OUTSIDE BitChordApp's already large Compose method.
+ * Keep flow collection OUTSIDE AriaApp's already large Compose method.
  * Library artist routes do not need a public release browse or network call.
  */
 @Composable

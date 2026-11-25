@@ -5,7 +5,7 @@ package com.music.aria
  * navigation state alive for Back. A remembered source flag is NOT permission
  * to draw another page's search, rating, sort or overflow buttons.
  *
- * Route precedence must match BitChordApp.pageRouteKey. This deliberately
+ * Route precedence must match AriaApp.pageRouteKey. This deliberately
  * models only the toolbar owner, never the playback or navigation source.
  */
 internal enum class NativeTopBarRouteOwner {

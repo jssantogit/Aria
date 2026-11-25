@@ -275,7 +275,7 @@ private suspend fun readPinnedLibraryCards(
 }
 
 /**
- * Keep canonical pin dispatch outside the already-large BitChordApp
+ * Keep canonical pin dispatch outside the already-large AriaApp
  * composable (the JVM compiler has a hard 64KB method bytecode ceiling).
  */
 @Composable
