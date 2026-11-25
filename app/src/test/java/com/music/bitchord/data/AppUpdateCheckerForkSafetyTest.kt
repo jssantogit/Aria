@@ -8,7 +8,7 @@ import org.junit.Test
 class AppUpdateCheckerForkSafetyTest {
     @Test fun updateMetadataMustComeFromThisForkOnly() {
         assertEquals(
-            "https://api.github.com/repos/jssantogit/BitChord/releases/latest",
+            "https://api.github.com/repos/jssantogit/Aria/releases/latest",
             AppUpdateChecker.LATEST_RELEASE_URL,
         )
         assertFalse(AppUpdateChecker.LATEST_RELEASE_URL.contains("kushagrasinghx"))

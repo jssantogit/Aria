@@ -20,7 +20,7 @@ import okhttp3.Request
 import java.io.File
 
 /**
- * BitChord ships as a sideloaded APK off GitHub Releases rather than through
+ * Aria ships as a sideloaded APK off GitHub Releases rather than through
  * a store, so there's nothing to push an update notice on its own — this
  * polls the repo's "latest release" once per launch and compares its tag
  * against the running build.
@@ -45,7 +45,7 @@ object AppUpdateChecker {
     // The fork must not offer or sideload the upstream BitChord APK.
     // Keep the manual update option scoped to this repository's own releases.
     internal const val LATEST_RELEASE_URL =
-        "https://api.github.com/repos/jssantogit/BitChord/releases/latest"
+        "https://api.github.com/repos/jssantogit/Aria/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -144,7 +144,7 @@ object AppUpdateChecker {
             val dir = File(context.cacheDir, CACHE_SUBDIR).apply { mkdirs() }
             // Drop anything left over from an earlier attempt.
             dir.listFiles()?.forEach { it.delete() }
-            val target = File(dir, "bitchord-${info.version}.apk")
+            val target = File(dir, "aria-${info.version}.apk")
 
             val request = Request.Builder().url(url).build()
             Http.client.newCall(request).execute().use { response ->
@@ -173,6 +173,8 @@ object AppUpdateChecker {
                     }
                 }
             }
+            val downloadedPackage = context.packageManager.getPackageArchiveInfo(target.absolutePath, 0)?.packageName
+            check(downloadedPackage == context.packageName) { "The APK is not an update for this Aria installation" }
             _download.value = DownloadState.Ready(target)
         }.onFailure { error ->
             _download.value = if (downloadCancelled) {
@@ -203,6 +205,11 @@ object AppUpdateChecker {
      * launched anyway and shows its own "not allowed" prompt with a way in.
      */
     fun installApk(context: Context, file: File) {
+        val downloadedPackage = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.packageName
+        if (downloadedPackage != context.packageName) {
+            _download.value = DownloadState.Failed("The APK is not an update for this Aria installation")
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
         ) {

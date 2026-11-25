@@ -238,10 +238,7 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         Diagnostics.span(DiagnosticCategory.STARTUP, "lastfm_init") {
             initLastfm()
         }
-        // The public "apps open right now" count; see Presence.
-        Diagnostics.span(DiagnosticCategory.STARTUP, "presence_install") {
-            com.music.bitchord.data.presence.AndroidPresence.install(this)
-        }
+        // Aria does not report app presence to the upstream project.
         Diagnostics.span(DiagnosticCategory.STARTUP, "background_join_wait") {
             backgroundInit.join()
         }
@@ -267,7 +264,7 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
                     chain.request().newBuilder()
                         .header(
                             "User-Agent",
-                            "BitChord/${BuildConfig.VERSION_NAME} (Android; +https://github.com/kushagrasinghx/BitChord)",
+                            "Aria/${BuildConfig.VERSION_NAME} (Android; +https://github.com/jssantogit/Aria)",
                         )
                         .build(),
                 )
