@@ -575,7 +575,10 @@ internal class MusicBrainzCatalogSearch(
         } catch (_: Exception) {
             null
         }
-        return if (parsed == null) {
+        // A response for a different upstream page cannot advance the
+        // requested cursor. Reject oversized pages as well; retain raw row
+        // consumption for valid pages, including filtered or duplicate IDs.
+        return if (parsed == null || parsed.offset != offset || parsed.consumedCount > limit) {
             MusicBrainzCatalogSearchResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
         } else {
             MusicBrainzCatalogSearchResult.Success(parsed)
