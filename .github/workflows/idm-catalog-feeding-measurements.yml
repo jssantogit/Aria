@@ -34,6 +34,9 @@ on:
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogSearchTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogGraphTest.kt
+      - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
       - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
@@ -70,6 +73,9 @@ on:
       - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogSearchTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogGraphTest.kt
+      - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
       - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
@@ -161,6 +167,9 @@ jobs:
             --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
             --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
             --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
+            --tests 'com.music.bitchord.MusicBrainzCatalogSearchTest' \
+            --tests 'com.music.bitchord.MusicBrainzCatalogGraphTest' \
+            --tests 'com.music.bitchord.AppleArtistDiscographyPagerTest' \
             --tests 'com.music.bitchord.AppleEditorialCatalogRepositoryTest' \
             --tests 'com.music.bitchord.AppleEditorialClassificationTest' \
             --tests 'com.music.bitchord.ItunesCatalogClientTest' \
@@ -254,6 +263,9 @@ jobs:
               "AppleSharedDetailAdapterTest",
               "DiscogsMasterVersionPreviewTest",
               "ApplePublicSearchPagerTest",
+              "MusicBrainzCatalogSearchTest",
+              "MusicBrainzCatalogGraphTest",
+              "AppleArtistDiscographyPagerTest",
               "AppleEditorialCatalogRepositoryTest",
               "AppleEditorialClassificationTest",
               "ItunesCatalogClientTest",
