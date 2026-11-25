@@ -54,7 +54,9 @@ jobs:
           retired = {"libbitchord_analysis.so", "libbitchord_dsd.so", "libbitchord_dst.so"}
           apks = sorted(Path("app/build/outputs/apk/dev/debug").glob("*.apk"))
           assert apks, "No APK produced"
+          supported = {"armeabi-v7a", "arm64-v8a", "x86_64"}
           checked = 0
+          observed = set()
           for apk in apks:
               with ZipFile(apk) as archive:
                   libs = {}
@@ -62,11 +64,16 @@ jobs:
                       parts = name.split("/")
                       if len(parts) == 3 and parts[0] == "lib" and parts[2].endswith(".so"):
                           libs.setdefault(parts[1], set()).add(parts[2])
+                  expected = supported if "universal" in apk.name else {abi for abi in supported if abi in apk.name}
+                  assert expected, f"Unknown APK ABI: {apk.name}"
                   for abi, names in libs.items():
                       assert not retired & names, f"{apk.name}/{abi}: retired native library"
+                  for abi in expected:
+                      names = libs.get(abi, set())
                       assert required <= names, f"{apk.name}/{abi}: missing {required - names}"
+                      observed.add(abi)
                       checked += 1
-          assert checked, "No native ABI verified"
+          assert observed == supported, f"Missing supported ABIs: {supported - observed}"
           print(f"Verified Aria native library names across {checked} packaged APK/ABI pairs")
           PY
       - name: Upload migrated development APK
