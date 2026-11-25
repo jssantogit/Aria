@@ -243,21 +243,25 @@ internal class AppleEditorialCatalogRepository(
     /** Apply only to an already visible Apple product, preserving source order. */
     @Synchronized
     fun reuseCommercialFormat(row: ItunesEditorialRelease): ItunesEditorialRelease {
-        val observation = commercialObservations[row.appleScopedId] ?: return row
+        // The album detail owns its fresh audio proof. A header-only row can
+        // carry a previously reused value from a pager snapshot: strip it and
+        // revalidate on every projection rather than prolonging the TTL.
+        if (row.tracks.isNotEmpty()) return row
+        val native = if (row.commercialAudioFormat == ItunesEditorialReleaseFormat.UNCLASSIFIED)
+            row else row.copy(commercialAudioFormat = ItunesEditorialReleaseFormat.UNCLASSIFIED)
+        val observation = commercialObservations[native.appleScopedId] ?: return native
         val elapsed = nowNanos() - observation.observedAt
         if (elapsed < 0 || elapsed >= commercialTtlNanos) {
-            commercialObservations.remove(row.appleScopedId)
-            return row
+            commercialObservations.remove(native.appleScopedId)
+            return native
         }
-        val identity = commercialIdentity(row) ?: return row
+        val identity = commercialIdentity(native) ?: return native
         if (identity != observation.identity) {
-            commercialObservations.remove(row.appleScopedId)
-            return row
+            commercialObservations.remove(native.appleScopedId)
+            return native
         }
-        // Fresh explicit labels or audio evidence always win.
-        if (row.format != ItunesEditorialReleaseFormat.UNCLASSIFIED ||
-            row.commercialAudioFormat != ItunesEditorialReleaseFormat.UNCLASSIFIED) return row
-        return row.copy(commercialAudioFormat = observation.format)
+        if (native.format != ItunesEditorialReleaseFormat.UNCLASSIFIED) return native
+        return native.copy(commercialAudioFormat = observation.format)
     }
 
     fun reuseCommercialFormats(rows: List<ItunesEditorialRelease>): List<ItunesEditorialRelease> =

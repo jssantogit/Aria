@@ -17,8 +17,10 @@ import org.junit.Test
 class AppleEditorialCatalogRepositoryTest {
     private class Source(var json: String) : ItunesCatalogTransport {
         var parameters = emptyMap<String, String>()
+        var requests = 0
         override suspend fun get(path: String, parameters: Map<String, String>): String {
             this.parameters = parameters
+            requests++
             return json
         }
     }
@@ -483,7 +485,9 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(kind, release.displayFormat)
         assertEquals(unknown, release.format)
         source.json = """{"resultCount":1,"results":[$header]}"""
+        val readsBeforeListing = source.requests
         val listing = repository.searchAlbums("Artist") as AppleEditorialLoad.Success
+        assertEquals(readsBeforeListing + 1, source.requests)
         val card = listing.releases.single()
         assertEquals(kind, card.displayFormat)
         assertEquals(unknown, card.format)
@@ -496,8 +500,13 @@ class AppleEditorialCatalogRepositoryTest {
             storefront = "us", appleScopedId = "itunes:us:album:123")).displayFormat)
         assertEquals(unknown, repository.reuseCommercialFormat(plain.copy(
             appleCollectionId = 456L, appleScopedId = "itunes:br:album:456")).displayFormat)
+        assertEquals(readsBeforeListing + 1, source.requests)
         now += 15L * 60 * 1_000_000_000
+        // Already enriched header-only rows in a pager cannot retain stale type.
+        assertEquals(unknown, repository.reuseCommercialFormat(card).displayFormat)
         assertEquals(unknown, repository.reuseCommercialFormat(plain).displayFormat)
+        assertEquals(kind, repository.reuseCommercialFormat(release).displayFormat)
+        assertEquals(readsBeforeListing + 1, source.requests)
         source.json = """{"resultCount":8,"results":[$header,$songs]}"""
         repository.albumDetail(123)
         assertEquals(kind, repository.reuseCommercialFormat(plain).displayFormat)

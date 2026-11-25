@@ -589,6 +589,8 @@ jobs:
                   "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict",
                   "apple_commercial_type_matches_expected", "apple_display_type_matches_expected",
                   "apple_display_type_known", "apple_commercial_lower_bound_album",
+                  "apple_selected_public_offer_verified", "apple_independent_offer_display_known",
+                  "apple_independent_offer_display_matches_expected",
                   "source_discs_observed", "source_track_positions",
                   "source_track_durations", "artist_route_verified", "related_release_cards",
                   "version_cards", "version_coverage_uncertain", "detail_candidates_read",

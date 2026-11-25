@@ -2303,6 +2303,9 @@ class IdmCatalogLiveObservationTest {
                 var appleDisplayTypeMatches = false
                 var appleCommercialLowerBoundAlbum = false
                 var appleDisplayTypeKnown = false
+                var appleSelectedPublicOfferVerified = false
+                var appleIndependentOfferDisplayKnown = false
+                var appleIndependentOfferDisplayMatches = false
                 var decoded = 0
                 var displayed = 0
                 var discs = 0
@@ -2619,6 +2622,11 @@ class IdmCatalogLiveObservationTest {
                                     }
                                     if (proof != null) {
                                         appleIndependentOfferVerified = true
+                                        appleIndependentOfferDisplayKnown =
+                                            proof.displayFormat != ItunesEditorialReleaseFormat.UNCLASSIFIED
+                                        appleIndependentOfferDisplayMatches = if (case.kind == "single_ep")
+                                            proof.displayFormat in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+                                            else proof.displayFormat == ItunesEditorialReleaseFormat.ALBUM
                                         appleIndependentFrozenTitleMatches = case.matchesTitle(proof.title)
                                         appleIndependentDetailComplete =
                                             independent?.state == AppleEditorialReadState.COMPLETE &&
@@ -2627,6 +2635,10 @@ class IdmCatalogLiveObservationTest {
                                 }
                                 if (selected != null && result != null) {
                                     val record = selected
+                                    appleSelectedPublicOfferVerified = offer != null &&
+                                        record.appleCollectionId == offer.first && record.storefront == "br" &&
+                                        case.matchesArtist(record.artistName) &&
+                                        artistParityKey(record.title) == artistParityKey(offer.second)
                                     appleAlbumDiagnostics = result.albumDiagnostics
                                     appleFrozenTitleVerified = case.matchesTitle(record.title)
                                     appleQualifiedEditionVerified = !appleFrozenTitleVerified &&
@@ -2880,6 +2892,9 @@ class IdmCatalogLiveObservationTest {
                         "apple_commercial_type_matches_expected" to if (appleCommercialTypeMatches) 1 else 0,
                         "apple_display_type_matches_expected" to if (appleDisplayTypeMatches) 1 else 0,
                         "apple_display_type_known" to if (appleDisplayTypeKnown) 1 else 0,
+                        "apple_selected_public_offer_verified" to if (appleSelectedPublicOfferVerified) 1 else 0,
+                        "apple_independent_offer_display_known" to if (appleIndependentOfferDisplayKnown) 1 else 0,
+                        "apple_independent_offer_display_matches_expected" to if (appleIndependentOfferDisplayMatches) 1 else 0,
                         "apple_commercial_lower_bound_album" to if (appleCommercialLowerBoundAlbum) 1 else 0,
                         "source_discs_observed" to discs,
                         "source_track_positions" to positions,
