@@ -322,6 +322,24 @@ internal class ItunesCatalogClient(
     }
 
     /**
+     * musicTrack is a documented music search entity. Its support on a
+     * collection lookup is not guaranteed: callers must verify the exact
+     * returned collection and every member, not assume a complete response.
+     */
+    suspend fun lookupAlbumMusicTracks(
+        collectionId: Long,
+        country: String = "br",
+    ): ItunesCatalogResult {
+        val storefront = normalizedStorefront(country)
+        if (collectionId <= 0L || storefront == null)
+            return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
+        return request("lookup", linkedMapOf(
+            "id" to collectionId.toString(), "country" to storefront,
+            "entity" to "musicTrack", "limit" to "200",
+        ), storefront, collectionId = collectionId)
+    }
+
+    /**
      * Observational lookup for an album declaring more items than its song
      * response returns. The public musicVideo entity is a probe, not proof
      * that every collection supports this relationship. No video objects,
