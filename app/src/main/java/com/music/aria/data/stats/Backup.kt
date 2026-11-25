@@ -9,6 +9,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import java.time.YearMonth
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -110,10 +114,32 @@ object Backup {
 
     /** Parse and validate the complete backup before touching device state. */
     internal fun decodeBackup(text: String): BackupFile {
+        // All supported exports include these fields (encodeDefaults = true).
+        // Defaults on the serializable class are for constructing exports, not
+        // permission to interpret an unrelated or truncated JSON as an empty restore.
+        val root = runCatching { json.parseToJsonElement(text) as? JsonObject }
+            .getOrNull() ?: error("That doesn't look like an Aria or compatible legacy backup")
+        val app = root["app"] as? JsonPrimitive
+        val version = root["version"] as? JsonPrimitive
+        require(app?.isString == true && (app.content == APP_TAG || app.content == LEGACY_APP_TAG)) {
+            "That backup is from another app"
+        }
+        require(version != null && !version.isString && version.content.toIntOrNull() == SCHEMA_VERSION) {
+            "Unsupported backup schema version"
+        }
+        require(root["settings"] is JsonObject && root["listening"] is JsonArray) {
+            "Backup content is incomplete"
+        }
         val file = runCatching { json.decodeFromString(BackupFile.serializer(), text) }
             .getOrElse { error("That doesn't look like an Aria or compatible legacy backup") }
-        require(file.app == APP_TAG || file.app == LEGACY_APP_TAG) { "That backup is from another app" }
-        require(file.version <= SCHEMA_VERSION) { "That backup was written by a newer version of the app" }
+        val months = HashSet<YearMonth>()
+        for (bucket in file.listening) {
+            val month = runCatching { YearMonth.parse(bucket.month) }.getOrNull()
+            require(month != null && month.toString() == bucket.month && months.add(month)) {
+                "Backup contains an invalid or duplicate listening month"
+            }
+            require(bucket.version == 1) { "Unsupported listening bucket version" }
+        }
         return file
     }
 
