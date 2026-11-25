@@ -261,6 +261,38 @@ class AppleEditorialCatalogRepositoryTest {
         }
     }
 
+    @Test fun complementaryAppleObservationsRecoverOnlyProvenMissingSongs() = runBlocking {
+        var variant = "valid"
+        fun song(id: Int, position: Int): String =
+            track(id, 123).replace("\"trackNumber\":1", "\"trackNumber\":$position")
+                .dropLast(1) + ",\"collectionName\":\"Release 123\",\"trackCount\":3}"
+        val transport = object : ItunesCatalogTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>): String {
+                val original = song(101, 1)
+                if (path == "lookup" && parameters["entity"] == "song")
+                    return """{"resultCount":2,"results":[${album(123, 3)},$original]}"""
+                val mixed = song(102, 2)
+                if (path == "lookup")
+                    return """{"resultCount":3,"results":[${album(123, 3)},$original,$mixed]}"""
+                val additional = song(103, if (variant == "position") 2 else 3)
+                val corroboration = if (variant == "conflict")
+                    mixed.replace("Song 102", "Contradictory song") else original
+                return """{"resultCount":2,"results":[$corroboration,$additional]}"""
+            }
+        }
+        val repository = AppleEditorialCatalogRepository(ItunesCatalogClient(transport))
+        val complete = repository.albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(AppleEditorialReadState.COMPLETE, complete.state)
+        assertEquals(listOf(101L, 102L, 103L), complete.releases.single().tracks.map { it.id })
+        assertEquals(true, complete.albumDiagnostics?.albumSongSearchVerified)
+        for (bad in listOf("position", "conflict")) {
+            variant = bad
+            val partial = repository.albumDetail(123) as AppleEditorialLoad.Success
+            assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST, partial.state)
+            assertEquals(listOf(101L), partial.releases.single().tracks.map { it.id })
+        }
+    }
+
     @Test fun mixedCollectionMayExcludeOnlyUniquelyVerifiedBookletMembership() = runBlocking {
         var kind = "interactive-booklet"
         var collision = false

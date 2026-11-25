@@ -182,7 +182,15 @@ internal suspend fun supplementMusicBrainzHomeGenres(
         if (known.values.any { row -> row.editorialGenreTags.any { it in aliases } })
             continue
         attempts++
-        val page = (source.searchReleaseGroupsForTag(tag, limit = 20) as?
+        val result = try {
+            source.searchReleaseGroupsForTag(tag, limit = 20)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failed = true
+            break
+        }
+        val page = (result as?
             MusicBrainzCatalogSearchResult.Success<MusicBrainzReleaseGroupHit>)?.page
         if (page == null || page.offset != 0 || page.consumedCount > 20 ||
             (page.consumedCount == 0 && page.total > 0)) {

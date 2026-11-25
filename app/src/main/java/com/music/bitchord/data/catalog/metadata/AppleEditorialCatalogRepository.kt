@@ -132,6 +132,8 @@ internal fun appleVerifiedMixedAudioRelease(
 internal fun appleVerifiedAlbumSongSearch(
     original: ItunesEditorialRelease,
     search: ItunesCatalogResult.Success,
+    /** Additional songs from the independently header-verified mixed lookup. */
+    corroboratedMixedTracks: List<ItunesCatalogItem> = emptyList(),
 ): ItunesEditorialRelease? {
     val total = original.trackCount ?: return null
     if (search.possiblyTruncated || total !in 1..200 ||
@@ -143,27 +145,37 @@ internal fun appleVerifiedAlbumSongSearch(
             it.collectionId == original.appleCollectionId &&
             it.storefront == original.storefront
     }
-    if (exact.isEmpty() || exact.any {
-            it.collectionTitle != original.title || it.id <= 0L ||
-                it.artistId == null || it.artistName.isNullOrBlank() ||
-                it.discNumber == null || it.discNumber <= 0 ||
-                it.trackNumber == null || it.trackNumber <= 0
-        } || exact.map { it.id }.distinct().size != exact.size
+    if (exact.isEmpty() || exact.map { it.id }.distinct().size != exact.size ||
+        corroboratedMixedTracks.map { it.id }.distinct().size != corroboratedMixedTracks.size
     ) return null
-    val byId = original.tracks.associateBy { it.id }
-    if (exact.any { other ->
-            byId[other.id]?.let { row ->
-                row.title != other.title || row.artistId != other.artistId ||
-                    row.artistName != other.artistName || row.discNumber != other.discNumber ||
-                    row.trackNumber != other.trackNumber || row.durationMs != other.durationMs
-            } == true
+    val byId = original.tracks.associateByTo(linkedMapOf()) { it.id }
+    if (byId.size != original.tracks.size) return null
+    // The exact album lookup, mixed lookup and album-field search may omit
+    // different rows. Combine only their corroborated Apple identities, never
+    // an unrelated search result or a position guessed from the total.
+    for (other in corroboratedMixedTracks + exact) {
+        if (other.type != ItunesCatalogItemType.TRACK ||
+            other.collectionId != original.appleCollectionId ||
+            other.storefront != original.storefront ||
+            other.collectionTitle != original.title || other.id <= 0L ||
+            other.artistId == null || other.artistName.isNullOrBlank() ||
+            other.discNumber == null || other.discNumber <= 0 ||
+            other.trackNumber == null || other.trackNumber <= 0
+        ) return null
+        val row = byId[other.id]
+        if (row != null) {
+            if (row.title != other.title || row.artistId != other.artistId ||
+                row.artistName != other.artistName || row.discNumber != other.discNumber ||
+                row.trackNumber != other.trackNumber || row.durationMs != other.durationMs ||
+                (other.trackCount != null && other.trackCount != total)
+            ) return null
+        } else {
+            if (other.trackCount != total) return null
+            byId[other.id] = other
         }
-    ) return null
-    val added = exact.filter { it.id !in byId }
-    // A new row must independently carry the same declared total. Do not
-    // treat the count or an approximate title as a license to fill a gap.
-    if (added.isEmpty() || added.any { it.trackCount != total }) return null
-    val merged = original.tracks + added
+    }
+    val merged = byId.values.toList()
+    if (merged.size <= original.tracks.size) return null
     if (merged.size != total ||
         merged.any { it.discNumber == null || it.discNumber <= 0 ||
             it.trackNumber == null || it.trackNumber <= 0 } ||
@@ -369,7 +381,9 @@ internal class AppleEditorialCatalogRepository(
                     !mixedSource.possiblyTruncated &&
                     mixedSource.albumLookupObservation?.let {
                         it.foreignSongRows == 0 && it.rejectedSongRows == 0 &&
-                            it.removedDuplicateOrDisputedSongs == 0
+                            it.removedDuplicateOrDisputedSongs == 0 &&
+                            it.matchingNonSongRows == 0 &&
+                            it.declaredResults == it.rawRows
                     } == true &&
                     mixedSource.items.singleOrNull {
                         it.type == ItunesCatalogItemType.ALBUM
@@ -398,23 +412,10 @@ internal class AppleEditorialCatalogRepository(
                         attribute = ItunesCatalogSearchAttribute.ALBUM_TERM,
                         capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                     ) as? ItunesCatalogResult.Success)
-                        ?.let { appleVerifiedAlbumSongSearch(release, it) }
-                        ?.takeIf { recovered ->
-                            // The independent search must not contradict any
-                            // additional audio row from the mixed observation.
-                            val recoveredById = recovered.tracks.associateBy { it.id }
-                            mixedSource?.items.orEmpty()
-                                .filter { it.type == ItunesCatalogItemType.TRACK }
-                                .all { row ->
-                                    recoveredById[row.id]?.let { other ->
-                                        row.title == other.title && row.artistId == other.artistId &&
-                                            row.artistName == other.artistName &&
-                                            row.discNumber == other.discNumber &&
-                                            row.trackNumber == other.trackNumber &&
-                                            row.durationMs == other.durationMs
-                                    } == true
-                                }
-                        }
+                        ?.let { appleVerifiedAlbumSongSearch(
+                            release, it, mixedSource?.items.orEmpty()
+                                .filter { row -> row.type == ItunesCatalogItemType.TRACK },
+                        ) }
                 } else null
                 val finalRelease = mixed?.first ?: recovered ?: release
                 AppleEditorialLoad.Success(

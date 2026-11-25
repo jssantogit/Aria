@@ -119,6 +119,43 @@ class IdmCatalogFeedingMeasurementTest {
         assertFalse(scanned.cursorRemaining)
     }
 
+    @Test fun musicbrainzHomeGenreSupplementRequiresPositiveSourceTagsAndStopsOnFailure() = runBlocking {
+        val base = MusicBrainzReleaseGroupHit(
+            mbId(1), "Base single", "Single", "2026-11-15", "Artist",
+        ).apply { editorialGenreTags = listOf("pop") }
+        val initial = canonicalPublicReleaseRows(listOf(base), "2026-10-01", "2026-11-23")
+        var calls = 0
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    assertEquals("release-group", path)
+                    assertEquals("0", parameters["offset"])
+                    assertEquals("20", parameters["limit"])
+                    calls++
+                    val tag = when (calls) {
+                        1 -> "rock"
+                        2 -> "not the queried genre"
+                        else -> throw java.io.IOException("fixture interrupted")
+                    }
+                    return """{"count":1,"offset":0,"release-groups":[
+                        {"id":"${mbId(calls + 1)}","title":"Tagged $calls","primary-type":"Album",
+                         "first-release-date":"2020","artist-credit":[{"name":"Artist"}],
+                         "tags":[{"name":"$tag","count":2}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = supplementMusicBrainzHomeGenres(source, initial, "2026-11-23")
+        assertEquals(3, calls)
+        assertEquals(3, result.attempts)
+        assertEquals(2, result.sourcePositions)
+        assertTrue(result.sourceFailure)
+        assertEquals(listOf(mbId(1), mbId(2)), result.rows.map { it.musicBrainzId })
+        assertEquals("2020", result.rows.last().releaseDate)
+        assertFalse(canonicalHomeReleaseIsRecent(result.rows.last().releaseDate, "2026-11-23"))
+        assertEquals(2, musicBrainzHomeGenreAnchors(result.rows).size)
+    }
+
     @Test fun musicbrainzFullSourcePageKeepsRareAlbumWithoutExtraRequests() = runBlocking {
         var requests = 0
         val releases = (1..100).map { index ->
