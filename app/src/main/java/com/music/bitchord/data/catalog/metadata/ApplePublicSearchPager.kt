@@ -513,6 +513,41 @@ internal class ApplePublicSearchPager(
         }
     }
 
+    /**
+     * A populated page of prefix-only albums is not a successful work
+     * landing. Reuse the existing bounded song-index discovery before the
+     * first publication, not after the user has to scroll past weak matches.
+     * Do not probe a normal artist listing, a precise work, or an empty
+     * landing (the existing empty-page fallback handles that).
+     */
+    private suspend fun recoverWeakAlbumLanding() {
+        if (entity != ItunesCatalogEntity.ALBUM || rows.size < 5 ||
+            !albumWorkStillMissing()) return
+        val term = songCollectionTerm() ?: return
+        songCollectionAttempted = true
+        when (val result = source.discoverSongCollections(
+            query, term, country, rows.keys.toSet() + disputed,
+        )) {
+            is ItunesCatalogResult.Failure -> {
+                // A recovery failure must not discard an otherwise usable page.
+                capped = true
+            }
+            is ItunesCatalogResult.Success -> {
+                capped = capped || result.possiblyTruncated
+                merge(result)
+                val ranked = rows.values.sortedWith(compareBy<ItunesCatalogItem> {
+                    applePublicSearchMatchRank(query, it) ?: 99
+                }.thenBy { when {
+                    applePublicQualifiedAlbumMatch(query, it) -> 0
+                    applePublicRelatedYearEditionMatch(query, it) -> 2
+                    else -> 1
+                } })
+                rows.clear()
+                ranked.forEach { rows[it.id] = it }
+            }
+        }
+    }
+
     suspend fun start(): ApplePublicSearchPageLoad {
         if (initialized) return ApplePublicSearchPageLoad.Success(snapshot())
         if (query.trim().isEmpty() || query.length > 120 ||
@@ -526,6 +561,7 @@ internal class ApplePublicSearchPager(
                 capped = result.possiblyTruncated
                 merge(result)
                 improveWeakWorkLanding()
+                recoverWeakAlbumLanding()
                 visibleCount = minOf(pageSize, rows.size)
                 // An uncapped fuzzy batch can also be entirely irrelevant.
                 // Spend the same bounded official attribute probes only for

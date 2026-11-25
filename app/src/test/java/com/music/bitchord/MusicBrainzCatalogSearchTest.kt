@@ -64,6 +64,41 @@ class MusicBrainzCatalogSearchTest {
         }
     }
 
+    @Test fun weakRecordingLandingUsesOneFieldedProbeAndPreservesOriginalCursor() = runBlocking {
+        val wrong = "11111111-1111-4111-8111-111111111111"
+        val target = "22222222-2222-4222-8222-222222222222"
+        val release = "33333333-3333-4333-8333-333333333333"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    calls += parameters
+                    val offset = parameters["offset"]
+                    return if (parameters["dismax"] == "false") {
+                        """{"count":2,"offset":0,"recordings":[
+                            {"id":"$target","title":"Exact Work","artist-credit":[{"name":"Artist"}],
+                             "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Album"}}]},
+                            {"id":"$wrong","title":"Other Work","artist-credit":[{"name":"Other"}]}
+                        ]}"""
+                    } else """{"count":90,"offset":$offset,"recordings":[
+                        {"id":"$wrong","title":"Wrong Work","artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchRecordings("Exact Work Artist", 50) as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(target, wrong), result.page.items.map { it.musicBrainzId })
+        assertEquals(1, result.page.consumedCount)
+        assertEquals(1, result.page.nextOffset)
+        assertEquals(2, calls.size)
+        assertEquals("false", calls[1]["dismax"])
+        assertEquals("recording:\"exact work\" AND artist:\"artist\" AND status:official", calls[1]["query"])
+        assertEquals("12", calls[1]["limit"])
+        source.searchRecordings("Exact Work Artist", 50, offset = 1)
+        assertEquals(3, calls.size)
+    }
+
     @Test fun sameNameArtistScopeRequiresAnUnambiguousSourceIdentity() {
         val artist = com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit(
             "11111111-1111-4111-8111-111111111111", "Beyoncé", null, null)

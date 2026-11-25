@@ -581,6 +581,39 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, calls.count { it == ("example work" to ItunesCatalogSearchAttribute.ALBUM_TERM) })
     }
 
+    @Test fun weakAlbumLandingRecoversVerifiedCollectionBeforePublishingWithoutRepeatReads() = runBlocking {
+        val query = "Example Work"
+        val weak = (1L..10L).map { album(it, title = "Example Work Variant $it") }
+        val exact = album(100, title = "Example Work")
+        var discoveries = 0
+        val source = object : ApplePublicSearchSource {
+            override val supportsSongCollectionDiscovery = true
+            override suspend fun search(query: String, entity: ItunesCatalogEntity,
+                country: String, attribute: ItunesCatalogSearchAttribute?): ItunesCatalogResult =
+                ItunesCatalogResult.Success(if (attribute == null) weak else emptyList())
+            override suspend fun discoverSongCollections(originalQuery: String, workTerm: String,
+                country: String, knownIds: Set<Long>): ItunesCatalogResult {
+                discoveries++
+                assertEquals(query, originalQuery)
+                assertEquals(query, workTerm)
+                assertEquals(weak.map { it.id }.toSet(), knownIds)
+                return ItunesCatalogResult.Success(listOf(exact,
+                    exact.copy(id = 101, storefront = "us"),
+                    exact.copy(id = 102, title = "Unrelated")))
+            }
+        }
+        val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM, "br", source = source)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(100L) + weak.map { it.id }, initial.visible.map { it.id })
+        assertEquals(1, discoveries)
+        repeat(3) { pager.loadMore() }
+        assertEquals(initial.visible, pager.snapshot().visible)
+        assertEquals(1, discoveries)
+        // A strong artist-only landing should not invoke the song index.
+        ApplePublicSearchPager("Artist", ItunesCatalogEntity.ALBUM, "br", source = source).start()
+        assertEquals(1, discoveries)
+    }
+
     @Test fun productiveCompoundLandingOffersBoundedFieldContinuationWithoutReordering() = runBlocking {
         val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
         val original = "New Order Blue Monday"

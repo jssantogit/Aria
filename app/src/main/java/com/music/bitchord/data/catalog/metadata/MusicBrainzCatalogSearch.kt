@@ -511,9 +511,55 @@ internal class MusicBrainzCatalogSearch(
         query: String,
         limit: Int = 25,
         offset: Int = 0,
-    ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> =
-        searchRecordingsInternal(query, limit, offset)
+    ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> {
+        val initial = searchRecordingsInternal(query, limit, offset)
             .rankPublicPage(query, MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
+        if (initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
+            limit < MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
+            query.any(Char::isISOControl) ||
+            initial.page.items.any {
+                isCuratedMusicBrainzRecording(it) &&
+                    musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1
+            }
+        ) return initial
+
+        // One bounded independent fielded probe for a weak public landing.
+        // Source credits may nominate a compound split, but may never supply
+        // an artist ID or override the full query's textual relevance.
+        val term = musicBrainzPublicSearchKey(query)
+        val hints = initial.page.items.mapNotNull { item ->
+            val credit = musicBrainzPublicSearchKey(item.artistDisplay)
+            if (credit.isBlank()) return@mapNotNull null
+            val prefix = listOf("$credit - ", "$credit ").firstOrNull(term::startsWith)
+            val suffix = listOf(" - $credit", " $credit").firstOrNull(term::endsWith)
+            val work = when {
+                prefix != null -> term.removePrefix(prefix)
+                suffix != null -> term.removeSuffix(suffix)
+                else -> return@mapNotNull null
+            }
+            if (work.isBlank()) null else work to credit
+        }.distinct()
+        val hint = hints.singleOrNull()
+        fun quote(value: String): String =
+            "\"" + value.trim().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        val fielded = if (hint != null)
+            "recording:${quote(hint.first)} AND artist:${quote(hint.second)} AND status:official"
+        else "recording:${quote(query)} AND status:official"
+        val probe = searchRecordingsInternal(fielded, 12, 0, fieldedQuery = true)
+            as? MusicBrainzCatalogSearchResult.Success ?: return initial
+        val original = initial.page.items.associateBy { it.musicBrainzId }
+        val recovered = probe.page.items.filter {
+            isCuratedMusicBrainzRecording(it) &&
+                musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1 &&
+                (original[it.musicBrainzId]?.let { old -> old == it } ?: true)
+        }
+        if (recovered.isEmpty()) return initial
+        // Keep the original cursor: the independent query did not consume
+        // any offsets of the user's original upstream result.
+        val merged = (initial.page.items + recovered).distinctBy { it.musicBrainzId }
+            .sortedBy { musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) }
+        return initial.copy(page = initial.page.copy(items = merged))
+    }
 
     /**
      * A recording's exact MusicBrainz tag is genre membership evidence, not

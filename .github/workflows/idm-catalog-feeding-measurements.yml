@@ -691,7 +691,7 @@ jobs:
               out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
               out.write(f"Live scope: {scope}; {len(expected)} required cells.\n\n")
               for provider in providers:
-                  totals[provider] = {"supported": 0, "top_five": 0, "proven": 0, "category": 0, "remote_top_five": 0, "remote_supported": 0}
+                  totals[provider] = {"supported": 0, "top_five": 0, "proven": 0, "category": 0, "remote_top_five": 0, "remote_supported": 0, "qualified_additional": 0}
                   for i in range(1, 31):
                       name = f"search_matrix_{provider}_{i:02d}"
                       row = json.loads((path / f"live_{name}.json").read_text())
@@ -703,6 +703,10 @@ jobs:
                       total["supported"] += row["native_search_supported"]
                       total["top_five"] += row["top_five_target"]
                       total["proven"] += row["target_proven"]
+                      if provider == "itunes" and not row["top_five_target"] and (
+                          row["apple_qualified_title_top_five"] or row["apple_qualified_anchor_top_five"]
+                      ):
+                          total["qualified_additional"] += 1
                       if i >= 25:
                           total["category"] += row["top_five_target"]
                       elif row["native_search_supported"]:
@@ -719,6 +723,11 @@ jobs:
                   out.write(f"| {provider} | {total['supported']} | {total['proven']} | "
                             f"{total['top_five']}/{total['supported']} | "
                             f"{total['remote_top_five']}/{total['remote_supported']} | {total['category']}/6 |\n")
+              if "itunes" in totals:
+                  apple = totals["itunes"]
+                  out.write(f"\nApple: {apple['qualified_additional']} additional edition-qualified Top 5 cases; "
+                            f"{apple['top_five'] + apple['qualified_additional']}/30 inclusive. "
+                            "Qualified results are exploratory, not included in strict score.\n")
               out.write("\nCategory routes are local navigation; not remote catalogue availability. "
                         "Discogs release track evidence is not native track search. Unjudged namesakes require adjudication.\n")
           PY
