@@ -13,6 +13,45 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MusicBrainzCatalogSearchTest {
+    @Test fun exactTitleCreditRankingIsStableAndPreservesRawPageCursor() = runBlocking {
+        val one = "11111111-1111-4111-8111-111111111111"
+        val two = "22222222-2222-4222-8222-222222222222"
+        val three = "33333333-3333-4333-8333-333333333333"
+        val four = "44444444-4444-4444-8444-444444444444"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String =
+                    """{"count":30,"offset":0,"recordings":[
+                        {"id":"$one","title":"Song","artist-credit":[{"name":"Other"}]},
+                        {"id":"$two","title":"Song (Live)","artist-credit":[{"name":"Beyoncé"}]},
+                        {"id":"$three","title":"Song","artist-credit":[{"name":"Beyoncé"}]},
+                        {"id":"$four","title":"Song","artist-credit":[{"name":"Beyoncé"}]},
+                        {}
+                    ]}"""
+            },
+        ))
+        for (term in listOf("Song Beyonce", "Beyonce Song")) {
+            val page = (source.searchRecordings(term, limit = 5)
+                as MusicBrainzCatalogSearchResult.Success).page
+            assertEquals(listOf(three, four, one, two), page.items.map { it.musicBrainzId })
+            assertEquals(5, page.consumedCount)
+            assertEquals(5, page.nextOffset)
+        }
+    }
+
+    @Test fun sameNameArtistScopeRequiresAnUnambiguousSourceIdentity() {
+        val artist = com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit(
+            "11111111-1111-4111-8111-111111111111", "Beyoncé", null, null)
+        val other = artist.copy(musicBrainzId = "22222222-2222-4222-8222-222222222222")
+        assertEquals(artist.musicBrainzId, com.music.bitchord.data.catalog.metadata
+            .musicBrainzUnambiguousArtistScope("Beyonce", listOf(artist, artist)))
+        assertEquals(null, com.music.bitchord.data.catalog.metadata
+            .musicBrainzUnambiguousArtistScope("Beyonce", listOf(artist, other)))
+        assertEquals(null, com.music.bitchord.data.catalog.metadata
+            .musicBrainzUnambiguousArtistScope("Beyonce Song", listOf(artist)))
+    }
+
     @Test fun searchRejectsWrongCursorAndOversizedPageWithoutAdvancing() = runBlocking {
         var body = """{"count":20,"offset":0,"artists":[]}"""
         val source = MusicBrainzCatalogSearch(MusicBrainzClient(
