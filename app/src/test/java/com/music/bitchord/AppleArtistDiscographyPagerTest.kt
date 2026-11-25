@@ -44,6 +44,38 @@ class AppleArtistDiscographyPagerTest {
         }
     }
 
+    @Test fun alreadyResolvedQueuedHintsDoNotSpendAnotherRequest() = runBlocking {
+        val fake = Fake(
+            loaded(album(1, "Known (EP)"), capped = true),
+            loaded(album(2, "Broad discovery [Single]")),
+            mutableMapOf("Missing" to loaded(album(3, "Missing"))),
+        )
+        val pager = AppleArtistDiscographyPager(77, "Artist", "br", 1, fake)
+        pager.enqueueTitleHints(listOf("Known", "Broad discovery", "Missing"))
+        pager.start()
+        assertEquals(2, pager.snapshot().pendingHints)
+        pager.loadMore()
+        assertEquals(1, pager.snapshot().pendingHints)
+        assertTrue(fake.searched.isEmpty())
+        pager.loadMore()
+        assertEquals(listOf("Missing"), fake.searched)
+        assertEquals(listOf(1L, 2L, 3L), pager.snapshot().visible.map { it.appleCollectionId })
+        assertFalse(pager.snapshot().hasMore)
+    }
+
+    @Test fun conflictingCollectionCreditIsQuarantinedAcrossDiscoveryPages() = runBlocking {
+        val fake = Fake(loaded(album(1), capped = true),
+            loaded(album(1).copy(artistName = "Contradictory credit"), album(2)))
+        val pager = AppleArtistDiscographyPager(77, "Artist", "br", 1, fake)
+        pager.start()
+        pager.loadMore()
+        assertEquals(listOf(2L), pager.snapshot().visible.map { it.appleCollectionId })
+        assertTrue(pager.snapshot().coverageUncertain)
+        fake.titles["Again"] = loaded(album(1))
+        pager.searchMore("Again")
+        assertEquals(listOf(2L), pager.snapshot().visible.map { it.appleCollectionId })
+    }
+
     @Test fun localPagesKeepTwoHundredProductsAndDelayNetwork() = runBlocking {
         val fake = Fake(AppleEditorialLoad.Success(
             (1L..200L).map { album(it) }, AppleEditorialReadState.POSSIBLY_TRUNCATED))
