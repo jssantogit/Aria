@@ -6454,10 +6454,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (editions is MusicBrainzCatalogSearchResult.Success) editions.page.items
                 else emptyList(),
             )
-            val combined = withVerifiedLocalBadges(
-                canonicalSearchRowsWithoutRedundantEditions(editionLabelRows.filter { row ->
+            val deduplicated = canonicalSearchRowsWithoutRedundantEditions(
+                editionLabelRows.filter { row ->
                     row.kind != CanonicalSearchKind.RECORDING || canonicalStreamingTitleIsSafe(row.title)
-                }),
+                },
+            )
+            val combined = withVerifiedLocalBadges(
+                if (artistScopeMbid != null) deduplicated else rankMusicBrainzInitialAlbumRows(
+                    query, deduplicated,
+                    if (groups is MusicBrainzCatalogSearchResult.Success) groups.page.items else emptyList(),
+                    if (editions is MusicBrainzCatalogSearchResult.Success) editions.page.items else emptyList(),
+                ),
             )
             if (!mayPublish()) return@launch
             _canonicalResults.value =

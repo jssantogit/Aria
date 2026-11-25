@@ -357,9 +357,16 @@ internal class ApplePublicSearchPager(
     private var nextCompoundTerm = 0
     private var artistCollectionAttempted = false
     private val creditArtistIds = linkedMapOf<String, MutableSet<Long>>()
+    // Full prefix-only pages do not prove the requested work was found.
+    private fun albumWorkStillMissing(): Boolean =
+        rows.values.none { row ->
+            (applePublicSearchMatchRank(query, row) ?: 99) <= 1 ||
+                applePublicQualifiedAlbumMatch(query, row)
+        }
+
     private fun artistCollectionHint(): Pair<String, Long>? {
         if (entity != ItunesCatalogEntity.ALBUM || !source.supportsArtistCollectionDiscovery ||
-            artistCollectionAttempted || rows.size >= pageSize
+            artistCollectionAttempted || (rows.size >= pageSize && !albumWorkStillMissing())
         ) return null
         // One unambiguous source credit, never a title-based artist-ID guess.
         val credit = creditHints.values.maxByOrNull { it.credit.length }?.credit ?: return null
@@ -369,7 +376,7 @@ internal class ApplePublicSearchPager(
     private var songCollectionAttempted = false
     private fun songCollectionTerm(): String? {
         if (entity != ItunesCatalogEntity.ALBUM || !source.supportsSongCollectionDiscovery ||
-            songCollectionAttempted || rows.size >= pageSize
+            songCollectionAttempted || (rows.size >= pageSize && !albumWorkStillMissing())
         ) return null
         // A corroborated credit boundary is preferred. Otherwise use the
         // original query only for an empty or sparse work-oriented search,

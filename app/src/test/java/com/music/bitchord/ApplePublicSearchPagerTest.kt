@@ -151,6 +151,38 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, lookups)
     }
 
+    @Test fun fullWeakAlbumPageDoesNotStrandExactWorkRecovery() = runBlocking {
+        val original = "Example Artist Example Work"
+        val weak = listOf(
+            album(1, title = "Example Work Extended"),
+            album(2, title = "Example Work Tribute"),
+        ).map { it.copy(artistName = "Example Artist") }
+        val recovered = album(3, title = "Example Work").copy(artistName = "Example Artist")
+        var lookups = 0
+        val source = object : ApplePublicSearchSource {
+            override val supportsArtistCollectionDiscovery = true
+            override suspend fun search(query: String, entity: ItunesCatalogEntity, country: String,
+                attribute: ItunesCatalogSearchAttribute?): ItunesCatalogResult =
+                ItunesCatalogResult.Success(if (attribute == null) weak else emptyList())
+            override suspend fun discoverArtistCollections(originalQuery: String, artistId: Long,
+                credit: String, country: String, knownIds: Set<Long>): ItunesCatalogResult {
+                lookups++
+                assertEquals(original, originalQuery)
+                assertEquals(setOf(1L, 2L), knownIds)
+                return ItunesCatalogResult.Success(listOf(recovered))
+            }
+        }
+        val pager = ApplePublicSearchPager(original, ItunesCatalogEntity.ALBUM, "br", 2, source)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L, 2L), initial.visible.map { it.id })
+        assertEquals(0, lookups)
+        assertTrue(initial.hasMore)
+        val continued = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L, 2L, 3L), continued.visible.map { it.id })
+        assertEquals(1, lookups)
+        assertFalse(continued.hasMore)
+    }
+
     @Test fun exactArtistDiscoveryUsesSearchConsentAndRejectsForeignCreditsAndKnownCollections() = runBlocking {
         val transport = object : ItunesCatalogTransport {
             override suspend fun get(path: String, parameters: Map<String, String>): String =

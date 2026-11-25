@@ -3109,8 +3109,12 @@ class IdmCatalogLiveObservationTest {
                                     } + releaseHits.map {
                                         "catalog:RELEASE:${it.musicBrainzId}" to it.artistDisplay
                                     }).toMap()
-                                    rows = canonicalSearchRowsWithoutRedundantEditions(
-                                        canonicalSearchRowsWithOfficialEditionTitles(nativeRows, editions?.page?.items.orEmpty()),
+                                    rows = rankMusicBrainzInitialAlbumRows(
+                                        case.query,
+                                        canonicalSearchRowsWithoutRedundantEditions(
+                                            canonicalSearchRowsWithOfficialEditionTitles(nativeRows, editions?.page?.items.orEmpty()),
+                                        ),
+                                        groupHits, releaseHits,
                                     ).map {
                                         val id = canonicalNativeBrowseId(it)
                                         SearchParityRow(id, it.title, credits[id])

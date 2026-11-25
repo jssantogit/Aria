@@ -26,6 +26,35 @@ class CanonicalCatalogSearchPagingBoundaryTest {
         ),
     )
 
+    @Test fun initialAlbumRankingUsesCombinedSourceEvidenceWithoutMovingOtherKinds() {
+        val groupKind = com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE_GROUP
+        val editionKind = com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE
+        val artistKind = com.music.bitchord.ui.screens.CanonicalSearchKind.ARTIST
+        val group = com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit(
+            "11111111-1111-4111-8111-111111111111", "Other work", "Album", null, "Artist",
+        )
+        val edition = com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseHit(
+            "22222222-2222-4222-8222-222222222222", "Exact work", "GB", null, "Artist",
+        )
+        val groupRow = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+            group.musicBrainzId, groupKind, group.title, group.artistDisplay,
+        )
+        val editionRow = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+            edition.musicBrainzId, editionKind, "Display edition label", "Artist · GB",
+        )
+        val artistRow = com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
+            "33333333-3333-4333-8333-333333333333", artistKind, "Artist", null,
+        )
+        val rows = listOf(groupRow, artistRow, editionRow)
+        org.junit.Assert.assertEquals(listOf(editionRow, artistRow, groupRow),
+            com.music.bitchord.ui.rankMusicBrainzInitialAlbumRows(
+                "Exact work Artist", rows, listOf(group), listOf(edition),
+            ))
+        org.junit.Assert.assertEquals(rows, com.music.bitchord.ui.rankMusicBrainzInitialAlbumRows(
+            "Unrelated term", rows, listOf(group), listOf(edition),
+        ))
+    }
+
     @Test fun searchPagesDoNotBorrowAnEditorialOnlyGrant() {
         val gate = ProviderPolicyGate(policy(search = false, editorial = true))
         assertNull(canonicalCatalogSearchPagingLease(gate))
