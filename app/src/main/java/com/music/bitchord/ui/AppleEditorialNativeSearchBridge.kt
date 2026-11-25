@@ -125,8 +125,14 @@ internal fun appleNativeAlbumDetail(
                 durationMs = it.durationMs,
             )
         }
+    val verifiedExcluded = source.albumDiagnostics?.takeIf {
+        source.releases.size == 1 && it.mixedLookupVerified &&
+            it.declaredTrackCount == album.trackCount && it.decodedTracks == tracks.size &&
+            it.verifiedExcludedNonAudioRows > 0
+    }?.verifiedExcludedNonAudioRows ?: 0
     val complete = source.state == AppleEditorialReadState.COMPLETE &&
-        album.trackCount != null && album.trackCount == tracks.size &&
+        album.trackCount != null && album.trackCount == tracks.size + verifiedExcluded &&
+        tracks.all { (it.discNumber ?: 0) > 0 && (it.trackNumber ?: 0) > 0 } &&
         tracks.map { it.discNumber to it.trackNumber }.distinct().size == tracks.size
     return AppleEditorialAlbumDetailPage(
         album = header,
