@@ -21,7 +21,7 @@ import java.io.InputStream
  *
  * Two fields are read, in this order:
  *
- *  - `BITCHORD_LYRICS`, this app's own, holding the "enhanced" A2 form with the
+ *  - `ARIA_LYRICS`, this app's own, holding the "enhanced" A2 form with the
  *    word timings intact — see [toEnhancedLrc].
  *  - the container's standard lyrics field, holding plain `[mm:ss.xx]` LRC.
  *
@@ -46,7 +46,7 @@ import java.io.InputStream
  */
 object EmbeddedLyrics {
 
-    private const val TAG = "BitChord"
+    private const val TAG = "Aria"
 
     /**
      * Most bytes worth pulling to find a tag.
@@ -148,8 +148,9 @@ object EmbeddedLyrics {
         // into `ilst`, so their value ends exactly on `moov`'s own end — an
         // inclusive bound here rejects the one atom this is looking for.
         val end = moov.last + 1
-        return ilstText(bytes, moov.first, end, freeform = true)
-            ?: ilstText(bytes, moov.first, end, freeform = false)
+        return ilstText(bytes, moov.first, end, WORD_LYRICS_FIELD.toByteArray(Charsets.UTF_8))
+            ?: ilstText(bytes, moov.first, end, LEGACY_WORD_LYRICS_FIELD.toByteArray(Charsets.UTF_8))
+            ?: ilstText(bytes, moov.first, end, LYR_ATOM)
     }
 
     /**
@@ -183,13 +184,12 @@ object EmbeddedLyrics {
     /**
      * The text of the lyrics item inside [within].
      *
-     * [freeform] picks which of the two: this app's `----` item, whose name is
+     * [marker] picks the current or legacy `----` item, whose name is
      * carried in a `name` box beside the value, or the standard `©lyr`, whose
      * four-byte type *is* the name. They are stored differently enough that one
      * search cannot find both.
      */
-    private fun ilstText(bytes: ByteArray, from: Int, endExclusive: Int, freeform: Boolean): String? {
-        val marker = if (freeform) WORD_LYRICS_FIELD.toByteArray(Charsets.UTF_8) else LYR_ATOM
+    private fun ilstText(bytes: ByteArray, from: Int, endExclusive: Int, marker: ByteArray): String? {
         var at = from
         while (true) {
             val found = bytes.indexOf(marker, at, endExclusive) ?: return null
@@ -258,9 +258,10 @@ object EmbeddedLyrics {
         pos += vendor
         val count = u32() ?: return null
         var plain: String? = null
-        repeat(count.coerceAtMost(4_096)) {
-            val length = u32() ?: return plain
-            if (length < 0 || pos + length > end) return plain
+        var legacy: String? = null
+        repeat(count.coerceIn(0, 4_096)) {
+            val length = u32() ?: return legacy ?: plain
+            if (length < 0 || pos + length > end) return legacy ?: plain
             val entry = String(bytes, pos, length, Charsets.UTF_8)
             pos += length
             val name = entry.substringBefore('=').uppercase()
@@ -268,9 +269,10 @@ object EmbeddedLyrics {
             // This app's own field wins outright; the standard one is held in
             // case it turns out to be the only one there.
             if (name == WORD_LYRICS_FIELD && value.isNotBlank()) return value
+            if (name == LEGACY_WORD_LYRICS_FIELD && legacy == null && value.isNotBlank()) legacy = value
             if (name == "LYRICS" && plain == null && value.isNotBlank()) plain = value
         }
-        return plain
+        return legacy ?: plain
     }
 
     // ---- Matroska / WebM ----------------------------------------------------
@@ -287,7 +289,7 @@ object EmbeddedLyrics {
      */
     private fun matroska(bytes: ByteArray): String? {
         var plain: String? = null
-        for (name in listOf(WORD_LYRICS_FIELD, "LYRICS")) {
+        for (name in listOf(WORD_LYRICS_FIELD, LEGACY_WORD_LYRICS_FIELD, "LYRICS")) {
             val needle = name.toByteArray(Charsets.US_ASCII)
             var from = 0
             while (true) {
@@ -303,7 +305,7 @@ object EmbeddedLyrics {
                 if (size.value <= 0 || valueAt + size.value > bytes.size) continue
                 val value = String(bytes, valueAt, size.value.toInt(), Charsets.UTF_8)
                 if (value.isBlank()) continue
-                if (name == WORD_LYRICS_FIELD) return value
+                if (name != "LYRICS") return value
                 if (plain == null) plain = value
             }
         }

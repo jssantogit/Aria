@@ -166,6 +166,70 @@ class EmbeddedLyricsTest {
         assertNull(EmbeddedLyrics.fromBytes(ByteArray(512) { it.toByte() }))
     }
 
+
+    @Test
+    fun legacyEnhancedTagsRemainReadableAndAriaTakesPrecedence() {
+        val old = "[00:01.00]old"
+        val current = "[00:01.00]new"
+        val legacy = listOf("BITCHORD_LYRICS" to old, "LYRICS" to lrc)
+        val both = legacy + ("ARIA_LYRICS" to current)
+        for (container in listOf(::mp4LyricsFixture, ::flacLyricsFixture, ::webmLyricsFixture)) {
+            assertEquals(old, EmbeddedLyrics.fromBytes(container(legacy)))
+            assertEquals(current, EmbeddedLyrics.fromBytes(container(both)))
+        }
+    }
+
+    @Test
+    fun newExportsWriteOnlyAriaEnhancedTag() {
+        val enhanced = "[00:01.00]<00:01.00>word<00:02.00>"
+        val written = listOf(
+            Mp4Tagger.tag(minimalMp4(), "t", "a", null, lrc, null, false, enhanced),
+            FlacTagger.tag(minimalFlac(), "t", "a", null, lrc, null, "image/jpeg", enhanced),
+            WebmTagger.tag(minimalWebm(), "t", "a", null, lrc, null, "image/jpeg", enhanced),
+        )
+        for (bytes in written) {
+            val raw = bytes.toString(Charsets.ISO_8859_1)
+            org.junit.Assert.assertTrue(raw.contains("ARIA_LYRICS"))
+            org.junit.Assert.assertFalse(raw.contains("BITCHORD_LYRICS"))
+            assertEquals(enhanced, EmbeddedLyrics.fromBytes(bytes))
+        }
+    }
+
+    private fun mp4LyricsFixture(fields: List<Pair<String, String>>): ByteArray {
+        val items = fields.fold(ByteArray(0)) { acc, (name, value) ->
+            val data = box("data", byteArrayOf(0, 0, 0, 1) + ByteArray(4) + value.toByteArray())
+            acc + if (name == "LYRICS") {
+                box("©lyr", data)
+            } else {
+                box("----", box("mean", ByteArray(4) + "fixture".toByteArray()) +
+                    box("name", ByteArray(4) + name.toByteArray()) + data)
+            }
+        }
+        return box("ftyp", "isom".toByteArray()) + box("moov", box("udta", box("meta", ByteArray(4) + box("ilst", items))))
+    }
+
+    private fun flacLyricsFixture(fields: List<Pair<String, String>>): ByteArray {
+        fun le32(n: Int) = byteArrayOf(n.toByte(), (n ushr 8).toByte(), (n ushr 16).toByte(), (n ushr 24).toByte())
+        val vendor = "fixture".toByteArray()
+        val payload = fields.fold(le32(vendor.size) + vendor + le32(fields.size)) { acc, (name, value) ->
+            val entry = "$name=$value".toByteArray()
+            acc + le32(entry.size) + entry
+        }
+        return "fLaC".toByteArray() +
+            byteArrayOf(0x84.toByte(), (payload.size ushr 16).toByte(), (payload.size ushr 8).toByte(), payload.size.toByte()) + payload
+    }
+
+    private fun webmLyricsFixture(fields: List<Pair<String, String>>): ByteArray {
+        fun element(a: Int, b: Int, value: ByteArray): ByteArray {
+            require(value.size < 127)
+            return byteArrayOf(a.toByte(), b.toByte(), (0x80 or value.size).toByte()) + value
+        }
+        val tags = fields.fold(ByteArray(0)) { acc, (name, value) ->
+            acc + element(0x45, 0xA3, name.toByteArray()) + element(0x44, 0x87, value.toByteArray())
+        }
+        return minimalWebm() + tags
+    }
+
     // ---- Offline packages ---------------------------------------------------
 
     /**
