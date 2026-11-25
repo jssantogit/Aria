@@ -24,7 +24,7 @@ import kotlin.random.Random
 enum class PresencePlatform(val wire: String) { Android("android"), Pc("pc") }
 
 /**
- * Tells the BitChord server this install is open, so it can publish how many
+ * Tells an explicitly configured Aria server this install is open, so it can publish how many
  * apps are open right now (`GET /api/stats/live`).
  *
  * While open, one small POST goes out every few minutes. The server sets the
@@ -33,8 +33,8 @@ enum class PresencePlatform(val wire: String) { Android("android"), Pc("pc") }
  * lost, the server forgets the install a minute or two after its last ping.
  *
  * Only a random per-install UUID and the platform are sent, never anything
- * about the listener or what they play. This always goes to the official
- * server, not a custom Listen Together one, so the public count is only ours.
+ * about the listener or what they play. No endpoint is configured by default; this must never contact an inherited
+ * service.
  */
 class Presence(
     private val platform: PresencePlatform,
@@ -85,6 +85,7 @@ class Presence(
     }
 
     private fun send(open: Boolean, timeoutSec: Long = 15) {
+        if (endpoint.isBlank()) return
         val body = buildJsonObject {
             put("id", installId)
             put("platform", platform.wire)
@@ -115,7 +116,7 @@ class Presence(
     }
 
     companion object {
-        const val ENDPOINT = "https://api.bitchord.kushagrasingh.in/api/presence"
+        const val ENDPOINT = ""
         private const val TAG = "Presence"
         private const val DEFAULT_INTERVAL_SEC = 300
         private const val MIN_INTERVAL_SEC = 60
