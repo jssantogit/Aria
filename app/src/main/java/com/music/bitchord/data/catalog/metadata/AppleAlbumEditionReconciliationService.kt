@@ -39,7 +39,7 @@ internal class MusicBrainzBarcodeEditionEvidenceSource(
     private val upcVerifier: AppleUpcReverseLookupVerifier =
         AppleUpcReverseLookupVerifier(),
 ) : AppleAlbumEditionEvidenceSource {
-    private val suffix = Regex("""\s[-–—]\s(?:EP|Single)$""", RegexOption.IGNORE_CASE)
+    private val suffix = Regex("""\s(?:[-–—]\s(?:EP|Single)|\((?:EP|Single)\)|\[(?:EP|Single)\])$""", RegexOption.IGNORE_CASE)
     private val space = Regex("""\s+""")
     private fun normalized(raw: String): String =
         Normalizer.normalize(raw.trim(), Normalizer.Form.NFKC)
@@ -141,6 +141,19 @@ internal class MusicBrainzBarcodeEditionEvidenceSource(
             ) return null
             editions += detail
         }
+        // A direct MusicBrainz Release -> Apple product URL is positive
+        // edition evidence if exactly one source edition corroborates the
+        // same Apple storefront product and complete ordered audio list.
+        // This is a separate proof, not an inferred barcode.
+        val linked = AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(album, editions)
+            as? AppleMusicBrainzEditionMatch.Verified
+        if (linked != null) {
+            val groups = when (val result = graph.lookupReleaseGroup(linked.musicBrainzReleaseGroupId)) {
+                is MusicBrainzCatalogGraphResult.Success -> listOf(result.value)
+                is MusicBrainzCatalogGraphResult.Failure -> emptyList()
+            }
+            return AppleAlbumEditionEvidence(editions, groups)
+        }
         // Keep the full candidate set in the matcher, even when a different
         // MB edition has missing barcode evidence (which can veto uniqueness).
         val compatibleUpcs = editions.mapNotNull { edition ->
@@ -235,7 +248,10 @@ internal class AppleAlbumEditionReconciliationService(
             ?.takeIf { Regex("^[0-9]{8,14}$").matches(it) }
         // A candidate MB barcode must NEVER substitute for proof from the
         // Apple UPC endpoint when the original Apple album omitted the field.
-        if (candidateUpc == null) return null
+        if (candidateUpc == null &&
+            AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(album, data.editions)
+                !is AppleMusicBrainzEditionMatch.Verified
+        ) return null
         val rawAlbum = ItunesCatalogItem(
             type = ItunesCatalogItemType.ALBUM, id = album.appleCollectionId,
             storefront = album.storefront, title = album.title,
@@ -254,6 +270,7 @@ internal class AppleAlbumEditionReconciliationService(
                 mbGroups = data.groups,
                 discogsObservations = discogsObservations,
                 nowMillis = nowMillis(),
+                allowExplicitAlbumLinks = true,
             ).singleOrNull()
 
         // The internal, separately verified barcode is a matching hint.
