@@ -80,14 +80,14 @@ internal class AppleArtistDiscographyPager(
             if (release.artistId != artistId || release.storefront != country ||
                 release.appleCollectionId <= 0 ||
                 release.appleScopedId != "itunes:$country:album:${release.appleCollectionId}" ||
-                release.title.isBlank() || release.appleCollectionId in disputed
+                release.title.isBlank() || release.artistName.isBlank() || release.appleCollectionId in disputed
             ) return@forEach
             val previous = products[release.appleCollectionId]
             if (previous == null) {
                 products[release.appleCollectionId] = release
                 added++
             } else if (previous.title != release.title ||
-                previous.artistId != release.artistId ||
+                previous.artistId != release.artistId || previous.artistName != release.artistName ||
                 (previous.upc != null && release.upc != null && previous.upc != release.upc)
             ) {
                 // Contradictory Apple editions are not arbitrarily merged.
@@ -97,6 +97,11 @@ internal class AppleArtistDiscographyPager(
                 visibleCount = minOf(visibleCount, products.size)
             }
         }
+        // A queued hint can become redundant after the initial or broad
+        // discovery pass, or after a targeted search. Prune only automatic
+        // title nominations, never remove a distinct Apple collection.
+        val knownTitles = products.values.mapTo(mutableSetOf()) { titleKey(it.title) }
+        hints.removeAll { titleKey(it) in knownTitles }
         return added
     }
 
@@ -116,7 +121,7 @@ internal class AppleArtistDiscographyPager(
     /** Comparison only: Apple itself may append a display-level - EP / - Single. */
     private fun titleKey(text: String): String = java.text.Normalizer.normalize(
         text.trim(), java.text.Normalizer.Form.NFKC,
-    ).replace(Regex("""\s[-–—]\s(?:EP|Single)$""", RegexOption.IGNORE_CASE), "")
+    ).replace(Regex("""\s(?:[-–—]\s(?:EP|Single)|\((?:EP|Single)\)|\[(?:EP|Single)\])$""", RegexOption.IGNORE_CASE), "")
         .replace(Regex("""\s+"""), " ")
         .lowercase(java.util.Locale.ROOT)
 
