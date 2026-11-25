@@ -80,7 +80,7 @@ from collections import Counter
 
 tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode("utf-8").split("\0")
 namespace = re.compile(r"com[./_]music[./_]bitchord|com[./_]dev[./_]bitchord")
-wear = re.compile(r"\b(?:WearBridge|WatchInstaller|WatchOutputState|WatchEntry|WatchUpdateState|WatchPairingState|WearCommandService|WatchSpeaker)\b")
+wear = re.compile(r"\b(?:WearBridge|WatchInstaller|WatchOutputState|WatchOutputUi|WatchEntry|WatchUpdateState|WatchPairingState|WatchAppStatus|WearCommandService|WatchSpeaker|WearOsScreen|WearOsSettingsRow|showWearOs|onWearOs|refreshWatchOutput|selectWatchOutput|leaveWatchOutput|setWatchVolume|watchOutput|watchSpeaker|WATCH_SESSION_FOREGROUND_MS)\b|\bSettingsSection\.WEAR\b")
 text_suffixes = {".kt", ".kts", ".java", ".cpp", ".c", ".h", ".hpp", ".xml", ".pro",
                  ".properties", ".py", ".sh", ".yml", ".yaml", ".json", ".gradle", ".cmake"}
 counts = Counter()
@@ -116,3 +116,8 @@ for hit in namespace_non_sources:
 print("Remaining Wear contract references:")
 for hit in wear_hits:
     print(f"  {hit}")
+
+require(not wear_hits, "Retired Wear contracts returned: " + "; ".join(wear_hits))
+for prefix in ("app/src/main/java/com/music/bitchord", "app/src/main/java/com/music/aria"):
+    require(not (ROOT / prefix / "wear").exists(), "Retired Wear package returned: " + prefix)
+print("No retired Wear transport, output or settings contracts remain.")
