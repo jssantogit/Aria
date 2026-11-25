@@ -463,6 +463,49 @@ internal class ApplePublicSearchPager(
         }
     }
 
+    /** Before the first publication only: a substantial but weak fuzzy
+     * work landing can warrant one existing title-field probe. Keep precise
+     * artist/title results fast and never reshuffle an already visible page. */
+    private suspend fun improveWeakWorkLanding() {
+        if (entity == ItunesCatalogEntity.ARTIST || capped ||
+            rows.size !in 5 until pageSize ||
+            rows.values.any { row ->
+                (applePublicSearchMatchRank(query, row) ?: 99) <= 1 ||
+                    applePublicQualifiedAlbumMatch(query, row)
+            }
+        ) return
+        val hint = creditHints.values.firstOrNull()
+        val term = hint?.work ?: query
+        when (val result = source.search(term, entity, country, compoundAttribute)) {
+            is ItunesCatalogResult.Failure -> {
+                // Publish the usable initial response; continuation can retry.
+                probeAttributes = true
+                capped = true
+            }
+            is ItunesCatalogResult.Success -> {
+                capped = capped || result.possiblyTruncated
+                merge(result)
+                if (hint == null) nextAttribute = 1
+                else {
+                    frozenCompoundProbes = compoundProbes
+                    if (compoundProbes.firstOrNull() == CompoundProbe(term, compoundAttribute))
+                        nextCompoundTerm = 1
+                }
+                // No page has been exposed yet. Apply the same rank to all
+                // admitted rows so an exact recovered work can lead the page.
+                val ranked = rows.values.sortedWith(compareBy<ItunesCatalogItem> {
+                    applePublicSearchMatchRank(query, it) ?: 99
+                }.thenBy { when {
+                    applePublicQualifiedAlbumMatch(query, it) -> 0
+                    applePublicRelatedYearEditionMatch(query, it) -> 2
+                    else -> 1
+                } })
+                rows.clear()
+                ranked.forEach { rows[it.id] = it }
+            }
+        }
+    }
+
     suspend fun start(): ApplePublicSearchPageLoad {
         if (initialized) return ApplePublicSearchPageLoad.Success(snapshot())
         if (query.trim().isEmpty() || query.length > 120 ||
@@ -475,6 +518,7 @@ internal class ApplePublicSearchPager(
                 initialized = true
                 capped = result.possiblyTruncated
                 merge(result)
+                improveWeakWorkLanding()
                 visibleCount = minOf(pageSize, rows.size)
                 // An uncapped fuzzy batch can also be entirely irrelevant.
                 // Spend the same bounded official attribute probes only for

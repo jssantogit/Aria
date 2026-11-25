@@ -13,6 +13,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MusicBrainzCatalogSearchTest {
+    @Test fun workLandingRetainsRawCursorWhileRankingExactMatchBeyondSmallPage() = runBlocking {
+        val target = "99999999-9999-4999-8999-999999999999"
+        val raw = (1..49).map { index ->
+            val id = "00000000-0000-4000-8000-${index.toString().padStart(12, '0')}"
+            """{"id":"$id","title":"Unrelated $index","primary-type":"Album","artist-credit":[{"name":"Other"}]}"""
+        } + """{"id":"$target","title":"Exact Work","primary-type":"Album","artist-credit":[{"name":"Artist"}]}"""
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    assertEquals("50", parameters["limit"])
+                    assertEquals("0", parameters["offset"])
+                    return """{"count":100,"offset":0,"release-groups":[${raw.joinToString(",")}]}"""
+                }
+            },
+        ))
+        val result = source.searchReleaseGroups("Artist Exact Work",
+            com.music.bitchord.data.catalog.metadata.MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(target, result.page.items.first().musicBrainzId)
+        assertEquals(50, result.page.consumedCount)
+        assertEquals(0, result.page.offset)
+        assertEquals(100, result.page.total)
+    }
+
     @Test fun exactTitleCreditRankingIsStableAndPreservesRawPageCursor() = runBlocking {
         val one = "11111111-1111-4111-8111-111111111111"
         val two = "22222222-2222-4222-8222-222222222222"

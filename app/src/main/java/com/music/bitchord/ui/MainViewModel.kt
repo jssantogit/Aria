@@ -51,6 +51,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogIndex
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchRepository
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchLimits
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
+import com.music.bitchord.data.catalog.metadata.MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRelease
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
@@ -6198,7 +6199,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val recordings = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchRecordingsForArtistMbid(artistScopeMbid, limit = 25)
-            } else musicBrainzSearch.searchRecordings(query, limit = 25)
+            } else musicBrainzSearch.searchRecordings(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
             // Do not make listeners wait for the two release endpoints just
             // to see the verified recording results. These are metadata-only
             // until the final local MediaAsset claim query has completed.
@@ -6227,7 +6228,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val groups = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchReleaseGroupsForArtistMbid(artistScopeMbid, limit = 15)
-            } else musicBrainzSearch.searchReleaseGroups(query, limit = 15)
+            } else musicBrainzSearch.searchReleaseGroups(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
             if (groups is MusicBrainzCatalogSearchResult.Success &&
                 mayPublish()
             ) {
@@ -6253,7 +6254,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val editions = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchReleasesForArtistMbid(artistScopeMbid, limit = 15)
-            } else musicBrainzSearch.searchReleases(query, limit = 15)
+            } else musicBrainzSearch.searchReleases(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
             if (!mayPublish()) return@launch
             if (groups is MusicBrainzCatalogSearchResult.Success) {
                 try {

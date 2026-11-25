@@ -212,6 +212,11 @@ private fun <T> MusicBrainzCatalogSearchResult<T>.rankPublicPage(
     )
 }
 
+/** One larger upstream landing page for unscoped work searches. No extra
+ * request or fabricated offset: later scrolls start at the raw consumed count.
+ * Artist-scoped discography searches retain their independent small budget. */
+internal const val MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT = 50
+
 internal class MusicBrainzCatalogSearch(
     private val client: MusicBrainzClient = MusicBrainzClient(),
     private val capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,

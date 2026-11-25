@@ -518,6 +518,37 @@ class ApplePublicSearchPagerTest {
         assertFalse(snapshot.hasMore)
     }
 
+    @Test fun weakWorkLandingPromotesExactTitleBeforePublishingAndKeepsContinuationStable() = runBlocking {
+        val query = "Example Artist Example Work"
+        val fuzzy = (1L..6L).map { id ->
+            album(id, title = "Example Work Variant $id").copy(artistName = "Example Artist")
+        }
+        val exact = album(20, title = "Example Work").copy(artistName = "Example Artist")
+        val wrong = exact.copy(id = 21, artistName = "Example Artists")
+        val foreign = exact.copy(id = 22, storefront = "us")
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(query: String, entity: ItunesCatalogEntity,
+                country: String, attribute: ItunesCatalogSearchAttribute?): ItunesCatalogResult {
+                calls += query to attribute
+                return ItunesCatalogResult.Success(when (query to attribute) {
+                    "Example Artist Example Work" to null -> fuzzy
+                    "example work" to ItunesCatalogSearchAttribute.ALBUM_TERM ->
+                        listOf(wrong, foreign, exact)
+                    else -> emptyList()
+                })
+            }
+        }
+        val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM, "br", source = source)
+        val landing = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(20L, landing.visible.first().id)
+        assertEquals(listOf(20L) + fuzzy.map { it.id }, landing.visible.map { it.id })
+        assertEquals(2, calls.size)
+        while (pager.snapshot().hasMore) pager.loadMore()
+        assertEquals(landing.visible, pager.snapshot().visible)
+        assertEquals(1, calls.count { it == ("example work" to ItunesCatalogSearchAttribute.ALBUM_TERM) })
+    }
+
     @Test fun productiveCompoundLandingOffersBoundedFieldContinuationWithoutReordering() = runBlocking {
         val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
         val original = "New Order Blue Monday"
