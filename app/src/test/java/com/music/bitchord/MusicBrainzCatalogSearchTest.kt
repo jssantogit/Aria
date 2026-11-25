@@ -13,6 +13,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MusicBrainzCatalogSearchTest {
+    @Test fun searchRejectsWrongCursorAndOversizedPageWithoutAdvancing() = runBlocking {
+        var body = """{"count":20,"offset":0,"artists":[]}"""
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("5", parameters["offset"])
+                    return body
+                }
+            },
+        ))
+        val wrong = source.searchArtists("Artist", limit = 1, offset = 5)
+        assertEquals(MusicBrainzCatalogSearchResult.Failure(
+            com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE
+        ), wrong)
+        body = """{"count":20,"offset":5,"artists":[{},{}]}"""
+        assertTrue(source.searchArtists("Artist", limit = 1, offset = 5)
+            is MusicBrainzCatalogSearchResult.Failure)
+        body = """{"count":20,"offset":5,"artists":[{}]}"""
+        val valid = source.searchArtists("Artist", limit = 1, offset = 5)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(6, valid.page.nextOffset)
+        assertTrue(valid.page.items.isEmpty())
+    }
+
     @Test fun titleArtistEditionSearchUsesDocumentedLuceneFieldsSafely() = runBlocking {
         val calls = mutableListOf<Map<String, String>>()
         val source = MusicBrainzCatalogSearch(MusicBrainzClient(
