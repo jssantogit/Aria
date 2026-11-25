@@ -168,6 +168,8 @@ internal fun appleNativeReconciledAlbumDetail(
     if (classification.status !=
             com.music.bitchord.data.catalog.metadata.AppleEditorialFormatStatus.DECIDED ||
         classification.format == ItunesEditorialReleaseFormat.UNCLASSIFIED ||
+        (apple.format != ItunesEditorialReleaseFormat.UNCLASSIFIED &&
+            apple.format != classification.format) ||
         match.appleScopedId != browseId ||
         proof.release.appleScopedId != browseId ||
         proof.release.appleCollectionId != apple.appleCollectionId ||
