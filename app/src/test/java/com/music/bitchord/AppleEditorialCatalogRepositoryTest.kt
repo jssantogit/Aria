@@ -150,6 +150,57 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(1, detail.releases.single().tracks.size)
     }
 
+    @Test fun mixedLookupCanProveAudioCompletenessWithoutChangingDeclaredCollectionCount() = runBlocking {
+        val calls = mutableListOf<String>()
+        var mixedVariant = "valid"
+        val first = """{"resultCount":2,"results":[${album(123, 2)},${track(101, 123)}]}"""
+        val transport = object : ItunesCatalogTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>): String {
+                val entity = requireNotNull(parameters["entity"])
+                calls += entity
+                assertEquals("123", parameters["id"])
+                assertEquals("br", parameters["country"])
+                if (entity == "song") return first
+                assertEquals("musicTrack", entity)
+                val video = """{"wrapperType":"track","kind":"music-video","trackId":102,"collectionId":123,"trackName":"Video"}"""
+                val member = when (mixedVariant) {
+                    "foreign" -> video.replace("\"collectionId\":123", "\"collectionId\":999")
+                    "collision" -> video.replace("\"trackId\":102", "\"trackId\":101")
+                    "unknown" -> video.replace("music-video", "other")
+                    "song" -> track(102, 123).replace("\"trackNumber\":1", "\"trackNumber\":2")
+                    else -> video
+                }
+                val original = if (mixedVariant == "conflict")
+                    track(101, 123).replace("Song 101", "Other title") else track(101, 123)
+                return """{"resultCount":3,"results":[${album(123, 2)},$original,$member]}"""
+            }
+        }
+        val repository = AppleEditorialCatalogRepository(ItunesCatalogClient(transport))
+        val verified = repository.albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(listOf("song", "musicTrack"), calls)
+        assertEquals(AppleEditorialReadState.COMPLETE, verified.state)
+        assertEquals(2, verified.releases.single().trackCount)
+        assertEquals(listOf(101L), verified.releases.single().tracks.map { it.id })
+        assertEquals(1, verified.albumDiagnostics?.verifiedExcludedNonAudioRows)
+        assertEquals(true, verified.albumDiagnostics?.mixedLookupVerified)
+        val page = requireNotNull(com.music.bitchord.ui.appleNativeAlbumDetail(verified, "itunes:br:album:123"))
+        assertFalse(page.partialTracklist)
+        assertEquals(1, page.tracks.size)
+        for (variant in listOf("foreign", "collision", "unknown", "conflict")) {
+            mixedVariant = variant
+            val partial = repository.albumDetail(123) as AppleEditorialLoad.Success
+            assertEquals(variant, AppleEditorialReadState.PARTIAL_TRACKLIST, partial.state)
+            assertEquals(false, partial.albumDiagnostics?.mixedLookupVerified)
+            assertTrue(requireNotNull(com.music.bitchord.ui.appleNativeAlbumDetail(
+                partial, "itunes:br:album:123")).partialTracklist)
+        }
+        mixedVariant = "song"
+        val recovered = repository.albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(AppleEditorialReadState.COMPLETE, recovered.state)
+        assertEquals(listOf(101L, 102L), recovered.releases.single().tracks.map { it.id })
+        assertEquals(0, recovered.albumDiagnostics?.verifiedExcludedNonAudioRows)
+    }
+
     @Test fun albumWithAllOrderedTracksReportsVerifiedSourceCompleteness() = runBlocking {
         val source = Source("""{"resultCount":2,"results":[
             ${album(123, count = 1)}, ${track(101, 123)}
