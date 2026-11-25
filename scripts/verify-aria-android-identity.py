@@ -157,3 +157,22 @@ for name in sorted(filter(None, tracked)):
         continue
     labels = [label for label, regex in specific.items() if any(regex.search(lines[i - 1]) for i in hits)]
     print(f"  {name}:{','.join(map(str, hits))} [{','.join(labels) or 'review'}]")
+
+# The operational Android symbols must not regress. Historical evidence and
+# explicitly retained persisted keys are outside this check.
+retired_symbols = []
+for name in sorted(filter(None, tracked)):
+    source = ROOT / name
+    if name != "build.gradle.kts" and not name.startswith(("app/", "shared/", "sharedUi/")):
+        continue
+    if not source.is_file() or source.is_symlink() or source.suffix not in text_suffixes and source.name != "CMakeLists.txt":
+        continue
+    try:
+        lines = source.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        continue
+    hits = [i for i, line in enumerate(lines, 1) if any(specific[key].search(line) for key in ("application_class", "icon_object", "old_theme", "old_native", "old_version_extra"))]
+    if hits:
+        retired_symbols.append(f"{name}:{','.join(map(str, hits))}")
+require(not retired_symbols, "Retired Android identity symbols returned: " + "; ".join(retired_symbols))
+print("Aria Android application, icons, theme, native library and version symbols verified.")

@@ -262,7 +262,7 @@ internal class MusicBrainzClient(
 }
 
 internal fun defaultMusicBrainzUserAgent(): String =
-    "Bitchord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)"
+    "Aria/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/Aria)"
 
 internal class MusicBrainzMetadataEnrichmentProvider(
     private val client: MusicBrainzClient = MusicBrainzClient(),

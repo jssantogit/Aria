@@ -56,7 +56,7 @@ internal class KtorListenBrainzPopularityTransport(
         val response = client.post("https://api.listenbrainz.org/1/popularity/recording") {
             contentType(ContentType.Application.Json)
             header(HttpHeaders.UserAgent,
-                "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)")
+                "Aria/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/Aria)")
             setBody(Json.encodeToString(mapOf("recording_mbids" to recordingMbids)))
         }
         ListenBrainzPopularityHttpResponse(
@@ -75,7 +75,7 @@ internal class KtorListenBrainzPopularityTransport(
     ) {
         val response = client.get("https://api.listenbrainz.org/1/popularity/top-recordings-for-artist/$artistMbid") {
             header(HttpHeaders.UserAgent,
-                "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)")
+                "Aria/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/Aria)")
         }
         ListenBrainzPopularityHttpResponse(
             status = response.status.value,
@@ -94,7 +94,7 @@ internal class KtorListenBrainzPopularityTransport(
     ) {
         val response = client.get("https://api.listenbrainz.org/1/stats/sitewide/recordings") {
             header(HttpHeaders.UserAgent,
-                "BitChord/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/BitChord)")
+                "Aria/${BuildConfig.VERSION_NAME} (https://github.com/jssantogit/Aria)")
             parameter("range", range.apiValue)
             parameter("count", count)
             parameter("offset", 0)

@@ -409,7 +409,7 @@ class IsrcMusicBrainzIdentityIntegrationTest {
     }
 
     companion object {
-        private const val TEST_USER_AGENT = "Bitchord/test (https://github.com/jssantogit/BitChord)"
+        private const val TEST_USER_AGENT = "Aria/test (https://github.com/jssantogit/Aria)"
         private const val ISRC = "USS1Z9900001"
         private const val MBID = "22222222-2222-2222-2222-222222222222"
     }

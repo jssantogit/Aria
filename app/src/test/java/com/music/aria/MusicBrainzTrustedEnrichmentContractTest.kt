@@ -75,7 +75,7 @@ class MusicBrainzTrustedEnrichmentContractTest {
             )
             assertTrue(transport.requests.all { request -> "query" !in request.parameters })
             assertTrue(transport.requests.all { request -> request.parameters["fmt"] == "json" })
-            assertTrue(transport.requests.all { request -> request.userAgent.contains("Bitchord") })
+            assertTrue(transport.requests.all { request -> request.userAgent.contains("Aria") })
 
             val artist = nonNull(repository.resolveArtist("artist-local"))
             assertEquals("Same name", artist.name.value)
@@ -403,7 +403,7 @@ class MusicBrainzTrustedEnrichmentContractTest {
         (this as? com.music.aria.data.catalog.metadata.MetadataLookupResult.Success<T>)?.value
 
     companion object {
-        private const val TEST_USER_AGENT = "Bitchord/test (https://github.com/jssantogit/BitChord)"
+        private const val TEST_USER_AGENT = "Aria/test (https://github.com/jssantogit/Aria)"
         private const val ARTIST_MBID = "11111111-1111-1111-1111-111111111111"
         private const val ARTIST_2_MBID = "33333333-3333-3333-3333-333333333333"
         private const val RECORDING_MBID = "22222222-2222-2222-2222-222222222222"

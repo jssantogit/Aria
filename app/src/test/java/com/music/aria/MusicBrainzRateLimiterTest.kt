@@ -101,7 +101,7 @@ class MusicBrainzRateLimiterTest {
     }
 
     companion object {
-        private const val TEST_USER_AGENT = "Bitchord/test (https://github.com/jssantogit/BitChord)"
+        private const val TEST_USER_AGENT = "Aria/test (https://github.com/jssantogit/Aria)"
         private const val ARTIST_MBID = "11111111-1111-1111-1111-111111111111"
         private const val RECORDING_MBID = "22222222-2222-2222-2222-222222222222"
         private const val RELEASE_MBID = "44444444-4444-4444-4444-444444444444"
