@@ -129,3 +129,31 @@ for module, expected in (("app", "com.music.aria"), ("shared", "com.music.aria.s
     require(re.findall(r'namespace\s*=\s*"([^"]+)"', module_gradle) == [expected],
             f"Wrong namespace for {module}")
 print("Aria source, JNI, Gradle and workflow namespace contracts verified.")
+
+# Audit remaining brand strings by path, never by source contents.
+# Some are deliberately stable storage/protocol names or attribution.
+brand = re.compile(r"bitchord|kushagrasingh|kabirsinghbhatia", re.IGNORECASE)
+specific = {
+    "application_class": re.compile(r"\bBitChordApplication\b"),
+    "icon_object": re.compile(r"\bBitChordIcons\b"),
+    "old_theme": re.compile(r"Theme\.BitChord\b"),
+    "old_native": re.compile(r"\b(?:bitchord_analysis|bitchord_dsd|bitchord_dst)\b"),
+    "old_version_extra": re.compile(r"bitchord(?:VersionCode|VersionName|BetaSuffix)"),
+    "inherited_endpoint": re.compile(r"https?://[^ \t\"']*(?:bitchord|kushagrasingh|kabirsinghbhatia)", re.I),
+}
+print("Residual nominal identity inventory (compatibility and attribution require review):")
+for name in sorted(filter(None, tracked)):
+    source = ROOT / name
+    if not name.startswith(("app/", "shared/", "sharedUi/", "backend/", "web/", ".github/workflows/")) and name != "build.gradle.kts":
+        continue
+    if not source.is_file() or source.is_symlink() or source.suffix not in text_suffixes | {".go", ".mod", ".ts", ".tsx", ".md", ".html", ".service"} and source.name != "CMakeLists.txt":
+        continue
+    try:
+        lines = source.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        continue
+    hits = [i for i, line in enumerate(lines, 1) if brand.search(line)]
+    if not hits:
+        continue
+    labels = [label for label, regex in specific.items() if any(regex.search(lines[i - 1]) for i in hits)]
+    print(f"  {name}:{','.join(map(str, hits))} [{','.join(labels) or 'review'}]")

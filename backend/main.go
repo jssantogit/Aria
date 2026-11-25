@@ -18,13 +18,13 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/KabirSinghBhatia/BitChord/backend/clock"
-	"github.com/KabirSinghBhatia/BitChord/backend/codes"
-	"github.com/KabirSinghBhatia/BitChord/backend/config"
-	"github.com/KabirSinghBhatia/BitChord/backend/hub"
-	"github.com/KabirSinghBhatia/BitChord/backend/party"
-	"github.com/KabirSinghBhatia/BitChord/backend/presence"
-	"github.com/KabirSinghBhatia/BitChord/backend/protocol"
+	"github.com/jssantogit/Aria/backend/clock"
+	"github.com/jssantogit/Aria/backend/codes"
+	"github.com/jssantogit/Aria/backend/config"
+	"github.com/jssantogit/Aria/backend/hub"
+	"github.com/jssantogit/Aria/backend/party"
+	"github.com/jssantogit/Aria/backend/presence"
+	"github.com/jssantogit/Aria/backend/protocol"
 )
 
 var (
