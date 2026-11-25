@@ -3,6 +3,9 @@ package com.music.aria.identity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.content.pm.PackageManager
+import androidx.core.content.FileProvider
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -28,6 +31,7 @@ class AriaIdentitySmokeTest {
         assertTrue(BuildConfig.DEBUG)
         assertEquals("com.dev.aria", context.packageName)
         assertTrue(Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"))
+        assertNull("Synthetic smoke must remain offline", context.getSystemService(ConnectivityManager::class.java).activeNetwork)
     }
 
     @Test fun allLauncherChoicesResolveThroughRealAppIconApi() {
@@ -49,6 +53,39 @@ class AriaIdentitySmokeTest {
         }
         assertEquals(AppIcon.Default, AppIcon.current(context))
         assertEquals("com.music.aria.LauncherDefault", pm.queryIntentActivities(intent, 0).single().activityInfo.name)
+    }
+
+    @Test fun installedIdentityAndShareContractsUseAria() {
+        val pm = context.packageManager
+        assertEquals("Aria Dev", pm.getApplicationLabel(context.applicationInfo).toString())
+        val invite = Intent(Intent.ACTION_VIEW, Uri.parse("aria://party"))
+            .addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context.packageName)
+        val handler = pm.resolveActivity(invite, PackageManager.MATCH_DEFAULT_ONLY)
+        assertNotNull(handler)
+        assertEquals("com.music.aria.MainActivity", handler!!.activityInfo.name)
+        assertTrue(handler.activityInfo.exported)
+
+        val authority = "${context.packageName}.fileprovider"
+        val provider = pm.resolveContentProvider(authority, 0)
+        assertNotNull(provider)
+        assertEquals(context.packageName, provider!!.packageName)
+        assertFalse(provider.exported)
+        assertTrue(provider.grantUriPermissions)
+        val shared = File(context.cacheDir, "shared/identity-fixture.txt")
+        val privateFile = File(context.cacheDir, "identity-private-fixture.txt")
+        try {
+            assertTrue(shared.parentFile!!.isDirectory || shared.parentFile!!.mkdirs())
+            shared.writeText("synthetic")
+            privateFile.writeText("private")
+            val uri = FileProvider.getUriForFile(context, authority, shared)
+            assertEquals("content", uri.scheme)
+            assertEquals(authority, uri.authority)
+            assertEquals("synthetic", context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() })
+            assertTrue(runCatching { FileProvider.getUriForFile(context, authority, privateFile) }.isFailure)
+        } finally {
+            shared.delete()
+            privateFile.delete()
+        }
     }
 
     @Test fun legacyRestoreAndAriaReexportPreserveStateAndFilterProtectedKeys() = runBlocking {
