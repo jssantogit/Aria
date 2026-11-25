@@ -53,6 +53,11 @@ jobs:
       - name: Check Android-only scope and launcher identity
         run: python3 scripts/verify-aria-android-identity.py
 
+      # Resolve both framework versions used by the suite before thousands of
+      # assertions. An unavailable dependency fails here, not once per test.
+      - name: Verify Robolectric framework availability
+        run: ./gradlew --build-cache -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
+
       - name: Run Android unit tests
         run: ./gradlew --build-cache :app:testDevDebugUnitTest
 

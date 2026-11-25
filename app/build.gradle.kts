@@ -198,6 +198,14 @@ android {
         buildConfig = true
     }
     testOptions {
+        // Robolectric resolves the framework jars at runtime. Use the same
+        // canonical Maven Central endpoint as Gradle instead of its repo1 default.
+        unitTests.all {
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+            if (providers.gradleProperty("ariaRobolectricPreflight").isPresent) {
+                it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            }
+        }
         unitTests {
             // Unit tests run against a stub android.jar whose methods throw
             // rather than return. That is the right default for anything whose
