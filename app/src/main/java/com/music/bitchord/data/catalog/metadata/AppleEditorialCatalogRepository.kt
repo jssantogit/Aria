@@ -367,12 +367,29 @@ internal class AppleEditorialCatalogRepository(
                 // authorization), or when membership metadata is absent.
                 val searchEligible = mixed == null && mixedSource != null &&
                     !mixedSource.possiblyTruncated &&
-                    mixedSource.items.any {
-                        it.type == ItunesCatalogItemType.ALBUM &&
-                            it.id == release.appleCollectionId &&
+                    mixedSource.albumLookupObservation?.let {
+                        it.foreignSongRows == 0 && it.rejectedSongRows == 0 &&
+                            it.removedDuplicateOrDisputedSongs == 0
+                    } == true &&
+                    mixedSource.items.singleOrNull {
+                        it.type == ItunesCatalogItemType.ALBUM
+                    }?.let {
+                        it.id == release.appleCollectionId &&
                             it.storefront == release.storefront &&
                             it.title == release.title && it.artistId == release.artistId &&
-                            it.artistName == release.artistName && it.trackCount == release.trackCount
+                            it.artistName == release.artistName && it.trackCount == release.trackCount &&
+                            it.releaseDate == release.releaseDate && it.upc == release.upc
+                    } == true &&
+                    mixedSource.items.filter { it.type == ItunesCatalogItemType.TRACK }.let { observed ->
+                        val originalById = release.tracks.associateBy { it.id }
+                        observed.all { other ->
+                            originalById[other.id]?.let { row ->
+                                row.title == other.title && row.artistId == other.artistId &&
+                                    row.artistName == other.artistName &&
+                                    row.discNumber == other.discNumber &&
+                                    row.trackNumber == other.trackNumber && row.durationMs == other.durationMs
+                            } ?: true
+                        }
                     } &&
                     release.tracks.all { it.collectionTitle == release.title } &&
                     release.title.length in 1..120 && release.title.none(Char::isISOControl)
