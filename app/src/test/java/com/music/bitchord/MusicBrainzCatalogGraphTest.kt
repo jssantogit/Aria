@@ -14,6 +14,37 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MusicBrainzCatalogGraphTest {
+    @Test fun artistBrowseRejectsWrongPageAndExplicitlyForeignCredits() = runBlocking {
+        val artist = "11111111-1111-4111-8111-111111111111"
+        val other = "22222222-2222-4222-8222-222222222222"
+        var offset = 0
+        val graph = MusicBrainzCatalogGraph(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals(artist, parameters["artist"])
+                    return """{"release-group-count":10,"release-group-offset":$offset,"release-groups":[
+                        {"id":"33333333-3333-4333-8333-333333333333","title":"Wrong credit",
+                         "artist-credit":[{"artist":{"id":"$other","name":"Other"}}]},
+                        {"id":"44444444-4444-4444-8444-444444444444","title":"Correct credit",
+                         "artist-credit":[{"artist":{"id":"$artist","name":"Artist"}}]},
+                        {"id":"55555555-5555-4555-8555-555555555555","title":"Browse relation only"}
+                    ]}"""
+                }
+            },
+        ))
+        assertTrue(graph.browseReleaseGroupsForArtist(artist, limit = 3, offset = 4)
+            is MusicBrainzCatalogGraphResult.Failure)
+        offset = 4
+        val result = graph.browseReleaseGroupsForArtist(artist, limit = 3, offset = 4)
+            as MusicBrainzCatalogGraphResult.Success
+        assertEquals(listOf("Correct credit", "Browse relation only"), result.value.items.map { it.title })
+        assertEquals(3, result.value.consumedCount)
+        assertEquals(7, result.value.nextOffset)
+        assertTrue(graph.browseReleaseGroupsForArtist(artist, limit = 2, offset = 4)
+            is MusicBrainzCatalogGraphResult.Failure)
+    }
+
     @Test fun exactGroupLookupRejectsMismatchedMbidInsteadOfUsingAnotherType() = runBlocking {
         val groupId = "529f87a1-1081-48a4-8ee1-3c08de229858"
         val wrong = "9750354e-78df-4058-8758-b5a7a2eccf66"
