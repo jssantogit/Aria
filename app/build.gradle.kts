@@ -53,7 +53,7 @@ val listenTogetherServer: String = (
     ).trim().trimEnd('/')
 
 // See the root build.gradle.kts for the Android version.
-val betaSuffix = rootProject.extra["bitchordBetaSuffix"] as String
+val betaSuffix = rootProject.extra["ariaBetaSuffix"] as String
 
 android {
     namespace = "com.music.aria"
@@ -66,8 +66,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = rootProject.extra["bitchordVersionCode"] as Int
-        versionName = rootProject.extra["bitchordVersionName"] as String
+        versionCode = rootProject.extra["ariaVersionCode"] as Int
+        versionName = rootProject.extra["ariaVersionName"] as String
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

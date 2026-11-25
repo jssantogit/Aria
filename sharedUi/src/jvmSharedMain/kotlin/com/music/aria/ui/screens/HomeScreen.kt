@@ -70,7 +70,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import coil3.compose.AsyncImage
 import com.music.aria.data.model.CARD_ART_PX
 import com.music.aria.data.model.HEADER_ART_PX
@@ -493,9 +493,9 @@ private fun RecentSectionHeader(
         ) {
             Icon(
                 imageVector = if (viewType == LibraryViewType.LIST) {
-                    BitChordIcons.GridView
+                    AriaIcons.GridView
                 } else {
-                    BitChordIcons.ListView
+                    AriaIcons.ListView
                 },
                 contentDescription = stringResource(
                     if (viewType == LibraryViewType.LIST) {
@@ -1221,7 +1221,7 @@ internal fun ShelfCard(
                         blurRadius = 24.dp,
                     )
                     Icon(
-                        imageVector = BitChordIcons.Download,
+                        imageVector = AriaIcons.Download,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(40.dp),

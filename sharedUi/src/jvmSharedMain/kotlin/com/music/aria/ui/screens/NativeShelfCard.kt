@@ -34,7 +34,7 @@ import com.music.aria.ui.components.SHELF_CARD_WIDTH
 import com.music.aria.ui.components.NativeMediaCardMetrics
 import com.music.aria.ui.components.contextClick
 import com.music.aria.ui.components.longPressMenuClickable
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -89,7 +89,7 @@ internal fun NativeShelfCard(
         ) {
             if (isPinned) {
                 Icon(
-                    imageVector = BitChordIcons.Pin,
+                    imageVector = AriaIcons.Pin,
                     contentDescription = stringResource(Res.string.pinned),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(14.dp),

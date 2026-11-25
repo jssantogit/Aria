@@ -313,7 +313,7 @@ import com.music.aria.ui.components.ServerEditorHost
 import com.music.aria.ui.components.UpdateAvailableDialog
 import com.music.aria.ui.components.WebDavConflictAlert
 import com.music.aria.ui.components.FieldConfig
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.media3.common.Player
 import com.music.aria.ui.player.NowPlayingScreen
@@ -1548,10 +1548,10 @@ private fun BitChordApp(
     val sharedLinkLabel = stringResource(R.string.shared_link)
     val tabs = remember(homeLabel, exploreLabel, libraryLabel, searchLabel) {
         listOf(
-            BottomTab(homeLabel, BitChordIcons.Home),
-            BottomTab(exploreLabel, BitChordIcons.TabExplore),
-            BottomTab(libraryLabel, BitChordIcons.TabLibrary),
-            BottomTab(searchLabel, BitChordIcons.TabSearch),
+            BottomTab(homeLabel, AriaIcons.Home),
+            BottomTab(exploreLabel, AriaIcons.TabExplore),
+            BottomTab(libraryLabel, AriaIcons.TabLibrary),
+            BottomTab(searchLabel, AriaIcons.TabSearch),
         )
     }
 
@@ -7551,7 +7551,7 @@ private fun NativeCollectionSearchAction(
 ) {
     NativeToolbarIconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
         Icon(
-            if (searching) PlaylistEditorIcons.Close else BitChordIcons.Search,
+            if (searching) PlaylistEditorIcons.Close else AriaIcons.Search,
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurface,
         )
@@ -7963,7 +7963,7 @@ private fun FrostedFolderMenu(
             label = stringResource(if (grid) R.string.switch_to_list_view else R.string.switch_to_grid_view),
             checked = false,
             onClick = onToggleViewType,
-            icon = if (grid) BitChordIcons.ListView else BitChordIcons.GridView,
+            icon = if (grid) AriaIcons.ListView else AriaIcons.GridView,
         )
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 4.dp),
@@ -8571,7 +8571,7 @@ private fun FrostedUnifiedLibrarySortMenu(
             label = stringResource(if (grid) R.string.switch_to_list_view else R.string.switch_to_grid_view),
             checked = false,
             onClick = onToggleViewType,
-            icon = if (grid) BitChordIcons.ListView else BitChordIcons.GridView,
+            icon = if (grid) AriaIcons.ListView else AriaIcons.GridView,
         )
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 4.dp),

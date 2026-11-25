@@ -32,7 +32,7 @@ import com.music.aria.ui.components.FrostedTopBar
 import com.music.aria.ui.components.MiniPlayer
 import com.music.aria.ui.components.TopFadeBlur
 import com.music.aria.ui.components.TopBarBlur
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.theme.BitChordTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -109,10 +109,10 @@ private val PreviewSong = Song(
 )
 
 private val PreviewTabs = listOf(
-    BottomTab("Play", BitChordIcons.Play),
-    BottomTab("Explore", BitChordIcons.TabExplore),
-    BottomTab("Library", BitChordIcons.TabLibrary),
-    BottomTab("Search", BitChordIcons.TabSearch),
+    BottomTab("Play", AriaIcons.Play),
+    BottomTab("Explore", AriaIcons.TabExplore),
+    BottomTab("Library", AriaIcons.TabLibrary),
+    BottomTab("Search", AriaIcons.TabSearch),
 )
 
 /**

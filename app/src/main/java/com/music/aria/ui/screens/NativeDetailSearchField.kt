@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.theme.ArtworkPalette
 
 /** Source-independent search surface shared by native artist, album and playlist details. */
@@ -105,7 +105,7 @@ internal fun NativeDetailSearchField(
     ) {
         if (!appleLibraryCategoryStyle) {
             Icon(
-                imageVector = BitChordIcons.Search,
+                imageVector = AriaIcons.Search,
                 contentDescription = null,
                 tint = palette.onBackgroundVariant,
                 modifier = Modifier.size(18.dp),

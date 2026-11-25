@@ -89,7 +89,7 @@ import com.music.aria.data.webdav.WebDavUploads
 import com.music.aria.download.DownloadState
 import com.music.aria.download.Downloads
 import com.music.aria.ui.components.thumbnailBorder
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.theme.ArtworkPalette
 import com.music.aria.ui.theme.rememberArtworkPalette
 import com.music.aria.ui.theme.appleMusicKeyColor

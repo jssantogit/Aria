@@ -74,7 +74,7 @@ import com.music.aria.sharedui.resources.Res
 import com.music.aria.sharedui.resources.ic_google_g
 import com.music.aria.sharedui.resources.ic_logo
 import org.jetbrains.compose.resources.painterResource
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.player.MeshGradientBackground
 import com.music.aria.ui.player.MESH_CYCLE_MILLIS
 import com.music.aria.ui.player.MeshPalette
@@ -423,7 +423,7 @@ private fun BackButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = BitChordIcons.ChevronRight,
+            imageVector = AriaIcons.ChevronRight,
             contentDescription = stringResource(R.string.onboarding_back),
             tint = Color.White,
             modifier = Modifier

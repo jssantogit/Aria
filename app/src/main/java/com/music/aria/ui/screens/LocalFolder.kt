@@ -78,7 +78,7 @@ import com.music.aria.ui.components.LongPressOrigin
 import com.music.aria.ui.components.longPressMenuClickable
 import com.music.aria.ui.components.rememberRemoteArtworkUrl
 import com.music.aria.ui.components.thumbnailBorder
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import com.music.aria.ui.theme.appleMusicKeyColor
 import com.music.aria.ui.performance.RuntimePerformanceUiContext
@@ -749,7 +749,7 @@ private fun GroupLabels(title: String, subtitle: String, palette: ArtworkPalette
 @Composable
 private fun TrailingGlyph(selected: Boolean, palette: ArtworkPalette) {
     Icon(
-        imageVector = if (selected) PlaylistEditorIcons.Selected else BitChordIcons.ChevronRight,
+        imageVector = if (selected) PlaylistEditorIcons.Selected else AriaIcons.ChevronRight,
         contentDescription = if (selected) stringResource(R.string.selected) else null,
         tint = if (selected) appleMusicKeyColor() else palette.onBackgroundVariant,
         modifier = Modifier.size(if (selected) 22.dp else 16.dp),

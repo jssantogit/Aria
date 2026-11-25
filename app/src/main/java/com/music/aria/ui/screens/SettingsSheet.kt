@@ -153,7 +153,7 @@ import com.music.aria.ui.components.NativeAlertHost
 import com.music.aria.ui.components.ListenBrainzTokenAlert
 import com.music.aria.ui.components.LastfmLoginAlert
 import com.music.aria.ui.components.thumbnailBorder
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.performance.resolvePerformanceRefreshRate
 import com.music.aria.ui.performance.supportedPerformanceRefreshRates
 import com.music.aria.data.model.Account
@@ -1104,7 +1104,7 @@ internal fun SettingsScreen(
             val highPerformanceModeTitle = stringResource(R.string.high_performance_mode)
             row(highPerformanceModeTitle, "frame rate", "refresh rate", "hz", "battery", "smooth") {
                 SettingsRow(
-                    icon = BitChordIcons.Performance,
+                    icon = AriaIcons.Performance,
                     title = highPerformanceModeTitle,
                     subtitle = if (highPerformanceMode) {
                         stringResource(R.string.high_performance_active, selectedPerformanceRefreshRate)
@@ -1137,7 +1137,7 @@ internal fun SettingsScreen(
                 val refreshRateTitle = stringResource(R.string.refresh_rate)
                 row(refreshRateTitle, "hz", "frame rate") {
                     SettingsRow(
-                        icon = BitChordIcons.FrameRate,
+                        icon = AriaIcons.FrameRate,
                         title = refreshRateTitle,
                     )
                     SegmentedControl(

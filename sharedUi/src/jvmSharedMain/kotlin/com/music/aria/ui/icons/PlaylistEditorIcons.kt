@@ -18,11 +18,11 @@ import com.music.aria.ui.player.AppleQueueVectors
  * not proof that Apple Music uses these exact glyphs.
  */
 object PlaylistEditorIcons {
-    val Music = BitChordIcons.MusicNote
-    val Library = BitChordIcons.Library
-    val Add = BitChordIcons.Plus
-    val Check = BitChordIcons.Check
-    val History = BitChordIcons.Clock
+    val Music = AriaIcons.MusicNote
+    val Library = AriaIcons.Library
+    val Add = AriaIcons.Plus
+    val Check = AriaIcons.Check
+    val History = AriaIcons.Clock
     val Ratings = AppleQueueVectors.Favorite
     /** Menus use the plain standalone star, never the circular player variant. */
     val RatingPlain = AppleQueueVectors.RatingStarOutline

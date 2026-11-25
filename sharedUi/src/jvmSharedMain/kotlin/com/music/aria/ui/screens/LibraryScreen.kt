@@ -52,7 +52,7 @@ import com.music.aria.data.model.ShelfItem
 import com.music.aria.data.model.UiState
 import com.music.aria.data.settings.LibrarySort
 import com.music.aria.ui.AppUi
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.components.LIBRARY_GRID_SPACING
 import com.music.aria.ui.components.MessageState
 import com.music.aria.ui.components.PAGE_GUTTER
@@ -360,7 +360,7 @@ private fun LibraryLinkList(
                     modifier = Modifier.weight(1f),
                 )
                 if (!compact) Icon(
-                    imageVector = BitChordIcons.ChevronRight,
+                    imageVector = AriaIcons.ChevronRight,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f),
                     modifier = Modifier.size(20.dp),
@@ -403,7 +403,7 @@ private fun PlaylistShelf(
         leadingCard = {
             Row(horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING)) {
                 NewShelfCard(
-                    icon = BitChordIcons.Plus,
+                    icon = AriaIcons.Plus,
                     label = stringResource(Res.string.new_playlist),
                     subtitle = stringResource(Res.string.saved_to_youtube_music),
                     onClick = onNewPlaylist,
@@ -497,7 +497,7 @@ fun LibraryGridPage(
             if (onNewPlaylist != null) {
                 item(key = "leading") {
                     NewShelfCard(
-                        icon = BitChordIcons.Plus,
+                        icon = AriaIcons.Plus,
                         label = stringResource(Res.string.new_playlist),
                         subtitle = stringResource(Res.string.saved_to_youtube_music),
                         onClick = onNewPlaylist,

@@ -134,7 +134,7 @@ import com.music.aria.data.lyrics.translationLanguageName
 import com.music.aria.ui.haptics.Haptic
 import com.music.aria.ui.haptics.Haptics
 import com.music.aria.ui.haptics.rememberHaptics
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.rememberIsForeground
 import java.util.Locale
 import kotlin.math.PI
@@ -2735,7 +2735,7 @@ private fun CurrentLyricLine(
                 .padding(vertical = 4.dp),
         ) {
             Icon(
-                imageVector = BitChordIcons.MusicNote,
+                imageVector = AriaIcons.MusicNote,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
@@ -2751,7 +2751,7 @@ private fun CurrentLyricLine(
             )
             Spacer(Modifier.width(6.dp))
             Icon(
-                imageVector = BitChordIcons.ChevronRight,
+                imageVector = AriaIcons.ChevronRight,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.size(14.dp),
@@ -2808,7 +2808,7 @@ private fun CurrentLyricLine(
     ) {
         if (instrumental) {
             Icon(
-                imageVector = BitChordIcons.MusicNote,
+                imageVector = AriaIcons.MusicNote,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
@@ -2870,7 +2870,7 @@ private fun CurrentLyricLine(
             Spacer(Modifier.width(6.dp))
             // Disclosure hint: this strip opens the full lyrics screen.
             Icon(
-                imageVector = BitChordIcons.ChevronRight,
+                imageVector = AriaIcons.ChevronRight,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.size(14.dp),
@@ -2878,7 +2878,7 @@ private fun CurrentLyricLine(
         } else {
             Spacer(Modifier.width(6.dp))
             Icon(
-                imageVector = BitChordIcons.ChevronRight,
+                imageVector = AriaIcons.ChevronRight,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier

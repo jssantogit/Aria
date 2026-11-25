@@ -9,7 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.music.aria.R
 import com.music.aria.ui.components.NativeCompactMenuItem
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 
 /**
  * Recent additions are verified local RecordingIds, not synthetic media.
@@ -47,7 +47,7 @@ internal fun CanonicalRecentHeldActions(
     )
     NativeCompactMenuItem(
         label = stringResource(if (isPinned) R.string.unpin else R.string.pin),
-        icon = BitChordIcons.Pin,
+        icon = AriaIcons.Pin,
         onClick = onTogglePin,
     )
 }

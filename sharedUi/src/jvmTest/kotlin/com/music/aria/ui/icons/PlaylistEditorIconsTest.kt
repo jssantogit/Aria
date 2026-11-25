@@ -29,12 +29,12 @@ class PlaylistEditorIconsTest {
         }
     }
 
-    @Test fun existingBitChordIconsAreReusedForMusicLibraryAndActions() {
-        assertEquals(BitChordIcons.MusicNote, PlaylistEditorIcons.Music)
-        assertEquals(BitChordIcons.Library, PlaylistEditorIcons.Library)
-        assertEquals(BitChordIcons.Plus, PlaylistEditorIcons.Add)
-        assertEquals(BitChordIcons.Check, PlaylistEditorIcons.Check)
-        assertEquals(BitChordIcons.Clock, PlaylistEditorIcons.History)
+    @Test fun existingAriaIconsAreReusedForMusicLibraryAndActions() {
+        assertEquals(AriaIcons.MusicNote, PlaylistEditorIcons.Music)
+        assertEquals(AriaIcons.Library, PlaylistEditorIcons.Library)
+        assertEquals(AriaIcons.Plus, PlaylistEditorIcons.Add)
+        assertEquals(AriaIcons.Check, PlaylistEditorIcons.Check)
+        assertEquals(AriaIcons.Clock, PlaylistEditorIcons.History)
         assertNotEquals(PlaylistEditorIcons.Selected.name, PlaylistEditorIcons.Unselected.name)
     }
 }

@@ -65,7 +65,7 @@ import com.music.aria.data.model.Song
 import com.music.aria.data.model.UserPlaylist
 import com.music.aria.data.model.artworkAt
 import com.music.aria.ui.components.thumbnailBorder
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import com.music.aria.ui.theme.appleSelectionAccentColor
 import java.util.Locale
@@ -167,7 +167,7 @@ fun PlaylistPickerSheet(
         )
 
         ActionRow(
-            icon = BitChordIcons.Plus,
+            icon = AriaIcons.Plus,
             label = stringResource(R.string.new_playlist),
             onClick = { formDirty = false; onDraftChanged(false); creating = true },
         )

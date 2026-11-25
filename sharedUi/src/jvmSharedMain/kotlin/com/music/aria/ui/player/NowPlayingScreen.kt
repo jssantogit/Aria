@@ -160,7 +160,7 @@ import com.music.aria.ui.LyricsProviderState
 import com.music.aria.ui.components.optimizedHazeEffect
 import com.music.aria.ui.haptics.Haptic
 import com.music.aria.ui.haptics.rememberHaptics
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.aria.data.canvas.CanvasSource
 import com.music.aria.data.lyrics.LyricLine
@@ -3083,7 +3083,7 @@ fun NowPlayingScreen(
                             ) {
                                 if (!art.loaded && !canvasRendered) {
                                     Icon(
-                                        imageVector = BitChordIcons.MusicNote,
+                                        imageVector = AriaIcons.MusicNote,
                                         contentDescription = null,
                                         tint = Color.White.copy(alpha = 0.35f),
                                         modifier = Modifier

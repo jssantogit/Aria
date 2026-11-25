@@ -59,7 +59,7 @@ import com.music.aria.data.stats.ArtistFacts
 import com.music.aria.data.stats.ReplayPeriod
 import com.music.aria.data.stats.ReplaySummary
 import com.music.aria.ui.components.PAGE_GUTTER
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.player.MeshGradientBackground
 import com.music.aria.ui.player.rememberArtworkColors
 import com.music.aria.ui.theme.appleMusicKeyColor
@@ -182,7 +182,7 @@ fun ReplayScreen(
                         )
                     }
                     item("open") {
-                        ReplayActionRow(BitChordIcons.Play, stringResource(R.string.play_your_replay), dark) {
+                        ReplayActionRow(AriaIcons.Play, stringResource(R.string.play_your_replay), dark) {
                             onOpenStory(ReplayStoryPage.INTRO)
                         }
                     }
@@ -411,7 +411,7 @@ private fun ReplayActionRow(icon: ImageVector, label: String, dark: Boolean, onC
             modifier = Modifier.weight(1f),
         )
         Icon(
-            imageVector = BitChordIcons.ChevronRight,
+            imageVector = AriaIcons.ChevronRight,
             contentDescription = null,
             tint = textColor.copy(alpha = 0.5f),
             modifier = Modifier.size(16.dp),
@@ -594,7 +594,7 @@ private fun EmptyReplay(period: ReplayPeriod, dark: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            imageVector = BitChordIcons.Clock,
+            imageVector = AriaIcons.Clock,
             contentDescription = null,
             tint = emptyVariant,
             modifier = Modifier.size(44.dp),

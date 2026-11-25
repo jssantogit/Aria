@@ -111,7 +111,7 @@ import com.music.aria.ui.components.NUMBERED_ROW_DIVIDER_INSET
 import com.music.aria.ui.components.NativeTrackRowText
 import com.music.aria.ui.components.longPressMenuClickable
 import com.music.aria.ui.components.CoverPlaceholder
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import com.music.aria.ui.theme.ArtworkPalette
 import com.music.aria.ui.theme.rememberArtworkPalette
@@ -2318,14 +2318,14 @@ internal fun NativeUnifiedLibraryCategoryHeader(
                 ),
             ) {
                 ActionPill(
-                    icon = BitChordIcons.Play,
+                    icon = AriaIcons.Play,
                     label = stringResource(R.string.play),
                     onClick = { onPlayAll(false) },
                     filled = true,
                     modifier = Modifier.weight(1f),
                 )
                 ActionPill(
-                    icon = BitChordIcons.Shuffle,
+                    icon = AriaIcons.Shuffle,
                     label = stringResource(R.string.shuffle),
                     onClick = { onPlayAll(true) },
                     filled = false,

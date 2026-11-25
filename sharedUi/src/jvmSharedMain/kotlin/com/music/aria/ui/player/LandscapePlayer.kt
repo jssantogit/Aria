@@ -64,7 +64,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import com.music.aria.ui.components.ExplicitBadge
 import com.music.aria.ui.haptics.Haptic
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.theme.stableStatusBarInsets
 import com.music.aria.data.canvas.CanvasArtwork
 import com.music.aria.data.model.Song
@@ -321,7 +321,7 @@ internal fun LandscapeArtwork(
         ) {
             if (!artLoaded && !canvasRendered) {
                 Icon(
-                    imageVector = BitChordIcons.MusicNote,
+                    imageVector = AriaIcons.MusicNote,
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxSize(0.36f),

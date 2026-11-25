@@ -52,7 +52,7 @@ import com.music.aria.data.model.UserPlaylist
 import com.music.aria.data.model.artworkAt
 import com.music.aria.download.DownloadState
 import com.music.aria.download.Downloads
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import java.util.Locale
 
@@ -244,7 +244,7 @@ fun BrowseActionsSheet(
             }
 
             onPlay?.let { ActionRow(Icons.Rounded.PlayArrow, stringResource(R.string.play), onClick = it) }
-            onShuffle?.let { ActionRow(BitChordIcons.Shuffle, stringResource(R.string.shuffle), onClick = it) }
+            onShuffle?.let { ActionRow(AriaIcons.Shuffle, stringResource(R.string.shuffle), onClick = it) }
             onPlayNext?.let { playNext ->
                 ActionRow(
                     Icons.AutoMirrored.Rounded.PlaylistPlay,
@@ -297,9 +297,9 @@ fun BrowseActionsSheet(
                 val downloaded = !waiting && ids.isNotEmpty() && ids.all { it in saved }
                 ActionRow(
                     icon = when {
-                        waiting -> BitChordIcons.Clock
-                        downloaded -> BitChordIcons.Check
-                        else -> BitChordIcons.Download
+                        waiting -> AriaIcons.Clock
+                        downloaded -> AriaIcons.Check
+                        else -> AriaIcons.Download
                     },
                     label = stringResource(R.string.download_all),
                     value = when {
@@ -312,7 +312,7 @@ fun BrowseActionsSheet(
             }
             onOpen?.let {
                 ActionRow(
-                    BitChordIcons.ChevronRight,
+                    AriaIcons.ChevronRight,
                     onOpenLabel ?: target.type.localizedOpenLabel(),
                     onClick = it,
                 )
@@ -330,7 +330,7 @@ fun BrowseActionsSheet(
             }
             onTogglePin?.let {
                 ActionRow(
-                    BitChordIcons.Pin,
+                    AriaIcons.Pin,
                     stringResource(if (isPinned) R.string.unpin else R.string.pin),
                     onClick = it,
                 )

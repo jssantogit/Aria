@@ -95,7 +95,7 @@ import com.music.aria.ui.components.CanonicalRatingDisplaySnapshot
 import com.music.aria.ui.components.RatingDisplay
 import com.music.aria.ui.theme.rememberArtworkPalette
 import com.music.aria.ui.theme.appleMusicKeyColor
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

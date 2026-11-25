@@ -65,7 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import com.music.aria.ui.theme.appleMusicKeyColor
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import coil3.compose.AsyncImage
@@ -1264,7 +1264,7 @@ private fun TopResultCard(
             NativeSearchSecondaryAction(
                 label = stringResource(Res.string.play),
                 onClick = onPlay,
-                icon = BitChordIcons.Play,
+                icon = AriaIcons.Play,
             )
             NativeSearchSecondaryAction(
                 label = stringResource(Res.string.playlist_action),

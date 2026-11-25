@@ -11,7 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -33,7 +33,7 @@ class NativeSearchSecondaryActionTest {
             MaterialTheme {
                 NativeSearchSecondaryAction(
                     label = "Reproduzir",
-                    icon = BitChordIcons.Play,
+                    icon = AriaIcons.Play,
                     onClick = { clicks++ },
                 )
             }

@@ -84,7 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Velocity
 import coil3.compose.AsyncImage
 import com.music.aria.ui.components.thumbnailBorder
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.data.model.QueueTier
 import com.music.aria.data.model.Song
 import com.music.aria.playback.autoplaySectionStart
@@ -615,7 +615,7 @@ private fun AutoplayHeading(hasTracks: Boolean, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            BitChordIcons.Infinity,
+            AriaIcons.Infinity,
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.75f),
             modifier = Modifier.size(18.dp),

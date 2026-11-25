@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.music.aria.R
 import com.music.aria.ui.haptics.Haptic
 import com.music.aria.ui.haptics.rememberHaptics
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.components.CompactRatingIndicator
 import com.music.aria.ui.components.CompactRatingGeometry
 import com.music.aria.ui.icons.PlaylistEditorIcons
@@ -85,7 +85,7 @@ internal fun ActionRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CircleIconButton(
-            icon = BitChordIcons.Shuffle,
+            icon = AriaIcons.Shuffle,
             contentDescription = stringResource(R.string.shuffle),
             onClick = onShuffle,
             haptic = Haptic.Resume,

@@ -185,7 +185,7 @@ import com.music.aria.ui.components.topBarContentPadding
 import com.music.aria.ui.components.trackColumnWidth
 import com.music.aria.ui.haptics.Haptic
 import com.music.aria.ui.haptics.rememberHaptics
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.player.CanvasArtworkPlayer
 import com.music.aria.ui.theme.ArtworkPalette
 import com.music.aria.ui.theme.rememberArtworkPalette
@@ -2021,7 +2021,7 @@ private fun DetailPage.placeholderIcon(): ImageVector = deviceFolderIcon(browseI
     LocalGroups.isArtist(browseId) -> Icons.Rounded.Person
     type == BrowseType.ALBUM -> Icons.Rounded.Album
     type == BrowseType.PLAYLIST -> Icons.AutoMirrored.Rounded.QueueMusic
-    else -> BitChordIcons.MusicNote
+    else -> AriaIcons.MusicNote
 }
 
 /** "10 tracks" → "10 Tracks", "playlist" → "Playlist". */

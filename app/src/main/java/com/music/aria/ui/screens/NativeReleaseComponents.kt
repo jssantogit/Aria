@@ -40,7 +40,7 @@ import com.music.aria.ui.components.SourceQualityBadge
 import com.music.aria.ui.components.thumbnailBorder
 import com.music.aria.ui.components.topBarContentPadding
 import com.music.aria.ui.haptics.Haptic
-import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.theme.ArtworkPalette
 
 /**
@@ -108,7 +108,7 @@ internal fun NativeReleaseActionRow(
     ) {
         if (isLocal) {
             ActionPill(
-                icon = BitChordIcons.Play,
+                icon = AriaIcons.Play,
                 label = stringResource(R.string.play),
                 onClick = onPlay,
                 filled = true,
@@ -118,7 +118,7 @@ internal fun NativeReleaseActionRow(
                     .let { if (localCompactAlbum) it.testTag("native-local-album-play-pill") else it },
             )
             ActionPill(
-                icon = BitChordIcons.Shuffle,
+                icon = AriaIcons.Shuffle,
                 label = stringResource(R.string.shuffle),
                 onClick = onShuffle,
                 filled = false,
@@ -128,7 +128,7 @@ internal fun NativeReleaseActionRow(
             )
         } else {
             CircleIconButton(
-                icon = BitChordIcons.Shuffle,
+                icon = AriaIcons.Shuffle,
                 contentDescription = stringResource(R.string.shuffle),
                 onClick = onShuffle,
                 haptic = Haptic.Resume,
@@ -136,7 +136,7 @@ internal fun NativeReleaseActionRow(
                 enabled = canShuffle,
             )
             ActionPill(
-                icon = BitChordIcons.Play,
+                icon = AriaIcons.Play,
                 label = stringResource(R.string.play),
                 onClick = onPlay,
                 filled = true,
@@ -155,7 +155,7 @@ internal fun NativeReleaseActionRow(
             CircleIconButton(
                 icon = if (reservePinAction && isPinnedInLibrary ||
                     !reservePinAction && onAddToQueue == null && isSaved == true
-                ) BitChordIcons.Check else BitChordIcons.Plus,
+                ) AriaIcons.Check else AriaIcons.Plus,
                 contentDescription = if (onAddToQueue != null) {
                     "Adicionar à fila"
                 } else if (reservePinAction) {
@@ -208,7 +208,7 @@ internal fun NativeReleasePinOnlyAction(
         contentAlignment = Alignment.Center,
     ) {
         CircleIconButton(
-            icon = if (isPinned) BitChordIcons.Check else BitChordIcons.Plus,
+            icon = if (isPinned) AriaIcons.Check else AriaIcons.Plus,
             contentDescription = if (isPinned)
                 "Desafixar $targetLabel da Biblioteca" else "Fixar $targetLabel na Biblioteca",
             onClick = onTogglePin,
