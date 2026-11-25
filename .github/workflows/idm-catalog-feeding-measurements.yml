@@ -91,6 +91,14 @@ on:
       - app/src/main/java/com/music/bitchord/ui/**
   workflow_dispatch:
     inputs:
+      live_scope:
+        description: 'Live observation scope (full required for final integration audit)'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - 'full'
+          - 'itunes-albums'
       discogs_capacity_target:
         description: 'Cumulative verified Discogs Home capacity target (same Android gestures)'
         required: true
@@ -344,7 +352,7 @@ jobs:
           retention-days: 14
 
   live-observation:
-    name: Live API observations · MB/Apple/Discogs and priority fallback
+    name: Live API observations · ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full' }}
     # Non-gating remote availability is reported as a status, never silently
     # replaced by a fixture. A missing Discogs secret is explicitly blocked.
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
@@ -352,15 +360,17 @@ jobs:
     # Let active source observations finish even when a new HEAD is pushed.
     # All live jobs in this repository share the same Discogs credential budget.
     concurrency:
-      group: idm-catalog-live-discogs
+      group: idm-catalog-live-${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full' }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       IDM_CATALOG_LIVE: '1'
+      # Temporary iteration focus for #224; manual full mode remains available.
+      IDM_CATALOG_LIVE_SCOPE: ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full' }}
       IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
       IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
-      IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full') == 'full' && secrets.DISCOGS_TOKEN || '' }}
 
     steps:
       - name: Checkout exact candidate HEAD
@@ -392,14 +402,18 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           mkdir -p "$IDM_CATALOG_METRICS_DIR"
+          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums) ;; *) exit 1 ;; esac
+          echo "Live scope: $IDM_CATALOG_LIVE_SCOPE (focused results are not full parity)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Observe live provider responses through production catalogue adapters
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_sources_and_collective_fallback_use_canonical_pipeline'
 
       - name: Summarize exact live results and capability blocks
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -465,12 +479,14 @@ jobs:
           PY
 
       - name: Observe fixed live genre matrix (#227)
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_genre_parity_matrix'
 
       - name: Summarize all 45 genre matrix cells
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -505,12 +521,14 @@ jobs:
           PY
 
       - name: Observe fixed live artist matrix (#228)
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_artist_parity_matrix'
 
       - name: Summarize all 30 artist matrix cells
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -557,7 +575,7 @@ jobs:
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_album_parity_matrix'
 
-      - name: Summarize all 45 album matrix cells
+      - name: Summarize selected album matrix cells
         shell: bash
         run: |
           python3 - <<'PY'
@@ -595,11 +613,18 @@ jobs:
                   "apple_lookup_foreign_songs", "apple_lookup_rejected_songs",
                   "apple_lookup_removed_duplicate_songs",
                   "source_interruption", "elapsed_ms")
+          scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
+          providers = ("itunes",) if scope == "itunes-albums" else ("musicbrainz", "itunes", "discogs")
+          expected = {f"live_album_matrix_{provider}_{i:02d}" for provider in providers for i in range(1, 16)}
+          actual = {p.stem for p in path.glob("live_album_matrix_*.json")}
+          if actual != expected:
+              raise SystemExit(f"Unexpected album matrix cells: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #229 fixed album matrix (decoded endpoint and canonical projection)\n\n")
               out.write("| Provider | Case | Detail | Decoded tracks | Visible tracks | Discs | Type | Status |\n")
               out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
-              for provider in ("musicbrainz", "itunes", "discogs"):
+              out.write(f"Live scope: {scope}; {len(expected)} required cells.\\n\\n")
+              for provider in providers:
                   for i in range(1, 16):
                       name = f"album_matrix_{provider}_{i:02d}"
                       row = json.loads((path / f"live_{name}.json").read_text())
@@ -612,12 +637,14 @@ jobs:
           PY
 
       - name: Observe fixed live search matrix (#230)
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_search_parity_matrix'
 
       - name: Summarize all 90 search matrix cells and unresolved labels
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -657,7 +684,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: idm-catalog-live-observation-${{ github.event.pull_request.head.sha || github.sha }}
+          name: idm-catalog-live-observation-${{ env.IDM_CATALOG_LIVE_SCOPE }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             idm-catalog-live-metrics/*.json
             app/build/test-results/testDevDebugUnitTest/

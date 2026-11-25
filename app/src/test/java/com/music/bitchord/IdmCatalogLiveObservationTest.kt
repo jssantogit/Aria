@@ -2276,7 +2276,12 @@ class IdmCatalogLiveObservationTest {
             enabled = token != null, tokenProvider = { token }, admission = discogsGuard,
             editions = DiscogsNativeEditionClient(discogsDetails),
         )
-        for (provider in listOf(mb, apple, discogs)) {
+        val providers = when (System.getenv("IDM_CATALOG_LIVE_SCOPE") ?: "full") {
+            "full" -> listOf(mb, apple, discogs)
+            "itunes-albums" -> listOf(apple)
+            else -> error("Unsupported IDM live album scope")
+        }
+        for (provider in providers) {
             val sourceName = when (provider) {
                 mb -> "musicbrainz"
                 apple -> "itunes"
