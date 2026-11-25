@@ -38,6 +38,9 @@ internal data class AppleAlbumReadDiagnostics(
     val duplicatePositions: Int,
     val sourcePossiblyTruncated: Boolean,
     val lookup: ItunesAlbumLookupObservation?,
+    val mixedLookupAttempted: Boolean = false,
+    val mixedLookupVerified: Boolean = false,
+    val verifiedExcludedNonAudioRows: Int = 0,
 )
 
 internal sealed interface AppleEditorialLoad {
@@ -70,6 +73,50 @@ internal sealed interface AppleEditorialTrackLoad {
     ) : AppleEditorialTrackLoad
 
     data class Failure(val reason: ItunesCatalogFailure) : AppleEditorialTrackLoad
+}
+
+/** Full mixed membership proof from a second exact collection response.
+ * Do not merge different editions, trust a count alone, or discard songs
+ * that conflict between observations. The original collection header stays. */
+internal fun appleVerifiedMixedAudioRelease(
+    original: ItunesEditorialRelease,
+    mixed: ItunesCatalogResult.Success,
+): Pair<ItunesEditorialRelease, Int>? {
+    val total = original.trackCount ?: return null
+    val read = mixed.albumLookupObservation ?: return null
+    if (mixed.possiblyTruncated || total !in 1..200 ||
+        read.declaredResults != read.rawRows || read.rawRows != total + 1 ||
+        read.foreignSongRows != 0 || read.rejectedSongRows != 0 ||
+        read.removedDuplicateOrDisputedSongs != 0 ||
+        read.matchingNonSongRows != read.verifiedMusicVideoRows ||
+        read.matchingSongRows + read.verifiedMusicVideoRows != total
+    ) return null
+    val release = ItunesEditorialCatalog.assemble(original.storefront, mixed.items)
+        .singleOrNull() ?: return null
+    if (release.appleScopedId != original.appleScopedId ||
+        release.artistId == null || release.artistId != original.artistId ||
+        release.artistName != original.artistName || release.title != original.title ||
+        release.releaseDate != original.releaseDate || release.trackCount != total ||
+        release.upc != original.upc || release.tracks.isEmpty() ||
+        release.tracks.size != read.matchingSongRows ||
+        release.tracks.any { it.collectionId != original.appleCollectionId ||
+            it.storefront != original.storefront || it.discNumber == null ||
+            it.discNumber <= 0 || it.trackNumber == null || it.trackNumber <= 0 } ||
+        release.tracks.map { it.id }.distinct().size != release.tracks.size ||
+        release.tracks.map { it.discNumber to it.trackNumber }.distinct().size != release.tracks.size
+    ) return null
+    val observed = release.tracks.associateBy { it.id }
+    // Exact identity, title, credit, position and duration must survive.
+    if (original.tracks.any { row ->
+            val other = observed[row.id]
+            other == null || row.title != other.title ||
+                row.artistId != other.artistId || row.artistName != other.artistName ||
+                row.discNumber != other.discNumber || row.trackNumber != other.trackNumber ||
+                row.durationMs != other.durationMs
+        }) return null
+    val originalById = original.tracks.associateBy { it.id }
+    return original.copy(tracks = release.tracks.map { originalById[it.id] ?: it }) to
+        read.verifiedMusicVideoRows
 }
 
 internal class AppleEditorialCatalogRepository(
@@ -245,17 +292,33 @@ internal class AppleEditorialCatalogRepository(
                     release.tracks.map { it.discNumber to it.trackNumber }.distinct().size ==
                         release.tracks.size
                 val verifiedComplete = complete && !source.possiblyTruncated
+                val cleanShortRead = !verifiedComplete && !source.possiblyTruncated &&
+                    release.tracks.isNotEmpty() && release.trackCount != null &&
+                    release.trackCount > release.tracks.size && release.trackCount <= 200 &&
+                    positionless == 0 && duplicatePositions == 0 &&
+                    source.albumLookupObservation?.let {
+                        it.foreignSongRows == 0 && it.rejectedSongRows == 0 &&
+                            it.removedDuplicateOrDisputedSongs == 0
+                    } == true
+                val mixed = if (cleanShortRead) {
+                    (itunes.lookupAlbumMusicTracks(collectionId, storefront) as? ItunesCatalogResult.Success)
+                        ?.let { appleVerifiedMixedAudioRelease(release, it) }
+                } else null
+                val finalRelease = mixed?.first ?: release
                 AppleEditorialLoad.Success(
-                    listOf(release),
-                    if (verifiedComplete) AppleEditorialReadState.COMPLETE
+                    listOf(finalRelease),
+                    if (verifiedComplete || mixed != null) AppleEditorialReadState.COMPLETE
                     else AppleEditorialReadState.PARTIAL_TRACKLIST,
                     albumDiagnostics = AppleAlbumReadDiagnostics(
                         declaredTrackCount = release.trackCount,
-                        decodedTracks = release.tracks.size,
+                        decodedTracks = finalRelease.tracks.size,
                         positionlessTracks = positionless,
                         duplicatePositions = duplicatePositions,
                         sourcePossiblyTruncated = source.possiblyTruncated,
                         lookup = source.albumLookupObservation,
+                        mixedLookupAttempted = cleanShortRead,
+                        mixedLookupVerified = mixed != null,
+                        verifiedExcludedNonAudioRows = mixed?.second ?: 0,
                     ),
                 )
             }
