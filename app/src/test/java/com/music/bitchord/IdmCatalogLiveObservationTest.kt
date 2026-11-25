@@ -2519,13 +2519,13 @@ class IdmCatalogLiveObservationTest {
                                     search = pager.loadMore()
                                 }
                                 if (search is ApplePublicSearchPageLoad.Failure) failed = true
-                                val related = relatedYearEdition
-                                if (selected == null && !failed && related != null) {
-                                    val alternative = appleRepo.albumDetail(related.id, "br")
+                                val yearCandidate = relatedYearEdition
+                                if (selected == null && !failed && yearCandidate != null) {
+                                    val alternative = appleRepo.albumDetail(yearCandidate.id, "br")
                                         as? AppleEditorialLoad.Success
                                     val detail = alternative?.releases?.singleOrNull()?.takeIf {
-                                        it.appleScopedId == related.scopedId &&
-                                            it.title == related.title && it.artistId == related.artistId &&
+                                        it.appleScopedId == yearCandidate.scopedId &&
+                                            it.title == yearCandidate.title && it.artistId == yearCandidate.artistId &&
                                             case.matchesArtist(it.artistName) && it.storefront == "br"
                                     }
                                     appleRelatedYearEditionVerified = detail != null
