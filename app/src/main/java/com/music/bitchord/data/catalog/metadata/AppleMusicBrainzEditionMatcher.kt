@@ -34,7 +34,7 @@ internal sealed interface AppleMusicBrainzEditionMatch {
 internal object AppleMusicBrainzEditionMatcher {
     private val mbid = Regex("^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
     private val upcPattern = Regex("^[0-9]{8,14}$")
-    private val suffix = Regex("""\s[-–—]\s(?:EP|Single)$""", RegexOption.IGNORE_CASE)
+    private val suffix = Regex("""\s(?:[-–—]\s(?:EP|Single)|\((?:EP|Single)\)|\[(?:EP|Single)\])$""", RegexOption.IGNORE_CASE)
     private val space = Regex("""\s+""")
 
     private fun normalized(text: String): String =
@@ -178,6 +178,43 @@ internal object AppleMusicBrainzEditionMatcher {
         if (check(apple, mb, exactLinkedAlbum = true) == Grade.VERIFIED)
             verifiedMatch(apple, mb)
         else AppleMusicBrainzEditionMatch.NoMatch
+
+    /**
+     * A verified source Release -> exact Apple product link can certify an
+     * edition without UPC. Require the Apple-owned storefront URL too, and
+     * refuse competing links, disputed snapshots or a conflicting barcode
+     * result. A plain title/tracklist match still cannot certify identity.
+     */
+    fun matchWithExplicitAlbumLinks(
+        apple: ItunesEditorialRelease,
+        candidates: List<MusicBrainzCatalogReleaseDetail>,
+    ): AppleMusicBrainzEditionMatch {
+        val ordinary = match(apple, candidates)
+        if (ordinary is AppleMusicBrainzEditionMatch.Ambiguous ||
+            appleStoreLinkForExactProduct(
+                apple.storeUrl, ItunesCatalogItemType.ALBUM,
+                apple.appleCollectionId, apple.storefront,
+            ) == null
+        ) return ordinary
+        val linked = candidates.filter { apple.appleCollectionId in it.linkedAppleAlbumIds }
+        if (linked.isEmpty()) return ordinary
+        val ids = linked.mapNotNull { validMbid(it.musicBrainzId) }.distinct()
+        val candidate = linked.distinct().singleOrNull()
+        // Inspect every observation of the linked MBID, not merely the ones
+        // carrying the URL; a contradictory snapshot may omit that URL.
+        val disputed = candidate == null || ids.size != 1 ||
+            candidates.filter { validMbid(it.musicBrainzId) == ids.singleOrNull() }
+                .distinct().size != 1
+        val ordinaryId = (ordinary as? AppleMusicBrainzEditionMatch.Verified)?.musicBrainzReleaseId
+        if (disputed || (ordinaryId != null && ordinaryId !in ids)) {
+            return AppleMusicBrainzEditionMatch.Ambiguous(
+                (ids + listOfNotNull(ordinaryId)).distinct().sorted(),
+            )
+        }
+        val exact = matchExplicitLinkedAlbum(apple, checkNotNull(candidate))
+        return if (exact is AppleMusicBrainzEditionMatch.Verified) exact
+            else ordinary
+    }
 
     private fun verifiedMatch(
         apple: ItunesEditorialRelease,
