@@ -11,3 +11,7 @@ Updater: own GitHub repository only, Aria APK name prefix, archive package must 
 ## Repository operation and historical evidence
 
 The live integration and delivery tools target only `jssantogit/Aria`. The existing protected-main ruleset ID remains 25365768; its active status and canonical source were verified on GitHub before this migration. Owner approval, exact-main pinning, the dedicated token, the explicit write opt-in, and fail-closed checks remain unchanged. Historical manifests and evidence using `jssantogit/BitChord` are not rewritten or silently accepted as current execution authority. New batches must be reviewed against current Aria paths, repository identity and exact SHAs. Existing concurrency group names are retained to avoid splitting active integration lanes. No integration workflow was dispatched to perform writes during this migration.
+
+## Emulator and physical acceptance
+
+The native workflow now installs its own exact-HEAD x86_64 development APK in a clean API 34 Android emulator and checks the installed package, default launcher alias, activity launch and process survival. Its screenshot is evidence for human inspection, not automatic visual approval. Production package/signing, installation alongside an existing legacy app, backup restore, all launcher variants, physical audio, and device-specific rendering remain separate acceptance checks. Do not uninstall the legacy app or move existing files to perform these checks.

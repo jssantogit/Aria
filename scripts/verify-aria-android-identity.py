@@ -19,7 +19,7 @@ def marks(path):
     return {p.attrib[A + "pathData"] for p in xml(path).iter("path")
             if A + "pathData" in p.attrib}
 
-for target in ("desktopApp", "desktopUi", "tv", "wearos"):
+for target in ("desktopApp", "desktopUi", "tv", "wearos", "web"):
     require(not (ROOT / target).exists(), f"Unsupported platform returned: {target}")
 settings = (ROOT / "settings.gradle.kts").read_text(encoding="utf-8")
 require(set(re.findall(r'include\("(:[^"]+)"\)', settings)) == {":app", ":shared", ":sharedUi"},
@@ -145,7 +145,7 @@ specific = {
 print("Residual nominal identity inventory (compatibility and attribution require review):")
 for name in sorted(filter(None, tracked)):
     source = ROOT / name
-    if not name.startswith(("app/", "shared/", "sharedUi/", "backend/", "web/", ".github/workflows/")) and name != "build.gradle.kts":
+    if not name.startswith(("app/", "shared/", "sharedUi/", "backend/", ".github/workflows/")) and name != "build.gradle.kts":
         continue
     if not source.is_file() or source.is_symlink() or source.suffix not in text_suffixes | {".go", ".mod", ".ts", ".tsx", ".md", ".html", ".service"} and source.name != "CMakeLists.txt":
         continue
