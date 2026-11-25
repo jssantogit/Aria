@@ -450,7 +450,7 @@ internal fun SettingsScreen(
                             else -> onSelectSection(section)
                         }
                     },
-                    showWear = remember(context) { WatchInstaller.available(context) },
+                    showWear = false,
                     onListenTogether = onListenTogether,
                 )
             }
@@ -1409,17 +1409,6 @@ internal fun SettingsScreen(
         }
         }
 
-        // Only in a build that carries the watch app — see app/build.gradle.kts.
-        if (remember { WatchInstaller.available(context) }) {
-            if (selectedSection == SettingsSection.WEAR || (selectedSection == null && searchQuery.isNotBlank())) {
-        SearchableSettingsGroup(search, destination = SettingsSection.WEAR, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.WEAR) } else null) {
-                row(stringResource(R.string.wear_os_section), "watch", "wear os", "galaxy watch", "pixel watch", "install") {
-                    WearOsSettingsRow(onClick = onWearOs)
-                }
-            }
-        }
-        }
-
         if (selectedSection == SettingsSection.YOUR_DATA || (selectedSection == null && searchQuery.isNotBlank())) {
         SearchableSettingsGroup(search, destination = SettingsSection.YOUR_DATA, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.YOUR_DATA) } else null, header = stringResource(R.string.your_data)) {
             val replayTitle = stringResource(R.string.replay)
@@ -1623,7 +1612,7 @@ internal fun SettingsScreen(
         if (selectedSection == SettingsSection.ABOUT && searchQuery.isBlank()) {
         Text(
             text = buildAnnotatedString {
-                append("BitChord $version  ")
+                append("Aria $version  ")
                 val linkStyles = TextLinkStyles(
                     style = SpanStyle(
                         color = appleMusicKeyColor(),
@@ -1633,12 +1622,12 @@ internal fun SettingsScreen(
                 // The fork is the app users installed. Preserve upstream
                 // attribution separately rather than directing them to an
                 // unrelated support website or advertising a legacy provider.
-                withLink(LinkAnnotation.Url("https://github.com/jssantogit/BitChord", linkStyles)) {
+                withLink(LinkAnnotation.Url("https://github.com/jssantogit/Aria", linkStyles)) {
                     append("GitHub")
                 }
                 append("  ·  ")
                 withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx/BitChord", linkStyles)) {
-                    append("BitChord original")
+                    append("Upstream credits")
                 }
             },
             style = MaterialTheme.typography.labelSmall,

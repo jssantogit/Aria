@@ -194,19 +194,6 @@
                 <data android:host="youtu.be" />
             </intent-filter>
 
-            <!-- Public Listen Together invites. autoVerify makes a tap open
-                 BitChord directly once the domain publishes its assetlinks
-                 association for the production signing certificate. -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="bitchord.kushagrasingh.in"
-                    android:pathPattern="/invite/......" />
-            </intent-filter>
-
             <!-- Custom scheme for Listen Together invites on custom server deployments. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -425,31 +412,6 @@
                 <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-        </service>
-
-        <!--
-          Commands from the BitChord watch app (wearos/). Exported because Play
-          services binds it; only messages from the same package and signing key
-          on a paired watch are ever delivered, and only under this path.
-        -->
-        <service
-            android:name=".wear.WearCommandService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/bitchord/command"
-                    android:scheme="wear" />
-            </intent-filter>
-            <!-- The watch's player reading a track through the phone. -->
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/bitchord/stream"
-                    android:scheme="wear" />
             </intent-filter>
         </service>
 
