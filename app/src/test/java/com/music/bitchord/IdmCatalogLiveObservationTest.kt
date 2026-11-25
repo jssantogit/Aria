@@ -3080,7 +3080,12 @@ class IdmCatalogLiveObservationTest {
             return records
         }
 
-        for (provider in listOf(mb, apple, discogs)) {
+        val providers = when (System.getenv("IDM_CATALOG_LIVE_SCOPE") ?: "full") {
+            "full" -> listOf(mb, apple, discogs)
+            "itunes-musicbrainz-search" -> listOf(mb, apple)
+            else -> error("Unsupported IDM live search scope")
+        }
+        for (provider in providers) {
             val sourceName = when (provider) { mb -> "musicbrainz"; apple -> "itunes"; else -> "discogs" }
             for ((index, case) in searchParityCases.withIndex()) {
                 val start = System.nanoTime()

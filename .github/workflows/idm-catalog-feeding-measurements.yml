@@ -99,6 +99,7 @@ on:
         options:
           - 'full'
           - 'itunes-albums'
+          - 'itunes-musicbrainz-search'
       discogs_capacity_target:
         description: 'Cumulative verified Discogs Home capacity target (same Android gestures)'
         required: true
@@ -352,7 +353,7 @@ jobs:
           retention-days: 14
 
   live-observation:
-    name: Live API observations · ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full' }}
+    name: Live API observations · ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full' }}
     # Non-gating remote availability is reported as a status, never silently
     # replaced by a fixture. A missing Discogs secret is explicitly blocked.
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
@@ -360,17 +361,17 @@ jobs:
     # Let active source observations finish even when a new HEAD is pushed.
     # All live jobs in this repository share the same Discogs credential budget.
     concurrency:
-      group: idm-catalog-live-${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full' }}
+      group: idm-catalog-live-${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full' }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       IDM_CATALOG_LIVE: '1'
       # Temporary iteration focus for #224; manual full mode remains available.
-      IDM_CATALOG_LIVE_SCOPE: ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full' }}
+      IDM_CATALOG_LIVE_SCOPE: ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full' }}
       IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
       IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
-      IDM_CATALOG_DISCOGS_TOKEN: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-albums') || 'full') == 'full' && secrets.DISCOGS_TOKEN || '' }}
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full') == 'full' && secrets.DISCOGS_TOKEN || '' }}
 
     steps:
       - name: Checkout exact candidate HEAD
@@ -402,7 +403,7 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           mkdir -p "$IDM_CATALOG_METRICS_DIR"
-          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums) ;; *) exit 1 ;; esac
+          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums|itunes-musicbrainz-search) ;; *) exit 1 ;; esac
           echo "Live scope: $IDM_CATALOG_LIVE_SCOPE (focused results are not full parity)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Observe live provider responses through production catalogue adapters
@@ -570,12 +571,14 @@ jobs:
           PY
 
       - name: Observe fixed live album matrix (#229)
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-musicbrainz-search'
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_album_parity_matrix'
 
       - name: Summarize selected album matrix cells
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-musicbrainz-search'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -652,14 +655,14 @@ jobs:
           PY
 
       - name: Observe fixed live search matrix (#230)
-        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-albums'
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
             :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_search_parity_matrix'
 
-      - name: Summarize all 90 search matrix cells and unresolved labels
-        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+      - name: Summarize selected search matrix cells and unresolved labels
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-albums'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -675,11 +678,20 @@ jobs:
                   "apple_continuation_gestures", "apple_continuation_target_recovered",
                   "apple_continuation_qualified_recovered", "apple_continuation_interrupted",
                   "source_interruption", "elapsed_ms")
+          scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
+          providers = ("musicbrainz", "itunes") if scope == "itunes-musicbrainz-search" else ("musicbrainz", "itunes", "discogs")
+          expected = {f"live_search_matrix_{provider}_{i:02d}" for provider in providers for i in range(1, 31)}
+          actual = {p.stem for p in path.glob("live_search_matrix_*.json")}
+          if actual != expected:
+              raise SystemExit(f"Unexpected search matrix cells: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          totals = {}
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### #230 fixed search targets (not general relevance adjudication)\n\n")
               out.write("| Provider | Case | Target | Top 5 | Labelled match | Non-target | Unjudged | Status |\n")
               out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
-              for provider in ("musicbrainz", "itunes", "discogs"):
+              out.write(f"Live scope: {scope}; {len(expected)} required cells.\n\n")
+              for provider in providers:
+                  totals[provider] = {"supported": 0, "top_five": 0, "proven": 0, "category": 0, "remote_top_five": 0, "remote_supported": 0}
                   for i in range(1, 31):
                       name = f"search_matrix_{provider}_{i:02d}"
                       row = json.loads((path / f"live_{name}.json").read_text())
@@ -687,10 +699,26 @@ jobs:
                           raise SystemExit("Wrong search matrix report mode")
                       if row["labelled_target_rows"] + row["labelled_non_target_rows"] + row["unjudged_rows"] != row["first_ten_rows"]:
                           raise SystemExit("Search judgement denominator mismatch")
+                      total = totals[provider]
+                      total["supported"] += row["native_search_supported"]
+                      total["top_five"] += row["top_five_target"]
+                      total["proven"] += row["target_proven"]
+                      if i >= 25:
+                          total["category"] += row["top_five_target"]
+                      elif row["native_search_supported"]:
+                          total["remote_supported"] += 1
+                          total["remote_top_five"] += row["top_five_target"]
                       print("IDM_SEARCH_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
                       out.write(f"| {provider} | {i:02d} | {row['target_proven']} | {row['top_five_target']} | "
                                 f"{row['labelled_target_rows']} | {row['labelled_non_target_rows']} | "
                                 f"{row['unjudged_rows']} | {row['status']} |\n")
+              out.write("\n### Search totals by source (fixed targets)\n\n")
+              out.write("| Provider | Supported | Target proven | Top 5 | Remote Top 5 | Local category Top 5 |\n")
+              out.write("|---|---:|---:|---:|---:|---:|\n")
+              for provider, total in totals.items():
+                  out.write(f"| {provider} | {total['supported']} | {total['proven']} | "
+                            f"{total['top_five']}/{total['supported']} | "
+                            f"{total['remote_top_five']}/{total['remote_supported']} | {total['category']}/6 |\n")
               out.write("\nCategory routes are local navigation; not remote catalogue availability. "
                         "Discogs release track evidence is not native track search. Unjudged namesakes require adjudication.\n")
           PY
