@@ -562,6 +562,8 @@ jobs:
                   "apple_frozen_title_verified", "apple_qualified_edition_verified",
                   "apple_related_year_edition_verified", "apple_related_year_edition_complete",
                   "apple_mixed_lookup_attempted", "apple_mixed_lookup_verified",
+                  "apple_album_song_search_attempted", "apple_album_song_search_verified",
+                  "apple_alternative_track_route_verified",
                   "apple_verified_excluded_non_audio",
                   "apple_video_probe_attempted", "apple_video_probe_same_collection",
                   "apple_video_probe_verified_rows", "apple_video_probe_count_reconciled",
