@@ -15,7 +15,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AppleEditorialCatalogRepositoryTest {
-    private class Source(val json: String) : ItunesCatalogTransport {
+    private class Source(var json: String) : ItunesCatalogTransport {
         var parameters = emptyMap<String, String>()
         override suspend fun get(path: String, parameters: Map<String, String>): String {
             this.parameters = parameters
@@ -464,6 +464,49 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(unknown, catalog.commercialAudioFormat(
             release.copy(tracks = release.tracks.map { it.copy(trackNumber = 1) }), true, true))
         assertEquals(unknown, catalog.commercialAudioFormat(release.copy(tracks = emptyList()), true, true))
+    }
+
+    @Test fun exactCommercialEvidenceReusedWithoutExtraNetworkOrChangingExplicitType() = runBlocking {
+        val header = album(123, 7)
+        val songs = (1..7).joinToString(",") { n ->
+            track(100 + n, 123).replace("\"trackNumber\":1", "\"trackNumber\":$n")
+                .dropLast(1) + ",\"trackTimeMillis\":180000}"
+        }
+        val source = Source("""{"resultCount":8,"results":[$header,$songs]}""")
+        var now = 10L
+        val repository = AppleEditorialCatalogRepository(ItunesCatalogClient(source), nowNanos = { now })
+        val loaded = repository.albumDetail(123) as AppleEditorialLoad.Success
+        val release = loaded.releases.single()
+        val kind = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.ALBUM
+        val unknown = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED
+        val ep = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.EP
+        assertEquals(kind, release.displayFormat)
+        assertEquals(unknown, release.format)
+        source.json = """{"resultCount":1,"results":[$header]}"""
+        val listing = repository.searchAlbums("Artist") as AppleEditorialLoad.Success
+        val card = listing.releases.single()
+        assertEquals(kind, card.displayFormat)
+        assertEquals(unknown, card.format)
+        assertTrue(card.tracks.isEmpty())
+        assertEquals("ALBUM", com.music.bitchord.ui.appleNativeSearchRows(listing).single().category.name)
+        val plain = card.copy(commercialAudioFormat = unknown)
+        assertEquals(kind, repository.reuseCommercialFormat(plain).displayFormat)
+        assertEquals(ep, repository.reuseCommercialFormat(plain.copy(format = ep)).displayFormat)
+        assertEquals(unknown, repository.reuseCommercialFormat(plain.copy(
+            storefront = "us", appleScopedId = "itunes:us:album:123")).displayFormat)
+        assertEquals(unknown, repository.reuseCommercialFormat(plain.copy(
+            appleCollectionId = 456L, appleScopedId = "itunes:br:album:456")).displayFormat)
+        now += 15L * 60 * 1_000_000_000
+        assertEquals(unknown, repository.reuseCommercialFormat(plain).displayFormat)
+        source.json = """{"resultCount":8,"results":[$header,$songs]}"""
+        repository.albumDetail(123)
+        assertEquals(kind, repository.reuseCommercialFormat(plain).displayFormat)
+        assertEquals(unknown, repository.reuseCommercialFormat(plain.copy(trackCount = 8)).displayFormat)
+        assertEquals(unknown, repository.reuseCommercialFormat(plain).displayFormat)
+        repository.albumDetail(123)
+        source.json = """{"resultCount":0,"results":[]}"""
+        repository.albumDetail(123)
+        assertEquals(unknown, repository.reuseCommercialFormat(plain).displayFormat)
     }
 
     @Test fun missingStorefrontAlbumIsDifferentFromTransportFailure() = runBlocking {

@@ -190,7 +190,79 @@ internal fun appleVerifiedAlbumSongSearch(
 
 internal class AppleEditorialCatalogRepository(
     private val itunes: ItunesCatalogClient = ItunesCatalogClient(),
+    private val nowNanos: () -> Long = { System.nanoTime() },
 ) {
+    // Reuse already obtained exact Apple audio evidence without one lookup per
+    // discography/search card. Process-local, bounded and short-lived; never
+    // create a product, import another storefront, or cache external types.
+    private data class CommercialIdentity(
+        val scopedId: String,
+        val artistId: Long,
+        val artistName: String,
+        val title: String,
+        val releaseDate: String,
+        val trackCount: Int,
+        val upc: String?,
+    )
+    private data class CommercialObservation(
+        val identity: CommercialIdentity,
+        val format: ItunesEditorialReleaseFormat,
+        val observedAt: Long,
+    )
+    private val commercialObservations = linkedMapOf<String, CommercialObservation>()
+    private val commercialTtlNanos = 15L * 60 * 1_000_000_000
+
+    private fun commercialIdentity(row: ItunesEditorialRelease): CommercialIdentity? {
+        val artistId = row.artistId?.takeIf { it > 0 } ?: return null
+        val count = row.trackCount?.takeIf { it > 0 } ?: return null
+        val date = row.releaseDate?.takeIf { it.isNotBlank() } ?: return null
+        if (row.appleCollectionId <= 0 || !Regex("[a-z]{2}").matches(row.storefront) ||
+            row.appleScopedId != "itunes:${row.storefront}:album:${row.appleCollectionId}" ||
+            row.title.isBlank() || row.artistName.isBlank()
+        ) return null
+        return CommercialIdentity(row.appleScopedId, artistId, row.artistName, row.title,
+            date, count, row.upc)
+    }
+
+    @Synchronized
+    private fun rememberCommercialFormat(row: ItunesEditorialRelease) {
+        commercialObservations.remove(row.appleScopedId)
+        val identity = commercialIdentity(row) ?: return
+        val format = row.commercialAudioFormat
+        if (format == ItunesEditorialReleaseFormat.UNCLASSIFIED) return
+        commercialObservations[identity.scopedId] = CommercialObservation(identity, format, nowNanos())
+        while (commercialObservations.size > 256)
+            commercialObservations.remove(commercialObservations.keys.first())
+    }
+
+    @Synchronized
+    private fun forgetCommercialFormat(collectionId: Long, storefront: String) {
+        commercialObservations.remove("itunes:$storefront:album:$collectionId")
+    }
+
+    /** Apply only to an already visible Apple product, preserving source order. */
+    @Synchronized
+    fun reuseCommercialFormat(row: ItunesEditorialRelease): ItunesEditorialRelease {
+        val observation = commercialObservations[row.appleScopedId] ?: return row
+        val elapsed = nowNanos() - observation.observedAt
+        if (elapsed < 0 || elapsed >= commercialTtlNanos) {
+            commercialObservations.remove(row.appleScopedId)
+            return row
+        }
+        val identity = commercialIdentity(row) ?: return row
+        if (identity != observation.identity) {
+            commercialObservations.remove(row.appleScopedId)
+            return row
+        }
+        // Fresh explicit labels or audio evidence always win.
+        if (row.format != ItunesEditorialReleaseFormat.UNCLASSIFIED ||
+            row.commercialAudioFormat != ItunesEditorialReleaseFormat.UNCLASSIFIED) return row
+        return row.copy(commercialAudioFormat = observation.format)
+    }
+
+    fun reuseCommercialFormats(rows: List<ItunesEditorialRelease>): List<ItunesEditorialRelease> =
+        rows.map(::reuseCommercialFormat)
+
     /** Artist presence and attribution come from Apple, not name-matched MBIDs. */
     suspend fun searchArtists(
         query: String,
@@ -241,7 +313,7 @@ internal class AppleEditorialCatalogRepository(
     )) {
         is ItunesCatalogResult.Failure -> AppleEditorialLoad.Failure(source.reason)
         is ItunesCatalogResult.Success -> AppleEditorialLoad.Success(
-            releases = ItunesEditorialCatalog.assemble(storefront, source.items),
+            releases = reuseCommercialFormats(ItunesEditorialCatalog.assemble(storefront, source.items)),
             state = when {
                 source.items.isEmpty() -> AppleEditorialReadState.NOT_IN_STOREFRONT
                 source.possiblyTruncated -> AppleEditorialReadState.POSSIBLY_TRUNCATED
@@ -270,8 +342,8 @@ internal class AppleEditorialCatalogRepository(
             is ItunesCatalogResult.Failure ->
                 AppleEditorialLoad.Failure(source.reason)
             is ItunesCatalogResult.Success -> {
-                val matched = ItunesEditorialCatalog.assemble(storefront, source.items)
-                    .filter { it.artistId == artistId }
+                val matched = reuseCommercialFormats(ItunesEditorialCatalog.assemble(storefront, source.items)
+                    .filter { it.artistId == artistId })
                 AppleEditorialLoad.Success(
                     releases = matched,
                     state = when {
@@ -295,8 +367,8 @@ internal class AppleEditorialCatalogRepository(
     )) {
         is ItunesCatalogResult.Failure -> AppleEditorialLoad.Failure(source.reason)
         is ItunesCatalogResult.Success -> {
-            val releases = ItunesEditorialCatalog.assemble(storefront, source.items)
-                .filter { it.artistId == artistId }
+            val releases = reuseCommercialFormats(ItunesEditorialCatalog.assemble(storefront, source.items)
+                .filter { it.artistId == artistId })
             AppleEditorialLoad.Success(
                 releases = releases,
                 state = when {
@@ -333,11 +405,15 @@ internal class AppleEditorialCatalogRepository(
     ): AppleEditorialLoad = when (val source = itunes.lookupAlbum(
         collectionId, country = storefront,
     )) {
-        is ItunesCatalogResult.Failure -> AppleEditorialLoad.Failure(source.reason)
+        is ItunesCatalogResult.Failure -> {
+            forgetCommercialFormat(collectionId, storefront)
+            AppleEditorialLoad.Failure(source.reason)
+        }
         is ItunesCatalogResult.Success -> {
             val release = ItunesEditorialCatalog.assemble(storefront, source.items)
                 .singleOrNull { it.appleCollectionId == collectionId }
             if (release == null) {
+                forgetCommercialFormat(collectionId, storefront)
                 AppleEditorialLoad.Success(emptyList(), AppleEditorialReadState.NOT_IN_STOREFRONT)
             } else {
                 val positionless = release.tracks.count {
@@ -439,6 +515,7 @@ internal class AppleEditorialCatalogRepository(
                     format = explicitFormat,
                     commercialAudioFormat = commercialFormat,
                 )
+                rememberCommercialFormat(finalRelease)
                 AppleEditorialLoad.Success(
                     listOf(finalRelease),
                     if (audioComplete) AppleEditorialReadState.COMPLETE

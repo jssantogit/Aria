@@ -5244,6 +5244,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val rows = appleSearchRowsPreservingVerifiedArtwork(
                     appleNativeAlbumSearchRowsInSourceOrder(
                         snapshot.visible, storefront = "br",
+                        reuseCommercialFormat = appleEditorialRepository::reuseCommercialFormat,
                     ),
                     (_appleEditorialResults.value as? UiState.Success)?.data.orEmpty(),
                 )
@@ -5689,7 +5690,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         else AppleEditorialReadState.COMPLETE
         val current = (_appleEditorialArtistDetail.value as? UiState.Success)?.data
         return appleNativeArtistDetail(
-            AppleEditorialLoad.Success(snapshot.visible, readState),
+            AppleEditorialLoad.Success(
+                appleEditorialRepository.reuseCommercialFormats(snapshot.visible), readState,
+            ),
             browseId, artistName,
         )?.let { fresh ->
             // Paging cannot revert already-decoded higher-resolution assets to

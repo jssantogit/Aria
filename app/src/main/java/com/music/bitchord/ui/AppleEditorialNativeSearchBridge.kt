@@ -35,6 +35,7 @@ internal fun appleNativeSearchRows(
 internal fun appleNativeAlbumSearchRowsInSourceOrder(
     appleRows: List<ItunesCatalogItem>,
     storefront: String,
+    reuseCommercialFormat: (ItunesEditorialRelease) -> ItunesEditorialRelease = { it },
 ): List<AppleEditorialSearchRow> {
     val ranking = appleRows.asSequence()
         .filter { it.type == ItunesCatalogItemType.ALBUM && it.storefront == storefront }
@@ -43,6 +44,7 @@ internal fun appleNativeAlbumSearchRowsInSourceOrder(
         .toMap()
     return ItunesEditorialCatalog.assemble(storefront, appleRows)
         .sortedBy { ranking[it.appleCollectionId] ?: Int.MAX_VALUE }
+        .map(reuseCommercialFormat)
         .mapNotNull { it.asNativeSearchRow() }
 }
 
