@@ -107,6 +107,8 @@ internal data class ItunesAlbumLookupObservation(
     val removedDuplicateOrDisputedSongs: Int,
     /** Exact collection-owned unique video IDs; never returned as media. */
     val verifiedMusicVideoRows: Int = 0,
+    /** Explicit collection-owned interactive booklet IDs, never rendered. */
+    val verifiedBookletRows: Int = 0,
 )
 
 internal sealed interface ItunesCatalogResult {
@@ -459,12 +461,17 @@ internal class ItunesCatalogClient(
                 val matching = rawTracks.filter { it.positiveId("collectionId") == requested }
                 val matchingSongs = matching.count { it.text("kind") == "song" }
                 val parsedSongs = filtered.count { it.type == ItunesCatalogItemType.TRACK }
-                val videoIds = matching.filter { it.text("kind") == "music-video" }
-                    .mapNotNull { it.positiveId("trackId") }
-                val songIds = matching.filter { it.text("kind") == "song" }
-                    .mapNotNull { it.positiveId("trackId") }.toSet()
-                val verifiedVideos = videoIds.groupingBy { it }.eachCount()
-                    .count { (id, occurrences) -> occurrences == 1 && id !in songIds }
+                // Count only explicit known non-audio kinds, with one unique
+                // positive ID across ALL raw track rows. A collision or an
+                // unknown kind cannot be treated as a harmless missing song.
+                val rawIdCounts = rawTracks.mapNotNull { it.positiveId("trackId") }
+                    .groupingBy { it }.eachCount()
+                fun verifiedNonAudio(kind: String): Int = matching.count {
+                    it.text("kind") == kind &&
+                        it.positiveId("trackId")?.let { id -> rawIdCounts[id] == 1 } == true
+                }
+                val verifiedVideos = verifiedNonAudio("music-video")
+                val verifiedBooklets = verifiedNonAudio("interactive-booklet")
                 ItunesAlbumLookupObservation(
                     declaredResults = count,
                     rawRows = rows.size,
@@ -479,6 +486,7 @@ internal class ItunesCatalogClient(
                     removedDuplicateOrDisputedSongs = parsedSongs -
                         items.count { it.type == ItunesCatalogItemType.TRACK },
                     verifiedMusicVideoRows = verifiedVideos,
+                    verifiedBookletRows = verifiedBooklets,
                 )
             }
             // The editorial listing and Apple CDN imagery have separate opt-
