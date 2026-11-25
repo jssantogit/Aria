@@ -179,8 +179,16 @@ internal suspend fun supplementMusicBrainzHomeGenres(
     for ((tag, aliases) in musicBrainzHomeGenreAliases) {
         if (musicBrainzHomeGenreAnchors(known.values.toList()).size >= 5 ||
             attempts >= 6 || existing.isEmpty()) break
-        if (known.values.any { row -> row.editorialGenreTags.any { it in aliases } })
-            continue
+        // A multi-tagged release can only satisfy one diversity slot.
+        // Skip this tag only if the remaining distinct releases can already
+        // represent every positively evidenced genre, including this one.
+        val current = known.values.toList()
+        val evidenceGroups = musicBrainzHomeGenreAliases.values.count { group ->
+            current.any { row -> row.editorialGenreTags.any { it in group } }
+        }
+        if (musicBrainzHomeGenreAnchors(current).size == evidenceGroups &&
+            current.any { row -> row.editorialGenreTags.any { it in aliases } }
+        ) continue
         attempts++
         val result = try {
             source.searchReleaseGroupsForTag(tag, limit = 20)

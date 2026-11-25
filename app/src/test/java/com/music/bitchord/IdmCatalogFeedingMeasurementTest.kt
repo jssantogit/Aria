@@ -124,29 +124,38 @@ class IdmCatalogFeedingMeasurementTest {
             mbId(1), "Base single", "Single", "2026-11-15", "Artist",
         ).apply { editorialGenreTags = listOf("pop") }
         val initial = canonicalPublicReleaseRows(listOf(base), "2026-10-01", "2026-11-23")
-        var calls = 0
+        val requestedTags = mutableListOf<String>()
         val source = MusicBrainzCatalogSearch(MusicBrainzClient(
             transport = object : MusicBrainzTransport {
                 override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
                     assertEquals("release-group", path)
                     assertEquals("0", parameters["offset"])
                     assertEquals("20", parameters["limit"])
-                    calls++
-                    val tag = when (calls) {
-                        1 -> "rock"
-                        2 -> "not the queried genre"
-                        else -> throw java.io.IOException("fixture interrupted")
+                    val query = requireNotNull(parameters["query"])
+                    val tag = when {
+                        query.startsWith("tag:\"rock\"") -> "rock"
+                        query.startsWith("tag:\"hip hop\"") -> "hip hop"
+                        query.startsWith("tag:\"electronic\"") -> "electronic"
+                        else -> throw AssertionError("Unexpected supplement query: $query")
                     }
+                    requestedTags += tag
+                    // Malformed source page is a deterministic scanner failure.
+                    // Transport IO retries belong to the client, not the
+                    // scanner's logical-query budget or this fixture's count.
+                    if (tag == "electronic")
+                        return """{"count":1,"offset":1,"release-groups":[]}"""
+                    val reportedTag = if (tag == "rock") "rock" else "not the queried genre"
+                    val id = if (tag == "rock") 2 else 3
                     return """{"count":1,"offset":0,"release-groups":[
-                        {"id":"${mbId(calls + 1)}","title":"Tagged $calls","primary-type":"Album",
+                        {"id":"${mbId(id)}","title":"Tagged $id","primary-type":"Album",
                          "first-release-date":"2020","artist-credit":[{"name":"Artist"}],
-                         "tags":[{"name":"$tag","count":2}]}
+                         "tags":[{"name":"$reportedTag","count":2}]}
                     ]}"""
                 }
             },
         ))
         val result = supplementMusicBrainzHomeGenres(source, initial, "2026-11-23")
-        assertEquals(3, calls)
+        assertEquals(listOf("rock", "hip hop", "electronic"), requestedTags)
         assertEquals(3, result.attempts)
         assertEquals(2, result.sourcePositions)
         assertTrue(result.sourceFailure)
