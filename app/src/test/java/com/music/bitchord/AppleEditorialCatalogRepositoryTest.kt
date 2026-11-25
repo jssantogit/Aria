@@ -211,7 +211,13 @@ class AppleEditorialCatalogRepositoryTest {
             override suspend fun get(path: String, parameters: Map<String, String>): String {
                 calls += path to parameters
                 val original = song(101, 1)
-                if (path == "lookup") return """{"resultCount":2,"results":[${album(123, 2)},$original]}"""
+                if (path == "lookup") {
+                    if (parameters["entity"] == "musicTrack" && variant == "mixedUnavailable")
+                        throw java.io.IOException("fixture unavailable")
+                    val observed = if (parameters["entity"] == "musicTrack" && variant == "mixedConflict")
+                        original.replace("Song 101", "Contradictory lookup") else original
+                    return """{"resultCount":2,"results":[${album(123, 2)},$observed]}"""
+                }
                 assertEquals("search", path)
                 assertEquals("albumTerm", parameters["attribute"])
                 assertEquals("Release 123", parameters["term"])
@@ -240,9 +246,15 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(0, recovered.albumDiagnostics?.verifiedExcludedNonAudioRows)
         assertFalse(requireNotNull(com.music.bitchord.ui.appleNativeAlbumDetail(
             recovered, "itunes:br:album:123")).partialTracklist)
-        for (bad in listOf("foreign", "wrongTitle", "position", "wrongTotal", "conflict")) {
+        for (bad in listOf("foreign", "wrongTitle", "position", "wrongTotal", "conflict",
+            "mixedUnavailable", "mixedConflict")) {
             variant = bad
+            val before = calls.size
             val partial = repository.albumDetail(123) as AppleEditorialLoad.Success
+            if (bad.startsWith("mixed")) {
+                assertEquals(2, calls.size - before)
+                assertEquals(false, partial.albumDiagnostics?.albumSongSearchAttempted)
+            }
             assertEquals(bad, AppleEditorialReadState.PARTIAL_TRACKLIST, partial.state)
             assertEquals(listOf(101L), partial.releases.single().tracks.map { it.id })
             assertEquals(false, partial.albumDiagnostics?.albumSongSearchVerified)
