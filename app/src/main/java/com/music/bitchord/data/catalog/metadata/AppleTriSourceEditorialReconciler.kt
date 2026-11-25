@@ -48,12 +48,15 @@ internal object AppleTriSourceEditorialReconciler {
         mbGroups: List<MusicBrainzReleaseGroupHit> = emptyList(),
         discogsObservations: List<DiscogsEditionEnrichment> = emptyList(),
         nowMillis: Long = System.currentTimeMillis(),
+        allowExplicitAlbumLinks: Boolean = false,
     ): List<AppleTriSourceEditorialEntry> {
         val appleOnly = ItunesEditorialCatalog.assemble(storefront, appleRows)
         if (appleOnly.isEmpty()) return emptyList()
 
         val matches = appleOnly.associate { release ->
-            release.appleScopedId to AppleMusicBrainzEditionMatcher.match(release, mbEditions)
+            release.appleScopedId to if (allowExplicitAlbumLinks)
+                AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(release, mbEditions)
+            else AppleMusicBrainzEditionMatcher.match(release, mbEditions)
         }
 
         // Even two perfectly matching Apple records may represent separate
