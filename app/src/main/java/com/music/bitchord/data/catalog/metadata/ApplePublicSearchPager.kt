@@ -164,6 +164,26 @@ internal fun applePublicQualifiedAlbumMatch(query: String, row: ItunesCatalogIte
     ))
 }
 
+/**
+ * A year-labelled Single/EP is useful search evidence, not proof of the
+ * original work's edition. Do not strip the year from the displayed title,
+ * merge IDs, or let it outrank an exact/recognized mastering match.
+ */
+internal fun applePublicRelatedYearEditionMatch(query: String, row: ItunesCatalogItem): Boolean {
+    if (row.type != ItunesCatalogItemType.ALBUM ||
+        ItunesEditorialCatalog.formatFromAppleTitle(row.title) !in
+            setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+    ) return false
+    val base = applePublicAlbumWorkKey(row.title)
+    val match = Regex("""^(.+)\s+(?:19|20)\d{2}$""").matchEntire(base) ?: return false
+    val work = match.groupValues[1]
+    val term = applePublicSearchFold(query)
+    val credit = applePublicSearchFold(row.artistName)
+    return term == work || (credit.isNotBlank() && term in listOf(
+        "$credit $work", "$work $credit", "$credit - $work", "$work - $credit",
+    ))
+}
+
 /** A returned source credit may reveal the correct boundary of a compound
  * query even when its other field is irrelevant. This nominates a search term
  * only: every recovered item still has to match the entire original query. */
@@ -252,7 +272,8 @@ internal fun applePublicSearchMatchRank(
             artist == term -> 0
             title == term || term in compound -> 1
             beginsAsWholeTerm(title, term) ||
-                compound.any { beginsAsWholeTerm(it, term) } || titleFirstEdition -> 2
+                compound.any { beginsAsWholeTerm(it, term) } || titleFirstEdition ||
+                applePublicRelatedYearEditionMatch(query, row) -> 2
             beginsAsWholeTerm(artist, term) -> 3
             else -> null
         }
@@ -423,7 +444,11 @@ internal class ApplePublicSearchPager(
                 applePublicSearchMatchRank(query, row)?.let { it to row }
             }
             .sortedWith(compareBy<Pair<Int, ItunesCatalogItem>> { it.first }
-                .thenBy { if (applePublicQualifiedAlbumMatch(query, it.second)) 0 else 1 })
+                .thenBy { when {
+                    applePublicQualifiedAlbumMatch(query, it.second) -> 0
+                    applePublicRelatedYearEditionMatch(query, it.second) -> 2
+                    else -> 1
+                } })
             .forEach { (_, row) ->
             val prev = rows[row.id]
             if (prev == null) {
