@@ -5,7 +5,7 @@ from tools.delivery_ci_observations import collect_observations, ObservationErro
 SHA = 'a' * 40
 
 class Reader:
-    repository = 'jssantogit/BitChord'
+    repository = 'jssantogit/Aria'
     def __init__(self):
         self.runs = [{'id': 100, 'head_sha': SHA, 'event': 'pull_request',
                       'head_repository': {'full_name': self.repository},

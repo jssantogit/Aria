@@ -8,14 +8,14 @@ MERGE = 'c' * 40
 DIGEST = 'd' * 64
 
 def checkpoint():
-    return {'version': 1, 'repository': 'jssantogit/BitChord',
+    return {'version': 1, 'repository': 'jssantogit/Aria',
             'manifest_digest': DIGEST, 'main_sha': MAIN, 'pr_number': 97,
             'expected_head_sha': HEAD, 'revision': 3,
             'stage': 'preflight_green',
             'approval_required': True, 'executable': False}
 
 def observed():
-    return {'repository': 'jssantogit/BitChord', 'main_sha': MAIN,
+    return {'repository': 'jssantogit/Aria', 'main_sha': MAIN,
             'pr_number': 97, 'head_sha': HEAD, 'pr_state': 'open',
             'merged': False, 'merge_sha': None, 'android_check': 'success',
             'android_check_sha': HEAD}

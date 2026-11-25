@@ -6,7 +6,7 @@ import unittest
 from tools.delivery_checkpoint_pilot import PilotError, prepare_evidence
 
 MAIN = 'a' * 40
-REPO = 'jssantogit/BitChord'
+REPO = 'jssantogit/Aria'
 MANIFEST = {
     'version': 1, 'repository': REPO, 'target': 'main',
     'items': [{'number': 90, 'expected_head_sha': 'b' * 40,

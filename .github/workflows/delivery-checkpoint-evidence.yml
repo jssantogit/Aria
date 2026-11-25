@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m tools.delivery_checkpoint_pilot \
-            --repo jssantogit/BitChord \
+            --repo jssantogit/Aria \
             --manifest ".github/integration-batches/$BATCH.json" \
             --output "$RUNNER_TEMP/delivery-checkpoint.json" \
             --main-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
@@ -114,7 +114,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: di4-checkpoint-evidence
-          repository: jssantogit/BitChord
+          repository: jssantogit/Aria
           run-id: ${{ inputs.source_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/di4-evidence-in
@@ -131,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m tools.delivery_artifact \
-            --repo jssantogit/BitChord \
+            --repo jssantogit/Aria \
             --manifest ".github/integration-batches/$BATCH.json" \
             --content "$RUNNER_TEMP/di4-evidence-in/delivery-checkpoint.json" \
             --run-id "$SOURCE_RUN_ID" --attempt "$SOURCE_ATTEMPT" \

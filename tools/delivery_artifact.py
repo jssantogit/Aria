@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 from tools.delivery_transfer import inspect_evidence, MAX_BYTES
 
-REPO = 'jssantogit/BitChord'
+REPO = 'jssantogit/Aria'
 SOURCE_WORKFLOW = '.github/workflows/delivery-checkpoint-evidence.yml'
 ARTIFACT_NAME = 'di4-checkpoint-evidence'
 MAX_ARCHIVE_BYTES = 262144

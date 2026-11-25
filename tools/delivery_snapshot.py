@@ -123,7 +123,7 @@ class GitHubSnapshotReader:
 
 def collect_snapshot(reader, repository):
     """Pin main and every PR HEAD; never trust partial/damaged API responses."""
-    _need(repository == "jssantogit/BitChord", "unapproved repository for planner")
+    _need(repository == "jssantogit/Aria", "unapproved repository for planner")
     try:
         main_sha = reader.main_sha()
         _need(isinstance(main_sha, str) and bool(_SHA.fullmatch(main_sha)),
@@ -174,7 +174,7 @@ def collect_snapshot(reader, repository):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Read-only GitHub PR snapshot")
-    parser.add_argument("--repo", required=True, help="jssantogit/BitChord")
+    parser.add_argument("--repo", required=True, help="jssantogit/Aria")
     args = parser.parse_args(argv)
     try:
         report = collect_snapshot(

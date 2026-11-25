@@ -12,7 +12,7 @@ import tempfile
 from tools.delivery_journal import initialize
 from tools.delivery_transfer import export_evidence
 
-REPO = 'jssantogit/BitChord'
+REPO = 'jssantogit/Aria'
 
 
 class PilotError(ValueError):

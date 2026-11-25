@@ -35,9 +35,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/delivery_snapshot.py --repo jssantogit/BitChord > "$RUNNER_TEMP/delivery-snapshot.json"
+          python3 tools/delivery_snapshot.py --repo jssantogit/Aria > "$RUNNER_TEMP/delivery-snapshot.json"
           python3 tools/delivery_planner.py --input "$RUNNER_TEMP/delivery-snapshot.json" > "$RUNNER_TEMP/delivery-plan.json"
-          python3 tools/delivery_preflight.py --plan "$RUNNER_TEMP/delivery-plan.json" --repo jssantogit/BitChord --workers 4 > "$RUNNER_TEMP/delivery-preflight.json"
+          python3 tools/delivery_preflight.py --plan "$RUNNER_TEMP/delivery-plan.json" --repo jssantogit/Aria --workers 4 > "$RUNNER_TEMP/delivery-preflight.json"
       - name: Verify fail-closed acceptance invariants
         shell: bash
         run: |

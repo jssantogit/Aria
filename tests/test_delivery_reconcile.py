@@ -9,13 +9,13 @@ MAIN = 'a' * 40
 HEAD = 'b' * 40
 
 def manifest():
-    return {'version': 1, 'repository': 'jssantogit/BitChord', 'target': 'main',
+    return {'version': 1, 'repository': 'jssantogit/Aria', 'target': 'main',
             'items': [{'number': 90, 'expected_head_sha': HEAD,
                        'expected_base_ref': 'main', 'depends_on': None,
                        'allowed_files': ['src/a.kt']}]}
 
 class Reader:
-    repository = 'jssantogit/BitChord'
+    repository = 'jssantogit/Aria'
     def __init__(self):
         self.main = MAIN
         self.data = {'head_sha': HEAD, 'base_ref': 'main', 'base_sha': MAIN,

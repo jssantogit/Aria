@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed, serial BitChord integration controller; no writes in plan mode."""
+"""Fail-closed, serial Aria integration controller; no writes in plan mode."""
 import argparse
 from datetime import datetime, timezone
 import json
@@ -97,7 +97,7 @@ class GitHubREST:
                       headers={'Accept': 'application/vnd.github+json',
                                'X-GitHub-Api-Version': '2022-11-28',
                                'Authorization': 'Bearer ' + self.token,
-                               'User-Agent': 'BitChord-integration-controller',
+                               'User-Agent': 'Aria-integration-controller',
                                'Content-Type': 'application/json'})
         try:
             with urlopen(req, timeout=30) as response:
@@ -459,7 +459,7 @@ def main():
     args = parser.parse_args()
     need(re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,60}', args.batch),
          'Unsafe batch identifier')
-    need(os.environ.get('GITHUB_REPOSITORY') == 'jssantogit/BitChord',
+    need(os.environ.get('GITHUB_REPOSITORY') == 'jssantogit/Aria',
          'Only the canonical repository may run the queue')
     need(os.environ.get('GITHUB_REF') == 'refs/heads/main',
          'Workflow must be dispatched from main')
@@ -478,8 +478,8 @@ def main():
         print(f'{stamp} {message}', flush=True)
 
     IntegrationController(
-        GitHubREST('jssantogit/BitChord', token),
-        'jssantogit/BitChord', logger=realtime_log).run(
+        GitHubREST('jssantogit/Aria', token),
+        'jssantogit/Aria', logger=realtime_log).run(
             batch, mode=args.mode, expected_main_sha=args.expected_main_sha)
 
 
