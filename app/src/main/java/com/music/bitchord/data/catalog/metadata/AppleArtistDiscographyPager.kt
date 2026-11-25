@@ -57,7 +57,8 @@ internal class AppleArtistDiscographyPager(
     private var initialLoaded = false
     private var originalCapped = false
     private var broadSearched = false
-    private var hintSearchCompleted = false
+    // No automatic hint source means no extra continuation remains.
+    private var hintSearchCompleted = titleHintSource == null
     private var unresolvedCoverage = false
 
     fun snapshot(): AppleArtistPageSnapshot = AppleArtistPageSnapshot(
