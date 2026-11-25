@@ -150,7 +150,6 @@ import com.music.bitchord.playback.smart.AutomixAnalysisSource
 import com.music.bitchord.playback.smart.VersionAudioAligner
 import com.music.bitchord.widget.MediaWidget
 import com.music.bitchord.widget.MediaWidgetSnapshot
-import com.music.bitchord.wear.WearBridge
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -207,8 +206,6 @@ const val ACTION_SWAP_VERSION = "com.music.bitchord.action.SWAP_VERSION"
 const val EXTRA_SWAP_MEDIA_ITEM = "bitchord.swap.media_item"
 
 /** Session command used by the media notification's and the 4×1 widget's Favorite button. */
-/** How long the service may stay in the foreground, paused, while the watch plays. */
-private const val WATCH_SESSION_FOREGROUND_MS = 6 * 60 * 60 * 1000L
 
 const val ACTION_TOGGLE_FAVORITE = "com.music.bitchord.action.TOGGLE_FAVORITE"
 
@@ -695,17 +692,8 @@ class PlaybackService : MediaLibraryService() {
         say = { message -> Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show() },
     )
 
-    /**
-     * The BitChord watch app as the speaker — the same model as Cast: the phone
-     * keeps the queue paused, the watch plays it and owns the clock. See
-     * [WearBridge.createSpeaker].
-     */
-    private val watchSpeaker by lazy {
-        WearBridge.createSpeaker(this, scope, localPlayer = { player }, onChanged = { publishWidgetState() })
-    }
-
-    /** Every remote speaker, as the one the session player reports. */
-    private val speakers by lazy { Speakers(listOf(castPlayback, watchSpeaker)) }
+    /** Remote playback reported through the session player. */
+    private val speakers by lazy { Speakers(listOf(castPlayback)) }
 
     /**
      * Binds playback to a Listen Together party, when there is one.
@@ -972,9 +960,6 @@ class PlaybackService : MediaLibraryService() {
             if (reason == Player.DISCONTINUITY_REASON_SEEK) {
                 if (exoPlayer.isPlaying) pushDiscordPresence(exoPlayer)
                 updateLyricSubtitle()
-                // The watch extrapolates its progress ring from the last
-                // position it was given, the same way Discord does.
-                WearBridge.republish(this@PlaybackService, exoPlayer)
             }
         }
 
@@ -1103,7 +1088,6 @@ class PlaybackService : MediaLibraryService() {
             val previous = lastRepeatMode
             lastRepeatMode = repeatMode
             speakers.onLocalRepeatChanged(repeatMode)
-            player?.let { WearBridge.republish(this@PlaybackService, it) }
             // Repeat-one makes the "next" track this one again.
             // Repeat-all loops the queue as it stands; AutoPlay's tracks are the
             // opposite of that — an endless supply of new ones — so they come
@@ -1325,17 +1309,7 @@ class PlaybackService : MediaLibraryService() {
                     publishWidgetState()
                 }
         }
-        // While the watch is the speaker this process serves its audio, and a
-        // paused service drops out of the foreground after ten minutes — after
-        // which Android may freeze the process mid-stream. Held up for the
-        // length of the session instead.
-        scope.launch {
-            WearBridge.watchSession.collect { onWatch ->
-                setForegroundServiceTimeoutMs(
-                    if (onWatch) WATCH_SESSION_FOREGROUND_MS else DEFAULT_FOREGROUND_SERVICE_TIMEOUT_MS,
-                )
-            }
-        }
+        setForegroundServiceTimeoutMs(DEFAULT_FOREGROUND_SERVICE_TIMEOUT_MS)
         // Signing in or out adds or removes Like everywhere at once.
         scope.launch {
             SignedIn.state(this@PlaybackService)
@@ -1494,8 +1468,6 @@ class PlaybackService : MediaLibraryService() {
             DsdExtractorsFactory(),
         )
             .setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())
-        // The watch, when it is the speaker, reads tracks through this same chain.
-        WearBridge.attachStreams(AudioCache.playbackFactory(defaultDataSourceFactory))
 
         configuredFloatOutput = shouldEnableFloatOutput()
         audioDeckOwner.reset()
@@ -5660,8 +5632,7 @@ class PlaybackService : MediaLibraryService() {
             artist = song.artist,
             artworkUrl = song.thumbnailUrl,
             // playWhenReady, not isPlaying — see MediaWidgetSnapshot.isPlaying.
-            // Through the session player, which answers for Cast or the watch
-            // while one of them is the speaker.
+            // Through the session player, which answers for Cast while it is the speaker.
             isPlaying = playing ?: reported.playWhenReady,
             hasPrevious = exoPlayer.hasPreviousMediaItem(),
             hasNext = exoPlayer.hasNextMediaItem(),
@@ -5671,8 +5642,6 @@ class PlaybackService : MediaLibraryService() {
         )
         MediaWidgetSnapshot.save(this, snapshot)
         MediaWidget.refresh(this)
-        // The watch app follows the widget — same moments, same snapshot.
-        WearBridge.publish(this, snapshot, reported, playing)
     }
 
     private var foreignCachePurgeJob: Job? = null
@@ -6762,8 +6731,6 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         transportFade.reset()
-        WearBridge.attachStreams(null)
-        WearBridge.releaseSpeaker()
         // Let go of the receiver's player but leave its session alone: a
         // service that idles out while casting is not the listener choosing to
         // stop, and the next one picks the session up where it was.
@@ -6990,7 +6957,7 @@ class PlaybackService : MediaLibraryService() {
         private val deferPlayToParty: () -> Boolean,
         /** @see PartySync.onLockedTransport */
         private val lockedTransport: (Boolean) -> Boolean,
-        /** Cast or the watch, whichever is the speaker — its clock is what this reports. */
+        /** Cast, when it is the speaker — its clock is what this reports. */
         private val cast: RemoteSpeaker,
         private val getSubtitle: () -> String?,
     ) : ForwardingPlayer(player), CastSink {
@@ -7409,7 +7376,7 @@ class PlaybackService : MediaLibraryService() {
             // A direct choice of a later queue row bypasses items between
             // current and target (and an AutoPlay row, even the next one,
             // becomes the new context). The in-app queue tap lands here too (as a
-            // controller seek), so the notification, Auto, Wear and the app
+            // controller seek), so the notification, Auto and the app
             // all follow the one plan in [QueueTimeline.computeJumpOrder] —
             // in particular, bypassed USER_QUEUE rows are re-pinned after the
             // target rather than left behind the playhead, where
@@ -7549,7 +7516,7 @@ class PlaybackService : MediaLibraryService() {
                         partySync?.endQueueDrag()
                     }
                 }
-                // A stale widget/watch may still send the retired command.
+                // A stale widget or legacy client may still send the retired command.
                 // Reject it explicitly; it is not a native Recording rating.
                 ACTION_TOGGLE_FAVORITE -> return Futures.immediateFuture(
                     SessionResult(SessionError.ERROR_NOT_SUPPORTED),
