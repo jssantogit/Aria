@@ -43,7 +43,7 @@ jobs:
       - name: Grant Gradle wrapper execute permission
         run: chmod +x gradlew
       - name: Assemble Android APK including JNI
-        run: ./gradlew --build-cache :app:assembleDevDebug
+        run: ./gradlew --build-cache :app:assembleDevDebug :app:assembleDevDebugAndroidTest
       - name: Verify packaged native library identity
         run: |
           python3 - <<'PY'
@@ -76,6 +76,13 @@ jobs:
           assert observed == supported, f"Missing supported ABIs: {supported - observed}"
           print(f"Verified Aria native library names across {checked} packaged APK/ABI pairs")
           PY
+      - name: Upload exact instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-identity-instrumentation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: app/build/outputs/apk/androidTest/dev/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload migrated development APK
         uses: actions/upload-artifact@v4
         with:
@@ -104,6 +111,11 @@ jobs:
         with:
           name: aria-namespace-dev-debug-${{ github.event.pull_request.head.sha || github.sha }}
           path: smoke-apks
+      - name: Download matching instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: aria-identity-instrumentation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: smoke-test-apks
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -119,11 +131,12 @@ jobs:
           ram-size: 2048M
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash scripts/aria-android-launch-smoke.sh smoke-apks smoke-evidence
-      - name: Upload clean emulator launch evidence
+          script: bash scripts/aria-android-launch-smoke.sh smoke-apks smoke-evidence smoke-test-apks
+      - name: Upload emulator launch and instrumentation evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aria-launch-smoke-api-${{ matrix.api-level }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: smoke-evidence/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
