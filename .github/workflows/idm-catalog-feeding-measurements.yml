@@ -39,6 +39,8 @@ on:
       - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
+      - app/src/test/java/com/music/bitchord/AppleMusicBrainzEditionMatcherTest.kt
+      - app/src/test/java/com/music/bitchord/AppleAlbumEditionReconciliationServiceTest.kt
       - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
       - app/src/test/java/com/music/bitchord/ItunesEditorialCatalogTest.kt
       - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
@@ -78,6 +80,8 @@ on:
       - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
+      - app/src/test/java/com/music/bitchord/AppleMusicBrainzEditionMatcherTest.kt
+      - app/src/test/java/com/music/bitchord/AppleAlbumEditionReconciliationServiceTest.kt
       - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
       - app/src/test/java/com/music/bitchord/ItunesEditorialCatalogTest.kt
       - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
@@ -172,6 +176,8 @@ jobs:
             --tests 'com.music.bitchord.AppleArtistDiscographyPagerTest' \
             --tests 'com.music.bitchord.AppleEditorialCatalogRepositoryTest' \
             --tests 'com.music.bitchord.AppleEditorialClassificationTest' \
+            --tests 'com.music.bitchord.AppleMusicBrainzEditionMatcherTest' \
+            --tests 'com.music.bitchord.AppleAlbumEditionReconciliationServiceTest' \
             --tests 'com.music.bitchord.ItunesCatalogClientTest' \
             --tests 'com.music.bitchord.ItunesEditorialCatalogTest' \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork'
@@ -268,6 +274,8 @@ jobs:
               "AppleArtistDiscographyPagerTest",
               "AppleEditorialCatalogRepositoryTest",
               "AppleEditorialClassificationTest",
+              "AppleMusicBrainzEditionMatcherTest",
+              "AppleAlbumEditionReconciliationServiceTest",
               "ItunesCatalogClientTest",
               "ItunesEditorialCatalogTest",
           ]
