@@ -170,6 +170,48 @@ private val MEMBER_PRACTICE_VERSION = Regex(
     """\([A-Z]{3,}(?:\s*&\s*[A-Z]{3,})+\s+ver\.?\)"""
 )
 
+/** Relevance within one source page, not a popularity or identity assertion.
+ * Exact title+credit in either order is stronger than a title-only match.
+ * Preserve original source order for ties and leave upstream cursors intact. */
+internal fun musicBrainzPublicSearchKey(value: String?): String =
+    java.text.Normalizer.normalize(value.orEmpty().trim(), java.text.Normalizer.Form.NFKD)
+        .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+
+internal fun musicBrainzPublicSearchRank(query: String, title: String, credit: String?): Int {
+    val term = musicBrainzPublicSearchKey(query)
+    val work = musicBrainzPublicSearchKey(title)
+    val artist = musicBrainzPublicSearchKey(credit)
+    if (term.isBlank() || work.isBlank()) return 3
+    if (artist.isNotBlank() && term in listOf(
+            "$artist $work", "$work $artist", "$artist - $work", "$work - $artist",
+        )) return 0
+    if (term == work) return 1
+    if (artist.isNotBlank() && term == artist) return 2
+    return 3
+}
+
+/** Never scope all search categories to the first of several namesakes. */
+internal fun musicBrainzUnambiguousArtistScope(
+    query: String, artists: List<MusicBrainzArtistHit>,
+): String? {
+    val key = musicBrainzPublicSearchKey(query)
+    if (key.isBlank()) return null
+    return artists.filter { musicBrainzPublicSearchKey(it.name) == key }
+        .map { it.musicBrainzId }.distinct().singleOrNull()
+}
+
+private fun <T> MusicBrainzCatalogSearchResult<T>.rankPublicPage(
+    query: String, title: (T) -> String, credit: (T) -> String? = { null },
+): MusicBrainzCatalogSearchResult<T> = when (this) {
+    is MusicBrainzCatalogSearchResult.Failure -> this
+    is MusicBrainzCatalogSearchResult.Success -> copy(
+        page = page.copy(items = page.items.sortedBy {
+            musicBrainzPublicSearchRank(query, title(it), credit(it))
+        }),
+    )
+}
+
 internal class MusicBrainzCatalogSearch(
     private val client: MusicBrainzClient = MusicBrainzClient(),
     private val capability: ProviderCapability = ProviderCapability.CATALOG_SEARCH,
@@ -189,6 +231,7 @@ internal class MusicBrainzCatalogSearch(
         offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> =
         searchArtistsInternal(query, limit, offset)
+            .rankPublicPage(query, MusicBrainzArtistHit::name)
 
     /** A known genre tag is fielded source evidence, not a guessed artist rank. */
     suspend fun searchArtistsForTag(
@@ -225,6 +268,7 @@ internal class MusicBrainzCatalogSearch(
         offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> =
         searchReleaseGroupsInternal(query, limit, offset)
+            .rankPublicPage(query, MusicBrainzReleaseGroupHit::title, MusicBrainzReleaseGroupHit::artistDisplay)
 
     suspend fun searchReleaseGroupsForArtistMbid(
         artistMbid: String,
@@ -378,6 +422,7 @@ internal class MusicBrainzCatalogSearch(
         offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseHit> =
         searchReleasesInternal(query, limit, offset)
+            .rankPublicPage(query, MusicBrainzReleaseHit::title, MusicBrainzReleaseHit::artistDisplay)
 
     /**
      * Barcode is an exact *candidate index* only. A UPC can identify multiple
@@ -463,6 +508,7 @@ internal class MusicBrainzCatalogSearch(
         offset: Int = 0,
     ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> =
         searchRecordingsInternal(query, limit, offset)
+            .rankPublicPage(query, MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
 
     /**
      * A recording's exact MusicBrainz tag is genre membership evidence, not
