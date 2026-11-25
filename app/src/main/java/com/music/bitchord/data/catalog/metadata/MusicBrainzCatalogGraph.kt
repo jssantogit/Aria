@@ -176,6 +176,11 @@ internal class MusicBrainzCatalogGraph(
             countKey = "release-group-count", offsetKey = "release-group-offset", arrayKey = "release-groups",
             identity = MusicBrainzReleaseGroupHit::musicBrainzId,
         ) { row ->
+            // The explicit browse relation is sufficient if credits were
+            // omitted. A supplied complete contradictory credit is not.
+            val creditIds = row.completeGraphArtistCreditMbids()
+            if (creditIds != null && artistMbid.trim().lowercase(Locale.ROOT) !in creditIds)
+                return@paged null
             MusicBrainzReleaseGroupHit(
                 musicBrainzId = row.string("id").validMbid() ?: return@paged null,
                 title = row.string("title")?.trim()?.takeIf(String::isNotEmpty) ?: return@paged null,
@@ -206,6 +211,9 @@ internal class MusicBrainzCatalogGraph(
             countKey = "release-count", offsetKey = "release-offset", arrayKey = "releases",
             identity = MusicBrainzReleaseHit::musicBrainzId,
         ) { row ->
+            val creditIds = row.completeGraphArtistCreditMbids()
+            if (creditIds != null && artistMbid.trim().lowercase(Locale.ROOT) !in creditIds)
+                return@paged null
             MusicBrainzReleaseHit(
                 musicBrainzId = row.string("id").validMbid() ?: return@paged null,
                 title = row.string("title") ?: return@paged null,
@@ -500,6 +508,8 @@ internal class MusicBrainzCatalogGraph(
                 ?: return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
             val items = data[arrayKey] as? JsonArray
                 ?: return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
+            if (actualOffset != offset || items.size > limit)
+                return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
             MusicBrainzCatalogGraphResult.Success(
                 MusicBrainzCatalogPage(items.mapNotNull { (it as? JsonObject)?.let(decode) }.distinctBy(identity),
                     total, actualOffset, consumedCount = items.size),
