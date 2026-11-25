@@ -587,6 +587,8 @@ jobs:
                   "type_verified", "apple_header_type_verified", "apple_track_label_type_verified",
                   "apple_audio_rule_album", "apple_audio_rule_ep", "apple_audio_rule_single",
                   "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict",
+                  "apple_commercial_type_matches_expected", "apple_display_type_matches_expected",
+                  "apple_display_type_known", "apple_commercial_lower_bound_album",
                   "source_discs_observed", "source_track_positions",
                   "source_track_durations", "artist_route_verified", "related_release_cards",
                   "version_cards", "version_coverage_uncertain", "detail_candidates_read",
@@ -627,7 +629,7 @@ jobs:
               out.write("| Provider | Case | Detail | Decoded tracks | Visible tracks | Discs | Type | Status |\n")
               out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
               out.write(f"Live scope: {scope}; {len(expected)} required cells.\\n\\n")
-              apple_totals = {k: 0 for k in ("type_verified", "apple_header_type_verified", "apple_track_label_type_verified", "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict")}
+              apple_totals = {k: 0 for k in ("type_verified", "apple_header_type_verified", "apple_track_label_type_verified", "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict", "apple_commercial_type_matches_expected", "apple_display_type_matches_expected", "apple_display_type_known", "apple_commercial_lower_bound_album")}
               for provider in providers:
                   for i in range(1, 16):
                       name = f"album_matrix_{provider}_{i:02d}"
@@ -644,6 +646,7 @@ jobs:
               out.write("\nApple source-declared classifications matching the fixed expectations: " + str(apple_totals["type_verified"]) + "/15.\n")
               out.write("Header: " + str(apple_totals["apple_header_type_verified"]) + "; exact track-label evidence: " + str(apple_totals["apple_track_label_type_verified"]) + ".\n")
               out.write("Separate Apple audio-rule diagnostic matches: " + str(apple_totals["apple_audio_rule_matches_expected"]) + "/15; explicit conflicts: " + str(apple_totals["apple_audio_rule_explicit_conflict"]) + ". Not included in source-declared score.\n")
+              out.write("Commercial display known: " + str(apple_totals["apple_display_type_known"]) + "/15; display matches fixed historical expectations: " + str(apple_totals["apple_display_type_matches_expected"]) + "/15; partial lower-bound Albums: " + str(apple_totals["apple_commercial_lower_bound_album"]) + ".\n")
           PY
 
       - name: Observe fixed live search matrix (#230)

@@ -419,6 +419,53 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(album, catalog.observeAppleAudioRuleCandidate(historical, true))
     }
 
+    @Test fun commercialFormatUsesActualSongsNotDeclaredCountAndKeepsExplicitPriority() = runBlocking {
+        fun rows(observed: Int, declared: Int, title: String = "Release 123"): String {
+            val songs = (1..observed).joinToString(",") { n ->
+                track(100 + n, 123).replace("\"trackNumber\":1", "\"trackNumber\":$n")
+                    .dropLast(1) + ",\"trackTimeMillis\":180000}"
+            }
+            return """{"resultCount":${observed + 1},"results":[${album(123, declared).replace("Release 123", title)},$songs]}"""
+        }
+        suspend fun read(observed: Int, declared: Int, title: String = "Release 123") =
+            AppleEditorialCatalogRepository(ItunesCatalogClient(Source(rows(observed, declared, title))))
+                .albumDetail(123) as AppleEditorialLoad.Success
+        val unknown = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED
+        val album = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.ALBUM
+        val ep = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.EP
+        val complete = read(7, 7)
+        assertEquals(AppleEditorialReadState.COMPLETE, complete.state)
+        assertEquals(unknown, complete.releases.single().format)
+        assertEquals(album, complete.releases.single().displayFormat)
+        val partial = read(7, 8)
+        assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST, partial.state)
+        assertEquals(album, partial.releases.single().displayFormat)
+        assertEquals(unknown, read(6, 8).releases.single().displayFormat)
+        assertEquals(ep, read(6, 6).releases.single().displayFormat)
+        val historical = read(7, 7, "Release 123 - EP").releases.single()
+        assertEquals(album, historical.commercialAudioFormat)
+        assertEquals(ep, historical.displayFormat)
+        val detail = com.music.bitchord.ui.appleNativeAlbumDetail(
+            complete, complete.releases.single().appleScopedId,
+        )
+        assertNotNull(detail)
+        assertEquals("ALBUM", detail!!.album.category.name)
+        val partialDetail = com.music.bitchord.ui.appleNativeAlbumDetail(
+            partial, partial.releases.single().appleScopedId,
+        )
+        assertNotNull(partialDetail)
+        assertTrue(partialDetail!!.partialTracklist)
+        assertEquals("ALBUM", partialDetail.album.category.name)
+        val catalog = com.music.bitchord.data.catalog.metadata.ItunesEditorialCatalog
+        val release = complete.releases.single()
+        assertEquals(unknown, catalog.commercialAudioFormat(release, false, true))
+        assertEquals(unknown, catalog.commercialAudioFormat(
+            release.copy(tracks = release.tracks.map { it.copy(collectionId = 999L) }), true, true))
+        assertEquals(unknown, catalog.commercialAudioFormat(
+            release.copy(tracks = release.tracks.map { it.copy(trackNumber = 1) }), true, true))
+        assertEquals(unknown, catalog.commercialAudioFormat(release.copy(tracks = emptyList()), true, true))
+    }
+
     @Test fun missingStorefrontAlbumIsDifferentFromTransportFailure() = runBlocking {
         val source = Source("""{"resultCount":0,"results":[]}""")
         val result = AppleEditorialCatalogRepository(ItunesCatalogClient(source))

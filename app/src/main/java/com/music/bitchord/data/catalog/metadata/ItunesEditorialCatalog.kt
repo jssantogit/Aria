@@ -56,7 +56,12 @@ internal data class ItunesEditorialRelease(
     val musicBrainzReleaseId: String? = null,
     /** The exact Apple-supplied product URL, not a title-based guess. */
     val storeUrl: String? = null,
-)
+    /** Derived commercial format under Apple's audio rules; not a source-declared or historical type. */
+    val commercialAudioFormat: ItunesEditorialReleaseFormat = ItunesEditorialReleaseFormat.UNCLASSIFIED,
+) {
+    val displayFormat: ItunesEditorialReleaseFormat
+        get() = if (format != ItunesEditorialReleaseFormat.UNCLASSIFIED) format else commercialAudioFormat
+}
 
 internal object ItunesEditorialCatalog {
     private val mbid = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -127,18 +132,46 @@ internal object ItunesEditorialCatalog {
         return if (base.equals(release.title.trim(), ignoreCase = true)) explicit else header
     }
 
-    private fun hasExactAudioMembership(release: ItunesEditorialRelease): Boolean {
+    private fun hasExactAudioMembership(release: ItunesEditorialRelease): Boolean =
+        hasVerifiedAudioSubset(release) && release.tracks.size == release.trackCount
+
+    private fun hasVerifiedAudioSubset(release: ItunesEditorialRelease): Boolean {
         val count = release.trackCount ?: return false
-        if (count !in 1..500 || release.tracks.size != count ||
+        val observed = release.tracks.size
+        if (count !in 1..500 || observed !in 1..count ||
             release.appleCollectionId <= 0L ||
+            !Regex("[a-z]{2}").matches(release.storefront) ||
             release.appleScopedId != "itunes:${release.storefront}:album:${release.appleCollectionId}"
         ) return false
         return release.tracks.all {
             it.type == ItunesCatalogItemType.TRACK && it.storefront == release.storefront &&
                 it.collectionId == release.appleCollectionId && it.id > 0 &&
                 (it.discNumber ?: 0) > 0 && (it.trackNumber ?: 0) > 0
-        } && release.tracks.map { it.id }.distinct().size == count &&
-            release.tracks.map { it.discNumber to it.trackNumber }.distinct().size == count
+        } && release.tracks.map { it.id }.distinct().size == observed &&
+            release.tracks.map { it.discNumber to it.trackNumber }.distinct().size == observed
+    }
+
+    /**
+     * Commercial display fallback, distinct from source-declared/historical format.
+     * Seven distinct verified songs exclude both of Apple's short-release categories,
+     * even if additional audio is missing. Never infer a short release from a partial
+     * tracklist or a collection's declared count alone.
+     */
+    fun commercialAudioFormat(
+        release: ItunesEditorialRelease,
+        cleanAudioEvidence: Boolean,
+        complete: Boolean,
+        verifiedExcludedNonAudio: Int = 0,
+    ): ItunesEditorialReleaseFormat {
+        if (!cleanAudioEvidence || !hasVerifiedAudioSubset(release))
+            return ItunesEditorialReleaseFormat.UNCLASSIFIED
+        if (release.tracks.size >= 7) return ItunesEditorialReleaseFormat.ALBUM
+        val declared = release.trackCount ?: return ItunesEditorialReleaseFormat.UNCLASSIFIED
+        if (!complete || verifiedExcludedNonAudio !in 0..declared ||
+            release.tracks.size + verifiedExcludedNonAudio != declared)
+            return ItunesEditorialReleaseFormat.UNCLASSIFIED
+        // This temporary copy changes only the rule's denominator, never the stored source count.
+        return observeAppleAudioRuleCandidate(release.copy(trackCount = release.tracks.size), true)
     }
 
     /**

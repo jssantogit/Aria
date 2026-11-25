@@ -2299,6 +2299,10 @@ class IdmCatalogLiveObservationTest {
                 var appleRuleCandidate = ItunesEditorialReleaseFormat.UNCLASSIFIED
                 var appleRuleTypeMatches = false
                 var appleRuleExplicitConflict = false
+                var appleCommercialTypeMatches = false
+                var appleDisplayTypeMatches = false
+                var appleCommercialLowerBoundAlbum = false
+                var appleDisplayTypeKnown = false
                 var decoded = 0
                 var displayed = 0
                 var discs = 0
@@ -2684,6 +2688,16 @@ class IdmCatalogLiveObservationTest {
                                     appleSevenPlusAudioTracks = result.state == AppleEditorialReadState.COMPLETE &&
                                         record.tracks.size >= 7
                                     typeVerified = formatMatches
+                                    fun matchesExpected(format: ItunesEditorialReleaseFormat): Boolean =
+                                        if (case.kind == "single_ep")
+                                            format in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+                                        else format == ItunesEditorialReleaseFormat.ALBUM
+                                    appleCommercialTypeMatches = matchesExpected(record.commercialAudioFormat)
+                                    appleDisplayTypeMatches = matchesExpected(record.displayFormat)
+                                    appleDisplayTypeKnown = record.displayFormat != ItunesEditorialReleaseFormat.UNCLASSIFIED
+                                    appleCommercialLowerBoundAlbum = partial &&
+                                        record.commercialAudioFormat == ItunesEditorialReleaseFormat.ALBUM
+                                    assertEquals(record.displayFormat.name, detail.album.category.name)
                                     val headerFormat = ItunesEditorialCatalog.formatFromAppleTitle(record.title)
                                     appleHeaderTypeVerified = formatMatches && headerFormat == record.format
                                     appleTrackLabelTypeVerified = formatMatches && headerFormat == ItunesEditorialReleaseFormat.UNCLASSIFIED
@@ -2863,6 +2877,10 @@ class IdmCatalogLiveObservationTest {
                         "apple_audio_rule_single" to if (appleRuleCandidate == ItunesEditorialReleaseFormat.SINGLE) 1 else 0,
                         "apple_audio_rule_matches_expected" to if (appleRuleTypeMatches) 1 else 0,
                         "apple_audio_rule_explicit_conflict" to if (appleRuleExplicitConflict) 1 else 0,
+                        "apple_commercial_type_matches_expected" to if (appleCommercialTypeMatches) 1 else 0,
+                        "apple_display_type_matches_expected" to if (appleDisplayTypeMatches) 1 else 0,
+                        "apple_display_type_known" to if (appleDisplayTypeKnown) 1 else 0,
+                        "apple_commercial_lower_bound_album" to if (appleCommercialLowerBoundAlbum) 1 else 0,
                         "source_discs_observed" to discs,
                         "source_track_positions" to positions,
                         "source_track_durations" to durations,

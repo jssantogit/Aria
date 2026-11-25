@@ -422,7 +422,23 @@ internal class AppleEditorialCatalogRepository(
                 val explicitFormat = ItunesEditorialCatalog.formatFromVerifiedTrackLabels(
                     finalAudio, audioComplete,
                 )
-                val finalRelease = finalAudio.copy(format = explicitFormat)
+                val cleanOriginalAudio = !source.possiblyTruncated &&
+                    source.albumLookupObservation?.let {
+                        it.declaredResults == it.rawRows &&
+                            it.matchingSongRows == release.tracks.size &&
+                            it.foreignSongRows == 0 && it.rejectedSongRows == 0 &&
+                            it.removedDuplicateOrDisputedSongs == 0
+                    } == true
+                val commercialFormat = ItunesEditorialCatalog.commercialAudioFormat(
+                    finalAudio,
+                    cleanAudioEvidence = cleanOriginalAudio || mixed != null || recovered != null,
+                    complete = audioComplete,
+                    verifiedExcludedNonAudio = mixed?.second ?: 0,
+                )
+                val finalRelease = finalAudio.copy(
+                    format = explicitFormat,
+                    commercialAudioFormat = commercialFormat,
+                )
                 AppleEditorialLoad.Success(
                     listOf(finalRelease),
                     if (audioComplete) AppleEditorialReadState.COMPLETE

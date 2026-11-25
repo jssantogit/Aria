@@ -61,7 +61,7 @@ private fun ItunesEditorialRelease.asNativeSearchRow(): AppleEditorialSearchRow?
         artistName = artistName,
         artworkUri = artworkUrl,
         releaseDate = releaseDate,
-        category = when (format) {
+        category = when (displayFormat) {
             ItunesEditorialReleaseFormat.ALBUM -> AppleEditorialReleaseCategory.ALBUM
             ItunesEditorialReleaseFormat.EP -> AppleEditorialReleaseCategory.EP
             ItunesEditorialReleaseFormat.SINGLE -> AppleEditorialReleaseCategory.SINGLE
