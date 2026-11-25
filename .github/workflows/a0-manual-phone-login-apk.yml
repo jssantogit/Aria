@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize]
     paths:
       - "app/src/devDebug/**"
-      - "app/src/main/java/com/music/bitchord/acquisition/a0/A0ExperimentalLoginCodec.kt"
+      - "app/src/main/java/com/music/aria/acquisition/a0/A0ExperimentalLoginCodec.kt"
       - ".github/workflows/a0-manual-phone-login-apk.yml"
 
 permissions:

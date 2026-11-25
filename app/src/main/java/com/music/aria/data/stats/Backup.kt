@@ -92,12 +92,7 @@ object Backup {
             val text = context.contentResolver.openInputStream(source)
                 ?.use { it.readBytes().decodeToString() }
                 ?: error("Couldn't open that file")
-            val file = runCatching { json.decodeFromString(BackupFile.serializer(), text) }
-                .getOrElse { error("That doesn't look like an Aria or compatible legacy backup") }
-            require(file.app == APP_TAG || file.app == LEGACY_APP_TAG) { "That backup is from another app" }
-            require(file.version <= SCHEMA_VERSION) {
-                "That backup was written by a newer version of the app"
-            }
+            val file = decodeBackup(text)
 
             ListeningStats.importAll(file.listening)
             AppSettings.importPrefs(file.settings.mapValues { it.value.decoded() })
@@ -111,6 +106,15 @@ object Backup {
                 at = file.exportedAt,
             )
         }
+    }
+
+    /** Parse and validate the complete backup before touching device state. */
+    internal fun decodeBackup(text: String): BackupFile {
+        val file = runCatching { json.decodeFromString(BackupFile.serializer(), text) }
+            .getOrElse { error("That doesn't look like an Aria or compatible legacy backup") }
+        require(file.app == APP_TAG || file.app == LEGACY_APP_TAG) { "That backup is from another app" }
+        require(file.version <= SCHEMA_VERSION) { "That backup was written by a newer version of the app" }
+        return file
     }
 
     /** What an import turned out to contain, for the line shown afterwards. */

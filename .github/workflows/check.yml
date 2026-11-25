@@ -61,7 +61,7 @@ jobs:
       # This checks shared timing semantics on the JVM used by Android,
       # without building or publishing any desktop app artifact.
       - name: Run shared Automix planner tests
-        run: ./gradlew --build-cache :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+        run: ./gradlew --build-cache :shared:jvmTest --tests "com.music.aria.playback.smart.AdvancedAutomixPlannerTest"
 
       # Native Search lives in sharedUi/jvmSharedMain. Android's app unit
       # tests compile it but do not execute its jvmTest presentation contracts.

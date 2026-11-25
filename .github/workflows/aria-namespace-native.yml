@@ -1,0 +1,53 @@
+name: Aria namespace native build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aria-namespace-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-build:
+    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && github.head_ref == 'feat/aria-identity-notation-2.1' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out migrated exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Verify migrated namespace
+        run: python3 scripts/verify-aria-android-identity.py
+      - name: Write local.properties
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+        run: |
+          printf 'LASTFM_API_KEY=%s\nLASTFM_SECRET=%s\n' "$LASTFM_API_KEY" "$LASTFM_SECRET" > local.properties
+      - name: Grant Gradle wrapper execute permission
+        run: chmod +x gradlew
+      - name: Assemble Android APK including JNI
+        run: ./gradlew --build-cache :app:assembleDevDebug
+      - name: Upload migrated development APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-namespace-dev-debug-${{ github.event.pull_request.head.sha || github.sha }}
+          path: app/build/outputs/apk/dev/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7

@@ -63,18 +63,14 @@ print("Android-only scope, independent installed IDs, 13 adaptive Notation alias
 
 
 # Playback must not regain a transport for an unsupported platform.
-playback = ROOT / "app/src/main/java/com/music/bitchord/playback/PlaybackService.kt"
-# Accept the same source path after the planned namespace migration.
-if not playback.exists():
-    playback = ROOT / "app/src/main/java/com/music/aria/playback/PlaybackService.kt"
+playback = ROOT / "app/src/main/java/com/music/aria/playback/PlaybackService.kt"
 require(not re.search(r"\b(?:WearBridge|watchSpeaker|WATCH_SESSION_FOREGROUND_MS)\b",
                       playback.read_text(encoding="utf-8")),
         "Retired Wear playback hooks returned")
 
-# Transition inventory, not a namespace acceptance gate. Keep compatibility
-# strings and historical attribution visible for individual review rather than
-# blindly replacing every occurrence. Only tracked source/config paths and
-# line numbers are printed; never dump source lines or local configuration.
+# Runtime namespace is now an enforced contract. Historical integration
+# manifests and their tests are immutable evidence, not runtime source.
+# Only tracked source/config paths and line numbers are printed.
 import subprocess
 from collections import Counter
 
@@ -86,12 +82,16 @@ text_suffixes = {".kt", ".kts", ".java", ".cpp", ".c", ".h", ".hpp", ".xml", ".p
 counts = Counter()
 wear_hits = []
 namespace_non_sources = []
+product_identity_hits = []
 for name in sorted(filter(None, tracked)):
     source = ROOT / name
     if source == Path(__file__).resolve() or not source.is_file() or source.is_symlink():
         continue
+    runtime_scope = name.startswith(("app/", "shared/", "sharedUi/", ".github/workflows/"))
     if namespace.search(name):
         counts["legacy package paths"] += 1
+        if runtime_scope:
+            product_identity_hits.append(name)
     if source.suffix not in text_suffixes and source.name != "CMakeLists.txt":
         continue
     try:
@@ -101,13 +101,15 @@ for name in sorted(filter(None, tracked)):
         continue
     old_lines = [i for i, line in enumerate(lines, 1) if namespace.search(line)]
     if old_lines:
+        if runtime_scope:
+            product_identity_hits.append(f"{name}:{','.join(map(str, old_lines))}")
         counts[f"namespace references: {name.split('/')[0]} {source.suffix or source.name}"] += 1
         if source.suffix not in {".kt", ".java"}:
             namespace_non_sources.append(f"{name}:{','.join(map(str, old_lines))}")
     watch_lines = [i for i, line in enumerate(lines, 1) if wear.search(line)]
     if watch_lines:
         wear_hits.append(f"{name}:{','.join(map(str, watch_lines))}")
-print("Legacy identity migration inventory (informational):")
+print("Historical namespace reference inventory (outside runtime scope):")
 for kind, count in sorted(counts.items()):
     print(f"  {kind}: {count}")
 print("Namespace references outside Kotlin/Java:")
@@ -118,6 +120,12 @@ for hit in wear_hits:
     print(f"  {hit}")
 
 require(not wear_hits, "Retired Wear contracts returned: " + "; ".join(wear_hits))
-for prefix in ("app/src/main/java/com/music/bitchord", "app/src/main/java/com/music/aria"):
-    require(not (ROOT / prefix / "wear").exists(), "Retired Wear package returned: " + prefix)
+require(not (ROOT / "app/src/main/java/com/music/aria/wear").exists(), "Retired Wear package returned")
 print("No retired Wear transport, output or settings contracts remain.")
+require(not product_identity_hits, "Legacy runtime namespace returned: " + "; ".join(product_identity_hits))
+for module, expected in (("app", "com.music.aria"), ("shared", "com.music.aria.shared"),
+                         ("sharedUi", "com.music.aria.sharedui")):
+    module_gradle = (ROOT / module / "build.gradle.kts").read_text(encoding="utf-8")
+    require(re.findall(r'namespace\s*=\s*"([^"]+)"', module_gradle) == [expected],
+            f"Wrong namespace for {module}")
+print("Aria source, JNI, Gradle and workflow namespace contracts verified.")
