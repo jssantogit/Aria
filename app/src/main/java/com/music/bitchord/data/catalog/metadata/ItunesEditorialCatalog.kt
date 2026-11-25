@@ -104,6 +104,70 @@ internal object ItunesEditorialCatalog {
     }
 
     /**
+     * Exact audio rows can repeat a source collection display label that the
+     * collection header omitted. Require a complete, consistent edition and
+     * an explicit Apple EP/Single suffix, never infer from the number of tracks.
+     * The header title and all Apple identities remain unchanged.
+     */
+    fun formatFromVerifiedTrackLabels(
+        release: ItunesEditorialRelease,
+        complete: Boolean,
+    ): ItunesEditorialReleaseFormat {
+        val header = formatFromAppleTitle(release.title)
+        if (header != ItunesEditorialReleaseFormat.UNCLASSIFIED) return header
+        if (!complete || !hasExactAudioMembership(release)) return header
+        val label = release.tracks.map { it.collectionTitle?.trim() }.distinct().singleOrNull()
+            ?.takeIf { it.isNotEmpty() } ?: return header
+        val explicit = formatFromAppleTitle(label)
+        if (explicit == ItunesEditorialReleaseFormat.UNCLASSIFIED) return header
+        val base = label.replace(
+            Regex("""\s+(?:[-–—]\s+(?:ep|single)|\((?:ep|single)\)|\[(?:ep|single)\])$""",
+                RegexOption.IGNORE_CASE), "",
+        ).trim()
+        return if (base.equals(release.title.trim(), ignoreCase = true)) explicit else header
+    }
+
+    private fun hasExactAudioMembership(release: ItunesEditorialRelease): Boolean {
+        val count = release.trackCount ?: return false
+        if (count !in 1..500 || release.tracks.size != count ||
+            release.appleCollectionId <= 0L ||
+            release.appleScopedId != "itunes:${release.storefront}:album:${release.appleCollectionId}"
+        ) return false
+        return release.tracks.all {
+            it.type == ItunesCatalogItemType.TRACK && it.storefront == release.storefront &&
+                it.collectionId == release.appleCollectionId && it.id > 0 &&
+                (it.discNumber ?: 0) > 0 && (it.trackNumber ?: 0) > 0
+        } && release.tracks.map { it.id }.distinct().size == count &&
+            release.tracks.map { it.discNumber to it.trackNumber }.distinct().size == count
+    }
+
+    /**
+     * Diagnostic only: expected commercial format under Apple Music Style
+     * Guide 3.3/3.4 (singles and EPs). Not a source-declared release type.
+     * Requires a complete exact audio edition with all durations; historical
+     * classifications and explicit Apple labels may differ.
+     * https://help.apple.com/itc/musicstyleguide/en.lproj/static.html
+     */
+    fun observeAppleAudioRuleCandidate(
+        release: ItunesEditorialRelease,
+        complete: Boolean,
+    ): ItunesEditorialReleaseFormat {
+        if (!complete || !hasExactAudioMembership(release))
+            return ItunesEditorialReleaseFormat.UNCLASSIFIED
+        val durations = release.tracks.mapNotNull { it.durationMs }
+        if (durations.size != release.tracks.size ||
+            durations.any { it !in 1L..86_400_000L })
+            return ItunesEditorialReleaseFormat.UNCLASSIFIED
+        val count = durations.size
+        val total = durations.sum()
+        return when {
+            count <= 3 && durations.all { it < 600_000L } -> ItunesEditorialReleaseFormat.SINGLE
+            count <= 6 && total <= 1_800_000L -> ItunesEditorialReleaseFormat.EP
+            else -> ItunesEditorialReleaseFormat.ALBUM
+        }
+    }
+
+    /**
      * It is intentional that only Apple rows form the output. MB-only releases
      * can be browsed in an explicitly separate archive, never injected here.
      * Callers must pass ONLY independently verified links; title resemblance,

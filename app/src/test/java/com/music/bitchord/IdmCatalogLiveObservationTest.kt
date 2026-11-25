@@ -2294,6 +2294,11 @@ class IdmCatalogLiveObservationTest {
                 var failed = false
                 var partial = false
                 var typeVerified = false
+                var appleHeaderTypeVerified = false
+                var appleTrackLabelTypeVerified = false
+                var appleRuleCandidate = ItunesEditorialReleaseFormat.UNCLASSIFIED
+                var appleRuleTypeMatches = false
+                var appleRuleExplicitConflict = false
                 var decoded = 0
                 var displayed = 0
                 var discs = 0
@@ -2679,6 +2684,18 @@ class IdmCatalogLiveObservationTest {
                                     appleSevenPlusAudioTracks = result.state == AppleEditorialReadState.COMPLETE &&
                                         record.tracks.size >= 7
                                     typeVerified = formatMatches
+                                    val headerFormat = ItunesEditorialCatalog.formatFromAppleTitle(record.title)
+                                    appleHeaderTypeVerified = formatMatches && headerFormat == record.format
+                                    appleTrackLabelTypeVerified = formatMatches && headerFormat == ItunesEditorialReleaseFormat.UNCLASSIFIED
+                                    appleRuleCandidate = ItunesEditorialCatalog.observeAppleAudioRuleCandidate(
+                                        record, result.state == AppleEditorialReadState.COMPLETE,
+                                    )
+                                    appleRuleTypeMatches = if (case.kind == "single_ep")
+                                        appleRuleCandidate in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+                                        else appleRuleCandidate == ItunesEditorialReleaseFormat.ALBUM
+                                    appleRuleExplicitConflict = record.format != ItunesEditorialReleaseFormat.UNCLASSIFIED &&
+                                        appleRuleCandidate != ItunesEditorialReleaseFormat.UNCLASSIFIED &&
+                                        record.format != appleRuleCandidate
                                     record.artistId?.let { artistId ->
                                         assertEquals("itunes:br:artist:$artistId", page.albumArtistBrowseId)
                                         artistRoute = 1
@@ -2839,6 +2856,13 @@ class IdmCatalogLiveObservationTest {
                         "detail_projected" to if (projected) 1 else 0,
                         "tracklist_partial" to if (partial) 1 else 0,
                         "type_verified" to if (typeVerified) 1 else 0,
+                        "apple_header_type_verified" to if (appleHeaderTypeVerified) 1 else 0,
+                        "apple_track_label_type_verified" to if (appleTrackLabelTypeVerified) 1 else 0,
+                        "apple_audio_rule_album" to if (appleRuleCandidate == ItunesEditorialReleaseFormat.ALBUM) 1 else 0,
+                        "apple_audio_rule_ep" to if (appleRuleCandidate == ItunesEditorialReleaseFormat.EP) 1 else 0,
+                        "apple_audio_rule_single" to if (appleRuleCandidate == ItunesEditorialReleaseFormat.SINGLE) 1 else 0,
+                        "apple_audio_rule_matches_expected" to if (appleRuleTypeMatches) 1 else 0,
+                        "apple_audio_rule_explicit_conflict" to if (appleRuleExplicitConflict) 1 else 0,
                         "source_discs_observed" to discs,
                         "source_track_positions" to positions,
                         "source_track_durations" to durations,

@@ -584,7 +584,10 @@ jobs:
           path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
           keys = ("status", "identity_verified", "detail_projected",
                   "editorial_eligible", "displayed_unique", "tracklist_partial",
-                  "type_verified", "source_discs_observed", "source_track_positions",
+                  "type_verified", "apple_header_type_verified", "apple_track_label_type_verified",
+                  "apple_audio_rule_album", "apple_audio_rule_ep", "apple_audio_rule_single",
+                  "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict",
+                  "source_discs_observed", "source_track_positions",
                   "source_track_durations", "artist_route_verified", "related_release_cards",
                   "version_cards", "version_coverage_uncertain", "detail_candidates_read",
                   "native_search_gestures", "partial_apple_candidates",
@@ -624,6 +627,7 @@ jobs:
               out.write("| Provider | Case | Detail | Decoded tracks | Visible tracks | Discs | Type | Status |\n")
               out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
               out.write(f"Live scope: {scope}; {len(expected)} required cells.\\n\\n")
+              apple_totals = {k: 0 for k in ("type_verified", "apple_header_type_verified", "apple_track_label_type_verified", "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict")}
               for provider in providers:
                   for i in range(1, 16):
                       name = f"album_matrix_{provider}_{i:02d}"
@@ -631,9 +635,15 @@ jobs:
                       if row.get("mode") != "live-network-observation":
                           raise SystemExit("Wrong album matrix report mode")
                       print("IDM_ALBUM_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      if provider == "itunes":
+                          for k in apple_totals:
+                              apple_totals[k] += row[k]
                       out.write(f"| {provider} | {i:02d} | {row['detail_projected']} | "
                                 f"{row['editorial_eligible']} | {row['displayed_unique']} | "
                                 f"{row['source_discs_observed']} | {row['type_verified']} | {row['status']} |\n")
+              out.write("\nApple source-declared classifications matching the fixed expectations: " + str(apple_totals["type_verified"]) + "/15.\n")
+              out.write("Header: " + str(apple_totals["apple_header_type_verified"]) + "; exact track-label evidence: " + str(apple_totals["apple_track_label_type_verified"]) + ".\n")
+              out.write("Separate Apple audio-rule diagnostic matches: " + str(apple_totals["apple_audio_rule_matches_expected"]) + "/15; explicit conflicts: " + str(apple_totals["apple_audio_rule_explicit_conflict"]) + ". Not included in source-declared score.\n")
           PY
 
       - name: Observe fixed live search matrix (#230)

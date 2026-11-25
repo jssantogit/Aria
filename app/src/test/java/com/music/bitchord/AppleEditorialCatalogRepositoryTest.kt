@@ -355,6 +355,70 @@ class AppleEditorialCatalogRepositoryTest {
             explicit.releases.single().format)
     }
 
+    @Test fun completeExactTrackLabelsCanProveAnOmittedExplicitAppleSuffix() = runBlocking {
+        fun rows(labels: List<String>, title: String = "Release 123", declared: Int = labels.size): String {
+            val songs = labels.mapIndexed { index, label ->
+                track(101 + index, 123).replace("\"trackNumber\":1", "\"trackNumber\":${index + 1}")
+                    .dropLast(1) + ",\"collectionName\":\"$label\",\"trackTimeMillis\":180000}"
+            }
+            return """{"resultCount":${songs.size + 1},"results":[${album(123, declared).replace("Release 123", title)},${songs.joinToString(",")}]}"""
+        }
+        suspend fun read(raw: String) = AppleEditorialCatalogRepository(ItunesCatalogClient(Source(raw)))
+            .albumDetail(123) as AppleEditorialLoad.Success
+        val ep = read(rows(listOf("Release 123 - EP", "Release 123 - EP")))
+        assertEquals(AppleEditorialReadState.COMPLETE, ep.state)
+        assertEquals("Release 123", ep.releases.single().title)
+        assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.EP,
+            ep.releases.single().format)
+        val single = read(rows(listOf("Release 123 (Single)")))
+        assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.SINGLE,
+            single.releases.single().format)
+        for (raw in listOf(
+            rows(listOf("Release 123 - EP", "Release 123 - Single")),
+            rows(listOf("Different Release - EP")),
+            rows(listOf("Release 123 - EP"), declared = 2),
+            rows(listOf("Release 123")),
+        )) assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED,
+            read(raw).releases.single().format)
+        assertEquals(com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.SINGLE,
+            read(rows(listOf("Release 123 - EP"), title = "Release 123 - Single")).releases.single().format)
+    }
+
+    @Test fun appleAudioRuleObservationsRequireExactCompleteAudioAndNeverOverrideFormat() = runBlocking {
+        fun rows(durations: List<Long>, title: String = "Release 123"): String {
+            val songs = durations.mapIndexed { index, duration ->
+                track(101 + index, 123).replace("\"trackNumber\":1", "\"trackNumber\":${index + 1}")
+                    .dropLast(1) + ",\"trackTimeMillis\":$duration}"
+            }
+            return """{"resultCount":${songs.size + 1},"results":[${album(123, songs.size).replace("Release 123", title)},${songs.joinToString(",")}]}"""
+        }
+        suspend fun read(durations: List<Long>, title: String = "Release 123") =
+            (AppleEditorialCatalogRepository(ItunesCatalogClient(Source(rows(durations, title))))
+                .albumDetail(123) as AppleEditorialLoad.Success).releases.single()
+        val catalog = com.music.bitchord.data.catalog.metadata.ItunesEditorialCatalog
+        val unknown = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.UNCLASSIFIED
+        val album = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.ALBUM
+        val ep = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.EP
+        val single = com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat.SINGLE
+        val long = read(List(7) { 300_000L })
+        assertEquals(unknown, long.format)
+        assertEquals(album, catalog.observeAppleAudioRuleCandidate(long, true))
+        assertEquals(unknown, catalog.observeAppleAudioRuleCandidate(long, false))
+        assertEquals(unknown, catalog.observeAppleAudioRuleCandidate(
+            long.copy(tracks = long.tracks.dropLast(1)), true))
+        assertEquals(unknown, catalog.observeAppleAudioRuleCandidate(
+            long.copy(tracks = long.tracks.map { it.copy(durationMs = null) }), true))
+        assertEquals(unknown, catalog.observeAppleAudioRuleCandidate(
+            long.copy(tracks = long.tracks.map { it.copy(trackNumber = 1) }), true))
+        assertEquals(single, catalog.observeAppleAudioRuleCandidate(read(listOf(599_999L)), true))
+        assertEquals(ep, catalog.observeAppleAudioRuleCandidate(read(listOf(600_000L)), true))
+        assertEquals(ep, catalog.observeAppleAudioRuleCandidate(read(List(6) { 300_000L }), true))
+        assertEquals(album, catalog.observeAppleAudioRuleCandidate(read(List(6) { 300_001L }), true))
+        val historical = read(List(7) { 300_000L }, "Release 123 - EP")
+        assertEquals(ep, historical.format)
+        assertEquals(album, catalog.observeAppleAudioRuleCandidate(historical, true))
+    }
+
     @Test fun missingStorefrontAlbumIsDifferentFromTransportFailure() = runBlocking {
         val source = Source("""{"resultCount":0,"results":[]}""")
         val result = AppleEditorialCatalogRepository(ItunesCatalogClient(source))

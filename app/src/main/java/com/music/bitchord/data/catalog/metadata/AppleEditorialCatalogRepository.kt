@@ -417,10 +417,15 @@ internal class AppleEditorialCatalogRepository(
                                 .filter { row -> row.type == ItunesCatalogItemType.TRACK },
                         ) }
                 } else null
-                val finalRelease = mixed?.first ?: recovered ?: release
+                val audioComplete = verifiedComplete || mixed != null || recovered != null
+                val finalAudio = mixed?.first ?: recovered ?: release
+                val explicitFormat = ItunesEditorialCatalog.formatFromVerifiedTrackLabels(
+                    finalAudio, audioComplete,
+                )
+                val finalRelease = finalAudio.copy(format = explicitFormat)
                 AppleEditorialLoad.Success(
                     listOf(finalRelease),
-                    if (verifiedComplete || mixed != null || recovered != null) AppleEditorialReadState.COMPLETE
+                    if (audioComplete) AppleEditorialReadState.COMPLETE
                     else AppleEditorialReadState.PARTIAL_TRACKLIST,
                     albumDiagnostics = AppleAlbumReadDiagnostics(
                         declaredTrackCount = release.trackCount,
