@@ -33,5 +33,6 @@ jobs:
         run: go build -o "$RUNNER_TEMP/aria-party-server" .
       - name: Check deployment scripts without deploying
         run: |
-          bash -n deploy/setup.sh deploy/aria-deploy.sh
+          bash -n deploy/setup.sh
+          bash -n deploy/aria-deploy.sh
           python3 -m py_compile tools/jam_probe.py

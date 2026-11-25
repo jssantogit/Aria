@@ -44,6 +44,31 @@ jobs:
         run: chmod +x gradlew
       - name: Assemble Android APK including JNI
         run: ./gradlew --build-cache :app:assembleDevDebug
+      - name: Verify packaged native library identity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          required = {"libaria_analysis.so", "libaria_dsd.so", "libaria_dst.so"}
+          retired = {"libbitchord_analysis.so", "libbitchord_dsd.so", "libbitchord_dst.so"}
+          apks = sorted(Path("app/build/outputs/apk/dev/debug").glob("*.apk"))
+          assert apks, "No APK produced"
+          checked = 0
+          for apk in apks:
+              with ZipFile(apk) as archive:
+                  libs = {}
+                  for name in archive.namelist():
+                      parts = name.split("/")
+                      if len(parts) == 3 and parts[0] == "lib" and parts[2].endswith(".so"):
+                          libs.setdefault(parts[1], set()).add(parts[2])
+                  for abi, names in libs.items():
+                      assert not retired & names, f"{apk.name}/{abi}: retired native library"
+                      assert required <= names, f"{apk.name}/{abi}: missing {required - names}"
+                      checked += 1
+          assert checked, "No native ABI verified"
+          print(f"Verified Aria native library names across {checked} packaged APK/ABI pairs")
+          PY
       - name: Upload migrated development APK
         uses: actions/upload-artifact@v4
         with:
