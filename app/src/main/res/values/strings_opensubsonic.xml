@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="opensubsonic_title">OpenSubsonic / Navidrome</string>
-    <string name="opensubsonic_description">A remote music library synced into BitChord’s canonical catalog. Playback from this server will be connected in a later slice.</string>
+    <string name="opensubsonic_description">A remote music library synced into Aria’s canonical catalog. Playback from this server will be connected in a later slice.</string>
     <string name="opensubsonic_not_configured">Not configured</string>
     <string name="opensubsonic_set_up">Set up</string>
     <string name="opensubsonic_edit">Edit</string>
@@ -19,7 +19,7 @@
     <string name="opensubsonic_forget_confirm_title">Forget OpenSubsonic connection?</string>
     <string name="opensubsonic_forget_confirm_text">The server address and credential will be removed from this device. Canonical music identity already learned from the server is not deleted.</string>
     <string name="opensubsonic_editor_title">OpenSubsonic connection</string>
-    <string name="opensubsonic_editor_description">Navidrome and compatible OpenSubsonic servers can sync their music library into BitChord.</string>
+    <string name="opensubsonic_editor_description">Navidrome and compatible OpenSubsonic servers can sync their music library into Aria.</string>
     <string name="opensubsonic_server_url">Server URL</string>
     <string name="opensubsonic_authentication">Authentication</string>
     <string name="opensubsonic_api_key">API key</string>

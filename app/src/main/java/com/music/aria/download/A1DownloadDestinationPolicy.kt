@@ -10,7 +10,7 @@ package com.music.aria.download
  */
 internal object A1DownloadDestinationPolicy {
     /** Same canonical folder already used by DownloadStore and local scanning. */
-    const val DEFAULT_RELATIVE_PATH = "Music/BitChord/"
+    const val DEFAULT_RELATIVE_PATH = "Music/" + DownloadStore.FOLDER + "/"
 
     /** Future filing modes must be explicit opt-ins; never infer an album from a filename. */
     enum class Layout { FLAT }

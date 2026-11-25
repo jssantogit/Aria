@@ -10,7 +10,7 @@ class A1DownloadDestinationPolicyTest {
         assertEquals(
             A1DownloadDestinationPolicy.Resolution.Ready(
                 A1DownloadDestinationPolicy.Target.SharedMusic(
-                    "Music/BitChord/"
+                    "Music/Aria/"
                 )
             ), resolved
         )

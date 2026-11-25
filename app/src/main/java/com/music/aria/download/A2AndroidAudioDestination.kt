@@ -18,7 +18,7 @@ import java.util.UUID
  * the eventual download manager must call [publishPrivateReceipt] after the
  * user explicitly requested permanent local storage and transport succeeded.
  *
- * Default is a pending MediaStore.Audio row under Music/BitChord. A chosen SAF
+ * Default is a pending MediaStore.Audio row under Music/Aria. A chosen SAF
  * tree uses a temporary filename and rename, which is best effort and cannot
  * promise atomic visibility across all DocumentsProvider implementations.
  * The returned content URI is the library identity seam, never a guessed path.
@@ -128,7 +128,7 @@ internal object A2AndroidAudioDestination {
         }
         if(hasChildName(resolver,tree,name))
             throw IOException("A2 destination filename already exists")
-        val tempName=".bitchord-${UUID.randomUUID()}.partial"
+        val tempName=".aria-${UUID.randomUUID()}.partial"
         val temp=DocumentsContract.createDocument(resolver,root,mime,tempName)
             ?:throw IOException("A2 cannot create temporary SAF document")
         var created:Uri=temp

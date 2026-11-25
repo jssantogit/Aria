@@ -31,7 +31,7 @@ class A1DownloadDestinationControllerTest {
         val controller=A1DownloadDestinationController(pref,grants)
         assertEquals(
             A1DownloadDestinationPolicy.Resolution.Ready(
-                A1DownloadDestinationPolicy.Target.SharedMusic("Music/BitChord/")
+                A1DownloadDestinationPolicy.Target.SharedMusic("Music/Aria/")
             ), controller.current()
         )
         assertEquals(0,grants.takeCalls)
@@ -84,7 +84,7 @@ class A1DownloadDestinationControllerTest {
         assertNull(pref.value)
         assertEquals(
             A1DownloadDestinationPolicy.Resolution.Ready(
-                A1DownloadDestinationPolicy.Target.SharedMusic("Music/BitChord/")
+                A1DownloadDestinationPolicy.Target.SharedMusic("Music/Aria/")
             ),controller.current()
         )
         assertTrue(selected in grants.granted)

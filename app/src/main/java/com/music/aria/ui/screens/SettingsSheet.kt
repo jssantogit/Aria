@@ -161,6 +161,7 @@ import com.music.aria.data.LocalMediaRepository
 import com.music.aria.data.NerdStats
 import com.music.aria.data.scrobbling.LastFM
 import com.music.aria.data.listentogether.ListenTogether
+import com.music.aria.download.DownloadStore
 import com.music.aria.data.settings.AppSettings
 import com.music.aria.ui.components.CompactRatingStyle
 import com.music.aria.data.canvas.VisualRetentionMode
@@ -584,7 +585,7 @@ internal fun SettingsScreen(
                     title = exportDownloadsTitle,
                     checked = exportDownloads,
                     onCheckedChange = AppSettings::setExportDownloads,
-                    subtitle = "Music/BitChord".takeIf { exportDownloads },
+                    subtitle = "Music/${DownloadStore.FOLDER}".takeIf { exportDownloads },
                 )
             }
             // A1 only reserves the destination for a FUTURE Soulseek publisher.
