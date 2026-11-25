@@ -65,7 +65,7 @@ class DiagnosticFileStore(
         val exports = exportsDir().apply { mkdirs() }
         val export = exports.resolve(safeFileName(fileName))
         export.bufferedWriter().use { writer ->
-            writer.appendLine("BitChord diagnostics report")
+            writer.appendLine("Aria diagnostics report")
             writer.appendLine()
             writer.appendLine("[metadata]")
             metadataLines.forEach { writer.appendLine(safeSharedText(it)) }

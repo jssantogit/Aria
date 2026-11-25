@@ -97,11 +97,14 @@ class DiagnosticsCoreTest {
         val rawId = "0b5f7683-2bea-4e4c-8ae0-ce0797afd50e"
         val rawUri = "bitchord://canonical?recordingId=$rawId&mediaAssetId=$rawId&providerKey=opensubsonic%3A$rawId"
         val rawUrl = "https://audio.invalid/rest/stream.view?id=private-track&token=secret-value"
-        val message = "no embedded lyrics in $rawUri; links:$rawId failed; upstream=$rawUrl"
+        val ariaInvite = "aria://party?code=private-invite-code"
+        val message = "no embedded lyrics in $rawUri; links:$rawId failed; upstream=$rawUrl; invite=$ariaInvite"
         val sanitized = DiagnosticSanitizer.freeText(message)
 
         assertFalse(sanitized.contains(rawId))
         assertFalse(sanitized.contains("bitchord://canonical"))
+        assertFalse(sanitized.contains("aria://party"))
+        assertFalse(sanitized.contains("private-invite-code"))
         assertFalse(sanitized.contains("audio.invalid"))
         assertFalse(sanitized.contains("private-track"))
         assertFalse(sanitized.contains("secret-value"))
@@ -119,6 +122,8 @@ class DiagnosticsCoreTest {
         )
         assertFalse(exported.contains(rawId))
         assertFalse(exported.contains("bitchord://canonical"))
+        assertFalse(exported.contains("aria://party"))
+        assertFalse(exported.contains("private-invite-code"))
         assertFalse(exported.contains("audio.invalid"))
         assertTrue(exported.contains("no embedded lyrics"))
 

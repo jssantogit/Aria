@@ -16,7 +16,7 @@ object DiagnosticsShare {
         return Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            clipData = ClipData.newRawUri("BitChord diagnostics", uri)
+            clipData = ClipData.newRawUri("Aria diagnostics", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }

@@ -77,7 +77,7 @@ class A0ManualLoginActivity : Activity() {
             page.addView(it)
         }
         text(if (fromSongDownload) "Baixar com Soulseek" else
-            "BitChord A0 — teste de conectividade P2P Soulseek")
+            "Aria A0 — teste de conectividade P2P Soulseek")
         text(if (fromSongDownload)
             "Busque arquivos usando sua conta configurada em Configurações → Downloads. " +
                 "A pesquisa não baixa arquivos automaticamente: você deverá escolher um " +
@@ -142,7 +142,7 @@ class A0ManualLoginActivity : Activity() {
         page.addView(transferAction)
         val saveConsent=CheckBox(this).apply {
             text="Confirmo que posso armazenar o arquivo escolhido. " +
-                "O áudio ficará em Music/BitChord ou na pasta selecionada."
+                "O áudio ficará em Music/Aria ou na pasta selecionada."
         }
         page.addView(saveConsent)
         val saveAction=Button(this).apply {

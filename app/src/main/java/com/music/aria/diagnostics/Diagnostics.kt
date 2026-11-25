@@ -18,7 +18,7 @@ import java.util.UUID
 import kotlin.math.max
 
 /**
- * Process-wide diagnostics for BitChord.
+ * Process-wide diagnostics for Aria.
  *
  * Recording an event is intentionally cheap: sanitize, append to a bounded
  * in-memory buffer, and (on debug builds) emit to logcat. Disk persistence is
@@ -321,7 +321,7 @@ object Diagnostics {
                 DiagnosticAndroidExitProbe.summary(application) +
                 "captureFlushStatus=${DiagnosticCaptureIntegrity.flushStatus(flushComplete)}",
             recentEventLines = snapshot.map(DiagnosticFormatter::format),
-            fileName = "bitchord-diagnostics-$timestamp.txt",
+            fileName = "aria-diagnostics-$timestamp.txt",
             reportV2Input = DiagnosticReportV2Input(
                 recentEvents = snapshot,
                 flushComplete = flushComplete,
@@ -408,7 +408,7 @@ object Diagnostics {
                 buffer.append(crashEvent)
                 val snapshot = buffer.snapshot().takeLast(MAX_CRASH_EVENTS)
                 val crashText = buildString {
-                    appendLine("BitChord retained crash")
+                    appendLine("Aria retained crash")
                     reportMetadataLines().forEach(::appendLine)
                     appendLine()
                     appendLine("[events]")

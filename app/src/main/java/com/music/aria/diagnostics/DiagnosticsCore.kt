@@ -115,7 +115,7 @@ object DiagnosticSanitizer {
     private val keySeparators = Regex("[_\\-.]")
     // Only for untyped legacy free text. Typed metadata (including traceId) keeps its
     // structured identity and correlation; arbitrary messages never publish raw URIs/UUIDs.
-    private val freeTextUri = Regex("""(?i)\b(?:https?://|bitchord://|content://|file://)[^\s\[\]<>"']+""")
+    private val freeTextUri = Regex("""(?i)\b(?:https?://|aria://|bitchord://|content://|file://)[^\s\[\]<>"']+""")
     private val freeTextUuid = Regex("""(?i)\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b""")
     // Legacy provider messages include opaque third-party IDs outside URI contexts.
     // Mask only known provider patterns; preserve ordinary text and typed trace metadata.

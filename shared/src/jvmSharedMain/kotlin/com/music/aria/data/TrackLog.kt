@@ -24,7 +24,7 @@ import kotlin.coroutines.CoroutineContext
  *
  * The obvious implementation shells out to `logcat`, and it works. But from
  * Android 13 an app that does so trips a system consent dialog — *"Allow
- * BitChord to access all device logs?"* — which appears whenever the process
+ * Aria to access all device logs?"* — which appears whenever the process
  * happens to spawn, asks for far more than this needs, and puts every other
  * app's output within reach of a paste made from a music player. None of that
  * is a reasonable price for a debug button.
@@ -247,7 +247,7 @@ object TrackLog {
                 .sortedByDescending(String::length)
                 .forEach { safe = safe.replace(it, "<redacted>") }
         }
-        safe = Regex("""(?i)\b(?:https?://|bitchord://|content://|file://)[^\s\[\]<>"']+""")
+        safe = Regex("""(?i)\b(?:https?://|aria://|bitchord://|content://|file://)[^\s\[\]<>"']+""")
             .replace(safe, "<uri>")
         safe = Regex("""(?i)\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b""")
             .replace(safe, "<id>")
@@ -280,7 +280,7 @@ object TrackLog {
         count: Int,
         elsewhere: Int,
     ) = buildString {
-        appendLine("BitChord log — ${song.title} — ${song.artist}")
+        appendLine("Aria log — ${song.title} — ${song.artist}")
         appendLine("id=${song.videoId} duration=${song.durationText ?: "?"} album=${song.albumName ?: "?"}")
         appendLine("playing: ${stats.describe()}")
         sourcesLine()?.let(::appendLine)

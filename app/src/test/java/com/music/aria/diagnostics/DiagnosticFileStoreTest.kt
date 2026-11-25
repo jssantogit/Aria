@@ -59,13 +59,14 @@ class DiagnosticFileStoreTest {
         store.writeLastCrash("crash snapshot")
 
         val export = store.createExport(
-            metadataLines = listOf("app=BitChord", "version=test"),
+            metadataLines = listOf("app=Aria", "version=test"),
             recentEventLines = listOf("recent event"),
             fileName = "report.txt",
         )
         val text = export.readText()
 
-        assertTrue(text.contains("app=BitChord"))
+        assertTrue(text.contains("app=Aria"))
+        assertTrue(text.startsWith("Aria diagnostics report"))
         assertTrue(text.contains("version=test"))
         assertTrue(text.contains("recent event"))
         assertTrue(text.contains("persisted event"))
