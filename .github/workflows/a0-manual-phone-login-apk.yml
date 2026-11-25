@@ -41,7 +41,7 @@ jobs:
         env:
           LASTFM_API_KEY: ""
           LASTFM_SECRET: ""
-        run: ./gradlew --no-daemon -Pbitchord.bundleWear=false :app:assembleDevDebug
+        run: ./gradlew --no-daemon :app:assembleDevDebug
 
       - name: Upload short-lived test APK
         uses: actions/upload-artifact@v4

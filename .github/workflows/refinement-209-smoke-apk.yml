@@ -43,7 +43,7 @@ jobs:
       - name: Build dev debug APK
         run: |
           chmod +x gradlew
-          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+          ./gradlew --build-cache :app:assembleDevDebug
 
       - name: Publish PR 209 APK
         uses: actions/upload-artifact@v4

@@ -74,7 +74,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # All instrumentation tests in acquisition.a0, including account, SAF and
           # owned offline MediaStore fixture. No live Soulseek server contacted.
-          script: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false -Pandroid.testInstrumentationRunnerArguments.package=com.music.bitchord.acquisition.a0 :app:connectedDevDebugAndroidTest
+          script: ./gradlew --no-daemon --build-cache -Pandroid.testInstrumentationRunnerArguments.package=com.music.bitchord.acquisition.a0 :app:connectedDevDebugAndroidTest
 
       - name: Upload focused instrumentation reports (no bugreport)
         if: always()

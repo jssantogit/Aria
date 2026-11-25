@@ -44,7 +44,7 @@ jobs:
           set -o pipefail
           chmod +x gradlew
           focused_tests=(
-            ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+            ./gradlew --build-cache :app:testDevDebugUnitTest
             --tests "com.music.bitchord.ui.screens.CanonicalRatingAnchorRoutesTest"
             --tests "com.music.bitchord.ui.screens.NativeFrostedRatingInteractionTest"
             --tests "com.music.bitchord.ui.screens.CanonicalRecordingFeedbackControlsTest.numericRatingStyleShowsOneV3DigitPerSelectedStar"
@@ -68,7 +68,7 @@ jobs:
       - name: Run Android unit tests
         run: |
           chmod +x gradlew
-          ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+          ./gradlew --build-cache :app:testDevDebugUnitTest
       - name: Explain Android test failures
         if: failure()
         shell: bash
@@ -100,11 +100,11 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
       - name: Run shared Automix planner tests
-        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
+        run: ./gradlew --build-cache :shared:jvmTest --tests "com.music.bitchord.playback.smart.AdvancedAutomixPlannerTest"
       - name: Run shared native UI presentation tests
-        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :sharedUi:jvmTest
+        run: ./gradlew --build-cache :sharedUi:jvmTest
       - name: Assemble Android devDebug after green tests
-        run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+        run: ./gradlew --build-cache :app:assembleDevDebug
       - name: Select universal APK and record checksum
         run: |
           set -euo pipefail
