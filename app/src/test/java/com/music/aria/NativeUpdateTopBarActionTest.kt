@@ -8,7 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -27,7 +27,7 @@ class NativeUpdateTopBarActionTest {
     @Test fun updateNoticeExposesNativeFortyDpClickableAction() {
         var opens = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 NativeUpdateTopBarAction(version = "9.2", onClick = { opens++ })
             }
         }

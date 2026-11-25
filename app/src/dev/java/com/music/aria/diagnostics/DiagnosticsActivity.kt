@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.aria.data.settings.AppSettings
 import com.music.aria.data.settings.ThemeMode
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import com.music.aria.ui.components.PAGE_GUTTER
 import com.music.aria.ui.screens.SettingsGroupSurface
 import com.music.aria.ui.screens.SettingsRow
@@ -63,7 +63,7 @@ class DiagnosticsActivity : ComponentActivity() {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
             }
-            BitChordTheme(darkTheme = dark) {
+            AriaTheme(darkTheme = dark) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -86,7 +86,7 @@ class DiagnosticsActivity : ComponentActivity() {
                 startActivity(
                     Intent.createChooser(
                         DiagnosticsShare.createIntent(this@DiagnosticsActivity, report),
-                        "Share BitChord diagnostics",
+                        "Share Aria diagnostics",
                     ),
                 )
                 if (intent.getBooleanExtra("share_only", false)) finish()
