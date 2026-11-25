@@ -202,6 +202,29 @@ class ApplePublicSearchPagerTest {
             (pager.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.map { it.id })
     }
 
+    @Test fun yearSpecificSingleIsDiscoverableInBothQueryOrdersButNotAnExactEdition() = runBlocking {
+        val year = album(1, title = "Example Work 2011 - EP").copy(artistName = "Example Artist")
+        val exact = year.copy(id = 2, title = "Example Work")
+        val remaster = year.copy(id = 3, title = "Example Work (2022 Digital Master) - Single")
+        assertEquals("example work 2011", applePublicAlbumWorkKey(year.title))
+        assertTrue(applePublicRelatedYearEditionMatch("Example Work Example Artist", year))
+        assertTrue(applePublicRelatedYearEditionMatch("Example Artist Example Work", year))
+        assertEquals(2, applePublicSearchMatchRank("Example Work Example Artist", year))
+        assertFalse(applePublicQualifiedAlbumMatch("Example Work Example Artist", year))
+        assertFalse(applePublicRelatedYearEditionMatch("Example Work Other Artist", year))
+        assertFalse(applePublicRelatedYearEditionMatch("Example Work Example Artist",
+            year.copy(title = "Example Work 2011")))
+        assertFalse(applePublicRelatedYearEditionMatch("Example Work Example Artist",
+            year.copy(title = "Example Work 2011 (Live) - EP")))
+        assertFalse(applePublicRelatedYearEditionMatch("Example Work Example Artist",
+            year.copy(title = "Example Work 2 - EP")))
+        val fake = Fake(ItunesCatalogResult.Success(listOf(year, remaster, exact)))
+            .apply { expectedQuery = "Example Work Example Artist" }
+        val pager = ApplePublicSearchPager(fake.expectedQuery, ItunesCatalogEntity.ALBUM, "br", source = fake)
+        assertEquals(listOf(2L, 3L, 1L),
+            (pager.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.map { it.id })
+    }
+
     @Test fun firstTwoHundredAreLocalPagesWithoutFictitiousOffsets() = runBlocking {
         val fake = Fake(ItunesCatalogResult.Success(
             (1L..200L).map { album(it) }, possiblyTruncated = true))
