@@ -86,10 +86,17 @@ resolve_launcher | grep -Fx "$component"
 adb shell input keyevent 82
 adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$component" | tr -d '\r' > "$out/start.txt"
 grep -Fx 'Status: ok' "$out/start.txt"
+stage=survival
+echo "$stage"
 sleep 10
-adb shell pidof "$pkg" >/dev/null
-adb shell dumpsys activity activities | grep -F "$pkg/" > "$out/activity.txt"
-adb exec-out screencap -p > "$out/launch.png"
+timeout 25s adb shell pidof "$pkg" | tee "$out/pid.txt"
+test -s "$out/pid.txt"
+stage=screenshot
+echo "$stage"
+timeout 25s adb exec-out screencap -p > "$out/launch.png"
+stage=activity-evidence
+echo "$stage"
+timeout 25s adb shell dumpsys activity activities | grep -F "$pkg/" > "$out/activity.txt"
 python3 - "$out/launch.png" <<'PY'
 from pathlib import Path
 import sys

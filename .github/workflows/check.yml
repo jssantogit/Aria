@@ -56,7 +56,7 @@ jobs:
       # Resolve both framework versions used by the suite before thousands of
       # assertions. An unavailable dependency fails here, not once per test.
       - name: Verify Robolectric framework availability
-        run: ./gradlew --build-cache -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
+        run: bash scripts/aria-robolectric-preflight.sh ./gradlew --build-cache -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
 
       - name: Run Android unit tests
         run: ./gradlew --build-cache :app:testDevDebugUnitTest
