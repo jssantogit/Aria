@@ -55,7 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.concurrent.thread
 
-class BitChordApplication : Application(), SingletonImageLoader.Factory {
+class AriaApplication : Application(), SingletonImageLoader.Factory {
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
@@ -154,7 +154,7 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 com.music.aria.data.scrobbling.ListenBrainzOutbox.recover(
-                    this@BitChordApplication,
+                    this@AriaApplication,
                 )
             }
         }
