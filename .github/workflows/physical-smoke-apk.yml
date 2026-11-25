@@ -100,7 +100,7 @@ jobs:
       - name: Upload dev smoke APK
         uses: actions/upload-artifact@v4
         with:
-          name: bitchord-physical-smoke-dev-debug-${{ github.sha }}
+          name: aria-physical-smoke-dev-debug-${{ github.sha }}
           path: app/build/outputs/apk/dev/debug/*.apk
           if-no-files-found: error
           retention-days: 3

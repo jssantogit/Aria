@@ -48,7 +48,7 @@ jobs:
       - name: Publish PR 209 APK
         uses: actions/upload-artifact@v4
         with:
-          name: bitchord-pr209-devdebug-${{ github.event.pull_request.head.sha }}
+          name: aria-pr209-devdebug-${{ github.event.pull_request.head.sha }}
           path: app/build/outputs/apk/dev/debug/*.apk
           if-no-files-found: error
           retention-days: 14

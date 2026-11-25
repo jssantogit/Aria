@@ -115,7 +115,7 @@ jobs:
             echo "Universal APK was not generated." >&2
             exit 1
           fi
-          cp "$universal" smoke-apk/BitChord-AppleMusicBar-devDebug-universal.apk
+          cp "$universal" smoke-apk/Aria-AppleMusicBar-devDebug-universal.apk
           sha256sum smoke-apk/*.apk | tee smoke-apk/SHA256SUMS.txt
       - name: Upload experiment APK
         uses: actions/upload-artifact@v4
