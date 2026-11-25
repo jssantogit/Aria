@@ -119,6 +119,7 @@ fun DiscordLoginScreen(
     onTokenCaptured: (token: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (!com.music.bitchord.data.discord.DiscordApplication.isConfigured) return
     var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
 

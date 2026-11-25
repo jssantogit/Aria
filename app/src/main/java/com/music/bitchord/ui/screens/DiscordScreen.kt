@@ -165,6 +165,13 @@ fun DiscordScreen(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
+    if (!com.music.bitchord.data.discord.DiscordApplication.isConfigured) {
+        Column(modifier = modifier.fillMaxWidth().padding(contentPadding).padding(20.dp)) {
+            Text(stringResource(R.string.discord), style = MaterialTheme.typography.displayLarge)
+            Text(stringResource(R.string.aria_discord_unavailable), modifier = Modifier.padding(top = 12.dp))
+        }
+        return
+    }
     val token by AppSettings.discordToken.collectAsStateWithLifecycle()
     val username by AppSettings.discordUsername.collectAsStateWithLifecycle()
     val name by AppSettings.discordName.collectAsStateWithLifecycle()

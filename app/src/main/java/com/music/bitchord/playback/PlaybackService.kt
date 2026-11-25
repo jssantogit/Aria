@@ -6470,6 +6470,7 @@ class PlaybackService : MediaLibraryService() {
      * the socket every time the user typed a character into a button label.
      */
     private fun observeDiscord() {
+        if (!com.music.bitchord.data.discord.DiscordApplication.isConfigured) return
         scope.launch {
             combine(
                 AppSettings.discordToken,
