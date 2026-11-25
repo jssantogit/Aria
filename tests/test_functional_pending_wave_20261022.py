@@ -64,7 +64,7 @@ class FunctionalBatchGate(unittest.TestCase):
         android = (ROOT / ".github/workflows/check.yml").read_text(encoding="utf-8")
         self.assertIn("name: Android · test and build", android)
         self.assertIn("queue: max", android)
-        self.assertIn("run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest", android)
+        self.assertIn("run: ./gradlew --build-cache :app:testDevDebugUnitTest", android)
 
 
 if __name__ == "__main__":

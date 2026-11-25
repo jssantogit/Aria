@@ -89,7 +89,7 @@ class FunctionalWave02Gate(unittest.TestCase):
         self.assertIn("name: Android · test and build", required)
         self.assertIn("queue: max", required)
         self.assertIn(
-            "run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest",
+            "run: ./gradlew --build-cache :app:testDevDebugUnitTest",
             required,
         )
 

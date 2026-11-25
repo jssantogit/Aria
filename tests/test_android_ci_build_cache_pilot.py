@@ -9,7 +9,7 @@ class AndroidBuildCachePilotTests(unittest.TestCase):
     def test_cache_is_only_requested_for_existing_unit_test_task(self):
         s = CHECK.read_text(encoding="utf-8")
         self.assertIn(
-            "run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest",
+            "run: ./gradlew --build-cache :app:testDevDebugUnitTest",
             s,
         )
         self.assertIn("name: Android · test and build", s)
