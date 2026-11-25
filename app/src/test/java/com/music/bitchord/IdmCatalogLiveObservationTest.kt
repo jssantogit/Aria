@@ -2313,6 +2313,8 @@ class IdmCatalogLiveObservationTest {
                 var appleIndependentFrozenTitleMatches = false
                 var appleFrozenTitleVerified = false
                 var appleQualifiedEditionVerified = false
+                var appleRelatedYearEditionVerified = false
+                var appleRelatedYearEditionComplete = false
                 var appleVideoProbeAttempted = false
                 var appleVideoProbeSameCollection = false
                 var appleVideoProbeVerifiedRows = 0
@@ -2455,46 +2457,81 @@ class IdmCatalogLiveObservationTest {
                                             applePublicAlbumWorkKey(value) == searchLabelKey(case.title)
                                     )
                                 var search = pager.start()
-                                fun matchingCandidates() = pager.snapshot().visible.filter {
-                                    acceptedAppleTitle(it.title) && case.matchesArtist(it.artistName)
+                                var selected: ItunesEditorialRelease? = null
+                                var result: AppleEditorialLoad.Success? = null
+                                var selectedQuality = -1
+                                val attemptedIds = linkedSetOf<Long>()
+                                var verifiedGoal = false
+                                var relatedYearEdition: ItunesCatalogItem? = null
+                                fun matchesRelatedYearEdition(row: ItunesCatalogItem): Boolean {
+                                    // A year-labelled reissue/rework is separately relevant,
+                                    // but not evidence of the originally frozen release.
+                                    val base = applePublicAlbumWorkKey(row.title)
+                                    val work = searchLabelKey(case.title)
+                                    return case.kind == "single_ep" &&
+                                        case.matchesArtist(row.artistName) && row.artistId != null &&
+                                        base.startsWith("$work ") &&
+                                        Regex("(19|20)[0-9]{2}").matches(base.removePrefix("$work ")) &&
+                                        ItunesEditorialCatalog.formatFromAppleTitle(row.title) in
+                                            setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
                                 }
-                                while (search is ApplePublicSearchPageLoad.Success &&
-                                    matchingCandidates().size < candidateBudget &&
-                                    search.snapshot.hasMore && searchGestures < 12
-                                ) {
+                                // Hydrate a visible candidate before spending the remaining
+                                // search budget. Continue only if the edition is incomplete,
+                                // does not meet the disc goal, or no suitable candidate exists.
+                                while (search is ApplePublicSearchPageLoad.Success) {
+                                    val visible = search.snapshot.visible
+                                    if (relatedYearEdition == null)
+                                        relatedYearEdition = visible.firstOrNull(::matchesRelatedYearEdition)
+                                    val candidates = visible.filter {
+                                        acceptedAppleTitle(it.title) && case.matchesArtist(it.artistName) &&
+                                            it.artistId != null && it.id !in attemptedIds
+                                    }.sortedBy { if (case.matchesTitle(it.title)) 0 else 1 }
+                                    for (candidate in candidates.take(candidateBudget - attemptedIds.size)) {
+                                        attemptedIds += candidate.id
+                                        candidatesRead++
+                                        val response = appleRepo.albumDetail(candidate.id, "br")
+                                            as? AppleEditorialLoad.Success
+                                        if (response == null) { failed = true; break }
+                                        val record = response.releases.singleOrNull() ?: continue
+                                        assertEquals(candidate.scopedId, record.appleScopedId)
+                                        if (!acceptedAppleTitle(record.title) || !case.matchesArtist(record.artistName) ||
+                                            candidate.artistId != record.artistId || record.tracks.isEmpty()
+                                        ) continue
+                                        val completeTracks = response.state == AppleEditorialReadState.COMPLETE
+                                        val multi = record.tracks.mapNotNull { it.discNumber }.distinct().size >= 2
+                                        if (!completeTracks) partialAppleCandidates++
+                                        val meetsDiscGoal = case.kind != "multi" || multi
+                                        val quality = (if (meetsDiscGoal) 2 else 0) + (if (completeTracks) 1 else 0)
+                                        if (quality > selectedQuality) {
+                                            selected = record
+                                            result = response
+                                            selectedQuality = quality
+                                        }
+                                        if (completeTracks && meetsDiscGoal) {
+                                            verifiedGoal = true
+                                            break
+                                        }
+                                    }
+                                    if (verifiedGoal || failed || attemptedIds.size >= candidateBudget ||
+                                        !search.snapshot.hasMore || searchGestures >= 12
+                                    ) break
                                     searchGestures++
                                     search = pager.loadMore()
                                 }
                                 if (search is ApplePublicSearchPageLoad.Failure) failed = true
-                                val candidates = matchingCandidates()
-                                var selected: ItunesEditorialRelease? = null
-                                var result: AppleEditorialLoad.Success? = null
-                                var selectedQuality = -1
-                                for (candidate in candidates.take(candidateBudget)) {
-                                    candidatesRead++
-                                    val response = appleRepo.albumDetail(candidate.id, "br")
+                                val related = relatedYearEdition
+                                if (selected == null && !failed && related != null) {
+                                    val alternative = appleRepo.albumDetail(related.id, "br")
                                         as? AppleEditorialLoad.Success
-                                    if (response == null) { failed = true; continue }
-                                    val record = response.releases.singleOrNull() ?: continue
-                                    assertEquals(candidate.scopedId, record.appleScopedId)
-                                    if (!acceptedAppleTitle(record.title) || !case.matchesArtist(record.artistName) ||
-                                        candidate.artistId == null || candidate.artistId != record.artistId
-                                    ) continue
-                                    if (record.tracks.isEmpty()) continue
-                                    val completeTracks = response.state == AppleEditorialReadState.COMPLETE
-                                    val multi = record.tracks.mapNotNull { it.discNumber }.distinct().size >= 2
-                                    if (!completeTracks) partialAppleCandidates++
-                                    val meetsDiscGoal = case.kind != "multi" || multi
-                                    // Prefer a positively complete requested edition. Keep a
-                                    // partial observation only when no better candidate exists.
-                                    val quality = (if (meetsDiscGoal) 2 else 0) +
-                                        (if (completeTracks) 1 else 0)
-                                    if (quality > selectedQuality) {
-                                        selected = record
-                                        result = response
-                                        selectedQuality = quality
+                                    val detail = alternative?.releases?.singleOrNull()?.takeIf {
+                                        it.appleScopedId == related.scopedId &&
+                                            it.title == related.title && it.artistId == related.artistId &&
+                                            case.matchesArtist(it.artistName) && it.storefront == "br"
                                     }
-                                    if (completeTracks && meetsDiscGoal) break
+                                    appleRelatedYearEditionVerified = detail != null
+                                    appleRelatedYearEditionComplete = detail != null &&
+                                        alternative?.state == AppleEditorialReadState.COMPLETE &&
+                                        detail.tracks.isNotEmpty()
                                 }
                                 // Independent storefront offers documented on 2026-11-24.
                                 // These public Apple BR URLs nominate an exact lookup ONLY.
@@ -2780,6 +2817,11 @@ class IdmCatalogLiveObservationTest {
                         "apple_independent_offer_verified" to if (appleIndependentOfferVerified) 1 else 0,
                         "apple_independent_detail_complete" to if (appleIndependentDetailComplete) 1 else 0,
                         "apple_independent_frozen_title_matches" to if (appleIndependentFrozenTitleMatches) 1 else 0,
+                        "apple_related_year_edition_verified" to if (appleRelatedYearEditionVerified) 1 else 0,
+                        "apple_related_year_edition_complete" to if (appleRelatedYearEditionComplete) 1 else 0,
+                        "apple_mixed_lookup_attempted" to if (appleAlbumDiagnostics?.mixedLookupAttempted == true) 1 else 0,
+                        "apple_mixed_lookup_verified" to if (appleAlbumDiagnostics?.mixedLookupVerified == true) 1 else 0,
+                        "apple_verified_excluded_non_audio" to (appleAlbumDiagnostics?.verifiedExcludedNonAudioRows ?: 0),
                         "apple_frozen_title_verified" to if (appleFrozenTitleVerified) 1 else 0,
                         "apple_qualified_edition_verified" to if (appleQualifiedEditionVerified) 1 else 0,
                         "apple_video_probe_attempted" to if (appleVideoProbeAttempted) 1 else 0,
