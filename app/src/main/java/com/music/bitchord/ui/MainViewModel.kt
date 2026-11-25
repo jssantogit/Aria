@@ -6168,9 +6168,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // recordings with the same word in their title.
             val artists = musicBrainzSearch.searchArtists(query, limit = 15)
             val artistScopeMbid = if (artists is MusicBrainzCatalogSearchResult.Success) {
-                artists.page.items.firstOrNull {
-                    it.name.equals(query.trim(), ignoreCase = true)
-                }?.musicBrainzId
+                com.music.bitchord.data.catalog.metadata.musicBrainzUnambiguousArtistScope(
+                    query, artists.page.items,
+                )
             } else null
             // Publish the first live typed artist identities while the other
             // three rate-limited requests are still pending. Final results
