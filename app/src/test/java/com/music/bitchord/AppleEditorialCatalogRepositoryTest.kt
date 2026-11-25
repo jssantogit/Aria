@@ -201,6 +201,80 @@ class AppleEditorialCatalogRepositoryTest {
         assertEquals(0, recovered.albumDiagnostics?.verifiedExcludedNonAudioRows)
     }
 
+    @Test fun albumFieldSongSearchRecoversOnlyExactCollectionMembers() = runBlocking {
+        val calls = mutableListOf<Pair<String, Map<String, String>>>()
+        var variant = "valid"
+        fun song(id: Int, position: Int, collection: Int = 123, title: String = "Release 123"): String =
+            track(id, collection).replace("\"trackNumber\":1", "\"trackNumber\":$position")
+                .dropLast(1) + ",\"collectionName\":\"$title\",\"trackCount\":2}"
+        val transport = object : ItunesCatalogTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>): String {
+                calls += path to parameters
+                val original = song(101, 1)
+                if (path == "lookup") return """{"resultCount":2,"results":[${album(123, 2)},$original]}"""
+                assertEquals("search", path)
+                assertEquals("albumTerm", parameters["attribute"])
+                assertEquals("Release 123", parameters["term"])
+                assertEquals("br", parameters["country"])
+                assertEquals("song", parameters["entity"])
+                assertEquals("200", parameters["limit"])
+                val additional = when (variant) {
+                    "foreign" -> song(102, 2, 999)
+                    "wrongTitle" -> song(102, 2, title = "Another edition")
+                    "position" -> song(102, 1)
+                    "wrongTotal" -> song(102, 2).replace("\"trackCount\":2", "\"trackCount\":3")
+                    else -> song(102, 2)
+                }
+                val observed = if (variant == "conflict")
+                    original.replace("Song 101", "Contradictory title") else original
+                return """{"resultCount":3,"results":[$observed,$additional,${song(201, 1, 999)}]}"""
+            }
+        }
+        val repository = AppleEditorialCatalogRepository(ItunesCatalogClient(transport))
+        val recovered = repository.albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(listOf("song", "musicTrack", "song"), calls.map { it.second["entity"] })
+        assertEquals(AppleEditorialReadState.COMPLETE, recovered.state)
+        assertEquals(listOf(101L, 102L), recovered.releases.single().tracks.map { it.id })
+        assertEquals(true, recovered.albumDiagnostics?.albumSongSearchAttempted)
+        assertEquals(true, recovered.albumDiagnostics?.albumSongSearchVerified)
+        assertEquals(0, recovered.albumDiagnostics?.verifiedExcludedNonAudioRows)
+        assertFalse(requireNotNull(com.music.bitchord.ui.appleNativeAlbumDetail(
+            recovered, "itunes:br:album:123")).partialTracklist)
+        for (bad in listOf("foreign", "wrongTitle", "position", "wrongTotal", "conflict")) {
+            variant = bad
+            val partial = repository.albumDetail(123) as AppleEditorialLoad.Success
+            assertEquals(bad, AppleEditorialReadState.PARTIAL_TRACKLIST, partial.state)
+            assertEquals(listOf(101L), partial.releases.single().tracks.map { it.id })
+            assertEquals(false, partial.albumDiagnostics?.albumSongSearchVerified)
+        }
+    }
+
+    @Test fun mixedCollectionMayExcludeOnlyUniquelyVerifiedBookletMembership() = runBlocking {
+        var kind = "interactive-booklet"
+        var collision = false
+        val transport = object : ItunesCatalogTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>): String {
+                val original = track(101, 123)
+                if (parameters["entity"] == "song")
+                    return """{"resultCount":2,"results":[${album(123, 2)},$original]}"""
+                val booklet = """{"wrapperType":"track","kind":"$kind","trackId":${if (collision) 101 else 102},"collectionId":123,"trackName":"Booklet"}"""
+                return """{"resultCount":3,"results":[${album(123, 2)},$original,$booklet]}"""
+            }
+        }
+        val repository = AppleEditorialCatalogRepository(ItunesCatalogClient(transport))
+        val verified = repository.albumDetail(123) as AppleEditorialLoad.Success
+        assertEquals(AppleEditorialReadState.COMPLETE, verified.state)
+        assertEquals(1, verified.albumDiagnostics?.verifiedExcludedNonAudioRows)
+        assertEquals(listOf(101L), verified.releases.single().tracks.map { it.id })
+        collision = true
+        assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST,
+            (repository.albumDetail(123) as AppleEditorialLoad.Success).state)
+        collision = false
+        kind = "pdf"
+        assertEquals(AppleEditorialReadState.PARTIAL_TRACKLIST,
+            (repository.albumDetail(123) as AppleEditorialLoad.Success).state)
+    }
+
     @Test fun albumWithAllOrderedTracksReportsVerifiedSourceCompleteness() = runBlocking {
         val source = Source("""{"resultCount":2,"results":[
             ${album(123, count = 1)}, ${track(101, 123)}
