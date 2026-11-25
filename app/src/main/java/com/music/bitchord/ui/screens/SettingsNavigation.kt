@@ -26,7 +26,6 @@ import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Waves
-import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Info
@@ -66,7 +65,6 @@ internal enum class SettingsSection(@StringRes val titleRes: Int, val icon: Imag
     MISCELLANEOUS(R.string.settings_nav_controls, Icons.Rounded.Tune, R.string.settings_nav_desc_misc),
     LANGUAGE(R.string.language, Icons.Rounded.Language, R.string.settings_nav_desc_language),
     ADVANCED(R.string.settings_nav_advanced, Icons.Rounded.Extension, R.string.settings_nav_desc_advanced),
-    WEAR(R.string.wear_os_page_title, Icons.Rounded.Apps, R.string.settings_nav_desc_wear),
     ABOUT(R.string.settings_nav_about, Icons.Rounded.Info, R.string.settings_nav_desc_about),
 }
 
@@ -110,7 +108,6 @@ internal object SettingsNavigation {
             listOf(
                 SettingsSection.PERFORMANCE,
                 SettingsSection.ADVANCED,
-                SettingsSection.WEAR,
             ),
         ),
         SettingsSectionGroup(R.string.settings_nav_group_about, listOf(SettingsSection.ABOUT)),
@@ -120,11 +117,10 @@ internal object SettingsNavigation {
 @Composable
 internal fun SettingsHome(
     onSelect: (SettingsSection) -> Unit,
-    showWear: Boolean = true,
     onListenTogether: (() -> Unit)? = null,
 ) {
     SettingsNavigation.groups.forEach { group ->
-        val visible = group.sections.filter { it != SettingsSection.WEAR || showWear }
+        val visible = group.sections
         if (visible.isNotEmpty()) {
             SettingsGroup(header = stringResource(group.titleRes)) {
                 visible.forEachIndexed { index, section ->

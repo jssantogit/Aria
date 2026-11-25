@@ -5,7 +5,6 @@ import com.music.bitchord.ui.components.appleSettingsSliderColors
 import com.music.bitchord.ui.theme.appleSelectionAccentColor
 import com.music.bitchord.ui.theme.appleMusicKeyColor
 
-import com.music.bitchord.wear.WatchInstaller
 import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
@@ -212,7 +211,6 @@ internal fun SettingsScreen(
     onSources: () -> Unit,
     onSoulseek: () -> Unit,
     onListenTogether: () -> Unit,
-    onWearOs: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
     onEditSignatureApi: () -> Unit,
@@ -446,11 +444,9 @@ internal fun SettingsScreen(
                     onSelect = { section ->
                         when (section) {
                             SettingsSection.SOURCES -> onSources()
-                            SettingsSection.WEAR -> onWearOs()
                             else -> onSelectSection(section)
                         }
                     },
-                    showWear = false,
                     onListenTogether = onListenTogether,
                 )
             }
