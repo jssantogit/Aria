@@ -2553,7 +2553,7 @@ class IdmCatalogLiveObservationTest {
                                             as? AppleEditorialLoad.Success
                                         val record = collection?.releases?.singleOrNull()
                                         appleAlternativeTrackRouteVerified =
-                                            record?.appleCollectionId == song.collectionId &&
+                                            record != null && record.appleCollectionId == song.collectionId &&
                                             record.storefront == song.storefront &&
                                             record.title == song.collectionTitle &&
                                             record.tracks.any {
