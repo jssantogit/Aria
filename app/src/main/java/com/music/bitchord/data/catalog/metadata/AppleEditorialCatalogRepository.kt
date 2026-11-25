@@ -399,6 +399,22 @@ internal class AppleEditorialCatalogRepository(
                         capability = ProviderCapability.EDITORIAL_DISCOGRAPHY,
                     ) as? ItunesCatalogResult.Success)
                         ?.let { appleVerifiedAlbumSongSearch(release, it) }
+                        ?.takeIf { recovered ->
+                            // The independent search must not contradict any
+                            // additional audio row from the mixed observation.
+                            val recoveredById = recovered.tracks.associateBy { it.id }
+                            mixedSource?.items.orEmpty()
+                                .filter { it.type == ItunesCatalogItemType.TRACK }
+                                .all { row ->
+                                    recoveredById[row.id]?.let { other ->
+                                        row.title == other.title && row.artistId == other.artistId &&
+                                            row.artistName == other.artistName &&
+                                            row.discNumber == other.discNumber &&
+                                            row.trackNumber == other.trackNumber &&
+                                            row.durationMs == other.durationMs
+                                    } == true
+                                }
+                        }
                 } else null
                 val finalRelease = mixed?.first ?: recovered ?: release
                 AppleEditorialLoad.Success(
