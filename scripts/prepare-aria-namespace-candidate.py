@@ -34,10 +34,8 @@ def migrate(text):
     return text
 
 def in_scope(path):
-    return path.parts[0] in MODULES or (
-        len(path.parts) >= 3 and path.parts[:2] == (".github", "workflows")
-        and path.name != "aria-namespace-candidate.yml"
-    )
+    # Workflow changes will be applied separately by the repository connector.
+    return path.parts[0] in MODULES
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -86,6 +84,11 @@ def main():
         if scoped:
             revised = migrate(source)
             if revised != source:
+                # A namespace substitution cannot introduce or remove whitespace.
+                # This catches unintended formatting changes, including moved files
+                # whose existing trailing whitespace Git would otherwise flag.
+                if re.findall(r"\s+", source) != re.findall(r"\s+", revised):
+                    raise SystemExit(f"Whitespace changed unexpectedly: {path}")
                 edits.append((path, revised))
     if not moves or not edits:
         raise SystemExit("Expected legacy source paths and references were not found")
@@ -100,15 +103,34 @@ def main():
         destination = ROOT / target
         destination.parent.mkdir(parents=True, exist_ok=True)
         (ROOT / path).rename(destination)
-    git("add", "-A", "--", "app", "shared", "sharedUi", ".github/workflows")
-    git("diff", "--cached", "--check")
+    git("add", "-A", "--", "app", "shared", "sharedUi")
+    # Existing whitespace is byte-preserved by the invariant above. Retain
+    # conflict-marker checking and explicitly raise rename detection capacity.
+    check = subprocess.run(
+        ["git", "-c", "diff.renameLimit=4000", "-c",
+         "core.whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab",
+         "diff", "--cached", "--find-renames=20%", "--check"],
+        cwd=ROOT, capture_output=True,
+    )
+    if check.returncode:
+        raise SystemExit("Candidate diff check failed (conflict markers or Git error)")
+
     changed = git("diff", "--cached", "--name-only", "-z").decode("utf-8").split("\0")
     if any(not in_scope(Path(p)) for p in changed if p):
         raise SystemExit("Unexpected staged change outside migration scope")
-    patch = git("diff", "--cached", "--binary", "--full-index", "--find-renames")
+    patch = git("-c", "diff.renameLimit=4000", "diff", "--cached", "--binary",
+                "--full-index", "--find-renames=20%")
     if not patch:
         raise SystemExit("Empty namespace migration patch")
     (output / "aria-namespace.patch").write_bytes(patch)
+    (output / "source-head.txt").write_bytes(git("rev-parse", "HEAD"))
+    (output / "candidate-tree.txt").write_bytes(git("write-tree"))
+    print("Quoted/reflective namespace references (paths only):")
+    for hit in literals:
+        print("  " + hit)
+    print("Serialization/polymorphism candidates (paths only):")
+    for hit in serial:
+        print("  " + hit)
     print(f"Candidate: {len(moves)} moves, {len(edits)} text edits, "
           f"{len(literals)} quoted/reflective matches, {len(serial)} serialization matches.")
     print("Candidate only: review compatibility before promotion. No commit or push performed.")
