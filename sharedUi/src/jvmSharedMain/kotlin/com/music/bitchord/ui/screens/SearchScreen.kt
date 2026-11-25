@@ -153,6 +153,8 @@ data class CanonicalCatalogSearchRow(
     /** Exact-storefront artwork proof. Never infer this from names. */
     val appleStoreUrl: String? = null,
     val appleStoreBadgeUrl: String? = null,
+    /** Positive MusicBrainz release-group tags from the current source response only. */
+    val editorialGenreTags: List<String> = emptyList(),
 )
 
 /**

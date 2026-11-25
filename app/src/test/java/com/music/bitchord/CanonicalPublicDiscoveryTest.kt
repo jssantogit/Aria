@@ -87,6 +87,35 @@ class CanonicalPublicDiscoveryTest {
         assertEquals(ids.size, ids.distinct().size)
     }
 
+    @Test fun homeRetainsRarePositiveGenreEvidenceWithoutInventingTags() {
+        val dense = (1..60).map { index ->
+            another.copy(
+                musicBrainzId = "82000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Dense single $index", firstReleaseDate = "2026-11-15",
+            ).apply { editorialGenreTags = listOf("pop") }
+        }
+        val rare = listOf("rock", "jazz", "folk", "metal").mapIndexed { index, tag ->
+            recent.copy(
+                musicBrainzId = "83000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Tagged album $index",
+            ).apply { editorialGenreTags = listOf(tag) }
+        }
+        val rows = canonicalPublicReleaseRows(dense + rare, "2026-10-01", "2026-11-23")
+        assertEquals(40, rows.size)
+        assertTrue(rare.all { hit -> rows.any { it.musicBrainzId == hit.musicBrainzId } })
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(rare.all { "catalog:RELEASE_GROUP:${it.musicBrainzId}" in ids })
+        assertEquals(5, com.music.bitchord.ui.musicBrainzHomeVerifiedGenreCount(
+            (dense + rare).associate { it.musicBrainzId to it.editorialGenreTags.toSet() },
+            ids.toSet(),
+        ))
+    }
+
     @Test fun aNonemptyRawShortWindowCanStillHaveNoEligiblePublicRows() {
         // The worldwide loader must inspect verified rows, not just whether
         // MusicBrainz returned a nonempty raw page before trying 90 days.

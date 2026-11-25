@@ -266,8 +266,15 @@ class IdmCatalogLiveObservationTest {
                 now.minusDays(91).toString(), maxPages = 1,
                 onSourcePage = ::observeMbTags,
             ) else null
-        val appMbRows = (currentRows + historical?.rows.orEmpty())
+        val initialMbRows = (currentRows + historical?.rows.orEmpty())
             .distinctBy { it.musicBrainzId }
+        val scans = listOfNotNull(narrow, wide, historical)
+        val supplement = if (scans.any { it.sourceFailure })
+            MusicBrainzHomeGenreSupplement(initialMbRows, 0, 0, 0, false)
+        else supplementMusicBrainzHomeGenres(
+            musicBrainz, initialMbRows, date, onSourcePage = ::observeMbTags,
+        )
+        val appMbRows = supplement.rows
         val appMbHome = canonicalCuratedHomeShelves(
             savedReleases = emptyList(), metadata = appMbRows,
             localPicks = emptyList(), trendingRecordingMbids = emptyList(),
@@ -285,22 +292,22 @@ class IdmCatalogLiveObservationTest {
         val appMbShelves = (appMbSelected.state as? UiState.Success)
             ?.data.orEmpty()
         val appMbItems = cards(appMbShelves)
-        val scans = listOfNotNull(narrow, wide, historical)
         report("musicbrainz_app_flow", Sample(
             status = when {
-                scans.any { it.sourceFailure } -> "partial_source_failure"
+                scans.any { it.sourceFailure } || supplement.sourceFailure -> "partial_source_failure"
                 appMbItems.isEmpty() -> "empty_after_filters"
                 else -> "verified"
             },
-            raw = scans.sumOf { it.sourcePositions },
-            parsed = scans.sumOf { it.parsedRows },
+            raw = scans.sumOf { it.sourcePositions } + supplement.sourcePositions,
+            parsed = scans.sumOf { it.parsedRows } + supplement.parsedRows,
             eligible = appMbRows.size, visible = appMbItems.size,
-            requests = scans.sumOf { it.attempts },
+            requests = scans.sumOf { it.attempts } + supplement.attempts,
             artwork = appMbItems.count { !it.thumbnailUrl.isNullOrBlank() },
             counts = mapOf(
                 "narrow_window_reads" to narrow.attempts,
                 "wide_window_reads" to (wide?.attempts ?: 0),
                 "historical_window_reads" to (historical?.attempts ?: 0),
+                "genre_supplement_reads" to supplement.attempts,
                 "raw_cursor_windows_open" to scans.count { it.cursorRemaining },
                 "verified_landing_genres" to musicBrainzHomeVerifiedGenreCount(
                     mbLandingTags, appMbItems.mapNotNull { it.browseId }.toSet(),

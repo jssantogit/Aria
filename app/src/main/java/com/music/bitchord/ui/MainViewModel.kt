@@ -3504,7 +3504,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 pendingHomePaging = initialCanonicalHomePageSnapshot(
                     until, narrow, wide, historical,
                 )
-                (combined + historical?.rows.orEmpty()).distinctBy { it.musicBrainzId }
+                val landing = (combined + historical?.rows.orEmpty()).distinctBy { it.musicBrainzId }
+                if (listOfNotNull(narrow, wide, historical).any { it.sourceFailure }) landing
+                else supplementMusicBrainzHomeGenres(
+                    musicBrainzEditorialSearch, landing, until,
+                ).rows
             } catch (cancelled: CancellationException) { throw cancelled }
               catch (_: Exception) { emptyList() }
             if (!gate.accept(ticket) || !worldwideReleaseEpoch.isCurrent(generation))

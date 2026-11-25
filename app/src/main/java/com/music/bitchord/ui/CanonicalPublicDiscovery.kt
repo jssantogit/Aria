@@ -33,7 +33,7 @@ internal fun canonicalPublicReleaseRows(
         eligible.firstOrNull {
             canonicalEditorialReleaseType(it) in setOf("Single", "EP")
         },
-    ).distinctBy { it.musicBrainzId }
+    ).plus(musicBrainzHomeGenreAnchors(eligible)).distinctBy { it.musicBrainzId }
     val reserved = anchors.map { it.musicBrainzId }.toSet()
     return (anchors + eligible.asSequence()
         .filterNot { it.musicBrainzId in reserved }
@@ -137,6 +137,7 @@ private fun canonicalPublicTypedReleaseRows(
             releaseKind = hit.primaryType,
             secondaryTypes = hit.secondaryTypes,
             artworkUri = hit.artworkUri,
+            editorialGenreTags = hit.editorialGenreTags,
         )
     }
     .take(maxItems)
@@ -509,13 +510,16 @@ internal fun canonicalHomeWithWorldwideEditorial(
     // Unknown but verified catalog records belong to an explicitly named
     // discovery rail, not a faux handpicked recommendation. Keep this
     // sampling small so source-typed Album and Single shelves have room.
-    val availableDiscovery = canonicalDailyPublicPicks(
-        publicRows.filterNot {
-            canonicalNativeBrowseId(it) in selected ||
-                canonicalNativeBrowseId(it) in reservedIds
-        },
-        todayIsoDate, limit = 8,
-    ).sortedWith(compareByDescending<ShelfItem> { !it.thumbnailUrl.isNullOrBlank() })
+    val discoveryCandidates = publicRows.filterNot {
+        canonicalNativeBrowseId(it) in selected ||
+            canonicalNativeBrowseId(it) in reservedIds
+    }
+    val genreAnchors = musicBrainzHomeGenreAnchors(discoveryCandidates).take(5)
+    val genreAnchorIds = genreAnchors.map { it.musicBrainzId }.toSet()
+    val availableDiscovery = (genreAnchors.map(::item) + canonicalDailyPublicPicks(
+        discoveryCandidates.filterNot { it.musicBrainzId in genreAnchorIds },
+        todayIsoDate, limit = 8 - genreAnchors.size,
+    )).sortedWith(compareByDescending<ShelfItem> { !it.thumbnailUrl.isNullOrBlank() })
     val discovery = unique(availableDiscovery.distinctBy { it.browseId })
     if (discovery.isNotEmpty())
         shelves.add(minOf(1, shelves.size), HomeShelf("Para descobrir", discovery))
