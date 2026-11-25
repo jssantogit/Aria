@@ -3,7 +3,6 @@
 .vscode/
 /build/
 /app/build/
-/desktopApp/bin/
 build/
 gradle-app.setting
 !gradle-wrapper.jar
@@ -41,8 +40,7 @@ keystore.properties
 .tmp_verify/
 .debug/
 
-# AI agent configuration
-AGENTS.md
+# Project output
 /output/
 
 # Built packages — release APKs/bundles are handed out, never committed
