@@ -220,6 +220,13 @@ class AppleEditorialNativeSearchBridgeTest {
         assertEquals(before.album.artworkUri, after.album.artworkUri)
         assertEquals(before.album.title, after.album.title)
         assertEquals(before.partialTracklist, after.partialTracklist)
+        val explicit = album.copy(format = ItunesEditorialReleaseFormat.SINGLE)
+        val explicitSource = source.copy(releases = listOf(explicit))
+        val explicitBefore = appleNativeAlbumDetail(explicitSource, album.appleScopedId)
+        assertEquals(AppleEditorialReleaseCategory.SINGLE, explicitBefore?.album?.category)
+        assertEquals(explicitBefore, com.music.bitchord.ui.appleNativeReconciledAlbumDetail(
+            explicitSource, album.appleScopedId, proof.copy(release = explicit),
+        ))
         assertEquals(before, com.music.bitchord.ui.appleNativeReconciledAlbumDetail(
             source, album.appleScopedId,
             proof.copy(match = com.music.bitchord.data.catalog.metadata
