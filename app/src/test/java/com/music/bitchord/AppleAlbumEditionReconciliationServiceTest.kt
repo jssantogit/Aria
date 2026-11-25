@@ -57,6 +57,38 @@ class AppleAlbumEditionReconciliationServiceTest {
         firstReleaseDate = "2024-03-25", artistDisplay = "ILLIT",
     )
 
+    @Test fun runtimeClassificationCanUseUniqueExactAppleUrlRelationWithoutBarcode() = runBlocking {
+        val original = apple(upc = null).copy(
+            storeUrl = "https://music.apple.com/br/album/super-real-me/101",
+        )
+        val linked = mb().copy(barcode = null, linkedAppleAlbumIds = listOf(101L))
+        var editions = listOf(linked)
+        val service = AppleAlbumEditionReconciliationService(
+            source = AppleAlbumEditionEvidenceSource {
+                AppleAlbumEditionEvidence(editions, listOf(group()))
+            },
+            discogs = AppleDiscogsEditionEvidenceSource {
+                com.music.bitchord.data.catalog.metadata.discogs.DiscogsEditionEnrichment.Disabled
+            },
+        )
+        val verified = requireNotNull(service.resolve(original))
+        assertEquals(ItunesEditorialReleaseFormat.EP, verified.classification.format)
+        assertEquals(AppleEditorialFormatStatus.DECIDED, verified.classification.status)
+        assertEquals(original.appleScopedId, verified.release.appleScopedId)
+        assertEquals(original.storeUrl, verified.release.storeUrl)
+        assertEquals(original.title, verified.release.title)
+        assertEquals(original.tracks, verified.release.tracks)
+        assertEquals(original.artworkUrl, verified.release.artworkUrl)
+        assertNull(verified.release.upc)
+        assertNull(service.resolve(original.copy(storeUrl = null)))
+        editions = listOf(linked, linked.copy(
+            musicBrainzId = "271b31f8-8ab6-483c-97d9-8f0fabb2d4f4",
+        ))
+        assertNull(service.resolve(original))
+        editions = listOf(linked.copy(linkedAppleAlbumIds = listOf(102L)))
+        assertNull(service.resolve(original))
+    }
+
     @Test fun exactRuntimeProofClassifiesWithoutReplacingAnyAppleProductFields() = runBlocking {
         val initial = apple()
         val service = AppleAlbumEditionReconciliationService(
