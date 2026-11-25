@@ -34,7 +34,7 @@ internal fun listenBrainzImportPayload(listen: PendingListenBrainzListen): Strin
                         }
                         put("start_ms", listen.startMs)
                         put("end_ms", listen.endMs)
-                        put("submission_client", "BitChord")
+                        put("submission_client", "Aria")
                     }
                 }
             }

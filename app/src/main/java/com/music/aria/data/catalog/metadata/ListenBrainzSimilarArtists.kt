@@ -161,7 +161,7 @@ internal class ListenBrainzSimilarArtistsClient(
                         listenBrainzArtistRadioParameters().forEach { (key, value) ->
                             parameter(key, value)
                         }
-                        header(HttpHeaders.UserAgent, "BitChord/" + BuildConfig.VERSION_NAME)
+                        header(HttpHeaders.UserAgent, "Aria/" + BuildConfig.VERSION_NAME)
                     }
                     http.status.value to if (http.status.value == 200) http.bodyAsText() else ""
                 }
@@ -190,7 +190,7 @@ internal class ListenBrainzSimilarArtistsClient(
                         ) {
                             parameter("artist_mbids", id)
                             parameter("algorithm", LB_LABS_SIMILAR_ALGORITHM)
-                            header(HttpHeaders.UserAgent, "BitChord/" + BuildConfig.VERSION_NAME)
+                            header(HttpHeaders.UserAgent, "Aria/" + BuildConfig.VERSION_NAME)
                         }
                         http.status.value to if (http.status.value == 200)
                             http.bodyAsText() else ""

@@ -58,7 +58,7 @@ class OpenSubsonicCatalogProviderTest {
         assertFalse(params.containsKey("p"))
         assertFalse(params.values.contains("super-secret"))
         assertEquals("1.16.1", params["v"])
-        assertEquals("BitChord", params["c"])
+        assertEquals("Aria", params["c"])
         assertEquals("json", params["f"])
     }
 

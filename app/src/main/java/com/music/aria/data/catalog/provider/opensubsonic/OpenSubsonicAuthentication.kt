@@ -4,7 +4,7 @@ import java.security.MessageDigest
 import java.util.UUID
 
 internal const val OPEN_SUBSONIC_API_VERSION = "1.16.1"
-internal const val OPEN_SUBSONIC_CLIENT_NAME = "BitChord"
+internal const val OPEN_SUBSONIC_CLIENT_NAME = "Aria"
 
 internal fun defaultOpenSubsonicSalt(): String =
     UUID.randomUUID().toString().replace("-", "").take(16)

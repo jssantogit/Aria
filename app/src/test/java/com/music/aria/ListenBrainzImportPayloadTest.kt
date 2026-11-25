@@ -31,7 +31,7 @@ class ListenBrainzImportPayloadTest {
         assertEquals(original.title, track["track_name"]!!.jsonPrimitive.content)
         assertEquals(original.artist, track["artist_name"]!!.jsonPrimitive.content)
         assertEquals(original.album, track["release_name"]!!.jsonPrimitive.content)
-        assertEquals("BitChord", track["additional_info"]!!.jsonObject["submission_client"]!!.jsonPrimitive.content)
+        assertEquals("Aria", track["additional_info"]!!.jsonObject["submission_client"]!!.jsonPrimitive.content)
         assertFalse(body.contains("sha256-of-account"))
         assertFalse(body.contains("repeat-1"))
     }

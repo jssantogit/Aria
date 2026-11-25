@@ -32,7 +32,7 @@ object ListenBrainzManager {
                 val releaseName = song.albumName.orEmpty()
                 val releasePart = if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
                 val artist = if (primaryArtistOnly) song.artist.primaryArtist() else song.artist
-                val trackMetadata = """{"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"position_ms":$positionMs,"submission_client":"BitChord"}}}"""
+                val trackMetadata = """{"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"position_ms":$positionMs,"submission_client":"Aria"}}}"""
                 val bodyJson = "{\"listen_type\":\"playing_now\",\"payload\":[$trackMetadata]}"
                 // Never log listening payloads: titles, artists and timestamps are personal data.
                 val body = bodyJson.toRequestBody("application/json".toMediaType())
@@ -90,7 +90,7 @@ object ListenBrainzManager {
                 val releasePart = if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","
                 val listenedAtStart = startMs / 1_000L
                 val artist = if (primaryArtistOnly) song.artist.primaryArtist() else song.artist
-                val trackMetadata = """{"listened_at":$listenedAtStart,"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"start_ms":$startMs,"end_ms":$endMs,"submission_client":"BitChord"}}}"""
+                val trackMetadata = """{"listened_at":$listenedAtStart,"track_metadata":{"artist_name":"${escapeJson(artist)}","track_name":"${escapeJson(song.title)}",$releasePart"additional_info":{${durationPart}"start_ms":$startMs,"end_ms":$endMs,"submission_client":"Aria"}}}"""
                 val bodyJson = "{\"listen_type\":\"single\",\"payload\":[$trackMetadata]}"
                 // Never log listening payloads: titles, artists and timestamps are personal data.
                 val body = bodyJson.toRequestBody("application/json".toMediaType())

@@ -101,7 +101,7 @@ internal class KtorListenBrainzPublicPlaylistTransport(
                 parameter("query", query)
                 parameter("count", count)
                 parameter("offset", 0)
-                header(HttpHeaders.UserAgent, "BitChord/${BuildConfig.VERSION_NAME}")
+                header(HttpHeaders.UserAgent, "Aria/${BuildConfig.VERSION_NAME}")
             }
             ListenBrainzPublicPlaylistHttp(response.status.value,
                 if (response.status.value == 200) response.bodyAsText() else "")
@@ -113,7 +113,7 @@ internal class KtorListenBrainzPublicPlaylistTransport(
             status = { r: ListenBrainzPublicPlaylistHttp -> r.status },
         ) {
             val response = client.get("https://api.listenbrainz.org/1/playlist/$mbid") {
-                header(HttpHeaders.UserAgent, "BitChord/${BuildConfig.VERSION_NAME}")
+                header(HttpHeaders.UserAgent, "Aria/${BuildConfig.VERSION_NAME}")
             }
             ListenBrainzPublicPlaylistHttp(response.status.value,
                 if (response.status.value == 200) response.bodyAsText() else "")
@@ -127,7 +127,7 @@ internal class KtorListenBrainzPublicPlaylistTransport(
             val response = client.get("https://api.listenbrainz.org/1/metadata/recording/") {
                 parameter("recording_mbids", recordingMbids.joinToString(","))
                 parameter("inc", "release")
-                header(HttpHeaders.UserAgent, "BitChord/" + BuildConfig.VERSION_NAME)
+                header(HttpHeaders.UserAgent, "Aria/" + BuildConfig.VERSION_NAME)
             }
             ListenBrainzPublicPlaylistHttp(response.status.value,
                 if (response.status.value == 200) response.bodyAsText() else "")

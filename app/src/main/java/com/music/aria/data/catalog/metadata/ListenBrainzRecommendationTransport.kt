@@ -47,7 +47,7 @@ internal class KtorListenBrainzRecommendationTransport(
         ) {
             val response = client.get("https://api.listenbrainz.org/1/validate-token") {
                 header(HttpHeaders.Authorization, "Token $token")
-                header(HttpHeaders.UserAgent, "BitChord/" + BuildConfig.VERSION_NAME)
+                header(HttpHeaders.UserAgent, "Aria/" + BuildConfig.VERSION_NAME)
             }
             ListenBrainzRecommendationHttpResponse(
                 status = response.status.value,
@@ -69,7 +69,7 @@ internal class KtorListenBrainzRecommendationTransport(
         val response = client.get(
             "https://api.listenbrainz.org/1/cf/recommendation/user/$encoded/recording",
         ) {
-            header(HttpHeaders.UserAgent, "BitChord/" + BuildConfig.VERSION_NAME)
+            header(HttpHeaders.UserAgent, "Aria/" + BuildConfig.VERSION_NAME)
             parameter("count", count)
             parameter("offset", 0)
         }
