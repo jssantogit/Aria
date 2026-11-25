@@ -5,7 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.music.aria.R
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -25,7 +25,7 @@ class NativeSourcesActionColorsTest {
     @Test fun addSourceRowStillOpensEditorFromItsAccessibleTitle() {
         var clicks = 0
         compose.setContent {
-            BitChordTheme { AddSourceRow(onClick = { clicks++ }) }
+            AriaTheme { AddSourceRow(onClick = { clicks++ }) }
         }
         val title = RuntimeEnvironment.getApplication().getString(R.string.add_addon)
         compose.onNodeWithText(title).performClick()

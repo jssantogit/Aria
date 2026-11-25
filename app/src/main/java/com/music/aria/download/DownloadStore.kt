@@ -61,7 +61,12 @@ object DownloadStore {
     /** Read-only compatibility with exported files from the predecessor. */
     internal const val LEGACY_FOLDER = "BitChord"
 
-    private val relativePath = "${Environment.DIRECTORY_MUSIC}/$FOLDER"
+    internal const val PUBLIC_RELATIVE_PATH = "Music/" + FOLDER + "/"
+    internal const val LEGACY_RELATIVE_PATH = "Music/" + LEGACY_FOLDER + "/"
+
+    internal fun publicScanPatterns(): Array<String> = arrayOf("$PUBLIC_RELATIVE_PATH%", "$LEGACY_RELATIVE_PATH%")
+
+    private val relativePath = PUBLIC_RELATIVE_PATH
 
     /**
      * Whether saving needs `WRITE_EXTERNAL_STORAGE` asked for at runtime.
@@ -167,7 +172,7 @@ object DownloadStore {
             arrayOf(MediaStore.MediaColumns._ID),
             "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
                 "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
-            arrayOf(name, "%$FOLDER%"),
+            arrayOf(name, "$PUBLIC_RELATIVE_PATH%"),
             null,
         )?.use { cursor ->
             if (!cursor.moveToFirst()) return@use null

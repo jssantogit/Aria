@@ -12,7 +12,7 @@ import com.music.aria.R
 import com.music.aria.playback.PlaybackRecoveryNotice
 import com.music.aria.playback.PlaybackRecoveryReason
 import com.music.aria.playback.PlaybackRecoveryStatus
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -37,7 +37,7 @@ class PlaybackRecoveryBannerTest {
 
     @Test fun nativeRecoveryActionsKeep44DpTargets() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 PlaybackRecoveryBanner(notice, onRetry = {}, onDismiss = {})
             }
         }
@@ -49,7 +49,7 @@ class PlaybackRecoveryBannerTest {
         var retry = 0
         var dismiss = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 PlaybackRecoveryBanner(notice, onRetry = { retry++ }, onDismiss = { dismiss++ })
             }
         }
@@ -65,7 +65,7 @@ class PlaybackRecoveryBannerTest {
     @Test fun retryIsDisabledWhileAnotherAttemptIsInFlight() {
         var retries = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 PlaybackRecoveryBanner(
                     notice.copy(status = PlaybackRecoveryStatus.RETRYING),
                     onRetry = { retries++ }, onDismiss = {},

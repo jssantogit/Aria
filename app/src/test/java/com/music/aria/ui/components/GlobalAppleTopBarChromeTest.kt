@@ -38,7 +38,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.music.aria.R
 import com.music.aria.NativeArtistShareTopBarButton
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import com.music.aria.ui.screens.CircleIconButton
 import com.music.aria.ui.screens.ActionPill
 import com.music.aria.ui.icons.PlaylistEditorIcons
@@ -102,7 +102,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun rootSettingsUsesSharedExpandableMenuInsteadOfLegacyCapsule() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 TopBarAccountButton(account = null, onClick = {})
             }
         }
@@ -115,7 +115,7 @@ class GlobalAppleTopBarChromeTest {
     @Test fun accountAvatarBecomesThreeDotSettingsMenu() {
         var enteredSettings = false
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 TopBarAccountButton(account = null, onClick = { enteredSettings = true })
             }
         }
@@ -128,7 +128,7 @@ class GlobalAppleTopBarChromeTest {
     @Test fun sharedOverflowRemainsMountedDuringCloseTransitionAndThenExits() {
         var settingsOpened = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 TopBarAccountButton(account = null, onClick = { settingsOpened++ })
             }
         }
@@ -167,7 +167,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun globalTopBarActionsHaveIndependentCircleSurfaces() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 ArtworkPageActions(hazeState = null) {
                     IconButton(onClick = {}) { Icon(Icons.Rounded.Search, contentDescription = "Search") }
                     // AnimatedVisibility and other absent toolbar slots must not
@@ -188,7 +188,7 @@ class GlobalAppleTopBarChromeTest {
     }
     @Test fun threeIconToolbarUsesFullTapTargetsAtNarrowAvailableWidth() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 ArtworkPageActions(
                     hazeState = null,
                     modifier = Modifier.width(152.dp).testTag("narrow-action-toolbar"),
@@ -211,7 +211,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun nativeToolbarTouchRippleIsLimitedToItsFortyDpCircle() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 Row {
                     FloatingLibraryTopBarCircle(hazeState = null) {
                         NativeToolbarIconButton(
@@ -240,7 +240,7 @@ class GlobalAppleTopBarChromeTest {
     @Test fun libraryCategoryBackAndActionsDrawEqualFortyDpCircles() {
         var backs = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 Row {
                     ArtworkPageBackButton(
                         onClick = { backs++ },
@@ -268,7 +268,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun genericBackMatchesGenericActionCircleDiameter() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 ArtworkPageBackButton(onClick = {}, hazeState = null)
             }
         }
@@ -279,7 +279,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun reducedMotionMiniLoadingIsIndeterminateToScreenReader() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 MiniPlayerLoadingIndicator(color = Color.White, size = 22.dp, reduceMotion = true)
             }
         }
@@ -294,7 +294,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun reducedMotionRefreshPuckNeverAnnouncesInventedEightyPercentCompletion() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 RefreshPuck(
                     refreshing = true,
                     pullFraction = { 1f },
@@ -313,7 +313,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun detailOnlyCircularActionAlsoUsesFortyDp() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 CircleIconButton(
                     icon = Icons.Rounded.Search,
                     contentDescription = "Detail action",
@@ -329,7 +329,7 @@ class GlobalAppleTopBarChromeTest {
         val refreshing = mutableStateOf(true)
         compose.mainClock.autoAdvance = false
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 RefreshPuck(
                     refreshing = refreshing.value,
                     pullFraction = { if (refreshing.value) 1f else 0f },
@@ -349,7 +349,7 @@ class GlobalAppleTopBarChromeTest {
     @Test fun reducedMotionRefreshEndsWithoutFade() {
         val refreshing = mutableStateOf(true)
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 RefreshPuck(
                     refreshing = refreshing.value,
                     pullFraction = { if (refreshing.value) 1f else 0f },
@@ -364,7 +364,7 @@ class GlobalAppleTopBarChromeTest {
 
     @Test fun unavailableSecondaryActionsRemainDisabledWithSharedSurface() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 Row {
                     CircleIconButton(
                         icon = Icons.Rounded.Search,
@@ -408,7 +408,7 @@ class GlobalAppleTopBarChromeTest {
     @Test fun flatToolbarBackPreservesFortyEightDpNativeTapTarget() {
         var backs = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 CompositionLocalProvider(LocalLiquidGlassEnabled provides false) {
                     FrostedTopBar(
                         title = "Album",
@@ -428,7 +428,7 @@ class GlobalAppleTopBarChromeTest {
     @Test fun artistShareMatchesNativeFortyDpToolbarAndCallsAction() {
         var calls = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 NativeArtistShareTopBarButton(onClick = { calls++ })
             }
         }

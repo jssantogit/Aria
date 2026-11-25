@@ -410,7 +410,7 @@ import com.music.aria.ui.replay.ReplayShareSheet
 import com.music.aria.ui.replay.ReplayStories
 import com.music.aria.ui.replay.ReplayStoryPage
 import com.music.aria.ui.replay.rememberReplayState
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import com.music.aria.ui.theme.rememberArtworkPalette
 import com.music.aria.data.canvas.AppleArtistArtRepository
 import com.music.aria.data.canvas.keyColors
@@ -449,7 +449,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Before the composition, so a cold launch from a widget's artwork has
-        // the request already standing by the time BitChordApp first reads it.
+        // the request already standing by the time AriaApp first reads it.
         PlayerDeepLink.consume(intent)
         JamInviteLink.consume(intent)
         // Likewise for a link tapped or shared from another app — see [MusicLink].
@@ -471,7 +471,7 @@ class MainActivity : AppCompatActivity() {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
             }
-            BitChordTheme(darkTheme = darkTheme) {
+            AriaTheme(darkTheme = darkTheme) {
                 // The glass surfaces sample this layer, and a layer records only
                 // what is drawn into it — which, for BitChord, is a page that
                 // paints no background of its own. Everywhere a page is not
@@ -516,7 +516,7 @@ class MainActivity : AppCompatActivity() {
                 // A measured constraint cannot be stale — it is the very width
                 // the split is about to be laid out in.
                 BoxWithConstraints(Modifier.fillMaxSize()) {
-                    BitChordApp(
+                    AriaApp(
                         darkTheme = darkTheme,
                         windowWidth = maxWidth,
                         windowHeight = maxHeight,
@@ -567,7 +567,7 @@ class MainActivity : AppCompatActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BitChordApp(
+private fun AriaApp(
     darkTheme: Boolean,
     /** The width of the window this is laid out in — see the call site. */
     windowWidth: Dp,
@@ -1421,7 +1421,7 @@ private fun BitChordApp(
 
     val homeListState = rememberLazyListState()
     val exploreListState = rememberLazyListState()
-    // Keep expensive coroutine/composition machinery outside BitChordApp's
+    // Keep expensive coroutine/composition machinery outside AriaApp's
     // enormous Compose bytecode method. One shared native warmup surface.
     CatalogArtworkWarmupEffects(
         showHome = selectedTab == TAB_HOME,
@@ -2469,7 +2469,7 @@ private fun BitChordApp(
         mutableStateOf<androidx.compose.ui.unit.IntRect?>(null)
     }
     var unifiedLibraryBackToken by remember { mutableIntStateOf(0) }
-    // Put album action/sort state outside BitChordApp: it is already close
+    // Put album action/sort state outside AriaApp: it is already close
     // to the JVM Compose method-size limit, and its chrome is reused below.
     val unifiedAlbumUi = remember { UnifiedAlbumDetailUiState() }
     // A typed ReleaseId from the actual nested/native detail, never an album
@@ -2979,7 +2979,7 @@ private fun BitChordApp(
             .background(MaterialTheme.colorScheme.background),
     ) {
         // Keep route-specific BackHandler order unchanged while compiling the
-        // Compose callbacks outside the oversized BitChordApp method. In
+        // Compose callbacks outside the oversized AriaApp method. In
         // particular, the last enabled handler retains its navigation priority.
         val routeBackHandlers: @Composable () -> Unit = {
             // A pushed album/artist/playlist page replaces the tab content but
@@ -5604,7 +5604,7 @@ private fun BitChordApp(
         }
 
         // Keep contextual menus and playlist sheets in a separate Compose
-        // lambda, so BitChordApp's JVM method stays below the 64 KiB limit.
+        // lambda, so AriaApp's JVM method stays below the 64 KiB limit.
         val contextualActionOverlays: @Composable () -> Unit = {
             // Menus must live at the window's top layer rather than inside a
             // 40dp toolbar Box. The same Haze source then samples the real page.
@@ -6797,7 +6797,7 @@ private fun BitChordApp(
 
 
 /**
- * Keep these independent overlays out of BitChordApp so the JVM's 64KB
+ * Keep these independent overlays out of AriaApp so the JVM's 64KB
  * per-method bytecode ceiling cannot be tripped by their Compose expansions.
  * Their state owners and callbacks remain in the original app composition.
  */
@@ -7265,7 +7265,7 @@ private fun ListenTogetherLatencyBadge(status: ServerConnectionState) {
 
 /**
  * First-party account and server editors are owned by a separate composable:
- * no duplicate UI, and BitChordApp no longer emits their bytecode inline.
+ * no duplicate UI, and AriaApp no longer emits their bytecode inline.
  */
 @Composable
 private fun ConnectionEditors(
@@ -7729,7 +7729,7 @@ private fun NativeCollectionOverflowAction(
 }
 
 /**
- * Native playlist menus live outside BitChordApp to keep its JVM method small.
+ * Native playlist menus live outside AriaApp to keep its JVM method small.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -7981,7 +7981,7 @@ private fun FrostedFolderMenu(
 }
 
 /**
- * Retain the Library's native presentation controls outside BitChordApp.
+ * Retain the Library's native presentation controls outside AriaApp.
  * The parent app was already near the JVM method-size ceiling; keeping menus
  * and their event state here prevents adding their Compose bytecode to it.
  */
@@ -8022,7 +8022,7 @@ internal class UnifiedLibraryUiControls {
 }
 
 /**
- * Album-specific chrome is held outside the massive BitChordApp method.
+ * Album-specific chrome is held outside the massive AriaApp method.
  * The release detail reuses the existing frosted SongSort panel, while
  * the playlist action is delivered to the canonical picker as a one-shot token.
  */
@@ -8083,7 +8083,7 @@ private fun UnifiedAlbumDetailSortMenu(
 }
 
 /**
- * Kept outside BitChordApp: the host has already hit the JVM 64KB method limit.
+ * Kept outside AriaApp: the host has already hit the JVM 64KB method limit.
  * The original ✓ is only an observed visual affordance, so save semantics are
  * an explicit BitChord transaction with an error state that keeps its draft.
  */
@@ -8169,7 +8169,7 @@ private fun LibraryPinsEditorScrollToTop(
     }
 }
 
-/** Small lifecycle owner: do not enlarge the 64KB BitChordApp method. */
+/** Small lifecycle owner: do not enlarge the 64KB AriaApp method. */
 @Composable
 private fun rememberLibraryPinsEditorState(
     context: Context,
@@ -8188,7 +8188,7 @@ private fun rememberLibraryPinsEditorState(
 
 /**
  * The Library's floating action group is one reusable composable. Moving the
- * 80-line inline branch out of BitChordApp prevents MethodTooLargeException.
+ * 80-line inline branch out of AriaApp prevents MethodTooLargeException.
  */
 @Composable
 private fun AppleLibraryRoundToolbarActions(
@@ -8327,7 +8327,7 @@ internal fun shouldUseUnifiedAlbumDetailToolbar(
 
 /**
  * The route-aware right pill is shared by Recent Additions and the unified
- * Library. Extracted from BitChordApp to leave JVM bytecode headroom: the
+ * Library. Extracted from AriaApp to leave JVM bytecode headroom: the
  * large host composable previously exceeded the 64KB method ceiling.
  */
 @Composable
@@ -8975,7 +8975,7 @@ private const val TAB_SEARCH = 3
 private const val TAB_KEY = "tab:"
 
 /**
- * Source-aware link handling runs outside the BitChordApp Compose body.
+ * Source-aware link handling runs outside the AriaApp Compose body.
  * Historical YouTube links remain inert and plain text searches stay canonical.
  */
 @Composable
@@ -9038,7 +9038,7 @@ internal fun NativePublicPlaylistTopBarActions(
 }
 
 /** Provider-neutral album toolbar. Keep Compose icon/menu groups out of the
- * oversized BitChordApp bytecode method, while preserving its callbacks. */
+ * oversized AriaApp bytecode method, while preserving its callbacks. */
 @Composable
 private fun NativeDetailAlbumTopBarActions(
     isReleaseDetail: Boolean,

@@ -27,7 +27,7 @@ import com.music.aria.ui.components.TopBarAccountButton
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsEnabled
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
 import org.junit.Rule
@@ -47,7 +47,7 @@ class NativeFrostedMenuRowTest {
     @Test fun selectedFilterIsDistinguishableAndCanStillBeClicked() {
         var clicks by mutableIntStateOf(0)
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 FrostedMenuRow(label = "Fonte local", checked = true, onClick = { clicks++ })
             }
         }
@@ -58,7 +58,7 @@ class NativeFrostedMenuRowTest {
     @Test fun homeSettingsLauncherDelegatesToArtistStyleHostWithoutOpeningAnotherPopup() {
         var opens by mutableIntStateOf(0)
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 TopBarAccountButton(
                     account = null,
                     onClick = {},
@@ -144,7 +144,7 @@ class NativeFrostedMenuRowTest {
         val settings = ApplicationProvider.getApplicationContext<Context>()
             .getString(R.string.settings)
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
                     Column {
                         ActionRow(
@@ -174,7 +174,7 @@ class NativeFrostedMenuRowTest {
         val label = ApplicationProvider.getApplicationContext<Context>()
             .getString(R.string.settings)
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 FrostedSettingsAction { clicks++ }
             }
         }
@@ -187,7 +187,7 @@ class NativeFrostedMenuRowTest {
         val label = ApplicationProvider.getApplicationContext<Context>()
             .getString(R.string.settings)
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 FrostedSettingsAction { opened++ }
             }
         }
@@ -205,7 +205,7 @@ class NativeFrostedMenuRowTest {
 
     @Test fun ordinaryMenuActionIsNotIncorrectlyMarkedSelected() {
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 FrostedMenuRow(label = "Visualizar em grade", checked = false, onClick = {})
             }
         }

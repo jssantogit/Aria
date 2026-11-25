@@ -121,6 +121,7 @@ for hit in wear_hits:
 
 require(not wear_hits, "Retired Wear contracts returned: " + "; ".join(wear_hits))
 require(not (ROOT / "app/src/main/java/com/music/aria/wear").exists(), "Retired Wear package returned")
+require(not (ROOT / "app/src/main/res/values/wear.xml").exists(), "Retired Wear capability resource returned")
 print("No retired Wear transport, output or settings contracts remain.")
 require(not product_identity_hits, "Legacy runtime namespace returned: " + "; ".join(product_identity_hits))
 for module, expected in (("app", "com.music.aria"), ("shared", "com.music.aria.shared"),
@@ -136,7 +137,7 @@ brand = re.compile(r"bitchord|kushagrasingh|kabirsinghbhatia", re.IGNORECASE)
 specific = {
     "application_class": re.compile(r"\bBitChordApplication\b"),
     "icon_object": re.compile(r"\bBitChordIcons\b"),
-    "old_theme": re.compile(r"Theme\.BitChord\b"),
+    "old_theme": re.compile(r"Theme\.BitChord\b|\bBitChord(?:Theme|Typography|App)\b"),
     "old_native": re.compile(r"\b(?:bitchord_analysis|bitchord_dsd|bitchord_dst)\b"),
     "old_version_extra": re.compile(r"bitchord(?:VersionCode|VersionName|BetaSuffix)"),
     "inherited_endpoint": re.compile(r"https?://[^ \t\"']*(?:bitchord|kushagrasingh|kabirsinghbhatia)", re.I),

@@ -18,7 +18,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.music.aria.data.model.ShelfItem
-import com.music.aria.ui.theme.BitChordTheme
+import com.music.aria.ui.theme.AriaTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -40,7 +40,7 @@ class PinnedArtworkOnlyComposeTest {
         var opens = 0
         var menus = 0
         compose.setContent {
-            BitChordTheme {
+            AriaTheme {
                 Box(Modifier.size(100.dp)) {
                     PinnedLibraryArtworkTile(
                         title = "kk",

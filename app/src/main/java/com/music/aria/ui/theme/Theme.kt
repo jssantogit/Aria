@@ -98,7 +98,7 @@ val SFProDisplay = FontFamily(
  * No global letter spacing is forced: the REA's tracking calculation is
  * conditional and has not been shown to apply to Compose text.
  */
-internal val BitChordTypography = Typography(
+internal val AriaTypography = Typography(
     displayLarge = TextStyle(fontWeight = FontWeight.W700, fontSize = 34.sp),
     displayMedium = TextStyle(fontWeight = FontWeight.W700, fontSize = 32.sp),
     displaySmall = TextStyle(fontWeight = FontWeight.W700, fontSize = 30.sp),
@@ -136,13 +136,13 @@ private fun Typography.withFamily(family: FontFamily) = Typography(
 )
 
 @Composable
-fun BitChordTheme(
+fun AriaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = BitChordTypography,
+        typography = AriaTypography,
         content = content,
     )
 }

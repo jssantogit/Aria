@@ -39,6 +39,13 @@ class DownloadStoreTest {
         Song(videoId = videoId, title = title, artist = artist, thumbnailUrl = null)
 
     @Test
+    fun `new public exports are Aria and scanning preserves predecessor files`() {
+        assertEquals("Music/Aria/", DownloadStore.PUBLIC_RELATIVE_PATH)
+        assertEquals("Music/BitChord/", DownloadStore.LEGACY_RELATIVE_PATH)
+        assertEquals(listOf("Music/Aria/%", "Music/BitChord/%"), DownloadStore.publicScanPatterns().toList())
+    }
+
+    @Test
     fun `old download metadata remains readable without an added date`() {
         val old = Json.decodeFromString<SavedSongMetadata>(
             """{"videoId":"abc","title":"Song","artist":"Artist","uri":"file:///song.webm"}""",
