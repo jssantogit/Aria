@@ -1,0 +1,69 @@
+package com.music.aria.ui.player
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import com.music.aria.data.model.Song
+import com.music.aria.ui.components.LocalCanonicalRatingDisplay
+import com.music.aria.ui.components.RatingDisplay
+import com.music.aria.ui.components.CompactRatingGeometry
+import com.music.aria.ui.components.CompactRatingIndicator
+import com.music.aria.sharedui.resources.Res
+import com.music.aria.sharedui.resources.recording_feedback_edit
+import org.jetbrains.compose.resources.stringResource
+
+/** Only a saved, first-party score marks the star; a remote rating alone never does. */
+internal fun playerRatingHasNativeScore(rating: RatingDisplay?): Boolean =
+    rating?.localValue?.let { it.isFinite() && it in 1.0..5.0 } == true
+
+/**
+ * One rating entry for the entire phone/tablet player, including an unrated
+ * track. The click always delegates to the same verified-Recording editor as
+ * the artist/catalog screens; it neither saves nor toggles a Favorite itself.
+ */
+@Composable
+internal fun PlayerRatingStar(
+    song: Song,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onBoundsChanged: ((IntRect) -> Unit)? = null,
+) {
+    val rating = LocalCanonicalRatingDisplay.current.forSong(song)
+    val localScore = rating?.localValue?.takeIf {
+        playerRatingHasNativeScore(rating) && it * 2.0 == (it * 2.0).toInt().toDouble()
+    }
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .testTag("now-playing-rating-star")
+            .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coordinates ->
+                // Same screen-space anchor convention as the overflow icon:
+                // both rating and menu live in distinct Compose dialog windows.
+                val origin = coordinates.positionOnScreen()
+                onBoundsChanged(IntRect(
+                    origin.x.toInt(), origin.y.toInt(),
+                    (origin.x + coordinates.size.width).toInt(),
+                    (origin.y + coordinates.size.height).toInt(),
+                ))
+            })
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        CompactRatingIndicator(
+            value = localScore,
+            geometry = CompactRatingGeometry.CIRCULAR,
+            size = 34.dp,
+            showUnrated = true,
+            neutralColor = Color.White,
+        )
+    }
+}

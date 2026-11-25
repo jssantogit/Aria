@@ -1,0 +1,2914 @@
+package com.music.aria.ui.screens
+
+import android.graphics.BitmapFactory
+import coil3.compose.AsyncImage
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.aria.R
+import com.music.aria.data.settings.AppSettings
+import com.music.aria.ui.components.shouldBlurHeldContextBackdrop
+import com.music.aria.data.catalog.CanonicalBrowseLibrary
+import com.music.aria.data.catalog.CanonicalBrowseTrack
+import com.music.aria.data.catalog.CanonicalCatalogDatabase
+import com.music.aria.data.catalog.CatalogReleaseGroupEntity
+import com.music.aria.data.catalog.CanonicalEntitySortDateRow
+import com.music.aria.data.catalog.UnifiedLocalCatalogIndex
+import com.music.aria.data.model.BrowseType
+import com.music.aria.data.settings.LocalMusicSort
+import com.music.aria.data.settings.SongSort
+import com.music.aria.data.settings.LibraryViewType
+import com.music.aria.diagnostics.Diagnostics
+import com.music.aria.diagnostics.DiagnosticCategory
+import com.music.aria.ui.components.BrowseActionsSheet
+import com.music.aria.ui.components.HeldContextMenu
+import com.music.aria.ui.components.HeldItem
+import com.music.aria.ui.components.LongPressOrigin
+import com.music.aria.ui.components.SongActionsPresentation
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import com.music.aria.ui.components.BrowseTarget
+import com.music.aria.ui.components.RowMoreButton
+import com.music.aria.ui.components.NativeDetailTrackRowLayout
+import com.music.aria.ui.components.NativeInlineTextAction
+import com.music.aria.ui.components.NativeDetailTrackNumber
+import com.music.aria.ui.components.NUMBERED_ROW_DIVIDER_INSET
+import com.music.aria.ui.components.NativeTrackRowText
+import com.music.aria.ui.components.longPressMenuClickable
+import com.music.aria.ui.components.CoverPlaceholder
+import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.icons.PlaylistEditorIcons
+import com.music.aria.ui.theme.ArtworkPalette
+import com.music.aria.ui.theme.rememberArtworkPalette
+import com.music.aria.data.catalog.ArtistEntity
+import com.music.aria.data.catalog.ReleaseEntity
+import com.music.aria.data.catalog.CanonicalLibraryBrowseRepository
+import com.music.aria.data.catalog.CanonicalMultiSourceBrowseRepository
+import com.music.aria.data.catalog.RoomCanonicalMultiSourceBrowseStore
+import com.music.aria.data.catalog.provider.opensubsonic.SharedPrefsOpenSubsonicAccountPersistence
+import com.music.aria.data.catalog.RoomCanonicalLibraryBrowseStore
+import com.music.aria.data.listening.SmartPlaylistDefinitionDatabase
+import com.music.aria.data.listening.ListeningEventDatabase
+import com.music.aria.data.listening.CanonicalContextualFilterLibrary
+import com.music.aria.data.listening.CanonicalSmartFilterContext
+import com.music.aria.data.listening.filterCanonicalBrowseAlbums
+import com.music.aria.data.listening.filterCanonicalBrowseArtists
+import com.music.aria.data.listening.isSupportedForCanonicalAlbumBrowse
+import com.music.aria.data.listening.isSupportedForCanonicalArtistBrowse
+import com.music.aria.data.listening.SmartPlaylistV2FilterRepository
+import com.music.aria.data.listening.SavedSmartPlaylistV2Filter
+import com.music.aria.data.listening.filterCanonicalBrowseSongs
+import com.music.aria.data.listening.isSupportedForCanonicalSongBrowse
+import com.music.aria.data.listening.SmartPlaylistRuleField
+import com.music.aria.data.listening.referencedFields
+import com.music.aria.data.catalog.provider.opensubsonic.OpenSubsonicArtworkLoadResult
+import com.music.aria.data.catalog.provider.opensubsonic.OpenSubsonicArtworkLoader
+import com.music.aria.data.catalog.provider.opensubsonic.androidOpenSubsonicArtworkLoader
+import com.music.aria.playback.CanonicalRemotePlaybackMetadata
+import com.music.aria.playback.CanonicalRemotePlaybackRequest
+import com.music.aria.playback.playCanonicalRemote
+import com.music.aria.playback.rememberMediaController
+import com.music.aria.ui.components.CanonicalRatingStars
+import com.music.aria.ui.components.LocalCanonicalRatingDisplay
+import com.music.aria.ui.components.CanonicalRatingDisplaySnapshot
+import com.music.aria.ui.components.RatingDisplay
+import com.music.aria.ui.components.PAGE_GUTTER
+import com.music.aria.ui.components.topBarContentPadding
+import com.music.aria.ui.components.SearchField
+import com.music.aria.playback.CanonicalCollectionIntent
+import com.music.aria.sharedui.resources.Res
+import com.music.aria.sharedui.resources.canonical_rating_song_options
+import com.music.aria.sharedui.resources.recording_feedback_edit
+import org.jetbrains.compose.resources.stringResource as sharedStringResource
+import com.music.aria.ui.player.awaitRecoverableCanonicalArtwork
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.util.Locale
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+
+private sealed interface CanonicalSongFilterState {
+    data object Loading : CanonicalSongFilterState
+    data object Failed : CanonicalSongFilterState
+    data class Ready(val tracks: List<CanonicalBrowseTrack>) : CanonicalSongFilterState
+}
+
+private sealed interface CanonicalEntityBrowseState {
+    data object Loading : CanonicalEntityBrowseState
+    data object Failed : CanonicalEntityBrowseState
+    data class Albums(val releases: List<ReleaseEntity>) : CanonicalEntityBrowseState
+    data class Artists(val artists: List<CanonicalSelectedEntity>) : CanonicalEntityBrowseState
+}
+
+private sealed interface CanonicalDetailBrowseState {
+    data object Loading : CanonicalDetailBrowseState
+    data object Failed : CanonicalDetailBrowseState
+    data class Ready(
+        val recordingIds: Set<String>,
+        val releaseOrder: List<String> = emptyList(),
+    ) : CanonicalDetailBrowseState
+}
+
+internal data class CanonicalAlbumFooterMetadata(
+    val date: String?,
+    val summary: String?,
+    val genre: String? = null,
+    val year: String? = null,
+)
+
+/** Verified date or explicit year; never extract a number from a title. */
+internal fun canonicalAlbumVerifiedYear(rawDate: String?): String? {
+    val raw = rawDate?.trim().orEmpty()
+    if (raw.length == 4 && raw.all(Char::isDigit)) return raw
+    return try {
+        LocalDate.parse(raw.take(10)).year.toString()
+    } catch (_: DateTimeParseException) {
+        null
+    }
+}
+
+internal fun nativeAlbumHeaderCaption(footer: CanonicalAlbumFooterMetadata?): String =
+    listOfNotNull(
+        footer?.genre?.trim()?.takeIf(String::isNotEmpty),
+        footer?.year?.trim()?.takeIf(String::isNotEmpty),
+    ).joinToString(" · ")
+
+/** Only metadata backed by the release/track catalog is shown. */
+internal fun canonicalAlbumFooterMetadata(
+    releaseDate: String?,
+    tracks: List<CanonicalBrowseTrack>,
+): CanonicalAlbumFooterMetadata {
+    val date = releaseDate?.trim()?.takeIf(String::isNotEmpty)?.let { raw ->
+        try {
+            LocalDate.parse(raw.take(10)).format(
+                DateTimeFormatter.ofPattern("d 'de' MMMM 'de' uuuu", Locale("pt", "BR")),
+            )
+        } catch (_: DateTimeParseException) {
+            raw.takeIf { it.length == 4 && it.all(Char::isDigit) }
+        }
+    }
+    val count = tracks.size
+    val duration = tracks.takeIf { it.isNotEmpty() && it.all { track ->
+        (track.durationMs ?: 0L) > 0L
+    } }?.sumOf { it.durationMs ?: 0L }?.let { total ->
+        ((total + 30_000L) / 60_000L).coerceAtLeast(1L)
+    }
+    val summary = count.takeIf { it > 0 }?.let {
+        "${it} ${if (it == 1) "música" else "músicas"}" +
+            (duration?.let { minutes ->
+                ", $minutes ${if (minutes == 1L) "minuto" else "minutos"}"
+            } ?: "")
+    }
+    // Genre is intentionally absent: CanonicalBrowseTrack currently has no
+    // verified genre field. Never guess it from artist, title or source.
+    return CanonicalAlbumFooterMetadata(
+        date = date, summary = summary,
+        year = canonicalAlbumVerifiedYear(releaseDate),
+    )
+}
+
+private data class CanonicalAlbumHeaderEvidence(
+    val primaryType: String?,
+    val releaseDate: String?,
+)
+
+internal data class CanonicalSelectedEntity(
+    val id: String,
+    val name: String,
+    val artworkUri: String? = null,
+)
+
+/** Only the three root Library categories support hold-to-select. */
+internal fun canSelectCanonicalLibraryByLongPress(
+    category: CanonicalSmartFilterContext,
+    detailOpen: Boolean,
+): Boolean = !detailOpen && category in setOf(
+    CanonicalSmartFilterContext.SONGS,
+    CanonicalSmartFilterContext.ALBUMS,
+    CanonicalSmartFilterContext.ARTISTS,
+)
+
+private data class CanonicalLibraryMenuTarget(
+    val selection: CanonicalLibrarySelection,
+    val title: String,
+    val subtitle: String,
+    val imageUrl: String? = null,
+)
+
+/**
+ * Offline-first browse for a provider's persisted canonical availability.
+ *
+ * Metadata remains Room-only. Artwork is the one bounded exception: rows hand
+ * only their canonical mediaAssetId to a provider-owned loader which may serve
+ * a credential-free disk cache or authenticate a cover-art request at runtime.
+ * Authenticated URLs and provider cover IDs never enter Compose state.
+ */
+/** Only album/artist detail toolbars open the frosted anchored overflow card.
+ * A held item keeps its lifted representation; track actions retain their route.
+ */
+internal fun canonicalLibraryDetailUsesAnchoredOverflow(
+    detailOpen: Boolean,
+    type: CanonicalLibraryEntityType,
+): Boolean = detailOpen && type != CanonicalLibraryEntityType.TRACK
+
+/** Shared source scope: a dedicated server never falls back to another one.
+ * Only the unified Library permits an explicit ALL-sources null scope. */
+internal fun canonicalLibraryPlaybackSourceScope(
+    unified: Boolean,
+    selectedSource: String?,
+    providerKey: String,
+): String? = if (unified) selectedSource else providerKey
+
+/** Selection uses the same native gesture but requires a visible batch bar.
+ * A dedicated source root keeps long-press menus, never a stranded draft. */
+internal fun canonicalLibraryCanStartBatchSelection(
+    unified: Boolean,
+    category: CanonicalSmartFilterContext,
+    detailOpen: Boolean,
+): Boolean = unified && canSelectCanonicalLibraryByLongPress(category, detailOpen)
+
+/** Browse-only artist groups use the same Recording-backed evidence in every
+ * Library host. Display group IDs are not promoted into canonical ArtistIds. */
+internal fun canonicalLibraryDisplayArtistGroups(
+    tracks: List<CanonicalBrowseTrack>,
+    credited: List<CanonicalSelectedEntity>,
+): List<CanonicalSelectedEntity> {
+    val names = credited.mapTo(HashSet()) { it.name.lowercase() }
+    return canonicalLibraryDisplayArtistNames(tracks, names).map { name ->
+        CanonicalSelectedEntity(playlistDisplayArtistGroupId(name), name)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CanonicalRemoteLibraryScreen(
+    providerKey: String,
+    title: String,
+    onClose: () -> Unit,
+    unified: Boolean = false,
+    filterActionToken: Int = 0,
+    searchVisible: Boolean = false,
+    detailBackToken: Int = 0,
+    onDetailChanged: (Boolean) -> Unit = {},
+    onNestedAlbumChanged: (Boolean) -> Unit = {},
+    onDetailOverflowVisibilityChange: (CanonicalLibraryEntityType?) -> Unit = {},
+    detailOverflowAnchor: androidx.compose.ui.unit.IntRect? = null,
+    onOpenSettings: () -> Unit = {},
+    onAlbumRatingTargetChanged: (CanonicalLibrarySelection?) -> Unit = {},
+    initialPinnedSelection: CanonicalLibraryPin? = null,
+    initialContext: CanonicalSmartFilterContext = CanonicalSmartFilterContext.SONGS,
+    selectedSourceKey: String? = null,
+    selectedStarsFilter: Int? = null,
+    unifiedSort: LocalMusicSort = LocalMusicSort.TITLE_ASC,
+    unifiedViewType: LibraryViewType = LibraryViewType.LIST,
+    albumSort: SongSort = SongSort.DEFAULT,
+    albumMenuToken: Int = 0,
+    albumPlaylistToken: Int = 0,
+    artistMenuToken: Int = 0,
+    onSourceKeysChanged: (List<String>) -> Unit = {},
+    /** Actual canonical album route; null means the parent cannot navigate. */
+    onOpenCatalogAlbum: ((String, String, String) -> Unit)? = null,
+    /** Proven ReleaseId with available source assets; bypass public MB lookup. */
+    onOpenNativeAlbum: ((String, String, String) -> Unit)? = null,
+    /** Exact credited ArtistId and source provider, never a display-name lookup. */
+    onOpenSourceOwnedArtist: ((String, String, String) -> Unit)? = null,
+    heldMenuBottomChromeClearance: Dp = 100.dp,
+    selectionBarBottomPadding: Dp = 140.dp,
+    hazeState: HazeState? = null,
+) {
+    val context = LocalContext.current
+    val controller = rememberMediaController()
+    val catalogDb = remember(context.applicationContext) {
+        CanonicalCatalogDatabase.get(context.applicationContext)
+    }
+    val catalogDao = remember(catalogDb) { catalogDb.catalogDao() }
+    val libraryPinRepository = remember(context.applicationContext) {
+        CanonicalLibraryPinRepository.get(context.applicationContext)
+    }
+    val libraryPins by libraryPinRepository.pins.collectAsStateWithLifecycle()
+    val pinnedIdentities = remember(libraryPins) {
+        libraryPins.mapTo(HashSet()) { it.selection }
+    }
+    val contextualReader = remember(catalogDao) { CanonicalContextualFilterLibrary(catalogDao) }
+    val repository = remember(context.applicationContext) {
+        CanonicalLibraryBrowseRepository(
+            RoomCanonicalLibraryBrowseStore(
+                catalogDao,
+            ),
+        )
+    }
+    val artworkLoader = remember(context.applicationContext) {
+        androidOpenSubsonicArtworkLoader(context.applicationContext)
+    }
+    val sourceAccounts = remember(context.applicationContext) {
+        SharedPrefsOpenSubsonicAccountPersistence(context.applicationContext)
+    }
+    val availableKeys by produceState(
+        initialValue = listOf("local-mediastore"), key1 = sourceAccounts,
+    ) {
+        if (unified) {
+            sourceAccounts.observe().collectLatest {
+                value = withContext(Dispatchers.IO) {
+                    canonicalAvailablePlaylistSourceKeys(context.applicationContext)
+                }
+            }
+        }
+    }
+    val selectedSource = if (unified) selectedSourceKey else null
+    // A dedicated source must not choose another provider for a group action.
+    val effectiveSourceKey = canonicalLibraryPlaybackSourceScope(unified, selectedSource, providerKey)
+    var libraryQuery by remember(unified) { mutableStateOf("") }
+    LaunchedEffect(searchVisible) { if (!searchVisible) libraryQuery = "" }
+    val selectedStars = if (unified) selectedStarsFilter else null
+    var localIndexReady by remember(unified) { mutableStateOf(!unified) }
+    LaunchedEffect(unified) {
+        if (unified) {
+            try {
+                UnifiedLocalCatalogIndex.ensure(context.applicationContext)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Keep remote rows visible if local media scan is unavailable.
+            } finally {
+                // A failed optional local scan must not trap remote-only libraries
+                // behind an endless loader.
+                localIndexReady = true
+            }
+        }
+    }
+    LaunchedEffect(availableKeys) { if (unified) onSourceKeysChanged(availableKeys) }
+    val sources = if (unified) availableKeys else listOf(providerKey)
+    val multiRepository = remember(catalogDao) {
+        CanonicalMultiSourceBrowseRepository(RoomCanonicalMultiSourceBrowseStore(catalogDao))
+    }
+    val libraryFlow = remember(repository, multiRepository, sources, providerKey, unified) {
+        if (unified) multiRepository.observe(sources.toSet())
+        else repository.observe(providerKey)
+    }
+    // EMPTY is valid after the first Room emission, but not before it. A
+    // placeholder empty list briefly rendered a false 'Nenhuma música' frame
+    // while the local index/database had not produced their initial results.
+    // Keep the original lifecycle-aware collection; only its initial value
+    // becomes nullable so an unobserved flow cannot masquerade as empty data.
+    val nullableLibraryFlow = remember(libraryFlow) {
+        libraryFlow.map<CanonicalBrowseLibrary, CanonicalBrowseLibrary?> { it }
+    }
+    val librarySnapshot by nullableLibraryFlow.collectAsStateWithLifecycle(initialValue = null)
+    val initialLibraryLoading = canonicalLibraryInitialLoading(
+        unified = unified,
+        firstEmissionReceived = librarySnapshot != null,
+        localIndexReady = localIndexReady,
+        // Display verified Room rows immediately: only a genuinely empty
+        // initial projection must wait for the in-flight MediaStore scan.
+        persistedRowsPresent = librarySnapshot?.tracks?.isNotEmpty() == true,
+    )
+    val library = librarySnapshot ?: CanonicalBrowseLibrary.EMPTY
+    // Album/artist scores belong to their own local table, not track ratings.
+    // A single Room flow powers all visible rows and repaints after editing.
+    val entityRatingDao = remember(context.applicationContext) {
+        ListeningEventDatabase.get(context.applicationContext).canonicalEntityRatingDao()
+    }
+    val entityRatingRows by remember(entityRatingDao) {
+        entityRatingDao.observeAll()
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val entityRatingValues = remember(entityRatingRows) {
+        canonicalLibraryEntityRatingsByTarget(entityRatingRows)
+    }
+    val ratingsSnapshot = LocalCanonicalRatingDisplay.current
+    val eligibleTracks = remember(library.tracks, selectedSource, selectedStars, ratingsSnapshot, unified) {
+        if (unified) filterCanonicalLibraryTracks(
+            library.tracks, selectedSource, selectedStars, ratingsSnapshot,
+        ) else library.tracks
+    }
+    val executeLibraryTrack = rememberSmartCollectionBatchAction(controller)
+    // Preserve native RecordingId-scoped rating edits from the main branch.
+    var editingRecordingId by remember { mutableStateOf<String?>(null) }
+    var libraryMenu by remember { mutableStateOf<CanonicalLibraryMenuTarget?>(null) }
+    var heldLibraryMenuOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    var playlistPickerSelection by remember {
+        mutableStateOf<List<CanonicalLibrarySelection>?>(null)
+    }
+    // Selection is an explicit draft and survives source/star/sort changes.
+    // Never reset it just because a browse filter or detail page changed.
+    var selectedItems by remember { mutableStateOf<List<CanonicalLibrarySelection>>(emptyList()) }
+    val batchSelectedSources = if (unified) selectedSource else providerKey
+    // The count is resolved from canonical membership, not from the number
+    // of artist/album cards tapped. Changes of source revalidate in-place.
+    var batchResolved by remember(selectedItems, batchSelectedSources) {
+        mutableStateOf<CanonicalLibraryResolvedSelection?>(null)
+    }
+    LaunchedEffect(selectedItems, batchSelectedSources) {
+        if (selectedItems.isNotEmpty()) {
+            batchResolved = try {
+                withContext(Dispatchers.IO) {
+                    canonicalLibraryResolveSelections(
+                        context.applicationContext, selectedItems, batchSelectedSources,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { null }
+        }
+    }
+    var ratingDialogSelection by remember {
+        mutableStateOf<List<CanonicalLibrarySelection>?>(null)
+    }
+    var artistRatingAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
+    val libraryActionScope = rememberCoroutineScope()
+    val filterRepo = remember(context.applicationContext) {
+        SmartPlaylistV2FilterRepository(
+            SmartPlaylistDefinitionDatabase.get(context.applicationContext).v2FilterDao(),
+        )
+    }
+    var filtersUnavailable by remember(providerKey) { mutableStateOf(false) }
+    val filters by produceState<List<SavedSmartPlaylistV2Filter>>(
+        initialValue = emptyList(), key1 = filterRepo, key2 = providerKey,
+    ) {
+        try {
+            filterRepo.observe().collect { value = it; filtersUnavailable = false }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            filtersUnavailable = true
+        }
+    }
+    var selectedContext by remember(providerKey, initialContext) {
+        mutableStateOf(initialContext)
+    }
+    // A future physical smoke can distinguish unavailable MediaStore evidence
+    // from an empty account, an invalid source choice and an active star filter.
+    // Only counts and enum labels are exported (no account IDs or song paths).
+    LaunchedEffect(
+        unified, library.tracks.size, eligibleTracks.size, selectedContext,
+        selectedSource, selectedStars, sources.size,
+    ) {
+        if (unified) runCatching {
+            Diagnostics.event(
+                category = DiagnosticCategory.CATALOG,
+                name = "unified_library_browse_v1",
+                metadata = mapOf(
+                    "category" to selectedContext.name,
+                    "recordingCount" to library.tracks.size.toString(),
+                    "visibleCount" to eligibleTracks.size.toString(),
+                    "localAssetCount" to library.tracks.sumOf { track ->
+                        track.availableAssets.count { it.providerKey == "local-mediastore" }
+                    }.toString(),
+                    "remoteAssetCount" to library.tracks.sumOf { track ->
+                        track.availableAssets.count { it.providerKey.startsWith("opensubsonic:") }
+                    }.toString(),
+                    "sourceCount" to sources.size.toString(),
+                    "sourceMode" to when {
+                        selectedSource == null -> "all"
+                        selectedSource == "local-mediastore" -> "local"
+                        else -> "remote"
+                    },
+                    "stars" to (selectedStars?.toString() ?: "all"),
+                ),
+            )
+        }
+    }
+    val pinnedDetail = initialPinnedSelection?.takeIf { pin ->
+        unified && pin.selection.entityId.isNotBlank() && when (selectedContext) {
+            CanonicalSmartFilterContext.ALBUMS ->
+                pin.selection.type == CanonicalLibraryEntityType.ALBUM
+            CanonicalSmartFilterContext.ARTISTS ->
+                pin.selection.type == CanonicalLibraryEntityType.ARTIST
+            CanonicalSmartFilterContext.SONGS -> false
+        }
+    }
+    var selectedEntity by remember(providerKey, selectedContext, pinnedDetail?.selection) {
+        mutableStateOf(pinnedDetail?.let { CanonicalSelectedEntity(it.selection.entityId, it.title) })
+    }
+    var detailQuery by remember(selectedEntity?.id) { mutableStateOf("") }
+    var artistNestedReleaseOpen by remember { mutableStateOf(false) }
+    var artistNestedBackToken by remember { mutableIntStateOf(0) }
+    // Report only a live toolbar-owned menu; held previews never select the toolbar button.
+    val toolbarMenuType = libraryMenu?.selection?.type?.takeIf { type ->
+        heldLibraryMenuOrigin == null && selectedEntity != null &&
+            ((type == CanonicalLibraryEntityType.ALBUM &&
+                selectedContext == CanonicalSmartFilterContext.ALBUMS) ||
+             (type == CanonicalLibraryEntityType.ARTIST &&
+                selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+                !artistNestedReleaseOpen))
+    }
+    LaunchedEffect(toolbarMenuType) {
+        onDetailOverflowVisibilityChange(toolbarMenuType)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onDetailOverflowVisibilityChange(null) }
+    }
+    LaunchedEffect(selectedEntity?.id) { artistNestedReleaseOpen = false }
+    LaunchedEffect(detailBackToken) {
+        if (detailBackToken > 0) {
+            if (artistNestedReleaseOpen) artistNestedBackToken++
+            else if (pinnedDetail != null) onClose()
+            else selectedEntity = null
+        }
+    }
+    LaunchedEffect(selectedEntity != null) {
+        onDetailChanged(selectedEntity != null)
+    }
+    LaunchedEffect(selectedEntity?.id, selectedContext, artistNestedReleaseOpen) {
+        onNestedAlbumChanged(
+            selectedEntity != null &&
+                selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+                artistNestedReleaseOpen,
+        )
+    }
+    // The floating rating button follows a verified ReleaseId. Nested
+    // artist releases publish their own selection from CanonicalArtistDetailRoute.
+    LaunchedEffect(unified, selectedContext, selectedEntity?.id) {
+        if (unified && selectedContext == CanonicalSmartFilterContext.ALBUMS) {
+            onAlbumRatingTargetChanged(selectedEntity?.let { selected ->
+                CanonicalLibrarySelection(CanonicalLibraryEntityType.ALBUM, selected.id)
+            })
+        } else {
+            onAlbumRatingTargetChanged(null)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            onDetailChanged(false)
+            onNestedAlbumChanged(false)
+            onAlbumRatingTargetChanged(null)
+        }
+    }
+    var selectedFilterId by remember(providerKey, selectedContext) {
+        mutableStateOf<String?>(null)
+    }
+    val compatible = remember(filters, selectedContext, providerKey) {
+        filters.filter { filter ->
+            !unified && when (selectedContext) {
+                CanonicalSmartFilterContext.SONGS ->
+                    filter.isSupportedForCanonicalSongBrowse(providerKey)
+                CanonicalSmartFilterContext.ALBUMS ->
+                    filter.isSupportedForCanonicalAlbumBrowse()
+                CanonicalSmartFilterContext.ARTISTS ->
+                    filter.isSupportedForCanonicalArtistBrowse()
+            }
+        }
+    }
+    val selected = filters.firstOrNull { it.id == selectedFilterId }
+    // Genre/mood metadata may change while Recording display rows stay equal.
+    // Listen to the tags table directly; all reads still use provider-scoped SQL.
+    val tagEvidenceRevision by produceState(initialValue = 0L, key1 = catalogDb) {
+        catalogDb.invalidationTracker.createFlow("catalog_media_asset_tags").collect {
+            value += 1L
+        }
+    }
+    // Each Library category owns its first snapshot. produceState's key1/key2
+    // restart its effect but do NOT reset its retained value, so switching
+    // Albums -> Songs could briefly show the previous (empty) track snapshot.
+    val filteredState by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource,
+    ) {
+    produceState<CanonicalSongFilterState>(
+        initialValue = CanonicalSongFilterState.Loading,
+        key1 = library.tracks, key2 = selectedFilterId,
+        key3 = (Triple(selectedContext, selected, filtersUnavailable) to tagEvidenceRevision)
+            to (Triple(selectedSource, selectedStars, ratingsSnapshot) to libraryQuery),
+    ) {
+        value = try {
+            when {
+                selectedContext != CanonicalSmartFilterContext.SONGS ->
+                    CanonicalSongFilterState.Ready(emptyList())
+                filtersUnavailable && selectedFilterId != null -> CanonicalSongFilterState.Failed
+                selectedFilterId == null -> CanonicalSongFilterState.Ready(
+                    if (unified && libraryQuery.isNotBlank()) eligibleTracks.filter {
+                        it.title.contains(libraryQuery, ignoreCase = true) ||
+                            it.artistDisplay.contains(libraryQuery, ignoreCase = true)
+                    } else eligibleTracks,
+                )
+                selected == null -> CanonicalSongFilterState.Failed
+                else -> {
+                    val tagRows = if (selected.rules.referencedFields().any {
+                        it == SmartPlaylistRuleField.GENRE || it == SmartPlaylistRuleField.MOOD ||
+                            it == SmartPlaylistRuleField.BPM ||
+                            it == SmartPlaylistRuleField.STYLE ||
+                            it == SmartPlaylistRuleField.COMPOSER ||
+                            it == SmartPlaylistRuleField.FILE_PATH ||
+                            it == SmartPlaylistRuleField.FOLDER_PATH
+                    }) withContext(Dispatchers.IO) {
+                        library.tracks.map { it.recordingId }.chunked(400).flatMap { ids ->
+                            catalogDao.providerScopedTagRows(providerKey, ids)
+                        }.groupBy { it.recordingId }
+                    } else null
+                    CanonicalSongFilterState.Ready(withContext(Dispatchers.Default) {
+                        filterCanonicalBrowseSongs(
+                            library.tracks, selected, providerKey,
+                            scopedTagRowsByRecording = tagRows,
+                        )
+                    })
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            CanonicalSongFilterState.Failed
+        }
+    }
+    }
+    val displayedTracks = (filteredState as? CanonicalSongFilterState.Ready)?.tracks.orEmpty()
+
+    // Navigation identity, not the current search text, decides when stale
+    // Album/Artist results must be replaced by a real Loading snapshot.
+    val entityState by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource, unified,
+    ) {
+    produceState<CanonicalEntityBrowseState>(
+        initialValue = CanonicalEntityBrowseState.Loading,
+        key1 = providerKey, key2 = selectedContext,
+        key3 = (selectedFilterId to selected to filtersUnavailable) to
+            (Triple(sources, selectedSource, eligibleTracks) to libraryQuery),
+    ) {
+        if (selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
+        catalogDb.invalidationTracker.createFlow(
+            "catalog_media_asset", "catalog_release", "catalog_release_track",
+            "catalog_recording_artist_credit", "catalog_release_artist_credit",
+            "catalog_artist", "musicbrainz_release_enrichment",
+            "catalog_external_identity",
+        ).collectLatest {
+            value = try {
+                when {
+                    filtersUnavailable && selectedFilterId != null ->
+                        CanonicalEntityBrowseState.Failed
+                    selectedFilterId != null && selected == null ->
+                        CanonicalEntityBrowseState.Failed
+                    selectedContext == CanonicalSmartFilterContext.ALBUMS ->
+                        CanonicalEntityBrowseState.Albums(withContext(Dispatchers.IO) {
+                            val keys = if (unified) sources.filter {
+                                selectedSource == null || selectedSource == it
+                            } else listOf(providerKey)
+                            val all = keys.flatMap { key ->
+                                if (selected == null || unified) catalogDao.providerScopedReleases(key)
+                                else contextualReader.albums(key, selected)
+                            }.distinctBy { it.id }
+                            val ratedIds = if (unified && selectedStars != null) {
+                                eligibleTracks.map { it.recordingId }.chunked(400)
+                                    .flatMap { catalogDao.releaseIdsForVisibleRecordings(it) }.toSet()
+                            } else null
+                            all.filter { ratedIds == null || it.id in ratedIds }
+                                .filter { !unified || libraryQuery.isBlank() ||
+                                    it.title.contains(libraryQuery, ignoreCase = true) }
+                                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+                        })
+                    else -> CanonicalEntityBrowseState.Artists(withContext(Dispatchers.IO) {
+                        val keys = if (unified) sources.filter {
+                            selectedSource == null || selectedSource == it
+                        } else listOf(providerKey)
+                        val canonical = keys.flatMap { key ->
+                            if (selected == null || unified) catalogDao.providerScopedArtists(key)
+                            else contextualReader.artists(key, selected)
+                        }.distinctBy { it.id }
+                        val ratedIds = if (unified && selectedStars != null) {
+                            eligibleTracks.map { it.recordingId }.chunked(400)
+                                .flatMap { catalogDao.artistIdsForVisibleRecordings(it) }.toSet()
+                        } else null
+                        val credited = canonical.filter { ratedIds == null || it.id in ratedIds }
+                            .map { CanonicalSelectedEntity(it.id, it.name) }
+                        // Uncredited provider recordings remain discoverable
+                        // via the SAME browse-only display groups used by the
+                        // native playlist picker. No fabricated ArtistId.
+                        // For a provider-specific saved filter, uncredited
+                        // groups have no verified filter membership. An
+                        // unfiltered Navidrome/MediaStore page still exposes
+                        // the same browse-only groups as the unified Library.
+                        val displayOnly = if (!unified && selected != null) emptyList()
+                            else canonicalLibraryDisplayArtistGroups(eligibleTracks, credited)
+                        (credited + displayOnly).distinctBy { it.id }
+                            .filter { !unified || libraryQuery.isBlank() ||
+                                it.name.contains(libraryQuery, ignoreCase = true) }
+                            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+                    })
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                CanonicalEntityBrowseState.Failed
+            }
+        }
+    }
+    }
+    // One Room grouped read per active category/provider scope, not a
+    // per-entity query loop. Unknown remote dates remain null.
+    val nativeEntitySortDates by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource,
+    ) {
+    produceState(
+        initialValue = emptyMap<String, CanonicalEntitySortDateRow>(),
+        key1 = catalogDb,
+        key2 = selectedContext,
+        key3 = sources to selectedSource,
+    ) {
+        if (selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
+        catalogDb.invalidationTracker.createFlow(
+            "catalog_media_asset", "catalog_release_track",
+            "catalog_recording_artist_credit", "catalog_release_artist_credit",
+        ).collectLatest {
+            value = try {
+                val keys = sources.filter { selectedSource == null || selectedSource == it }
+                withContext(Dispatchers.IO) {
+                    when (selectedContext) {
+                        CanonicalSmartFilterContext.ALBUMS -> catalogDao.unifiedReleaseSortDates(keys)
+                        CanonicalSmartFilterContext.ARTISTS -> catalogDao.unifiedArtistSortDates(keys)
+                        CanonicalSmartFilterContext.SONGS -> emptyList()
+                    }.associateBy { it.entityId }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        }
+    }
+    }
+
+    // Resolve album/artist artwork by real canonical membership, never by
+    // comparing an artist's display name with a recording's credit text.
+    // These are grouped Room reads, not SQL calls from LazyColumn rows.
+    val entityArtworkById by androidx.compose.runtime.key(
+        selectedContext, providerKey, selectedSource,
+    ) {
+    produceState<Map<String, CanonicalBrowseTrack>>(
+        initialValue = emptyMap(),
+        key1 = selectedContext,
+        key2 = entityState,
+        key3 = (sources to selectedSource) to eligibleTracks,
+    ) {
+        if (selectedContext == CanonicalSmartFilterContext.SONGS) return@produceState
+        value = try {
+            val keys = sources.filter { selectedSource == null || selectedSource == it }
+            if (keys.isEmpty()) emptyMap() else {
+                val coverLinks = withContext(Dispatchers.IO) {
+                    when (val entities = entityState) {
+                        is CanonicalEntityBrowseState.Albums ->
+                            entities.releases.map { it.id }.chunked(300).flatMap { ids ->
+                                catalogDao.playlistAlbumCoverRecordingIds(keys, ids)
+                            }
+                        is CanonicalEntityBrowseState.Artists -> {
+                            val creditedIds = entities.artists.mapNotNull { artist ->
+                                artist.id.takeIf {
+                                    playlistDisplayArtistNameFromGroupId(it) == null
+                                }
+                            }
+                            val displayIdByName = entities.artists.mapNotNull { artist ->
+                                playlistDisplayArtistNameFromGroupId(artist.id)?.let { name ->
+                                    name to artist.id
+                                }
+                            }.toMap()
+                            val credited = creditedIds.chunked(300).flatMap { ids ->
+                                catalogDao.playlistCreditedArtistCoverRecordingIds(keys, ids)
+                            }
+                            val display = displayIdByName.keys.toList().chunked(300)
+                                .flatMap { names ->
+                                    catalogDao.playlistDisplayArtistCoverRecordingIds(keys, names)
+                                }.mapNotNull { match ->
+                                    displayIdByName[match.groupId]?.let { groupId ->
+                                        com.music.aria.data.catalog.CanonicalPlaylistAlbumCoverRow(
+                                            groupId, match.recordingId,
+                                        )
+                                    }
+                                }
+                            credited + display
+                        }
+                        else -> emptyList()
+                    }
+                }
+                canonicalLibraryEntityArtworkById(coverLinks, eligibleTracks).also { matched ->
+                    // Counts only: a physical smoke can identify missing
+                    // artwork links without logging any titles, IDs or URLs.
+                    runCatching {
+                        Diagnostics.event(
+                            category = DiagnosticCategory.CATALOG,
+                            name = "unified_library_artwork_v1",
+                            metadata = mapOf(
+                                "category" to selectedContext.name,
+                                "coverLinkCount" to coverLinks.size.toString(),
+                                "resolvedCount" to matched.size.toString(),
+                                "eligibleTrackCount" to eligibleTracks.size.toString(),
+                                "sourceMode" to when {
+                                    selectedSource == null -> "all"
+                                    selectedSource == "local-mediastore" -> "local"
+                                    else -> "remote"
+                                },
+                            ),
+                        )
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            runCatching {
+                Diagnostics.event(
+                    category = DiagnosticCategory.CATALOG,
+                    name = "unified_library_artwork_v1",
+                    metadata = mapOf("category" to selectedContext.name, "phase" to "failed"),
+                )
+            }
+            emptyMap()
+        }
+    }
+    }
+
+    // Detail member rows cannot belong to the previously selected album or
+    // artist while the new entity's SQL membership is still loading.
+    val detailState by androidx.compose.runtime.key(
+        selectedEntity?.id, selectedContext, providerKey, selectedSource,
+    ) {
+    produceState<CanonicalDetailBrowseState>(
+        initialValue = CanonicalDetailBrowseState.Loading,
+        key1 = providerKey, key2 = selectedContext,
+        key3 = Triple(selectedEntity, sources, selectedSource),
+    ) {
+        val entity = selectedEntity ?: return@produceState
+        catalogDb.invalidationTracker.createFlow(
+            "catalog_media_asset", "catalog_release_track",
+            "catalog_recording_artist_credit", "catalog_release_artist_credit",
+        ).collectLatest {
+            value = try {
+                val ids = withContext(Dispatchers.IO) {
+                    val keys = if (unified) sources.filter {
+                        selectedSource == null || selectedSource == it
+                    } else listOf(providerKey)
+                    keys.flatMap { key ->
+                        when (selectedContext) {
+                            CanonicalSmartFilterContext.ALBUMS ->
+                                catalogDao.providerScopedReleaseRecordingIds(key, entity.id)
+                            CanonicalSmartFilterContext.ARTISTS ->
+                                playlistDisplayArtistNameFromGroupId(entity.id)?.let { name ->
+                                    catalogDao.playlistDisplayArtistRecordingIds(key, name)
+                                } ?: catalogDao.providerScopedArtistRecordingIds(key, entity.id)
+                            CanonicalSmartFilterContext.SONGS -> emptyList()
+                        }
+                    }.distinct()
+                }
+                CanonicalDetailBrowseState.Ready(
+                    ids.toSet(),
+                    releaseOrder = if (selectedContext == CanonicalSmartFilterContext.ALBUMS)
+                        ids else emptyList(),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                CanonicalDetailBrowseState.Failed
+            }
+        }
+    }
+    }
+    val scopedDetailTracks = when (val d = detailState) {
+        is CanonicalDetailBrowseState.Ready -> {
+            val members = eligibleTracks.filter { track ->
+                track.recordingId in d.recordingIds && track.availableAssets.isNotEmpty()
+            }
+            if (selectedContext == CanonicalSmartFilterContext.ALBUMS)
+                canonicalAlbumDetailTrackOrder(members, d.releaseOrder)
+            else members
+        }
+        else -> emptyList()
+    }
+    val verifiedAlbumCreditArtist by produceState<
+        com.music.aria.ui.components.SourceOwnedArtistEvidence?
+    >(initialValue = null, key1 = selectedEntity?.id, key2 = selectedSource,
+        key3 = scopedDetailTracks) {
+        val id = selectedEntity?.id
+            ?.takeIf { selectedContext == CanonicalSmartFilterContext.ALBUMS }
+            ?: return@produceState
+        // When every visible source is selected, only a single proven asset
+        // provider can claim the credit. Never jump to a random server.
+        val source = selectedSource ?: scopedDetailTracks
+            .flatMap { track -> track.availableAssets.map { it.providerKey } }
+            .distinct().singleOrNull() ?: return@produceState
+        value = try {
+            withContext(Dispatchers.IO) {
+                val albumArtist = (entityState as? CanonicalEntityBrowseState.Albums)
+                    ?.releases?.firstOrNull { it.id == id }?.artistDisplay
+                    ?: scopedDetailTracks.firstOrNull()?.artistDisplay.orEmpty()
+                com.music.aria.ui.components.verifiedSourceOwnedPlayerArtist(
+                    recordingId = id,
+                    providerKey = source,
+                    credits = catalogDao.releaseArtistCredits(id),
+                    availableArtists = catalogDao.providerScopedArtists(source),
+                    // Older local/Navidrome releases can have an album credit
+                    // but no releaseArtistCredits row yet. Only a unique artist
+                    // in the *same selected provider* is a safe fallback.
+                    artistName = albumArtist,
+                ) ?: com.music.aria.ui.components.verifiedLocalAlbumDisplayArtist(
+                    providerKey = source,
+                    albumCredit = albumArtist,
+                    // These are the release's scoped Recording+Asset members,
+                    // NOT text search results. Reject mixed artist credits and
+                    // any member not present in the selected provider.
+                    memberArtistNames = scopedDetailTracks.map { track ->
+                        if (track.availableAssets.any { it.providerKey == source })
+                            track.artistDisplay else ""
+                    },
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+    // The release title/type/year are only enriched from verified canonical
+    // ReleaseGroup or MusicBrainz Edition evidence. No "- EP" heuristics when
+    // that evidence is absent; no provider name used as a surrogate ID.
+    val albumHeaderEvidence by produceState<CanonicalAlbumHeaderEvidence?>(
+        initialValue = null,
+        key1 = selectedEntity?.id,
+        key2 = selectedContext,
+        key3 = catalogDao,
+    ) {
+        val releaseId = selectedEntity?.id
+            ?.takeIf { selectedContext == CanonicalSmartFilterContext.ALBUMS }
+            ?: return@produceState
+        catalogDb.invalidationTracker.createFlow(
+            "catalog_release_group", "catalog_release_group_edition",
+            "musicbrainz_release_enrichment",
+        ).collectLatest {
+            value = try {
+                withContext(Dispatchers.IO) {
+                    val group = catalogDao.canonicalArtistReleaseEvidence(listOf(releaseId))
+                        .firstOrNull()
+                    val edition = catalogDao.musicBrainzReleaseEnrichment(releaseId)
+                    CanonicalAlbumHeaderEvidence(
+                        primaryType = group?.primaryType,
+                        releaseDate = group?.firstReleaseDate ?: edition?.releaseDate,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    BackHandler(enabled = selectedEntity != null) {
+        if (pinnedDetail != null && !artistNestedReleaseOpen) onClose()
+        else if (artistNestedReleaseOpen) artistNestedBackToken++
+        else selectedEntity = null
+    }
+    BackHandler(enabled = selectedEntity == null, onBack = onClose)
+
+    val playTrack: (CanonicalBrowseTrack) -> Unit = { track ->
+        if (unified) {
+            executeLibraryTrack(
+                SmartCollectionActionSource.LibraryTrack(track.recordingId, selectedSource),
+                CanonicalCollectionIntent.PLAY_NOW,
+            )
+        } else {
+            track.availableAssets.firstOrNull { it.providerKey == providerKey }?.let { asset ->
+                controller?.playCanonicalRemote(
+                    request = CanonicalRemotePlaybackRequest(
+                        recordingId = track.recordingId,
+                        mediaAssetId = asset.mediaAssetId,
+                        providerKey = providerKey,
+                    ),
+                    metadata = CanonicalRemotePlaybackMetadata(
+                        title = track.title,
+                        artistDisplay = track.artistDisplay,
+                    ),
+                )
+            }
+        }
+    }
+
+    val toggleSelection: (CanonicalLibrarySelection) -> Unit = { target ->
+        selectedItems = toggleCanonicalLibrarySelection(selectedItems, target)
+    }
+    val editRating: (CanonicalBrowseTrack) -> Unit = { track ->
+        if (unified || track.availableAssets.any { it.providerKey == providerKey }) {
+            editingRecordingId = track.recordingId
+        }
+    }
+    val togglePin: (CanonicalLibraryMenuTarget) -> Unit = { menu ->
+        libraryPinRepository.toggle(CanonicalLibraryPin(
+            menu.selection, menu.title, menu.subtitle,
+        ))
+    }
+    val openTrackMenu: (CanonicalBrowseTrack) -> Unit = { track ->
+        heldLibraryMenuOrigin = LongPressOrigin.consume()
+        libraryMenu = CanonicalLibraryMenuTarget(
+            CanonicalLibrarySelection(CanonicalLibraryEntityType.TRACK, track.recordingId),
+            track.title, track.artistDisplay, track.artworkUri,
+        )
+    }
+    val openAlbumMenu: (ReleaseEntity) -> Unit = { album ->
+        heldLibraryMenuOrigin = LongPressOrigin.consume()
+        libraryMenu = CanonicalLibraryMenuTarget(
+            CanonicalLibrarySelection(CanonicalLibraryEntityType.ALBUM, album.id),
+            album.title, album.artistDisplay.orEmpty(),
+            // Match the exact image painted by NativeLibraryEntityCard:
+            // its proven Recording->Release artwork wins over the optional
+            // ReleaseEntity metadata artwork. This is not a title match.
+            heldLibraryAlbumArtworkSource(
+                releaseArtwork = album.artworkUri,
+                verifiedRecordingArtwork = entityArtworkById[album.id]?.artworkUri,
+            ),
+        )
+    }
+    LaunchedEffect(albumMenuToken) {
+        if (albumMenuToken > 0 &&
+            selectedContext == CanonicalSmartFilterContext.ALBUMS
+        ) {
+            selectedEntity?.let { selected ->
+                val release = (entityState as? CanonicalEntityBrowseState.Albums)
+                    ?.releases?.firstOrNull { it.id == selected.id }
+                if (release != null) {
+                    openAlbumMenu(release)
+                } else {
+                    // A canonical release remains actionable while the source
+                    // list is refreshing; never invent a provider album ID.
+                    libraryMenu = CanonicalLibraryMenuTarget(
+                        CanonicalLibrarySelection(CanonicalLibraryEntityType.ALBUM, selected.id),
+                        selected.name,
+                        scopedDetailTracks.firstOrNull()?.artistDisplay.orEmpty(),
+                        selected.artworkUri,
+                    )
+                }
+            }
+        }
+    }
+    // A dedicated icon in the album's floating top pill opens exactly the
+    // same native sheet as ⋮ → Adicionar à playlist on songs and album cards.
+    // Its typed ReleaseId resolves the WHOLE album under the selected source,
+    // even when the detail has a text search or an alternate display sort.
+    LaunchedEffect(albumPlaylistToken) {
+        if (unified && albumPlaylistToken > 0) {
+            val selection = canonicalAlbumDetailPlaylistSelection(
+                selectedContext, selectedEntity?.id,
+            )
+            runCatching {
+                Diagnostics.event(
+                    category = DiagnosticCategory.UI,
+                    name = "album_playlist_toolbar_v1",
+                    metadata = mapOf(
+                        "origin" to "album_category",
+                        "validTarget" to (selection != null).toString(),
+                        "sourceMode" to when {
+                            selectedSource == null -> "all"
+                            selectedSource == "local-mediastore" -> "local"
+                            else -> "remote"
+                        },
+                    ),
+                )
+            }
+            if (selection != null) {
+                libraryMenu = null
+                playlistPickerSelection = selection
+            }
+        }
+    }
+    val openArtistMenu: (CanonicalSelectedEntity) -> Unit = { artist ->
+        heldLibraryMenuOrigin = LongPressOrigin.consume()
+        libraryMenu = CanonicalLibraryMenuTarget(
+            CanonicalLibrarySelection(CanonicalLibraryEntityType.ARTIST, artist.id),
+            artist.name, "Artista",
+        )
+    }
+    // The artist hero retains its three native circles (Shuffle/Play/Rating).
+    // Pin/unpin lives in the same first-party ⋮ menu as root artist cards.
+    LaunchedEffect(artistMenuToken) {
+        if (unified && artistMenuToken > 0 &&
+            selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+            !artistNestedReleaseOpen
+        ) selectedEntity?.let(openArtistMenu)
+    }
+
+    // All batch queue actions must revalidate the exact typed selection in
+    // one canonical resolver; do not create a second per-source queue path.
+    val queueMultiSelection: (CanonicalCollectionIntent) -> Unit = { intent ->
+        val snapshot = selectedItems.toList()
+        libraryActionScope.launch {
+            val resolved = try {
+                canonicalLibraryResolveSelections(
+                    context.applicationContext, snapshot, selectedSource,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            val ids = resolved?.recordingIds.orEmpty()
+            if (resolved?.unavailableEntities == 0 && ids.isNotEmpty()) {
+                executeLibraryTrack(
+                    SmartCollectionActionSource.LibraryTracks(
+                        ids, selectedSource, shuffle = false,
+                    ),
+                    intent,
+                )
+                // The user may have selected more items while this batch was
+                // being revalidated. Never clear a newer selection draft.
+                if (selectedItems == snapshot) selectedItems = emptyList()
+            }
+        }
+    }
+
+    // Nested category/detail navigation had an immediate replacement even
+    // while the parent Library tab already used the new route arrival.
+    // One current page moves; no extra content copy or repository re-query.
+    val nestedLibraryArrival = com.music.aria.ui.components.rememberRouteArrivalModifier(
+        routeKey = "library:${selectedContext.name}:${selectedEntity?.id ?: "shelf"}",
+        reduceMotion = com.music.aria.ui.LocalReduceAnimations.current,
+        forward = selectedEntity != null,
+        rootTabPrefix = "library:",
+    )
+    val heldLibraryHaze = remember { HazeState() }
+    // Keep the lifted preview's palette and menu alive through its return
+    // animation. Root Library does not have selectedEntity, so using only that
+    // page's artwork previously turned every menu black.
+    var exitLibraryMenu by remember { mutableStateOf<CanonicalLibraryMenuTarget?>(null) }
+    var exitLibraryWasHeld by remember { mutableStateOf(false) }
+    val heldDetailPalette = rememberArtworkPalette(
+        imageUrl = heldLibraryPaletteArtworkSource(
+            itemArtwork = (libraryMenu ?: exitLibraryMenu)?.imageUrl,
+            detailArtwork = selectedEntity?.artworkUri,
+        ),
+    )
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Box(Modifier.fillMaxSize().then(nestedLibraryArrival)) {
+        // Capture page content separately from the lifted overlays.
+        Box(Modifier.fillMaxSize()
+            .hazeSource(heldLibraryHaze)
+        ) {
+        // One visual tree for both the unified Library and dedicated sources.
+        // Only the provider-specific host navigation stays outside the shared
+        // artist, album, song and category compositors.
+        Column(
+            modifier = Modifier.fillMaxSize().then(
+                if (unified) Modifier else Modifier.statusBarsPadding().navigationBarsPadding()
+            ),
+        ) {
+            if (!unified) {
+                RemoteBrowseTopBar(
+                    // Native category/artist/album draws the only visible
+                    // title. The source host supplies Back without duplicating it.
+                    title = "",
+                    onBack = if (selectedEntity != null) {
+                        {
+                            if (artistNestedReleaseOpen) artistNestedBackToken += 1
+                            else selectedEntity = null
+                        }
+                    } else onClose,
+                )
+                if (selectedEntity == null) {
+                    RemoteBrowseContextTabs(
+                        selected = selectedContext,
+                        onSelect = { selectedContext = it },
+                    )
+                    if (compatible.isNotEmpty() || selectedFilterId != null) {
+                        RemoteSongSavedFilterMenu(
+                            selectedName = selected?.name,
+                            options = compatible,
+                            selectedFilterId = selectedFilterId,
+                            onSelect = { selectedFilterId = it },
+                        )
+                    }
+                    if (filtersUnavailable && selectedFilterId == null) {
+                        RemoteBrowseMessage("Filtros salvos indisponíveis.")
+                    }
+                }
+            }
+            Box(Modifier.weight(1f)) {
+            // Selected albums/artists keep the exact native page chrome.
+            // Only their revalidated RecordingId membership changes.
+            val detail = selectedEntity
+            val detailMatches = if (detail == null) emptyList() else scopedDetailTracks.filter {
+                detailQuery.isBlank() ||
+                    it.title.contains(detailQuery, ignoreCase = true) ||
+                    it.artistDisplay.contains(detailQuery, ignoreCase = true)
+            }
+            val shownTracks = if (detail != null) detailMatches else
+                if (selectedContext == CanonicalSmartFilterContext.SONGS)
+                    displayedTracks else eligibleTracks
+            val shownState = if (initialLibraryLoading) CanonicalSongFilterState.Loading
+                else if (detail == null) filteredState else when (detailState) {
+                CanonicalDetailBrowseState.Loading -> CanonicalSongFilterState.Loading
+                CanonicalDetailBrowseState.Failed -> CanonicalSongFilterState.Failed
+                is CanonicalDetailBrowseState.Ready -> CanonicalSongFilterState.Ready(detailMatches)
+            }
+            if (detail != null && selectedContext == CanonicalSmartFilterContext.ARTISTS) {
+                // Real artist destination: the approved DetailScreen artist
+                // chrome and sections, bound to proven canonical memberships.
+                CanonicalArtistDetailRoute(
+                    artistName = detail.name,
+                    artistId = detail.id,
+                    tracks = sortCanonicalUnifiedTracks(scopedDetailTracks, unifiedSort),
+                    availableLibraryTracks = eligibleTracks,
+                    sourceKeys = sources,
+                    selectedSourceKey = effectiveSourceKey,
+                    heroArtworkTrack = entityArtworkById[detail.id]
+                        ?: scopedDetailTracks.firstOrNull(),
+                    artworkLoader = artworkLoader,
+                    query = detailQuery,
+                    onQueryChange = { detailQuery = it },
+                    searching = searchVisible,
+                    nestedBackToken = artistNestedBackToken,
+                    onNestedDetailChanged = { artistNestedReleaseOpen = it },
+                    onNestedAlbumRatingTargetChanged = onAlbumRatingTargetChanged,
+                    albumSort = albumSort,
+                    albumMenuToken = albumMenuToken,
+                    albumPlaylistToken = albumPlaylistToken,
+                    onNestedAlbumAddToPlaylist = { release ->
+                        val chosen = canonicalAlbumDetailPlaylistSelection(
+                            CanonicalSmartFilterContext.ALBUMS, release.id,
+                        )
+                        runCatching {
+                            Diagnostics.event(
+                                category = DiagnosticCategory.UI,
+                                name = "album_playlist_toolbar_v1",
+                                metadata = mapOf(
+                                    "origin" to "artist_nested",
+                                    "validTarget" to (chosen != null).toString(),
+                                    "sourceMode" to when {
+                                        selectedSource == null -> "all"
+                                        selectedSource == "local-mediastore" -> "local"
+                                        else -> "remote"
+                                    },
+                                ),
+                            )
+                        }
+                        if (chosen != null) {
+                            libraryMenu = null
+                            playlistPickerSelection = chosen
+                        }
+                    },
+                    onTrackPlay = playTrack,
+                    onTrackEditRating = editRating,
+                    onTrackOptions = openTrackMenu,
+                    onReleaseOptions = openAlbumMenu,
+                    onArtistRatingAnchorChanged = { artistRatingAnchor = it },
+                    onRateArtist = {
+                        // The same rating editor handles verified canonical
+                        // ArtistIds and separately keyed display-artist groups.
+                        ratingDialogSelection = listOf(CanonicalLibrarySelection(
+                            CanonicalLibraryEntityType.ARTIST, detail.id,
+                        ))
+                    },
+                    onRateRelease = { release ->
+                        ratingDialogSelection = listOf(CanonicalLibrarySelection(
+                            CanonicalLibraryEntityType.ALBUM, release.id,
+                        ))
+                    },
+                    // Selection belongs to the root category, never the
+                    // artist detail or its nested releases.
+                    selectedItems = emptyList(),
+                    onToggleSelection = {},
+                    onPlayAll = { visible, shuffle ->
+                        executeLibraryTrack(
+                            SmartCollectionActionSource.LibraryTracks(
+                                visible.map { it.recordingId }, effectiveSourceKey, shuffle,
+                            ),
+                            CanonicalCollectionIntent.PLAY_NOW,
+                        )
+                    },
+                )
+            } else if (detail != null &&
+                selectedContext == CanonicalSmartFilterContext.ALBUMS
+            ) {
+                // Album detail is now a dedicated native release composition;
+                // the category browser no longer doubles as a release page.
+                val selection = CanonicalLibrarySelection(
+                    CanonicalLibraryEntityType.ALBUM, detail.id,
+                )
+                val album = (entityState as? CanonicalEntityBrowseState.Albums)
+                    ?.releases?.firstOrNull { it.id == detail.id }
+                NativeCanonicalLibraryAlbumDetail(
+                    releaseIdentity = detail.id,
+                    title = canonicalAlbumDisplayTitle(
+                        detail.name, albumHeaderEvidence?.primaryType,
+                    ),
+                    tracks = canonicalAlbumDetailSort(shownTracks, albumSort),
+                    artworkLoader = artworkLoader,
+                    heroArtworkUri = detail.artworkUri,
+                    heroArtworkTrack = entityArtworkById[detail.id]
+                        ?: scopedDetailTracks.firstOrNull(),
+                    // Prefer the release's verified credit. Only use member
+                    // recordings as fallback if every artist credit agrees.
+                    albumCredit = nativeAlbumDisplayCredit(
+                        album?.artistDisplay, scopedDetailTracks,
+                    ),
+                    albumRating = canonicalLibraryEntityRatingForRow(
+                        entityRatingValues, selection,
+                    ),
+                    albumQuality = canonicalAlbumSourceQuality(
+                        scopedDetailTracks, effectiveSourceKey,
+                    ),
+                    onCreditClick = verifiedAlbumCreditArtist?.let { credit ->
+                        onOpenSourceOwnedArtist?.let { open ->
+                            { open(credit.artistId, credit.artistName, credit.providerKey) }
+                        }
+                    },
+                    onRateAlbum = {
+                        ratingDialogSelection = listOf(selection)
+                    },
+                    albumFooter = canonicalAlbumFooterMetadata(
+                        albumHeaderEvidence?.releaseDate, scopedDetailTracks,
+                    ),
+                    albumTrackNumbers = canonicalAlbumDetailTrackNumbers(
+                        scopedDetailTracks,
+                    ),
+                    albumPinned = selection in pinnedIdentities,
+                    onToggleAlbumPin = {
+                        libraryPinRepository.toggle(CanonicalLibraryPin(
+                            selection = selection,
+                            title = detail.name,
+                            subtitle = album?.artistDisplay.orEmpty(),
+                        ))
+                        Unit
+                    },
+                    query = detailQuery,
+                    onQueryChange = { detailQuery = it },
+                    searching = searchVisible,
+                    loading = shownState is CanonicalSongFilterState.Loading,
+                    failed = shownState is CanonicalSongFilterState.Failed,
+                    onTrackPlay = playTrack,
+                    onTrackEditRating = editRating,
+                    onTrackOptions = openTrackMenu,
+                    onPlayAll = { visible, shuffle ->
+                        executeLibraryTrack(
+                            SmartCollectionActionSource.LibraryTracks(
+                                visible.map { it.recordingId }, effectiveSourceKey, shuffle,
+                            ),
+                            CanonicalCollectionIntent.PLAY_NOW,
+                        )
+                    },
+                )
+            } else NativeUnifiedLibraryBody(
+                title = detail?.name ?: title,
+                selectedContext = if (detail == null) selectedContext
+                    else CanonicalSmartFilterContext.SONGS,
+                tracks = sortCanonicalUnifiedTracks(shownTracks, unifiedSort),
+                filteredState = shownState,
+                entityState = if (initialLibraryLoading) CanonicalEntityBrowseState.Loading
+                    else entityState,
+                artworkLoader = artworkLoader,
+                query = if (detail == null) libraryQuery else detailQuery,
+                onQueryChange = { if (detail == null) libraryQuery = it else detailQuery = it },
+                searching = searchVisible,
+                viewType = unifiedViewType,
+                sort = unifiedSort,
+                sortDates = nativeEntitySortDates,
+                entityArtworkById = entityArtworkById,
+                entityRatings = entityRatingValues,
+                onTrackPlay = playTrack,
+                onTrackEditRating = editRating,
+                onTrackOptions = openTrackMenu,
+                onAlbumOptions = openAlbumMenu,
+                onArtistOptions = openArtistMenu,
+                selectedItems = if (detail == null) selectedItems else emptyList(),
+                // The dedicated source host has no batch action bar. Keep
+                // long press as a contextual menu rather than trapping users
+                // in an uncloseable selection draft.
+                canLongPressSelect = canonicalLibraryCanStartBatchSelection(
+                    unified, selectedContext, detailOpen = detail != null,
+                ),
+                onToggleSelection = toggleSelection,
+                onPlayAll = { visible, shuffle ->
+                    executeLibraryTrack(
+                        SmartCollectionActionSource.LibraryTracks(
+                            visible.map { it.recordingId }, effectiveSourceKey, shuffle,
+                        ),
+                        CanonicalCollectionIntent.PLAY_NOW,
+                    )
+                },
+                onEntitySelect = { selectedEntity = it },
+            )
+            }
+        }
+        } // The lifted overlay is the source's sibling, not its child.
+        // The lifted menu must remain mounted through its 230ms return
+        // animation; removing the parent let on dismiss clipped that motion.
+        LaunchedEffect(libraryMenu, heldLibraryMenuOrigin) {
+            if (libraryMenu != null) {
+                exitLibraryMenu = libraryMenu
+                exitLibraryWasHeld = canonicalLibraryUsesHeldContextMenu(
+                    hasCapturedHold = heldLibraryMenuOrigin != null,
+                    hasHazeBackdrop = true,
+                )
+            } else {
+                kotlinx.coroutines.delay(300)
+                exitLibraryMenu = null
+                exitLibraryWasHeld = false
+            }
+        }
+        (libraryMenu ?: exitLibraryMenu)?.let { menu ->
+            // A track's album is unrelated to its display title. Require the
+            // exact canonical Recording → ReleaseGroup link before exposing
+            // a navigation option; do this once per opened menu off-main.
+            val linkedAlbum by produceState<CatalogReleaseGroupEntity?>(
+                initialValue = null, key1 = menu.selection, key2 = libraryMenu != null,
+            ) {
+                value = if (libraryMenu != null &&
+                    menu.selection.type == CanonicalLibraryEntityType.TRACK &&
+                    isVerifiedCatalogRecordingId(menu.selection.entityId)
+                ) try {
+                    withContext(Dispatchers.IO) {
+                        val id = menu.selection.entityId
+                        val links = catalogDao.recordingReleaseGroupLinksByIds(listOf(id))
+                        canonicalPlaylistAlbumForRecording(id, links)
+                            ?.let { catalogDao.catalogReleaseGroup(it) }
+                            ?.takeIf { it.title.isNotBlank() }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                } else null
+            }
+            // MusicBrainz may be offline even when this exact Release already
+            // has playable assets in MediaStore or Navidrome. Prefer the
+            // provider-scoped native detail (no external lookup) if and only if
+            // a single linked ReleaseId is present in the chosen source.
+            val sourceOwnedAlbum by produceState<ReleaseEntity?>(
+                initialValue = null,
+                key1 = menu.selection,
+                key2 = libraryMenu != null,
+                key3 = selectedSource to selectedEntity?.id,
+            ) {
+                value = if (libraryMenu != null &&
+                    menu.selection.type == CanonicalLibraryEntityType.TRACK &&
+                    isVerifiedCatalogRecordingId(menu.selection.entityId)
+                ) try {
+                    withContext(Dispatchers.IO) {
+                        val recordingId = menu.selection.entityId
+                        val linkedReleases =
+                            catalogDao.releaseIdsForVisibleRecordings(listOf(recordingId))
+                        val sourceKeys = if (unified) sources.filter {
+                            selectedSource == null || selectedSource == it
+                        } else listOf(providerKey)
+                        val releases = sourceKeys.flatMap { key ->
+                            catalogDao.providerScopedReleases(key)
+                        }.distinctBy { it.id }
+                        val preferred = selectedEntity?.id?.takeIf {
+                            selectedContext == CanonicalSmartFilterContext.ALBUMS
+                        }
+                        val chosen = uniqueSourceOwnedAlbumReleaseId(
+                            linkedReleaseIds = linkedReleases,
+                            sourceReleaseIds = releases.mapTo(HashSet()) { it.id },
+                            preferredReleaseId = preferred,
+                        )
+                        releases.firstOrNull { it.id == chosen }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                } else null
+            }
+            val sourceForAction = if (unified) selectedSource else providerKey
+            val art = when (menu.selection.type) {
+                CanonicalLibraryEntityType.TRACK -> library.tracks.firstOrNull {
+                    it.recordingId == menu.selection.entityId
+                }
+                else -> entityArtworkById[menu.selection.entityId]
+            }
+            val availableMenuActions = canonicalLibraryAvailableActions(
+                type = menu.selection.type,
+                hasCanonicalIdentity = menu.selection.type == CanonicalLibraryEntityType.TRACK ||
+                    canonicalEntityRatingTarget(menu.selection) != null,
+            )
+            val queue: (CanonicalCollectionIntent) -> Unit = { intent ->
+                libraryMenu = null
+                libraryActionScope.launch {
+                    val ids = try {
+                        canonicalLibraryResolveRecordingIds(
+                            context.applicationContext, listOf(menu.selection), sourceForAction,
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) { emptyList() }
+                    if (ids.isNotEmpty()) executeLibraryTrack(
+                        SmartCollectionActionSource.LibraryTracks(
+                            ids, sourceForAction, shuffle = false,
+                        ), intent,
+                    )
+                }
+            }
+            val useHeldMenu = canonicalLibraryUsesHeldContextMenu(
+                hasCapturedHold = heldLibraryMenuOrigin != null,
+                hasHazeBackdrop = true,
+            )
+            val menuBody: @Composable () -> Unit = {
+                BrowseActionsSheet(
+                    presentation = if (
+                        canonicalLibraryHeldPresentation(
+                            heldNow = useHeldMenu,
+                            liveMenuVisible = libraryMenu != null,
+                            heldBeforeExit = exitLibraryWasHeld,
+                        ) || (canonicalLibraryDetailUsesAnchoredOverflow(
+                            selectedEntity != null, menu.selection.type,
+                        ))
+                    ) SongActionsPresentation.Menu else SongActionsPresentation.Sheet,
+                    target = BrowseTarget(
+                        browseId = null,
+                        title = menu.title,
+                        subtitle = menu.subtitle,
+                        thumbnailUrl = menu.imageUrl,
+                        type = when (menu.selection.type) {
+                            CanonicalLibraryEntityType.TRACK -> BrowseType.OTHER
+                            CanonicalLibraryEntityType.ALBUM -> BrowseType.ALBUM
+                            CanonicalLibraryEntityType.ARTIST -> BrowseType.ARTIST
+                        },
+                        fromCard = false,
+                    ),
+                    isPinned = menu.selection in pinnedIdentities,
+                    // The album's hero + is already the pin control.
+                    // Root collection-card menus retain pin where no + exists.
+                    onTogglePin = if (menu.selection.type == CanonicalLibraryEntityType.ALBUM &&
+                        selectedEntity != null &&
+                        (selectedContext == CanonicalSmartFilterContext.ALBUMS ||
+                            artistNestedReleaseOpen)
+                    ) null else {
+                        {
+                            togglePin(menu)
+                            libraryMenu = null
+                        }
+                    },
+                    onPlayNext = { queue(CanonicalCollectionIntent.ADD_NEXT) },
+                    onAddToQueue = { queue(CanonicalCollectionIntent.ADD_TO_QUEUE) },
+                    onAddToPlaylist = {
+                        playlistPickerSelection = listOf(menu.selection)
+                        libraryMenu = null
+                    },
+                    onOpenAlbum = sourceOwnedAlbum?.let { album ->
+                        onOpenNativeAlbum?.let { open ->
+                            {
+                                libraryMenu = null
+                                heldLibraryMenuOrigin = null
+                                open(album.id, album.title, album.artistDisplay.orEmpty())
+                            }
+                        }
+                    } ?: linkedAlbum?.let { group ->
+                        onOpenCatalogAlbum?.let { open ->
+                            {
+                                libraryMenu = null
+                                heldLibraryMenuOrigin = null
+                                open(
+                                    "catalog:RELEASE_GROUP:${group.id}",
+                                    group.title,
+                                    group.artistDisplay.orEmpty(),
+                                )
+                            }
+                        }
+                    },
+                    onSelect = if (selectedEntity == null) {
+                        {
+                            toggleSelection(menu.selection)
+                            libraryMenu = null
+                        }
+                    } else null,
+                    onEditRating = if (CanonicalLibraryAction.EDIT_RATING in availableMenuActions) {
+                        {
+                            if (menu.selection.type == CanonicalLibraryEntityType.TRACK) {
+                                editingRecordingId = menu.selection.entityId
+                            } else {
+                                ratingDialogSelection = listOf(menu.selection)
+                            }
+                            libraryMenu = null
+                        }
+                    } else null,
+                    headerArtwork = {
+                        Box(Modifier.fillMaxSize()) {
+                            CoverPlaceholder(
+                                if (menu.selection.type == CanonicalLibraryEntityType.ARTIST)
+                                    Icons.Rounded.MusicNote else Icons.Rounded.Album,
+                                Modifier.fillMaxSize(),
+                            )
+                            if (art != null) {
+                                CanonicalUnifiedArtwork(art, artworkLoader, Modifier.fillMaxSize())
+                            } else menu.imageUrl?.takeIf { it.isNotBlank() }?.let { uri ->
+                                AsyncImage(
+                                    model = uri,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+            if (useHeldMenu || exitLibraryWasHeld) {
+                HeldContextMenu(
+                    item = libraryMenu.takeIf { useHeldMenu },
+                    held = heldLibraryMenuOrigin,
+                    hazeState = heldLibraryHaze,
+                    bottomChromeClearance = heldMenuBottomChromeClearance,
+                    hostProvidesBlur = true,
+                    plateTint = heldDetailPalette.elevated,
+                    onDismiss = {
+                        libraryMenu = null
+                        heldLibraryMenuOrigin = null
+                    },
+                    onPreviewClick = if (selectedEntity == null) {
+                        { target ->
+                            libraryMenu = null
+                            heldLibraryMenuOrigin = null
+                            when (target.selection.type) {
+                                CanonicalLibraryEntityType.TRACK ->
+                                    library.tracks.firstOrNull {
+                                        it.recordingId == target.selection.entityId
+                                    }?.let(playTrack)
+                                CanonicalLibraryEntityType.ALBUM, CanonicalLibraryEntityType.ARTIST ->
+                                    selectedEntity = CanonicalSelectedEntity(
+                                        target.selection.entityId, target.title, target.imageUrl,
+                                    )
+                            }
+                        }
+                    } else null,
+                ) {
+                    menuBody()
+                }
+            }
+            if (libraryMenu != null && !useHeldMenu) {
+                if (canonicalLibraryDetailUsesAnchoredOverflow(
+                    selectedEntity != null, menu.selection.type,
+                )) {
+                    // The detail toolbar owns this menu. Do not open the old
+                    // bottom sheet: expand the same frosted card from its ⋯.
+                    com.music.aria.FrostedMenuPanel(
+                        hazeState = heldLibraryHaze,
+                        anchorBounds = detailOverflowAnchor,
+                        onDismiss = {
+                            libraryMenu = null
+                            heldLibraryMenuOrigin = null
+                        },
+                    ) {
+                        menuBody()
+                        com.music.aria.FrostedMenuRow(
+                            label = "Configurações",
+                            checked = false,
+                            icon = androidx.compose.material.icons.Icons.Rounded.Settings,
+                            onClick = {
+                                libraryMenu = null
+                                heldLibraryMenuOrigin = null
+                                onOpenSettings()
+                            },
+                        )
+                    }
+                } else {
+                    ModalBottomSheet(
+                        onDismissRequest = {
+                            libraryMenu = null
+                            heldLibraryMenuOrigin = null
+                        },
+                        shape = androidx.compose.ui.graphics.RectangleShape,
+                        dragHandle = null,
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ) {
+                        menuBody()
+                    }
+                }
+            }
+        }
+        playlistPickerSelection?.let { selected ->
+            CanonicalLibraryPlaylistPicker(
+                selection = selected,
+                selectedSource = if (unified) selectedSource else providerKey,
+                onDismiss = { playlistPickerSelection = null },
+            )
+        }
+        editingRecordingId?.let { id ->
+            CanonicalRecordingRatingDialog(
+                recordingId = id,
+                onDismiss = { editingRecordingId = null },
+            )
+        }
+        ratingDialogSelection?.let { ratings ->
+            CanonicalLibraryEntityRatingDialog(
+                targets = ratings,
+                selectedSource = if (unified) selectedSource else providerKey,
+                onDismiss = { ratingDialogSelection = null },
+                // Only a direct tap on the artist hero star uses its anchor.
+                // Batch/context menus keep the standard action editor.
+                anchorBounds = if (
+                    selectedEntity != null &&
+                    selectedContext == CanonicalSmartFilterContext.ARTISTS &&
+                    ratings.size == 1 &&
+                    ratings.single().type == CanonicalLibraryEntityType.ARTIST
+                ) artistRatingAnchor else null,
+                artworkUrl = selectedEntity?.artworkUri
+                    ?: selectedEntity?.id?.let { entityArtworkById[it]?.artworkUri }
+                    ?: scopedDetailTracks.firstOrNull()?.artworkUri,
+            )
+        }
+        // Keep the draft while navigating, but never float batch actions over
+        // an artist or album detail page.
+        if (unified && selectedEntity == null && selectedItems.isNotEmpty()) {
+            CanonicalLibraryBatchActionBar(
+                modifier = Modifier.align(Alignment.BottomEnd)
+                    .padding(end = PAGE_GUTTER, bottom = selectionBarBottomPadding),
+                selectedEntityCount = selectedItems.size,
+                summary = canonicalLibrarySelectionSummary(selectedItems.size, batchResolved),
+                onClear = { selectedItems = emptyList() },
+                onAddToPlaylist = { playlistPickerSelection = selectedItems.toList() },
+                onRateSelection = if (selectedItems.all {
+                    it.type == CanonicalLibraryEntityType.TRACK ||
+                        canonicalEntityRatingTarget(it) != null
+                }) { { ratingDialogSelection = selectedItems.toList() } } else null,
+                onPlayNext = { queueMultiSelection(CanonicalCollectionIntent.ADD_NEXT) },
+                onAddToQueue = { queueMultiSelection(CanonicalCollectionIntent.ADD_TO_QUEUE) },
+                hazeState = hazeState,
+            )
+        }
+        }
+    }
+}
+
+/** Distinct entity types never share a synthetic RecordingId or metadata alias. */
+@Composable
+private fun RemoteBrowseContextTabs(
+    selected: CanonicalSmartFilterContext,
+    onSelect: (CanonicalSmartFilterContext) -> Unit,
+) {
+    // Reuse the very same native segmented tabs used by the local Library.
+    SegmentedControl(
+        options = listOf("Músicas", "Álbuns", "Artistas"),
+        selectedIndex = selected.ordinal,
+        onSelect = { onSelect(CanonicalSmartFilterContext.entries[it]) },
+        modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+    )
+}
+
+/**
+ * Existing neutral outlined buttons and Settings rows, not another ad-hoc
+ * Material3 filter menu. The picker holds real provider identities and
+ * numeric star values; labels have no authority over song matching.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun NativeCanonicalLibraryFilters(
+    availableKeys: List<String>,
+    selectedSource: String?,
+    onSourceChange: (String?) -> Unit,
+    selectedStars: Int?,
+    onStarsChange: (Int?) -> Unit,
+    requestToken: Int,
+) {
+    // The native top-bar filter icon owns this single sheet. No duplicate
+    // filter buttons or Material3 chips in the Library content itself.
+    var open by remember { mutableStateOf(false) }
+    // A detail page removes this sheet from composition. On return, the
+    // toolbar request counter is still positive; that OLD tap must not
+    // reopen the filters. Only a new increment is a user request.
+    var observedRequestToken by remember { androidx.compose.runtime.mutableIntStateOf(requestToken) }
+    LaunchedEffect(requestToken) {
+        if (requestToken != observedRequestToken) {
+            observedRequestToken = requestToken
+            if (requestToken > 0) open = true
+        }
+    }
+    if (!open) return
+
+    ModalBottomSheet(
+        onDismissRequest = { open = false },
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "Filtrar biblioteca",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+            )
+            Text(
+                "Fonte de origem",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+            )
+            SettingsGroupSurface(modifier = Modifier.padding(horizontal = PAGE_GUTTER)) {
+                (listOf<String?>(null) + availableKeys).forEach { key ->
+                    val label = when {
+                        key == null -> "Todas as fontes"
+                        key == "local-mediastore" -> "Música local"
+                        availableKeys.count { it.startsWith("opensubsonic:") } > 1 ->
+                            "Navidrome " + (availableKeys.filter {
+                                it.startsWith("opensubsonic:")
+                            }.indexOf(key) + 1)
+                        else -> "Navidrome"
+                    }
+                    SettingsRow(
+                        title = label,
+                        modifier = Modifier.testTag("library-source-" + (key ?: "all")),
+                        reserveIconSpace = false,
+                        onClick = { onSourceChange(key); open = false },
+                        trailing = {
+                            if (selectedSource == key) Icon(
+                                Icons.Rounded.Check, contentDescription = null,
+                            )
+                        },
+                    )
+                }
+            }
+            Text(
+                "Avaliação das músicas",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+            )
+            SettingsGroupSurface(modifier = Modifier.padding(horizontal = PAGE_GUTTER)) {
+                (listOf<Int?>(null) + (1..5).map { it }).forEach { value ->
+                    SettingsRow(
+                        title = value?.let { "$it estrelas" } ?: "Todas as avaliações",
+                        reserveIconSpace = false,
+                        onClick = { onStarsChange(value); open = false },
+                        trailing = {
+                            if (value != null) CanonicalRatingStars(
+                                RatingDisplay(localValue = value.toDouble()),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (selectedStars == value) Icon(
+                                Icons.Rounded.Check, contentDescription = null,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun NativeLoadingSpinner(modifier: Modifier = Modifier) {
+    // Same first-party progress indicator already used by the playlists UI.
+    // Loading is neither an empty-state sentence nor an error message.
+    Box(
+        modifier = modifier.fillMaxWidth().heightIn(min = 88.dp).testTag("native-library-loading"),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(28.dp).testTag("native-library-loading-indicator"),
+        )
+    }
+}
+
+@Composable
+internal fun RemoteBrowseMessage(message: String) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+    )
+}
+
+/** The outgoing lifted row keeps its native compact actions until exit ends. */
+internal fun canonicalLibraryHeldPresentation(
+    heldNow: Boolean,
+    liveMenuVisible: Boolean,
+    heldBeforeExit: Boolean,
+): Boolean = heldNow || (!liveMenuVisible && heldBeforeExit)
+
+/** A real captured hold is required; toolbar overflow still opens the sheet. */
+internal fun canonicalLibraryUsesHeldContextMenu(
+    hasCapturedHold: Boolean,
+    hasHazeBackdrop: Boolean,
+): Boolean = hasCapturedHold && hasHazeBackdrop
+
+/** Only fields supported by the selected canonical media context are offered. */
+@Composable
+internal fun RemoteSongSavedFilterMenu(
+    selectedName: String?,
+    options: List<SavedSmartPlaylistV2Filter>,
+    selectedFilterId: String?,
+    onSelect: (String?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+        NativeInlineTextAction(
+            label = "Filtro: " + (selectedName ?: if (selectedFilterId == null) "Todas" else "Indisponível"),
+            onClick = { expanded = true },
+        )
+        // This may contain dozens of filters, so cap the viewport instead of
+        // letting the native popup extend beyond the available display.
+        val maxPopupHeight = LocalConfiguration.current.screenHeightDp.dp * 0.68f
+        com.music.aria.ui.components.NativeCompactOverflowMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            maxContentHeight = maxPopupHeight,
+        ) {
+            com.music.aria.ui.components.NativeCompactMenuItem(
+                label = "Todas as músicas",
+                selected = selectedFilterId == null,
+                onClick = { expanded = false; onSelect(null) },
+            )
+            options.forEach { filter ->
+                com.music.aria.ui.components.NativeCompactMenuItem(
+                    label = filter.name,
+                    selected = selectedFilterId == filter.id,
+                    onClick = { expanded = false; onSelect(filter.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RemoteBrowseTopBar(
+    title: String,
+    onBack: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = com.music.aria.ui.components.standaloneTopControlPadding(56.dp))
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 8.dp),
+    ) {
+        CircleIconButton(
+            icon = PlaylistEditorIcons.Back,
+            contentDescription = stringResource(R.string.remote_library_back),
+            onClick = onBack,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+        )
+    }
+    HorizontalDivider(
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+    )
+}
+
+@Composable
+internal fun CanonicalTrackRow(
+    track: CanonicalBrowseTrack,
+    artworkLoader: OpenSubsonicArtworkLoader,
+    onClick: () -> Unit,
+    onEditRating: () -> Unit,
+    onOptions: (() -> Unit)? = null,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelection: (() -> Unit)? = null,
+    // Only a category's row enters selection on long press; detail pages don't.
+    onLongPress: (() -> Unit)? = null,
+    compactForArtist: Boolean = false,
+    showInlineOptions: Boolean = false,
+    palette: ArtworkPalette? = null,
+    albumTrackNumber: Int? = null,
+    albumCredit: String? = null,
+    /** Artist-specific supporting line from verified ReleaseTrack membership. */
+    artistReleaseSubtitle: String? = null,
+) {
+    // Artist pages already identify their artist in the hero. Their song
+    // captions must refer to a verified release, not repeat that credit.
+    // A missing or ambiguous link is deliberately blank, not a guessed album.
+    // Numbered album rows and root Library/playlist rows retain their own policy.
+    val secondaryLine = when {
+        compactForArtist -> artistReleaseSubtitle.orEmpty()
+        albumTrackNumber != null && albumCredit != null ->
+            nativeAlbumTrackSecondaryLine(track.artistDisplay, albumCredit)
+        else -> track.artistDisplay
+    }
+    NativeDetailTrackRowLayout(
+        onClick = {
+            if (selectionMode && onToggleSelection != null) onToggleSelection()
+            else onClick()
+        },
+        onLongPress = if (selectionMode) null else onLongPress ?: onOptions,
+        onMore = null,
+        horizontalInset = if (compactForArtist) 0.dp else PAGE_GUTTER,
+        modifier = if (compactForArtist) Modifier
+            else Modifier.heightIn(min = if (albumTrackNumber != null) 54.dp else 68.dp),
+        textGap = if (albumTrackNumber != null) PAGE_GUTTER
+            else if (compactForArtist) 12.dp else 14.dp,
+        leading = {
+            if (albumTrackNumber != null) {
+                NativeDetailTrackNumber(
+                    number = albumTrackNumber,
+                    color = palette?.onBackgroundVariant
+                        ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                CanonicalUnifiedArtwork(
+                    track, artworkLoader, Modifier.size(if (compactForArtist) 48.dp else 52.dp),
+                )
+            }
+        },
+        title = {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = palette?.onBackground ?: MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        subtitle = {
+            if (!secondaryLine.isNullOrBlank()) Text(
+                text = secondaryLine,
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette?.onBackgroundVariant
+                    ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        showRatingSlot = albumTrackNumber == null,
+        rating = {
+            canonicalLibraryVisibleRatings(
+                track, LocalCanonicalRatingDisplay.current,
+            ).forEach { rating ->
+                CanonicalRatingStars(
+                    rating, color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        },
+        actions = {
+            if (selectionMode && onToggleSelection != null) {
+                NativeLibrarySelectionAction(
+                    selected = selected,
+                    label = if (selected) "Desmarcar faixa" else "Selecionar faixa",
+                    onToggle = onToggleSelection,
+                )
+            }
+            // Track options live in HeldContextMenu; never place a fallback
+            // ellipsis or rating-only popup at the edge of a music row.
+        },
+    )
+}
+
+@Composable
+internal fun RemoteTrackArtwork(
+    mediaAssetId: String?,
+    artworkRevision: String?,
+    title: String,
+    artworkLoader: OpenSubsonicArtworkLoader,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap by produceState<ImageBitmap?>(
+        initialValue = null,
+        key1 = mediaAssetId,
+        key2 = artworkRevision,
+        key3 = artworkLoader,
+    ) {
+        value = if (mediaAssetId == null || artworkRevision.isNullOrBlank() ||
+            artworkRevision?.startsWith("content://") == true ||
+            artworkRevision?.startsWith("file://") == true) {
+            null
+        } else {
+            when (val result = awaitRecoverableCanonicalArtwork(load = {
+                artworkLoader.load(mediaAssetId)
+            })) {
+                is OpenSubsonicArtworkLoadResult.Ready -> withContext(Dispatchers.Default) {
+                    BitmapFactory.decodeByteArray(result.bytes, 0, result.bytes.size)?.asImageBitmap()
+                }
+                is OpenSubsonicArtworkLoadResult.Placeholder -> null
+            }
+        }
+    }
+
+    // Local MediaStore sleeves use the native Coil path already used in the
+    // playlist editor. A content URI is not an authenticated provider URL;
+    // never feed remote provider artwork IDs to Coil.
+    if (artworkRevision?.startsWith("content://") == true ||
+        artworkRevision?.startsWith("file://") == true
+    ) {
+        AsyncImage(
+            model = artworkRevision,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.clip(RoundedCornerShape(8.dp)),
+        )
+        return
+    }
+    val loaded = bitmap
+    if (loaded != null) {
+        Image(
+            bitmap = loaded,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.clip(RoundedCornerShape(8.dp)),
+        )
+    } else {
+        ArtworkPlaceholder(
+            hasArtworkReference = !artworkRevision.isNullOrBlank(),
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun ArtworkPlaceholder(
+    hasArtworkReference: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = if (hasArtworkReference) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Rounded.MusicNote,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+private fun formatDuration(durationMs: Long?): String? {
+    val totalSeconds = durationMs?.takeIf { it > 0L }?.div(1_000L) ?: return null
+    val hours = totalSeconds / 3_600
+    val minutes = (totalSeconds % 3_600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
+}
+
+/** Source-authenticated artwork must never be leaked to Coil's palette decoder. */
+internal fun canonicalNativeReleasePaletteUri(
+    primary: String?,
+    fallback: String? = null,
+): String? = sequenceOf(primary, fallback).filterNotNull().firstOrNull {
+    it.startsWith("content://") || it.startsWith("file://")
+}
+
+/**
+ * Canonical category lists keep their inset hairlines only between entries.
+ * Do not paint a separator below the final visible track, album or artist.
+ */
+/** Match the held cover with the one actually painted by the Library card. */
+internal fun heldLibraryAlbumArtworkSource(
+    releaseArtwork: String?,
+    verifiedRecordingArtwork: String?,
+): String? = verifiedRecordingArtwork?.takeIf(String::isNotBlank)
+    ?: releaseArtwork?.takeIf(String::isNotBlank)
+
+/** Held menus take their tint from the item the user actually picked. */
+internal fun heldLibraryPaletteArtworkSource(
+    itemArtwork: String?,
+    detailArtwork: String?,
+): String? = itemArtwork?.takeIf(String::isNotBlank)
+    ?: detailArtwork?.takeIf(String::isNotBlank)
+
+internal fun shouldDrawCanonicalLibraryRowDivider(index: Int, total: Int): Boolean =
+    index >= 0 && index < total - 1
+
+/**
+ * Root categories are collections, not releases: keep the native floating
+ * toolbar, its wide text field and existing ActionPill, but never reserve a
+ * generic sleeve-sized rectangle above the actual list/grid.
+ */
+internal fun shouldShowCanonicalLibraryCategoryPlayback(
+    context: CanonicalSmartFilterContext,
+    isAlbumDetail: Boolean,
+    hasPlayableTracks: Boolean,
+): Boolean = !isAlbumDetail && hasPlayableTracks &&
+    context != CanonicalSmartFilterContext.ARTISTS
+
+@Composable
+internal fun NativeUnifiedLibraryCategoryHeader(
+    title: String,
+    context: CanonicalSmartFilterContext,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searching: Boolean,
+    palette: ArtworkPalette,
+    hasPlayableTracks: Boolean,
+    onPlayAll: (Boolean) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            // Back/action circles now rest at Home's Y, so the category
+            // title must remain below their 40dp visual bounds.
+            .padding(top = topBarContentPadding() + 8.dp +
+                com.music.aria.ui.components.HomeFloatingActionRestOffset,
+                bottom = 12.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            color = palette.onBackground,
+            modifier = Modifier.padding(start = PAGE_GUTTER + 16.dp, end = PAGE_GUTTER),
+        )
+        Spacer(Modifier.height(8.dp))
+        NativeDetailSearchField(
+            query = query,
+            onQueryChange = onQueryChange,
+            onClose = { onQueryChange("") },
+            autoFocus = searching,
+            onFocused = {},
+            palette = palette,
+            placeholder = stringResource(R.string.apple_library_search_in_category, title),
+            horizontalInset = PAGE_GUTTER + 4.dp,
+            appleLibraryCategoryStyle = true,
+        )
+        if (shouldShowCanonicalLibraryCategoryPlayback(
+                context, isAlbumDetail = false, hasPlayableTracks = hasPlayableTracks,
+            )
+        ) {
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER)
+                    .testTag("canonical-library-category-play-actions"),
+                horizontalArrangement = Arrangement.spacedBy(
+                    com.music.aria.ui.components.DetailActionLayoutMetrics.libraryCategoryGap,
+                ),
+            ) {
+                ActionPill(
+                    icon = BitChordIcons.Play,
+                    label = stringResource(R.string.play),
+                    onClick = { onPlayAll(false) },
+                    filled = true,
+                    modifier = Modifier.weight(1f),
+                )
+                ActionPill(
+                    icon = BitChordIcons.Shuffle,
+                    label = stringResource(R.string.shuffle),
+                    onClick = { onPlayAll(true) },
+                    filled = false,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The unified catalog reuses the pre-regression release-page header, search,
+ * action pills and Library rows. Its entities remain Recording/Release/Artist
+ * IDs; this is intentionally not a conversion into fake local Song/browse IDs.
+ */
+@Composable
+private fun NativeUnifiedLibraryBody(
+    title: String,
+    selectedContext: CanonicalSmartFilterContext,
+    tracks: List<CanonicalBrowseTrack>,
+    filteredState: CanonicalSongFilterState,
+    entityState: CanonicalEntityBrowseState,
+    artworkLoader: OpenSubsonicArtworkLoader,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searching: Boolean,
+    viewType: LibraryViewType,
+    sort: LocalMusicSort,
+    sortDates: Map<String, CanonicalEntitySortDateRow>,
+    entityArtworkById: Map<String, CanonicalBrowseTrack>,
+    entityRatings: Map<CanonicalEntityRatingTarget, Double>,
+    onTrackPlay: (CanonicalBrowseTrack) -> Unit,
+    onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
+    onTrackOptions: (CanonicalBrowseTrack) -> Unit,
+    onAlbumOptions: (ReleaseEntity) -> Unit,
+    onArtistOptions: (CanonicalSelectedEntity) -> Unit,
+    selectedItems: List<CanonicalLibrarySelection>,
+    canLongPressSelect: Boolean,
+    onToggleSelection: (CanonicalLibrarySelection) -> Unit,
+    onPlayAll: (List<CanonicalBrowseTrack>, Boolean) -> Unit,
+    onEntitySelect: (CanonicalSelectedEntity) -> Unit,
+) {
+    // Album detail exits into its native release compositor above.
+    val palette = rememberArtworkPalette(imageUrl = null)
+    val albumItems = (entityState as? CanonicalEntityBrowseState.Albums)?.releases.orEmpty()
+    val artistItems = (entityState as? CanonicalEntityBrowseState.Artists)?.artists.orEmpty()
+    // Browse-only artist fallback IDs are intentionally not real ArtistIds.
+    // Their dates come from the same visible display groups, never a name
+    // guess used to synthesize a canonical identity or queue item.
+    val displayArtistDates = remember(artistItems, tracks) {
+        val grouped = tracks.groupBy { it.artistDisplay.lowercase(Locale.ROOT) }
+        artistItems.mapNotNull { artist ->
+            val displayName = playlistDisplayArtistNameFromGroupId(artist.id)
+                ?: return@mapNotNull null
+            val members = grouped[displayName.lowercase(Locale.ROOT)].orEmpty()
+            artist.id to CanonicalEntitySortDateRow(
+                entityId = artist.id,
+                dateAddedSeconds = members.mapNotNull { it.dateAddedSeconds }.maxOrNull(),
+                dateModifiedSeconds = members.mapNotNull { it.dateModifiedSeconds }.maxOrNull(),
+            )
+        }.toMap()
+    }
+    val albums = remember(albumItems, sort, sortDates) {
+        sortCanonicalUnifiedEntities(
+            albumItems, sort, sortDates,
+            id = { it.id }, title = { it.title },
+        )
+    }
+    val artists = remember(artistItems, sort, sortDates, displayArtistDates) {
+        sortCanonicalUnifiedEntities(
+            artistItems, sort, sortDates + displayArtistDates,
+            id = { it.id }, title = { it.name },
+        )
+    }
+    val count = when (selectedContext) {
+        CanonicalSmartFilterContext.SONGS -> tracks.size
+        CanonicalSmartFilterContext.ALBUMS -> albums.size
+        CanonicalSmartFilterContext.ARTISTS -> artists.size
+    }
+    val label = when (selectedContext) {
+        CanonicalSmartFilterContext.SONGS ->
+            nativeUnifiedTrackCountLabel(count, tracks.map { it.durationMs })
+        CanonicalSmartFilterContext.ALBUMS -> "${count} álbuns"
+        CanonicalSmartFilterContext.ARTISTS -> "${count} artistas"
+    }
+    // Drag selection belongs to the *root* Library only. Detail pages keep
+    // their original touch/menu behavior; neither a global gesture interceptor
+    // nor an additional browse surface is introduced.
+    val dragOrder = remember(selectedContext, tracks, albums, artists) {
+        when (selectedContext) {
+            CanonicalSmartFilterContext.SONGS -> tracks.map {
+                CanonicalLibrarySelection(CanonicalLibraryEntityType.TRACK, it.recordingId)
+            }
+            CanonicalSmartFilterContext.ALBUMS -> albums.map {
+                CanonicalLibrarySelection(CanonicalLibraryEntityType.ALBUM, it.id)
+            }
+            CanonicalSmartFilterContext.ARTISTS -> artists.map {
+                CanonicalLibrarySelection(CanonicalLibraryEntityType.ARTIST, it.id)
+            }
+        }
+    }
+    val gridMode = viewType == LibraryViewType.GRID
+    val dragRows = remember(dragOrder, gridMode) {
+        canonicalLibraryDragRows(dragOrder, gridMode)
+    }
+    val dragIndices = remember(dragOrder) {
+        dragOrder.withIndex().associate { it.value to it.index }
+    }
+    val listState = rememberLazyListState()
+    val currentSelectedItems by rememberUpdatedState(selectedItems)
+    val currentToggleSelection by rememberUpdatedState(onToggleSelection)
+
+    BoxWithConstraints(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+    ) {
+        // A hold opens the existing contextual ⋯ menu. Once the user enters
+        // selection mode, holding and dragging continues to paint selections.
+        val dragModifier = if (canLongPressSelect && selectedItems.isNotEmpty()) {
+            Modifier.pointerInput(dragRows, dragIndices, gridMode) {
+                val visited = mutableSetOf<CanonicalLibrarySelection>()
+                var previousIndex: Int? = null
+                var startedOnEntity = false
+                fun findTarget(position: androidx.compose.ui.geometry.Offset): CanonicalLibrarySelection? {
+                    val hitRow = listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
+                        position.y >= item.offset && position.y < item.offset + item.size
+                    } ?: return null
+                    return canonicalLibraryDragHit(
+                        dragRows, hitRow.key, position.x,
+                        listState.layoutInfo.viewportSize.width.toFloat(), gridMode,
+                    )
+                }
+                fun visit(position: androidx.compose.ui.geometry.Offset) {
+                    val target = findTarget(position) ?: return
+                    val index = dragIndices[target] ?: return
+                    val firstIndex = previousIndex ?: index
+                    canonicalLibraryDragSpan(dragOrder, firstIndex, index).forEach { entry ->
+                        // Paint-selection never deselects an item merely because the
+                        // finger crosses it again. The user's existing draft survives.
+                        if (visited.add(entry) && entry !in currentSelectedItems) {
+                            currentToggleSelection(entry)
+                        }
+                    }
+                    previousIndex = index
+                }
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { position ->
+                        previousIndex = null
+                        visited.clear()
+                        // Holding the artwork header, search or blank grid space
+                        // must never turn into selection by dragging onto a row.
+                        startedOnEntity = findTarget(position) != null
+                        if (startedOnEntity) visit(position)
+                    },
+                    onDragEnd = { previousIndex = null; visited.clear(); startedOnEntity = false },
+                    onDragCancel = { previousIndex = null; visited.clear(); startedOnEntity = false },
+                    onDrag = { change, _ ->
+                        if (startedOnEntity) {
+                            visit(change.position)
+                            change.consume()
+                        }
+                    },
+                )
+            }
+        } else Modifier
+        LazyColumn(
+            // Same insets as DetailScreen: the hero itself clears the frosted
+            // toolbar. A second 72dp/status inset pushed the artwork too low.
+            modifier = Modifier.fillMaxSize().then(dragModifier),
+            state = listState,
+            contentPadding = PaddingValues(bottom = 112.dp),
+        ) {
+            item(key = "native-library-header") {
+                NativeUnifiedLibraryCategoryHeader(
+                    title = title,
+                    context = selectedContext,
+                    query = query,
+                    onQueryChange = onQueryChange,
+                    searching = searching,
+                    palette = palette,
+                    hasPlayableTracks = count > 0 && tracks.isNotEmpty(),
+                    onPlayAll = { shuffle -> onPlayAll(tracks, shuffle) },
+                )
+            }
+            when (selectedContext) {
+                CanonicalSmartFilterContext.SONGS -> when (filteredState) {
+                    CanonicalSongFilterState.Loading -> item {
+                        NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
+                    }
+                    CanonicalSongFilterState.Failed -> item {
+                        RemoteBrowseMessage("Não foi possível aplicar o filtro.")
+                    }
+                    is CanonicalSongFilterState.Ready -> if (tracks.isEmpty()) item {
+                        RemoteBrowseMessage("Nenhuma música nesta seleção.")
+                    } else if (viewType == LibraryViewType.GRID) {
+                        gridRows(
+                            tracks, 2, key = { it.recordingId },
+                        ) { track ->
+                            val target = CanonicalLibrarySelection(
+                                CanonicalLibraryEntityType.TRACK, track.recordingId,
+                            )
+                            // Músicas uses the exact same native grid card
+                            // as Álbuns/Artistas: artwork, type scale, spacing,
+                            // overflow and selection all stay in one component.
+                            NativeLibraryEntityCard(
+                                title = track.title,
+                                subtitle = track.artistDisplay,
+                                imageUrl = null,
+                                isArtist = false,
+                                artwork = {
+                                    CanonicalUnifiedArtwork(
+                                        track, artworkLoader, Modifier.fillMaxSize(),
+                                    )
+                                },
+                                onClick = {
+                                    if (selectedItems.isNotEmpty()) onToggleSelection(target)
+                                    else onTrackPlay(track)
+                                },
+                                onMore = null, // Category root has no inline overflow.
+                                onLongPress = if (selectedItems.isEmpty()) ({ onTrackOptions(track) }) else null,
+                                selectionMode = selectedItems.isNotEmpty(),
+                                selected = target in selectedItems,
+                                onToggleSelection = { onToggleSelection(target) },
+                            )
+                        }
+                    } else itemsIndexed(
+                        items = tracks,
+                        key = { _, track -> track.recordingId },
+                    ) { index, track ->
+                        val target = CanonicalLibrarySelection(
+                            CanonicalLibraryEntityType.TRACK, track.recordingId,
+                        )
+                        CanonicalTrackRow(
+                            track = track, artworkLoader = artworkLoader,
+                            onClick = { onTrackPlay(track) },
+                            onEditRating = { onTrackEditRating(track) },
+                            onOptions = { onTrackOptions(track) },
+                            showInlineOptions = false,
+                            onLongPress = if (selectedItems.isEmpty()) ({ onTrackOptions(track) }) else null,
+                            selectionMode = selectedItems.isNotEmpty(),
+                            selected = target in selectedItems,
+                            onToggleSelection = { onToggleSelection(target) },
+                        )
+                        if (shouldDrawCanonicalLibraryRowDivider(index, tracks.size)) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 84.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                            )
+                        }
+                    }
+                }
+                CanonicalSmartFilterContext.ALBUMS -> when (entityState) {
+                    CanonicalEntityBrowseState.Loading -> item {
+                        NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
+                    }
+                    CanonicalEntityBrowseState.Failed -> item {
+                        RemoteBrowseMessage("Não foi possível carregar os álbuns.")
+                    }
+                    is CanonicalEntityBrowseState.Albums -> {
+                        if (albums.isEmpty()) item {
+                            RemoteBrowseMessage("Nenhum álbum nesta seleção.")
+                        }
+                        if (viewType == LibraryViewType.GRID) {
+                            gridRows(albums, 2, key = { it.id }) { album ->
+                                val art = entityArtworkById[album.id]
+                                val target = CanonicalLibrarySelection(
+                                    CanonicalLibraryEntityType.ALBUM, album.id,
+                                )
+                                NativeLibraryEntityCard(
+                                    title = album.title,
+                                    subtitle = album.artistDisplay.orEmpty(),
+                                    imageUrl = if (art == null) album.artworkUri else null,
+                                    isArtist = false,
+                                    artwork = art?.let { candidate ->
+                                        { CanonicalUnifiedArtwork(
+                                            candidate, artworkLoader, Modifier.fillMaxSize(),
+                                        ) }
+                                    },
+                                    onClick = {
+                                        if (selectedItems.isNotEmpty()) onToggleSelection(target)
+                                        else onEntitySelect(CanonicalSelectedEntity(
+                                            album.id, album.title, album.artworkUri,
+                                        ))
+                                    },
+                                    onMore = null, // Category root has no inline overflow.
+                                    onLongPress = if (selectedItems.isEmpty()) ({ onAlbumOptions(album) }) else null,
+                                    selectionMode = selectedItems.isNotEmpty(),
+                                    selected = target in selectedItems,
+                                    onToggleSelection = { onToggleSelection(target) },
+                                )
+                            }
+                        } else itemsIndexed(albums, key = { _, album -> album.id }) { index, album ->
+                            val art = entityArtworkById[album.id]
+                            val target = CanonicalLibrarySelection(
+                                CanonicalLibraryEntityType.ALBUM, album.id,
+                            )
+                            LibraryRow(
+                                title = album.title,
+                                subtitle = album.artistDisplay.orEmpty(),
+                                imageUrl = if (art == null) album.artworkUri else null,
+                                artwork = art?.let { candidate ->
+                                    { CanonicalUnifiedArtwork(
+                                        candidate, artworkLoader, Modifier.fillMaxSize(),
+                                    ) }
+                                },
+                                onClick = {
+                                    if (selectedItems.isNotEmpty()) onToggleSelection(target)
+                                    else onEntitySelect(CanonicalSelectedEntity(
+                                        album.id, album.title, album.artworkUri,
+                                    ))
+                                },
+                                onLongPress = if (selectedItems.isEmpty()) ({ onAlbumOptions(album) }) else null,
+                                trailing = {
+                                    if (selectedItems.isNotEmpty()) {
+                                        NativeLibrarySelectionAction(
+                                            selected = target in selectedItems,
+                                            label = if (target in selectedItems) "Desmarcar álbum"
+                                                else "Selecionar álbum",
+                                            onToggle = { onToggleSelection(target) },
+                                        )
+                                    } else Row(verticalAlignment = Alignment.CenterVertically) {
+                                        canonicalLibraryEntityRatingForRow(
+                                            entityRatings, target,
+                                        )?.let { value ->
+                                            CanonicalRatingStars(
+                                                rating = RatingDisplay(localValue = value),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(end = 8.dp),
+                                            )
+                                        }
+                                    }
+                                },
+                                artworkSize = 52.dp,
+                                horizontalPadding = PAGE_GUTTER,
+                            )
+                            if (shouldDrawCanonicalLibraryRowDivider(index, albums.size)) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(start = 84.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                                )
+                            }
+                        }
+                    }
+                    is CanonicalEntityBrowseState.Artists -> Unit
+                }
+                CanonicalSmartFilterContext.ARTISTS -> when (entityState) {
+                    CanonicalEntityBrowseState.Loading -> item {
+                        NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.68f))
+                    }
+                    CanonicalEntityBrowseState.Failed -> item {
+                        RemoteBrowseMessage("Não foi possível carregar os artistas.")
+                    }
+                    is CanonicalEntityBrowseState.Artists -> {
+                        if (artists.isEmpty()) item {
+                            RemoteBrowseMessage("Nenhum artista nesta seleção.")
+                        }
+                        if (viewType == LibraryViewType.GRID) {
+                            gridRows(artists, 2, key = { it.id }) { artist ->
+                                val art = entityArtworkById[artist.id]
+                                val target = CanonicalLibrarySelection(
+                                    CanonicalLibraryEntityType.ARTIST, artist.id,
+                                )
+                                NativeLibraryEntityCard(
+                                    title = artist.name,
+                                    subtitle = "",
+                                    imageUrl = null,
+                                    isArtist = true,
+                                    artwork = art?.let { candidate ->
+                                        { CanonicalUnifiedArtwork(
+                                            candidate, artworkLoader, Modifier.fillMaxSize(),
+                                        ) }
+                                    },
+                                    onClick = {
+                                        if (selectedItems.isNotEmpty()) onToggleSelection(target)
+                                        else onEntitySelect(artist)
+                                    },
+                                    onMore = null, // Category root has no inline overflow.
+                                    onLongPress = if (selectedItems.isEmpty()) ({ onArtistOptions(artist) }) else null,
+                                    selectionMode = selectedItems.isNotEmpty(),
+                                    selected = target in selectedItems,
+                                    onToggleSelection = { onToggleSelection(target) },
+                                )
+                            }
+                        } else itemsIndexed(artists, key = { _, artist -> artist.id }) { index, artist ->
+                            val art = entityArtworkById[artist.id]
+                            val target = CanonicalLibrarySelection(
+                                CanonicalLibraryEntityType.ARTIST, artist.id,
+                            )
+                            LibraryRow(
+                                title = artist.name,
+                                subtitle = "",
+                                imageUrl = null,
+                                artwork = art?.let { candidate ->
+                                    { CanonicalUnifiedArtwork(
+                                        candidate, artworkLoader, Modifier.fillMaxSize(),
+                                    ) }
+                                },
+                                artworkShape = CircleShape,
+                                onClick = {
+                                    if (selectedItems.isNotEmpty()) onToggleSelection(target)
+                                    else onEntitySelect(artist)
+                                },
+                                onLongPress = if (selectedItems.isEmpty()) ({ onArtistOptions(artist) }) else null,
+                                trailing = {
+                                    if (selectedItems.isNotEmpty()) {
+                                        NativeLibrarySelectionAction(
+                                            selected = target in selectedItems,
+                                            label = if (target in selectedItems) "Desmarcar artista"
+                                                else "Selecionar artista",
+                                            onToggle = { onToggleSelection(target) },
+                                        )
+                                    } else Row(verticalAlignment = Alignment.CenterVertically) {
+                                        canonicalLibraryEntityRatingForRow(
+                                            entityRatings, target,
+                                        )?.let { value ->
+                                            CanonicalRatingStars(
+                                                rating = RatingDisplay(localValue = value),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(end = 8.dp),
+                                            )
+                                        }
+                                    }
+                                },
+                                artworkSize = 52.dp,
+                                horizontalPadding = PAGE_GUTTER,
+                            )
+                            if (shouldDrawCanonicalLibraryRowDivider(index, artists.size)) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(start = 84.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                                )
+                            }
+                        }
+                    }
+                    is CanonicalEntityBrowseState.Albums -> Unit
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun NativeAlbumMetadataFooter(
+    metadata: CanonicalAlbumFooterMetadata,
+    palette: ArtworkPalette,
+) {
+    if (metadata.date == null && metadata.summary == null && metadata.genre == null) return
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER, vertical = 26.dp)
+            .testTag("native-album-metadata-footer"),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        metadata.date?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant)
+        }
+        metadata.summary?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant)
+        }
+        metadata.genre?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant)
+        }
+    }
+}
+
+/** Coil handles the verified on-device cover URI; authenticated remote artwork
+ * remains inside the OpenSubsonic provider loader (never a raw URL in Compose).
+ */
+@Composable
+internal fun CanonicalUnifiedArtwork(
+    track: CanonicalBrowseTrack,
+    loader: OpenSubsonicArtworkLoader,
+    modifier: Modifier = Modifier,
+) {
+    val localArt = track.artworkUri?.takeIf {
+        track.availableAssets.any { a -> a.providerKey == "local-mediastore" } &&
+            (it.startsWith("content://") || it.startsWith("file://"))
+    }
+    if (localArt != null) {
+        AsyncImage(
+            model = localArt,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.clip(RoundedCornerShape(8.dp)),
+        )
+    } else {
+        RemoteTrackArtwork(
+            mediaAssetId = track.availableAssets.firstOrNull {
+                it.providerKey.startsWith("opensubsonic:")
+            }?.mediaAssetId,
+            artworkRevision = track.artworkUri,
+            title = track.title,
+            artworkLoader = loader,
+            modifier = modifier,
+        )
+    }
+}
+
+/** Same cell spacing as LocalFolder's grid; artist artwork is circular. */
+@Composable
+internal fun NativeLibraryEntityCard(
+    title: String,
+    subtitle: String,
+    imageUrl: String?,
+    isArtist: Boolean,
+    onClick: () -> Unit,
+    artwork: (@Composable () -> Unit)? = null,
+    onMore: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelection: (() -> Unit)? = null,
+) {
+    val shape = if (isArtist) CircleShape else RoundedCornerShape(12.dp)
+    Column(
+        Modifier.fillMaxWidth().longPressMenuClickable(
+            onClick = onClick, onLongClick = onLongPress,
+        ).padding(4.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(shape)) {
+            when {
+                artwork != null -> artwork()
+                imageUrl != null -> AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                else -> CoverPlaceholder(
+                    if (isArtist) Icons.Rounded.MusicNote else Icons.Rounded.Album,
+                    Modifier.fillMaxSize(),
+                )
+            }
+            if (selectionMode && onToggleSelection != null) {
+                NativeLibrarySelectionAction(
+                    selected = selected,
+                    label = if (selected) "Desmarcar ${title}" else "Selecionar ${title}",
+                    onToggle = onToggleSelection,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            } else if (onMore != null) {
+                RowMoreButton(
+                    onClick = onMore,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    contentDescription = "Opções de ${title}",
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        // This grid is hosted on the Library's black surface, outside a
+        // Material Surface content-color provider. Explicit contrast prevents
+        // invisible black-on-black pin titles and subtitles.
+        Text(
+            text = title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.testTag("native-library-card-title"),
+        )
+        if (subtitle.isNotBlank()) {
+            Text(
+                text = subtitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("native-library-card-subtitle"),
+            )
+        }
+    }
+}
+
+/** Do not mistake the pre-emission placeholder for a verified empty library. */
+internal fun canonicalLibraryInitialLoading(
+    unified: Boolean,
+    firstEmissionReceived: Boolean,
+    localIndexReady: Boolean,
+    persistedRowsPresent: Boolean = false,
+): Boolean = !firstEmissionReceived ||
+    (unified && !localIndexReady && !persistedRowsPresent)

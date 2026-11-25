@@ -1,0 +1,1117 @@
+package com.music.aria.ui.components
+
+import com.music.aria.R
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.semantics.Role
+import com.music.aria.ui.theme.appleMusicKeyColor
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.aria.data.settings.AppSettings
+import kotlinx.coroutines.launch
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
+
+/**
+ * Single-action status fallback in the same native UIAlertController frame.
+ * The pending state is an actual spinner, not an unavailable verdict. Neither
+ * action nor layout is claimed as a measured Apple Music rating UI.
+ */
+@Composable
+fun NativeStatusAlert(
+    hazeState: HazeState?,
+    title: String,
+    description: String,
+    loading: Boolean,
+    dismissLabel: String,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.W600,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(top = 12.dp).size(24.dp)
+                        .testTag("native-status-alert-loading"),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Text(
+                    text = description,
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        AlertRule()
+        AlertAction(label = dismissLabel, emphasised = false, onClick = onDismiss)
+    }
+}
+
+/**
+ * Same UIAlertController shape as [UpdateAvailableDialog] — frosted card,
+ * hairline rules, full-width stacked actions — but with a text field for the
+ * one bit of input this alert needs.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun ListenBrainzTokenAlert(
+    hazeState: HazeState?,
+    tokenInput: String,
+    onTokenInputChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.listenbrainz_token),
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(R.string.listenbrainz_token_description),
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            PillTextField(
+                value = tokenInput,
+                onValueChange = onTokenInputChange,
+                placeholder = stringResource(R.string.api_token),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSave() }),
+            )
+        }
+        AlertRule()
+        AlertAction(label = stringResource(R.string.save), emphasised = true, onClick = onSave)
+        AlertRule()
+        AlertAction(label = stringResource(R.string.cancel), emphasised = false, onClick = onDismiss)
+    }
+}
+
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun LastfmLoginAlert(
+    hazeState: HazeState?,
+    usernameInput: String,
+    onUsernameInputChange: (String) -> Unit,
+    passwordInput: String,
+    onPasswordInputChange: (String) -> Unit,
+    error: String?,
+    loading: Boolean,
+    onSignIn: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.lastfm_login),
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = error ?: stringResource(R.string.lastfm_login_description),
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            PillTextField(
+                value = usernameInput,
+                onValueChange = onUsernameInputChange,
+                placeholder = stringResource(R.string.username),
+                enabled = !loading,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            )
+            Spacer(Modifier.height(8.dp))
+            PillTextField(
+                value = passwordInput,
+                onValueChange = onPasswordInputChange,
+                placeholder = stringResource(R.string.password),
+                enabled = !loading,
+                isPassword = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = { if (usernameInput.isNotBlank() && passwordInput.isNotBlank()) onSignIn() },
+                ),
+            )
+        }
+        AlertRule()
+        AlertAction(
+            label = if (loading) stringResource(R.string.signing_in) else stringResource(R.string.sign_in),
+            emphasised = true,
+            onClick = onSignIn,
+            enabled = !loading && usernameInput.isNotBlank() && passwordInput.isNotBlank(),
+        )
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.cancel),
+            emphasised = false,
+            onClick = onDismiss,
+            enabled = !loading,
+        )
+    }
+}
+
+/**
+ * Manual token entry, for when the in-app login can't run — a WebView an OEM
+ * has broken, or a token lifted from a desktop client.
+ *
+ * [error] carries back what the verification attempt said, because a token that
+ * was mistyped or has expired is indistinguishable from one that works until
+ * Discord is asked about it.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun DiscordTokenAlert(
+    hazeState: HazeState,
+    tokenInput: String,
+    onTokenInputChange: (String) -> Unit,
+    error: String?,
+    loading: Boolean,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.discord_token),
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = error ?: stringResource(R.string.discord_token_description),
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            PillTextField(
+                value = tokenInput,
+                onValueChange = onTokenInputChange,
+                placeholder = stringResource(R.string.token),
+                enabled = !loading,
+                isPassword = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (tokenInput.isNotBlank()) onSave() }),
+            )
+        }
+        AlertRule()
+        AlertAction(
+            label = if (loading) stringResource(R.string.checking) else stringResource(R.string.save),
+            emphasised = true,
+            onClick = onSave,
+            enabled = !loading && tokenInput.isNotBlank(),
+        )
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.cancel),
+            emphasised = false,
+            onClick = onDismiss,
+            enabled = !loading,
+        )
+    }
+}
+
+/**
+ * One free-text presence field — an activity name, a button label.
+ *
+ * [message] is where the caller explains the field, including which `{...}`
+ * variables it accepts, since that is the only place a user would find out.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun TextValueAlert(
+    hazeState: HazeState?,
+    title: String,
+    message: String,
+    placeholder: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+    /** False greys Save out — for a field that isn't worth saving empty. */
+    saveEnabled: Boolean = true,
+    /** A third action between Save and Cancel, for a value that can be cleared. */
+    onRemove: (() -> Unit)? = null,
+    /** Sensitive values use the same masked native PillTextField as Last.fm. */
+    isPassword: Boolean = false,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (message.isNotBlank()) {
+                Text(
+                    text = message,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                Spacer(Modifier.height(14.dp))
+            }
+            PillTextField(
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = placeholder,
+                isPassword = isPassword,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (isPassword) KeyboardType.Password else KeyboardType.Text,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { onSave() }),
+            )
+        }
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.save),
+            emphasised = true,
+            onClick = onSave,
+            enabled = saveEnabled,
+        )
+        if (onRemove != null) {
+            AlertRule()
+            AlertAction(label = stringResource(R.string.remove), emphasised = false, onClick = onRemove)
+        }
+        AlertRule()
+        AlertAction(label = stringResource(R.string.cancel), emphasised = false, onClick = onDismiss)
+    }
+}
+
+/**
+ * One field of a server editor: the value, its change handler, the hint, and
+ * how the keyboard behaves on it. The last field always gets Done-to-save
+ * while the rest advance with Next, which is what every editor below already
+ * did by hand.
+ */
+data class EditorField(
+    val value: String,
+    val onChange: (String) -> Unit,
+    val placeholder: String,
+    val keyboardType: KeyboardType = KeyboardType.Text,
+    val isPassword: Boolean = false,
+)
+
+/**
+ * The shape every server editor in this app shares: a centered title, the
+ * last test result in place of the description, the fields, then Test above
+ * Save above Cancel — plus an optional destructive row between Save and
+ * Cancel for an entry that can also be removed.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun ServerEditorAlert(
+    hazeState: HazeState?,
+    title: String,
+    description: String,
+    fields: List<EditorField>,
+    /** What the last test said, or null before one has been run. */
+    status: String?,
+    statusIsGood: Boolean,
+    testing: Boolean,
+    /** Whether there is enough typed in to be worth testing or saving. */
+    canSubmit: Boolean,
+    onTest: () -> Unit,
+    onSave: () -> Unit,
+    removeLabel: String? = null,
+    /** Offered only when there is something stored to remove. */
+    onRemove: (() -> Unit)? = null,
+    onDismiss: () -> Unit,
+    /** Optional existing controls between URL and credentials (e.g. authentication mode). */
+    afterFirstField: (@Composable () -> Unit)? = null,
+    /** Keep account-specific explanatory notes in the native editor shell. */
+    afterFields: (@Composable () -> Unit)? = null,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = { if (!testing) onDismiss() }) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = status ?: description,
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = when {
+                    status == null -> MaterialTheme.colorScheme.onSurface
+                    statusIsGood -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.error
+                },
+                textAlign = TextAlign.Center,
+            )
+            fields.forEachIndexed { index, field ->
+                if (index > 0) Spacer(Modifier.height(8.dp))
+                PillTextField(
+                    value = field.value,
+                    onValueChange = field.onChange,
+                    placeholder = field.placeholder,
+                    enabled = !testing,
+                    isPassword = field.isPassword,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = field.keyboardType,
+                        imeAction = if (index == fields.lastIndex) ImeAction.Done else ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (canSubmit && !testing) onSave() },
+                    ),
+                )
+                if (index == 0 && afterFirstField != null) {
+                    Spacer(Modifier.height(8.dp))
+                    afterFirstField()
+                }
+            }
+            if (afterFields != null) {
+                Spacer(Modifier.height(8.dp))
+                afterFields()
+            }
+        }
+        AlertRule()
+        // Above Save rather than beside it: an address is worth checking before
+        // it is stored, and a row of three cramped buttons is what the Material
+        // dialog did badly.
+        AlertAction(
+            label = if (testing) stringResource(R.string.testing) else stringResource(R.string.test),
+            emphasised = false,
+            onClick = onTest,
+            enabled = canSubmit && !testing,
+        )
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.save),
+            emphasised = true,
+            onClick = onSave,
+            enabled = canSubmit && !testing,
+        )
+        if (onRemove != null && removeLabel != null) {
+            AlertRule()
+            AlertAction(
+                label = removeLabel,
+                emphasised = false,
+                destructive = true,
+                onClick = onRemove,
+                enabled = !testing,
+            )
+        }
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.cancel),
+            emphasised = false,
+            onClick = onDismiss,
+            enabled = !testing,
+        )
+    }
+}
+
+/**
+ * One field of a hosted server editor: the saved value it opens with, the
+ * hint, and how the keyboard behaves on it.
+ */
+data class FieldConfig(
+    val initial: String,
+    val placeholder: String,
+    val keyboardType: KeyboardType = KeyboardType.Text,
+    val isPassword: Boolean = false,
+)
+
+/**
+ * A server editor that owns its own state: field values, the last test
+ * result and the testing flag. The caller hands over fixed field configs
+ * plus what test and save mean for those values, and gets back the same
+ * frosted card as [ServerEditorAlert] — without the dozen remembered states
+ * each host otherwise repeats.
+ *
+ * The configs are fixed per call site, so remembering once per opening is
+ * sound; the host leaves composition on dismiss, which is when the next
+ * opening starts over from the saved values.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun ServerEditorHost(
+    hazeState: HazeState,
+    title: String,
+    description: String,
+    fields: List<FieldConfig>,
+    canSubmit: (List<String>) -> Boolean,
+    testFailedRes: Int,
+    onTest: suspend (List<String>) -> Result<Unit>,
+    onSave: (List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val states = remember { fields.map { mutableStateOf(it.initial) } }
+    var status by remember { mutableStateOf<String?>(null) }
+    var statusIsGood by remember { mutableStateOf(false) }
+    var testing by remember { mutableStateOf(false) }
+    val values = states.map { it.value }
+    ServerEditorAlert(
+        hazeState = hazeState,
+        title = title,
+        description = description,
+        fields = fields.mapIndexed { index, field ->
+            EditorField(
+                value = states[index].value,
+                onChange = { states[index].value = it; status = null },
+                placeholder = field.placeholder,
+                keyboardType = field.keyboardType,
+                isPassword = field.isPassword,
+            )
+        },
+        status = status,
+        statusIsGood = statusIsGood,
+        testing = testing,
+        canSubmit = canSubmit(values),
+        onTest = {
+            testing = true
+            status = null
+            scope.launch {
+                onTest(values).fold(
+                    onSuccess = {
+                        status = context.getString(R.string.connected)
+                        statusIsGood = true
+                    },
+                    onFailure = {
+                        status = context.getString(
+                            testFailedRes,
+                            it.message ?: context.getString(R.string.failed),
+                        )
+                        statusIsGood = false
+                    },
+                )
+                testing = false
+            }
+        },
+        onSave = { onSave(values) },
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * Add or edit a source that has an address — the addon editor.
+ *
+ * The same frosted card every other alert in this app uses, rather than the
+ * Material `AlertDialog` this replaced. That one put a filled `OutlinedTextField`
+ * and a row of cramped text buttons in the middle of a screen where nothing
+ * else looks like that, and it read as a stock widget dropped into somebody
+ * else's design.
+ *
+ * One field and up to four stacked actions. There is deliberately no name
+ * field: an addon states its own name in its manifest, so asking the user to
+ * invent one is asking for information the addon is about to supply anyway —
+ * and a blank field would leave the row showing a bare hostname next to a
+ * perfectly good published name.
+ *
+ * [status] is the one thing here that no other alert in the file needs:
+ * testing an address has *three* outcomes rather than the usual two, and "it
+ * answered, but not with something this app can use" is the one worth reading
+ * — so a result replaces the description in place, coloured by [statusIsGood],
+ * the way [LastfmLoginAlert] surfaces a failed sign-in.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun AddonEditorAlert(
+    hazeState: HazeState,
+    title: String,
+    description: String,
+    urlValue: String,
+    onUrlChange: (String) -> Unit,
+    urlPlaceholder: String,
+    /** What the last test said, or null before one has been run. */
+    status: String?,
+    statusIsGood: Boolean,
+    testing: Boolean,
+    /** Whether there is enough typed in to be worth testing or saving. */
+    canSubmit: Boolean,
+    onTest: () -> Unit,
+    onSave: () -> Unit,
+    /** Offered only for a source already stored — there is nothing to remove otherwise. */
+    onRemove: (() -> Unit)?,
+    /**
+     * What [onRemove] is called, for the callers that are not removing a source.
+     *
+     * The party server's address wears this same card — one field, an address
+     * to test, four stacked actions — and "Remove source" would be the one line
+     * on it still talking about addons.
+     */
+    removeLabel: String? = null,
+    onDismiss: () -> Unit,
+) {
+    ServerEditorAlert(
+        hazeState = hazeState,
+        title = title,
+        description = description,
+        fields = listOf(
+            EditorField(
+                value = urlValue,
+                onChange = onUrlChange,
+                placeholder = urlPlaceholder,
+                keyboardType = KeyboardType.Uri,
+            ),
+        ),
+        status = status,
+        statusIsGood = statusIsGood,
+        testing = testing,
+        canSubmit = canSubmit,
+        onTest = onTest,
+        onSave = onSave,
+        removeLabel = removeLabel ?: stringResource(R.string.remove_source),
+        onRemove = onRemove,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * A name clash mid-upload: the server already holds a file under the name a
+ * track would land as.
+ *
+ * Three stacked outcomes rather than a yes/no — overwriting destroys the
+ * server copy, so the non-destructive answer leads as the emphasised action.
+ * [showApplyToAll] is only true mid-batch, where one answer can carry every
+ * clash still queued behind this one.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun WebDavConflictAlert(
+    hazeState: HazeState,
+    fileName: String,
+    showApplyToAll: Boolean,
+    applyToAll: Boolean,
+    onApplyToAllChange: (Boolean) -> Unit,
+    onOverwrite: () -> Unit,
+    onKeepBoth: () -> Unit,
+    onSkip: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.webdav_conflict_title, fileName),
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(R.string.webdav_conflict_message),
+                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+        }
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.webdav_keep_both),
+            emphasised = true,
+            onClick = onKeepBoth,
+        )
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.webdav_overwrite),
+            emphasised = false,
+            onClick = onOverwrite,
+        )
+        AlertRule()
+        AlertAction(
+            label = stringResource(R.string.webdav_skip),
+            emphasised = false,
+            onClick = onSkip,
+        )
+        if (showApplyToAll) {
+            AlertRule()
+            ChoiceRow(
+                label = stringResource(R.string.webdav_apply_to_all),
+                detail = null,
+                checked = applyToAll,
+                onClick = { onApplyToAllChange(!applyToAll) },
+            )
+        }
+    }
+}
+
+/** The exact neutral expandable-menu surface token used by confirmations. */
+internal val FLOATING_CONFIRMATION_TREATMENT = NativeActionCardTreatment.FROSTED
+
+/**
+ * Confirmation actions are a floating *context menu*, not the old iOS system
+ * alert. Its neutral glass, 18dp corners, hairline and shadow are owned by
+ * NativeContextActionPlate — the same component as expandable action cards.
+ *
+ * The creator already lives in a full-screen Dialog, so do not open a second
+ * window here. Keep the host's source Haze state (or inherited source), and
+ * defer the destructive callback until the menu finishes its exit motion.
+ */
+@Composable
+fun ConfirmationAlert(
+    hazeState: HazeState?,
+    title: String,
+    description: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    dismissLabel: String? = null,
+    destructive: Boolean = false,
+) {
+    val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val visible = remember {
+        MutableTransitionState(false).apply { targetState = true }
+    }
+    val scrimOpacity = remember { Animatable(0f) }
+    var closing by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val closeWith: (() -> Unit) -> Unit = { action ->
+        if (!closing) {
+            closing = true
+            pendingAction = action
+            visible.targetState = false
+        }
+    }
+    LaunchedEffect(visible.targetState, reduceMotion) {
+        val to = if (visible.targetState) 1f else 0f
+        if (reduceMotion) scrimOpacity.snapTo(to)
+        else scrimOpacity.animateTo(to, tween(durationMillis = 180))
+    }
+    LaunchedEffect(visible.isIdle, visible.currentState) {
+        if (closing && visible.isIdle && !visible.currentState) {
+            val action = pendingAction
+            pendingAction = null
+            action?.invoke()
+        }
+    }
+    // A second Back during the exit must not reach the wizard behind us.
+    BackHandler { if (!closing) closeWith(onDismiss) }
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SCRIM_COLOR.copy(alpha = SCRIM_COLOR.alpha * scrimOpacity.value))
+            .clickable(
+                enabled = !closing,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = { closeWith(onDismiss) },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        val menuWidth = (maxWidth - 48.dp).coerceAtMost(320.dp).coerceAtLeast(0.dp)
+        AnimatedVisibility(
+            visibleState = visible,
+            enter = if (reduceMotion) fadeIn(animationSpec = snap())
+                else fadeIn(tween(180)) + scaleIn(
+                    initialScale = 0.96f, animationSpec = tween(180),
+                ),
+            exit = if (reduceMotion) fadeOut(animationSpec = snap())
+                else fadeOut(tween(200)) + scaleOut(
+                    targetScale = 0.98f, animationSpec = tween(200),
+                ),
+        ) {
+            NativeContextActionPlate(
+                modifier = Modifier
+                    .width(menuWidth)
+                    .testTag("floating-confirmation-menu")
+                    // Taps in padding/dividers must never close the menu.
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = {},
+                    ),
+                hazeState = hazeState,
+                treatment = FLOATING_CONFIRMATION_TREATMENT,
+            ) {
+                Column(
+                    modifier = Modifier
+                        // Landscape, large fonts and IME: keep both choices
+                        // reachable without shifting the centered menu window.
+                        .heightIn(max = (maxHeight - 48.dp).coerceAtLeast(0.dp))
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 23.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp, fontWeight = FontWeight.W600,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (description.isNotBlank()) {
+                            Text(
+                                text = description,
+                                modifier = Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 14.sp, lineHeight = 19.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                    FloatingConfirmationRule()
+                    FloatingConfirmationAction(
+                        label = confirmLabel,
+                        destructive = destructive,
+                        primary = !destructive,
+                        tag = "floating-confirmation-confirm",
+                        enabled = !closing,
+                        onClick = { closeWith(onConfirm) },
+                    )
+                    FloatingConfirmationRule()
+                    FloatingConfirmationAction(
+                        label = dismissLabel ?: stringResource(R.string.cancel),
+                        destructive = false,
+                        primary = false,
+                        tag = "floating-confirmation-dismiss",
+                        enabled = !closing,
+                        onClick = { closeWith(onDismiss) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingConfirmationRule() {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Box(
+        Modifier.fillMaxWidth().height(0.5.dp)
+            .background(
+                (if (dark) Color.White else Color.Black)
+                    .copy(alpha = if (dark) 0.10f else 0.07f),
+            ),
+    )
+}
+
+@Composable
+private fun FloatingConfirmationAction(
+    label: String,
+    destructive: Boolean,
+    primary: Boolean,
+    tag: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)
+            .background(
+                if (pressed && enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                else Color.Transparent,
+            )
+            .clickable(
+                enabled = enabled,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .testTag(tag)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 16.sp,
+                fontWeight = if (primary || destructive) FontWeight.W600 else FontWeight.W500,
+            ),
+            color = (if (destructive) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface)
+                .copy(alpha = if (enabled) 1f else 0.48f),
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * Single-select list, ticked like [LyricsSourcesDialog] rather than with radio
+ * buttons — same reasoning: a column of Material radios would be the one
+ * Material thing left on an otherwise Apple-shaped alert.
+ *
+ * Picking commits immediately and closes, so there is no Save action to reach
+ * for; Cancel is the only one, and it's the dismiss.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun <T> ChoiceAlert(
+    hazeState: HazeState,
+    title: String,
+    message: String?,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    detail: (T) -> String? = { null },
+    onSelect: (T) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (message != null) {
+                Text(
+                    text = message,
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        options.forEach { option ->
+            AlertRule()
+            ChoiceRow(
+                label = label(option),
+                detail = detail(option),
+                checked = option == selected,
+                onClick = { onSelect(option) },
+            )
+        }
+        AlertRule()
+        AlertAction(label = stringResource(R.string.cancel), emphasised = false, onClick = onDismiss)
+    }
+}
+
+@Composable
+private fun ChoiceRow(
+    label: String,
+    detail: String?,
+    checked: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = ACTION_HEIGHT)
+            // iOS washes the whole row instead of drawing a ripple inside it.
+            .background(
+                if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f) else Color.Transparent,
+            )
+            .clickable(
+                indication = null,
+                interactionSource = interactionSource,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (detail != null) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        if (checked) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = stringResource(R.string.selected),
+                tint = appleMusicKeyColor(),
+                modifier = Modifier.size(19.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Settings and other screens below a floating top bar need a window-level host.
+ * The content remains the real BitChord alert, not a new Material3 surface.
+ */
+@Composable
+fun NativeAlertHost(
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    NeutralOverlayDialog(
+        onDismissRequest = onDismiss,
+        hazeState = LocalNeutralOverlayHazeState.current,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        content()
+    }
+}
+
+/**
+ * All account/status/choice alerts use the SAME neutral floating action plate
+ * as confirmation menus. Unlike the specialized ConfirmationAlert, these may
+ * include editable fields or lists and retain their original click handlers.
+ * Haze source and reduced-blur fallback are resolved by the shared plate.
+ */
+@Composable
+internal fun AlertScaffold(
+    hazeState: HazeState?,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SCRIM_COLOR)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        val plateWidth = (maxWidth - 48.dp).coerceAtMost(320.dp).coerceAtLeast(0.dp)
+        NativeContextActionPlate(
+            modifier = Modifier
+                .width(plateWidth)
+                .testTag("native-alert-scaffold")
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                ),
+            hazeState = hazeState,
+            treatment = FLOATING_CONFIRMATION_TREATMENT,
+        ) {
+            Column(content = content)
+        }
+    }
+}

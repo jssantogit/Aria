@@ -1,0 +1,103 @@
+package com.music.aria.ui.screens
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import com.music.aria.data.catalog.CanonicalBrowseTrack
+import com.music.aria.data.catalog.ReleaseEntity
+import com.music.aria.data.catalog.provider.opensubsonic.OpenSubsonicArtworkLoader
+import com.music.aria.data.settings.SongSort
+import com.music.aria.ui.theme.rememberArtworkPalette
+
+/**
+ * The approved native release composition for an album opened inside an
+ * artist. It owns no Room repositories, provider routes or legacy Song IDs.
+ * Identity evidence, available MediaAssets and actions come from the caller.
+ *
+ * Root Library albums already reuse this exact NativeReleaseHeaderLayout and
+ * nativeCanonicalAlbumTrackRows, and can consume this view model next.
+ */
+@Composable
+internal fun NativeCanonicalNestedAlbumDetail(
+    release: ReleaseEntity,
+    releaseRecordingIds: List<String>,
+    availableLibraryTracks: List<CanonicalBrowseTrack>,
+    selectedSourceKey: String?,
+    artworkTrack: CanonicalBrowseTrack?,
+    evidence: CanonicalArtistReleaseEvidence?,
+    artworkLoader: OpenSubsonicArtworkLoader,
+    albumSort: SongSort,
+    query: String,
+    searching: Boolean,
+    onQueryChange: (String) -> Unit,
+    isPinned: Boolean,
+    onTogglePin: () -> Unit,
+    onRateRelease: (() -> Unit)?,
+    onPlayAll: (List<CanonicalBrowseTrack>, Boolean) -> Unit,
+    onTrackPlay: (CanonicalBrowseTrack) -> Unit,
+    onTrackEditRating: (CanonicalBrowseTrack) -> Unit,
+    onTrackOptions: (CanonicalBrowseTrack) -> Unit,
+    onCreditClick: (() -> Unit)? = null,
+) {
+    // Release membership is a verified RecordingId -> ReleaseId edge.
+    // Available assets are always scoped to this user's Library sources.
+    val albumIds = canonicalArtistReleaseTrackIds(
+        availableLibraryTracks.map { it.recordingId }, releaseRecordingIds.toSet(),
+    ).toSet()
+    val albumRunningOrder = canonicalAlbumDetailTrackOrder(
+        availableLibraryTracks.filter { it.recordingId in albumIds },
+        releaseRecordingIds,
+    )
+    val albumTracks = canonicalAlbumDetailSort(albumRunningOrder, albumSort)
+    val albumTrackNumbers = canonicalAlbumDetailTrackNumbers(albumRunningOrder)
+    val visibleAlbumTracks = nativeCanonicalAlbumVisibleTracks(albumTracks, query)
+    val albumRating by rememberCanonicalNestedAlbumRating(release.id)
+    val albumQuality = canonicalAlbumSourceQuality(albumRunningOrder, selectedSourceKey)
+    val albumFooter = canonicalAlbumFooterMetadata(
+        evidence?.firstReleaseDate, albumRunningOrder,
+    )
+    val releasePalette = rememberArtworkPalette(
+        imageUrl = canonicalNativeReleasePaletteUri(
+            artworkTrack?.artworkUri, release.artworkUri,
+        ),
+    )
+
+    NativeCanonicalAlbumContent(
+        releaseIdentity = release.id,
+        title = canonicalAlbumDisplayTitle(release.title, evidence?.primaryType),
+        // Preserve a real release artist. If that field is absent but every
+        // verified member agrees, show the common artist in the shared header
+        // instead of repeating that artist beneath each numbered track.
+        credit = nativeAlbumDisplayCredit(release.artistDisplay, albumRunningOrder),
+        visibleTracks = visibleAlbumTracks,
+        playbackTracks = albumTracks,
+        artworkLoader = artworkLoader,
+        palette = releasePalette,
+        rating = albumRating,
+        quality = albumQuality,
+        onRate = onRateRelease,
+        footer = albumFooter,
+        trackNumbers = albumTrackNumbers,
+        pinned = isPinned,
+        onTogglePin = onTogglePin,
+        query = query,
+        onQueryChange = onQueryChange,
+        searching = searching,
+        loading = false,
+        failed = false,
+        headerKey = "nested-release-header",
+        searchKey = "nested-release-search",
+        footerKey = "artist-nested-album-footer",
+        onTrackPlay = onTrackPlay,
+        onTrackEditRating = onTrackEditRating,
+        onTrackOptions = onTrackOptions,
+        onPlayAll = onPlayAll,
+        onCreditClick = onCreditClick,
+        artwork = {
+            NativeCanonicalAlbumArtwork(
+                releaseArtworkUri = release.artworkUri,
+                artworkTrack = artworkTrack,
+                artworkLoader = artworkLoader,
+            )
+        },
+    )
+}

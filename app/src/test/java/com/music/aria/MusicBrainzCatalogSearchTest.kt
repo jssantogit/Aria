@@ -1,0 +1,596 @@
+package com.music.aria
+
+import com.music.aria.data.catalog.metadata.MusicBrainzCatalogSearch
+import com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit
+import com.music.aria.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
+import com.music.aria.data.catalog.metadata.MusicBrainzCatalogSearchResult
+import com.music.aria.data.catalog.metadata.MusicBrainzClient
+import com.music.aria.data.catalog.metadata.MusicBrainzTransport
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MusicBrainzCatalogSearchTest {
+    @Test fun groupAndEditionArtistIdentityMustSurviveSearchParsing() = runBlocking {
+        val lead = "11111111-1111-4111-8111-111111111111"
+        val guest = "22222222-2222-4222-8222-222222222222"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String = when (path) {
+                    "release-group" -> """{"count":2,"offset":0,"release-groups":[
+                        {"id":"33333333-3333-4333-8333-333333333333",
+                         "title":"Short artist alias","primary-type":"Single",
+                         "artist-credit":[{"name":"IU","artist":{"id":"$lead","name":"IU"}},
+                             {"name":"Guest","joinphrase":" feat. ",
+                              "artist":{"id":"$guest","name":"Guest"}}]},
+                        {"id":"44444444-4444-4444-8444-444444444444",
+                         "title":"Incomplete guest","primary-type":"EP",
+                         "artist-credit":[{"name":"IU","artist":{"id":"$lead"}},
+                             {"name":"Other artist","artist":{"name":"Other artist"}}]}
+                    ]}"""
+                    "release" -> """{"count":1,"offset":0,"releases":[
+                        {"id":"55555555-5555-4555-8555-555555555555",
+                         "title":"Short artist alias","status":"Official",
+                         "release-group":{"id":"33333333-3333-4333-8333-333333333333",
+                             "primary-type":"Single"},
+                         "artist-credit":[{"name":"IU",
+                             "artist":{"id":"$guest","name":"IU"}}]}
+                    ]}"""
+                    else -> error("Unexpected endpoint: $path")
+                }
+            },
+        ))
+        val groups = (search.searchReleaseGroups("alias") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit
+            >).page.items
+        val editions = (search.searchReleases("alias") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit
+            >).page.items
+        assertEquals(listOf(lead, guest), groups[0].artistCreditMbids)
+        // One incomplete artist-credit makes the whole identity uncertain.
+        assertEquals(null, groups[1].artistCreditMbids)
+        assertEquals(listOf(guest), editions.single().artistCreditMbids)
+        assertEquals("IU", editions.single().artistDisplay)
+    }
+
+    @Test
+    fun worldwideReleasesAndGenreUseFieldedQueriesNotLocalIndex() = runBlocking {
+        val calls = mutableListOf<Pair<String, Map<String, String>>>()
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    calls.add(path to parameters)
+                    return """{"count":1,"offset":0,"release-groups":[
+                        {"id":"03f3f1f2-12a4-4e47-9d52-459ee4a4f0ce",
+                         "title":"Public release","primary-type":"Album",
+                         "first-release-date":"2026-11-01",
+                         "artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        assertTrue(search.searchRecentReleaseGroups("2026-10-01", "2026-11-05")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(search.searchReleaseGroupsForTag("k-pop")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(search.searchReleaseGroupsForTag("hip-hop")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(search.searchReleaseGroupsForTag("rnb")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(search.searchRecentReleaseGroupsForTag(
+            "hip-hop", "2026-10-01", "2026-11-05",
+        ) is MusicBrainzCatalogSearchResult.Success)
+        assertEquals(5, calls.size)
+        assertTrue(calls.all { it.first == "release-group" &&
+            it.second["dismax"] == "false" })
+        assertTrue(calls[0].second["query"].orEmpty().contains(
+            "firstreleasedate:[2026-10-01 TO 2026-11-05]"))
+        assertTrue(calls[1].second["query"].orEmpty().contains("tag:\"k-pop\""))
+        assertTrue(calls[2].second["query"].orEmpty().contains("tag:\"hip hop\""))
+        assertTrue(calls[3].second["query"].orEmpty().contains("tag:\"r&b\""))
+        assertTrue(calls[4].second["query"].orEmpty().contains("tag:\"hip hop\""))
+        assertTrue(calls[4].second["query"].orEmpty().contains(
+            "firstreleasedate:[2026-10-01 TO 2026-11-05]"))
+    }
+
+    @Test fun genreAlbumQueryPinsOfficialTagAndAlbumType() = runBlocking {
+        val requests = mutableListOf<String>()
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    requests += parameters["query"].orEmpty()
+                    assertEquals("release-group", path)
+                    assertEquals("false", parameters["dismax"])
+                    return """{"count":1,"offset":0,"release-groups":[
+                      {"id":"03f3f1f2-12a4-4e47-9d52-459ee4a4f0ce",
+                       "title":"Metal album","primary-type":"Album",
+                       "artist-credit":[{"name":"Metal Band"}]}
+                    ]}"""
+                }
+            },
+        ))
+        assertTrue(search.searchAlbumReleaseGroupsForTag("metal")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(search.searchAlbumReleaseGroupsForTag("rnb")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(requests[0].contains("tag:\"metal\" AND primarytype:album"))
+        assertTrue(requests[1].contains("tag:\"r&b\" AND primarytype:album"))
+        assertTrue(search.searchAlbumReleaseGroupsForTag("metal OR artist:*")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun invalidWorldwideRangesAndUnsafeTagsFailWithoutNetwork() = runBlocking {
+        var calls = 0
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    calls++
+                    return "{}"
+                }
+            },
+        ))
+        assertTrue(search.searchRecentReleaseGroups("2026-12-01", "2026-11-05")
+            is com.music.aria.data.catalog.metadata.MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(search.searchReleaseGroupsForTag("pop OR artist:whatever")
+            is com.music.aria.data.catalog.metadata.MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(search.searchRecentReleaseGroupsForTag(
+            "rock", "2026-12-01", "2026-11-05",
+        ) is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(search.searchRecentReleaseGroupsForTag(
+            "rock OR arid:*", "2026-11-01", "2026-11-05",
+        ) is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun paginationConsumesRawServerRowsEvenWhenSomeMbidsAreRejectedOrDuplicated() = runBlocking {
+        val original = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+        val sped = "3e619ba2-34f0-4649-83d8-05483e2fabe5"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String =
+                    """{"count":12,"offset":0,"recordings":[
+                        {"id":"not-an-mbid","title":"Bad"},
+                        {"id":"$original","title":"Magnetic"},
+                        {"id":"$original","title":"Magnetic"},
+                        {"id":"$sped","title":"Magnetic (sped up)"}
+                    ]}"""
+            },
+        ))
+        val page = (search.searchRecordings("Magnetic") as
+            MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit>).page
+        assertEquals(listOf(original, sped), page.items.map { it.musicBrainzId })
+        assertEquals(4, page.consumedCount)
+        assertEquals(4, page.nextOffset)
+    }
+
+    @Test
+    fun recordingSearchKeepsOriginalAndSpedUpSeparateAndPaginates() = runBlocking {
+        val calls = mutableListOf<Triple<String, Map<String, String>, String>>()
+        val search = MusicBrainzCatalogSearch(
+            client = MusicBrainzClient(
+                transport = object : MusicBrainzTransport {
+                    override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                        calls.add(Triple(path, parameters, userAgent))
+                        return """{"count":2,"offset":25,"recordings":[
+                            {"id":"e614e432-ca77-41c1-82c1-4e3a24ebbb0c","title":"Magnetic",
+                             "length":160000,"artist-credit":[{"name":"ILLIT"}]},
+                            {"id":"3e619ba2-34f0-4649-83d8-05483e2fabe5","title":"Magnetic (sped up)",
+                             "length":124000,"artist-credit":[{"name":"ILLIT"}]},
+                            {"id":"bad-identity","title":"Magnetic","length":1000}
+                        ]}"""
+                    }
+                },
+            ),
+        )
+        val result = search.searchRecordings("  ILLIT   Magnetic  ", limit = 25, offset = 25)
+        assertTrue(result is MusicBrainzCatalogSearchResult.Success)
+        val page = (result as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit>).page
+        assertEquals(2, page.items.size)
+        assertEquals(2, page.total)
+        assertEquals(25, page.offset)
+        assertEquals(null, page.nextOffset)
+        assertEquals(listOf("Magnetic", "Magnetic (sped up)"), page.items.map { it.title })
+        assertEquals(listOf(160000L, 124000L), page.items.map { it.durationMs })
+        assertEquals(listOf("ILLIT", "ILLIT"), page.items.map { it.artistDisplay })
+        assertEquals("recording", calls.single().first)
+        assertEquals("ILLIT Magnetic", calls.single().second["query"])
+        assertEquals("true", calls.single().second["dismax"])
+        assertEquals("25", calls.single().second["limit"])
+        assertEquals("25", calls.single().second["offset"])
+        assertTrue(calls.single().third.startsWith("Bitchord/"))
+    }
+
+    @Test
+    fun browsePaginationMustAdvanceByActualResponseRowsNotRequestedLimit() {
+        val page = com.music.aria.data.catalog.metadata.MusicBrainzCatalogPage(
+            items = listOf("worldwide", "japan", "international"),
+            total = 100, offset = 25,
+        )
+        assertEquals(28, page.nextOffset)
+    }
+
+    @Test
+    fun emptyTextFailsClosedWithoutNetworkCall() = runBlocking {
+        var calls = 0
+        val search = MusicBrainzCatalogSearch(
+            client = MusicBrainzClient(transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    calls++
+                    return "{}"
+                }
+            }),
+        )
+        assertTrue(search.searchRecordings("   ") is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun artistAndReleaseGroupResultsPreserveDistinctMbids() = runBlocking {
+        val transport = object : MusicBrainzTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String =
+                when (path) {
+                    "artist" -> """{"count":1,"offset":0,"artists":[{"id":"b51c672b-85e0-48fe-8648-470a2422229f","name":"aespa","disambiguation":"South Korean girl group"}]}"""
+                    "release-group" -> """{"count":1,"offset":0,"release-groups":[{"id":"529f87a1-1081-48a4-8ee1-3c08de229858","title":"SUPER REAL ME","primary-type":"EP","secondary-types":["Live","Remix"]}]}"""
+                    else -> error("Unexpected MusicBrainz endpoint $path")
+                }
+        }
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(transport = transport))
+        val artists = search.searchArtists("aespa") as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzArtistHit>
+        val groups = search.searchReleaseGroups("SUPER REAL ME") as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit>
+        assertEquals("b51c672b-85e0-48fe-8648-470a2422229f", artists.page.items.single().musicBrainzId)
+        assertEquals("529f87a1-1081-48a4-8ee1-3c08de229858", groups.page.items.single().musicBrainzId)
+        assertEquals("EP", groups.page.items.single().primaryType)
+        assertEquals("Live|Remix", groups.page.items.single().secondaryTypes)
+    }
+
+
+    @Test fun emptySecondaryTypeListIsExplicitRemovalButMissingFieldIsUnknown() = runBlocking {
+        val group = "11111111-1111-4111-8111-111111111111"
+        var includeEmpty = true
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    val field = if (includeEmpty) ""","secondary-types":[]""" else ""
+                    return """{"count":1,"offset":0,"release-groups":[{
+                        "id":"$group","title":"Official album","primary-type":"Album"$field
+                    }]}"""
+                }
+            },
+        ))
+        val empty = (search.searchReleaseGroups("Official album") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit
+            >).page.items.single()
+        assertEquals("", empty.secondaryTypes)
+        includeEmpty = false
+        val absent = (search.searchReleaseGroups("Official album") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit
+            >).page.items.single()
+        assertEquals(null, absent.secondaryTypes)
+    }
+
+    @Test fun recordingSearchKeepsVerifiedReleaseCoverAssociationWithoutGuessingTitle() = runBlocking {
+        val recordingId = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+        val release1 = "11111111-1111-4111-8111-111111111111"
+        val release2 = "22222222-2222-4222-8222-222222222222"
+        val group1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val group2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        val transport = object : MusicBrainzTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String =
+                """{"count":1,"offset":0,"recordings":[{"id":"$recordingId","title":"Magnetic",
+                "releases":[{"id":"$release2","status":"Official","date":"2025-01-01","release-group":{"id":"$group2","primary-type":"EP"}},
+                            {"id":"$release1","status":"Official","date":"2024-03-25","release-group":{"id":"$group1","primary-type":"EP"}},
+                            {"id":"untrusted","date":"2023-01-01"}]}]}"""
+        }
+        val result = MusicBrainzCatalogSearch(MusicBrainzClient(transport = transport))
+            .searchRecordings("Magnetic") as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit>
+        assertEquals(release1, result.page.items.single().coverReleaseMbid)
+        assertEquals(group1, result.page.items.single().coverGroupMbid)
+    }
+
+    @Test
+    fun artistScopedDiscoveryUsesValidatedMbidInsteadOfAmbiguousName() = runBlocking {
+        val artistMbid = "6b128dd7-e998-4edb-a4f5-400fef190445"
+        val requested = mutableListOf<Triple<String, String?, String?>>()
+        val transport = object : MusicBrainzTransport {
+            override suspend fun get(
+                path: String,
+                parameters: Map<String, String>,
+                userAgent: String,
+            ): String {
+                requested.add(Triple(path, parameters["query"], parameters["dismax"]))
+                return when (path) {
+                    "recording" -> """{"count":1,"offset":0,"recordings":[{"id":"e614e432-ca77-41c1-82c1-4e3a24ebbb0c","title":"Magnetic","artist-credit":[{"name":"ILLIT"}]}]}"""
+                    "release-group" -> """{"count":1,"offset":0,"release-groups":[{"id":"529f87a1-1081-48a4-8ee1-3c08de229858","title":"SUPER REAL ME","artist-credit":[{"name":"ILLIT"}]}]}"""
+                    "release" -> """{"count":1,"offset":0,"releases":[{"id":"11d18da1-1081-48a4-8ee1-3c08de229858","title":"SUPER REAL ME","artist-credit":[{"name":"ILLIT"}]}]}"""
+                    else -> error("Unexpected MusicBrainz endpoint")
+                }
+            }
+        }
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(transport = transport))
+        val songs = search.searchRecordingsForArtistMbid(artistMbid) as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit>
+        val groups = search.searchReleaseGroupsForArtistMbid(artistMbid) as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit>
+        val editions = search.searchReleasesForArtistMbid(artistMbid) as MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit>
+        assertEquals("Magnetic", songs.page.items.single().title)
+        assertEquals("SUPER REAL ME", groups.page.items.single().title)
+        assertEquals("SUPER REAL ME", editions.page.items.single().title)
+        assertEquals(listOf("recording", "release-group", "release"), requested.map { it.first })
+        assertTrue(requested.all { (path, query, dismax) ->
+            query == (if (path == "recording") "arid:$artistMbid AND status:official"
+                else "arid:$artistMbid") && dismax == "false"
+        })
+    }
+
+    @Test
+    fun releaseSearchCarriesOnlyValidatedReleaseGroupIdentityForArtFallback() = runBlocking {
+        val release = "11111111-1111-4111-8111-111111111111"
+        val group = "22222222-2222-4222-8222-222222222222"
+        val invalid = "33333333-3333-4333-8333-333333333333"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String) =
+                    """{"count":2,"offset":0,"releases":[
+                        {"id":"$release","title":"SUPER REAL ME","release-group":{"id":"$group"}},
+                        {"id":"$invalid","title":"Unverified","release-group":{"id":"not-an-mbid"}}
+                    ]}"""
+            },
+        ))
+        val rows = (search.searchReleases("SUPER REAL ME") as
+            MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit>)
+            .page.items
+        assertEquals(group, rows.first().releaseGroupMbid)
+        assertEquals(null, rows.last().releaseGroupMbid)
+    }
+
+    @Test
+    fun invalidArtistMbidCannotBecomeLuceneSyntaxOrSendNetwork() = runBlocking {
+        var calls = 0
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(transport = object : MusicBrainzTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                calls++
+                return "{}"
+            }
+        }))
+        assertTrue(search.searchRecordingsForArtistMbid("a OR artist:*") is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun allDefaultMusicBrainzClientsUseOneProcessWideRateLimiter() {
+        val first = MusicBrainzClient()
+        val second = MusicBrainzClient()
+        assertSame(first.rateLimiter, second.rateLimiter)
+    }
+
+    @Test fun duplicateMbidsWithDifferentMetadataConsumeRowsButDisplayOneIdentity() = runBlocking {
+        val group = "529f87a1-1081-48a4-8ee1-3c08de229858"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String = """{"count":20,"offset":0,"release-groups":[
+                    {"id":"$group","title":"SUPER REAL ME"},
+                    {"id":"$group","title":"SUPER REAL ME (alternate metadata)"}
+                ]}"""
+            },
+        ))
+        val page = (search.searchReleaseGroups("SUPER REAL ME") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit
+            >).page
+        assertEquals(listOf(group), page.items.map { it.musicBrainzId })
+        assertEquals(2, page.consumedCount)
+        assertEquals(2, page.nextOffset)
+    }
+
+    @Test fun recordingSearchRejectsUnofficialVideoAndRemixCandidatesForCuratedPresentation() = runBlocking {
+        val artist = "NewJeans"
+        val original = "11111111-1111-4111-8111-111111111111"
+        val video = "22222222-2222-4222-8222-222222222222"
+        val flip = "33333333-3333-4333-8333-333333333333"
+        val performance = "44444444-4444-4444-8444-444444444444"
+        val officialRemix = "55555555-5555-4555-8555-555555555555"
+        val officialVideoRelease = "77777777-7777-4777-8777-777777777777"
+        val release = "66666666-6666-4666-8666-666666666666"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String,String>, userAgent: String) =
+                    """{"count":6,"offset":0,"recordings":[
+                      {"id":"$original","title":"Hurt","artist-credit":[{"name":"$artist"}],
+                       "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"EP"}}]},
+                      {"id":"$video","title":"Hurt","video":true,
+                       "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"EP"}}]},
+                      {"id":"$flip","title":"OMG (Jersey flip)",
+                       "releases":[{"id":"$release","status":"Bootleg","release-group":{"primary-type":"Single"}}]},
+                      {"id":"$performance","title":"Cool With You (performance ver.)",
+                       "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Single"}}]},
+                      {"id":"$officialRemix","title":"Hurt (250 Remix)",
+                       "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Album"}}]},
+                      {"id":"$officialVideoRelease","title":"Hurt",
+                       "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Other"}}]}
+                    ]}"""
+            }
+        ))
+        val rows = (search.searchRecordings(artist) as
+            MusicBrainzCatalogSearchResult.Success<com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit>).page.items
+        assertEquals(listOf("Hurt", "Hurt (250 Remix)"),
+            rows.filter { com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRecording(it) }.map { it.title })
+        assertEquals(release, rows.first().coverReleaseMbid)
+        assertEquals(null, rows[1].coverReleaseMbid)
+        assertEquals(null, rows[2].coverReleaseMbid)
+        assertEquals(null, rows[1].coverGroupMbid)
+        assertEquals(null, rows[2].coverGroupMbid)
+        // A clean title and an Official release are insufficient: the
+        // only known edition may be a film/video classified as Other.
+        assertEquals(null, rows.last().coverReleaseMbid)
+        assertTrue(!com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRecording(rows.last()))
+    }
+
+    @Test fun missingRecordingVideoOrReleaseListIsUnknownNotNegativeAudioEvidence() = runBlocking {
+        val knownVideo = "11111111-1111-4111-8111-111111111111"
+        val unknownVideo = "22222222-2222-4222-8222-222222222222"
+        val audio = "33333333-3333-4333-8333-333333333333"
+        val edition = "44444444-4444-4444-8444-444444444444"
+        val group = "55555555-5555-4555-8555-555555555555"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String = """{"count":3,"offset":0,"recordings":[
+                    {"id":"$knownVideo","title":"Actual video","video":true,
+                     "releases":[{"id":"$edition","status":"Official",
+                     "release-group":{"id":"$group","primary-type":"Album"}}]},
+                    {"id":"$unknownVideo","title":"Incomplete search result"},
+                    {"id":"$audio","title":"Original recording","video":false,
+                     "releases":[{"id":"$edition","status":"Official",
+                     "release-group":{"id":"$group","primary-type":"Album"}}]}
+                ]}"""
+            },
+        ))
+        val rows = (search.searchRecordings("recording") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit
+            >).page.items
+        assertEquals(listOf(knownVideo, unknownVideo, audio), rows.map { it.musicBrainzId })
+        // An explicitly video Recording does not have evidence of audio even
+        // when the search index lists it in an Official Album group.
+        assertEquals(true, rows[0].isVideo)
+        assertEquals(false, rows[0].hasOfficialAudioRelease)
+        assertEquals(null, rows[0].coverReleaseMbid)
+        // Missing fields are NOT video=false or "no official audio release".
+        // A later sparse search result must not overwrite positive Room proof.
+        assertEquals(null, rows[1].isVideo)
+        assertEquals(null, rows[1].hasOfficialAudioRelease)
+        assertEquals(null, rows[1].coverReleaseMbid)
+        assertEquals(false, rows[2].isVideo)
+        assertEquals(true, rows[2].hasOfficialAudioRelease)
+        assertEquals(edition, rows[2].coverReleaseMbid)
+    }
+
+    @Test fun releasePresentationAllowsOnlyExplicitOfficialEdtionsAndKeepsRawMbids() {
+        val official = com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit(
+            "11111111-1111-4111-8111-111111111111", "Get Up", "XW",
+            "2023-07-21", "NewJeans", status = "Official",
+        )
+        val curated: (com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit) -> Boolean = {
+            com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRelease(it)
+        }
+        assertTrue(curated(official))
+        assertTrue(curated(official.copy(title = "NJWMX (Official Remix)")))
+        assertTrue(!curated(official.copy(title = "OMG (Jersey flip)")))
+        assertTrue(!curated(official.copy(title = "Hurt (performance ver.)")))
+        for (status in listOf(null, "Bootleg", "Promotion", "Pseudo-Release", "Withdrawn")) {
+            assertTrue(!curated(official.copy(status = status)))
+        }
+    }
+
+    @Test fun musicVideoPracticeAndUnverifiedRecordingAreNotPromotedToOfficialAudio() {
+        val good = com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit(
+            "11111111-1111-4111-8111-111111111111", "Super Shy", "NewJeans", 180000,
+            hasOfficialAudioRelease = true,
+        )
+        val check: (com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit) -> Boolean = { com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRecording(it) }
+        assertTrue(check(good))
+        assertTrue(!check(good.copy(title = "New Jeans (dance practice fix ver.)")))
+        assertTrue(!check(good.copy(title = "Hype Boy (DANIELLE&HAERIN ver.)")))
+        assertTrue(!check(good.copy(title = "OMG (ric3show3r \"who is he?\" Jersey flip)")))
+        assertTrue(!check(good.copy(title = "Hype Boy (sped up)")))
+        assertTrue(!check(good.copy(isVideo = true)))
+        assertTrue(!check(good.copy(hasOfficialAudioRelease = false)))
+    }
+
+
+    /**
+     * All raw release groups stay searchable/indexed by MBID; General's
+     * music-focused cards need the same editorial evidence gate already
+     * applied to Recordings/Releases. Other, untyped, and video/fan
+     * metadata should not be promoted as albums/EPs/singles.
+     */
+    @Test fun mainstreamSearchGroupsHideNonEditorialResultsButPreserveLegitimateWorkTypes() {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val group = MusicBrainzReleaseGroupHit(
+            id, "How Sweet & Bubble Gum", "Single", "2024-05-24", "NewJeans",
+        )
+        assertTrue(isCuratedMusicBrainzReleaseGroup(group))
+        assertTrue(isCuratedMusicBrainzReleaseGroup(
+            group.copy(title = "Get Up", primaryType = "EP"),
+        ))
+        assertTrue(isCuratedMusicBrainzReleaseGroup(
+            group.copy(title = "Studio album", primaryType = "Album"),
+        ))
+        // Remix and live are real MusicBrainz secondary classifications:
+        // they do not by themselves prove that an audio work is garbage.
+        assertTrue(isCuratedMusicBrainzReleaseGroup(
+            group.copy(title = "Official live EP", primaryType = "EP", secondaryTypes = "Live"),
+        ))
+        assertTrue(!isCuratedMusicBrainzReleaseGroup(
+            group.copy(title = "Music video", primaryType = "Other"),
+        ))
+        assertTrue(!isCuratedMusicBrainzReleaseGroup(
+            group.copy(primaryType = null),
+        ))
+        assertTrue(!isCuratedMusicBrainzReleaseGroup(
+            group.copy(title = "OMG (Jersey flip)"),
+        ))
+        assertTrue(!isCuratedMusicBrainzReleaseGroup(
+            group.copy(title = "Hype Boy (dance practice)"),
+        ))
+        assertTrue(!isCuratedMusicBrainzReleaseGroup(
+            group.copy(artistDisplay = null),
+        ))
+    }
+
+    @Test fun officialOtherAndBroadcastReleasesMustNotEnterStreamingEditionTiles() = runBlocking {
+        val album = "11111111-1111-4111-8111-111111111111"
+        val video = "22222222-2222-4222-8222-222222222222"
+        val broadcast = "33333333-3333-4333-8333-333333333333"
+        val unknown = "44444444-4444-4444-8444-444444444444"
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String = """{"count":4,"offset":0,"releases":[
+                    {"id":"$album","title":"Official studio album","status":"Official",
+                     "release-group":{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                      "primary-type":"Album"}},
+                    {"id":"$video","title":"Official visual edition","status":"Official",
+                     "release-group":{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                                      "primary-type":"Other"}},
+                    {"id":"$broadcast","title":"Official radio edition","status":"Official",
+                     "release-group":{"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                                      "primary-type":"Broadcast"}},
+                    {"id":"$unknown","title":"Unclassified official release","status":"Official",
+                     "release-group":{"id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}}
+                ]}"""
+            },
+        ))
+        val page = (search.searchReleases("official") as
+            MusicBrainzCatalogSearchResult.Success<
+                com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit
+            >).page
+        // Keep searchable source records; only streaming-style presentation
+        // should reject the explicit non-audio ReleaseGroup types.
+        assertEquals(4, page.items.size)
+        assertEquals(listOf(album, unknown), page.items.filter {
+            com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRelease(it)
+        }.map { it.musicBrainzId })
+    }
+}

@@ -1,0 +1,901 @@
+package com.music.aria.ui.components
+
+import com.music.aria.R
+
+import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.Downloading
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.PlaylistRemove
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.ThumbDownOffAlt
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import com.music.aria.data.model.ROW_ART_PX
+import com.music.aria.data.model.Song
+import com.music.aria.data.model.artworkAt
+import com.music.aria.data.webdav.WebDavUploads
+import com.music.aria.download.DownloadState
+import com.music.aria.download.Downloads
+import com.music.aria.ui.components.thumbnailBorder
+import com.music.aria.ui.icons.BitChordIcons
+import com.music.aria.ui.theme.ArtworkPalette
+import com.music.aria.ui.theme.rememberArtworkPalette
+import com.music.aria.ui.theme.appleMusicKeyColor
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
+
+/**
+ * Long-press menu for a track, in the shape music apps normally use.
+ *
+ * The account actions lead — rating, playlists, library — because they are
+ * what the menu is opened for; the queue and navigation rows below it were
+ * always the fallback for "I meant to do something with this song".
+ *
+ * The only track rating exposed here is the canonical star editor, when an
+ * exact Recording identity is available. Legacy provider reactions are not
+ * shown. Playlist operations still depend on the account capabilities and
+ * local files can be shared as plain song metadata.
+ *
+ * The playback engine and diagnostics are independent from this action menu.
+ */
+@Composable
+fun SongActionsSheet(
+    song: Song,
+    signedIn: Boolean,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onStartRadio: () -> Unit,
+    onDownload: () -> Unit,
+    /**
+     * Copies this track to the WebDAV server. Null hides the row — the caller
+     * passes one only for a readable device file while a server is
+     * configured. Uploading while another upload of the same track runs just
+     * re-runs it; the conflict dialog keeps that idempotent.
+     */
+    onUploadToWebDav: (() -> Unit)? = null,
+    onAddToPlaylist: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    onOpenArtist: (String) -> Unit,
+    /** Canonical Release or ReleaseGroup route, only with verified links. */
+    verifiedCanonicalAlbumRoute: String? = null,
+    onOpenCanonicalAlbum: ((String) -> Unit)? = null,
+    /** Resolved MediaStore/Navidrome edition, before any public catalog lookup. */
+    onOpenSourceOwnedAlbum: (() -> Unit)? = null,
+    /** Validated Recording→Artist and provider ownership; never title search. */
+    onOpenSourceOwnedArtist: (() -> Unit)? = null,
+    /** Typed iTunes artist route only (used when Apple editorial is installed). */
+    onOpenAppleArtist: (() -> Unit)? = null,
+    /** Safe fallback: search for this artist, never fabricate a provider ArtistId. */
+    onFindArtist: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
+    /**
+     * True while a lookup for this track's album/artist ids is still in
+     * flight, so it isn't yet known whether "Open album" and "Open artist"
+     * belong on this sheet at all. Only the player ever opens a sheet before
+     * it knows; everywhere else this is simply false, and the two rows behave
+     * as before — present when the id is there, absent when it never was.
+     */
+    resolvingLinks: Boolean = false,
+    /**
+     * Where the rows are drawn. [SongActionsPresentation.Sheet] is the tinted
+     * bottom sheet with its own track header; [SongActionsPresentation.Menu]
+     * is only the rows, compact and in the theme's own colours, for the
+     * popup a held row lifts into — see [HeldContextMenu], which draws the
+     * held row itself above them.
+     */
+    presentation: SongActionsPresentation = SongActionsPresentation.Sheet,
+    /** The image already displayed in Now Playing when its ⋯ menu was opened. */
+    preloadedArtworkModel: Any? = null,
+    /** The only rating action shown: canonical stars by Recording identity. */
+    canonicalRatingContent: (@Composable () -> Unit)? = null,
+    appleQueuePlayerMenu: Boolean = false,
+    verifiedAlbumTitle: String? = null,
+    onPinToLibrary: (() -> Unit)? = null,
+    onShareLyrics: (() -> Unit)? = null,
+) {
+    val menu = presentation == SongActionsPresentation.Menu
+    // Read from the thumbnail the row that opened this sheet was already
+    // showing, not a larger copy of it: the tint is a blur and a handful of
+    // swatches, neither of which a bigger image improves, and going back for
+    // one is what had the sheet opening grey and colouring in afterwards.
+    //
+    // The popup stays neutral instead: it floats over a blurred page rather
+    // than sitting on the sleeve's own ground, and an accent pitched against
+    // that tint is not guaranteed to read against the theme's surface.
+    val palette = if (appleQueuePlayerMenu) {
+        // Preserve the original artwork-dependent blurred gradient the user
+        // selected. Lock foreground contrast only; do not replace the
+        // underlying sleeve palette with a flat charcoal colour.
+        rememberArtworkPalette(song.thumbnailUrl, artPx = ROW_ART_PX).copy(
+            accent = Color.White,
+            onBackground = Color.White,
+            onBackgroundVariant = Color.White.copy(alpha = 0.64f),
+            divider = Color.White.copy(alpha = 0.09f),
+        )
+    } else {
+        // Outside Now Playing every ⋯ sheet is a theme-solid Apple-style
+        // surface; artwork blur is exclusively the player's identity.
+        neutralMenuPalette()
+    }
+    // Show the native pin's actual state where the verified Recording is already
+    // in the canonical presentation snapshot. The click still revalidates it.
+    val context = LocalContext.current.applicationContext
+    val pinnedSelections by com.music.aria.ui.screens.CanonicalLibraryPinRepository
+        .get(context).pins.collectAsStateWithLifecycle()
+    val recordingId = LocalCanonicalRatingDisplay.current.recordingIdForSong(song)
+    val alreadyPinned = recordingId != null && pinnedSelections.any {
+        it.selection.type == com.music.aria.ui.screens.CanonicalLibraryEntityType.TRACK &&
+            it.selection.entityId == recordingId
+    }
+    // A local file may not have a provider-managed playlist entry.
+    val isOffline = song.localUri != null
+
+    val rows: @Composable ColumnScope.() -> Unit = {
+        if (appleQueuePlayerMenu) {
+            // Only approved actions; preserve order in the tested policy.
+            for (action in APPLE_PLAYER_MENU_ACTIONS) {
+                when (action) {
+                    ApplePlayerMenuAction.LIBRARY -> ActionRow(
+                        icon = Icons.Rounded.Add,
+                        label = stringResource(
+                            if (alreadyPinned) R.string.remove_from_library else R.string.add_to_library,
+                        ),
+                        accent = palette.accent,
+                        enabled = onPinToLibrary != null,
+                        onClick = { onPinToLibrary?.invoke() },
+                    )
+                    ApplePlayerMenuAction.PLAYLIST -> ActionRow(
+                        icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                        label = stringResource(R.string.apple_player_add_to_playlist),
+                        accent = palette.accent,
+                        onClick = onAddToPlaylist,
+                    )
+                    ApplePlayerMenuAction.SHARE_SONG -> onShare?.let { share ->
+                        ActionRow(
+                            icon = Icons.Rounded.Share,
+                            label = stringResource(R.string.apple_player_share_song),
+                            accent = palette.accent,
+                            onClick = share,
+                        )
+                    }
+                    ApplePlayerMenuAction.SHARE_LYRICS -> ActionRow(
+                        icon = Icons.Rounded.ChatBubbleOutline,
+                        label = stringResource(R.string.apple_player_share_lyrics),
+                        accent = palette.accent,
+                        enabled = onShareLyrics != null,
+                        onClick = { onShareLyrics?.invoke() },
+                    )
+                    ApplePlayerMenuAction.PLAY_NEXT -> ActionRow(
+                        icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                        label = stringResource(R.string.play_next),
+                        accent = palette.accent,
+                        onClick = onPlayNext,
+                    )
+                    ApplePlayerMenuAction.ADD_TO_QUEUE -> ActionRow(
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                        label = stringResource(R.string.add_to_queue),
+                        accent = palette.accent,
+                        onClick = onAddToQueue,
+                    )
+                }
+            }
+            // Navigation is source-owned, even when playback actions are Apple styled.
+            val artistNavigation = onOpenSourceOwnedArtist ?: onOpenAppleArtist
+                ?: verifiedLegacyPlayerArtistBrowseId(song.artistId)
+                    ?.let { id -> { onOpenArtist(id) } }
+            artistNavigation?.let { open ->
+                ActionRow(
+                    icon = Icons.Rounded.Person,
+                    label = stringResource(R.string.open_artist),
+                    accent = palette.accent,
+                    onClick = open,
+                )
+            } ?: onFindArtist?.let { search ->
+                ActionRow(
+                    icon = Icons.Rounded.Person,
+                    label = "Buscar artista",
+                    accent = palette.accent,
+                    onClick = search,
+                )
+            }
+            // The Apple queue's six playback actions do not include discovery.
+            // A verified release route is still an essential track action.
+            if (onOpenSourceOwnedAlbum != null || song.albumId != null || verifiedCanonicalAlbumRoute != null) {
+                ActionRow(
+                    icon = Icons.Rounded.Album,
+                    label = stringResource(R.string.open_album),
+                    accent = palette.accent,
+                    onClick = {
+                        if (onOpenSourceOwnedAlbum != null) onOpenSourceOwnedAlbum()
+                        else if (verifiedCanonicalAlbumRoute != null && onOpenCanonicalAlbum != null)
+                            onOpenCanonicalAlbum(verifiedCanonicalAlbumRoute)
+                        else song.albumId?.let(onOpenAlbum)
+                    },
+                )
+            }
+        } else {
+        // Native playlists work for local and canonical playback without login.
+        if (appleQueuePlayerMenu || (signedIn && !isOffline)) {
+            ActionRow(
+                icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                label = stringResource(R.string.add_to_playlist),
+                accent = palette.accent,
+                onClick = onAddToPlaylist,
+            )
+            onRemoveFromPlaylist?.let {
+                ActionRow(
+                    icon = Icons.Rounded.PlaylistRemove,
+                    label = stringResource(R.string.remove_from_playlist),
+                    accent = palette.accent,
+                    onClick = it,
+                )
+            }
+            GroupSeparator(palette)
+        }
+
+        // L9: explicit first-party rating only when canonical identity is proven.
+        canonicalRatingContent?.invoke()
+
+        DownloadRow(song, palette, isOffline, onDownload)
+        WebDavUploadRow(song, palette, isOffline, onUploadToWebDav)
+        // Station generation is not implemented for the Apple queue variant.
+        if (!appleQueuePlayerMenu) {
+            ActionRow(
+                icon = Icons.Rounded.Radio,
+                label = stringResource(R.string.start_radio),
+                accent = palette.accent,
+                onClick = onStartRadio,
+            )
+        }
+        ActionRow(
+            icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+            label = stringResource(R.string.play_next),
+            accent = palette.accent,
+            onClick = onPlayNext,
+        )
+        ActionRow(
+            icon = Icons.AutoMirrored.Rounded.QueueMusic,
+            label = stringResource(R.string.add_to_queue),
+            accent = palette.accent,
+            onClick = onAddToQueue,
+        )
+        val verifiedRelease = verifiedCanonicalAlbumRoute
+            ?.takeIf { onOpenCanonicalAlbum != null }
+        when {
+            onOpenSourceOwnedAlbum != null -> ActionRow(
+                Icons.Rounded.Album,
+                stringResource(R.string.open_album),
+                accent = palette.accent,
+                onClick = onOpenSourceOwnedAlbum,
+            )
+            verifiedRelease != null -> ActionRow(
+                Icons.Rounded.Album,
+                stringResource(R.string.open_album),
+                accent = palette.accent,
+            ) { onOpenCanonicalAlbum?.invoke(verifiedRelease) }
+            song.albumId != null -> ActionRow(
+                Icons.Rounded.Album,
+                stringResource(R.string.open_album),
+                accent = palette.accent,
+            ) { song.albumId?.let(onOpenAlbum) }
+            resolvingLinks -> LoadingActionRow(
+                Icons.Rounded.Album, stringResource(R.string.open_album), palette,
+            )
+        }
+        val verifiedArtistAction = onOpenSourceOwnedArtist ?: onOpenAppleArtist
+            ?: verifiedLegacyPlayerArtistBrowseId(song.artistId)
+                    ?.let { id -> { onOpenArtist(id) } }
+        when {
+            verifiedArtistAction != null -> ActionRow(
+                Icons.Rounded.Person,
+                stringResource(R.string.open_artist),
+                accent = palette.accent,
+                onClick = verifiedArtistAction,
+            )
+            resolvingLinks -> LoadingActionRow(
+                Icons.Rounded.Person, stringResource(R.string.open_artist), palette,
+            )
+            onFindArtist != null -> ActionRow(
+                Icons.Rounded.Person, "Buscar artista", accent = palette.accent,
+                onClick = onFindArtist,
+            )
+        }
+        onShare?.let {
+            ActionRow(Icons.Rounded.Share, stringResource(R.string.share), accent = palette.accent, onClick = it)
+        }
+        }
+    }
+
+    if (menu) {
+        CompositionLocalProvider(LocalActionRowStyle provides ActionRowStyle.Menu) {
+            Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()), content = rows)
+        }
+        return
+    }
+
+    TintedSheet(
+        palette = palette,
+        imageUrl = if (appleQueuePlayerMenu) song.thumbnailUrl else null,
+        modifier = modifier,
+        appleStyle = true,
+        solidTheme = !appleQueuePlayerMenu,
+    ) {
+        SheetTrackHeader(
+            song,
+            subtitleColor = palette.onBackgroundVariant,
+            preloadedArtworkModel = preloadedArtworkModel,
+            appleStyle = true,
+            solidTheme = !appleQueuePlayerMenu,
+            verifiedAlbumTitle = verifiedAlbumTitle,
+        )
+        HorizontalDivider(thickness = 0.5.dp, color = palette.divider)
+        CompositionLocalProvider(
+            LocalActionRowStyle provides if (appleQueuePlayerMenu)
+                ActionRowStyle.Apple else ActionRowStyle.AppleSolid,
+        ) {
+            rows()
+        }
+    }
+}
+
+/** How [SongActionsSheet] is being presented. */
+enum class SongActionsPresentation { Sheet, Menu }
+
+/** Row density and layout, set by whichever surface the rows are drawn on. */
+internal enum class ActionRowStyle { Sheet, Menu, Apple, AppleSolid }
+
+internal val LocalActionRowStyle = staticCompositionLocalOf { ActionRowStyle.Sheet }
+
+/**
+ * The popup's colours: the theme's own, so the menu reads the same in light and
+ * dark whatever the artwork is. Shaped as an [ArtworkPalette] so every row below
+ * takes it exactly as it takes a sleeve's.
+ */
+@Composable
+private fun neutralMenuPalette(): ArtworkPalette {
+    val scheme = MaterialTheme.colorScheme
+    return remember(scheme) {
+        ArtworkPalette(
+            background = scheme.surfaceContainerHigh,
+            wash = scheme.surfaceContainerHigh,
+            elevated = scheme.surfaceContainerHighest,
+            accent = scheme.primary,
+            onBackground = scheme.onSurface,
+            onBackgroundVariant = scheme.onSurfaceVariant,
+            divider = scheme.onSurface.copy(alpha = 0.08f),
+        )
+    }
+}
+
+/**
+ * The break between groups of rows: a hairline on the sheet, and on the popup
+ * the thicker band iOS-style context menus use — a hairline between rows that
+ * are only 44dp apart reads as a row border rather than as a new group.
+ */
+@Composable
+private fun GroupSeparator(palette: ArtworkPalette) {
+    if (LocalActionRowStyle.current == ActionRowStyle.Menu) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .background(palette.divider),
+        )
+    } else {
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 6.dp),
+            thickness = 0.5.dp,
+            color = palette.divider,
+        )
+    }
+}
+
+/**
+ * A bottom sheet wearing the artwork's colours: the tint and its blurred wash
+ * behind, the rounded top corners and the drag handle drawn over it.
+ *
+ * The corners and the handle are this composable's job rather than
+ * `ModalBottomSheet`'s because the host has to pass a transparent container for
+ * the wash to be visible at all — and a transparent container has nothing left
+ * to clip or to hang a handle on.
+ *
+ * The row list is capped to a fraction of the screen and scrolls internally.
+ * Left unbounded, a track with every optional row present — playlist removal,
+ * revert, share, the log — runs past the bottom of the screen with no way to
+ * reach what's cut off: a plain Column neither scrolls nor shrinks, so the
+ * sheet just grows past the window and sits there stuck at full height.
+ */
+@Composable
+private fun TintedSheet(
+    palette: ArtworkPalette,
+    imageUrl: String?,
+    modifier: Modifier = Modifier,
+    appleStyle: Boolean = false,
+    solidTheme: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.85f
+    Box(
+        modifier
+            .fillMaxWidth()
+            .clip(if (appleStyle) RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp) else SHEET_SHAPE),
+    ) {
+        if (solidTheme) {
+            Box(
+                Modifier.matchParentSize().background(MaterialTheme.colorScheme.background),
+            )
+        } else {
+            // Now Playing alone retains the artwork-derived blurred gradient.
+            ArtworkBackdrop(
+                palette = palette,
+                imageUrl = imageUrl,
+                modifier = Modifier.matchParentSize(),
+                washFraction = 0.75f,
+                artPx = ROW_ART_PX,
+            )
+        }
+        Column(
+            // Let the six Apple actions determine the sheet's actual height.
+            // The earlier 70%-of-screen minimum left a large empty block.
+            Modifier.fillMaxWidth().heightIn(max = maxHeight),
+        ) {
+            // Drawn rather than taken from BottomSheetDefaults, whose handle
+            // carries 22dp of padding on each side — half a row's worth of
+            // nothing between the grip and the track it is about. Kept outside
+            // the scrolling rows below so it stays put as a grab target rather
+            // than travelling with the list.
+            if (!appleStyle) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 34.dp, height = 4.dp)
+                            .clip(CircleShape)
+                            .background(palette.onBackground.copy(alpha = 0.35f)),
+                    )
+                }
+            }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                content = content,
+            )
+        }
+    }
+}
+
+private val SHEET_SHAPE = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+
+/**
+ * One row carrying the whole life of a download: start it, watch it, cancel it,
+ * and delete what it produced.
+ *
+ * A row rather than a screen because that is the size of the decision. The
+ * files land in the device's own Music folder, which already has a manager
+ * — the Files app — and building a second one inside this app would be
+ * duplicating it in a worse place. What this app uniquely knows is which *song*
+ * a file belongs to, and that is exactly what this row says.
+ *
+ * The state comes straight from [Downloads] rather than through the caller: it
+ * changes while the sheet is open, and threading a flow through the sheet's
+ * signature would buy nothing over reading it where it's drawn — the same
+ * arrangement the sleep timer row already uses.
+ */
+@Composable
+private fun DownloadRow(song: Song, palette: ArtworkPalette, isOffline: Boolean, onDownload: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val active by Downloads.active.collectAsStateWithLifecycle()
+    val saved by Downloads.saved.collectAsStateWithLifecycle()
+
+    // The record is a claim about a folder the user manages themselves, so it
+    // is checked against the disk rather than trusted — re-checked whenever the
+    // record for this track changes, which is what makes the row settle onto
+    // "Saved" the moment a download finishes.
+    //
+    // Seeded with the record rather than with null so that moment isn't a
+    // flicker: a finished download clears the running state and writes the
+    // record in the same breath, and starting pessimistic would show "Download"
+    // again for as long as the check off the main thread takes.
+    val recorded = saved[song.videoId]
+    val file by produceState(recorded?.let(Uri::parse), song.videoId, recorded) {
+        value = Downloads.savedUri(context, song.videoId)
+    }
+
+    // A failure is worth stating once. Leaving it set would have the row still
+    // reporting last week's dead connection the next time the sheet is opened.
+    DisposableEffect(song.videoId) {
+        onDispose { Downloads.dismissFailure(song.videoId) }
+    }
+
+    when (val state = active[song.videoId]) {
+        is DownloadState.Queued -> ActionRow(
+            icon = Icons.Rounded.Downloading,
+            label = stringResource(R.string.queued),
+            value = stringResource(R.string.cancel),
+            accent = palette.accent,
+        ) { Downloads.cancel(song.videoId) }
+
+        is DownloadState.Running -> ActionRow(
+            icon = Icons.Rounded.Downloading,
+            label = stringResource(R.string.download_notification_title),
+            // Indeterminate until the first response names a length; a
+            // stuck "0%" reads as broken where a bare label reads as starting.
+            value = if (state.fraction > 0f) "${(state.fraction * 100).toInt()}%" else null,
+            tint = palette.accent,
+            accent = palette.accent,
+        ) { Downloads.cancel(song.videoId) }
+
+        is DownloadState.Failed -> ActionRow(
+            icon = Icons.Rounded.ErrorOutline,
+            label = state.reason,
+            value = stringResource(R.string.retry),
+            // Not the artwork's colour: a failure has to stay legible as a
+            // failure whatever the sleeve happens to be tinted.
+            tint = MaterialTheme.colorScheme.error,
+            accent = MaterialTheme.colorScheme.error,
+            onClick = onDownload,
+        )
+
+        null -> if (file != null) {
+            ActionRow(
+                icon = Icons.Rounded.DownloadDone,
+                label = stringResource(R.string.saved_to_downloads),
+                value = stringResource(R.string.delete),
+                tint = palette.accent,
+                accent = palette.accent,
+            ) { scope.launch { Downloads.delete(context, song.videoId) } }
+        } else if (!isOffline) {
+            ActionRow(
+                icon = Icons.Rounded.Download,
+                label = stringResource(R.string.download),
+                accent = palette.accent,
+                onClick = onDownload,
+            )
+        }
+    }
+}
+
+/**
+ * Sends a device file to the WebDAV server. Sits beside the download row
+ * because it is the same idea in the other direction — and like that row it
+ * reads its state where it is drawn rather than threading it through the
+ * sheet's signature.
+ *
+ * Shown only for readable local files. A track already on the server, or a
+ * stream with no bytes on this device, has nothing to send up.
+ */
+@Composable
+private fun WebDavUploadRow(
+    song: Song,
+    palette: ArtworkPalette,
+    isOffline: Boolean,
+    onUpload: (() -> Unit)?,
+) {
+    onUpload ?: return
+    if (!isOffline || !WebDavUploads.isUploadable(song)) return
+    val active by WebDavUploads.active.collectAsStateWithLifecycle()
+    when (val state = active[song.videoId]) {
+        is WebDavUploads.TrackState.Running -> ActionRow(
+            icon = Icons.Rounded.FileUpload,
+            label = stringResource(R.string.upload_to_webdav),
+            value = "${(state.fraction * 100).toInt()}%",
+            tint = palette.accent,
+            accent = palette.accent,
+            // In flight already; there is no cancel, so the row only reports.
+            onClick = {},
+        )
+        is WebDavUploads.TrackState.Failed -> ActionRow(
+            icon = Icons.Rounded.FileUpload,
+            label = state.reason,
+            value = stringResource(R.string.try_again),
+            tint = MaterialTheme.colorScheme.error,
+            accent = MaterialTheme.colorScheme.error,
+            onClick = onUpload,
+        )
+        else -> ActionRow(
+            icon = Icons.Rounded.FileUpload,
+            label = stringResource(R.string.upload_to_webdav),
+            accent = palette.accent,
+            onClick = onUpload,
+        )
+    }
+}
+
+/**
+ * One line of a bottom sheet's menu. Shared with the playlist picker so the
+ * two sheets read as the same control rather than as two lists that happen to
+ * look alike.
+ *
+ * [tint] is for rows whose icon carries state — a filled heart on a liked
+ * track — and is otherwise the ordinary foreground. [accent] colours the
+ * trailing [value] and defaults to Apple Music's key blue. An artwork-tinted
+ * sheet passes its own palette accent explicitly; error rows retain semantic
+ * red.
+ */
+@Composable
+internal fun ActionRow(
+    icon: ImageVector,
+    label: String,
+    value: String? = null,
+    tint: Color? = null,
+    accent: Color = appleMusicKeyColor(),
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val menu = LocalActionRowStyle.current == ActionRowStyle.Menu
+    val apple = LocalActionRowStyle.current == ActionRowStyle.Apple
+    val appleSolid = LocalActionRowStyle.current == ActionRowStyle.AppleSolid
+    val playerGeometry = apple || appleSolid
+    // Identical player geometry; on every other page the foreground follows
+    // its solid theme background instead of being hardcoded white.
+    val foreground = if (apple) Color.White else if (menu || appleSolid)
+        MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onBackground
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    // Modal sheets retain their normal bounded ripple. Only the contextual
+    // menu rows use quiet foreground feedback, consistent with Settings.
+    val alpha = if (menu) nativeMenuPressInkAlpha(enabled, pressed)
+        else if (enabled) 1f else 0.4f
+    val iconView: @Composable () -> Unit = {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = (tint ?: foreground).copy(alpha = alpha),
+            modifier = Modifier
+                .size(if (playerGeometry) 18.dp else if (menu) 20.dp else 22.dp)
+                .testTag(if (menu) "native-action-menu-trailing-icon"
+                    else "native-action-sheet-trailing-icon"),
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (menu) Modifier.clickable(
+                    interactionSource = pressSource, indication = null,
+                    enabled = enabled, onClick = onClick,
+                )
+                else Modifier.clickable(enabled = enabled, onClick = onClick)
+            )
+            .then(modifier)
+            .then(
+                if (menu) {
+                    Modifier.heightIn(min = 46.dp).padding(horizontal = 18.dp, vertical = 11.dp)
+                } else if (playerGeometry) {
+                    Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 9.dp)
+                } else {
+                    Modifier.padding(horizontal = 22.dp, vertical = 15.dp)
+                },
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Menu actions are label-first in every presentation: expanded
+        // popups, held previews, the player and full action sheets. Album
+        // covers/avatars in regular library rows remain a different pattern.
+        Text(
+            text = label,
+            style = if (playerGeometry) MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp) else MaterialTheme.typography.bodyLarge,
+            color = foreground.copy(alpha = alpha),
+            maxLines = if (menu) 2 else Int.MAX_VALUE,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (value != null) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyLarge,
+                color = accent.copy(alpha = alpha),
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        iconView()
+    }
+}
+
+/**
+ * Stands in for [ActionRow] while whether it belongs on the sheet at all is
+ * still unknown — "Open album" or "Open artist" before the lookup for their
+ * ids has come back. A spinner rather than the row simply being missing, so
+ * it doesn't read as decided against until it actually is.
+ */
+@Composable
+private fun LoadingActionRow(icon: ImageVector, label: String, palette: ArtworkPalette) {
+    val menu = LocalActionRowStyle.current == ActionRowStyle.Menu
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (menu) {
+                    Modifier.heightIn(min = 46.dp).padding(horizontal = 18.dp, vertical = 11.dp)
+                } else {
+                    Modifier.padding(horizontal = 22.dp, vertical = 15.dp)
+                },
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Loading placeholders obey the same direction as real actions.
+        // A pending canonical link never flashes a leading icon then jumps
+        // to the opposite edge after the lookup completes.
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = palette.onBackground.copy(alpha = 0.4f),
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(14.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = palette.onBackground.copy(alpha = 0.4f),
+            modifier = Modifier.size(if (menu) 20.dp else 22.dp)
+                .testTag("native-loading-menu-trailing-icon"),
+        )
+        Spacer(Modifier.width(10.dp))
+        CircularProgressIndicator(
+            color = palette.onBackgroundVariant,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(16.dp),
+        )
+    }
+}
+
+/**
+ * The track a sheet is about, drawn at its head. Shared by the actions menu
+ * and the playlist picker, which is the same track two taps later.
+ *
+ * [subtitleColor] exists because the two sheets stand on different ground: the
+ * picker's is the flat theme background, where the usual dim grey is right,
+ * while the actions sheet is tinted from this very artwork and needs the
+ * credit brighter to stay off the wash.
+ */
+@Composable
+internal fun SheetTrackHeader(
+    song: Song,
+    modifier: Modifier = Modifier,
+    subtitleColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    preloadedArtworkModel: Any? = null,
+    appleStyle: Boolean = false,
+    solidTheme: Boolean = false,
+    verifiedAlbumTitle: String? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = if (appleStyle) 16.dp else 20.dp, vertical = if (appleStyle) 16.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = preloadedArtworkModel
+                ?: com.music.aria.ui.player.rememberPlaybackArtworkImageModel(song, ROW_ART_PX),
+            contentDescription = null,
+            modifier = Modifier
+                .size(if (appleStyle) 80.dp else 52.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .thumbnailBorder(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            ExplicitSongTitle(
+                song = song,
+                style = if (appleStyle) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                color = if (appleStyle && !solidTheme) Color.White
+                    else MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = song.artist,
+                style = if (appleStyle) MaterialTheme.typography.titleMedium
+                    else MaterialTheme.typography.bodyMedium,
+                color = if (appleStyle && !solidTheme) Color.White else subtitleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (appleStyle) {
+                (verifiedAlbumTitle ?: song.albumName)?.takeIf(String::isNotBlank)?.let { album ->
+                    Text(
+                        text = album,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = subtitleColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The heading over a sheet's second half — "Add to playlist". */
+@Composable
+internal fun SheetHeading(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
