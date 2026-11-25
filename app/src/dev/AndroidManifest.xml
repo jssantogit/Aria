@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:label="BitChord Dev"
+        android:label="@string/aria_launcher_name"
         android:usesCleartextTraffic="true"
         tools:replace="android:label,android:usesCleartextTraffic">
         <provider
@@ -15,7 +15,7 @@
             android:name="com.music.bitchord.diagnostics.DiagnosticsActivity"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:label="BitChord Diagnostics" />
+            android:label="Aria Diagnostics" />
 
         <provider
             android:name="com.music.bitchord.diagnostics.DiagnosticsFileProvider"
