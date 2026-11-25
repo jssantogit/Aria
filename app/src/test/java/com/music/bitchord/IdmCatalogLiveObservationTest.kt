@@ -2315,6 +2315,7 @@ class IdmCatalogLiveObservationTest {
                 var appleQualifiedEditionVerified = false
                 var appleRelatedYearEditionVerified = false
                 var appleRelatedYearEditionComplete = false
+                var appleAlternativeTrackRouteVerified = false
                 var appleVideoProbeAttempted = false
                 var appleVideoProbeSameCollection = false
                 var appleVideoProbeVerifiedRows = 0
@@ -2532,6 +2533,35 @@ class IdmCatalogLiveObservationTest {
                                     appleRelatedYearEditionComplete = detail != null &&
                                         alternative?.state == AppleEditorialReadState.COMPLETE &&
                                         detail.tracks.isNotEmpty()
+                                }
+                                // An unavailable standalone single must not make its
+                                // music disappear. Observe the native track route separately:
+                                // exact source title/credit and collection membership, never
+                                // claim that a compilation is the missing original edition.
+                                if (selected == null && !failed && case.kind == "single_ep") {
+                                    val songPager = ApplePublicSearchPager(query, ItunesCatalogEntity.SONG,
+                                        "br", source = ItunesPublicSearchSource(appleClient))
+                                    val songPage = songPager.start() as? ApplePublicSearchPageLoad.Success
+                                    val song = songPage?.snapshot?.visible?.firstOrNull {
+                                        it.type == ItunesCatalogItemType.TRACK &&
+                                            it.artistId != null && case.matchesArtist(it.artistName) &&
+                                            searchLabelKey(it.title) == searchLabelKey(case.title) &&
+                                            it.collectionId != null && !it.collectionTitle.isNullOrBlank()
+                                    }
+                                    if (song != null) {
+                                        val collection = appleRepo.albumDetail(requireNotNull(song.collectionId), "br")
+                                            as? AppleEditorialLoad.Success
+                                        val record = collection?.releases?.singleOrNull()
+                                        appleAlternativeTrackRouteVerified =
+                                            record?.appleCollectionId == song.collectionId &&
+                                            record.storefront == song.storefront &&
+                                            record.title == song.collectionTitle &&
+                                            record.tracks.any {
+                                                it.scopedId == song.scopedId && it.title == song.title &&
+                                                    it.artistId == song.artistId &&
+                                                    it.artistName == song.artistName
+                                            }
+                                    }
                                 }
                                 // Independent storefront offers documented on 2026-11-24.
                                 // These public Apple BR URLs nominate an exact lookup ONLY.
@@ -2821,6 +2851,9 @@ class IdmCatalogLiveObservationTest {
                         "apple_related_year_edition_complete" to if (appleRelatedYearEditionComplete) 1 else 0,
                         "apple_mixed_lookup_attempted" to if (appleAlbumDiagnostics?.mixedLookupAttempted == true) 1 else 0,
                         "apple_mixed_lookup_verified" to if (appleAlbumDiagnostics?.mixedLookupVerified == true) 1 else 0,
+                        "apple_album_song_search_attempted" to if (appleAlbumDiagnostics?.albumSongSearchAttempted == true) 1 else 0,
+                        "apple_album_song_search_verified" to if (appleAlbumDiagnostics?.albumSongSearchVerified == true) 1 else 0,
+                        "apple_alternative_track_route_verified" to if (appleAlternativeTrackRouteVerified) 1 else 0,
                         "apple_verified_excluded_non_audio" to (appleAlbumDiagnostics?.verifiedExcludedNonAudioRows ?: 0),
                         "apple_frozen_title_verified" to if (appleFrozenTitleVerified) 1 else 0,
                         "apple_qualified_edition_verified" to if (appleQualifiedEditionVerified) 1 else 0,
