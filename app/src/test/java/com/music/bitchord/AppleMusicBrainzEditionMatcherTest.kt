@@ -84,6 +84,33 @@ class AppleMusicBrainzEditionMatcherTest {
         ),
     )
 
+    @Test fun explicitAlbumLinkClassificationRequiresExactProductAndUniqueSourceSnapshot() {
+        val album = apple(title = "SUPER REAL ME (EP)", upc = null).copy(
+            storeUrl = "https://music.apple.com/br/album/super-real-me/101",
+        )
+        val linked = candidate(barcode = null).copy(linkedAppleAlbumIds = listOf(101L))
+        val other = candidate(release = secondId, barcode = null)
+        assertTrue(AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(
+            album, listOf(linked, other),
+        ) is AppleMusicBrainzEditionMatch.Verified)
+        assertFalse(AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(
+            album.copy(storeUrl = "https://music.apple.com/us/album/super-real-me/101"),
+            listOf(linked),
+        ) is AppleMusicBrainzEditionMatch.Verified)
+        assertFalse(AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(
+            album, listOf(linked, other.copy(linkedAppleAlbumIds = listOf(101L))),
+        ) is AppleMusicBrainzEditionMatch.Verified)
+        assertFalse(AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(
+            album, listOf(linked, linked.copy(linkedAppleAlbumIds = emptyList(), title = "Changed")),
+        ) is AppleMusicBrainzEditionMatch.Verified)
+        assertFalse(AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(
+            album, listOf(linked.copy(linkedAppleAlbumIds = listOf(101L, 102L))),
+        ) is AppleMusicBrainzEditionMatch.Verified)
+        assertFalse(AppleMusicBrainzEditionMatcher.matchWithExplicitAlbumLinks(
+            album, listOf(linked.copy(hasCompleteTracklist = false)),
+        ) is AppleMusicBrainzEditionMatch.Verified)
+    }
+
     @Test fun onlyCompleteExactEditionEvidenceProducesAppleToMbReleaseAndRecordingLinks() {
         val apple = apple()
         val result = AppleMusicBrainzEditionMatcher.match(apple, listOf(candidate()))
