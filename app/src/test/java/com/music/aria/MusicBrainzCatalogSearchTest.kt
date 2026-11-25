@@ -212,7 +212,7 @@ class MusicBrainzCatalogSearchTest {
         assertEquals("true", calls.single().second["dismax"])
         assertEquals("25", calls.single().second["limit"])
         assertEquals("25", calls.single().second["offset"])
-        assertTrue(calls.single().third.startsWith("Bitchord/"))
+        assertTrue(calls.single().third.startsWith("Aria/"))
     }
 
     @Test

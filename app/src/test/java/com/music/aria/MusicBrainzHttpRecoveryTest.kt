@@ -51,7 +51,7 @@ class MusicBrainzHttpRecoveryTest {
             assertEquals(3, server.requestCount)
             repeat(3) {
                 val request = server.takeRequest()
-                assertTrue(request.getHeader("User-Agent")!!.startsWith("Bitchord/"))
+                assertTrue(request.getHeader("User-Agent")!!.startsWith("Aria/"))
                 assertEquals("/ws/2/artist?query=aespa", request.path)
             }
         }
