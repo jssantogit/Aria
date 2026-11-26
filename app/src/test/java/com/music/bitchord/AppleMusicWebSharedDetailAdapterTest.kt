@@ -107,6 +107,21 @@ class AppleMusicWebSharedDetailAdapterTest {
             supplemental=extra)!!.page.sections.isEmpty())
     }
 
+    @Test fun featuredReleaseRequiresExactSourceViewNotFirstShelfGuess() {
+        val latest = album.copy(id="99",title="Latest")
+        val record = AppleMusicWebArtist(artist,listOf(song),listOf(album),
+            emptyList(),emptyList(),latestRelease=latest)
+        val source = AppleMusicWebNativeDetail.Artist(record)
+        val detail = appleMusicWebAsSharedDetail(artist.scopedId,source)!!
+        assertEquals(latest.scopedId,detail.featuredRelease?.browseId)
+        assertEquals(latest.scopedId,
+            com.music.bitchord.ui.appleMusicWebRelatedTarget(detail,latest.scopedId)?.browseId)
+        assertNull(appleMusicWebAsSharedDetail(artist.scopedId,
+            source.copy(value=record.copy(latestRelease=null)))?.featuredRelease)
+        assertNull(appleMusicWebAsSharedDetail(artist.scopedId,
+            source.copy(value=record.copy(latestRelease=latest.copy(storefront="us"))))?.featuredRelease)
+    }
+
     @Test fun storeLinkMustBelongToExactNativeProduct() {
         assertEquals(album.storeUrl,appleMusicWebVerifiedStoreUrl(album))
         for (url in listOf("https://music.apple.com/us/album/album/20",

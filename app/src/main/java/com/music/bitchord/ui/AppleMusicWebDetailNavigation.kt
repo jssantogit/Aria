@@ -53,7 +53,7 @@ internal fun appleMusicWebRelatedTarget(
         return ShelfItem(title = page.albumArtistDisplayName, subtitle = "",
             thumbnailUrl = null, videoId = null, browseId = child.browseId)
     }
-    val matches = page.page.sections.flatMap { it.items }.filter {
+    val matches = (page.page.sections.flatMap { it.items } + listOfNotNull(page.featuredRelease)).filter {
         it.browseId == child.browseId && it.videoId == null && it.title.isNotBlank()
     }
     return matches.firstOrNull()?.takeIf { first -> matches.all { it == first } }

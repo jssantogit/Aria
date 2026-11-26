@@ -84,6 +84,20 @@ internal suspend fun resolveNativeSimilarPortraits(
     }.joinAll()
 }
 
+/** Shared portrait slot for the existing artist card in every catalog.
+ * Callers provide an already authorized source portrait, never a name lookup.
+ */
+@Composable
+internal fun NativeArtistPortraitArtwork(portrait: String?) {
+    Box(Modifier.fillMaxSize()) {
+        CoverPlaceholder(Icons.Rounded.Person, Modifier.fillMaxSize())
+        portrait?.let {
+            AsyncImage(model = it, contentDescription = null,
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
 /** Native artist shelf with actual ListenBrainz identity evidence and optional
  * exact-name Apple artist artwork, reusing the existing artist hero resolver. */
 @Composable
@@ -143,19 +157,7 @@ internal fun NativeArtistSimilarShelf(
             onClick = { onOpen(page) },
             onLongPress = nativeArtistPublicShelfHoldAction(page, onLongPress),
             artworkShape = nativeArtistSimilarArtworkShape,
-            artwork = {
-                Box(Modifier.fillMaxSize()) {
-                    CoverPlaceholder(Icons.Rounded.Person, Modifier.fillMaxSize())
-                    artwork[artist.mbid]?.let { portrait ->
-                        AsyncImage(
-                            model = portrait,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            },
+            artwork = { NativeArtistPortraitArtwork(artwork[artist.mbid]) },
         )
     }
 }

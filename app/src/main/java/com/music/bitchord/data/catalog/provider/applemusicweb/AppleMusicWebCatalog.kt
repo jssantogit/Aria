@@ -75,6 +75,7 @@ internal enum class AppleMusicWebArtistShelf(val endpoint: String) {
     COMPILATIONS("view/compilation-albums"),
     APPEARS_ON("view/appears-on-albums"),
     ESSENTIAL_ALBUMS("view/featured-albums"),
+    LATEST_RELEASE("view/latest-release"),
     TOP_SONGS("view/top-songs"),
     MUSIC_VIDEOS("view/music-videos"),
     ARTIST_PLAYLISTS("view/playlists"),
@@ -91,6 +92,7 @@ internal data class AppleMusicWebArtist(
     val featuredAlbums: List<AppleMusicWebItem> = emptyList(),
     val artistPlaylists: List<AppleMusicWebItem> = emptyList(),
     val unresolvedShelves: Map<AppleMusicWebArtistShelf, Int> = emptyMap(),
+    val latestRelease: AppleMusicWebItem? = null,
 )
 
 /** Exact song resource plus native album linkage; linkage alone is not an album. */
@@ -702,6 +704,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             shelf(AppleMusicWebArtistShelf.STUDIO_ALBUMS), shelf(AppleMusicWebArtistShelf.SINGLES_AND_EPS),
             shelf(AppleMusicWebArtistShelf.SIMILAR_ARTISTS), shelf(AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS),
             shelf(AppleMusicWebArtistShelf.ARTIST_PLAYLISTS), unresolved,
+            latestRelease = shelf(AppleMusicWebArtistShelf.LATEST_RELEASE).singleOrNull(),
         )
     }
 

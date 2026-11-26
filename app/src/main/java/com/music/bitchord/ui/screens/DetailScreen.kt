@@ -196,9 +196,14 @@ import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlin.math.roundToInt
 import java.util.Locale
 
-/** A source-scoped Discogs artist never acquires a portrait by matching a name. */
+/** Exact source-owned artist identities must not acquire an unrelated
+ * portrait or signature by matching the display name. */
 internal fun nativeArtistAllowsNameBasedAuxiliaryVisuals(browseId: String): Boolean =
-    !browseId.startsWith("discogs:")
+    !browseId.startsWith("discogs:") && !browseId.startsWith("apple_music_web:")
+
+internal fun nativeShelfCardIsArtist(browseId: String?): Boolean =
+    com.music.bitchord.ui.AppleMusicWebNativeRoute.parse(browseId)?.kind ==
+        com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ARTIST
 
 private const val MAX_ARTIST_SONGS = 20
 private const val SONGS_PER_COLUMN = 4
@@ -894,7 +899,8 @@ fun DetailScreen(
             val topRelease = if (isLocalArtist) localArtistRecent
                 // Verified Apple/MusicBrainz relation supplements the Apple
                 // storefront page; it must never hide Apple's own top album.
-                else if (isArtist && page.browseId.startsWith("itunes:"))
+                else if (isArtist && (page.browseId.startsWith("itunes:") ||
+                    page.browseId.startsWith("apple_music_web:")))
                     sourceFeaturedRelease
                 else if (isArtist && publicArtistMbid == null) page.sections.topRelease()
                 else null
@@ -1974,8 +1980,9 @@ private fun ShelfItem.releaseYear(): Int? =
  * format. This changes only its label, not the shared top-release card.
  */
 internal fun appleSourceRecentReleaseNeedsGenericLabel(item: ShelfItem): Boolean =
-    item.browseId?.startsWith("itunes:") == true &&
-        Regex("""^(19|20)\d{2}$""").matches(item.subtitle.trim())
+    (item.browseId?.startsWith("itunes:") == true ||
+        item.browseId?.startsWith("apple_music_web:") == true) &&
+        (item.subtitle.isBlank() || Regex("""^(19|20)\d{2}$""").matches(item.subtitle.trim()))
 
 /** "Recent Single" and "Recent EP" where the card says so, otherwise "Recent Album". */
 @androidx.annotation.StringRes
@@ -2162,17 +2169,23 @@ private fun SectionCard(
     onLongPress: (() -> Unit)? = null,
     applePromotion: AppleGroupCardBadge? = null,
 ) {
+    val portrait = nativeShelfCardIsArtist(item.browseId)
     NativeArtistReleaseCard(
         title = item.title,
-        // A release in an artist's carousel needs its YEAR, not that artist
-        // repeated beneath every cover. Accept only an explicit year metadata
-        // segment; no extraction from titles or inferred scan timestamps.
-        subtitle = canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
+        // Artist identity cards retain the same circular portrait and label
+        // as the canonical similar-artist shelf, including its show-all grid.
+        // Release cards still show only a validated year.
+        subtitle = if (portrait) stringResource(R.string.artist)
+            else canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
         palette = palette,
         onClick = onClick,
         modifier = modifier,
         onLongPress = onLongPress,
-        artwork = { ArtistCardArtwork(item, applePromotion) },
+        artworkShape = if (portrait) nativeArtistSimilarArtworkShape else RoundedCornerShape(10.dp),
+        artwork = {
+            if (portrait) NativeArtistPortraitArtwork(item.thumbnailUrl)
+            else ArtistCardArtwork(item, applePromotion)
+        },
     )
 }
 

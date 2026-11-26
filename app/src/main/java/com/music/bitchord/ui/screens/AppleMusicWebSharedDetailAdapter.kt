@@ -171,6 +171,7 @@ internal fun appleMusicWebAsSharedDetail(
                     UiState.Success(emptyList()),BrowseType.ARTIST,sections=shelves),
                 metadataTracks=tracks(record.topSongs,market).take(16),
                 artistHeroUrl=identity.cover(1024),
+                featuredRelease=record.latestRelease?.card(AppleMusicWebKind.ALBUM,market),
                 notice=if (incomplete || record.unresolvedShelves.isNotEmpty() || evidence?.incomplete == true)
                     "Algumas seções deste artista podem estar incompletas." else null,
                 sourceStoreUrl=appleMusicWebVerifiedStoreUrl(identity),
