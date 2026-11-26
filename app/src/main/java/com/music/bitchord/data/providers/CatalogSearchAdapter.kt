@@ -57,6 +57,8 @@ internal data class CatalogSearchItem(
     val subtitle: String? = null,
     val artworkUrl: String? = null,
     val storeUrl: String? = null,
+    // Original position within the physical source page, if supplied.
+    val sourcePosition: Int? = null,
 )
 
 /** Complete here means this requested PAGE; hasMore tracks remaining pages. */

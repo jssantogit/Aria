@@ -46,6 +46,7 @@ jobs:
           expected = {f'apple_music_web_{n:02}.json' for n in range(1,31)}
           assert {p.name for p in review.glob('*.json')} == expected, 'Missing or unexpected review cells'
           totals = collections.defaultdict(collections.Counter)
+          assert {p.name for p in (root / 'native-order-review').glob('*.json')} == expected, 'Missing native baseline'
           for n in range(1,31):
               row = json.loads((review / f'apple_music_web_{n:02}.json').read_text())
               agg = json.loads((root / f'live_search_matrix_apple_music_web_{n:02}.json').read_text())
@@ -53,6 +54,11 @@ jobs:
               assert row['schema'] == 1 and row['case'] == n and row['provider'] == 'apple_music_web' and row['kind'] == kind
               rows = row['rows']
               assert len(rows) <= 10 and len(rows) == agg['first_ten_rows']
+              native = json.loads((root / 'native-order-review' / f'apple_music_web_{n:02}.json').read_text())
+              assert native['case'] == n and native['kind'] == kind and native['complete'] == row['complete']
+              raw_labels = [item['target_label'] for item in native['rows']]
+              assert len(raw_labels) == len(rows) == agg['native_first_ten_rows']
+              assert int(1 in raw_labels[:5]) == agg['native_top_five_target'] and int(1 in raw_labels) == agg['native_top_ten_target']
               labels = []
               for rank, item in enumerate(rows, 1):
                   assert set(item) == {'rank','title','credit','target_label','qualified_verified'}
@@ -66,6 +72,7 @@ jobs:
               t.update(cases=1, complete=int(row['complete']), rows=len(rows),
                        target=labels.count(1), non_target=labels.count(0), unresolved=labels.count(-1),
                        top5=int(1 in labels[:5]), top10=int(1 in labels),
+                       native_top5=agg['native_top_five_target'], native_top10=agg['native_top_ten_target'],
                        proof_interruptions=agg['proof_interruption'], second_pages=agg['second_page_checked'],
                        overlap=agg['second_page_overlap'], source_overlap=agg['second_page_source_overlap'],
                        continuation_interruptions=agg['continuation_interruption'])
@@ -73,7 +80,7 @@ jobs:
           for kind, t in totals.items():
               print('AMS_SEARCH_AGGREGATE', kind, json.dumps(t, sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
-              f.write('## AMS native adapter baseline (BR)\nNot production UI precision; categories are local. Target labels are not final relevance judgments.\n\n')
+              f.write('## AMS native and ranked adapter comparison (BR)\nRanked and native order retained; no rows removed. Not production UI precision; categories are local. Target labels are not final relevance judgments.\n\n')
               f.write('| Category | Cases | Complete | Rows | Target | Non-target | Unresolved | Top5 | Top10 | Source overlap | Visible overlap |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n')
               for kind,t in totals.items():
                   f.write(f"| {kind} | {t['cases']} | {t['complete']} | {t['rows']} | {t['target']} | {t['non_target']} | {t['unresolved']} | {t['top5']} | {t['top10']} | {t['source_overlap']} | {t['overlap']} |\n")

@@ -72,7 +72,7 @@ internal class AppleMusicWebSearchAdapter(
                 return ProviderCallResult.Failed(AppleMusicWebProtocolException("Cyclic cursor"))
             if (unique.isNotEmpty() || !raw.hasMore) {
                 return ProviderCallResult.Success(raw.copy(
-                    items = unique,
+                    items = rankAppleMusicWebSearchPage(request.query, request.kind, unique),
                     sourceOverlapCount = overlaps,
                     continuation = raw.continuation?.copy(
                         seenNativeIds = seen.toSet(), visitedTokens = visited.toSet(),
@@ -96,7 +96,7 @@ internal class AppleMusicWebSearchAdapter(
         capability = ProviderCapability.CATALOG_SEARCH,
         storefront = storefront,
         kind = request.kind,
-        items = source.items.map { item ->
+        items = source.items.mapIndexed { index, item ->
             val sourceKind = when (item.kind) {
                 AppleMusicWebKind.ARTIST -> CatalogSearchKind.ARTIST
                 AppleMusicWebKind.ALBUM -> CatalogSearchKind.ALBUM
@@ -114,6 +114,7 @@ internal class AppleMusicWebSearchAdapter(
                 subtitle = item.artistName,
                 artworkUrl = item.artworkUrl,
                 storeUrl = item.storeUrl,
+                sourcePosition = index + 1,
             )
         },
         page = source.page,

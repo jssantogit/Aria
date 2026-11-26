@@ -144,6 +144,45 @@ class AppleMusicWebGenericRoutingTest {
         assertFalse(next.hasMore)
     }
 
+    @Test fun rankingPreservesAllNativeRowsAndSeparatesExactFromVariantsAndNoise() = runBlocking {
+        val policy = gate(listOf(apple))
+        val source = AppleMusicWebTransport { _, _, _ ->
+            """{"results":{"songs":{"data":[
+                {"id":"1","type":"songs","attributes":{"name":"Other Work","artistName":"Band"}},
+                {"id":"2","type":"songs","attributes":{"name":"One (Live)","artistName":"Band"}},
+                {"id":"3","type":"songs","attributes":{"name":"One (Remastered)","artistName":"Band"}},
+                {"id":"4","type":"songs","attributes":{"name":"One","artistName":"Band"}},
+                {"id":"5","type":"songs","attributes":{"name":"One","artistName":"Another"}}
+            ]}}}"""
+        }
+        val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(AppleMusicWebCatalog(source), policy))
+        for (query in listOf("One Band", "Band One")) {
+            val result = adapter.search(CatalogSearchRequest(CatalogSearchKind.TRACK, query, "br"))
+                as ProviderCallResult.Success
+            val rows = result.value.items
+            assertEquals(listOf("4", "3", "2"), rows.take(3).map { it.identity.nativeId })
+            assertEquals(setOf("1", "2", "3", "4", "5"), rows.map { it.identity.nativeId }.toSet())
+            assertEquals(listOf(4, 3, 2), rows.take(3).map { it.sourcePosition })
+            assertEquals("One (Remastered)", rows[1].title)
+        }
+    }
+
+    @Test fun artistRankingDoesNotMergeNamesakesOrChangeEqualRankOrder() = runBlocking {
+        val policy = gate(listOf(apple))
+        val source = AppleMusicWebTransport { _, _, _ ->
+            """{"results":{"artists":{"data":[
+                {"id":"1","type":"artists","attributes":{"name":"Ghost tribute"}},
+                {"id":"2","type":"artists","attributes":{"name":"Ghost"}},
+                {"id":"3","type":"artists","attributes":{"name":"GHOST"}},
+                {"id":"4","type":"artists","attributes":{"name":"The Ghost"}}
+            ]}}}"""
+        }
+        val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(AppleMusicWebCatalog(source), policy))
+        val page = (adapter.search(CatalogSearchRequest(CatalogSearchKind.ARTIST, "Ghost", "br"))
+            as ProviderCallResult.Success).value
+        assertEquals(listOf("2", "3", "4", "1"), page.items.map { it.identity.nativeId })
+    }
+
     @Test fun unauthorizedAppleWebAdapterCannotDispatch() = runBlocking {
         var calls = 0
         val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(

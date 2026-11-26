@@ -3128,6 +3128,7 @@ class IdmCatalogLiveObservationTest {
         for ((index, case) in searchParityCases.withIndex()) {
             val start = System.nanoTime()
             var rows = emptyList<SearchParityRow>()
+            var nativeRows = emptyList<SearchParityRow>()
             val provenIds = mutableSetOf<String>()
             var complete = true
             var categoryRoute = false
@@ -3162,8 +3163,10 @@ class IdmCatalogLiveObservationTest {
                     assertEquals(source, first.provider)
                     assertEquals(sf, first.storefront)
                     rows = first.items.map { SearchParityRow(nativeId(it), it.title, it.subtitle) }
-                    // Preserve raw landing rank. A continuation is observed separately,
-                    // never used to repair or inflate the Top5/Top10 result.
+                    nativeRows = first.items.sortedBy { it.sourcePosition ?: Int.MAX_VALUE }
+                        .map { SearchParityRow(nativeId(it), it.title, it.subtitle) }
+                    // Observe original landing and ranked landing independently.
+                    // Continuations never repair or inflate either Top5/Top10 result.
                     if (first.hasMore) {
                         secondPageChecked = true
                         val next = first.continuation?.let { read(kind, case.query, 2, it) }
@@ -3217,7 +3220,7 @@ class IdmCatalogLiveObservationTest {
             }
             assertTrue(rows.all { it.title.isNotBlank() })
             assertEquals(rows.size, rows.map { it.id }.distinct().size)
-            val labels = rows.take(10).map { row ->
+            fun label(row: SearchParityRow): Int =
                 when {
                     case.kind == "category" -> if (row.id in provenIds) 1 else -1
                     case.kind == "artist" -> if (!case.artistMatches(row.title)) 0
@@ -3226,13 +3229,24 @@ class IdmCatalogLiveObservationTest {
                     !case.artistMatches(row.artist) -> -1
                     else -> 1
                 }
-            }
+            val labels = rows.take(10).map(::label)
+            val nativeLabels = (if (case.kind == "category") rows else nativeRows).take(10).map(::label)
             val topFive = labels.take(5).any { it == 1 }
             val topTen = labels.any { it == 1 }
             val caseNumber = (index + 1).toString().padStart(2, '0')
             val review = rows.take(10).mapIndexed { rank, row ->
                 reviewRowJson(rank + 1, row, labels[rank], false)
             }
+            val nativeDir = File(dir.parentFile, "native-order-review")
+            check(nativeDir.exists() || nativeDir.mkdirs())
+            val rawReview = (if (case.kind == "category") rows else nativeRows).take(10).mapIndexed { rank, row ->
+                reviewRowJson(rank + 1, row, nativeLabels[rank], false)
+            }
+            File(nativeDir, "apple_music_web_" + caseNumber + ".json").writeText(
+                "{\"schema\":1,\"provider\":\"apple_music_web\",\"case\":" + (index + 1) +
+                    ",\"kind\":" + reviewJsonString(case.kind) + ",\"complete\":" + complete +
+                    ",\"rows\":[" + rawReview.joinToString(",") + "]}"
+            )
             File(dir, "apple_music_web_" + caseNumber + ".json").writeText(
                 "{\"schema\":1,\"provider\":\"apple_music_web\",\"case\":" + (index + 1) +
                     ",\"kind\":" + reviewJsonString(case.kind) + ",\"complete\":" + complete +
@@ -3252,6 +3266,9 @@ class IdmCatalogLiveObservationTest {
                     "target_proven" to if (offered || topTen) 1 else 0,
                     "top_five_target" to if (topFive) 1 else 0,
                     "top_ten_target" to if (topTen) 1 else 0,
+                    "native_top_five_target" to if (nativeLabels.take(5).any { it == 1 }) 1 else 0,
+                    "native_top_ten_target" to if (nativeLabels.any { it == 1 }) 1 else 0,
+                    "native_first_ten_rows" to nativeLabels.size,
                     "first_ten_rows" to labels.size,
                     "labelled_target_rows" to labels.count { it == 1 },
                     "labelled_non_target_rows" to labels.count { it == 0 },
