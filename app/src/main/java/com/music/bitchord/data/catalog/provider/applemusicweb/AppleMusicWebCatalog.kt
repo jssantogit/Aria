@@ -48,6 +48,7 @@ internal data class AppleMusicWebItem(
     val discNumber: Int? = null,
     val trackNumber: Int? = null,
     val genreNames: List<String> = emptyList(),
+    val albumName: String? = null,
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
@@ -189,6 +190,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             id = id, kind = kind, storefront = sf, title = name,
             artistName = attr.str("artistName"), artistId = attr.str("artistId"),
             albumId = attr.str("albumId"),
+            albumName = attr.str("albumName"),
             artworkUrl = attr.obj("artwork")?.str("url")?.takeIf { it.startsWith("https://") },
             storeUrl = attr.str("url")?.takeIf { it.startsWith("https://music.apple.com/") },
             isrc = attr.str("isrc"), upc = attr.str("upc"),

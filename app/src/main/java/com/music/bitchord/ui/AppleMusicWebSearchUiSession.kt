@@ -46,6 +46,7 @@ internal fun amsSearchTrack(item: CatalogSearchItem): AppleEditorialTrackSearchR
     val key = route(market,"song",identity.nativeId) ?: return null
     return AppleEditorialTrackSearchRow(key,item.title,item.subtitle.orEmpty(),item.artwork(),
         route(market,"album",item.albumNativeId),item.durationMs?.takeIf { it > 0 },
+        appleStoreUrl=appleMusicWebVerifiedRouteUrl(item.storeUrl,key),
         artistBrowseId=route(market,"artist",item.artistNativeId))
 }
 

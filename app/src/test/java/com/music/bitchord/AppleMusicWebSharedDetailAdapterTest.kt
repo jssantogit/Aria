@@ -122,6 +122,30 @@ class AppleMusicWebSharedDetailAdapterTest {
             source.copy(value=record.copy(latestRelease=latest.copy(storefront="us"))))?.featuredRelease)
     }
 
+    @Test fun rankedArtistSongsUseSourceOrderAndVerifiedReleaseCaptions() {
+        val top = song.copy(albumId=album.id,albumName=album.title,
+            artworkUrl="https://is1-ssl.mzstatic.com/image/thumb/example/{w}x{h}bb.jpg")
+        val second = song.copy(id="31",title="Second",albumId="999",albumName="Other album")
+        val record = AppleMusicWebArtist(artist,listOf(top,second),listOf(album),emptyList(),emptyList())
+        val page = appleMusicWebAsSharedDetail(artist.scopedId,AppleMusicWebNativeDetail.Artist(record))!!
+        assertTrue(page.sourceArtistTracksRanked)
+        assertEquals(listOf(top.scopedId,second.scopedId),page.metadataTracks.map { it.key })
+        assertEquals("Album · 2025",page.metadataTracks.first().releaseCaption)
+        assertEquals("Other album",page.metadataTracks.last().releaseCaption)
+        assertNotNull(page.metadataTracks.first().artworkUri)
+        val mismatch = record.copy(topSongs=listOf(top.copy(albumName="Different album")))
+        assertEquals("Different album",appleMusicWebAsSharedDetail(artist.scopedId,
+            AppleMusicWebNativeDetail.Artist(mismatch))!!.metadataTracks.single().releaseCaption)
+    }
+
+    @Test fun songLinksRequireExactIdentityAndNoUnrelatedParameters() {
+        val key = "apple_music_web:br:song:30"
+        assertEquals("https://music.apple.com/br/album/name/20?i=30",
+            appleMusicWebVerifiedRouteUrl("https://music.apple.com/br/album/name/20?i=30",key))
+        assertNull(appleMusicWebVerifiedRouteUrl("https://music.apple.com/br/album/name/20?i=31",key))
+        assertNull(appleMusicWebVerifiedRouteUrl("https://music.apple.com/br/album/name/20?i=30&token=x",key))
+    }
+
     @Test fun storeLinkMustBelongToExactNativeProduct() {
         assertEquals(album.storeUrl,appleMusicWebVerifiedStoreUrl(album))
         for (url in listOf("https://music.apple.com/us/album/album/20",

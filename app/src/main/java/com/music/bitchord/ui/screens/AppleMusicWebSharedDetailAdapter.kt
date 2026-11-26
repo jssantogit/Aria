@@ -32,14 +32,25 @@ internal fun appleMusicWebVerifiedStoreUrl(item: AppleMusicWebItem): String? =
     appleMusicWebVerifiedRouteUrl(item.storeUrl, item.scopedId)
 
 internal fun appleMusicWebVerifiedRouteUrl(url: String?, browseId: String?): String? {
-    val route = AppleMusicWebNativeRoute.parse(browseId) ?: return null
+    val songRoute = browseId?.let { Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$").matchEntire(it) }
+    val route = AppleMusicWebNativeRoute.parse(browseId)
+    if (route == null && songRoute == null) return null
     val link = url?.takeIf { it.length <= 2048 } ?: return null
     val uri = runCatching { URI(link) }.getOrNull() ?: return null
     if (uri.scheme != "https" || uri.host != "music.apple.com" || uri.userInfo != null ||
-        uri.port != -1 || uri.rawQuery != null || uri.fragment != null) return null
+        uri.port != -1 || uri.fragment != null) return null
     val fields = uri.path.orEmpty().trim('/').split('/')
-    return link.takeIf { fields.size >= 3 && fields.first() == route.storefront &&
-        fields[1] == route.kind.identityType && fields.last() == route.id }
+    if (songRoute != null) {
+        val market = songRoute.groupValues[1]
+        val id = songRoute.groupValues[2]
+        return link.takeIf { fields.size >= 3 && fields.first() == market &&
+            ((fields[1] == "song" && fields.last() == id && uri.rawQuery == null) ||
+                (fields[1] == "album" && fields.last().matches(Regex("[1-9][0-9]{0,11}")) &&
+                    uri.rawQuery == "i=$id")) }
+    }
+    val detail = route ?: return null
+    return link.takeIf { uri.rawQuery == null && fields.size >= 3 && fields.first() == detail.storefront &&
+        fields[1] == detail.kind.identityType && fields.last() == detail.id }
 }
 
 private fun AppleMusicWebItem.card(kind: AppleMusicWebKind, market: String): ShelfItem? {
@@ -48,16 +59,31 @@ private fun AppleMusicWebItem.card(kind: AppleMusicWebKind, market: String): She
         cover(),null,route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(this))
 }
 
-private fun tracks(items: List<AppleMusicWebItem>, market: String): List<NativeMetadataTrack> =
+private fun tracks(
+    items: List<AppleMusicWebItem>,
+    market: String,
+    artistReleases: List<AppleMusicWebItem> = emptyList(),
+): List<NativeMetadataTrack> =
     items.filter {
         it.kind == AppleMusicWebKind.SONG && it.storefront == market &&
             it.id.matches(Regex("[1-9][0-9]{0,11}")) && it.title.isNotBlank()
     }.groupBy { it.scopedId }.values.mapNotNull { group ->
         val song = group.first()
         if (group.any { it != song }) return@mapNotNull null
+        val album = song.albumId?.let { albumId ->
+            artistReleases.filter { it.kind == AppleMusicWebKind.ALBUM &&
+                it.storefront == market && it.id == albumId &&
+                it.validRoute(AppleMusicWebKind.ALBUM,market) != null }.distinct().singleOrNull()
+        }
+        val suppliedTitle = song.albumName?.trim()?.takeIf { it.isNotBlank() }
+        val compatible = album?.takeIf { suppliedTitle == null || it.title == suppliedTitle }
+        val releaseCaption = (suppliedTitle ?: compatible?.title)?.let { title ->
+            listOf(title,compatible?.year().orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+        }
         NativeMetadataTrack(key=song.scopedId,title=song.title,credit=song.artistName,
             trackNumber=song.trackNumber?.takeIf { it > 0 },discNumber=song.discNumber?.takeIf { it > 0 },
-            durationMs=song.durationMillis?.takeIf { it > 0 })
+            durationMs=song.durationMillis?.takeIf { it > 0 },
+            artworkUri=song.cover(),releaseCaption=releaseCaption)
     }
 
 /** The supplemental pages were obtained from exact artist-view endpoints,
@@ -169,7 +195,9 @@ internal fun appleMusicWebAsSharedDetail(
             AppleSharedDetail(
                 page=DetailPage(route.browseId,identity.title,"Artista",identity.cover(1024),
                     UiState.Success(emptyList()),BrowseType.ARTIST,sections=shelves),
-                metadataTracks=tracks(record.topSongs,market).take(16),
+                metadataTracks=tracks(record.topSongs,market,record.albums + record.singlesAndEps +
+                    record.featuredAlbums + listOfNotNull(record.latestRelease)).take(20),
+                sourceArtistTracksRanked=true,
                 artistHeroUrl=identity.cover(1024),
                 featuredRelease=record.latestRelease?.card(AppleMusicWebKind.ALBUM,market),
                 notice=if (incomplete || record.unresolvedShelves.isNotEmpty() || evidence?.incomplete == true)

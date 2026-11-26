@@ -308,6 +308,8 @@ data class NativeMetadataTrack(
     val sourcePosition: String? = null,
     val durationMs: Long? = null,
     val workTitle: String? = null,
+    val artworkUri: String? = null,
+    val releaseCaption: String? = null,
 )
 
 internal data class NativeDetailAttribution(
@@ -388,6 +390,7 @@ fun DetailScreen(
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
     /** Apple artist ID-confirmed recordings, metadata only and never a top chart. */
     appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
+    sourceArtistTracksRanked: Boolean = false,
     /** Explicit Apple Music URL → MusicBrainz artist relation; never inferred. */
     verifiedAppleArtistMbid: String? = null,
     /** Exact artist photo if the source has an independently proven identity. */
@@ -998,7 +1001,8 @@ fun DetailScreen(
 
             if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA) {
                 item(key = "source-artist-tracks") {
-                    NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette)
+                    NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette,
+                        ranked = sourceArtistTracksRanked)
                 }
             }
 

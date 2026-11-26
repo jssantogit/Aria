@@ -1078,6 +1078,7 @@ private fun BitChordApp(
     // Search holds are native metadata rows, not synthetic YouTube browse targets.
     var heldCatalogSearchRow by remember { mutableStateOf<CanonicalCatalogSearchRow?>(null) }
     var heldCatalogSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
+    val amsSearchHeld = remember { com.music.bitchord.ui.screens.AmsSearchHeldState() }
     var heldPublicPlaylistSearchRow by remember { mutableStateOf<CanonicalPublicPlaylistSearchRow?>(null) }
     var heldPublicPlaylistSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
     // Remote search results retain provider/MediaAsset identity. They must not
@@ -3640,6 +3641,7 @@ private fun BitChordApp(
             (browseActions != null && browseMenuOrigin != null) ||
             (recentHeldRecording != null && recentHeldOrigin != null) ||
             (heldCatalogSearchRow != null && heldCatalogSearchOrigin != null) ||
+            amsSearchHeld.visible ||
             (heldPublicPlaylistSearchRow != null && heldPublicPlaylistSearchOrigin != null)
         // Keep the page stable while the held bitmap lifts and returns.
         // Re-blurring the whole Activity each frame flashed its content.
@@ -4936,6 +4938,8 @@ private fun BitChordApp(
                             appleTrackResults = nativeAppleSearch.tracks,
                             onAppleOpen = viewModel::openAppleEditorialEntry,
                             onAppleTrackOpen = viewModel::openAppleEditorialTrackAlbum,
+                            onAppleHold = amsSearchHeld::hold,
+                            onAppleTrackHold = amsSearchHeld::holdTrack,
                             applePaging = nativeAppleSearch.paging,
                             onAppleLoadMore = viewModel::loadMoreApplePublicSearch,
                             discogsArtistResults = viewModel.discogsNativeCatalog.artists
@@ -7325,6 +7329,8 @@ private fun BitChordApp(
     
             }
             CanonicalSearchContextOverlays()
+            com.music.bitchord.ui.screens.AmsSearchHeldMenu(amsSearchHeld, viewModel, hazeState,
+                heldChromeClearance)
 
             // ---- Reorder playlist ----
             // Full height, and the list never hands its leftover scroll to the

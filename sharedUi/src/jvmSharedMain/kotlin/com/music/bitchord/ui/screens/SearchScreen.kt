@@ -302,6 +302,8 @@ fun SearchScreen(
     appleTrackResults: UiState<List<AppleEditorialTrackSearchRow>>? = null,
     onAppleOpen: (AppleEditorialSearchRow) -> Unit = {},
     onAppleTrackOpen: (AppleEditorialTrackSearchRow) -> Unit = {},
+    onAppleHold: ((AppleEditorialSearchRow) -> Unit)? = null,
+    onAppleTrackHold: ((AppleEditorialTrackSearchRow) -> Unit)? = null,
     applePaging: Map<AppleSearchSection, AppleSearchPageStatus> = emptyMap(),
     onAppleLoadMore: (AppleSearchSection) -> Unit = {},
     /** Discogs Artist IDs are separate provider-native metadata identities. */
@@ -618,18 +620,21 @@ fun SearchScreen(
                     } else if (filter == SearchFilter.ARTISTS && canonicalDetail == null) {
                         appleEditorialArtistRows(
                             appleArtistResults, onAppleOpen,
+                            onHold = onAppleHold,
                             paging = applePaging[AppleSearchSection.ARTISTS],
                             onLoadMore = { onAppleLoadMore(AppleSearchSection.ARTISTS) },
                         )
                     } else if (filter == SearchFilter.ALBUMS && canonicalDetail == null) {
                         appleEditorialAlbumRows(
                             appleResults, onAppleOpen,
+                            onHold = onAppleHold,
                             paging = applePaging[AppleSearchSection.ALBUMS],
                             onLoadMore = { onAppleLoadMore(AppleSearchSection.ALBUMS) },
                         )
                     } else if (filter == SearchFilter.SONGS && canonicalDetail == null) {
                         appleEditorialTrackRows(
                             appleTrackResults, onAppleTrackOpen,
+                            onHold = onAppleTrackHold,
                             paging = applePaging[AppleSearchSection.TRACKS],
                             onLoadMore = { onAppleLoadMore(AppleSearchSection.TRACKS) },
                         )
@@ -646,6 +651,8 @@ fun SearchScreen(
                             albums = appleResults,
                             onOpen = onAppleOpen,
                             onTrackOpen = onAppleTrackOpen,
+                            onHold = onAppleHold,
+                            onTrackHold = onAppleTrackHold,
                             paging = applePaging,
                             onLoadMore = onAppleLoadMore,
                             visibleLimit = appleGeneralVisibleRows,
@@ -1031,6 +1038,8 @@ private fun LazyListScope.appleUnifiedSearchRows(
     albums: UiState<List<AppleEditorialSearchRow>>?,
     onOpen: (AppleEditorialSearchRow) -> Unit,
     onTrackOpen: (AppleEditorialTrackSearchRow) -> Unit,
+    onHold: ((AppleEditorialSearchRow) -> Unit)?,
+    onTrackHold: ((AppleEditorialTrackSearchRow) -> Unit)?,
     paging: Map<AppleSearchSection, AppleSearchPageStatus>,
     onLoadMore: (AppleSearchSection) -> Unit,
     visibleLimit: Int,
@@ -1079,6 +1088,7 @@ private fun LazyListScope.appleUnifiedSearchRows(
                         artistPortrait = true,
                     ),
                     onClick = { onOpen(result.row) },
+                    onLongPress = onHold?.takeIf { result.row.browseId.startsWith("apple_music_web:") }?.let { held -> { held(result.row) } },
                 )
                 is AppleUnifiedSearchEntry.Track -> NativeSearchResultRow(
                     row = NativeSearchRowUi(
@@ -1090,6 +1100,7 @@ private fun LazyListScope.appleUnifiedSearchRows(
                     onClick = if (result.row.albumBrowseId != null ||
                         result.row.key.startsWith("apple_music_web:"))
                         ({ onTrackOpen(result.row) }) else null,
+                    onLongPress = onTrackHold?.takeIf { result.row.key.startsWith("apple_music_web:") }?.let { held -> { held(result.row) } },
                 )
                 is AppleUnifiedSearchEntry.Album -> NativeSearchResultRow(
                     row = NativeSearchRowUi(
@@ -1099,6 +1110,7 @@ private fun LazyListScope.appleUnifiedSearchRows(
                         artistPortrait = false,
                     ),
                     onClick = { onOpen(result.row) },
+                    onLongPress = onHold?.takeIf { result.row.browseId.startsWith("apple_music_web:") }?.let { held -> { held(result.row) } },
                 )
             }
         }
@@ -1177,6 +1189,7 @@ private fun LazyListScope.appleEditorialTrackRows(
     results: UiState<List<AppleEditorialTrackSearchRow>>?,
     onAlbumOpen: (AppleEditorialTrackSearchRow) -> Unit,
     showHeading: Boolean = false,
+    onHold: ((AppleEditorialTrackSearchRow) -> Unit)? = null,
     paging: AppleSearchPageStatus? = null,
     onLoadMore: () -> Unit = {},
 ) {
@@ -1220,7 +1233,7 @@ private fun LazyListScope.appleEditorialTrackRows(
                     track.key.startsWith("apple_music_web:")) {
                     { onAlbumOpen(track) }
                 } else null,
-                onLongPress = null,
+                onLongPress = onHold?.takeIf { track.key.startsWith("apple_music_web:") }?.let { held -> { held(track) } },
             )
             if (index < results.data.lastIndex) {
                 HorizontalDivider(
@@ -1406,6 +1419,7 @@ private fun LazyListScope.appleEditorialArtistRows(
     results: UiState<List<AppleEditorialSearchRow>>?,
     onOpen: (AppleEditorialSearchRow) -> Unit,
     showHeading: Boolean = false,
+    onHold: ((AppleEditorialSearchRow) -> Unit)? = null,
     paging: AppleSearchPageStatus? = null,
     onLoadMore: () -> Unit = {},
 ) {
@@ -1447,7 +1461,7 @@ private fun LazyListScope.appleEditorialArtistRows(
                     artistPortrait = true,
                 ),
                 onClick = { onOpen(artist) },
-                onLongPress = null,
+                onLongPress = onHold?.takeIf { artist.browseId.startsWith("apple_music_web:") }?.let { held -> { held(artist) } },
             )
             if (index < results.data.lastIndex) {
                 HorizontalDivider(
@@ -1468,6 +1482,7 @@ private fun LazyListScope.appleEditorialAlbumRows(
     results: UiState<List<AppleEditorialSearchRow>>?,
     onOpen: (AppleEditorialSearchRow) -> Unit,
     showHeading: Boolean = false,
+    onHold: ((AppleEditorialSearchRow) -> Unit)? = null,
     paging: AppleSearchPageStatus? = null,
     onLoadMore: () -> Unit = {},
 ) {
@@ -1508,7 +1523,7 @@ private fun LazyListScope.appleEditorialAlbumRows(
                     artistPortrait = false,
                 ),
                 onClick = { onOpen(album) },
-                onLongPress = null,
+                onLongPress = onHold?.takeIf { album.browseId.startsWith("apple_music_web:") }?.let { held -> { held(album) } },
             )
             if (index < results.data.lastIndex) {
                 HorizontalDivider(

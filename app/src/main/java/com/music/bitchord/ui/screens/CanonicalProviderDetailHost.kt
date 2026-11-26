@@ -219,6 +219,7 @@ internal fun CanonicalProviderDetailHost(
         sourceAlbumArtistDisplayName = discogsPage?.albumArtistDisplayName
             ?: applePage?.albumArtistDisplayName,
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
+        sourceArtistTracksRanked = applePage?.sourceArtistTracksRanked == true,
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,
         songSort = songSort,

@@ -58,6 +58,7 @@ internal data class AppleSharedDetail(
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
     val sourceStoreUrl: String? = null,
+    val sourceArtistTracksRanked: Boolean = false,
 )
 
 internal fun appleArtistAsSharedDetail(

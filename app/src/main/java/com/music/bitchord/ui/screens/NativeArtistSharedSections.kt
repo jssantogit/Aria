@@ -292,27 +292,33 @@ internal fun NativeArtistSourceMetadataTracksSection(
     tracks: List<NativeMetadataTrack>,
     query: String,
     palette: ArtworkPalette,
+    ranked: Boolean = false,
 ) {
     val shown = tracks.filter { track ->
         query.isBlank() || track.title.contains(query, ignoreCase = true) ||
             track.credit?.contains(query, ignoreCase = true) == true
     }.take(16)
     NativeArtistTracksShelf(
-        title = "Faixas",
+        title = if (ranked) androidx.compose.ui.res.stringResource(com.music.bitchord.R.string.top_songs) else "Faixas",
         tracks = shown,
         palette = palette,
         itemKey = { it.key },
-        supportingText = "Amostra de faixas dos lançamentos verificados, sem ranking.",
+        supportingText = if (ranked) null else "Amostra de faixas dos lançamentos verificados, sem ranking.",
     ) { track ->
         NativeArtistInformationalTrackRow(
             title = track.title,
-            subtitle = track.credit,
+            subtitle = if (ranked) track.releaseCaption else track.credit,
             palette = palette,
             leading = {
                 Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
                     .clip(RoundedCornerShape(7.dp))
                     .background(palette.onBackground.copy(alpha = 0.08f))) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
+                    track.artworkUri?.let { art ->
+                        coil3.compose.AsyncImage(model = art, contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize())
+                    }
                 }
             },
         )
