@@ -4,22 +4,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwitchColors
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import com.music.aria.ui.theme.appleMusicKeyColor
+import com.music.aria.ui.theme.ariaAccentColor
+import com.music.aria.ui.theme.ariaOnAccentColor
 
 /**
- * Shared Settings toggle palette. AM-DECOMP verifies only the key blue color,
- * not the measured switch design. Keep Material's semantics, gestures and
- * accessibility while replacing the generic selected colors with BitChord's
- * native theme roles in every Settings subsection.
+ * Shared Settings toggle palette, using Aria's accent and contrasting thumb.
+ * Keep Material's semantics, gestures and accessibility.
  */
 @Composable
 fun appleSettingsSwitchColors(): SwitchColors {
-    val checkedBlue = appleMusicKeyColor()
+    val checkedAccent = ariaAccentColor()
     return SwitchDefaults.colors(
-        checkedTrackColor = checkedBlue,
-        checkedBorderColor = checkedBlue,
-        checkedThumbColor = Color.White,
+        checkedTrackColor = checkedAccent,
+        checkedBorderColor = checkedAccent,
+        checkedThumbColor = ariaOnAccentColor(),
         uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
         uncheckedBorderColor = MaterialTheme.colorScheme.outline,
         uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,

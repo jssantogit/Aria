@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.music.aria.R
 
 // Kept only as a source-compatibility alias while legacy callers are audited.
-// Selected states and primary actions use the verified light/night key blue.
+// Selected states and primary actions use the Aria light/dark amber.
 @Deprecated("Legacy red accent: use appleMusicKeyColor() for selected and affirmative actions")
 val AccentRed = Color(0xFFFA2D48)
 
@@ -28,8 +28,8 @@ internal val DarkColors = darkColorScheme(
     onPrimary = Color.Black,
     primaryContainer = Color(0xFF1C1C1E),
     onPrimaryContainer = Color.White,
-    secondary = AppleMusicDarkKey,
-    onSecondary = Color.White,
+    secondary = AriaDarkAccent,
+    onSecondary = ariaOnAccentColor(dark = true),
     secondaryContainer = Color(0xFF1C1C1E),
     onSecondaryContainer = Color.White,
     tertiary = Color(0xFF8E8E93),
@@ -52,8 +52,8 @@ internal val LightColors = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = Color(0xFFF2F2F7),
     onPrimaryContainer = Color.Black,
-    secondary = AppleMusicLightKey,
-    onSecondary = Color.White,
+    secondary = AriaLightAccent,
+    onSecondary = ariaOnAccentColor(dark = false),
     secondaryContainer = Color(0xFFF2F2F7),
     onSecondaryContainer = Color.Black,
     tertiary = Color(0xFF6E6E73),

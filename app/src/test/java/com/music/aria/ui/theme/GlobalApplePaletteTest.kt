@@ -7,12 +7,12 @@ import org.junit.Test
 
 /** Prevent unconstrained Material3 purple/pink defaults from leaking into native surfaces. */
 class GlobalApplePaletteTest {
-    @Test fun commonThemeUsesAnExplicitKeyBlueWithoutChangingNeutralPrimaryText() {
+    @Test fun commonThemeUsesAmberWithoutChangingNeutralPrimaryText() {
         assertEquals(Color.White, DarkColors.primary)
         assertEquals(Color.Black, LightColors.primary)
-        assertEquals(AppleMusicDarkKey, DarkColors.secondary)
-        assertEquals(AppleMusicLightKey, LightColors.secondary)
-        assertEquals(Color.White, DarkColors.onSecondary)
+        assertEquals(AriaDarkAccent, DarkColors.secondary)
+        assertEquals(AriaLightAccent, LightColors.secondary)
+        assertEquals(Color.Black, DarkColors.onSecondary)
         assertEquals(Color.White, LightColors.onSecondary)
     }
 

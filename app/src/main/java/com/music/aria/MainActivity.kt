@@ -8093,7 +8093,7 @@ private fun LibraryPinsDoneToolbarAction(
     context: Context,
 ) {
     Box(
-        Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF0A84FF)),
+        Modifier.size(44.dp).clip(CircleShape).background(com.music.aria.ui.theme.ariaAccentColor()),
         contentAlignment = Alignment.Center,
     ) {
         NativeToolbarIconButton(onClick = {
@@ -8114,7 +8114,7 @@ private fun LibraryPinsDoneToolbarAction(
             Icon(
                 Icons.Rounded.Check,
                 contentDescription = "Concluir edição de fixadas",
-                tint = Color.White,
+                tint = com.music.aria.ui.theme.ariaOnAccentColor(),
                 modifier = Modifier.size(26.dp),
             )
         }

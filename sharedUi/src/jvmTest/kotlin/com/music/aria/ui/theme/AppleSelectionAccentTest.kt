@@ -4,12 +4,12 @@ import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Selection uses the recovered Apple key color, not Material primary. */
+/** Selection uses the Aria amber accent, not Material primary. */
 class AppleSelectionAccentTest {
-    @Test fun selectedMarkIsBlueInLightAndDarkThemes() {
+    @Test fun selectedMarkIsAmberInLightAndDarkThemes() {
         val neutral = Color(0xFF8E8E93)
-        assertEquals(AppleMusicLightKey, appleSelectionAccentColor(true, false, neutral))
-        assertEquals(AppleMusicDarkKey, appleSelectionAccentColor(true, true, neutral))
+        assertEquals(AriaLightAccent, appleSelectionAccentColor(true, false, neutral))
+        assertEquals(AriaDarkAccent, appleSelectionAccentColor(true, true, neutral))
     }
 
     @Test fun inactiveMarkRemainsNeutralInEitherTheme() {

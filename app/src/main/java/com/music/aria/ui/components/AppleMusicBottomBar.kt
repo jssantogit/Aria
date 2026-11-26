@@ -45,7 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import com.music.aria.ui.theme.appleMusicKeyColor
+import com.music.aria.ui.theme.ariaAccentColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -272,7 +272,7 @@ fun AppleMusicBottomBar(
     val selectedVisibleIndex = appleMusicVisualIndexForDestination(selectedIndex)
     val reduceMotion by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val haptics = rememberHaptics()
-    val selectionBlue = appleMusicKeyColor()
+    val selectionAccent = ariaAccentColor()
 
     Row(
         modifier = modifier
@@ -292,7 +292,7 @@ fun AppleMusicBottomBar(
             val selected = selectedVisibleIndex == visibleIndex
             val targetTint = when {
                 !enabled -> AppleWhite.copy(alpha = 0.34f)
-                selected -> selectionBlue
+                selected -> selectionAccent
                 else -> AppleWhite
             }
             val tint by animateColorAsState(

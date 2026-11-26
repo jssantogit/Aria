@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import com.music.aria.ui.theme.appleMusicKeyColor
+import com.music.aria.ui.theme.ariaOnAccentColor
 import com.music.aria.ui.theme.appleSelectionAccentColor
 import com.music.aria.ui.theme.themeArtworkPalette
 
@@ -287,7 +288,7 @@ internal fun PlaylistWizardPrimaryAction(
         Text(
             label,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (enabled) ariaOnAccentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

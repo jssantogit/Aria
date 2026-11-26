@@ -6,20 +6,39 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 
 /**
- * AM-DECOMP Apple Music Android 7.0.0 key_color_light/night declarations.
- * Use only for native selection and affirmative action affordances; a default
- * text/icon tint is neutral, and destructive actions keep semantic red.
- * Other colors/metrics are explicit BitChord adaptations, not proven Apple values.
+ * Aria Notation 2.1 accents, sampled from the approved logo gradient.
+ * Burnt amber for light surfaces; luminous amber for dark surfaces.
+ * Neutral text, destructive red and data-specific colors are independent.
  */
-val AppleMusicLightKey = Color(0xFF0088FF)
-val AppleMusicDarkKey = Color(0xFF0091FF)
+val AriaLightAccent = Color(0xFFB74D0A)
+val AriaDarkAccent = Color(0xFFFFB747)
 
-fun appleMusicKeyColor(dark: Boolean): Color =
-    if (dark) AppleMusicDarkKey else AppleMusicLightKey
+fun ariaAccentColor(dark: Boolean): Color =
+    if (dark) AriaDarkAccent else AriaLightAccent
 
-/** Selected UI accents use Apple key blue; inactive marks keep neutral ink. */
+fun ariaOnAccentColor(dark: Boolean): Color =
+    if (dark) Color.Black else Color.White
+
+@Composable
+fun ariaAccentColor(): Color =
+    ariaAccentColor(dark = MaterialTheme.colorScheme.background.luminance() < 0.5f)
+
+@Composable
+fun ariaOnAccentColor(): Color =
+    ariaOnAccentColor(dark = MaterialTheme.colorScheme.background.luminance() < 0.5f)
+
+// Compatibility names for existing Apple-inspired UI call sites. These are
+// Aria branding roles, not Apple palette constants; there is one source of truth.
+val AppleMusicLightKey = AriaLightAccent
+val AppleMusicDarkKey = AriaDarkAccent
+
+fun appleMusicKeyColor(dark: Boolean): Color = ariaAccentColor(dark)
+
+@Composable
+fun appleMusicKeyColor(): Color = ariaAccentColor()
+
 fun appleSelectionAccentColor(selected: Boolean, dark: Boolean, neutral: Color): Color =
-    if (selected) appleMusicKeyColor(dark) else neutral
+    if (selected) ariaAccentColor(dark) else neutral
 
 @Composable
 fun appleSelectionAccentColor(selected: Boolean, neutral: Color): Color =
@@ -28,8 +47,3 @@ fun appleSelectionAccentColor(selected: Boolean, neutral: Color): Color =
         dark = MaterialTheme.colorScheme.background.luminance() < 0.5f,
         neutral = neutral,
     )
-
-
-@Composable
-fun appleMusicKeyColor(): Color =
-    appleMusicKeyColor(dark = MaterialTheme.colorScheme.background.luminance() < 0.5f)

@@ -177,3 +177,24 @@ for name in sorted(filter(None, tracked)):
         retired_symbols.append(f"{name}:{','.join(map(str, hits))}")
 require(not retired_symbols, "Retired Android identity symbols returned: " + "; ".join(retired_symbols))
 print("Aria Android application, icons, theme, native library and version symbols verified.")
+
+
+# Report remaining literal blue candidates so semantic blue, artwork, service
+# branding and legacy accent can be reviewed separately; never recolor data blindly.
+legacy_accent = re.compile(
+    r"(?i)(?:0x(?:ff)?|#)(?:0088ff|0091ff|007aff|0a84ff|2196f3|0000ff|1e90ff)\b"
+    r"|\bColor\.(?:Blue|BLUE)\b"
+)
+print("Aria accent audit: literal blue candidates (review by role):")
+for name in sorted(filter(None, tracked)):
+    if not (name.startswith("app/src/main/") or
+            name.startswith("sharedUi/src/") and "Test/" not in name):
+        continue
+    source = ROOT / name
+    if not source.is_file() or source.suffix not in {".kt", ".java", ".xml", ".svg"}:
+        continue
+    for i, line in enumerate(source.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        matches = legacy_accent.findall(line)
+        if matches:
+            print(f"  {name}:{i} {', '.join(matches)}")
+print("Aria accent audit complete.")

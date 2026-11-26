@@ -10,3 +10,7 @@ Owner-approved identity: musical A + lowercase ria. Vector paths and colors from
 ## Validation
 - Preserve upstream attribution/license and historical evidence. Do not blindly rename persisted identifiers.
 - Build and test exact branch HEAD; verify actual launcher shapes, themed icon, existing alias selection, notifications, backup and fresh install. No physical smoke or merge before owner review.
+
+## Application accent
+- The user requested replacing the global Apple-inspired blue accent with Notation amber. Initial tokens derive from the approved logo gradient: light mode burnt amber `#B74D0A`, dark mode luminous amber `#FFB747`; white/black filled-control ink respectively. Contrast against white/black is 5.15:1 / 12.12:1. Neutral primary surfaces and destructive colors stay intact.
+- Central Aria accent tokens drive legacy shared helper aliases, selected tabs, inline actions, settings controls, buttons and the playlist wizard. Pin-edit confirmation now uses the shared token instead of its direct blue literal. Data-coded five-star rating palette, artwork and provider marks are not redefined by this change. The CI identity audit inventories remaining common literal blues for role-by-role review; full source audit and visual acceptance remain pending.
