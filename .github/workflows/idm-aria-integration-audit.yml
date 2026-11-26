@@ -1,0 +1,98 @@
+name: IDM · Aria namespace integration audit
+on:
+  push:
+    branches: [audit/idm-aria-namespace-integration-20261126]
+    paths: [.github/workflows/idm-aria-integration-audit.yml]
+permissions:
+  contents: read
+jobs:
+  merge-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compare pinned IDM and Aria trees without writing remote refs
+        shell: bash
+        env:
+          IDM_SHA: cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          ARIA_SHA: cc8e525843a984b56e7d5e9f29f362141abc7a70
+          MIGRATION_SOURCE: e74400a7e58cba41a64f535a90af1399e5c718da
+        run: |
+          set -euo pipefail
+          git cat-file -e "$IDM_SHA^{commit}"
+          git cat-file -e "$ARIA_SHA^{commit}"
+          git cat-file -e "$MIGRATION_SOURCE^{commit}"
+          git config user.name "IDM integration audit"
+          git config user.email "idm-audit@users.noreply.github.com"
+          git config merge.renameLimit 8000
+          git config diff.renameLimit 8000
+          report="$RUNNER_TEMP/idm-aria-audit"
+          mkdir -p "$report"
+          ancestor="$(git merge-base "$IDM_SHA" "$ARIA_SHA")"
+          printf 'IDM %s\nAria %s\nAncestor %s\n' "$IDM_SHA" "$ARIA_SHA" "$ancestor" | tee "$report/pinned.txt"
+          git diff --name-status --find-renames=50% "$ancestor" "$IDM_SHA" > "$report/idm-paths.txt"
+          git diff --name-status --find-renames=50% "$ancestor" "$ARIA_SHA" > "$report/aria-paths.txt"
+          # First capture an ordinary merge on the pinned trees.
+          set +e
+          git merge-tree --write-tree --name-only "$ARIA_SHA" "$IDM_SHA" > "$report/raw-merge.txt"
+          raw_status=$?
+          set -e
+          test "$raw_status" -le 1
+          printf 'Raw merge status: %s\n' "$raw_status" | tee "$report/status.txt"
+          # Reuse the exact historical namespace preparation script from the
+          # identity migration, for both sides of the IDM delta. These are
+          # synthetic local trees, not commits to any remote branch.
+          normalize() {
+            local source="$1" label="$2" checkout="$RUNNER_TEMP/idm-$2"
+            git worktree add --detach "$checkout" "$source" >&2
+            mkdir -p "$checkout/.git-audit"
+            git show "$MIGRATION_SOURCE:scripts/prepare-aria-namespace-candidate.py" > "$checkout/.git-audit/prepare-aria-namespace-candidate.py"
+            # The historical script demands a clean checkout.
+            # Its ROOT resolves to the checkout, so put it in an ignored directory.
+            # Exclude the audit helper via local info/exclude only.
+            exclude="$(git -C "$checkout" rev-parse --git-path info/exclude)"
+            case "$exclude" in /*) ;; *) exclude="$checkout/$exclude";; esac
+            printf '\n/.git-audit/\n' >> "$exclude"
+            python3 "$checkout/.git-audit/prepare-aria-namespace-candidate.py" --output "$report/namespace-$label" >&2
+            git -C "$checkout" write-tree
+          }
+          ancestor_tree="$(normalize "$ancestor" ancestor)"
+          idm_tree="$(normalize "$IDM_SHA" candidate)"
+          # Model the normalized IDM delta with the normalized ancestor as its
+          # parent. The final real integration still requires both true heads.
+          normalized_ancestor="$(printf 'audit normalized ancestor\n' | git commit-tree "$ancestor_tree")"
+          normalized_idm="$(printf 'audit normalized IDM\n' | git commit-tree "$idm_tree" -p "$normalized_ancestor")"
+          normalized_aria="$(printf 'audit Aria current tree\n' | git commit-tree "$(git rev-parse "$ARIA_SHA^{tree}")" -p "$normalized_ancestor")"
+          set +e
+          git merge-tree --write-tree --name-only "$normalized_aria" "$normalized_idm" > "$report/normalized-merge.txt"
+          norm_status=$?
+          set -e
+          test "$norm_status" -le 1
+          printf 'Normalized merge status: %s\n' "$norm_status" | tee -a "$report/status.txt"
+          # Publish paths and conflict classes, never private credential values,
+          # source contents, or a remotely promoted merge.
+          {
+            echo '### Pinned integration audit'
+            cat "$report/pinned.txt" "$report/status.txt"
+            echo
+            echo '#### Conflict paths after normalization'
+            grep -E '^CONFLICT|^Auto-merging' "$report/normalized-merge.txt" || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$report/normalized-merge.txt"
+      - name: Archive path-only analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-aria-integration-conflicts
+          path: |
+            ${{ runner.temp }}/idm-aria-audit/pinned.txt
+            ${{ runner.temp }}/idm-aria-audit/status.txt
+            ${{ runner.temp }}/idm-aria-audit/idm-paths.txt
+            ${{ runner.temp }}/idm-aria-audit/aria-paths.txt
+            ${{ runner.temp }}/idm-aria-audit/raw-merge.txt
+            ${{ runner.temp }}/idm-aria-audit/normalized-merge.txt
+            ${{ runner.temp }}/idm-aria-audit/namespace-*/namespace-review.txt
+          if-no-files-found: error
