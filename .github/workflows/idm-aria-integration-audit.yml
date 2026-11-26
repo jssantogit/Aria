@@ -271,6 +271,30 @@ jobs:
               source = source.replace(old,new)
           workflow.write_text(source)
           git("add", "--", str(workflow.relative_to(root)))
+          # The three one-off pre-namespace integration workflows have
+          # already fulfilled their pinned purpose. Retire them in the
+          # candidate rather than re-enable obsolete remote-writing recipes.
+          for name in ("idm-main-integration.yml",
+                       "idm-rea-topbar-integration.yml",
+                       "provider-rea-integration-preflight.yml"):
+              path = ".github/workflows/" + name
+              assert (root / path).is_file(), path
+              git("rm", "--", path)
+          # Restore the approved symbol name in all current module sources,
+          # including the IDM's newly extracted Compose helpers and comments.
+          changed = []
+          for name in git("ls-files", "-z").decode().split("\0"):
+              if not name.startswith(("app/", "shared/", "sharedUi/")) or not name.endswith(".kt"):
+                  continue
+              file = root / name
+              raw = file.read_bytes()
+              revised, count = re.subn(rb"\bBitChordApp\b", b"AriaApp", raw)
+              if count:
+                  file.write_bytes(revised)
+                  git("add", "--", name)
+                  changed.append(f"{name}: {count}")
+          assert changed, "Expected old app symbol in integrated sources"
+          print("App symbol reconciled:", *changed, sep="\n")
           tree = git("write-tree").decode().strip()
           print("Resolved candidate tree:", tree)
           (report / "resolved-tree.txt").write_text(tree + "\n")
@@ -315,6 +339,25 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest :sharedUi:jvmTest
+      - name: Diagnose candidate test failures
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/idm-aria-resolve" <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          import sys
+          root = Path(sys.argv[1])
+          for directory in ("app/build/test-results/testDevDebugUnitTest", "sharedUi/build/test-results/jvmTest"):
+              for file in sorted((root / directory).glob("TEST-*.xml")):
+                  for case in ET.parse(file).getroot().iter("testcase"):
+                      for tag in ("failure", "error"):
+                          problem = case.find(tag)
+                          if problem is not None:
+                              print(case.get("classname"), case.get("name"), problem.get("message"))
+                              print((problem.text or "")[:2000])
+          PY
       - name: Archive path-only analysis
         if: always()
         uses: actions/upload-artifact@v4
