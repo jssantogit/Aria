@@ -3177,10 +3177,12 @@ class IdmCatalogLiveObservationTest {
                             }
                             provider == mb -> when (case.kind) {
                                 "artist" -> {
-                                    val response = mbSearch.searchPublicArtists(case.query, 15)
+                                    val response = mbSearch.searchArtists(case.query, 15)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
-                                    rows = response?.page?.items.orEmpty().map {
+                                    val rawArtists = response?.page?.items.orEmpty()
+                                    val displayArtists = publicMusicBrainzArtistRows(case.query, rawArtists)
+                                    rows = displayArtists.map {
                                         SearchParityRow("catalog:ARTIST:${it.musicBrainzId}", it.name)
                                     }
                                     val anchors = mbSearch.searchReleaseGroups(case.title + " " + case.anchor, 50)
@@ -3204,7 +3206,7 @@ class IdmCatalogLiveObservationTest {
                                         // the work occurs in the first general discography page.
                                         // At most the five visible literal namesakes; no change
                                         // to ranking and no identity inference from name alone.
-                                        val namesakes = response?.page?.items.orEmpty().take(5).filter {
+                                        val namesakes = displayArtists.take(5).filter {
                                             case.artistMatches(it.name)
                                         }.distinctBy { it.musicBrainzId }
                                         for (artist in namesakes) {
@@ -3221,13 +3223,15 @@ class IdmCatalogLiveObservationTest {
                                         }
                                     }
                                     provenIds += credits.map { "catalog:ARTIST:$it" }
-                                    mbLandingRawTargetRank = rows.indexOfFirst { it.id in provenIds } + 1
-                                    mbLandingCuratedTargetRank = mbLandingRawTargetRank
+                                    mbLandingRawTargetRank = rawArtists.indexOfFirst {
+                                        "catalog:ARTIST:${it.musicBrainzId}" in provenIds
+                                    } + 1
+                                    mbLandingCuratedTargetRank = rows.indexOfFirst { it.id in provenIds } + 1
                                     offered = provenIds.isNotEmpty()
                                 }
                                 "track" -> {
-                                    val response = mbSearch.searchPublicRecordings(
-                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT,
+                                    val response = mbSearch.searchRecordings(
+                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
                                     )
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
@@ -3235,7 +3239,9 @@ class IdmCatalogLiveObservationTest {
                                     mbLandingRawTargetRank = raw.indexOfFirst {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     } + 1
-                                    val curated = raw.filter(::isCuratedMusicBrainzRecording)
+                                    val curated = publicMusicBrainzWorkRows(case.query, raw,
+                                        MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
+                                        .filter(::isCuratedMusicBrainzRecording)
                                     mbLandingCuratedTargetRank = curated.indexOfFirst {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     } + 1
@@ -3247,11 +3253,11 @@ class IdmCatalogLiveObservationTest {
                                             isCuratedMusicBrainzRecording(it) }
                                 }
                                 else -> {
-                                    val groups = mbSearch.searchPublicReleaseGroups(
-                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT,
+                                    val groups = mbSearch.searchReleaseGroups(
+                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
                                     )
                                         as? MusicBrainzCatalogSearchResult.Success
-                                    val editions = mbSearch.searchPublicReleases(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+                                    val editions = mbSearch.searchReleases(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (groups == null || editions == null) failed = true
                                     val rawGroups = groups?.page?.items.orEmpty()
@@ -3262,8 +3268,12 @@ class IdmCatalogLiveObservationTest {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     }
                                     mbLandingRawTargetRank = rawMatches.indexOfFirst { it } + 1
-                                    val groupHits = rawGroups.filter(::isCuratedMusicBrainzReleaseGroup)
-                                    val releaseHits = rawEditions.filter(::isCuratedMusicBrainzRelease)
+                                    val groupHits = publicMusicBrainzWorkRows(case.query, rawGroups,
+                                        MusicBrainzReleaseGroupHit::title, MusicBrainzReleaseGroupHit::artistDisplay)
+                                        .filter(::isCuratedMusicBrainzReleaseGroup)
+                                    val releaseHits = publicMusicBrainzWorkRows(case.query, rawEditions,
+                                        MusicBrainzReleaseHit::title, MusicBrainzReleaseHit::artistDisplay)
+                                        .filter(::isCuratedMusicBrainzRelease)
                                     val nativeRows = groupHits.map {
                                         com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
                                             it.musicBrainzId, com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE_GROUP,
@@ -3298,10 +3308,10 @@ class IdmCatalogLiveObservationTest {
                                     } + 1
                                     val probe = mbSearch.searchReleaseGroups(case.title + " " + case.artist, 50)
                                         as? MusicBrainzCatalogSearchResult.Success
-                                    offered = (groupHits + probe?.page?.items.orEmpty()).any {
+                                    offered = (rawGroups.filter(::isCuratedMusicBrainzReleaseGroup) + probe?.page?.items.orEmpty()).any {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay) &&
                                             isCuratedMusicBrainzReleaseGroup(it)
-                                    } || releaseHits.any {
+                                    } || rawEditions.filter(::isCuratedMusicBrainzRelease).any {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     }
                                 }

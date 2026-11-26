@@ -1,5 +1,8 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
+import com.music.bitchord.data.catalog.metadata.publicMusicBrainzArtistRows
+import com.music.bitchord.data.catalog.metadata.publicMusicBrainzWorkMatches
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
@@ -8,6 +11,7 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzClient
 import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
