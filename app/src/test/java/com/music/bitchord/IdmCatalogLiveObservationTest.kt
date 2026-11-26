@@ -3104,6 +3104,13 @@ class IdmCatalogLiveObservationTest {
                 var appleContinuationTargetRecovered = false
                 var appleContinuationQualifiedRecovered = false
                 var appleContinuationInterrupted = false
+                var appleLandingDiscoveredTargetRank = 0
+                var appleLandingDiscoveredQualifiedRank = 0
+                var appleQualifiedIdentityVerified = false
+                var appleQualifiedIdentityReads = 0
+                var mbAnchorFieldProbe = false
+                var mbLandingRawTargetRank = 0
+                var mbLandingCuratedTargetRank = 0
                 val supported = provider != discogs || case.kind != "track"
                 val complete = try {
                     withTimeoutOrNull(100_000L) {
@@ -3130,11 +3137,22 @@ class IdmCatalogLiveObservationTest {
                                     }
                                     val anchors = mbSearch.searchReleaseGroups(case.title + " " + case.anchor, 50)
                                         as? MusicBrainzCatalogSearchResult.Success
-                                    val credits = anchors?.page?.items.orEmpty().filter {
-                                        searchLabelKey(it.title) == searchLabelKey(case.anchor) &&
-                                            case.artistMatches(it.artistDisplay)
-                                    }.flatMap { it.artistCreditMbids.orEmpty() }
+                                    fun matchingCredits(hits: List<MusicBrainzReleaseGroupHit>) =
+                                        hits.filter {
+                                            searchLabelKey(it.title) == searchLabelKey(case.anchor) &&
+                                                case.artistMatches(it.artistDisplay)
+                                        }.flatMap { it.artistCreditMbids.orEmpty() }
+                                    var credits = matchingCredits(anchors?.page?.items.orEmpty())
+                                    if (credits.isEmpty() && !case.anchor.isNullOrBlank()) {
+                                        mbAnchorFieldProbe = true
+                                        val exact = mbSearch.searchReleaseGroupsForTitleArtist(
+                                            case.anchor, case.title,
+                                        ) as? MusicBrainzCatalogSearchResult.Success
+                                        credits = matchingCredits(exact?.page?.items.orEmpty())
+                                    }
                                     provenIds += credits.map { "catalog:ARTIST:$it" }
+                                    mbLandingRawTargetRank = rows.indexOfFirst { it.id in provenIds } + 1
+                                    mbLandingCuratedTargetRank = mbLandingRawTargetRank
                                     offered = provenIds.isNotEmpty()
                                 }
                                 "track" -> {
@@ -3143,8 +3161,15 @@ class IdmCatalogLiveObservationTest {
                                     )
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
-                                    rows = response?.page?.items.orEmpty().filter(::isCuratedMusicBrainzRecording)
-                                        .map { SearchParityRow("catalog:RECORDING:${it.musicBrainzId}", it.title, it.artistDisplay) }
+                                    val raw = response?.page?.items.orEmpty()
+                                    mbLandingRawTargetRank = raw.indexOfFirst {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
+                                    } + 1
+                                    val curated = raw.filter(::isCuratedMusicBrainzRecording)
+                                    mbLandingCuratedTargetRank = curated.indexOfFirst {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
+                                    } + 1
+                                    rows = curated.map { SearchParityRow("catalog:RECORDING:${it.musicBrainzId}", it.title, it.artistDisplay) }
                                     val probe = mbSearch.searchRecordings(case.title + " " + case.artist, 50)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     offered = (response?.page?.items.orEmpty() + probe?.page?.items.orEmpty())
@@ -3159,8 +3184,16 @@ class IdmCatalogLiveObservationTest {
                                     val editions = mbSearch.searchReleases(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (groups == null || editions == null) failed = true
-                                    val groupHits = groups?.page?.items.orEmpty().filter(::isCuratedMusicBrainzReleaseGroup)
-                                    val releaseHits = editions?.page?.items.orEmpty().filter(::isCuratedMusicBrainzRelease)
+                                    val rawGroups = groups?.page?.items.orEmpty()
+                                    val rawEditions = editions?.page?.items.orEmpty()
+                                    val rawMatches = rawGroups.map {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
+                                    } + rawEditions.map {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
+                                    }
+                                    mbLandingRawTargetRank = rawMatches.indexOfFirst { it } + 1
+                                    val groupHits = rawGroups.filter(::isCuratedMusicBrainzReleaseGroup)
+                                    val releaseHits = rawEditions.filter(::isCuratedMusicBrainzRelease)
                                     val nativeRows = groupHits.map {
                                         com.music.bitchord.ui.screens.CanonicalCatalogSearchRow(
                                             it.musicBrainzId, com.music.bitchord.ui.screens.CanonicalSearchKind.RELEASE_GROUP,
@@ -3190,6 +3223,9 @@ class IdmCatalogLiveObservationTest {
                                         val id = canonicalNativeBrowseId(it)
                                         SearchParityRow(id, it.title, credits[id])
                                     }
+                                    mbLandingCuratedTargetRank = rows.indexOfFirst {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artist)
+                                    } + 1
                                     val probe = mbSearch.searchReleaseGroups(case.title + " " + case.artist, 50)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     offered = (groupHits + probe?.page?.items.orEmpty()).any {
@@ -3222,6 +3258,7 @@ class IdmCatalogLiveObservationTest {
                                         .map { SearchParityRow(it.browseId, it.title, it.artistName) }
                                 }
                                 val qualifiedAnchorIds = mutableSetOf<String>()
+                                val qualifiedAnchorCollections = linkedMapOf<String, Long>()
                                 fun qualifiedTitle(value: String): Boolean =
                                     applePublicAlbumWorkKey(value) != searchLabelKey(value) &&
                                         applePublicAlbumWorkKey(value) == searchLabelKey(case.title)
@@ -3233,11 +3270,17 @@ class IdmCatalogLiveObservationTest {
                                             searchLabelKey(it.title) == searchLabelKey(case.anchor) &&
                                                 case.artistMatches(it.artistName)
                                         }.mapNotNull { it.artistId?.let { id -> "itunes:br:artist:$id" } }
-                                        qualifiedAnchorIds += probe?.releases.orEmpty().filter {
+                                        val qualifiedAnchors = probe?.releases.orEmpty().filter {
                                             case.artistMatches(it.artistName) && it.storefront == "br" &&
                                                 applePublicAlbumWorkKey(it.title) != searchLabelKey(it.title) &&
                                                 applePublicAlbumWorkKey(it.title) == searchLabelKey(case.anchor)
-                                        }.mapNotNull { it.artistId?.let { id -> "itunes:br:artist:$id" } }
+                                        }
+                                        for (anchor in qualifiedAnchors) {
+                                            val artistId = anchor.artistId ?: continue
+                                            val key = "itunes:br:artist:$artistId"
+                                            qualifiedAnchorIds += key
+                                            qualifiedAnchorCollections.putIfAbsent(key, anchor.appleCollectionId)
+                                        }
                                         offered = provenIds.isNotEmpty()
                                     }
                                     "track" -> {
@@ -3274,6 +3317,35 @@ class IdmCatalogLiveObservationTest {
                                     "album" -> !case.titleMatches(item.title) &&
                                         qualifiedTitle(item.title) && case.artistMatches(item.artistName)
                                     else -> false
+                                }
+                                appleLandingDiscoveredTargetRank = pager.firstDiscoveredRank(::strictCandidate)
+                                appleLandingDiscoveredQualifiedRank = pager.firstDiscoveredRank(::qualifiedCandidate)
+                                // Independently corroborate a qualified top-five result using
+                                // the exact Apple collection ID and credit, never another source.
+                                // Keep this evidence separate from the frozen strict score.
+                                if (appleQualifiedTitleTopFive || appleQualifiedAnchorTopFive) {
+                                    val candidate = visible.take(5).firstOrNull(::qualifiedCandidate)
+                                    val collectionId = candidate?.let {
+                                        if (case.kind == "artist") qualifiedAnchorCollections[it.scopedId]
+                                        else it.id
+                                    }
+                                    if (candidate != null && collectionId != null && collectionId > 0L) {
+                                        appleQualifiedIdentityReads++
+                                        val lookup = appleClient.lookupSearchCollection(collectionId, "br")
+                                            as? ItunesCatalogResult.Success
+                                        val exact = lookup?.items?.singleOrNull {
+                                            it.id == collectionId && it.type == ItunesCatalogItemType.ALBUM &&
+                                                it.storefront == "br" && case.artistMatches(it.artistName)
+                                        }
+                                        appleQualifiedIdentityVerified = exact != null && if (case.kind == "artist") {
+                                            exact.artistId == candidate.id &&
+                                                applePublicAlbumWorkKey(exact.title) == searchLabelKey(case.anchor)
+                                        } else {
+                                            exact.artistId != null && exact.artistId == candidate.artistId &&
+                                                searchLabelKey(exact.title) == searchLabelKey(candidate.title) &&
+                                                qualifiedTitle(exact.title)
+                                        }
+                                    }
                                 }
                                 // Measure later availability only if the initial page has
                                 // neither accepted strict nor edition-qualified target.
@@ -3486,6 +3558,13 @@ class IdmCatalogLiveObservationTest {
                         "apple_continuation_target_recovered" to if (appleContinuationTargetRecovered) 1 else 0,
                         "apple_continuation_qualified_recovered" to if (appleContinuationQualifiedRecovered) 1 else 0,
                         "apple_continuation_interrupted" to if (appleContinuationInterrupted) 1 else 0,
+                        "apple_landing_discovered_target_rank" to appleLandingDiscoveredTargetRank,
+                        "apple_landing_discovered_qualified_rank" to appleLandingDiscoveredQualifiedRank,
+                        "apple_qualified_identity_verified" to if (appleQualifiedIdentityVerified) 1 else 0,
+                        "apple_qualified_identity_reads" to appleQualifiedIdentityReads,
+                        "mb_anchor_field_probe" to if (mbAnchorFieldProbe) 1 else 0,
+                        "mb_landing_raw_target_rank" to mbLandingRawTargetRank,
+                        "mb_landing_curated_target_rank" to mbLandingCuratedTargetRank,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
                     ),

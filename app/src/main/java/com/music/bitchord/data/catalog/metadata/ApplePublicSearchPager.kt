@@ -412,7 +412,12 @@ internal class ApplePublicSearchPager(
             (initialized && (artistCollectionHint() != null || songCollectionTerm() != null)),
     )
 
-    private fun merge(result: ItunesCatalogResult.Success) {
+    /** Read-only diagnostic rank across discovered candidates, including the
+     * local tail that has not been published. No request or cursor mutation. */
+    internal fun firstDiscoveredRank(matches: (ItunesCatalogItem) -> Boolean): Int =
+        rows.values.indexOfFirst(matches) + 1
+
+    private fun merge(result: ItunesCatalogResult.Success, matchQuery: String = query) {
         if (entity == ItunesCatalogEntity.ALBUM) {
             val scoped = result.items.filter {
                 it.type == expected && it.storefront == country && it.id > 0L &&
@@ -448,7 +453,7 @@ internal class ApplePublicSearchPager(
             .filter { it.type == expected && it.storefront == country &&
                 it.id > 0L && it.title.isNotBlank() && it.id !in disputed }
             .mapNotNull { row ->
-                applePublicSearchMatchRank(query, row)?.let { it to row }
+                applePublicSearchMatchRank(matchQuery, row)?.let { it to row }
             }
             .sortedWith(compareBy<Pair<Int, ItunesCatalogItem>> { it.first }
                 .thenBy { when {
@@ -598,6 +603,32 @@ internal class ApplePublicSearchPager(
         }
     }
 
+    /**
+     * A trailing numeric disambiguator can originate from another catalogue.
+     * Only after the literal artist query AND its normal facet both yielded
+     * no admitted artist, offer exact native names as alternative matches.
+     * Never relabel an artist, merge IDs, or infer an identity crosswalk.
+     */
+    private suspend fun recoverEmptyArtistSuffixLanding() {
+        if (entity != ItunesCatalogEntity.ARTIST || rows.isNotEmpty() ||
+            nextAttribute != extraAttributes.size) return
+        val base = Regex("""^(.+?)\s+\(([2-9]|[1-9]\d{1,3})\)$""")
+            .matchEntire(query.trim())?.groupValues?.get(1)?.trim() ?: return
+        if (base.isBlank() || base.length > 100) return
+        when (val result = source.search(base, entity, country, ItunesCatalogSearchAttribute.ARTIST_TERM)) {
+            is ItunesCatalogResult.Failure -> capped = true
+            is ItunesCatalogResult.Success -> {
+                capped = capped || result.possiblyTruncated
+                val exact = result.items.filter {
+                    it.type == ItunesCatalogItemType.ARTIST && it.storefront == country &&
+                        applePublicSearchFold(it.title) == applePublicSearchFold(base)
+                }
+                merge(result.copy(items = exact), matchQuery = base)
+                visibleCount = minOf(pageSize, rows.size)
+            }
+        }
+    }
+
     suspend fun start(): ApplePublicSearchPageLoad {
         if (initialized) return ApplePublicSearchPageLoad.Success(snapshot())
         if (query.trim().isEmpty() || query.length > 120 ||
@@ -626,8 +657,14 @@ internal class ApplePublicSearchPager(
                     (creditHints.isNotEmpty() || query.split(" - ").let { parts ->
                         parts.size == 2 && parts.all { it.isNotBlank() }
                     })
-                if (rows.isEmpty() && probeAttributes) loadMore()
-                else ApplePublicSearchPageLoad.Success(snapshot())
+                if (rows.isEmpty() && probeAttributes) {
+                    val loaded = loadMore()
+                    if (loaded is ApplePublicSearchPageLoad.Failure) loaded
+                    else {
+                        recoverEmptyArtistSuffixLanding()
+                        ApplePublicSearchPageLoad.Success(snapshot())
+                    }
+                } else ApplePublicSearchPageLoad.Success(snapshot())
             }
         }
     }

@@ -355,6 +355,43 @@ class ApplePublicSearchPagerTest {
         assertEquals(listOf(null, ItunesCatalogSearchAttribute.ARTIST_TERM), fake.calls)
     }
 
+    @Test fun numericArtistSuffixFallbackOnlyOffersExactNativeNamesAfterLiteralMiss() = runBlocking {
+        val native = album(10, title = "Example Artist").copy(
+            type = ItunesCatalogItemType.ARTIST, collectionId = null)
+        val second = native.copy(id = 11)
+        var literalExists = false
+        val calls = mutableListOf<Pair<String, ItunesCatalogSearchAttribute?>>()
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(query: String, entity: ItunesCatalogEntity,
+                country: String, attribute: ItunesCatalogSearchAttribute?): ItunesCatalogResult {
+                calls += query to attribute
+                return ItunesCatalogResult.Success(when {
+                    query == "Example Artist (2)" && literalExists ->
+                        listOf(native.copy(id = 20, title = query))
+                    query == "Example Artist" -> listOf(native, second,
+                        native.copy(id = 12, title = "Example Artist Tribute"),
+                        native.copy(id = 13, storefront = "us"),
+                        native.copy(id = 14, type = ItunesCatalogItemType.ALBUM))
+                    else -> emptyList()
+                })
+            }
+        }
+        val pager = ApplePublicSearchPager("Example Artist (2)", ItunesCatalogEntity.ARTIST, "br", source = source)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(10L, 11L), initial.visible.map { it.id })
+        assertTrue(initial.visible.all { it.title == "Example Artist" })
+        assertEquals(2, pager.firstDiscoveredRank { it.id == 11L })
+        assertEquals(0, pager.firstDiscoveredRank { it.id == 12L })
+        assertEquals(3, calls.size)
+        pager.loadMore()
+        assertEquals(3, calls.size)
+        literalExists = true
+        calls.clear()
+        val literal = ApplePublicSearchPager("Example Artist (2)", ItunesCatalogEntity.ARTIST, "br", source = source)
+        assertEquals(20L, (literal.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.single().id)
+        assertEquals(1, calls.size)
+    }
+
     @Test fun failureDoesNotDiscardResultsAndNextClickRetriesSameAttribute() = runBlocking {
         val fake = Fake(ItunesCatalogResult.Success(listOf(album(1)), true),
             mutableMapOf(ItunesCatalogSearchAttribute.ALBUM_TERM to

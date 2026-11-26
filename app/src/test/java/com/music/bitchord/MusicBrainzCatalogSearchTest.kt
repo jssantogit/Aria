@@ -64,6 +64,26 @@ class MusicBrainzCatalogSearchTest {
         }
     }
 
+    @Test fun exactReleaseGroupCorroborationUsesQuotedSourceFieldsAndBoundedLimit() = runBlocking {
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("release-group", path)
+                    calls += parameters
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchReleaseGroupsForTitleArtist("Work", "Artist") is MusicBrainzCatalogSearchResult.Success)
+        assertEquals("releasegroup:\"Work\" AND artist:\"Artist\"", calls.single()["query"])
+        assertEquals("false", calls.single()["dismax"])
+        assertEquals("12", calls.single()["limit"])
+        assertTrue(source.searchReleaseGroupsForTitleArtist("Work", "Artist", 13) is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(1, calls.size)
+    }
+
     @Test fun weakReleaseGroupLandingProbesExactWorkAndKeepsOriginalOffsets() = runBlocking {
         val wrong = "11111111-1111-4111-8111-111111111111"
         val target = "22222222-2222-4222-8222-222222222222"

@@ -304,6 +304,22 @@ internal class MusicBrainzCatalogSearch(
         ))
     }
 
+    /** Independent, bounded source corroboration of a known artist/work pair.
+     * This is not a landing-ranking hint and cannot fabricate an artist ID. */
+    suspend fun searchReleaseGroupsForTitleArtist(
+        title: String, artist: String, limit: Int = 12,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
+        if (title.isBlank() || artist.isBlank() || title.length > 80 || artist.length > 80 ||
+            limit !in 1..12 || title.any(Char::isISOControl) || artist.any(Char::isISOControl)
+        ) return MusicBrainzCatalogSearchResult.Failure(MusicBrainzCatalogSearchFailure.INVALID_QUERY)
+        fun quote(value: String): String =
+            "\"" + value.trim().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        return searchReleaseGroupsInternal(
+            "releasegroup:${quote(title)} AND artist:${quote(artist)}",
+            limit, 0, fieldedQuery = true,
+        )
+    }
+
     suspend fun searchReleaseGroupsForArtistMbid(
         artistMbid: String,
         limit: Int = 25,
