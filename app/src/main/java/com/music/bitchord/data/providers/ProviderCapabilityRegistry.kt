@@ -118,6 +118,15 @@ internal object ProviderCapabilityRegistry {
                 notes = "Awaiting PR #216 reconciliation",
             ),
         )
+        add(ProviderInventoryEntry(
+            key = BuiltInProviderKeys.APPLE_MUSIC_WEB,
+            capability = ProviderCapability.CHART_MOST_PLAYED,
+            tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
+            displayName = "Apple Music Web (Rankings)",
+            readiness = ProviderReadiness.BLOCKED,
+            supportsReordering = true,
+            notes = "Native most-played charts; pending independent live and canonical consumer validation",
+        ))
         // Separate native Web adapter; policy owns ordering and explicit opt-in.
         // Until the canonical consumer is wired, readiness is deliberately BLOCKED.
         for (capability in listOf(

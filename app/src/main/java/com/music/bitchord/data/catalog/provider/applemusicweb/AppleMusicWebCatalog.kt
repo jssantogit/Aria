@@ -51,6 +51,13 @@ internal data class AppleMusicWebItem(
     val musicBrainzId: String? get() = null
 }
 
+internal data class AppleMusicWebGenre(val id: String, val storefront: String, val title: String)
+internal data class AppleMusicWebChartPage(
+    val name: String?, val storefront: String, val genreId: String?,
+    val kind: AppleMusicWebKind, val items: List<AppleMusicWebItem>,
+    val nextCursor: String?,
+)
+
 internal data class AppleMusicWebPage(
     val items: List<AppleMusicWebItem>, val page: Int, val limit: Int, val hasMore: Boolean,
     val nextCursor: String? = null,
@@ -304,6 +311,70 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         if (cursor != null && cursor in seen)
             throw AppleMusicWebProtocolException("Cyclic cursor")
         return AppleMusicWebPage(items(block, sf), page, limit, cursor != null, cursor)
+    }
+
+    /** Market-native taxonomy. IDs are not Aria's local genre slugs. */
+    suspend fun genres(country: String): List<AppleMusicWebGenre> {
+        val sf = storefront(country)
+        val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            "/v1/catalog/$sf/genres", emptyMap()))
+        if ("errors" in body || body["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid genre envelope")
+        val seen = hashSetOf<String>()
+        return body.objects("data").map { row ->
+            val id = row.str("id")?.takeIf { it.matches(Regex("[0-9]{1,12}")) }
+                ?: throw AppleMusicWebProtocolException("Invalid genre identity")
+            if (row.str("type") != "genres" || !seen.add(id))
+                throw AppleMusicWebProtocolException("Wrong or duplicate genre")
+            val title = row.obj("attributes")?.str("name")
+                ?: throw AppleMusicWebProtocolException("Missing genre title")
+            AppleMusicWebGenre(id, sf, title)
+        }
+    }
+
+    /** Public most-played rank, not a fabricated stream count or daily playlist. */
+    suspend fun mostPlayedChart(
+        kind: AppleMusicWebKind, country: String, genreId: String? = null,
+        limit: Int = 25, cursor: String? = null,
+    ): AppleMusicWebChartPage {
+        require(kind in setOf(AppleMusicWebKind.SONG, AppleMusicWebKind.ALBUM))
+        require(limit in 1..100 && (genreId == null || genreId.matches(Regex("[0-9]{1,12}"))))
+        val sf = storefront(country)
+        val path = "/v1/catalog/$sf/charts"
+        val base = mapOf("types" to kind.apiType, "chart" to "most-played", "limit" to limit.toString()) +
+            (genreId?.let { mapOf("genre" to it) } ?: emptyMap())
+        fun cursorArgs(next: String): Map<String, String> {
+            val args = follow(next, path, kind = kind)
+            if (args["genre"]?.let { it != genreId } == true ||
+                args["chart"]?.let { it != "most-played" } == true ||
+                args.keys.any { it !in setOf("types", "chart", "genre", "limit", "offset", "l") })
+                throw AppleMusicWebProtocolException("Changed chart query")
+            return base + args
+        }
+        val response = parse(transport.get(ProviderCapability.CHART_MOST_PLAYED, path,
+            cursor?.let(::cursorArgs) ?: base))
+        if ("errors" in response) throw AppleMusicWebProtocolException("Chart error envelope")
+        val results = response.obj("results") ?: throw AppleMusicWebProtocolException("Missing chart results")
+        val blocks = results.objects(kind.apiType)
+        val block = blocks.singleOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing or ambiguous most-played chart")
+        if (block.str("chart")?.let { it != "most-played" } == true || block["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid chart envelope")
+        val seen = hashSetOf<String>()
+        val rows = block.objects("data").map { raw ->
+            if (raw.str("type") != kind.apiType)
+                throw AppleMusicWebProtocolException("Wrong chart resource type")
+            val item = convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid chart resource")
+            resourceId(item.id, kind)
+            if (!seen.add(item.scopedId)) throw AppleMusicWebProtocolException("Duplicate chart resource")
+            item
+        }
+        val next = block.str("next")
+        if (next != null) {
+            cursorArgs(next)
+            if (next == cursor) throw AppleMusicWebProtocolException("Cyclic chart cursor")
+        }
+        return AppleMusicWebChartPage(block.str("name"), sf, genreId, kind, rows, next)
     }
 
     private suspend fun detail(

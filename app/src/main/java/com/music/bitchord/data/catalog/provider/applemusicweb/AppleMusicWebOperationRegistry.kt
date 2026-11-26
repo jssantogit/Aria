@@ -31,8 +31,11 @@ internal object AppleMusicWebOperationRegistry {
         return when (capability) {
             ProviderCapability.CATALOG_SEARCH ->
                 parts.size == 4 && parts[3] == "search"
+            ProviderCapability.CHART_MOST_PLAYED ->
+                parts.size == 4 && parts[3] == "charts"
             ProviderCapability.EDITORIAL_DISCOGRAPHY ->
                 when (parts[3]) {
+                    "genres" -> parts.size == 4
                     "artists" -> {
                         if (parts.size < 5 || !id.matches(parts[4])) false
                         else when (parts.size) {

@@ -158,11 +158,18 @@ internal class AppleMusicWebPolicyTransport(
         capability: ProviderCapability, path: String, params: Map<String, String>,
     ): String {
         require(capability == ProviderCapability.CATALOG_SEARCH ||
-            capability == ProviderCapability.EDITORIAL_DISCOGRAPHY) {
+            capability == ProviderCapability.EDITORIAL_DISCOGRAPHY ||
+            capability == ProviderCapability.CHART_MOST_PLAYED) {
             "Unsupported Apple web provider capability"
         }
         require(AppleMusicWebOperationRegistry.allows(capability, path)) {
             "Apple Web operation is not authorized for capability"
+        }
+        if (capability == ProviderCapability.CHART_MOST_PLAYED) {
+            require(params["chart"] == "most-played" && params["types"] in setOf("songs", "albums") &&
+                params.keys.all { it in setOf("types", "chart", "genre", "limit", "offset", "l") }) {
+                "Unsupported Apple most-played chart operation"
+            }
         }
         require(params.size <= 30 && params.all { (name, value) ->
             name.length in 1..100 && value.length <= 4096 &&

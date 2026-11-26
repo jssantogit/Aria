@@ -90,6 +90,21 @@ internal class AppleMusicWebEditorialGateway(
             AppleMusicWebOutcome.Complete(result)
         }
 
+    suspend fun genres(country: String): ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebGenre>>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
+            AppleMusicWebOutcome.Complete(catalog.genres(storefront))
+        }
+
+    suspend fun mostPlayedChart(
+        kind: AppleMusicWebKind, country: String, genreId: String? = null,
+        limit: Int = 25, cursor: String? = null,
+    ): ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebChartPage>> =
+        guarded(ProviderCapability.CHART_MOST_PLAYED, country) { storefront ->
+            val page = catalog.mostPlayedChart(kind, storefront, genreId, limit, cursor)
+            validateItems(page.items, storefront, setOf(kind))
+            AppleMusicWebOutcome.Complete(page)
+        }
+
     suspend fun artist(
         id: String,
         country: String,
