@@ -16,6 +16,7 @@ internal data class AppleMusicWebCachedValue<T>(
     val capability: ProviderCapability,
     val storefront: String,
     val language: String,
+    val fetchedAtMs: Long,
     val expiresAtMs: Long,
     val outcome: AppleMusicWebOutcome<T>,
 )
@@ -46,20 +47,46 @@ internal class AppleMusicWebCacheBridge(
         val key = AppleMusicWebCacheContract.key(
             capability, market, language, path, params,
         ) ?: return null
+        val maxAge = AppleMusicWebCacheContract.maxAgeMs(capability, path, params) ?: return null
         return access.read(
             capability = capability,
             provider = BuiltInProviderKeys.APPLE_MUSIC_WEB,
             unavailable = null as AppleMusicWebOutcome<T>?,
         ) {
             val entry = cached(key) ?: return@read null
+            val now = clockMs()
             if (entry.provider != BuiltInProviderKeys.APPLE_MUSIC_WEB ||
                 entry.capability != capability ||
                 entry.storefront != market ||
                 entry.language != language ||
                 entry.key != key ||
-                entry.expiresAtMs <= clockMs()
+                entry.fetchedAtMs < 0 || entry.fetchedAtMs > now ||
+                entry.expiresAtMs <= now || entry.expiresAtMs <= entry.fetchedAtMs ||
+                entry.expiresAtMs - entry.fetchedAtMs > maxAge
             ) return@read null
             entry.outcome as? AppleMusicWebOutcome.Complete<T>
+        }
+    }
+
+    /** A canonical storage writer is supplied by the caller. Only completed
+     * public metadata may be written, with expiry determined here. Revocation
+     * suppresses the result of a suspended write; subsequent reads recheck
+     * admission regardless of whether storage committed before revocation. */
+    suspend fun <T> writeComplete(
+        capability: ProviderCapability, storefront: String, language: String,
+        path: String, params: Map<String, String>, outcome: AppleMusicWebOutcome<T>,
+        persist: suspend (AppleMusicWebCachedValue<T>) -> Unit,
+    ): Boolean {
+        if (outcome !is AppleMusicWebOutcome.Complete) return false
+        val market = storefront.lowercase(java.util.Locale.ROOT)
+        val key = AppleMusicWebCacheContract.key(capability, market, language, path, params) ?: return false
+        val maxAge = AppleMusicWebCacheContract.maxAgeMs(capability, path, params) ?: return false
+        return access.read(capability, BuiltInProviderKeys.APPLE_MUSIC_WEB, false) {
+            val now = clockMs()
+            if (now < 0 || now > Long.MAX_VALUE - maxAge) return@read false
+            persist(AppleMusicWebCachedValue(key, BuiltInProviderKeys.APPLE_MUSIC_WEB,
+                capability, market, language, now, now + maxAge, outcome))
+            true
         }
     }
 }

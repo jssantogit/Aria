@@ -57,6 +57,31 @@ class AppleMusicWebFoundationTest {
         assertNull(AppleMusicWebCacheContract.key(search, "br", "pt-BR", "/us/404", args))
     }
 
+    @Test fun cacheRegistrySeparatesPublicEditorialAndRankingsFromPrivateRoutes() {
+        val editorial = ProviderCapability.EDITORIAL_DISCOGRAPHY
+        val charts = ProviderCapability.CHART_MOST_PLAYED
+        val search = ProviderCapability.CATALOG_SEARCH
+        fun key(cap: ProviderCapability,path: String,args: Map<String,String>,market:String="br") =
+            AppleMusicWebCacheContract.key(cap,market,"pt-BR",path,args)
+        val room = "/v1/editorial/br/rooms/123/contents"
+        assertNotNull(key(editorial,room,mapOf("limit" to "25")))
+        assertNull(key(search,room,mapOf("limit" to "25")))
+        assertNull(key(editorial,room,mapOf("limit" to "25","session" to "private")))
+        val curator = "/v1/catalog/br/apple-curators/976439543"
+        assertNotNull(key(editorial,curator,mapOf("platform" to "web","include" to "grouping,playlists")))
+        assertNull(key(editorial,"/v1/catalog/br/library",emptyMap()))
+        val chart = "/v1/catalog/br/charts"
+        val args = mapOf("chart" to "most-played","types" to "songs","limit" to "25")
+        assertNotNull(key(charts,chart,args))
+        assertNull(key(editorial,chart,args))
+        assertNull(key(charts,chart,args + ("unexpected" to "field")))
+        assertNotEquals(key(charts,chart,args),key(charts,chart,args + ("genre" to "21")))
+        assertNotNull(key(charts,"/v1/catalog/us/charts",mapOf("chartId" to "119","limit" to "200"),"us"))
+        assertNull(key(charts,chart,mapOf("chartId" to "119","limit" to "200")))
+        assertNull(key(editorial,"/v1/catalog/br/albums/123/relationships/stream",emptyMap()))
+        assertEquals(900_000L,AppleMusicWebCacheContract.maxAgeMs(charts,chart,args))
+    }
+
     @Test fun truncatedAlbumIsPartialNotComplete() = runBlocking {
         val transport = AppleMusicWebTransport { _, path, params ->
             if (path.endsWith("/relationships/tracks")) {

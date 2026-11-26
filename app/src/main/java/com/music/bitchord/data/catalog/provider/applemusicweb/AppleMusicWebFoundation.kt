@@ -103,8 +103,64 @@ internal class AppleMusicWebBatch(maxConcurrency: Int = 4) {
 internal object AppleMusicWebCacheContract {
     private val storefront = Regex("[a-z]{2}")
     private val locale = Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}")
-    private val pathFormat = Regex("^/v1/catalog/[a-z]{2}/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$")
     private val forbidden = listOf("auth", "token", "cookie", "session", "secret", "password", "key")
+
+    /** Provisional maximum ages per public operation. Unknown routes or
+     * parameters are deliberately uncacheable, even when transport can read them. */
+    fun maxAgeMs(
+        capability: ProviderCapability, path: String, parameters: Map<String, String>,
+    ): Long? {
+        if (!AppleMusicWebOperationRegistry.allows(capability, path)) return null
+        val parts = path.split('/').drop(1)
+        val resource = parts[3]
+        val keys = parameters.keys
+        val minute = 60_000L
+        val paging = setOf("limit", "offset", "l")
+        val age = when {
+            capability == ProviderCapability.CATALOG_SEARCH -> {
+                if (parameters["term"].isNullOrBlank() ||
+                    parameters["types"] !in setOf("artists", "albums", "songs", "apple-curators") ||
+                    !keys.all { it in paging + setOf("term", "types") }) return null
+                5 * minute
+            }
+            capability == ProviderCapability.CHART_MOST_PLAYED -> {
+                if (resource == "charts" && parameters["chartId"] == "119") {
+                    if (parts[2] != "us" || !keys.all { it in setOf("chartId", "limit", "l") }) return null
+                } else if (resource == "charts") {
+                    if (parameters["chart"] != "most-played" ||
+                        parameters["types"] !in setOf("songs", "albums") ||
+                        !keys.all { it in paging + setOf("chart", "types", "genre") }) return null
+                } else if (parts.size == 5) {
+                    if (parameters != mapOf("include" to "tracks")) return null
+                } else if (!keys.all { it in paging }) return null
+                15 * minute
+            }
+            parts[1] == "editorial" && resource == "groupings" -> {
+                if (parameters["platform"] != "web" ||
+                    !((parameters["name"] == "music" && "genre" !in parameters) ||
+                        ("name" !in parameters && parameters["genre"]?.matches(Regex("[0-9]{1,12}")) == true)) ||
+                    !keys.all { it in setOf("platform", "name", "genre", "l") }) return null
+                15 * minute
+            }
+            parts[1] == "editorial" && resource == "rooms" -> {
+                if (!keys.all { it in paging + "sort" }) return null
+                15 * minute
+            }
+            resource == "genres" -> {
+                if (!keys.all { it == "l" }) return null
+                24 * 60 * minute
+            }
+            resource == "apple-curators" -> {
+                if (parameters != mapOf("platform" to "web", "include" to "grouping,playlists")) return null
+                15 * minute
+            }
+            else -> {
+                if (!keys.all { it in paging + setOf("include", "views", "extend") }) return null
+                60 * minute
+            }
+        }
+        return age
+    }
 
     fun key(
         capability: ProviderCapability,
@@ -115,19 +171,18 @@ internal object AppleMusicWebCacheContract {
     ): String? {
         val country = market.lowercase(Locale.ROOT)
         if (!storefront.matches(country) || !locale.matches(language) ||
-            !pathFormat.matches(path) || !path.startsWith("/v1/catalog/$country/") ||
-            capability !in setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY) ||
-            parameters.size > 30
+            !path.startsWith("/v1/catalog/$country/") && !path.startsWith("/v1/editorial/$country/") ||
+            maxAgeMs(capability, path, parameters) == null || parameters.size > 30
         ) return null
         if (parameters.any { (name, value) ->
                 val normalized = name.lowercase(Locale.ROOT)
                 forbidden.any(normalized::contains) ||
                     name.length !in 1..100 || value.length > 4096 ||
-                    value.any(Char::isISOControl)
+                    name.any(Char::isISOControl) || value.any(Char::isISOControl)
             }
         ) return null
         val record = buildString {
-            append("apple_music_web:v1\n")
+            append("apple_music_web:v2\n")
             append(capability.name).append('\n')
             append(country).append('\n')
             append(language).append('\n')
