@@ -109,9 +109,8 @@ internal fun amsAlbumMetadata(
         "$it ${if (it == 1) "música" else "músicas"}" +
             (minutes?.let { min -> ", $min ${if (min == 1L) "minuto" else "minutos"}" } ?: "")
     }
-    return CanonicalAlbumFooterMetadata(
-        canonicalAlbumFooterMetadata(album.releaseDate,emptyList()).year,summary,
-    ).copy(genre=genre)
+    return canonicalAlbumFooterMetadata(album.releaseDate,emptyList())
+        .copy(summary=summary,genre=genre)
 }
 
 /** The supplemental pages were obtained from exact artist-view endpoints,

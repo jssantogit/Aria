@@ -321,7 +321,7 @@ internal data class NativeDetailAttribution(
 )
 
 @Composable
-fun DetailScreen(
+internal fun DetailScreen(
     page: DetailPage,
     currentSong: Song?,
     isPlaying: Boolean,
