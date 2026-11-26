@@ -40,6 +40,13 @@ if [[ "$api" == 26 ]]; then
     adb wait-for-device
     test "$(adb shell id -u | tr -d '\r')" = 2000
 else
+    if [[ "$api" == 36 ]]; then
+        stage=api36-airplane
+        echo "$stage"
+        # Persist radio isolation instead of merely toggling data and Wi-Fi.
+        adb shell cmd connectivity airplane-mode enable
+        test "$(adb shell settings get global airplane_mode_on | tr -d '\r')" = 1
+    fi
     stage=disable-wifi
     echo "$stage"
     adb shell svc wifi disable
@@ -47,20 +54,31 @@ else
     echo "$stage"
     adb shell svc data disable
 fi
-stage=verify-offline
-echo "$stage"
-# Poll the OS instead of assuming asynchronous radio commands worked.
-offline=false
-for attempt in {1..30}; do
-    adb shell dumpsys connectivity | tr -d '\r' | grep 'Active default network:' > "$out/network-state.txt" || true
-    if grep -Eq '^[[:space:]]*Active default network: none[[:space:]]*$' "$out/network-state.txt"; then
-        offline=true
-        break
+verify_offline() {
+    local checkpoint="$1" consecutive=0
+    stage="offline-$checkpoint"
+    echo "$stage"
+    if [[ "$api" == 26 || "$api" == 36 ]]; then
+        test "$(adb shell settings get global airplane_mode_on | tr -d '\r')" = 1
     fi
-    sleep 1
-done
-cat "$out/network-state.txt"
-test "$offline" = true
+    # Three consecutive samples; a transient "none" does not prove isolation.
+    for attempt in {1..30}; do
+        adb shell dumpsys connectivity | tr -d '\r' > "$out/connectivity-$checkpoint.txt"
+        grep 'Active default network:' "$out/connectivity-$checkpoint.txt" >> "$out/network-state.txt" || true
+        if grep -Eq '^[[:space:]]*Active default network: none[[:space:]]*$' "$out/connectivity-$checkpoint.txt"; then
+            consecutive=$((consecutive + 1))
+            if (( consecutive == 3 )); then
+                echo "OFFLINE: $checkpoint (3 consecutive samples)" | tee -a "$out/network-state.txt"
+                return 0
+            fi
+        else
+            consecutive=0
+        fi
+        sleep 1
+    done
+    return 1
+}
+verify_offline before-install
 stage=install-app
 echo "$stage"
 if [[ "$api" == 26 ]]; then adb install --no-streaming "${apks[0]}"; else adb install "${apks[0]}"; fi
@@ -75,11 +93,13 @@ adb install "${test_apks[0]}"
 adb shell pm list instrumentation | tr -d '\r' | tee "$out/runners.txt"
 runner="$(sed -n 's/^instrumentation:\([^ ]*\) (target=com\.dev\.aria)$/\1/p' "$out/runners.txt" | tr -d '\r')"
 test "$runner" = "com.dev.aria.test/androidx.test.runner.AndroidJUnitRunner"
+verify_offline before-instrumentation
 stage=instrumentation
 echo "$stage"
 adb shell am instrument -w -e ariaIdentitySynthetic true -e class com.music.aria.identity.AriaIdentitySmokeTest "$runner" | tr -d '\r' | tee "$out/instrumentation.txt"
 grep -Fx 'OK (3 tests)' "$out/instrumentation.txt"
 if grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$out/instrumentation.txt"; then exit 1; fi
+verify_offline before-launch
 stage=launch
 echo "$stage"
 resolve_launcher | grep -Fx "$component"
@@ -97,6 +117,7 @@ timeout 25s adb exec-out screencap -p > "$out/launch.png"
 stage=activity-evidence
 echo "$stage"
 timeout 25s adb shell dumpsys activity activities | grep -F "$pkg/" > "$out/activity.txt"
+verify_offline after-launch
 python3 - "$out/launch.png" <<'PY'
 from pathlib import Path
 import sys
