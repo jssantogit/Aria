@@ -19,10 +19,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
-import com.music.aria.ui.player.MESH_CYCLE_MILLIS
-import com.music.aria.ui.player.MeshGradientBackground
-import com.music.aria.ui.player.WelcomeMeshPalettes
-import com.music.aria.ui.player.cyclingMeshPalette
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode

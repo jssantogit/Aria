@@ -55,7 +55,7 @@ ALLOWED_BLUE = {
 OLD_BRAND = re.compile(r"bitchord", re.I)
 # Ban the removed logo and banner anywhere in runtime sources. Other legacy
 # references are inventoried by symbol (not source text) for compatibility review.
-RETIRED_GOOGLE_UI = re.compile(r"\b(?:ic_google_g|SignInBanner)\b")
+RETIRED_GOOGLE_UI = re.compile(r"\b(?:ic_google_g|SignInBanner|GoogleAccountSession|YouTubeProfile|BrowserSession|CapturedSession|WebSessionMode|AccountProfileSelector|AccountChannelDialog|AccountCard|hasApiSid|sign_in_with_google|tap_to_sign_in_google|onboarding_sign_in_google|sign_in_youtube_music|library_sign_in_description|listen_together_sign_in_footer)\b|accounts\.google\.com")
 GOOGLE_ACCOUNT_RESIDUAL = re.compile(r"\b(?:GoogleAccountSession|YouTubeProfile|BrowserSession|CapturedSession|WebSessionMode|AccountProfileSelector|AccountChannelDialog|AccountCard|activeSession|hasApiSid|sign_in_with_google|tap_to_sign_in_google|onboarding_sign_in_google|sign_in_youtube_music|library_sign_in_description|listen_together_sign_in_footer)\b|accounts\.google\.com", re.I)
 def blue(rgb):
     h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))
@@ -162,7 +162,7 @@ def main():
     old_resources = [r for r in results if r["kind"] == "old-brand-resource-value"]
     print(f"Approved non-accent blue occurrences: {sum((observed & permitted).values())}")
     retired_ui = [r for r in results if r["kind"] == "retired-google-ui"]
-    print(f"Retired Google logo/banner references: {len(retired_ui)}")
+    print(f"Retired Google account integration references: {len(retired_ui)}")
     print(f"Legacy account inventory: {sum(r['kind'] == 'legacy-account-inventory' for r in results)}")
     if unexpected or old_resources or retired_ui:
         for (name, value), count in unexpected.items():

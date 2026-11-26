@@ -34,18 +34,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.aria.R
-import com.music.aria.data.model.Account
 import com.music.aria.data.settings.AppSettings
 import kotlin.math.roundToInt
 
 @Composable
 fun AccountAndScrobblingScreen(
-    signedIn: Boolean,
-    account: Account?,
-    channelName: String?,
-    onSignIn: () -> Unit,
-    onSwitchChannel: () -> Unit,
-    onSignOut: () -> Unit,
     onOpenListenBrainzLogin: () -> Unit,
     onOpenLastfmLogin: () -> Unit,
     onOpenDiscord: () -> Unit,

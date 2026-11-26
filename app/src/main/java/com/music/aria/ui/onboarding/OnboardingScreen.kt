@@ -1,18 +1,12 @@
 package com.music.aria.ui.onboarding
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,13 +35,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -66,21 +57,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.aria.R
 import com.music.aria.sharedui.resources.Res
 import com.music.aria.sharedui.resources.ic_logo
 import org.jetbrains.compose.resources.painterResource
-import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.player.MeshGradientBackground
 import com.music.aria.ui.player.MESH_CYCLE_MILLIS
-import com.music.aria.ui.player.MeshPalette
 import com.music.aria.ui.player.WelcomeMeshPalettes
 import com.music.aria.ui.player.cyclingMeshPalette
-import com.music.aria.ui.theme.AriaDarkAccent
-import com.music.aria.ui.theme.AriaLightAccent
 
 /**
  * A local welcome page that saves the listener's display name once.
@@ -90,12 +76,9 @@ import com.music.aria.ui.theme.AriaLightAccent
  */
 @Composable
 fun OnboardingScreen(
-    signedIn: Boolean,
     initialName: String,
     /** Saves the local display name before completing onboarding. */
     onNameChosen: (String) -> Unit,
-    /** Legacy caller compatibility; onboarding no longer connects an account. */
-    onSignIn: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -330,27 +313,6 @@ private fun PillButton(
             color = if (primary) Color.Black else Color.White,
             textAlign = TextAlign.Center,
             maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun BackButton(onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.16f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = AriaIcons.ChevronRight,
-            contentDescription = stringResource(R.string.onboarding_back),
-            tint = Color.White,
-            modifier = Modifier
-                .size(18.dp)
-                .graphicsLayer { scaleX = -1f },
         )
     }
 }

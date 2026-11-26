@@ -4,13 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.aria.R
-import com.music.aria.auth.AuthStore
 import com.music.aria.auth.SignedIn
-import com.music.aria.auth.GoogleAccountSession
-import com.music.aria.auth.YouTubeProfile
-import com.music.aria.auth.profileId
-import com.music.aria.auth.sessionId
-import com.music.aria.auth.adjacentProfile
 import com.music.aria.data.AppUpdateChecker
 import com.music.aria.data.canvas.AppleArtistArtRepository
 import com.music.aria.data.catalog.CanonicalCatalogDatabase
@@ -68,10 +62,7 @@ import com.music.aria.data.lyrics.LyricLine
 import com.music.aria.data.lyrics.LyricsRepository
 import com.music.aria.data.lyrics.LyricsSource
 import com.music.aria.data.settings.AppSettings
-import com.music.aria.auth.CapturedSession
-import com.music.aria.auth.WebSessionMode
 import com.music.aria.data.model.Account
-import com.music.aria.data.model.AccountChannel
 import com.music.aria.data.model.BrowseType
 import com.music.aria.data.model.DetailPage
 import com.music.aria.data.model.HomeShelf
@@ -259,7 +250,6 @@ internal class DiscoveryRequestEpoch {
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val authStore = AuthStore(app)
 
     // Process-wide, so the playback service offers Like on the same tracks.
     private val _signedIn = SignedIn.state(app)
@@ -2536,41 +2526,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _account = MutableStateFlow<Account?>(null)
     val account: StateFlow<Account?> = _account.asStateFlow()
     private var accountLoadJob: Job? = null
-    private var accountReloadJob: Job? = null
-
-    /**
-     * The channels this login can act as. Empty until the picker asks for
-     * them — it is one more request per sign-in and nothing else on the
-     * settings page needs the answer.
-     */
-    private val _channels = MutableStateFlow<List<AccountChannel>>(emptyList())
-    val channels: StateFlow<List<AccountChannel>> = _channels.asStateFlow()
-
-    private val _channelsLoading = MutableStateFlow(false)
-    val channelsLoading: StateFlow<Boolean> = _channelsLoading.asStateFlow()
-    private var channelsLoadJob: Job? = null
-
-    /**
-     * The chosen channel's [AccountChannel.key], or null while the app is
-     * acting as whichever channel YouTube Music serves by default.
-     */
-    private val _selectedChannelKey = MutableStateFlow(
-        null as String?,
-    )
-    val selectedChannelKey: StateFlow<String?> = _selectedChannelKey.asStateFlow()
-
-    private val _selectedChannelName = MutableStateFlow(
-        null as String?,
-    )
-    val selectedChannelName: StateFlow<String?> = _selectedChannelName.asStateFlow()
-
-    /** Source of truth for Google sessions and their YouTube identities. */
-    private val _googleAccounts = MutableStateFlow<List<GoogleAccountSession>>(emptyList())
-    val googleAccounts: StateFlow<List<GoogleAccountSession>> = _googleAccounts.asStateFlow()
-    private val _activeAccountId = MutableStateFlow<String?>(null)
-    val activeAccountId: StateFlow<String?> = _activeAccountId.asStateFlow()
-    private val _activeProfileId = MutableStateFlow<String?>(null)
-    val activeProfileId: StateFlow<String?> = _activeProfileId.asStateFlow()
 
     private val _history = MutableStateFlow<UiState<List<Song>>>(UiState.Loading)
     val history: StateFlow<UiState<List<Song>>> = _history.asStateFlow()
@@ -2588,14 +2543,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _refreshing = MutableStateFlow(emptySet<Feed>())
     val refreshing: StateFlow<Set<Feed>> = _refreshing.asStateFlow()
-
-    /** In-memory cache is partitioned by account and profile; it is never shared. */
-    private data class ListenerSnapshot(
-        val account: Account?, val library: UiState<LibraryPage>,
-        val history: UiState<List<Song>>, val playlists: List<UserPlaylist>,
-        val owned: Map<String, Boolean>,
-    )
-    private val listenerCache = mutableMapOf<String, ListenerSnapshot>()
 
     /**
      * Album / artist / playlist pages, as a stack — opening an artist from an
@@ -3892,11 +3839,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Stop account/library prefetch after YouTube is opted out, preserving cached rows. */
     private fun cancelLegacyYouTubeAccountRequests() {
         accountLoadJob?.cancel()
-        accountReloadJob?.cancel()
         libraryLoadJob?.cancel()
         libraryRefreshJob?.cancel()
         playlistsLoadJob?.cancel()
-        channelsLoadJob?.cancel()
         likedSyncJob?.cancel()
         historyLoadJob?.cancel()
         if (_library.value is UiState.Loading) {
@@ -3911,7 +3856,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         historyStateBeforeLoad = null
         libraryStale = true
         _playlistsLoading.value = false
-        _channelsLoading.value = false
         _refreshing.value = _refreshing.value - Feed.LIBRARY
     }
 
@@ -5728,185 +5672,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _detailStack.value = stack.dropLast(1)
         if (wasCanonical) backCanonicalCatalogEntry()
         return true
-    }
-
-    /**
-     * Loads the channel list, unless it is already in hand.
-     *
-     * @param force refetch even if it is — after a switch, since the list
-     *   itself reports which channel is active.
-     */
-    fun loadChannels(@Suppress("UNUSED_PARAMETER") force: Boolean = false) {
-        // Historical account profiles remain decodable but cannot trigger a retired endpoint.
-        // This entrypoint is kept while legacy account controls are migrated.
-    }
-
-    /**
-     * Acts as [channel] from here on.
-     *
-     * Everything already on screen belongs to the channel being left — its
-     * library, its hearts, its playlists — so the switch clears them and
-     * refetches rather than letting the new identity's pages arrive one at a
-     * time on top of the old one's.
-     */
-    fun selectChannel(channel: AccountChannel) {
-        val accountId = _activeAccountId.value ?: return
-        val profile = YouTubeProfile(
-            profileId = profileId(channel.pageId, channel.dataSyncId, channel.name),
-            name = channel.name, handle = channel.subtitle, avatar = channel.thumbnailUrl,
-            pageId = channel.pageId, dataSyncId = channel.dataSyncId,
-            isBrandAccount = channel.pageId != null,
-        )
-        selectProfile(accountId, profile.profileId, profile)
-    }
-
-    /**
-     * Compatibility entrypoint for a retired YouTube Music web session.
-     * Existing archived session records remain readable, but new cookies are
-     * neither verified against Innertube nor persisted by this route.
-     */
-    fun onWebSession(
-        @Suppress("UNUSED_PARAMETER") session: CapturedSession,
-        @Suppress("UNUSED_PARAMETER") mode: WebSessionMode,
-        onComplete: (Boolean) -> Unit = {},
-    ) {
-        onComplete(false)
-    }
-
-    /** Selects an identity without ever allowing a response to replace it. */
-    fun selectProfile(accountId: String, selectedProfileId: String, supplied: YouTubeProfile? = null) {
-        val source = _googleAccounts.value.firstOrNull { it.accountId == accountId } ?: return
-        val profile = supplied ?: source.profiles.firstOrNull { it.profileId == selectedProfileId } ?: return
-        if (accountId == _activeAccountId.value && profile.profileId == _activeProfileId.value) return
-        cacheCurrentListener()
-        val index = source.profiles.indexOfFirst { it.profileId == profile.profileId }
-        val updatedProfiles = if (index >= 0) {
-            source.profiles.toMutableList().apply { set(index, profile) }
-        } else {
-            source.profiles + profile
-        }
-        val updated = source.copy(
-            profiles = updatedProfiles,
-            activeProfileId = profile.profileId,
-        )
-        authStore.upsertSession(updated)
-        authStore.select(accountId, profile.profileId)
-        _googleAccounts.value = authStore.sessions
-        _activeAccountId.value = accountId
-        _activeProfileId.value = profile.profileId
-        authStore.cookie = updated.cookie
-        _selectedChannelKey.value = profile.profileId
-        _selectedChannelName.value = profile.name
-        clearListenerState(restoreCached = true)
-        reloadForAccount()
-    }
-
-    /** Returns false at an edge, allowing the avatar to play its elastic cue. */
-    fun stepProfile(forward: Boolean): Boolean {
-        val target = adjacentProfile(_googleAccounts.value, _activeAccountId.value, _activeProfileId.value, forward)
-            ?: return false
-        selectProfile(target.first, target.second)
-        return true
-    }
-
-    fun removeAccount(accountId: String) {
-        val fallback = authStore.removeAccount(accountId)
-        _googleAccounts.value = authStore.sessions
-        if (fallback == null) { signOut(); return }
-        selectProfile(fallback.accountId, fallback.activeProfileId ?: fallback.profiles.firstOrNull()?.profileId ?: return)
-    }
-
-    /**
-     * Drops everything on screen that belongs to the identity being left.
-     *
-     * The hearts, the playlists and the library are all answers to "who is
-     * asking", so keeping them across a switch shows the new channel the old
-     * one's music until each page happens to be refetched.
-     */
-    private fun cacheCurrentListener() {
-        val key = listenerKey() ?: return
-        listenerCache[key] = ListenerSnapshot(
-            _account.value, _library.value, _history.value, _playlists.value, _playlistOwned.value,
-        )
-    }
-
-    private fun listenerKey(): String? = _activeAccountId.value?.let { accountId ->
-        _activeProfileId.value?.let { profileId -> "$accountId:$profileId" }
-    }
-
-    private fun clearListenerState(restoreCached: Boolean = false) {
-        accountLoadJob?.cancel()
-        accountReloadJob?.cancel()
-        libraryLoadJob?.cancel()
-        playlistsLoadJob?.cancel()
-        channelsLoadJob?.cancel()
-        historyLoadJob?.cancel()
-        libraryStateBeforeLoad = null
-        historyStateBeforeLoad = null
-        _account.value = null
-        likedSyncJob?.cancel()
-        LikeState.clear()
-        _playlistsLoading.value = false
-        _playlists.value = emptyList()
-        _playlistOwned.value = emptyMap()
-        _songMenu.value = null
-        _library.value = UiState.Loading
-        _history.value = UiState.Loading
-        if (restoreCached) listenerCache[listenerKey()]?.let { cached ->
-            _account.value = cached.account
-            _library.value = cached.library
-            _history.value = cached.history
-            _playlists.value = cached.playlists
-            _playlistOwned.value = cached.owned
-        }
-    }
-
-    /**
-     * Everything that is "the signed-in listener's", refetched.
-     *
-     * The scope comes first, and inside one coroutine rather than beside them:
-     * which channel the session acts as decides what "the library" and "the
-     * history" even refer to, so loading them first and scoping second shows
-     * the listener the wrong account's music and then silently disagrees with
-     * itself.
-     */
-    private fun reloadForAccount() {
-        // Legacy Google identity changes no longer activate YouTube account endpoints.
-        // Canonical Home remains independent of the archived listener session.
-        accountReloadJob?.cancel()
-        loadHome()
-    }
-
-    fun signOut() {
-        // In a multi-account install, sign out removes only the current Google
-        // session and restores another one. A legacy single-account install
-        // retains the familiar full sign-out behaviour.
-        val current = _activeAccountId.value
-        if (current != null && authStore.sessions.size > 1) {
-            removeAccount(current)
-            return
-        }
-        authStore.signOut()
-        // The mirror image: verdicts reached with a session in hand say nothing
-        // about what an anonymous walk will be told, and the clients stood down
-        // for refusing the session deserve a fresh hearing without it.
-        _signedIn.value = false
-        _account.value = null
-        _channels.value = emptyList()
-        _selectedChannelKey.value = null
-        _selectedChannelName.value = null
-        _googleAccounts.value = emptyList()
-        _activeAccountId.value = null
-        _activeProfileId.value = null
-        _library.value = UiState.Loading
-        // Ratings and playlists belong to the account that just left; keeping
-        // them would show the next signed-in user someone else's hearts.
-        likedSyncJob?.cancel()
-        LikeState.clear()
-        _playlists.value = emptyList()
-        _playlistOwned.value = emptyMap()
-        _songMenu.value = null
-        loadHome()
     }
 
     private fun Throwable.friendly(): String = when {

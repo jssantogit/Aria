@@ -314,7 +314,7 @@ object AppSettings {
     val reduceAnimation = MutableStateFlow(false)
 
     /**
-     * Whether the welcome pages (party name, then YouTube sign-in) have been
+     * Whether the local welcome page has been
      * through. Absent rather than true for anyone updating from a build that
      * had no onboarding, so they get it once too — they have no party name yet.
      */

@@ -968,7 +968,6 @@ private fun AriaApp(
         }
     }
     val account by viewModel.account.collectAsStateWithLifecycle()
-    val selectedChannelName by viewModel.selectedChannelName.collectAsStateWithLifecycle()
     val historyState by viewModel.history.collectAsStateWithLifecycle()
     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
@@ -3631,16 +3630,6 @@ private fun AriaApp(
                         )
                     } else if (key == "account_scrobbling") {
                         AccountAndScrobblingScreen(
-                            signedIn = signedIn,
-                            account = account,
-                            channelName = selectedChannelName,
-                            onSignIn = {
-                                showAccountScrobbling = false
-                                showSettings = false
-                                showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                            },
-                            onSwitchChannel = {},
-                            onSignOut = { viewModel.signOut() },
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                             onOpenLastfmLogin = { showLastfmLogin = true },
                             onOpenDiscord = { showDiscord = true },
@@ -3674,13 +3663,6 @@ private fun AriaApp(
                             windowWidth = windowWidth,
                             selectedSection = settingsSection,
                             onSelectSection = { settingsSection = it },
-                            signedIn = signedIn,
-                            account = account,
-                            onSignIn = {
-                                showSettings = false
-                                showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                            },
-                            onSignOut = { viewModel.signOut() },
                             onAccountScrobbling = {
                                 settingsSubScreen = "account_scrobbling"
                                 showAccountScrobbling = true
@@ -4573,16 +4555,6 @@ private fun AriaApp(
                             color = MaterialTheme.colorScheme.background,
                         ) {
                             AccountAndScrobblingScreen(
-                                signedIn = signedIn,
-                                account = account,
-                                channelName = selectedChannelName,
-                                onSignIn = {
-                                    settingsSubScreen = null
-                                    showSettings = false
-                                    showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                                },
-                                onSwitchChannel = {},
-                                onSignOut = { viewModel.signOut() },
                                 onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                                 onOpenLastfmLogin = { showLastfmLogin = true },
                                 onOpenDiscord = { showDiscord = true },
@@ -6467,12 +6439,7 @@ private fun AriaApp(
         // ---- Welcome (once; under the sign-in WebView it can open) ----
         // There from the first frame, so no way in; on the way out it drops
         // like a dismissed sheet onto the app it was standing in front of.
-        WelcomeOnboardingOverlay(
-            visibleState = onboardingShown,
-            signedIn = signedIn,
-            accountName = account?.name.orEmpty(),
-            onSignIn = { showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled)) },
-        )
+        WelcomeOnboardingOverlay(visibleState = onboardingShown)
 
         // ---- Update available (once per launch; held until the welcome is done) ----
         if (showUpdateDialog && onboardingComplete) {
@@ -6816,9 +6783,6 @@ private fun ReorderPlaylistOverlay(
 @Composable
 private fun WelcomeOnboardingOverlay(
     visibleState: MutableTransitionState<Boolean>,
-    signedIn: Boolean,
-    accountName: String,
-    onSignIn: () -> Unit,
 ) {
     AnimatedVisibility(
         visibleState = visibleState,
@@ -6828,12 +6792,8 @@ private fun WelcomeOnboardingOverlay(
         ) { it },
     ) {
         OnboardingScreen(
-            signedIn = signedIn,
-            initialName = remember {
-                ListenTogether.nickname().ifBlank { accountName }
-            },
+            initialName = remember { ListenTogether.nickname() },
             onNameChosen = ListenTogether::setNickname,
-            onSignIn = onSignIn,
             onFinish = AppSettings::setOnboardingComplete,
         )
     }

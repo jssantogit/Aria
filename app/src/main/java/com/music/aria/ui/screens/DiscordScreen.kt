@@ -417,7 +417,7 @@ fun DiscordScreen(
     }
 }
 
-/** Who this posts as. Same frame as [AccountCard], with Discord's status dot. */
+/** Discord's local account card, with its presence status dot. */
 @Composable
 private fun DiscordAccountCard(
     connected: Boolean,
