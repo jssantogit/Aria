@@ -1,5 +1,12 @@
 package com.music.bitchord.data.catalog.provider.applemusicweb
 
+/** In-memory source cursor; never written to the persistent landing cache. */
+internal data class AppleMusicWebRoomContinuation(
+    val room: AppleMusicWebRoomRef,
+    val cursor: String?,
+    val visited: Set<String> = emptySet(),
+)
+
 /** Exact source album, with its independently verified editorial evidence.
  * Combined-label evidence is not a global genre or identity assertion. */
 @kotlinx.serialization.Serializable
@@ -28,6 +35,7 @@ internal data class AppleMusicWebCuratorLanding(
     /** True if more rooms/pages existed beyond this intentional landing budget.
      * Complete means the bounded read succeeded, not the entire catalog. */
     val bounded: Boolean,
+    @kotlinx.serialization.Transient val continuations: List<AppleMusicWebRoomContinuation> = emptyList(),
 ) {
     val exactLabels: Int get() = albums.count { it.evidence == AppleMusicWebCuratedAlbumEvidence.EXACT_GENRE_LABEL }
     val combinedLabels: Int get() = albums.count { it.evidence == AppleMusicWebCuratedAlbumEvidence.SOUL_COMBINED_LABEL }

@@ -1,6 +1,7 @@
 package com.music.bitchord.ui
 
-import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebOutcome
+import com.music.bitchord.data.catalog.provider.applemusicweb.*
+import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.*
@@ -12,9 +13,56 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+internal sealed interface AmsEditorialRequest {
+    data class Room(
+        val position: AppleMusicWebRoomContinuation,
+        val homeKind: AppleMusicWebHomeShelf? = null,
+        val curator: AppleMusicWebCuratorRef? = null,
+        val tag: String? = null,
+    ) : AmsEditorialRequest
+    data class RefreshGenre(val tag: String,val curator: AppleMusicWebCuratorRef) : AmsEditorialRequest
+}
+
+internal data class AmsEditorialPage(
+    val shelves: List<HomeShelf>,
+    val pending: List<AmsEditorialRequest> = emptyList(),
+    val curator: AppleMusicWebCuratorRef? = null,
+)
+
+internal data class AmsEditorialPaging(
+    val pending: List<AmsEditorialRequest> = emptyList(),
+    val additional: List<ShelfItem> = emptyList(),
+    val loading: Boolean = false,
+    val failed: Boolean = false,
+    val pages: Int = 0,
+) {
+    val hasMore: Boolean get() = pending.isNotEmpty() && pages < 40
+}
+
+/** Keep original rails and their scroll keys intact, as in the MB feed. */
+internal fun amsEditorialContinuationShelf(
+    original: List<HomeShelf>, paging: AmsEditorialPaging?, genre: Boolean,
+): HomeShelf? {
+    val seen = original.flatMap { it.items }.mapNotNull { it.browseId }.toHashSet()
+    val cards = paging?.additional.orEmpty().filter { card ->
+        card.browseId?.let(seen::add) == true
+    }
+    return cards.takeIf { it.isNotEmpty() }?.let {
+        HomeShelf(if (genre) "Mais do gênero" else "Mais do catálogo",it)
+    }
+}
+
+internal fun canonicalGenreShowsAmsReleases(state: UiState<List<HomeShelf>>): Boolean =
+    (state as? UiState.Success)?.data.orEmpty().any { shelf ->
+        shelf.title == "Lançamentos" && shelf.items.any {
+            AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.ALBUM
+        }
+    }
+
 internal data class AppleMusicWebEditorialUiState(
     val home: UiState<List<HomeShelf>> = UiState.Loading,
     val genres: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
+    val paging: Map<String?,AmsEditorialPaging> = emptyMap(),
 )
 
 /** ViewModel-owned state for existing Home/Explore. The BR storefront matches
@@ -23,9 +71,11 @@ internal data class AppleMusicWebEditorialUiState(
 internal class AppleMusicWebEditorialUiSession(
     private val scope: CoroutineScope,
     private val gate: () -> ProviderPolicyGate?,
-    private val readHome: suspend (String) -> ProviderCallResult<AppleMusicWebOutcome<List<HomeShelf>>>,
-    private val readGenre: suspend (String, String, Boolean) -> ProviderCallResult<AppleMusicWebOutcome<List<HomeShelf>>>,
+    private val readHome: suspend (String) -> ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>>,
+    private val readGenre: suspend (String, String, Boolean) -> ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>>,
     private val now: () -> Long = System::currentTimeMillis,
+    private val readNext: suspend (AmsEditorialRequest) -> ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>> =
+        { ProviderCallResult.Denied },
 ) {
     private data class Read(
         val owner: ProviderPolicyGate, val lease: ProviderReadLease,
@@ -40,7 +90,8 @@ internal class AppleMusicWebEditorialUiSession(
         val read = reads[tag] ?: return false
         if (read.owner !== gate() || !read.lease.isCurrent()) return false
         val state = if (tag == null) _state.value.home else _state.value.genres[tag]
-        return (state as? UiState.Success)?.data.orEmpty().any { item in it.items }
+        return (state as? UiState.Success)?.data.orEmpty().any { item in it.items } ||
+            item in _state.value.paging[tag]?.additional.orEmpty()
     }
 
     fun loadHome(force: Boolean = false) = load(null, force)
@@ -61,6 +112,7 @@ internal class AppleMusicWebEditorialUiSession(
         for (key in revoked) {
             reads.remove(key)?.job?.cancel()
             publish(key, null)
+            publishPaging(key,null)
         }
     }
 
@@ -69,6 +121,64 @@ internal class AppleMusicWebEditorialUiSession(
         _state.value = if (tag == null) previous.copy(home = value ?: UiState.Loading)
         else previous.copy(genres = if (value == null) previous.genres - tag
             else previous.genres + (tag to value))
+    }
+
+    private fun publishPaging(tag: String?, paging: AmsEditorialPaging?) {
+        val previous = _state.value
+        _state.value = previous.copy(paging = if (paging == null) previous.paging - tag
+            else previous.paging + (tag to paging))
+    }
+
+    /** One request per user scroll edge. A failed page leaves the cursor and
+     * visible rows unchanged; refresh or revoked permission cancels it. */
+    fun loadNext(tag: String?) {
+        purgeRevoked()
+        val prior = reads[tag] ?: return
+        val paging = _state.value.paging[tag] ?: return
+        if (prior.job.isActive || paging.loading || !paging.hasMore) return
+        val request = paging.pending.first()
+        val initial = if (tag == null) _state.value.home else _state.value.genres[tag]
+        val shown = (initial as? UiState.Success)?.data ?: return
+        publishPaging(tag,paging.copy(loading=true,failed=false))
+        val job = scope.launch(start=CoroutineStart.LAZY) {
+            val result = try { readNext(request) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            if (reads[tag]?.lease !== prior.lease) return@launch
+            if (gate() !== prior.owner || !prior.lease.isCurrent() ||
+                result == ProviderCallResult.Denied || result == ProviderCallResult.Stale) {
+                reads.remove(tag)
+                publish(tag,null)
+                publishPaging(tag,null)
+                return@launch
+            }
+            val page = when (val outcome = (result as? ProviderCallResult.Success)?.value) {
+                is AppleMusicWebOutcome.Complete -> outcome.value
+                // A partial refresh cannot prove the continuation was consumed.
+                is AppleMusicWebOutcome.Partial -> null
+                else -> null
+            }
+            if (page == null) {
+                publishPaging(tag,paging.copy(loading=false,failed=true))
+                return@launch
+            }
+            val seen = (shown.flatMap { it.items } + paging.additional)
+                .mapNotNull { it.browseId }.toHashSet()
+            val additional = page.shelves.flatMap { it.items }.filter { card ->
+                val route = AppleMusicWebNativeRoute.parse(card.browseId)
+                route?.kind == AppleMusicWebKind.ALBUM && route.storefront == "br" &&
+                    card.videoId == null && card.title.isNotBlank() && seen.add(route.browseId)
+            }
+            publishPaging(tag,paging.copy(
+                pending=paging.pending.drop(1) + page.pending,
+                additional=paging.additional + additional,
+                loading=false,failed=false,pages=paging.pages+1,
+            ))
+        }
+        reads[tag] = prior.copy(job=job)
+        val unregister = prior.lease.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+        job.start()
     }
 
     private fun load(tag: String?, force: Boolean) {
@@ -83,6 +193,7 @@ internal class AppleMusicWebEditorialUiSession(
             (prior.job.isActive || started - prior.started in 0L until 15L * 60L * 1000L)) return
         reads.remove(tag)?.job?.cancel()
         publish(tag, UiState.Loading)
+        publishPaging(tag,null)
         val job = scope.launch(start = CoroutineStart.LAZY) {
             val result = try {
                 if (tag == null) readHome("br") else readGenre(tag, "br", force)
@@ -96,13 +207,14 @@ internal class AppleMusicWebEditorialUiSession(
                 publish(tag, null)
                 return@launch
             }
-            val shelves = when (val outcome = (result as? ProviderCallResult.Success)?.value) {
+            val page = when (val outcome = (result as? ProviderCallResult.Success)?.value) {
                 is AppleMusicWebOutcome.Complete -> outcome.value
-                is AppleMusicWebOutcome.Partial -> outcome.value.takeIf { it.isNotEmpty() }
+                is AppleMusicWebOutcome.Partial -> outcome.value.takeIf { it.shelves.isNotEmpty() }
                 else -> null
             }
-            publish(tag, if (shelves == null) UiState.Error("Catálogo editorial indisponível.")
-                else UiState.Success(shelves))
+            publish(tag, if (page == null) UiState.Error("Catálogo editorial indisponível.")
+                else UiState.Success(page.shelves))
+            publishPaging(tag,page?.let { AmsEditorialPaging(pending=it.pending) })
         }
         reads[tag] = Read(owner, lease, started, job)
         val unregister = lease.cancelJobOnRevoke(job)

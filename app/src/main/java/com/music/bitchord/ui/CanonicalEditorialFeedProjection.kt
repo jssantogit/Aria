@@ -161,6 +161,7 @@ internal fun projectCanonicalHomeDisplay(
     appleHomePool: List<ItunesEditorialRelease> = emptyList(),
     appleRevealedCount: Int = 0,
     discogsPaging: DiscogsHomePageSnapshot = DiscogsHomePageSnapshot(),
+    amsPaging: AmsEditorialPaging? = null,
 ): List<HomeShelf> {
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         (selection.state as? UiState.Success)?.data.orEmpty() +
@@ -187,7 +188,9 @@ internal fun projectCanonicalHomeDisplay(
     val discogsContinuation = discogsHomeContinuationShelf(
         selection.provider, original, discogsPaging,
     )
-    return original + listOfNotNull(continuation, appleContinuation, discogsContinuation)
+    val amsContinuation = if (selection.provider == BuiltInProviderKeys.APPLE_MUSIC_WEB)
+        amsEditorialContinuationShelf(original,amsPaging,false) else null
+    return original + listOfNotNull(continuation, appleContinuation, discogsContinuation, amsContinuation)
 }
 
 internal fun projectCanonicalHomeState(
@@ -219,6 +222,7 @@ internal fun projectCanonicalGenreState(
     discogsPaging: DiscogsGenrePageSnapshot = DiscogsGenrePageSnapshot(),
     appleVisibleCount: Int = 24,
     amsByTag: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
+    amsPagingByTag: Map<String?,AmsEditorialPaging> = emptyMap(),
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -295,8 +299,11 @@ internal fun projectCanonicalGenreState(
         listOfNotNull(knownArtists) +
         listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(continuation, discogsContinuation, appleContinuation)
+    val amsContinuation = if (chosen.provider == BuiltInProviderKeys.APPLE_MUSIC_WEB)
+        amsEditorialContinuationShelf(all,amsPagingByTag[tag],true) else null
+    val displayed = all + listOfNotNull(amsContinuation)
     return when {
-        all.isNotEmpty() -> UiState.Success(all)
+        displayed.isNotEmpty() -> UiState.Success(displayed)
         chosen.state is UiState.Loading -> UiState.Loading
         chosen.state is UiState.Error -> chosen.state
         else -> UiState.Error("Nenhum lançamento disponível nas fontes editoriais habilitadas.")

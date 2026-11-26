@@ -644,7 +644,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
     internal val appleMusicWebEditorialUi by lazy {
         AppleMusicWebEditorialUiSession(viewModelScope, { ProviderRuntime.gateOrNull() },
-            appleMusicWebNativeCatalog::home, appleMusicWebNativeCatalog::genre)
+            appleMusicWebNativeCatalog::home, appleMusicWebNativeCatalog::genre,
+            readNext = appleMusicWebNativeCatalog::nextEditorial)
     }
     internal fun loadAmsHomeEditorial(force: Boolean = false) {
         if (isCanonicalDiscoverySelected()) appleMusicWebEditorialUi.loadHome(force)

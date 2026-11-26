@@ -61,7 +61,7 @@ class AppleMusicWebNativeCatalogSessionTest {
             }),policy)
         }
         val outcome = (session.genre("soul","br") as ProviderCallResult.Success).value as AppleMusicWebOutcome.Complete
-        val shelves = outcome.value
+        val shelves = outcome.value.shelves
         val item = shelves.single().items.single()
         assertEquals("apple_music_web:br:album:123",item.browseId)
         assertEquals("Artist",item.subtitle)
@@ -88,6 +88,40 @@ class AppleMusicWebNativeCatalogSessionTest {
             amsByTag=mapOf("soul" to UiState.Success(shelves)),
         )
         assertFalse(disabled is UiState.Success && disabled.data.isNotEmpty())
+    }
+
+    @Test fun exactEditorialCursorRejectsForeignScopeAndCyclesAndFiltersSharedCurator(): Unit = runBlocking {
+        val g = gate(editorial)
+        val curator = AppleMusicWebCuratorRef("976439585","br","Apple Music Soul e funk")
+        val room = AppleMusicWebRoomRef("br",null,"456","Lançamentos recentes",curator.id)
+        val cursor = "/v1/editorial/br/rooms/456/contents?offset=25"
+        val next = "/v1/editorial/br/rooms/456/contents?offset=50"
+        var calls = 0
+        val session = AppleMusicWebNativeCatalogSession({ g }) { policy ->
+            AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebTransport { _,path,args ->
+                calls++
+                assertEquals("/v1/editorial/br/rooms/456/contents",path)
+                assertEquals("25",args["offset"])
+                """{"data":[
+                    {"id":"123","type":"albums","attributes":{"name":"Accepted","genreNames":["R&B/Soul"]}},
+                    {"id":"124","type":"albums","attributes":{"name":"Rejected","genreNames":["Funk"]}}
+                    ],"next":"$next"}"""
+            }),policy)
+        }
+        val request = AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(room,cursor),
+            curator=curator,tag="soul")
+        assertTrue(session.nextEditorial(request.copy(tag="metal")) is ProviderCallResult.Failed)
+        assertTrue(session.nextEditorial(request.copy(position=request.position.copy(
+            room=room.copy(curatorId="999")))) is ProviderCallResult.Failed)
+        assertEquals(0,calls)
+        val outcome = (session.nextEditorial(request) as ProviderCallResult.Success).value as AppleMusicWebOutcome.Complete
+        assertEquals(listOf("apple_music_web:br:album:123"),outcome.value.shelves.single().items.map { it.browseId })
+        val continuation = outcome.value.pending.single() as AmsEditorialRequest.Room
+        assertEquals(next,continuation.position.cursor)
+        assertEquals(setOf(cursor),continuation.position.visited)
+        assertTrue(session.nextEditorial(request.copy(position=request.position.copy(
+            visited=setOf(next)))) is ProviderCallResult.Failed)
+        assertEquals(2,calls)
     }
 
     @Test fun genreCoverUsesOnlyAdmittedTypedAmsCardsAndProviderOrder() {

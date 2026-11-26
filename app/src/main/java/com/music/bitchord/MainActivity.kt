@@ -1573,6 +1573,8 @@ private fun BitChordApp(
     val catalogMb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
     val catalogApple = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
     val catalogDiscogs = com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
+    val catalogAms = com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB
+    val amsHomePaging = catalogRuntime.amsEditorial.paging[null]
     val canonicalHomeEditorialSelection =
         com.music.bitchord.ui.rememberCanonicalHomeEditorialSelection(
             canonicalHomeShelves, appleHomeReleases, catalogEditorialOrder,
@@ -1598,6 +1600,7 @@ private fun BitChordApp(
         catalogMb -> canonicalHomePaging.hasMore
         catalogApple -> homeAppleEligibleExtras > appleHomeRevealedCount
         catalogDiscogs -> discogsHomePaging.hasMore
+        catalogAms -> amsHomePaging?.hasMore == true
         else -> false
     }
     val loadNextVerifiedHomePage: () -> Unit = {
@@ -1605,6 +1608,7 @@ private fun BitChordApp(
             catalogMb -> viewModel.loadMoreCanonicalHome()
             catalogApple -> viewModel.revealMoreAppleHome()
             catalogDiscogs -> viewModel.discogsNativeCatalog.loadMoreHomeEditorial()
+            catalogAms -> viewModel.appleMusicWebEditorialUi.loadNext(null)
         }
     }
     val canonicalHomeDisplayShelves =
@@ -1612,7 +1616,7 @@ private fun BitChordApp(
             canonicalHomeShelves, canonicalHomeEditorialSelection, canonicalHomePublicPlaylists,
             authorizedCountryChartShelf, canonicalCommunityShelf, canonicalPersonalShelf,
             weeklyArtistShelf, canonicalHomePaging,
-            appleHomeVerifiedPool, appleHomeRevealedCount, discogsHomePaging,
+            appleHomeVerifiedPool, appleHomeRevealedCount, discogsHomePaging, amsHomePaging,
         )
     val canonicalHomeState = com.music.bitchord.ui.projectCanonicalHomeState(
         canonicalHomeDisplayShelves, canonicalHomeEditorialSelection,
@@ -1672,6 +1676,7 @@ private fun BitChordApp(
         discogsPaging = discogsGenrePaging,
         appleVisibleCount = appleGenreRevealed,
         amsByTag = catalogRuntime.amsEditorial.genres,
+        amsPagingByTag = catalogRuntime.amsEditorial.paging,
     )
     val genreMbOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsMusicBrainzReleases(canonicalGenreState)
@@ -1679,6 +1684,8 @@ private fun BitChordApp(
         .canonicalGenreShowsDiscogsReleases(canonicalGenreState)
     val genreAppleOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsAppleReleases(canonicalGenreState)
+    val genreAmsOwnsReleases = com.music.bitchord.ui.canonicalGenreShowsAmsReleases(canonicalGenreState)
+    val amsGenrePaging = activeGenrePagingTag?.let { catalogRuntime.amsEditorial.paging[it] }
     val appleGenreAvailable = activeGenrePagingTag?.let { tag ->
         (appleGenreReleases[tag] as? UiState.Success)?.data?.size
     } ?: 0
@@ -1688,11 +1695,13 @@ private fun BitChordApp(
         genreDiscogsOwnsReleases -> discogsGenrePaging.tag == activeCanonicalGenre?.tag &&
             discogsGenrePaging.hasMore
         genreAppleOwnsReleases -> appleGenreAvailable > appleGenreRevealed
+        genreAmsOwnsReleases -> amsGenrePaging?.hasMore == true
         else -> false
     }
     val genrePagingIsLoading = when {
         genreMbOwnsReleases -> canonicalGenrePaging.loading
         genreDiscogsOwnsReleases -> discogsGenrePaging.loading
+        genreAmsOwnsReleases -> amsGenrePaging?.loading == true
         else -> false
     }
     val loadNextVerifiedGenrePage: (String) -> Unit = { tag ->
@@ -1701,6 +1710,7 @@ private fun BitChordApp(
             genreDiscogsOwnsReleases ->
                 viewModel.discogsNativeCatalog.loadMoreGenreEditorial(tag)
             genreAppleOwnsReleases -> viewModel.revealNextAppleGenrePage(tag)
+            genreAmsOwnsReleases && tag == activeGenrePagingTag -> viewModel.appleMusicWebEditorialUi.loadNext(tag)
         }
     }
     // What a browse id is recorded under in Downloads.collections, when it names
@@ -1840,11 +1850,12 @@ private fun BitChordApp(
         tag = "home",
         enabled = selectedTab == TAB_HOME && detail == null &&
             canonicalHomeEditorialSelection.provider in
-                setOf(catalogMb, catalogApple, catalogDiscogs),
+                setOf(catalogMb, catalogApple, catalogDiscogs, catalogAms),
         hasMore = homeHasMoreVerified,
         loading = when (canonicalHomeEditorialSelection.provider) {
             catalogMb -> canonicalHomePaging.loading
             catalogDiscogs -> discogsHomePaging.loading
+            catalogAms -> amsHomePaging?.loading == true
             else -> false
         },
         listState = homeListState,
@@ -1875,7 +1886,7 @@ private fun BitChordApp(
         tag = activeCanonicalGenre?.tag,
         enabled = selectedTab == TAB_EXPLORE && detail == null &&
             (genreMbOwnsReleases || genreDiscogsOwnsReleases ||
-                genreAppleOwnsReleases),
+                genreAppleOwnsReleases || genreAmsOwnsReleases),
         hasMore = genrePagingHasMore,
         loading = genrePagingIsLoading,
         listState = genreListState,
@@ -4653,6 +4664,7 @@ private fun BitChordApp(
                             loadingMore = when (canonicalHomeEditorialSelection.provider) {
                                 catalogMb -> canonicalHomePaging.loading
                                 catalogDiscogs -> discogsHomePaging.loading
+                                catalogAms -> amsHomePaging?.loading == true
                                 else -> false
                             },
                             onAdditionalGenrePage = if (

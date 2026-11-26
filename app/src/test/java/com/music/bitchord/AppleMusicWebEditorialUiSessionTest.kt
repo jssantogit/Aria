@@ -58,13 +58,54 @@ class AppleMusicWebEditorialUiSessionTest {
         assertEquals(listOf(shelf),(selected.state as UiState.Success).data)
     }
 
+    @Test fun continuationPreservesInitialRailsAndRetriesExactCursor(): Unit = runBlocking {
+        val g = gate()
+        val request = AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(room,"cursor"),
+            homeKind=AppleMusicWebHomeShelf.RECENT_RELEASES)
+        val next = request.copy(position=request.position.copy(cursor="next"))
+        val extra = shelf.items.single().copy(browseId="apple_music_web:br:album:11")
+        var calls = 0
+        val session = AppleMusicWebEditorialUiSession(this,{ g },
+            { ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(listOf(shelf),listOf(request)))) },
+            { _,_,_ -> error("unexpected genre") },
+            readNext = { cursor ->
+                calls++
+                when (calls) {
+                    1 -> { assertEquals(request,cursor); ProviderCallResult.Failed(java.io.IOException("temporary")) }
+                    2 -> {
+                        assertEquals(request,cursor)
+                        ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                            AmsEditorialPage(listOf(shelf.copy(items=shelf.items+extra)),listOf(next))))
+                    }
+                    else -> {
+                        assertEquals(next,cursor)
+                        ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(emptyList())))
+                    }
+                }
+            })
+        session.loadHome(); yield()
+        assertTrue(session.state.value.paging[null]!!.hasMore)
+        session.loadNext(null); yield()
+        assertTrue(session.state.value.paging[null]!!.failed)
+        assertEquals(listOf(request),session.state.value.paging[null]!!.pending)
+        session.loadNext(null); yield()
+        assertEquals(listOf(shelf),(session.state.value.home as UiState.Success).data)
+        assertEquals(listOf(extra),session.state.value.paging[null]!!.additional)
+        assertTrue(session.containsCard(null,extra))
+        assertEquals("Mais do catálogo",amsEditorialContinuationShelf(listOf(shelf),session.state.value.paging[null],false)?.title)
+        session.loadNext(null); yield()
+        assertFalse(session.state.value.paging[null]!!.hasMore)
+        session.loadNext(null); yield()
+        assertEquals(3,calls)
+    }
+
     @Test fun runtimeAdmissionRefreshAndGateReplacement(): Unit = runBlocking {
         var g: ProviderPolicyGate? = null
         var calls = 0
         val wait = CompletableDeferred<Unit>()
         val session = AppleMusicWebEditorialUiSession(this,{ g },
-            { calls++; ProviderCallResult.Success(AppleMusicWebOutcome.Complete(listOf(shelf))) },
-            { _,_,_ -> wait.await(); ProviderCallResult.Success(AppleMusicWebOutcome.Complete(listOf(shelf))) })
+            { calls++; ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(listOf(shelf)))) },
+            { _,_,_ -> wait.await(); ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(listOf(shelf)))) })
         session.loadHome()
         yield()
         assertEquals(0,calls)

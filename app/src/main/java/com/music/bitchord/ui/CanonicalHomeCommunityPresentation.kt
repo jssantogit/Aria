@@ -60,9 +60,10 @@ internal fun rememberCanonicalHomeDisplayShelves(
     appleHomePool: List<ItunesEditorialRelease> = emptyList(),
     appleRevealedCount: Int = 0,
     discogsPaging: DiscogsHomePageSnapshot = DiscogsHomePageSnapshot(),
+    amsPaging: AmsEditorialPaging? = null,
 ): List<HomeShelf> = remember(
     local, selected, playlists, territories, community, personal, weeklyArtists,
-    musicBrainzPaging, appleHomePool, appleRevealedCount, discogsPaging,
+    musicBrainzPaging, appleHomePool, appleRevealedCount, discogsPaging, amsPaging,
 ) {
     projectCanonicalHomeDisplay(
         canonicalHomeShelves = local,
@@ -76,5 +77,6 @@ internal fun rememberCanonicalHomeDisplayShelves(
         appleHomePool = appleHomePool,
         appleRevealedCount = appleRevealedCount,
         discogsPaging = discogsPaging,
+        amsPaging = amsPaging,
     )
 }

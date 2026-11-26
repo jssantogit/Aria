@@ -175,6 +175,7 @@ internal class AppleMusicWebEditorialGateway(
             var reads = 0
             var failures = 0
             var bounded = releaseRooms.size > 3
+            val continuations = mutableListOf<AppleMusicWebRoomContinuation>()
             val pageBudget = if (tag == "soul" && shared) 5 else if (shared) 3 else 1
             for (room in releaseRooms.take(3)) {
                 if (room.curatorId != id || room.storefront != storefront || room.genreId != null)
@@ -213,16 +214,21 @@ internal class AppleMusicWebEditorialGateway(
                     }
                     val next = page.nextCursor ?: break
                     if (!visited.add(next)) throw AppleMusicWebProtocolException("Cyclic curator room cursor")
-                    if (index == pageBudget) bounded = true
+                    if (index == pageBudget) {
+                        bounded = true
+                        continuations += AppleMusicWebRoomContinuation(room,next,visited - next)
+                    }
                     cursor = next
                 }
             }
+            continuations += releaseRooms.drop(3).map { AppleMusicWebRoomContinuation(it,null) }
             val result = AppleMusicWebCuratorLanding(
                 tag = tag, curator = curator, albums = accepted.values.toList(), shared = shared,
                 provenance = provenance, searchCandidates = candidates.size, searchReads = searchReads,
                 searchReason = searchReason, sourceRows = sourceRows, distinctCandidates = all.size,
                 rejectedDistinct = (all - accepted.keys).size, rejectedObserved = rejected.size,
                 roomReads = reads, roomFailures = failures, bounded = bounded,
+                continuations = continuations,
             )
             if (failures > 0) AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED)
             else {
