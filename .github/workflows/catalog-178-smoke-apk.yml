@@ -106,10 +106,10 @@ jobs:
           exit 1
 
       - name: Gate APK with exact-commit Android unit tests
-        run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+        run: ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest
 
       - name: Build installable dev debug APK
-        run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+        run: ./gradlew --no-daemon --build-cache :app:assembleDevDebug
 
       - name: Record APK checksum and exact commit
         run: |

@@ -1,0 +1,204 @@
+name: Aria namespace native build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      run_emulator_smoke:
+        description: 'Run optional Android emulator instrumentation and launch smoke'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aria-namespace-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-build:
+    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && github.head_ref == 'feat/aria-identity-notation-2.1' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out migrated exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Validate smoke script syntax before build
+        run: |
+          bash -n scripts/aria-android-launch-smoke.sh
+          bash -n scripts/aria-robolectric-preflight.sh
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Verify migrated namespace
+        run: python3 scripts/verify-aria-android-identity.py
+      - name: Write local.properties
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+        run: |
+          printf 'LASTFM_API_KEY=%s\nLASTFM_SECRET=%s\n' "$LASTFM_API_KEY" "$LASTFM_SECRET" > local.properties
+      - name: Grant Gradle wrapper execute permission
+        run: chmod +x gradlew
+      - name: Assemble Android APK including JNI
+        run: ./gradlew --build-cache :app:assembleDevDebug
+      - name: Assemble optional instrumentation APK
+        if: github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke
+        run: ./gradlew --build-cache :app:assembleDevDebugAndroidTest
+      - name: Verify packaged native library identity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          required = {"libaria_analysis.so", "libaria_dsd.so", "libaria_dst.so"}
+          retired = {"libbitchord_analysis.so", "libbitchord_dsd.so", "libbitchord_dst.so"}
+          apks = sorted(Path("app/build/outputs/apk/dev/debug").glob("*.apk"))
+          assert len(apks) == 4, "Expected one universal and three ABI APKs"
+          supported = {"armeabi-v7a", "arm64-v8a", "x86_64"}
+          checked = 0
+          observed = set()
+          variants = []
+          for apk in apks:
+              with ZipFile(apk) as archive:
+                  libs = {}
+                  for name in archive.namelist():
+                      parts = name.split("/")
+                      if len(parts) == 3 and parts[0] == "lib" and parts[2].endswith(".so"):
+                          libs.setdefault(parts[1], set()).add(parts[2])
+                  expected = supported if "universal" in apk.name else {abi for abi in supported if abi in apk.name}
+                  assert expected, f"Unknown APK ABI: {apk.name}"
+                  assert set(libs) == expected, f"{apk.name}: unexpected native ABIs {set(libs)}; expected {expected}"
+                  variants.append(frozenset(expected))
+                  for abi, names in libs.items():
+                      assert not retired & names, f"{apk.name}/{abi}: retired native library"
+                  for abi in expected:
+                      names = libs.get(abi, set())
+                      assert required <= names, f"{apk.name}/{abi}: missing {required - names}"
+                      observed.add(abi)
+                      checked += 1
+          assert observed == supported, f"Missing supported ABIs: {supported - observed}"
+          assert set(variants) == {frozenset(supported)} | {frozenset({abi}) for abi in supported}, "Duplicate or missing APK variant"
+          print(f"Verified Aria native library names across {checked} packaged APK/ABI pairs")
+          PY
+      - name: Upload exact instrumentation APK
+        if: github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-identity-instrumentation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: app/build/outputs/apk/androidTest/dev/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload migrated development APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-namespace-dev-debug-${{ github.event.pull_request.head.sha || github.sha }}
+          path: app/build/outputs/apk/dev/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  launch-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke
+    needs: native-build
+    name: Launch smoke API ${{ matrix.api-level }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [26, 34, 36]
+    steps:
+      - name: Check out exact smoke script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Download APK built by this exact workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: aria-namespace-dev-debug-${{ github.event.pull_request.head.sha || github.sha }}
+          path: smoke-apks
+      - name: Download matching instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: aria-identity-instrumentation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: smoke-test-apks
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch the exact Aria development APK
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          cores: 2
+          # Give the newer emulator more guest RAM; this is not a proven OOM diagnosis.
+          ram-size: ${{ matrix.api-level == 36 && '3072M' || '2048M' }}
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/aria-android-launch-smoke.sh smoke-apks smoke-evidence smoke-test-apks
+      - name: Upload emulator launch and instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-launch-smoke-api-${{ matrix.api-level }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: smoke-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  production-identity:
+    name: Production APK identity (disposable signing key)
+    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && github.head_ref == 'feat/aria-identity-notation-2.1' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Generate disposable test signing key
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/aria-identity-test.p12" -storetype PKCS12 -storepass disposable-test -keypass disposable-test -alias identity-test -keyalg RSA -keysize 2048 -validity 7 -dname 'CN=Aria CI identity test (not for distribution)'
+          keytool -exportcert -keystore "$RUNNER_TEMP/aria-identity-test.p12" -storepass disposable-test -alias identity-test -file "$RUNNER_TEMP/aria-identity-test.der"
+          printf 'ARIA_EXPECTED_CERT_SHA256=%s\n' "$(sha256sum "$RUNNER_TEMP/aria-identity-test.der" | cut -d ' ' -f 1)" >> "$GITHUB_ENV"
+          printf 'storeFile=%s\nstorePassword=disposable-test\nkeyAlias=identity-test\nkeyPassword=disposable-test\n' "$RUNNER_TEMP/aria-identity-test.p12" > keystore.properties
+      - name: Verify APK inspection tool contracts
+        run: python3 -m unittest discover -s tests -p test_aria_production_apk.py -v
+      - name: Assemble actual production variant with R8
+        run: |
+          chmod +x gradlew
+          ./gradlew --build-cache :app:assembleProdRelease
+          test -s app/build/outputs/mapping/prodRelease/mapping.txt
+      - name: Verify package, SDKs, native libraries, version and test certificate
+        run: python3 scripts/verify-aria-production-apks.py app/build/outputs/apk/prod/release production-evidence/identity.json
+      - name: Upload identity evidence only (never test-signed APKs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-production-identity-${{ github.event.pull_request.head.sha || github.sha }}
+          path: production-evidence/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,18 +1,18 @@
 # Maintainers
 
-This document lists the maintainers responsible for BitChord.
+This document distinguishes current Aria maintenance from historical upstream authorship.
 
 | Maintainer | GitHub | Responsibilities |
 |---|---|---|
-| Kushagra Singh | [@kushagrasinghx](https://github.com/kushagrasinghx) | Project creator, core architecture, release management, and PR reviews |
+| Aria repository owner | [@jssantogit](https://github.com/jssantogit) | Aria project direction, review and releases |
 
 ## Responsibilities
 
 Maintainers oversee project direction, repository maintenance, review and merging of contributions, and release management.
 
-## Contributors
+## Upstream attribution and contributors
 
-This list is automatically generated from GitHub repository contributor data.
+BitChord was originally created by Kushagra Singh ([@kushagrasinghx](https://github.com/kushagrasinghx)). Upstream authorship and contribution history are preserved. Contributors listed below are not necessarily Aria maintainers.
 
 <!-- BEGIN CONTRIBUTORS -->
 - [@kushagrasinghx](https://github.com/kushagrasinghx)

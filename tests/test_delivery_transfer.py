@@ -8,7 +8,7 @@ from tools.delivery_transfer import TransferError, export_evidence, inspect_evid
 
 MAIN = "a" * 40
 HEAD = "b" * 40
-BATCH = {"version": 1, "repository": "jssantogit/BitChord", "target": "main",
+BATCH = {"version": 1, "repository": "jssantogit/Aria", "target": "main",
          "items": [{"number": 90, "expected_head_sha": HEAD,
                     "expected_base_ref": "main", "depends_on": None,
                     "allowed_files": ["tests/test_delivery_journal.py"]}]}

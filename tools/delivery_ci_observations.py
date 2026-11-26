@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 class ObservationError(ValueError):
     pass
 
-REPO = 'jssantogit/BitChord'
+REPO = 'jssantogit/Aria'
 CHECK = 'Android · test and build'
 _SHA = re.compile(r'^[0-9a-f]{40}$')
 

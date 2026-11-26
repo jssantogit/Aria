@@ -15,7 +15,7 @@ class TransferError(ValueError):
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 HASH = re.compile(r"^[0-9a-f]{64}$")
-REPO = "jssantogit/BitChord"
+REPO = "jssantogit/Aria"
 REF = "refs/heads/main"
 EVENT = "workflow_dispatch"
 MAX_BYTES = 65536

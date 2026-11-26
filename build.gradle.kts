@@ -33,16 +33,14 @@ buildscript {
     }
 }
 /*
- * The version of the phone app and of the watch app that ships inside it, in
- * one place. The watch has to move with the phone: it is installed and updated
- * from the phone's own APK (see app/build.gradle.kts), and Android refuses an
+ * The Android application's version is defined here. Android refuses an
  * update whose versionCode is lower than the one installed.
  *
  * No "v" in the name — the in-app updater reads it as a number; the "v" is the
  * release tag's alone.
  */
-extra["bitchordVersionCode"] = 28
-extra["bitchordVersionName"] = "1.8.1"
+extra["ariaVersionCode"] = 28
+extra["ariaVersionName"] = "1.8.1"
 
 /*
  * Bump this by hand before cutting each sideloaded test build ("beta2",
@@ -63,7 +61,7 @@ extra["bitchordVersionName"] = "1.8.1"
  * the phone compares the watch's installed APK with the one it carries, so a
  * beta watch app shows "Update available" as soon as the phone has the release.
  */
-extra["bitchordBetaSuffix"] = "beta1"
+extra["ariaBetaSuffix"] = "beta1"
 
 plugins {
     id("com.android.application") version "8.10.1" apply false

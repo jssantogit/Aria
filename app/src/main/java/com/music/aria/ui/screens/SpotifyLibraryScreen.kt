@@ -1,0 +1,219 @@
+package com.music.aria.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.LibraryMusic
+import org.jetbrains.compose.resources.painterResource
+import com.music.aria.sharedui.resources.spotify_logo
+import com.music.aria.sharedui.resources.Res
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import com.music.aria.R
+import com.music.aria.ui.components.CoverPlaceholder
+import com.music.aria.ui.components.NativeSettingsSecondaryAction
+import com.music.aria.ui.components.NativeSettingsPrimaryAction
+import com.music.aria.ui.components.longPressMenuClickable
+import com.music.aria.data.settings.AppSettings
+import com.music.aria.data.spotify.SpotifyLibrary
+import com.music.aria.data.spotify.SpotifyPlaylist
+
+/**
+ * The signed-in Spotify account's playlists. A tap opens one as an ordinary
+ * playlist page ([onOpenPlaylist]) — this screen is only the way in.
+ */
+@Composable
+fun SpotifyLibraryScreen(
+    onOpenPlaylist: (SpotifyPlaylist) -> Unit,
+    onOpenLogin: () -> Unit,
+    onOpenTokenSetup: () -> Unit,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    val cookie by AppSettings.spotifySpdcToken.collectAsStateWithLifecycle()
+    var playlists by remember { mutableStateOf<List<SpotifyPlaylist>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(cookie) {
+        if (cookie.isBlank()) {
+            playlists = emptyList()
+            error = null
+            return@LaunchedEffect
+        }
+        loading = true
+        error = null
+        runCatching { SpotifyLibrary.playlists() }
+            .onSuccess { playlists = it }
+            .onFailure { error = it.message }
+        loading = false
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = contentPadding,
+    ) {
+        item {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+            ) {
+                Icon(
+                    painter = painterResource(Res.drawable.spotify_logo),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(38.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.spotify),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+        if (cookie.isBlank()) {
+            item {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    Text(
+                        text = stringResource(R.string.spotify_connect_subtitle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    NativeSettingsPrimaryAction(
+                        label = stringResource(R.string.spotify_sign_in),
+                        onClick = onOpenLogin,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    NativeSettingsSecondaryAction(
+                        label = stringResource(R.string.spotify_use_spdc_token),
+                        onClick = onOpenTokenSetup,
+                    )
+                }
+            }
+        } else {
+            if (loading) {
+                item {
+                    NativeLoadingSpinner(modifier = Modifier.fillParentMaxHeight(0.62f))
+                }
+            }
+            error?.let { message ->
+                item {
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            items(playlists, key = { it.id }) { item ->
+                LibraryRow(
+                    title = item.name,
+                    subtitle = item.owner.orEmpty(),
+                    imageUrl = item.imageUrl,
+                    onClick = { onOpenPlaylist(item) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Native library row shared by connected playlists and first-party collections.
+ * The generic title/subtitle/action layout is reused; canonical artwork stays
+ * in its typed loader rather than being converted to a fake legacy URL.
+ */
+@Composable
+internal fun LibraryRow(
+    title: String,
+    subtitle: String,
+    imageUrl: String?,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    artwork: (@Composable () -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    horizontalPadding: Dp = 20.dp,
+    artworkSize: Dp = 52.dp,
+    artworkShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp),
+    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
+    subtitleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth()
+            .then(if (onClick != null) Modifier.longPressMenuClickable(
+                onClick = onClick, onLongClick = onLongPress,
+            ) else Modifier)
+            .padding(horizontal = horizontalPadding, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.size(artworkSize).clip(artworkShape)) {
+            when {
+                artwork != null -> artwork()
+                !imageUrl.isNullOrBlank() -> AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                else -> CoverPlaceholder(
+                    icon = Icons.Rounded.LibraryMusic,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = titleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        trailing?.invoke()
+    }
+}

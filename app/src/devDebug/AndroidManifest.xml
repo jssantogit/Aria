@@ -3,9 +3,9 @@
     <!-- DevDebug ONLY; never present in prod, release or benchmark variants. -->
     <application>
         <activity
-            android:name="com.music.bitchord.acquisition.a0.A0ManualLoginActivity"
+            android:name="com.music.aria.acquisition.a0.A0ManualLoginActivity"
             android:exported="false"
-            android:label="BitChord A0 Login Test"
+            android:label="Aria A0 Login Test"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
         </activity>

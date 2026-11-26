@@ -29,14 +29,20 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Require explicitly approved Aria signing certificate
+        env:
+          ARIA_EXPECTED_CERT_SHA256: ${{ vars.ARIA_RELEASE_CERT_SHA256 }}
+        run: |
+          python3 -c 'import os,re; assert re.fullmatch(r"[0-9a-fA-F]{64}", os.environ["ARIA_EXPECTED_CERT_SHA256"]), "Configure ARIA_RELEASE_CERT_SHA256 with the approved Aria certificate fingerprint"'
+
       - name: Write local.properties and signing config
         run: |
           echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
           echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
 
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > bitchord-release.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > aria-release.jks
           {
-            echo "storeFile=bitchord-release.jks"
+            echo "storeFile=aria-release.jks"
             echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
             echo "keyAlias=${{ secrets.KEY_ALIAS }}"
             echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
@@ -46,12 +52,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build signed prod release APK
-        run: ./gradlew -Pbitchord.bundleWear=false :app:assembleProdRelease
+        run: ./gradlew :app:assembleProdRelease
+
+      - name: Verify and stage production distribution APKs
+        env:
+          ARIA_EXPECTED_CERT_SHA256: ${{ vars.ARIA_RELEASE_CERT_SHA256 }}
+        run: python3 scripts/verify-aria-production-apks.py app/build/outputs/apk/prod/release production-evidence/identity.json --output verified-release
 
       - name: Upload Android release APK
         uses: actions/upload-artifact@v4
         with:
-          name: bitchord-android-prod-release-${{ github.sha }}
-          path: app/build/outputs/apk/prod/release/*.apk
+          name: aria-android-prod-release-${{ github.sha }}
+          path: |
+            verified-release/*.apk
+            production-evidence/identity.json
           if-no-files-found: error
           retention-days: 7

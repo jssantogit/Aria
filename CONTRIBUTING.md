@@ -1,6 +1,6 @@
-# Contributing to BitChord
+# Contributing to Aria
 
-Thank you for contributing to BitChord. Follow these guidelines to ensure an efficient development and review process.
+Thank you for contributing to Aria. Follow these guidelines to ensure an efficient development and review process.
 
 ## Proposing Contributions
 - Substantial features, refactors, or UI redesigns should normally be discussed before implementation. Open an issue on GitHub to outline your proposal.
@@ -20,9 +20,11 @@ When contributing:
 - Address review feedback promptly and keep discussions focused on technical merits.
 
 ## Development Setup
+
+Android is the only product target. Shared JVM tests are retained for Android production code.
 The project requires the following tools:
 - **JDK**: Java Development Kit 17 (Eclipse Temurin 17 recommended).
-- **Android SDK**: `compileSdk = 36`, `targetSdk = 36`, `minSdk = 26`.
+- **Android SDK**: `compileSdk = 37`, `targetSdk = 36`, `minSdk = 26`.
 - **C/C++ NDK & CMake**: CMake 3.22.1+ and Android NDK (for native audio DSP components configured under `app/src/main/cpp`).
 - **Listen Together Backend (Optional)**: Go 1.22+ if developing or testing the party server (`backend/`).
 
@@ -70,6 +72,6 @@ Distinguish clearly between source metadata, decoder format, internal DSP format
 All pull requests require review and approval by repository maintainers before merging. Maintainers review changes for correctness, architecture fit, and maintainability.
 
 ## Dependencies and Licensing
-BitChord is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+Aria is licensed under the **GNU General Public License v3.0 (GPLv3)**.
 
 All contributed code and dependencies must be strictly compatible with GPLv3. Avoid introducing external dependencies unless strictly necessary; any new dependency must be evaluated for necessity, binary size, and license compliance.

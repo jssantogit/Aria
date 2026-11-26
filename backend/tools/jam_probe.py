@@ -7,9 +7,9 @@ app sends `queueAdd` and never looks at the answer -- an `error` frame only
 lands in a log line -- so every refusal here is a silent "AutoPlay did nothing"
 on somebody's phone.
 
-Usage: python jam_probe.py [server]   (default: the LISTEN_TOGETHER_SERVER in
-local.properties). Creates real parties on it; the server sweeps them once
-everybody disconnects.
+Usage: python jam_probe.py https://your-authorized-server.example
+Creates real parties on the explicitly selected server; the server sweeps
+them once everybody disconnects.
 """
 
 import asyncio
@@ -19,9 +19,6 @@ import uuid
 
 import websockets
 from urllib.request import Request, urlopen
-
-DEFAULT_SERVER = "https://bitchord-67v8.onrender.com"
-
 
 def post(url, body):
     req = Request(
@@ -242,7 +239,11 @@ async def probe_autoplay_flag_on_join(base, report):
 
 
 async def main():
-    base = (sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SERVER).rstrip("/")
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python jam_probe.py https://your-authorized-server.example")
+    base = sys.argv[1].rstrip("/")
+    if not base.startswith(("https://", "http://localhost:", "http://127.0.0.1:")):
+        raise SystemExit("Use HTTPS or a local development server")
     print(f"probing {base}\n")
     results = []
 

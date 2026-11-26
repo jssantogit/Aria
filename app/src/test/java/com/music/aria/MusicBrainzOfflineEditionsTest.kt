@@ -1,0 +1,367 @@
+package com.music.aria
+
+import androidx.room.Room
+import com.music.aria.data.catalog.CanonicalCatalogDatabase
+import com.music.aria.data.catalog.metadata.*
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.ConscryptMode
+
+@ConscryptMode(ConscryptMode.Mode.OFF)
+@RunWith(RobolectricTestRunner::class)
+class MusicBrainzOfflineEditionsTest {
+    private val worldwide = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
+    private val japan = "271b31f8-8ab6-483c-97d9-8f0fabb2d4f4"
+    private val group = "529f87a1-1081-48a4-8ee1-3c08de229858"
+    private val recording = "e614e432-ca77-41c1-82c1-4e3a24ebbb0c"
+    private val track = "14f273b6-813b-4239-b0f8-c4b839b902c6"
+    private val japanTrack = "a5f07fd0-c0bd-4784-b074-8508ccbb5639"
+
+    @Test fun editionSearchRetainsTerritoryAndDateWithoutInventingTracklistOrAudio() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            val hits = listOf(
+                MusicBrainzReleaseHit(worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT"),
+                MusicBrainzReleaseHit(japan, "SUPER REAL ME", "JP", "2024-03-25", "ILLIT"),
+            )
+            val ids = index.persistReleases(hits)
+            assertEquals(2, ids.values.toSet().size)
+            assertEquals(hits.toSet(), db.catalogDao().searchKnownMusicBrainzReleases("ILLIT", 25).toSet())
+            assertNull(index.cachedRelease(worldwide))
+            assertTrue(db.catalogDao().musicBrainzRecordingMbidsWithAssets(listOf(recording)).isEmpty())
+            index.persistReleases(listOf(hits[0].copy(country = null, releaseDate = null)))
+            assertEquals("XW", db.catalogDao().searchKnownMusicBrainzReleases("SUPER", 25)
+                .single { it.musicBrainzId == worldwide }.country)
+        } finally { db.close() }
+    }
+
+    @Test fun correctedEditionMetadataReachesOfflineSearchGroupAndExactCachedDetail() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
+                group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
+            )))
+            val before = MusicBrainzReleaseHit(
+                worldwide, "Original edition title", "XW", "2024-03-25", "Old edition credit",
+                status = "Official",
+            )
+            index.persistGroupEditions(group, listOf(before))
+            index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
+                worldwide, group, before.title, before.artistDisplay,
+                before.country, before.releaseDate, listOf(
+                    MusicBrainzCatalogTrack(
+                        track, recording, "Magnetic", 1, 2, 160000L,
+                    ),
+                ),
+            ))
+            val localId = db.catalogDao().entityIdForExternalIdentity(
+                "musicbrainz", "release", worldwide)!!
+            val corrected = before.copy(
+                title = "Corrected edition title", artistDisplay = "ILLIT",
+                releaseDate = "2024-03-26",
+            )
+            assertEquals(localId, index.persistReleases(listOf(corrected))[worldwide])
+            val search = db.catalogDao()
+                .searchKnownMusicBrainzReleases("Corrected edition title", 25).single()
+            assertEquals("Corrected edition title", search.title)
+            assertEquals("ILLIT", search.artistDisplay)
+            assertEquals("2024-03-26", search.releaseDate)
+            val groupEdition = index.cachedGroupReleases(group).single()
+            assertEquals("Corrected edition title", groupEdition.title)
+            assertEquals("ILLIT", groupEdition.artistDisplay)
+            val detail = index.cachedRelease(worldwide)!!
+            assertEquals("Corrected edition title", detail.title)
+            assertEquals("ILLIT", detail.artistDisplay)
+            // Never rewrite unrelated user's/local canonical metadata.
+            assertEquals("Original edition title", db.catalogDao().releaseById(localId)?.title)
+            index.persistReleases(listOf(corrected.copy(
+                country = null, releaseDate = null, artistDisplay = null,
+            )))
+            assertEquals("2024-03-26", index.cachedGroupReleases(group).single().releaseDate)
+        } finally { db.close() }
+    }
+
+
+    @Test fun groupEditionCacheRejectsExplicitForeignGroupAndRestoresExactGroupOwnership() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            val foreignGroup = "a01e48fc-9861-4ebc-88dd-aa31f61f4c11"
+            index.persistReleaseGroups(listOf(
+                MusicBrainzReleaseGroupHit(group, "EASY", "EP", "2024-02-19", "LE SSERAFIM"),
+                MusicBrainzReleaseGroupHit(
+                    foreignGroup, "EASY (English ver.)", "Single",
+                    "2024-02-23", "LE SSERAFIM",
+                ),
+            ))
+            val foreign = MusicBrainzReleaseHit(
+                worldwide, "EASY (English ver.)", "XW", "2024-02-23",
+                "LE SSERAFIM", status = "Official", releaseGroupMbid = foreignGroup,
+            )
+            // A caller's stale/mismatched group relation must not create a
+            // competing group membership solely because the titles overlap.
+            index.persistGroupEditions(group, listOf(foreign))
+            assertTrue(index.cachedGroupReleases(group).isEmpty())
+            // The same exact edition may belong to its *own* group.
+            index.persistGroupEditions(foreignGroup, listOf(foreign))
+            assertEquals(foreignGroup,
+                index.cachedGroupReleases(foreignGroup).single().releaseGroupMbid)
+            // Normal matching edition still remains available as an EP.
+            val own = foreign.copy(
+                musicBrainzId = japan, title = "EASY",
+                releaseGroupMbid = group,
+            )
+            index.persistGroupEditions(group, listOf(own))
+            assertEquals(group, index.cachedGroupReleases(group).single().releaseGroupMbid)
+            assertEquals(japan, index.cachedGroupReleases(group).single().musicBrainzId)
+        } finally { db.close() }
+    }
+
+    @Test fun cachedGraphKeepsEditionTrackIdentityAndNeverPrunesOnSparseBrowse() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            val detail = MusicBrainzCatalogReleaseDetail(worldwide, group, "SUPER REAL ME",
+                "ILLIT", "XW", "2024-03-25", listOf(
+                    MusicBrainzCatalogTrack(track, recording, "Magnetic", 1, 2, 160000, "ILLIT"),
+                ))
+            index.persistReleaseDetail(detail)
+            val complete = detail.copy(tracks = detail.tracks.map {
+                it.copy(recordingTitle = it.title, recordingDurationMs = it.durationMs)
+            })
+            assertEquals(complete, index.cachedRelease(worldwide))
+            index.persistGroupEditions(group, emptyList())
+            assertEquals(listOf(worldwide), index.cachedGroupReleases(group).map { it.musicBrainzId })
+            assertEquals(complete, index.cachedRelease(worldwide))
+            assertTrue(db.catalogDao().musicBrainzRecordingMbidsWithAssets(listOf(recording)).isEmpty())
+            assertNull(index.cachedRelease("not-an-mbid"))
+        } finally { db.close() }
+    }
+
+    @Test fun groupEditionCachePreservesProvenVideoMediaAfterSparseRefresh() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
+                group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
+            )))
+            val videoEdition = MusicBrainzReleaseHit(
+                worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT",
+                status = "Official", isVideoOnlyMedia = true,
+            )
+            val audioEdition = MusicBrainzReleaseHit(
+                japan, "SUPER REAL ME", "JP", "2024-03-25", "ILLIT",
+                status = "Official", isVideoOnlyMedia = false,
+            )
+            index.persistGroupEditions(group, listOf(videoEdition, audioEdition))
+            val cached = MusicBrainzCatalogIndex(db).cachedGroupReleases(group)
+                .associateBy { it.musicBrainzId }
+            assertEquals(true, cached[worldwide]?.isVideoOnlyMedia)
+            assertEquals(false, cached[japan]?.isVideoOnlyMedia)
+            assertEquals(true, db.catalogDao()
+                .searchKnownMusicBrainzReleases("SUPER REAL ME", 25)
+                .single { it.musicBrainzId == worldwide }.isVideoOnlyMedia)
+            // A sparse browse has no evidence to replace the previous flags.
+            index.persistGroupEditions(group, listOf(
+                videoEdition.copy(isVideoOnlyMedia = null),
+                audioEdition.copy(isVideoOnlyMedia = null),
+            ))
+            val reloaded = MusicBrainzCatalogIndex(db).cachedGroupReleases(group)
+                .associateBy { it.musicBrainzId }
+            assertEquals(true, reloaded[worldwide]?.isVideoOnlyMedia)
+            assertEquals(false, reloaded[japan]?.isVideoOnlyMedia)
+        } finally { db.close() }
+    }
+
+    @Test fun exactCachedReleaseRetainsVideoOnlyContentProofAndSparseLookupDoesNotClearIt() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            val detail = MusicBrainzCatalogReleaseDetail(
+                worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25",
+                listOf(MusicBrainzCatalogTrack(
+                    track, recording, "Music video", 1, 1, 180000,
+                )),
+                isVideoOnlyContent = true,
+            )
+            index.persistReleaseDetail(detail)
+            assertEquals(true, MusicBrainzCatalogIndex(db)
+                .cachedRelease(worldwide)?.isVideoOnlyContent)
+            index.persistReleaseDetail(detail.copy(isVideoOnlyContent = null))
+            assertEquals(true, MusicBrainzCatalogIndex(db)
+                .cachedRelease(worldwide)?.isVideoOnlyContent)
+            // An explicit newer non-video proof can correct stale editorial data
+            // without touching canonical Track or Recording MBIDs.
+            index.persistReleaseDetail(detail.copy(isVideoOnlyContent = false))
+            assertEquals(false, MusicBrainzCatalogIndex(db)
+                .cachedRelease(worldwide)?.isVideoOnlyContent)
+        } finally { db.close() }
+    }
+
+    @Test fun releaseTrackAliasWithoutRecordingCreditCannotUndoCorrectedRecordingMetadata() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            index.persistRecordings(listOf(MusicBrainzRecordingHit(
+                recording, "Corrected recording title", "Verified recording artist", 163_000L,
+            )))
+            // The Track is an edition-scoped alias. A missing nested
+            // Recording title/credit does not license replacing the known
+            // Recording metadata with the edition's Track title/artist.
+            index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
+                worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25",
+                listOf(MusicBrainzCatalogTrack(
+                    track, recording, "Edition-only alias", 1, 2, 160_000L,
+                    artistDisplay = "Edition guest",
+                    recordingTitle = null, recordingArtistDisplay = null,
+                    recordingDurationMs = null,
+                )),
+            ))
+            val localId = db.catalogDao().entityIdForExternalIdentity(
+                "musicbrainz", "recording", recording,
+            )!!
+            val cached = db.catalogDao().musicBrainzRecordingEnrichment(localId)!!
+            assertEquals("Corrected recording title", cached.title)
+            assertEquals("Verified recording artist", cached.artistDisplay)
+            assertEquals(163_000L, cached.durationMs)
+            assertEquals("Edition-only alias", index.cachedRelease(worldwide)!!
+                .tracks.single().title)
+        } finally { db.close() }
+    }
+
+    @Test fun offlineEditionTrackDoesNotBorrowAnotherEditionsCreditForTheSameRecording() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
+                worldwide, group, "SUPER REAL ME", "ILLIT", "XW", "2024-03-25", listOf(
+                    MusicBrainzCatalogTrack(
+                        track, recording, "Magnetic", 1, 2, 160000,
+                        artistDisplay = "Edition One credit",
+                        recordingArtistDisplay = "Recording credit",
+                    ),
+                ),
+            ))
+            index.persistReleaseDetail(MusicBrainzCatalogReleaseDetail(
+                japan, group, "SUPER REAL ME", "ILLIT", "JP", "2024-03-25", listOf(
+                    MusicBrainzCatalogTrack(
+                        japanTrack, recording, "Magnetic", 1, 2, 160000,
+                        artistDisplay = "Edition Two credit",
+                        recordingArtistDisplay = "Recording credit",
+                    ),
+                ),
+            ))
+
+            val worldwideTrack = index.cachedRelease(worldwide)!!.tracks.single()
+            val japanEditionTrack = index.cachedRelease(japan)!!.tracks.single()
+
+            assertEquals("Edition One credit", worldwideTrack.artistDisplay)
+            assertEquals("Edition Two credit", japanEditionTrack.artistDisplay)
+            val recordingId = db.catalogDao().entityIdForExternalIdentity(
+                "musicbrainz", "recording", recording,
+            )!!
+            assertEquals("Recording credit", db.catalogDao().recordingById(recordingId)!!.artistDisplay)
+        } finally { db.close() }
+    }
+
+    @Test fun paginatedEditionAssociationsAccumulateAndRemainAvailableOffline() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            index.persistReleaseGroups(listOf(MusicBrainzReleaseGroupHit(
+                group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT",
+            )))
+            val pageOne = MusicBrainzReleaseHit(worldwide, "SUPER REAL ME", "XW", "2024-03-25", "ILLIT")
+            val pageTwo = MusicBrainzReleaseHit(japan, "SUPER REAL ME", "JP", "2024-03-25", "ILLIT")
+            index.persistGroupEditions(group, listOf(pageOne))
+            index.persistGroupEditions(group, listOf(pageTwo))
+            index.persistGroupEditions(group, emptyList())
+            // Exact GroupEdition membership now travels through the Room
+            // cache even if an old, sparse source Release omitted its parent.
+            // Both pages still accumulate without title-based deduplication.
+            assertEquals(
+                setOf(pageOne.copy(releaseGroupMbid = group),
+                    pageTwo.copy(releaseGroupMbid = group)),
+                index.cachedGroupReleases(group).toSet(),
+            )
+        } finally { db.close() }
+    }
+
+    @Test fun artistDiscographyCacheIsBoundToArtistMbidNotHomonymousArtistName() = runBlocking {
+        val db = database()
+        try {
+            val index = MusicBrainzCatalogIndex(db)
+            val illit = "6b128dd7-e998-4edb-a4f5-400fef190445"
+            val namesake = "fa741e5c-1a5d-4a7a-a041-9d8061bd18fb"
+            val anotherGroup = "6cdf5ba6-70f1-4bf6-82b6-f9c821a7ec5a"
+            index.persistArtists(listOf(
+                MusicBrainzArtistHit(illit, "ILLIT", "Korean group", "KR"),
+                MusicBrainzArtistHit(namesake, "ILLIT", "Different artist", "US"),
+            ))
+            val first = MusicBrainzReleaseGroupHit(group, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT")
+            val second = MusicBrainzReleaseGroupHit(anotherGroup, "Namesake release", "Album", null, "ILLIT")
+            index.persistArtistGroups(illit, listOf(first))
+            index.persistArtistGroups(namesake, listOf(second))
+
+            assertEquals(listOf(first), index.cachedArtistGroups(illit))
+            assertEquals(listOf(second), index.cachedArtistGroups(namesake))
+            index.persistArtistGroups(illit, emptyList())
+            assertEquals(listOf(first), index.cachedArtistGroups(illit))
+            assertTrue(index.cachedArtistGroups("not-a-valid-mbid").isEmpty())
+        } finally { db.close() }
+    }
+
+    private fun database() = Room.inMemoryDatabaseBuilder(
+        RuntimeEnvironment.getApplication(), CanonicalCatalogDatabase::class.java,
+    ).allowMainThreadQueries().build()
+
+    @Test fun artistDiscographyNeverPublishesExpiredFutureOrUnsafeVerifiedGroupFronts() =
+        runBlocking {
+            val db = database()
+            try {
+                val now = System.currentTimeMillis()
+                val artist = "12121212-1212-4121-8121-121212121212"
+                val fresh = "22222222-2222-4222-8222-222222222222"
+                val expired = "33333333-3333-4333-8333-333333333333"
+                val invalid = "44444444-4444-4444-8444-444444444444"
+                val future = "55555555-5555-4555-8555-555555555555"
+                val index = MusicBrainzCatalogIndex(db)
+                index.persistArtists(listOf(MusicBrainzArtistHit(
+                    artist, "ILLIT", null, "KR",
+                )))
+                index.persistArtistGroups(artist, listOf(fresh, expired, invalid, future).map {
+                    MusicBrainzReleaseGroupHit(it, "SUPER REAL ME", "EP", "2024-03-25", "ILLIT")
+                })
+                val dbDao = db.catalogDao()
+                for ((id, url, stamp) in listOf(
+                    Triple(fresh, "https://archive.org/valid-front-500.jpg", now - 2000L),
+                    Triple(expired, "https://archive.org/outdated-front-500.jpg", 0L),
+                    Triple(invalid, "https://example.org/wrong-front-500.jpg", now - 2000L),
+                    Triple(future, "https://archive.org/future-front-500.jpg", now + 60_000L),
+                )) {
+                    dbDao.upsertMusicBrainzCoverArtCache(
+                        com.music.aria.data.catalog.MusicBrainzCoverArtCacheEntity(
+                            "release-group:front-v5", id, url, stamp, url,
+                        ),
+                    )
+                }
+                val albumArt = index.cachedArtistGroups(artist).associate {
+                    it.musicBrainzId to it.artworkUri
+                }
+                assertEquals("https://archive.org/valid-front-500.jpg", albumArt[fresh])
+                assertNull(albumArt[expired])
+                assertNull(albumArt[invalid])
+                assertNull(albumArt[future])
+                // The offline search projection is not permitted to publish
+                // raw Front-v5 URLs without the shared eligibility gate.
+                assertTrue(dbDao.searchKnownMusicBrainzGroups("SUPER REAL ME", 25)
+                    .all { it.artworkUri == null })
+            } finally { db.close() }
+        }
+}

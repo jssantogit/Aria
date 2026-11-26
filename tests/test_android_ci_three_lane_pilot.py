@@ -49,7 +49,7 @@ class ThreeLanePilotTests(unittest.TestCase):
     def test_required_check_suite_and_protected_main_unchanged(self):
         source = self.workflow
         self.assertIn("    name: Android · test and build", source)
-        self.assertIn("run: ./gradlew --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest", source)
+        self.assertIn("run: ./gradlew --build-cache :app:testDevDebugUnitTest", source)
         self.assertIn("    branches: [main]", source)
         self.assertIn("    runs-on: ubuntu-latest", source)
         self.assertIn("    timeout-minutes: 45", source)

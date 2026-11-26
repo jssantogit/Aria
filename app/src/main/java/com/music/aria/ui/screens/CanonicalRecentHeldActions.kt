@@ -1,0 +1,53 @@
+package com.music.aria.ui.screens
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.StarOutline
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.music.aria.R
+import com.music.aria.ui.components.NativeCompactMenuItem
+import com.music.aria.ui.icons.AriaIcons
+
+/**
+ * Recent additions are verified local RecordingIds, not synthetic media.
+ * Share native library actions with the held track card; never offer
+ * misleading download of a file that is already on the device.
+ */
+@Composable
+internal fun CanonicalRecentHeldActions(
+    isPinned: Boolean,
+    onPlayNext: () -> Unit,
+    onQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onEditRating: () -> Unit,
+    onTogglePin: () -> Unit,
+) {
+    NativeCompactMenuItem(
+        label = "Tocar a seguir",
+        icon = Icons.Rounded.SkipNext,
+        onClick = onPlayNext,
+    )
+    NativeCompactMenuItem(
+        label = "Adicionar à fila",
+        icon = Icons.Rounded.QueueMusic,
+        onClick = onQueue,
+    )
+    NativeCompactMenuItem(
+        label = "Adicionar à playlist",
+        icon = Icons.Rounded.PlaylistAdd,
+        onClick = onAddToPlaylist,
+    )
+    NativeCompactMenuItem(
+        label = "Editar avaliação",
+        icon = Icons.Rounded.StarOutline,
+        onClick = onEditRating,
+    )
+    NativeCompactMenuItem(
+        label = stringResource(if (isPinned) R.string.unpin else R.string.pin),
+        icon = AriaIcons.Pin,
+        onClick = onTogglePin,
+    )
+}

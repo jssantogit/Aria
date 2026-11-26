@@ -13,10 +13,10 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/KabirSinghBhatia/BitChord/backend/clock"
-	"github.com/KabirSinghBhatia/BitChord/backend/config"
-	"github.com/KabirSinghBhatia/BitChord/backend/presence"
-	"github.com/KabirSinghBhatia/BitChord/backend/protocol"
+	"github.com/jssantogit/Aria/backend/clock"
+	"github.com/jssantogit/Aria/backend/config"
+	"github.com/jssantogit/Aria/backend/presence"
+	"github.com/jssantogit/Aria/backend/protocol"
 )
 
 func setupTestServer() *httptest.Server {
@@ -476,9 +476,15 @@ func TestInviteLanding(t *testing.T) {
 	_, _ = buf.ReadFrom(resActive.Body)
 	content := buf.String()
 
-	expectedDeepLinkPrefix := "bitchord://party/" + code
+	expectedDeepLinkPrefix := "aria://party/" + code
 	if !strings.Contains(content, expectedDeepLinkPrefix) {
 		t.Errorf("Expected HTML content to contain deep link %s", expectedDeepLinkPrefix)
+	}
+	if strings.Contains(content, "bitchord://party/") || strings.Contains(content, "scheme=bitchord") || strings.Contains(content, "github.com/kushagrasinghx/BitChord") {
+		t.Fatal("Invite must not direct visitors to the legacy application or releases")
+	}
+	if !strings.Contains(content, "scheme=aria") || !strings.Contains(content, "https://github.com/jssantogit/Aria/releases") {
+		t.Fatal("Invite must use Aria's scheme and releases")
 	}
 	if !strings.Contains(content, code) {
 		t.Errorf("Expected HTML content to contain party code %s", code)

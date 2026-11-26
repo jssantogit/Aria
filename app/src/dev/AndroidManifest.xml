@@ -3,22 +3,22 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:label="BitChord Dev"
+        android:label="@string/aria_launcher_name"
         android:usesCleartextTraffic="true"
         tools:replace="android:label,android:usesCleartextTraffic">
         <provider
-            android:name="com.music.bitchord.data.catalog.CanonicalCatalogInitializerProvider"
+            android:name="com.music.aria.data.catalog.CanonicalCatalogInitializerProvider"
             android:authorities="${applicationId}.canonical-catalog-init"
             android:exported="false" />
 
         <activity
-            android:name="com.music.bitchord.diagnostics.DiagnosticsActivity"
+            android:name="com.music.aria.diagnostics.DiagnosticsActivity"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:label="BitChord Diagnostics" />
+            android:label="Aria Diagnostics" />
 
         <provider
-            android:name="com.music.bitchord.diagnostics.DiagnosticsFileProvider"
+            android:name="com.music.aria.diagnostics.DiagnosticsFileProvider"
             android:authorities="${applicationId}.diagnostics-files"
             android:exported="false"
             android:grantUriPermissions="true">

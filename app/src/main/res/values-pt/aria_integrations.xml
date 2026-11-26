@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aria_discord_unavailable">A presença no Discord está indisponível até que o Aria tenha uma integração própria autorizada.</string>
+</resources>

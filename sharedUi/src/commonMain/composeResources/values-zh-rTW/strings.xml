@@ -140,7 +140,6 @@
     <string name="downloaded">已下載</string>
     <string name="explore">探索</string>
     <string name="library">資料庫</string>
-    <string name="library_sign_in_description">登入 Google 賬號即可檢視你喜歡的歌曲、播放列表和 YouTube Music 歷史記錄。</string>
     <string name="new_playlist">新建播放列表</string>
     <string name="on_device">裝置內</string>
     <string name="personalized_recommendations">獲取個性化推薦</string>
@@ -187,13 +186,12 @@
     <string name="shelf_youtube_charts">YouTube 排行榜</string>
     <string name="show_all">檢視全部</string>
     <string name="sign_in">登入</string>
-    <string name="sign_in_youtube_music">登入 YouTube Music</string>
     <string name="subscriptions">訂閱</string>
     <string name="switch_to_grid_view">切換到網格檢視</string>
     <string name="switch_to_list_view">切換到列表檢視</string>
     <string name="your_replay">你的 Replay</string>
     <string name="your_listening_experience">你的收聽體驗</string>
-    <string name="default_replay_holder">BitChord 聽眾</string>
+    <string name="default_replay_holder">Aria 聽眾</string>
     <string name="member_since">加入時間</string>
     <string name="import_spotify">從 Spotify 匯入</string>
     <string name="import_spotify_subtitle">從播放列表連結</string>

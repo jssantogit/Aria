@@ -11,7 +11,7 @@ SHA = 'a' * 40
 NEXT = 'b' * 40
 
 def proposal():
-    return {'version': 1, 'repository': 'jssantogit/BitChord', 'target': 'main',
+    return {'version': 1, 'repository': 'jssantogit/Aria', 'target': 'main',
             'items': [{'number': 90, 'expected_head_sha': NEXT,
                        'expected_base_ref': 'main', 'depends_on': None,
                        'allowed_files': ['tools/delivery_journal.py']}]}

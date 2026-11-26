@@ -24,7 +24,7 @@ class Reader:
         self.lock = threading.Lock()
         self.sha = MAIN
         self.drift = False
-        self.repository = "jssantogit/BitChord"
+        self.repository = "jssantogit/Aria"
 
     def main_sha(self):
         return ("e" * 40) if self.drift else self.sha
@@ -39,7 +39,7 @@ class Reader:
         return {"head_sha": format(n, "040x"), "base_ref": "main",
                 "base_sha": MAIN, "draft": False, "mergeable": "clean",
                 "state": "open", "merged": False,
-                "head_repo": "jssantogit/BitChord"}
+                "head_repo": "jssantogit/Aria"}
 
     def files(self, n):
         return [f"src/{n}.kt"]
@@ -124,7 +124,7 @@ class PreflightTests(unittest.TestCase):
         from pathlib import Path
         from tools.delivery_journal import initialize
         from tools.delivery_transfer import export_evidence, inspect_evidence
-        manifest = {"version": 1, "repository": "jssantogit/BitChord",
+        manifest = {"version": 1, "repository": "jssantogit/Aria",
                     "target": "main", "items": [{
                         "number": 1, "expected_head_sha": format(1, "040x"),
                         "expected_base_ref": "main", "depends_on": None,

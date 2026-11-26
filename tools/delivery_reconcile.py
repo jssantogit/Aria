@@ -28,7 +28,7 @@ def reconcile_live(journal, manifest, reader):
             journal.get('approval_required') is not True or
             journal.get('executable') is not False or
             journal.get('manifest_digest') != _digest(manifest) or
-            getattr(reader, 'repository', None) != 'jssantogit/BitChord'):
+            getattr(reader, 'repository', None) != 'jssantogit/Aria'):
         raise JournalError('invalid or mismatched checkpoint')
     rows = journal.get('items')
     if (type(rows) is not list or

@@ -137,7 +137,7 @@ def plan(snapshot):
     eligible = [n for n in order if not blockers[n]]
     batch = eligible[:3]
     proposal = {
-        "version": 1, "repository": "jssantogit/BitChord", "target": "main",
+        "version": 1, "repository": "jssantogit/Aria", "target": "main",
         "items": [
             {"number": n, "expected_head_sha": prs[n]["head_sha"],
              "expected_base_ref": "main", "depends_on": None,
@@ -147,7 +147,7 @@ def plan(snapshot):
     }
     # Do not mistake an empty proposal for an executable manifest.
     if batch:
-        validate_manifest(proposal, "jssantogit/BitChord")
+        validate_manifest(proposal, "jssantogit/Aria")
     return {"version": 1, "main_sha": main, "ordered": rows,
             "manifest_proposal": proposal, "not_proposed": eligible[3:],
             "approval_required": True, "executable": False}

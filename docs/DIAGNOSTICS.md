@@ -1,16 +1,16 @@
-# BitChord diagnostics
+# Aria diagnostics
 
 The diagnostics layer exists to measure before optimizing. It is deliberately separate from feature behavior: adding or removing a probe must not change startup ordering, playback state, source selection, or catalog identity.
 
 ## Normal workflow: UI first
 
-Normal diagnostic collection is performed entirely inside BitChord. A tester should not need ADB, a terminal, logcat, Perfetto, or dumpsys to capture and share an application-level report.
+Normal diagnostic collection is performed entirely inside Aria. A tester should not need ADB, a terminal, logcat, Perfetto, or dumpsys to capture and share an application-level report.
 
 Use this path on a dev build:
 
 1. Open **Settings → Advanced Options → Diagnostics**.
 2. Tap **Start capture**.
-3. Return to BitChord and reproduce the problem.
+3. Return to Aria and reproduce the problem.
 4. Return to **Settings → Advanced Options → Diagnostics**.
 5. Inspect the recent events shown in the panel.
 6. Tap **Share report** and send the exported report.
@@ -19,7 +19,7 @@ The report exported by **Share report** is the canonical diagnostics artifact fo
 
 The panel also provides **Stop capture** and **Clear**. `Clear` removes the in-memory buffer, persisted capture segments, exports, and retained crash data; it does not stop an active capture window.
 
-Persistent capture survives process restart. To capture a deterministic cold startup without ADB, start capture and use **Restart & capture startup** from Diagnostics. After BitChord relaunches, return to Diagnostics, inspect the startup events, and use **Share report**.
+Persistent capture survives process restart. To capture a deterministic cold startup without ADB, start capture and use **Restart & capture startup** from Diagnostics. After Aria relaunches, return to Diagnostics, inspect the startup events, and use **Share report**.
 
 The Diagnostics row is shown only when the dev-only Diagnostics Activity is present in the installed variant. Production variants therefore do not expose the developer control panel.
 
@@ -70,7 +70,7 @@ The normal entry point is **Settings → Advanced Options → Diagnostics**. The
 
 ## Startup measurement
 
-`BitChordApplication.onCreate()` keeps the same initialization order and the same background `join()` behavior. Diagnostics only wraps the existing operations with spans.
+`AriaApplication.onCreate()` keeps the same initialization order and the same background `join()` behavior. Diagnostics only wraps the existing operations with spans.
 
 Important startup span names include:
 

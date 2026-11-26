@@ -13,7 +13,7 @@ class ResumePolicyError(ValueError):
 
 _SHA = re.compile(r'^[0-9a-f]{40}$')
 _DIGEST = re.compile(r'^[0-9a-f]{64}$')
-_REPO = 'jssantogit/BitChord'
+_REPO = 'jssantogit/Aria'
 _STAGES = frozenset(('planned', 'preflight_green', 'merge_intent',
                      'merged_observed', 'post_ci_green'))
 _ANDROID = frozenset(('success', 'failure', 'pending', 'missing', None))

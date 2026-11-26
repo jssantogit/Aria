@@ -12,7 +12,7 @@ from tools.delivery_artifact import ArtifactError, inspect_remote_evidence, GitH
 
 MAIN = 'a' * 40
 HEAD = 'b' * 40
-REPO = 'jssantogit/BitChord'
+REPO = 'jssantogit/Aria'
 BATCH = {
     'version': 1, 'repository': REPO, 'target': 'main',
     'items': [{'number': 90, 'expected_head_sha': HEAD,

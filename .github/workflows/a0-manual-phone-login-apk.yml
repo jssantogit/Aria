@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize]
     paths:
       - "app/src/devDebug/**"
-      - "app/src/main/java/com/music/bitchord/acquisition/a0/A0ExperimentalLoginCodec.kt"
+      - "app/src/main/java/com/music/aria/acquisition/a0/A0ExperimentalLoginCodec.kt"
       - ".github/workflows/a0-manual-phone-login-apk.yml"
 
 permissions:
@@ -41,7 +41,7 @@ jobs:
         env:
           LASTFM_API_KEY: ""
           LASTFM_SECRET: ""
-        run: ./gradlew --no-daemon -Pbitchord.bundleWear=false :app:assembleDevDebug
+        run: ./gradlew --no-daemon :app:assembleDevDebug
 
       - name: Upload short-lived test APK
         uses: actions/upload-artifact@v4

@@ -16,10 +16,10 @@ class FakeReader:
         self.details = {
             2: {"number": 2, "state": "open", "merged": False,
                 "head_sha": TWO, "head_ref": "perf/p2", "base_ref": "main",
-                "draft": True, "mergeable": "blocked", "head_repo": "jssantogit/BitChord"},
+                "draft": True, "mergeable": "blocked", "head_repo": "jssantogit/Aria"},
             1: {"number": 1, "state": "open", "merged": False,
                 "head_sha": ONE, "head_ref": "catalog/p1", "base_ref": "main",
-                "draft": False, "mergeable": "clean", "head_repo": "jssantogit/BitChord"},
+                "draft": False, "mergeable": "clean", "head_repo": "jssantogit/Aria"},
         }
 
     def main_sha(self):
@@ -42,7 +42,7 @@ class FakeReader:
 class SnapshotTests(unittest.TestCase):
     def test_live_collection_is_pinned_sorted_and_consumable_by_planner(self):
         reader = FakeReader()
-        result = collect_snapshot(reader, "jssantogit/BitChord")
+        result = collect_snapshot(reader, "jssantogit/Aria")
         self.assertEqual(MAIN, result["main_sha"])
         self.assertEqual([1, 2], [p["number"] for p in result["pull_requests"]])
         self.assertEqual("pending", result["pull_requests"][1]["check"])
@@ -53,6 +53,10 @@ class SnapshotTests(unittest.TestCase):
         self.assertIn("merge_policy_blocked", classified["ordered"][1]["blockers"])
         self.assertFalse(classified["executable"])
 
+    def test_legacy_repository_alias_is_not_an_operational_identity(self):
+        with self.assertRaises(SnapshotError):
+            collect_snapshot(FakeReader(), "jssantogit/BitChord")
+
     def test_stale_main_head_and_missing_pull_request_fail_closed(self):
         class MainDrift(FakeReader):
             def main_sha(self):
@@ -60,38 +64,38 @@ class SnapshotTests(unittest.TestCase):
                 return MAIN if self.read_count == 1 else "b" * 40
 
         with self.assertRaises(SnapshotError):
-            collect_snapshot(MainDrift(), "jssantogit/BitChord")
+            collect_snapshot(MainDrift(), "jssantogit/Aria")
         changed = FakeReader()
         changed.details[2]["head_sha"] = "f" * 40
         # The listing remains old while the detail endpoint sees the new HEAD.
         changed.open_prs = lambda: [
             dict(FakeReader().details[2]), dict(FakeReader().details[1])]
         with self.assertRaises(SnapshotError):
-            collect_snapshot(changed, "jssantogit/BitChord")
+            collect_snapshot(changed, "jssantogit/Aria")
         gone = FakeReader()
         gone.details[1]["state"] = "closed"
         with self.assertRaises(SnapshotError):
-            collect_snapshot(gone, "jssantogit/BitChord")
+            collect_snapshot(gone, "jssantogit/Aria")
 
     def test_duplicate_pr_and_incomplete_file_list_fail_closed(self):
         duplicate = FakeReader()
         duplicate.open_prs = lambda: [duplicate.details[1], duplicate.details[1]]
         with self.assertRaises(SnapshotError):
-            collect_snapshot(duplicate, "jssantogit/BitChord")
+            collect_snapshot(duplicate, "jssantogit/Aria")
         excessive = FakeReader()
         excessive.files = lambda n: [f"x/{i}.kt" for i in range(101)]
         with self.assertRaises(SnapshotError):
-            collect_snapshot(excessive, "jssantogit/BitChord")
+            collect_snapshot(excessive, "jssantogit/Aria")
 
     def test_untrusted_exceptions_are_not_echoed(self):
         r = FakeReader()
         r.check = lambda sha: (_ for _ in ()).throw(RuntimeError("TOKEN=private-123"))
         with self.assertRaises(SnapshotError) as caught:
-            collect_snapshot(r, "jssantogit/BitChord")
+            collect_snapshot(r, "jssantogit/Aria")
         self.assertNotIn("private-123", str(caught.exception))
 
     def test_adapter_paginates_and_rejects_duplicate_checks(self):
-        adapter = GitHubSnapshotReader("jssantogit/BitChord")
+        adapter = GitHubSnapshotReader("jssantogit/Aria")
         calls = []
         def fixture(path):
             calls.append(path)

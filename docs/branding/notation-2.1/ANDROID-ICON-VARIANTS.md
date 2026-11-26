@@ -1,0 +1,3 @@
+# Android launcher variants
+
+All 13 launcher choices use the approved Notation 2.1 paths. The default is unchanged. Twelve glass alternatives retain their Apple-style rounded square, Samsung-style squircle and Pixel circle silhouette with four light/dark/clear variants. These are candidate treatments, not a separately approved redesign. All variants have an opaque monochrome themed layer. Old raster launcher assets were removed rather than left selectable in density-specific resources. Notification and shared UI logo use the same monochrome silhouette. Existing alias names are unchanged. Verify actual launcher masks and the settings preview on Android before acceptance.

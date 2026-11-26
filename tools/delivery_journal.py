@@ -37,7 +37,7 @@ def _validate_manifest(data):
     _need(type(data) is dict and set(data) ==
           {'version', 'repository', 'target', 'items'}, 'invalid manifest')
     _need(data['version'] == 1 and
-          data['repository'] == 'jssantogit/BitChord' and
+          data['repository'] == 'jssantogit/Aria' and
           data['target'] == 'main', 'invalid repository')
     rows = data['items']
     _need(type(rows) is list and 1 <= len(rows) <= 3, 'invalid batch size')
@@ -84,7 +84,7 @@ def _read(path):
     valid = type(integrity) is str and integrity == _digest(data)
     data['integrity'] = integrity
     _need(valid, 'journal integrity violation')
-    _need(data['version'] == 1 and data['repository'] == 'jssantogit/BitChord'
+    _need(data['version'] == 1 and data['repository'] == 'jssantogit/Aria'
           and type(data['revision']) is int and data['revision'] >= 0 and
           data['approval_required'] is True and data['executable'] is False
           and type(data['main_sha']) is str and _SHA.fullmatch(data['main_sha'])

@@ -6,7 +6,7 @@ set -euo pipefail
 # they remain readable until all historical data migrations are verified.
 pattern='YtMusicRepository|InnerTubeXResolver|Innertube[.]|InnertubeParser|StreamResolver[.]|PoTokenGenerator|PoTokenWebView|YouTubeSource|DesktopYouTubeAuth|DesktopYouTubeSession|youtubei[.]googleapis[.]com|music[.]youtube[.]com'
 roots=()
-for root in app/src/main shared/src sharedUi/src desktopUi/src desktopApp/src/main tv/src wearos/src web/app/src; do
+for root in app/src/main shared/src sharedUi/src; do
   if [[ -d "$root" ]]; then roots+=("$root"); fi
 done
 
@@ -21,9 +21,9 @@ echo "Retired backend references: $total lines across $files source files"
 echo "This report is an inventory, not an authorization to delete archived identities."
 
 # A hard compile-path guard complements the historical inventory above.
-# No active platform may import a physically deleted JVM backend.
+# No active Android source may import a physically deleted JVM backend.
 active_roots=()
-for root in app/src/main/java shared/src/jvmSharedMain desktopApp/src/main/kotlin desktopUi/src sharedUi/src tv/src/main/java wearos/src/main; do
+for root in app/src/main/java shared/src/jvmSharedMain sharedUi/src; do
   if [[ -d "$root" ]]; then active_roots+=("$root"); fi
 done
 if (( ${#active_roots[@]} > 0 )); then
@@ -37,7 +37,7 @@ fi
 
 echo "External references to retired transport symbols (main + test sources):"
 test_roots=()
-for root in app/src shared/src sharedUi/src desktopUi/src desktopApp/src tv/src wearos/src web/app/src; do
+for root in app/src shared/src sharedUi/src; do
   if [[ -d "$root" ]]; then test_roots+=("$root"); fi
 done
 if (( ${#test_roots[@]} > 0 )); then
