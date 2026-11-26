@@ -19,6 +19,7 @@ internal enum class AppleMusicWebCompleteness {
     PAGE_LIMIT,
     UPSTREAM_INTERRUPTED,
     MISSING_TRACKLIST,
+    UNRESOLVED_EDITORIAL_REFERENCES,
     TRACK_COUNT_MISMATCH,
 }
 

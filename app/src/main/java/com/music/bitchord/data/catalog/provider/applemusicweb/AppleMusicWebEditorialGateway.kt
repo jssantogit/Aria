@@ -105,7 +105,8 @@ internal class AppleMusicWebEditorialGateway(
             validateItems(result.featuredAlbums, storefront, setOf(AppleMusicWebKind.ALBUM))
             validateItems(result.similarArtists, storefront, setOf(AppleMusicWebKind.ARTIST))
             validateItems(result.artistPlaylists, storefront, setOf(AppleMusicWebKind.PLAYLIST))
-            AppleMusicWebOutcome.Complete(result)
+            if (result.unresolvedShelves.isEmpty()) AppleMusicWebOutcome.Complete(result)
+            else AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES)
         }
 
     suspend fun album(
@@ -149,6 +150,7 @@ internal class AppleMusicWebEditorialGateway(
                 else -> setOf(AppleMusicWebKind.ALBUM)
             }
             validateItems(result.items, storefront, kind)
-            AppleMusicWebOutcome.Complete(result)
+            if (result.unresolvedReferences == 0) AppleMusicWebOutcome.Complete(result)
+            else AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES)
         }
 }

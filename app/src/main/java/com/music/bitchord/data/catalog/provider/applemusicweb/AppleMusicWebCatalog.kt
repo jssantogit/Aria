@@ -45,6 +45,7 @@ internal data class AppleMusicWebItem(
 internal data class AppleMusicWebPage(
     val items: List<AppleMusicWebItem>, val page: Int, val limit: Int, val hasMore: Boolean,
     val nextCursor: String? = null,
+    val unresolvedReferences: Int = 0,
 )
 
 internal enum class AppleMusicWebArtistShelf(val endpoint: String) {
@@ -70,6 +71,7 @@ internal data class AppleMusicWebArtist(
     val similarArtists: List<AppleMusicWebItem>,
     val featuredAlbums: List<AppleMusicWebItem> = emptyList(),
     val artistPlaylists: List<AppleMusicWebItem> = emptyList(),
+    val unresolvedShelves: Map<AppleMusicWebArtistShelf, Int> = emptyMap(),
 )
 
 internal data class AppleMusicWebAlbum(
@@ -168,6 +170,47 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
     private fun items(block: JsonObject?, sf: String): List<AppleMusicWebItem> =
         block?.objects("data").orEmpty().mapNotNull { convert(it, sf) }
 
+    private data class ArtistShelfItems(
+        val items: List<AppleMusicWebItem>,
+        val unresolved: Set<String>,
+    )
+
+    private fun artistShelfKinds(shelf: AppleMusicWebArtistShelf): Set<AppleMusicWebKind> =
+        when (shelf) {
+            AppleMusicWebArtistShelf.TOP_SONGS -> setOf(AppleMusicWebKind.SONG)
+            AppleMusicWebArtistShelf.SIMILAR_ARTISTS -> setOf(AppleMusicWebKind.ARTIST)
+            AppleMusicWebArtistShelf.MUSIC_VIDEOS -> setOf(AppleMusicWebKind.MUSIC_VIDEO)
+            AppleMusicWebArtistShelf.ARTIST_PLAYLISTS,
+            AppleMusicWebArtistShelf.FEATURED_PLAYLISTS -> setOf(AppleMusicWebKind.PLAYLIST)
+            else -> setOf(AppleMusicWebKind.ALBUM)
+        }
+
+    // Relationship linkage is not a materialized catalog row. Validate the
+    // source type and native ID even for unresolved references. Never create
+    // a label or publish an incomplete resource as a real item.
+    private fun artistShelfItems(
+        block: JsonObject?, sf: String, shelf: AppleMusicWebArtistShelf,
+    ): ArtistShelfItems {
+        val rows = mutableListOf<AppleMusicWebItem>()
+        val unresolved = linkedSetOf<String>()
+        val seen = hashSetOf<String>()
+        for (raw in block?.objects("data").orEmpty()) {
+            val kind = artistShelfKinds(shelf).firstOrNull { it.apiType == raw.str("type") }
+                ?: throw AppleMusicWebProtocolException("Wrong artist shelf resource type")
+            val id = raw.str("id") ?: throw AppleMusicWebProtocolException("Missing ID")
+            resourceId(id, kind)
+            if (!seen.add(id)) throw AppleMusicWebProtocolException("Duplicate artist shelf resource")
+            val attributes = raw["attributes"]
+            if (attributes == null || attributes.toString() == "null") {
+                unresolved += id
+            } else {
+                // A malformed attributes object is a protocol error, not linkage.
+                rows += convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid artist shelf resource")
+            }
+        }
+        return ArtistShelfItems(rows, unresolved)
+    }
+
     /** Only Apple's same-route, same-storefront next links are allowed. */
     private fun follow(cursor: String, path: String,
                        term: String? = null, kind: AppleMusicWebKind? = null): Map<String, String> {
@@ -263,12 +306,45 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             "extend" to "artistBio,editorialArtwork,plainEditorialNotes",
             "include" to "genres,station",
         ))
-        val identity = convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid artist")
+        // Identity is mandatory. If an expanded view only returns root
+        // linkage, obtain the same artist directly without expanded views.
+        val root = if (raw["attributes"] == null || raw["attributes"].toString() == "null")
+            detail(sf, AppleMusicWebKind.ARTIST, artistId, emptyMap()) else raw
+        val identity = convert(root, sf) ?: throw AppleMusicWebProtocolException("Invalid artist")
         val views = raw.obj("views")
-        fun shelf(name: String) = items(views?.obj(name), sf)
+        val unresolved = linkedMapOf<AppleMusicWebArtistShelf, Int>()
+        suspend fun shelf(shelf: AppleMusicWebArtistShelf): List<AppleMusicWebItem> {
+            val block = views?.obj(shelf.endpoint.removePrefix("view/"))
+            val initial = artistShelfItems(block, sf, shelf)
+            if (initial.unresolved.isEmpty()) return initial.items
+            // One bounded, same-artist, same-view recovery. Only hydrate IDs
+            // explicitly present in the original shelf; preserve its order.
+            val recovered = try {
+                val path = "/v1/catalog/$sf/artists/$artistId/" + shelf.endpoint
+                val body = transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path,
+                    mapOf("limit" to minOf(100, maxOf(20, initial.items.size + initial.unresolved.size)).toString()))
+                artistShelfItems(parse(body), sf, shelf).items.associateBy { it.id }
+            } catch (failure: AppleMusicWebHttpException) {
+                if (failure.status in listOf(401, 403, 429)) throw failure
+                emptyMap()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: java.io.IOException) {
+                emptyMap()
+            }
+            val original = initial.items.associateBy { it.id }
+            val missing = initial.unresolved.count { it !in recovered }
+            if (missing > 0) unresolved[shelf] = missing
+            return block?.objects("data").orEmpty().mapNotNull { item ->
+                val id = item.str("id")
+                original[id] ?: if (id in initial.unresolved) recovered[id] else null
+            }
+        }
         return AppleMusicWebArtist(
-            identity, shelf("top-songs"), shelf("full-albums"), shelf("singles"),
-            shelf("similar-artists"), shelf("featured-albums"), shelf("playlists"),
+            identity, shelf(AppleMusicWebArtistShelf.TOP_SONGS),
+            shelf(AppleMusicWebArtistShelf.STUDIO_ALBUMS), shelf(AppleMusicWebArtistShelf.SINGLES_AND_EPS),
+            shelf(AppleMusicWebArtistShelf.SIMILAR_ARTISTS), shelf(AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS),
+            shelf(AppleMusicWebArtistShelf.ARTIST_PLAYLISTS), unresolved,
         )
     }
 
@@ -292,10 +368,12 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             val cursor = block.str("next")
                 ?: return AppleMusicWebPage(emptyList(), page, limit, false)
             if (!visited.add(cursor)) throw AppleMusicWebProtocolException("Cyclic artist cursor")
-            val params = follow(cursor, path) + firstParams
+            val params = firstParams + follow(cursor, path)
             block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path, params))
         }
-        return AppleMusicWebPage(items(block, sf), page, limit, block.str("next") != null)
+        val parsed = artistShelfItems(block, sf, shelf)
+        return AppleMusicWebPage(parsed.items, page, limit, block.str("next") != null,
+            unresolvedReferences = parsed.unresolved.size)
     }
 
     suspend fun album(id: String, country: String): AppleMusicWebAlbum =

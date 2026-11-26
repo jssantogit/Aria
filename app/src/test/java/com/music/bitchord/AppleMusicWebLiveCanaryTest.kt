@@ -67,7 +67,11 @@ class AppleMusicWebLiveCanaryTest {
                 stage = "artist_detail"
                 val overview = catalog.artist(first.id, country)
                 assertEquals(first.scopedId, overview.identity.scopedId)
-                println("AMS_CANARY|storefront=$country|status=success")
+                if (overview.unresolvedShelves.isNotEmpty()) {
+                    val unresolved = overview.unresolvedShelves.entries.joinToString(",") { it.key.name + ":" + it.value }
+                    println("AMS_CANARY|storefront=$country|status=partial|unresolved=$unresolved")
+                    failures += "AMS_CANARY|storefront=$country|stage=artist_detail|reason=unresolved_editorial_references"
+                } else println("AMS_CANARY|storefront=$country|status=success")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
@@ -80,7 +84,8 @@ class AppleMusicWebLiveCanaryTest {
                         "Invalid search data", "Search error envelope", "Invalid catalog JSON",
                         "Invalid array", "Invalid catalog item", "Oversized response",
                         "Apple web bundle unavailable", "Apple web token unavailable",
-                        "Invalid artist", "Cyclic cursor" -> failure.message.orEmpty()
+                        "Invalid artist", "Cyclic cursor", "Wrong artist shelf resource type",
+                        "Duplicate artist shelf resource", "Invalid artist shelf resource" -> failure.message.orEmpty()
                         else -> "protocol_other"
                     }
                     is AssertionError -> "contract_assertion"

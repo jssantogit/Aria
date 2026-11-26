@@ -127,6 +127,36 @@ class AppleMusicWebEditorialGatewayTest {
         assertEquals(ProviderCallResult.Stale, request.await())
     }
 
+    @Test fun artistLinkageIsRecoveredByExactNativeIdOrRemainsPartial() = runBlocking {
+        val requests = mutableListOf<String>()
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
+            AppleMusicWebTransport { _, path, _ ->
+                requests += path
+                if (path.endsWith("/view/top-songs")) {
+                    """{"data":[{"id":"2","type":"songs","attributes":{"name":"Recovered"}},
+                        {"id":"99","type":"songs","attributes":{"name":"Unrelated"}}]}"""
+                } else {
+                    """{"data":[{"id":"77","type":"artists","attributes":{"name":"Artist"},
+                        "views":{"top-songs":{"data":[
+                        {"id":"1","type":"songs","attributes":{"name":"First"}},
+                        {"id":"2","type":"songs"},{"id":"3","type":"songs"}]}}}]}"""
+                }
+            }), gate(discography))
+        val result = gateway.artist("77", "fr") as ProviderCallResult.Success
+        val outcome = result.value.outcome as AppleMusicWebOutcome.Partial
+        assertEquals(com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES, outcome.reason)
+        assertEquals(listOf("1", "2"), outcome.value.topSongs.map { it.id })
+        assertEquals(1, outcome.value.unresolvedShelves.values.sum())
+        assertEquals(listOf("/v1/catalog/fr/artists/77", "/v1/catalog/fr/artists/77/view/top-songs"), requests)
+    }
+
+    @Test fun missingRootIdentityIsNotReplacedByShelfLinkage() = runBlocking {
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
+            AppleMusicWebTransport { _, _, _ -> """{"data":[{"id":"77","type":"artists"}]}""" }),
+            gate(discography))
+        assertTrue(gateway.artist("77", "fr") is ProviderCallResult.Failed)
+    }
+
     @Test fun albumPaginationFailureRemainsExplicitPartialWithSourceProvenance() = runBlocking {
         val gateway = AppleMusicWebEditorialGateway(
             AppleMusicWebCatalog(AppleMusicWebTransport { _, path, _ ->
