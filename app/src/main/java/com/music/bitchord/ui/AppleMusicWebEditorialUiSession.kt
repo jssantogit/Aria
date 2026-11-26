@@ -35,6 +35,14 @@ internal class AppleMusicWebEditorialUiSession(
     private val _state = MutableStateFlow(AppleMusicWebEditorialUiState())
     val state = _state.asStateFlow()
 
+    /** Held actions must still belong to the exact currently admitted feed. */
+    fun containsCard(tag: String?, item: com.music.bitchord.data.model.ShelfItem): Boolean {
+        val read = reads[tag] ?: return false
+        if (read.owner !== gate() || !read.lease.isCurrent()) return false
+        val state = if (tag == null) _state.value.home else _state.value.genres[tag]
+        return (state as? UiState.Success)?.data.orEmpty().any { item in it.items }
+    }
+
     fun loadHome(force: Boolean = false) = load(null, force)
     fun loadGenre(tag: String, force: Boolean = false) {
         if (appleMusicWebGenreSupported(tag)) load(tag, force)
