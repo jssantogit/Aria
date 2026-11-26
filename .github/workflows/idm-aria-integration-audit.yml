@@ -18,7 +18,7 @@ jobs:
         shell: bash
         env:
           IDM_SHA: cc23ae77949260fb3ce51a9f6a45d93481c3ed84
-          ARIA_SHA: cc8e525843a984b56e7d5e9f29f362141abc7a70
+          ARIA_SHA: 58d8d9143fa04302cb3356df510e77c76a2eae57
           MIGRATION_SOURCE: e74400a7e58cba41a64f535a90af1399e5c718da
         run: |
           set -euo pipefail
@@ -341,6 +341,24 @@ jobs:
             exit 1
           }
           tail -n 10 "$report/identity-gate.txt"
+      - name: Verify every new MAIN branding change survives unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/idm-aria-resolve"
+          old_main=cc8e525843a984b56e7d5e9f29f362141abc7a70
+          new_main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          candidate_tree="$(cat "$RUNNER_TEMP/idm-aria-audit/resolved-tree.txt")"
+          git merge-base --is-ancestor "$old_main" "$new_main"
+          mapfile -d '' updated < <(git diff --name-only -z "$old_main" "$new_main")
+          test "${#updated[@]}" -gt 0
+          for path in "${updated[@]}"; do
+            git diff --quiet "$new_main" "$candidate_tree" -- "$path" || {
+              echo "::error::New MAIN change not preserved: $path"
+              exit 1
+            }
+          done
+          printf 'All %s newly changed MAIN paths match exactly.\n' "${#updated[@]}"
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -358,6 +376,47 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest :sharedUi:jvmTest
+      - name: Seal the tested tree with both real parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/idm-aria-resolve"
+          report="$RUNNER_TEMP/idm-aria-audit"
+          tree="$(cat "$report/resolved-tree.txt")"
+          test "$(git write-tree)" = "$tree"
+          # Gradle may generate ignored build files, but may not modify tracked source.
+          git diff --exit-code
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          for location in ("app/build/test-results/testDevDebugUnitTest", "sharedUi/build/test-results/jvmTest"):
+              cases = [case for file in Path(location).glob("TEST-*.xml")
+                       for case in ET.parse(file).getroot().iter("testcase")]
+              assert cases, f"No test evidence in {location}"
+              failed = sum(any(case.find(tag) is not None for tag in ("failure", "error")) for case in cases)
+              skipped = sum(case.find("skipped") is not None for case in cases)
+              assert failed == 0 and skipped < len(cases), (location, failed, skipped)
+              print(f"{location}: {len(cases)} tests, {failed} failed, {skipped} skipped")
+          PY
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          candidate="$(printf 'integration(idm): reconcile provider engine with Aria identity and current launcher branding\n\nValidated identity, Android and sharedUI unit suites in isolated CI. No physical smoke or MAIN merge.\n' | git commit-tree "$tree" -p "$main" -p "$idm")"
+          test "$(git rev-parse "$candidate^{tree}")" = "$tree"
+          test "$(git show -s --format=%P "$candidate")" = "$main $idm"
+          git update-ref refs/heads/sealed-idm-aria-candidate "$candidate"
+          git bundle create "$report/sealed-candidate.bundle" refs/heads/sealed-idm-aria-candidate "^$main" "^$idm"
+          printf '%s\n' "$candidate" > "$report/sealed-commit.txt"
+          echo "Sealed candidate $candidate (tree $tree)"
+      - name: Upload tested candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          path: |
+            ${{ runner.temp }}/idm-aria-audit/sealed-candidate.bundle
+            ${{ runner.temp }}/idm-aria-audit/sealed-commit.txt
+            ${{ runner.temp }}/idm-aria-audit/resolved-tree.txt
+          if-no-files-found: error
+          retention-days: 7
       - name: Diagnose candidate test failures
         if: failure()
         shell: bash
@@ -397,3 +456,54 @@ jobs:
             ${{ runner.temp }}/idm-aria-audit/identity-gate.txt
             ${{ runner.temp }}/idm-aria-audit/namespace-*/namespace-review.txt
           if-no-files-found: error
+
+  publish-isolated-candidate:
+    name: Publish tested candidate to a new isolated branch
+    needs: merge-analysis
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          path: sealed
+      - name: Verify sealed object and publish only the isolated candidate ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          dest=refs/heads/integration/idm-aria-candidate-20261126
+          # Check the original refs again so a concurrent change cannot
+          # accidentally be presented as the current integrated candidate.
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$main"
+          test "$(git ls-remote origin refs/heads/integration/idm-providers-main-20261121 | cut -f1)" = "$idm"
+          git bundle verify sealed/sealed-candidate.bundle
+          git fetch sealed/sealed-candidate.bundle refs/heads/sealed-idm-aria-candidate
+          candidate="$(cat sealed/sealed-commit.txt)"
+          test "$(git rev-parse FETCH_HEAD)" = "$candidate"
+          test "$(git show -s --format=%P "$candidate")" = "$main $idm"
+          test "$(git rev-parse "$candidate^{tree}")" = "$(cat sealed/resolved-tree.txt)"
+          askpass="$RUNNER_TEMP/idm-candidate-askpass.sh"
+          cat > "$askpass" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' x-access-token ;;
+            *Password*) printf '%s\n' "$GH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0
+          # Empty expected ref enforces creation only. No MAIN or IDM writes.
+          git -c credential.helper= push --force-with-lease="$dest:" origin "$candidate:$dest"
+          test "$(git ls-remote origin "$dest" | cut -f1)" = "$candidate"
+          printf 'Published isolated candidate %s\n' "$candidate" | tee -a "$GITHUB_STEP_SUMMARY"
