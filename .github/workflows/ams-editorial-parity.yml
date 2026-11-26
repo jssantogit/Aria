@@ -1,0 +1,77 @@
+name: AMS · isolated editorial parity
+on:
+  pull_request:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - '.github/workflows/ams-editorial-parity.yml'
+      - 'app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt'
+      - 'app/src/main/java/com/music/bitchord/data/catalog/provider/applemusicweb/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-editorial-parity-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  editorial:
+    if: github.event_name != 'pull_request' || github.head_ref == 'integration/ams-apple-music-web-20261126'
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [artist, album]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AMS_EDITORIAL_LIVE: '1'
+      AMS_EDITORIAL_SCOPE: ${{ matrix.scope }}
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/ams-editorial-metrics
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Native editorial gateway only
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_ams_editorial_parity_matrix'
+      - name: Verify complete report coverage and emit aggregate evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import collections, json, os
+          from pathlib import Path
+          scope = os.environ["AMS_EDITORIAL_SCOPE"]
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          count = {"artist": 10, "album": 15}[scope]
+          files = sorted(root.glob(f"live_ams_{scope}_*.json"))
+          assert len(files) == count, f"Expected {count} report cells; got {len(files)}"
+          totals = collections.Counter()
+          statuses = collections.Counter()
+          for index, file in enumerate(files, 1):
+              assert file.name == f"live_ams_{scope}_{index:02}.json"
+              row = json.loads(file.read_text())
+              assert row["scenario"] == f"ams_{scope}_{index:02}"
+              assert row["source_payloads_retained"] is False
+              statuses[row["status"]] += 1
+              totals.update({k:v for k,v in row.items() if isinstance(v,int) and not isinstance(v,bool)})
+              print("AMS_EDITORIAL_CELL", json.dumps(row, sort_keys=True))
+          print("AMS_EDITORIAL_AGGREGATE", scope, json.dumps({"statuses":statuses,"counts":totals},sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write(f"## AMS {scope} editorial gateway\n{len(files)}/{count} reports; {statuses['complete']} complete.\n\n")
+              for status,n in statuses.items():
+                  f.write(f"- {status}: {n}\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-editorial-${{ matrix.scope }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ams-editorial-metrics/
+            app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7

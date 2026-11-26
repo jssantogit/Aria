@@ -134,6 +134,30 @@ class AppleMusicWebNativeProviderTest {
         assertEquals(ProviderCapability.EDITORIAL_DISCOGRAPHY, fake.calls.single().first)
     }
 
+    @Test fun albumAndTrackAttributesPreserveSourceEvidenceWithoutInventingPositions() = runBlocking {
+        val fake = FakeTransport { _, _, _ ->
+            """{"data":[{"id":"10","type":"albums","attributes":{"name":"Record",
+                "releaseDate":"2020-01-01","trackCount":2,"isSingle":false,"isCompilation":true},
+                "relationships":{"tracks":{"data":[
+                    {"id":"1","type":"songs","attributes":{"name":"One","durationInMillis":123456,
+                        "discNumber":2,"trackNumber":1}},
+                    {"id":"2","type":"songs","attributes":{"name":"Two","durationInMillis":-1,
+                        "discNumber":0}}
+                ]}}}]}"""
+        }
+        val result = AppleMusicWebCatalog(fake).album("10", "br")
+        assertEquals("2020-01-01", result.identity.releaseDate)
+        assertEquals(2, result.identity.trackCount)
+        assertEquals(false, result.identity.isSingle)
+        assertEquals(true, result.identity.isCompilation)
+        assertEquals(123456L, result.tracks.first().durationMillis)
+        assertEquals(2, result.tracks.first().discNumber)
+        assertEquals(1, result.tracks.first().trackNumber)
+        assertNull(result.tracks.last().durationMillis)
+        assertNull(result.tracks.last().discNumber)
+        assertNull(result.tracks.last().trackNumber)
+    }
+
     @Test fun resourceDetailDoesNotAcceptAnotherAppleIdentity() = runBlocking {
         val fake = FakeTransport { _, _, _ ->
             """{"data":[{"id":"999","type":"albums","attributes":{"name":"Wrong"}}]}"""

@@ -7,6 +7,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.booleanOrNull
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Base64
@@ -36,6 +38,13 @@ internal data class AppleMusicWebItem(
     val storeUrl: String? = null,
     val isrc: String? = null,
     val upc: String? = null,
+    val releaseDate: String? = null,
+    val trackCount: Int? = null,
+    val isSingle: Boolean? = null,
+    val isCompilation: Boolean? = null,
+    val durationMillis: Long? = null,
+    val discNumber: Int? = null,
+    val trackNumber: Int? = null,
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
@@ -164,6 +173,13 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             artworkUrl = attr.obj("artwork")?.str("url")?.takeIf { it.startsWith("https://") },
             storeUrl = attr.str("url")?.takeIf { it.startsWith("https://music.apple.com/") },
             isrc = attr.str("isrc"), upc = attr.str("upc"),
+            releaseDate = attr.str("releaseDate"),
+            trackCount = (attr["trackCount"] as? JsonPrimitive)?.intOrNull?.takeIf { it >= 0 },
+            isSingle = (attr["isSingle"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
+            isCompilation = (attr["isCompilation"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
+            durationMillis = (attr["durationInMillis"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 },
+            discNumber = (attr["discNumber"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 },
+            trackNumber = (attr["trackNumber"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 },
         )
     }
 
