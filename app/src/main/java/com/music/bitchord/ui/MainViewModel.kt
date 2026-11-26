@@ -639,6 +639,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val appleMusicWebNativeCatalog by lazy {
         AppleMusicWebNativeCatalogSession(getApplication<Application>())
     }
+    internal val appleMusicWebDetailNavigation by lazy {
+        AppleMusicWebDetailNavigation(viewModelScope, {
+            ProviderReadLease.acquire(ProviderRuntime.gateOrNull(), listOf(
+                ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB,
+            ))
+        }, appleMusicWebNativeCatalog::sharedDetail)
+    }
     private val _catalogSearchMusicBrainzVisible = MutableStateFlow(false)
     val catalogSearchMusicBrainzVisible: StateFlow<Boolean> =
         _catalogSearchMusicBrainzVisible.asStateFlow()

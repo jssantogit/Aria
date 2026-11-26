@@ -1,0 +1,84 @@
+package com.music.bitchord
+
+import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebOutcome
+import com.music.bitchord.data.model.*
+import com.music.bitchord.data.providers.*
+import com.music.bitchord.ui.*
+import com.music.bitchord.ui.screens.AppleSharedDetail
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
+import org.junit.Assert.*
+import org.junit.Test
+
+class AppleMusicWebDetailNavigationTest {
+    private val key = BuiltInProviderKeys.APPLE_MUSIC_WEB
+    private val capability = ProviderCapability.EDITORIAL_DISCOGRAPHY
+    private val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+        listOf(ProviderDescriptor(key,setOf(capability),ProviderReadiness.READY)),
+        mapOf(capability to listOf(ProviderChoice(key,true,0))),
+    ))
+    private fun lease() = ProviderReadLease.acquire(gate,listOf(capability to key))
+    private val artist = "apple_music_web:br:artist:10"
+    private val album = "apple_music_web:br:album:20"
+    private fun card(id: String, title: String = "Title") =
+        ShelfItem(title=title,subtitle="",thumbnailUrl=null,videoId=null,browseId=id)
+    private fun page(id: String, items: List<ShelfItem> = emptyList()) = AppleSharedDetail(
+        page = DetailPage(browseId=id,title="Title",subtitle="",thumbnailUrl=null,
+            songs=UiState.Success(emptyList()),type=if (id == artist) BrowseType.ARTIST else BrowseType.ALBUM,
+            sections=if (items.isEmpty()) emptyList() else listOf(HomeShelf("Álbuns",items))),
+        albumArtistBrowseId=if (id == album) artist else null,
+        albumArtistDisplayName=if (id == album) "Artist" else null,
+    )
+
+    @Test fun exactShelfNavigationAndBackReuseSourceSnapshot(): Unit = runBlocking {
+        val calls = mutableListOf<String>()
+        val nav = AppleMusicWebDetailNavigation(this,::lease) { id ->
+            calls += id
+            ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                if (id == artist) page(id,listOf(card(album))) else page(id)))
+        }
+        assertTrue(nav.openRoot(card(artist)))
+        yield()
+        assertEquals(artist,nav.stack.value.last().visible()?.page?.browseId)
+        assertFalse(nav.openRelated("itunes:br:album:20"))
+        assertFalse(nav.openRelated("apple_music_web:us:album:20"))
+        assertFalse(nav.openRelated("apple_music_web:br:album:99"))
+        assertTrue(nav.openRelated(album))
+        yield()
+        assertEquals(album,nav.stack.value.last().visible()?.page?.browseId)
+        assertTrue(nav.back())
+        assertEquals(artist,nav.stack.value.last().visible()?.page?.browseId)
+        assertEquals(listOf(artist,album),calls)
+        assertTrue(nav.openRelated(album))
+        yield()
+        assertTrue(nav.openRelated(artist))
+        assertEquals(listOf(artist),nav.stack.value.map { it.route.browseId })
+        assertEquals(listOf(artist,album,album),calls)
+        assertTrue(nav.back())
+        assertTrue(nav.stack.value.isEmpty())
+    }
+
+    @Test fun rejectsUnadmittedAndWrongIdentityAndCancelsClosedRoute(): Unit = runBlocking {
+        var allowed = false
+        val pending = CompletableDeferred<Unit>()
+        val nav = AppleMusicWebDetailNavigation(this,{ if (allowed) lease() else null }) { id ->
+            if (id == artist) pending.await()
+            ProviderCallResult.Success(AppleMusicWebOutcome.Complete(page(artist)))
+        }
+        assertFalse(nav.openRoot(card(artist)))
+        assertFalse(nav.openRoot(card("itunes:br:artist:10")))
+        assertTrue(nav.stack.value.isEmpty())
+        allowed = true
+        assertTrue(nav.openRoot(card(artist)))
+        yield()
+        assertTrue(nav.back())
+        pending.complete(Unit)
+        yield()
+        assertTrue(nav.stack.value.isEmpty())
+        assertTrue(nav.openRoot(card(album)))
+        yield()
+        assertTrue(nav.stack.value.last().state is UiState.Error)
+        assertEquals(album,nav.stack.value.last().visible()?.page?.browseId)
+    }
+}

@@ -22,7 +22,7 @@ jobs:
       - name: Native session and canonical projection
         run: |
           chmod +x gradlew
-          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebNativeCatalogSessionTest' --tests 'com.music.bitchord.AppleMusicWebSharedDetailAdapterTest' --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest' --tests 'com.music.bitchord.CanonicalEditorialFeedProjectionTest' --tests 'com.music.bitchord.AppleMusicWebLandingPersistenceTest'
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebNativeCatalogSessionTest' --tests 'com.music.bitchord.AppleMusicWebDetailNavigationTest' --tests 'com.music.bitchord.AppleMusicWebSharedDetailAdapterTest' --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest' --tests 'com.music.bitchord.CanonicalEditorialFeedProjectionTest' --tests 'com.music.bitchord.AppleMusicWebLandingPersistenceTest'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
