@@ -285,21 +285,35 @@ jobs:
               assert not git("diff", "--", path).strip(), path
               git("rm", "-f", "--", path)
               assert not (root / path).exists(), path
-          # Restore the approved symbol name in all current module sources,
-          # including the IDM's newly extracted Compose helpers and comments.
+          # Reconcile the entire approved nominal-symbol family in one pass,
+          # not just the first failure from the identity gate. These are
+          # exact lexical identifiers, not storage keys, URIs or credentials.
+          symbols = {
+              b"BitChordApp": b"AriaApp",
+              b"BitChordApplication": b"AriaApplication",
+              b"BitChordIcons": b"AriaIcons",
+              b"BitChordTheme": b"AriaTheme",
+              b"BitChordTypography": b"AriaTypography",
+          }
+          symbol_rx = re.compile(rb"\b(?:" + b"|".join(symbols) + rb")\b")
           changed = []
+          counts = dict.fromkeys(symbols, 0)
           for name in git("ls-files", "-z").decode().split("\0"):
               if not name.startswith(("app/", "shared/", "sharedUi/")) or not name.endswith(".kt"):
                   continue
               file = root / name
               raw = file.read_bytes()
-              revised, count = re.subn(rb"\bBitChordApp\b", b"AriaApp", raw)
-              if count:
-                  file.write_bytes(revised)
+              hits = symbol_rx.findall(raw)
+              if hits:
+                  for hit in hits:
+                      counts[hit] += 1
+                  file.write_bytes(symbol_rx.sub(lambda m: symbols[m.group()], raw))
                   git("add", "--", name)
-                  changed.append(f"{name}: {count}")
-          assert changed, "Expected old app symbol in integrated sources"
-          print("App symbol reconciled:", *changed, sep="\n")
+                  changed.append(f"{name}: {len(hits)}")
+          for required in (b"BitChordApp", b"BitChordApplication", b"BitChordIcons", b"BitChordTheme"):
+              assert counts[required] > 0, ("expected observed symbol", required)
+          print("Approved identity symbols reconciled:", *changed, sep="\n")
+          print("Symbol counts:", {key.decode(): value for key,value in counts.items()})
           tree = git("write-tree").decode().strip()
           print("Resolved candidate tree:", tree)
           (report / "resolved-tree.txt").write_text(tree + "\n")
