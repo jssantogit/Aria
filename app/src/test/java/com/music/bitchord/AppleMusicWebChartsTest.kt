@@ -175,6 +175,11 @@ class AppleMusicWebChartsTest {
                 ?.takeIf { it.identity.id == curatorId &&
                     appleMusicWebCuratorMatches(it.identity, "br", tag) }
             val curatorAlbums = linkedSetOf<String>()
+            val curatorRawAlbums = linkedSetOf<String>()
+            val curatorExactAlbums = linkedSetOf<String>()
+            val curatorCombinedAlbums = linkedSetOf<String>()
+            val curatorRejectedAlbums = linkedSetOf<String>()
+            var curatorSourceRows = 0
             var curatorReads = 0
             var curatorFailures = 0
             val sharedCurator = curatorPage?.let { appleMusicWebCuratorIsSharedForTag(it.identity, tag) } == true
@@ -182,17 +187,34 @@ class AppleMusicWebChartsTest {
                 for (room in curatorPage.rooms.filter(::isAppleMusicWebCuratorReleaseRoom).take(3)) {
                     val visited = hashSetOf<String>()
                     var cursor: String? = null
-                    repeat(if (sharedCurator) 3 else 1) {
+                    repeat(if (tag == "soul" && sharedCurator) 5 else if (sharedCurator) 3 else 1) {
                         if (it > 0 && cursor == null) return@repeat
                         curatorReads++
                         val read = gateway.roomContents(room, AppleMusicWebKind.ALBUM, cursor = cursor)
                         val page = ((read as? ProviderCallResult.Success)?.value?.outcome
                             as? AppleMusicWebOutcome.Complete)?.value
                         if (page == null) { curatorFailures++; cursor = null; return@repeat }
-                        curatorAlbums += page.items.filter { album ->
-                            appleMusicWebCuratedAlbumMatches(curatorPage.identity, tag, album)
-                        }.map { it.scopedId }
-                        cursor = page.nextCursor?.takeIf { visited.add(it) }
+                        curatorSourceRows += page.sourceRows
+                        for (album in page.items) {
+                            curatorRawAlbums += album.scopedId
+                            when (appleMusicWebCuratedAlbumEvidence(curatorPage.identity, tag, album, room)) {
+                                AppleMusicWebCuratedAlbumEvidence.DEDICATED_CURATOR -> curatorAlbums += album.scopedId
+                                AppleMusicWebCuratedAlbumEvidence.EXACT_GENRE_LABEL -> {
+                                    curatorAlbums += album.scopedId
+                                    curatorExactAlbums += album.scopedId
+                                }
+                                AppleMusicWebCuratedAlbumEvidence.SOUL_COMBINED_LABEL -> {
+                                    curatorAlbums += album.scopedId
+                                    curatorCombinedAlbums += album.scopedId
+                                }
+                                AppleMusicWebCuratedAlbumEvidence.REJECTED -> curatorRejectedAlbums += album.scopedId
+                            }
+                        }
+                        val next = page.nextCursor
+                        if (next != null && !visited.add(next)) {
+                            curatorFailures++
+                            cursor = null
+                        } else cursor = next
                     }
                 }
             }
@@ -202,6 +224,11 @@ class AppleMusicWebChartsTest {
                 "|curator_matched=" + (curator != null) + "|curator_provenance=$curatorProvenance" +
                 "|curator_search_reads=$curatorSearchReads|shared_curator=$sharedCurator|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
                 "|curator_albums=" + curatorAlbums.size + "|curator_reads=$curatorReads|curator_failures=$curatorFailures" +
+                "|source_rows=$curatorSourceRows|distinct_candidates=" + curatorRawAlbums.size +
+                "|exact_labels=" + curatorExactAlbums.size +
+                "|combined_labels=" + (curatorCombinedAlbums - curatorExactAlbums).size +
+                "|rejected_distinct=" + (curatorRawAlbums - curatorAlbums).size +
+                "|rejected_observed=" + curatorRejectedAlbums.size +
                 "|curator_search_reason=" + curatorSearchReason +
                 "|curator_detail_reason=" + (curatorRead?.let(::diagnostic) ?: "not_applicable"))
             if (onlyCurator != null) {

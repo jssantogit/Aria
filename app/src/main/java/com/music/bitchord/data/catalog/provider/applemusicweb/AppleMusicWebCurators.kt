@@ -92,13 +92,38 @@ internal fun appleMusicWebCuratorMatches(ref: AppleMusicWebCuratorRef, storefron
             (appleMusicWebPublicCuratorReference(storefront, tag) == ref.id &&
                 appleMusicWebCuratorIsSharedForTag(ref, tag)))
 
+internal enum class AppleMusicWebCuratedAlbumEvidence {
+    DEDICATED_CURATOR, EXACT_GENRE_LABEL, SOUL_COMBINED_LABEL, REJECTED,
+}
+
+/** A combined R&B/Soul label is evidence only inside a verified release
+ * room of the official Soul/Funk curator. It is not an alias for Soul
+ * in generic search or other curators. Preserve the distinction in reports. */
+internal fun appleMusicWebCuratedAlbumEvidence(
+    ref: AppleMusicWebCuratorRef, tag: String, item: AppleMusicWebItem,
+    room: AppleMusicWebRoomRef? = null,
+): AppleMusicWebCuratedAlbumEvidence {
+    if (item.kind != AppleMusicWebKind.ALBUM || item.storefront != ref.storefront ||
+        !appleMusicWebCuratorMatches(ref, ref.storefront, tag) ||
+        (room != null && (room.curatorId != ref.id || room.storefront != ref.storefront ||
+            room.genreId != null || !isAppleMusicWebCuratorReleaseRoom(room))))
+        return AppleMusicWebCuratedAlbumEvidence.REJECTED
+    if (!appleMusicWebCuratorIsSharedForTag(ref, tag))
+        return AppleMusicWebCuratedAlbumEvidence.DEDICATED_CURATOR
+    if (item.genreNames.any { appleMusicWebGenreNameMatches(it, tag) })
+        return AppleMusicWebCuratedAlbumEvidence.EXACT_GENRE_LABEL
+    // R&B alone is not equivalent; only Apple's explicit combined label.
+    if (tag == "soul" && room != null &&
+        item.genreNames.any { curatorFold(it) in setOf("r b soul", "r b e soul", "r b and soul") })
+        return AppleMusicWebCuratedAlbumEvidence.SOUL_COMBINED_LABEL
+    return AppleMusicWebCuratedAlbumEvidence.REJECTED
+}
+
 internal fun appleMusicWebCuratedAlbumMatches(
     ref: AppleMusicWebCuratorRef, tag: String, item: AppleMusicWebItem,
-): Boolean =
-    item.kind == AppleMusicWebKind.ALBUM && item.storefront == ref.storefront &&
-        appleMusicWebCuratorMatches(ref, ref.storefront, tag) &&
-        (!appleMusicWebCuratorIsSharedForTag(ref, tag) ||
-            item.genreNames.any { appleMusicWebGenreNameMatches(it, tag) })
+    room: AppleMusicWebRoomRef? = null,
+): Boolean = appleMusicWebCuratedAlbumEvidence(ref, tag, item, room) !=
+    AppleMusicWebCuratedAlbumEvidence.REJECTED
 
 /** Native genre-curator album shelves only; never fill from unrelated playlists. */
 internal fun isAppleMusicWebCuratorReleaseRoom(room: AppleMusicWebRoomRef): Boolean =

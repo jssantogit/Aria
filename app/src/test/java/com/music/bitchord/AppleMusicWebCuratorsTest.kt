@@ -101,6 +101,28 @@ class AppleMusicWebCuratorsTest {
         assertFalse(appleMusicWebCuratorMatches(ref.copy(id="999"),"br","forro"))
     }
 
+    @Test fun soulCombinedLabelRequiresVerifiedSoulReleaseRoom() {
+        val ref = AppleMusicWebCuratorRef("976439585","br","Apple Music Soul e funk")
+        val room = AppleMusicWebRoomRef("br",null,"123","Lançamentos recentes",ref.id)
+        val combined = AppleMusicWebItem("6779424635",AppleMusicWebKind.ALBUM,"br","Mood 2",genreNames=listOf("R&B/Soul"))
+        assertEquals(AppleMusicWebCuratedAlbumEvidence.SOUL_COMBINED_LABEL,
+            appleMusicWebCuratedAlbumEvidence(ref,"soul",combined,room))
+        assertEquals(AppleMusicWebCuratedAlbumEvidence.EXACT_GENRE_LABEL,
+            appleMusicWebCuratedAlbumEvidence(ref,"soul",combined.copy(genreNames=listOf("Soul")),room))
+        assertFalse(appleMusicWebGenreNameMatches("R&B/Soul","soul"))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined,room.copy(curatorId="999")))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined,room.copy(storefront="us")))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined,room.copy(title="Playlists")))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined,room.copy(genreId="21")))
+        for (labels in listOf(listOf("Funk"),listOf("R&B"),listOf("Hip-Hop/Rap"),listOf("Music"),emptyList())) {
+            assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined.copy(genreNames=labels),room))
+        }
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"soul",combined.copy(storefront="us"),room))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref.copy(id="999"),"soul",combined,room.copy(curatorId="999")))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"samba",combined,room))
+    }
+
     @Test fun reggaeCuratorIsExactAndDoesNotBorrowRapIdentity() {
         val ref = AppleMusicWebCuratorRef("976439552","br","Apple Music: reggae")
         val album = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A")
