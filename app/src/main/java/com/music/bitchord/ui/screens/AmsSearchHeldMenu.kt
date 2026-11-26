@@ -102,3 +102,70 @@ internal fun AmsSearchHeldMenu(
         )
     }
 }
+
+/** Context is captured with the lifted card, not reconstructed by title. */
+internal data class AmsShelfHoldScope(val tab: Int, val genre: String?, val detail: String?)
+internal data class AmsShelfHeldTarget(
+    val card: com.music.bitchord.data.model.ShelfItem,
+    val scope: AmsShelfHoldScope,
+)
+internal class AmsShelfHeldState {
+    var target by mutableStateOf<AmsShelfHeldTarget?>(null)
+        private set
+    var origin by mutableStateOf<HeldItem?>(null)
+        private set
+    val visible get() = target != null && origin != null
+    fun hold(card: com.music.bitchord.data.model.ShelfItem, scope: AmsShelfHoldScope) {
+        if (com.music.bitchord.ui.AppleMusicWebNativeRoute.parse(card.browseId) == null ||
+            card.videoId != null || card.title.isBlank()) return
+        origin = LongPressOrigin.consume()
+        if (origin == null) return
+        target = AmsShelfHeldTarget(card,scope)
+    }
+    fun dismiss() { target = null }
+}
+
+/** Use the same lifted native menu as search and MB, not the toolbar popup. */
+@Composable
+internal fun AmsShelfHeldMenu(
+    held: AmsShelfHeldState,
+    allowed: (AmsShelfHeldTarget) -> Boolean,
+    onOpen: (AmsShelfHeldTarget) -> Unit,
+    hazeState: HazeState,
+    bottomChromeClearance: Dp,
+) {
+    val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
+    val latestOpen by androidx.compose.runtime.rememberUpdatedState(onOpen)
+    val uri = LocalUriHandler.current
+    val target = held.target?.takeIf(latestAllowed)
+    LaunchedEffect(target,held.target) {
+        if (target == null && held.target != null) held.dismiss()
+    }
+    fun open(item: AmsShelfHeldTarget) {
+        if (!latestAllowed(item)) { held.dismiss(); return }
+        held.dismiss()
+        latestOpen(item)
+    }
+    HeldContextMenu(
+        item=target,held=held.origin,hazeState=hazeState,
+        bottomChromeClearance=bottomChromeClearance,hostProvidesBlur=true,
+        onDismiss=held::dismiss,onPreviewClick=::open,
+    ) { item ->
+        val card = item.card
+        val route = com.music.bitchord.ui.AppleMusicWebNativeRoute.parse(card.browseId)
+        val link = appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId)
+        BrowseActionsSheet(
+            target=BrowseTarget(browseId=card.browseId.orEmpty(),title=card.title,
+                subtitle=card.subtitle,thumbnailUrl=card.thumbnailUrl,
+                type=if (route?.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ARTIST)
+                    BrowseType.ARTIST else BrowseType.ALBUM,fromCard=false),
+            presentation=SongActionsPresentation.Menu,
+            onOpenLabel="Ver detalhes",
+            onOpen={ open(item) },
+            onViewSource=link?.let { url ->
+                { if (latestAllowed(item)) { held.dismiss(); runCatching { uri.openUri(url) }; Unit } }
+            },
+            viewSourceLabel="Abrir no Apple Music",
+        )
+    }
+}
