@@ -20,6 +20,8 @@ internal data class MusicBrainzCatalogPage<out T>(
     val offset: Int,
     /** How many raw server rows this page consumed, including invalid/duplicate hits. */
     val consumedCount: Int = items.size,
+    // Sanitized interactive recovery counters; do not affect the raw cursor.
+    val recordingRecovery: MusicBrainzRecordingRecovery? = null,
 ) {
     /**
      * Never derive a server cursor from filtered UI results: rejected MBIDs and
@@ -31,6 +33,15 @@ internal data class MusicBrainzCatalogPage<out T>(
             consumedCount >= total - offset
         ) null else offset + consumedCount
 }
+
+internal data class MusicBrainzRecordingRecovery(
+    val primaryRows: Int,
+    val primaryFailure: MusicBrainzCatalogSearchFailure?,
+    val audioProbeAttempted: Boolean,
+    val audioProbeRows: Int,
+    val audioProbeFailure: MusicBrainzCatalogSearchFailure?,
+    val admitted: Int,
+)
 
 internal sealed interface MusicBrainzCatalogSearchResult<out T> {
     data class Success<T>(val page: MusicBrainzCatalogPage<T>) : MusicBrainzCatalogSearchResult<T>
@@ -799,20 +810,46 @@ internal class MusicBrainzCatalogSearch(
         // weak landing, use the supported maximum of the SAME recovery
         // request. Compound credit probes retain the small budget.
         val probeLimit = if (fielded.contains(" AND artist:")) 12 else 100
-        val probe = searchRecordingsInternal(fielded, probeLimit, 0, fieldedQuery = true)
-            as? MusicBrainzCatalogSearchResult.Success ?: return ranked
+        val primary = searchRecordingsInternal(fielded, probeLimit, 0, fieldedQuery = true)
         val original = initial.page.items.associateBy { it.musicBrainzId }
-        val recovered = probe.page.items.filter {
-            isCuratedMusicBrainzRecording(it) &&
-                musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1 &&
-                (original[it.musicBrainzId]?.let { old -> old == it } ?: true)
-        }
-        if (recovered.isEmpty()) return ranked
-        // Keep the original cursor: the independent query did not consume
-        // any offsets of the user's original upstream result.
+        fun admissible(result: MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit>?): List<MusicBrainzRecordingHit> =
+            (result as? MusicBrainzCatalogSearchResult.Success)?.page?.items.orEmpty().filter {
+                isCuratedMusicBrainzRecording(it) &&
+                    musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1 &&
+                    (original[it.musicBrainzId]?.let { old ->
+                        old == it && (old.artistCreditMbids == null || it.artistCreditMbids == null ||
+                            old.artistCreditMbids == it.artistCreditMbids)
+                    } ?: true)
+            }
+        var recovered = admissible(primary)
+        // The broad literal index may return a heavy or unproductive page.
+        // Spend at most one more bounded read, only on an otherwise empty
+        // curated landing, and narrow by documented audio release types.
+        // Search fields are nomination hints; actual release evidence is
+        // still mandatory. Never insert a test anchor or guess an artist.
+        val tryAudio = recovered.isEmpty() && !fielded.contains(" AND artist:") &&
+            ranked.page.items.none {
+                isCuratedMusicBrainzRecording(it) &&
+                    publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay)
+            }
+        val audio = if (tryAudio) searchRecordingsInternal(
+            "$fielded AND (primarytype:album OR primarytype:single OR primarytype:ep)",
+            50, 0, fieldedQuery = true,
+        ) else null
+        if (tryAudio) recovered = admissible(audio)
+        val diagnostics = MusicBrainzRecordingRecovery(
+            primaryRows = (primary as? MusicBrainzCatalogSearchResult.Success)?.page?.consumedCount ?: 0,
+            primaryFailure = (primary as? MusicBrainzCatalogSearchResult.Failure)?.reason,
+            audioProbeAttempted = tryAudio,
+            audioProbeRows = (audio as? MusicBrainzCatalogSearchResult.Success)?.page?.consumedCount ?: 0,
+            audioProbeFailure = (audio as? MusicBrainzCatalogSearchResult.Failure)?.reason,
+            admitted = recovered.size,
+        )
+        // Independent queries do not consume original upstream offsets.
         val merged = (initial.page.items + recovered).distinctBy { it.musicBrainzId }
-        return initial.copy(page = initial.page.copy(
+        return ranked.copy(page = ranked.page.copy(
             items = rankPublicRecordingLanding(query, merged),
+            recordingRecovery = diagnostics,
         ))
     }
 

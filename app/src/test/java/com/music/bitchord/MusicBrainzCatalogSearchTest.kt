@@ -363,6 +363,44 @@ class MusicBrainzCatalogSearchTest {
         assertEquals("recording:\"Work\" AND status:official", calls[1]["query"])
     }
 
+    @Test fun emptyLiteralRecordingLandingUsesOneNarrowAudioProbeAfterBroadFailure() = runBlocking {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val other = "22222222-2222-4222-8222-222222222222"
+        val release = "33333333-3333-4333-8333-333333333333"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    calls += parameters
+                    return when {
+                        parameters["query"].orEmpty().contains("primarytype:album") ->
+                            """{"count":2,"offset":0,"recordings":[
+                                {"id":"$id","title":"Work","artist-credit":[{"name":"First"}],
+                                 "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Album"}}]},
+                                {"id":"$other","title":"Work","artist-credit":[{"name":"Second"}],
+                                 "releases":[{"id":"$release","status":"Bootleg","release-group":{"primary-type":"Album"}}]}]}"""
+                        parameters["dismax"] == "false" -> "invalid JSON"
+                        else -> """{"count":70,"offset":0,"recordings":[{"id":"$other","title":"Different","artist-credit":[{"name":"Second"}]}]}"""
+                    }
+                }
+            },
+        ))
+        val page = (source.searchRecordings("Work", 50, recoverWeakLanding = true)
+            as MusicBrainzCatalogSearchResult.Success).page
+        assertEquals(listOf(id, other), page.items.map { it.musicBrainzId })
+        assertEquals(1, page.nextOffset)
+        assertEquals(3, calls.size)
+        assertEquals("100", calls[1]["limit"])
+        assertEquals("50", calls[2]["limit"])
+        assertEquals("recording:\"Work\" AND status:official AND (primarytype:album OR primarytype:single OR primarytype:ep)", calls[2]["query"])
+        val diagnostic = checkNotNull(page.recordingRecovery)
+        assertEquals(com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE,
+            diagnostic.primaryFailure)
+        assertTrue(diagnostic.audioProbeAttempted)
+        assertEquals(2, diagnostic.audioProbeRows)
+        assertEquals(1, diagnostic.admitted)
+    }
+
     @Test fun sameNameArtistScopeRequiresAnUnambiguousSourceIdentity() {
         val artist = com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit(
             "11111111-1111-4111-8111-111111111111", "Beyoncé", null, null)

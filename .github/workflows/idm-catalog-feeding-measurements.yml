@@ -685,6 +685,9 @@ jobs:
                   "mb_anchor_field_probe", "mb_anchor_artist_id_reads", "mb_landing_raw_target_rank", "mb_landing_curated_target_rank",
                   "discogs_index_relevant", "discogs_index_master_known", "discogs_index_collapsed",
                   "discogs_master_hydrated", "discogs_master_mismatch",
+                  "mb_recording_recovery_primary_rows", "mb_recording_recovery_primary_failure",
+                  "mb_recording_recovery_audio_attempted", "mb_recording_recovery_audio_rows",
+                  "mb_recording_recovery_audio_failure", "mb_recording_recovery_admitted",
                   "mb_recording_exact_raw", "mb_recording_exact_official_audio",
                   "mb_recording_exact_missing_proof", "mb_recording_exact_uncurated",
                   "source_interruption", "elapsed_ms")

@@ -3162,6 +3162,12 @@ class IdmCatalogLiveObservationTest {
                 var appleQualifiedIdentityReads = 0
                 var mbAnchorFieldProbe = false
                 var mbAnchorArtistIdReads = 0
+                var mbRecordingRecoveryPrimaryRows = 0
+                var mbRecordingRecoveryPrimaryFailure = 0
+                var mbRecordingRecoveryAudioAttempted = 0
+                var mbRecordingRecoveryAudioRows = 0
+                var mbRecordingRecoveryAudioFailure = 0
+                var mbRecordingRecoveryAdmitted = 0
                 var mbRecordingExactRaw = 0
                 var mbRecordingExactOfficialAudio = 0
                 var mbRecordingExactMissingProof = 0
@@ -3194,7 +3200,8 @@ class IdmCatalogLiveObservationTest {
                                         mbSearch.projectPublicArtistLanding(case.query, it)
                                     } as? MusicBrainzCatalogSearchResult.Success)?.page?.items.orEmpty()
                                     rows = displayArtists.map {
-                                        SearchParityRow("catalog:ARTIST:${it.musicBrainzId}", it.name)
+                                        SearchParityRow("catalog:ARTIST:${it.musicBrainzId}", it.name,
+                                            listOfNotNull(it.disambiguation, it.country).joinToString(" · ").ifBlank { null })
                                     }
                                     val anchors = mbSearch.searchReleaseGroups(case.title + " " + case.anchor, 50)
                                         as? MusicBrainzCatalogSearchResult.Success
@@ -3250,6 +3257,14 @@ class IdmCatalogLiveObservationTest {
                                     mbLandingRawTargetRank = raw.indexOfFirst {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     } + 1
+                                    response?.page?.recordingRecovery?.let {
+                                        mbRecordingRecoveryPrimaryRows = it.primaryRows
+                                        mbRecordingRecoveryPrimaryFailure = it.primaryFailure?.let { failure -> failure.ordinal + 1 } ?: 0
+                                        mbRecordingRecoveryAudioAttempted = if (it.audioProbeAttempted) 1 else 0
+                                        mbRecordingRecoveryAudioRows = it.audioProbeRows
+                                        mbRecordingRecoveryAudioFailure = it.audioProbeFailure?.let { failure -> failure.ordinal + 1 } ?: 0
+                                        mbRecordingRecoveryAdmitted = it.admitted
+                                    }
                                     val exactRaw = raw.filter {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     }
@@ -3348,7 +3363,10 @@ class IdmCatalogLiveObservationTest {
                                 rows = when (case.kind) {
                                     "artist" -> appleNativeArtistSearchRows(AppleEditorialArtistLoad.Success(
                                         visible, response?.snapshot?.coverageUncertain == true,
-                                    )).map { SearchParityRow(it.browseId, it.title) }
+                                    )).map { row ->
+                                        SearchParityRow(row.browseId, row.title,
+                                            visible.firstOrNull { it.scopedId == row.browseId }?.genre)
+                                    }
                                     "track" -> appleNativeTrackSearchRows(AppleEditorialTrackLoad.Success(
                                         visible, response?.snapshot?.coverageUncertain == true,
                                     )).map { SearchParityRow(it.key, it.title, it.artistName) }
@@ -3700,6 +3718,12 @@ class IdmCatalogLiveObservationTest {
                         "apple_qualified_identity_reads" to appleQualifiedIdentityReads,
                         "mb_anchor_field_probe" to if (mbAnchorFieldProbe) 1 else 0,
                         "mb_anchor_artist_id_reads" to mbAnchorArtistIdReads,
+                        "mb_recording_recovery_primary_rows" to mbRecordingRecoveryPrimaryRows,
+                        "mb_recording_recovery_primary_failure" to mbRecordingRecoveryPrimaryFailure,
+                        "mb_recording_recovery_audio_attempted" to mbRecordingRecoveryAudioAttempted,
+                        "mb_recording_recovery_audio_rows" to mbRecordingRecoveryAudioRows,
+                        "mb_recording_recovery_audio_failure" to mbRecordingRecoveryAudioFailure,
+                        "mb_recording_recovery_admitted" to mbRecordingRecoveryAdmitted,
                         "mb_recording_exact_raw" to mbRecordingExactRaw,
                         "mb_recording_exact_official_audio" to mbRecordingExactOfficialAudio,
                         "mb_recording_exact_missing_proof" to mbRecordingExactMissingProof,
