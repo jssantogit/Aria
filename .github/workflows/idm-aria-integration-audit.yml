@@ -22,6 +22,7 @@ jobs:
           MIGRATION_SOURCE: e74400a7e58cba41a64f535a90af1399e5c718da
         run: |
           set -euo pipefail
+          shopt -s inherit_errexit
           git cat-file -e "$IDM_SHA^{commit}"
           git cat-file -e "$ARIA_SHA^{commit}"
           git cat-file -e "$MIGRATION_SOURCE^{commit}"
@@ -56,11 +57,33 @@ jobs:
             exclude="$(git -C "$checkout" rev-parse --git-path info/exclude)"
             case "$exclude" in /*) ;; *) exclude="$checkout/$exclude";; esac
             printf '\n/.git-audit/\n' >> "$exclude"
-            python3 "$checkout/.git-audit/prepare-aria-namespace-candidate.py" --output "$report/namespace-$label" >&2
-            git -C "$checkout" write-tree
+            # Lossless decoding for legacy text with non-UTF8 bytes.
+            # ASCII namespace substitutions are byte-preserving elsewhere.
+            python3 - "$checkout/.git-audit/prepare-aria-namespace-candidate.py" <<'PY'
+          from pathlib import Path
+          import sys
+          p = Path(sys.argv[1])
+          s = p.read_text()
+          old = 'full.read_bytes().decode("utf-8")'
+          new = 'full.read_bytes().decode("utf-8", errors="surrogateescape")'
+          write = 'write_bytes(content.encode("utf-8"))'
+          assert s.count(old) == 1 and s.count(write) == 1
+          s = s.replace(old, new).replace(write, 'write_bytes(content.encode("utf-8", errors="surrogateescape"))')
+          p.write_text(s)
+          PY
+            python3 "$checkout/.git-audit/prepare-aria-namespace-candidate.py" --output "$report/namespace-$label" >&2 || return 1
+            test -s "$report/namespace-$label/namespace-review.txt" || return 1
+            test -s "$report/namespace-$label/aria-namespace.patch" || return 1
+            local result
+            result="$(git -C "$checkout" write-tree)" || return 1
+            test "$result" != "$(git rev-parse "$source^{tree}")" || return 1
+            test -z "$(git -C "$checkout" ls-files -- ':(glob)app/**/com/music/bitchord/**' ':(glob)shared/**/com/music/bitchord/**' ':(glob)sharedUi/**/com/music/bitchord/**')" || return 1
+            printf 'Normalized %s tree %s\n' "$label" "$result" >&2
+            printf '%s\n' "$result"
           }
-          ancestor_tree="$(normalize "$ancestor" ancestor)"
-          idm_tree="$(normalize "$IDM_SHA" candidate)"
+          ancestor_tree="$(normalize "$ancestor" ancestor)" || exit 1
+          idm_tree="$(normalize "$IDM_SHA" candidate)" || exit 1
+          printf 'Normalized ancestor tree %s\nNormalized IDM tree %s\n' "$ancestor_tree" "$idm_tree" | tee -a "$report/status.txt"
           # Model the normalized IDM delta with the normalized ancestor as its
           # parent. The final real integration still requires both true heads.
           normalized_ancestor="$(printf 'audit normalized ancestor\n' | git commit-tree "$ancestor_tree")"
@@ -72,6 +95,19 @@ jobs:
           set -e
           test "$norm_status" -le 1
           printf 'Normalized merge status: %s\n' "$norm_status" | tee -a "$report/status.txt"
+          python3 - "$report" <<'PY'
+          from pathlib import Path
+          from collections import Counter
+          import re, sys
+          report = Path(sys.argv[1])
+          for name in ("raw", "normalized"):
+              lines = (report / f"{name}-merge.txt").read_text().splitlines()
+              counts = Counter(m[1] for l in lines if (m := re.match(r"^CONFLICT \(([^)]+)\):", l)))
+              summary = f"{name}: {sum(counts.values())} conflict messages; {dict(counts)}"
+              print(summary)
+              with (report / "status.txt").open("a") as out:
+                  out.write(summary + "\n")
+          PY
           # Publish paths and conflict classes, never private credential values,
           # source contents, or a remotely promoted merge.
           {
