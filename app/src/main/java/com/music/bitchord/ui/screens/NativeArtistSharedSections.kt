@@ -293,6 +293,7 @@ internal fun NativeArtistSourceMetadataTracksSection(
     query: String,
     palette: ArtworkPalette,
     ranked: Boolean = false,
+    onTrackHold: ((NativeMetadataTrack) -> Unit)? = null,
 ) {
     val shown = tracks.filter { track ->
         query.isBlank() || track.title.contains(query, ignoreCase = true) ||
@@ -309,6 +310,8 @@ internal fun NativeArtistSourceMetadataTracksSection(
             title = track.title,
             subtitle = if (ranked) track.releaseCaption else track.credit,
             palette = palette,
+            onLongPress = if (track.sourceStoreUrl != null)
+                onTrackHold?.let { hold -> { hold(track) } } else null,
             leading = {
                 Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
                     .clip(RoundedCornerShape(7.dp))
