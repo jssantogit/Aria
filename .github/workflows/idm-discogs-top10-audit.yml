@@ -1,0 +1,191 @@
+name: 'IDM #224 · Isolated Discogs Top 10 audit'
+
+on:
+  push:
+    branches:
+      - audit/idm-discogs-top10-20261126
+    paths:
+      - .github/workflows/idm-discogs-top10-audit.yml
+      - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
+
+permissions:
+  contents: read
+
+jobs:
+  discogs-top10:
+    name: Discogs · frozen 30-query search audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: idm-catalog-live-full
+      cancel-in-progress: false
+    env:
+      IDM_CATALOG_LIVE: '1'
+      IDM_CATALOG_LIVE_SCOPE: discogs-search
+      IDM_SEARCH_TOP10_REVIEW: '1'
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify frozen production baseline and credential availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 460930789fa029a1a3649b9fd79adc00c71a2278 HEAD
+          unexpected=$(git diff --name-only 460930789fa029a1a3649b9fd79adc00c71a2278 HEAD | grep -vFx -e '.github/workflows/idm-discogs-top10-audit.yml' -e 'app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt' || true)
+          test -z "$unexpected"
+          test -n "$IDM_CATALOG_DISCOGS_TOKEN" || { echo 'Discogs CI credential unavailable'; exit 1; }
+          echo "Exact tested checkout: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare isolated reports
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+      - name: Observe fixed live search matrix (#230)
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_search_parity_matrix'
+
+      - name: Summarize selected search matrix cells and unresolved labels
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          keys = ("status", "target_proven", "top_five_target", "first_ten_rows",
+                  "labelled_target_rows", "labelled_non_target_rows", "unjudged_rows",
+                  "local_category_route_verified", "native_search_supported",
+                  "release_track_path_verified",
+                              "homonym_candidates", "homonym_detail_reads", "homonym_corroborated",
+                  "apple_qualified_title_top_five", "apple_qualified_anchor_top_five",
+                  "apple_continuation_gestures", "apple_continuation_target_recovered",
+                  "apple_continuation_qualified_recovered", "apple_continuation_interrupted",
+                  "apple_landing_discovered_target_rank", "apple_landing_discovered_qualified_rank",
+                  "apple_qualified_identity_verified", "apple_qualified_identity_reads",
+                  "mb_anchor_field_probe", "mb_anchor_artist_id_reads", "mb_landing_raw_target_rank", "mb_landing_curated_target_rank",
+                  "source_interruption", "elapsed_ms")
+          scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
+          providers = ("discogs",)
+          expected = {f"live_search_matrix_{provider}_{i:02d}" for provider in providers for i in range(1, 31)}
+          actual = {p.stem for p in path.glob("live_search_matrix_*.json")}
+          if actual != expected:
+              raise SystemExit(f"Unexpected search matrix cells: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          totals = {}
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #230 fixed search targets (not general relevance adjudication)\n\n")
+              out.write("| Provider | Case | Target | Top 5 | Labelled match | Non-target | Unjudged | Status |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
+              out.write(f"Live scope: {scope}; {len(expected)} required cells.\n\n")
+              for provider in providers:
+                  totals[provider] = {"supported": 0, "top_five": 0, "proven": 0, "category": 0, "remote_top_five": 0, "remote_supported": 0, "qualified_additional": 0}
+                  for i in range(1, 31):
+                      name = f"search_matrix_{provider}_{i:02d}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong search matrix report mode")
+                      if row["labelled_target_rows"] + row["labelled_non_target_rows"] + row["unjudged_rows"] != row["first_ten_rows"]:
+                          raise SystemExit("Search judgement denominator mismatch")
+                      total = totals[provider]
+                      total["supported"] += row["native_search_supported"]
+                      total["top_five"] += row["top_five_target"]
+                      total["proven"] += row["target_proven"]
+                      if provider == "itunes" and not row["top_five_target"] and (
+                          row["apple_qualified_title_top_five"] or row["apple_qualified_anchor_top_five"]
+                      ):
+                          total["qualified_additional"] += 1
+                      if i >= 25:
+                          total["category"] += row["top_five_target"]
+                      elif row["native_search_supported"]:
+                          total["remote_supported"] += 1
+                          total["remote_top_five"] += row["top_five_target"]
+                      print("IDM_SEARCH_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      out.write(f"| {provider} | {i:02d} | {row['target_proven']} | {row['top_five_target']} | "
+                                f"{row['labelled_target_rows']} | {row['labelled_non_target_rows']} | "
+                                f"{row['unjudged_rows']} | {row['status']} |\n")
+              out.write("\n### Search totals by source (fixed targets)\n\n")
+              out.write("| Provider | Supported | Target proven | Top 5 | Remote Top 5 | Local category Top 5 |\n")
+              out.write("|---|---:|---:|---:|---:|---:|\n")
+              for provider, total in totals.items():
+                  out.write(f"| {provider} | {total['supported']} | {total['proven']} | "
+                            f"{total['top_five']}/{total['supported']} | "
+                            f"{total['remote_top_five']}/{total['remote_supported']} | {total['category']}/6 |\n")
+              if "itunes" in totals:
+                  apple = totals["itunes"]
+                  out.write(f"\nApple: {apple['qualified_additional']} additional edition-qualified Top 5 cases; "
+                            f"{apple['top_five'] + apple['qualified_additional']}/30 inclusive. "
+                            "Qualified results are exploratory, not included in strict score.\n")
+              out.write("\nCategory routes are local navigation; not remote catalogue availability. "
+                        "Discogs release track evidence is not native track search. Unjudged namesakes require adjudication.\n")
+          PY
+
+      - name: Validate and expose bounded public Top 10 review evidence
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          folder = root / "top10-review"
+          expected = {f"{p}_{i:02d}" for p in ("discogs",) for i in range(1, 31)}
+          actual = {p.stem for p in folder.glob("*.json")}
+          if actual != expected:
+              raise SystemExit(f"Top10 review completeness: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          for name in sorted(expected):
+              review = json.loads((folder / f"{name}.json").read_text())
+              aggregate = json.loads((root / f"live_search_matrix_{name}.json").read_text())
+              provider, case = name.rsplit("_", 1)
+              rows = review["rows"]
+              if set(review) != {"schema", "provider", "case", "kind", "complete", "rows"} or review["schema"] != 1:
+                  raise SystemExit("Invalid review schema")
+              if review["provider"] != provider or review["case"] != int(case):
+                  raise SystemExit("Review cell mismatch")
+              if len(rows) != aggregate["first_ten_rows"] or len(rows) > 10:
+                  raise SystemExit("Review denominator mismatch")
+              for i, row in enumerate(rows, 1):
+                  if set(row) != {"rank", "title", "credit", "target_label", "qualified_verified"}:
+                      raise SystemExit("Unexpected review fields")
+                  if row["rank"] != i or row["target_label"] not in (-1, 0, 1):
+                      raise SystemExit("Invalid review rank/label")
+                  if any(not isinstance(row[k], str) or len(row[k]) > 180 for k in ("title", "credit")):
+                      raise SystemExit("Unbounded review label")
+              if [sum(r["target_label"] == k for r in rows) for k in (1, 0, -1)] != [
+                  aggregate["labelled_target_rows"], aggregate["labelled_non_target_rows"], aggregate["unjudged_rows"]
+              ]:
+                  raise SystemExit("Review target counts diverged")
+              # JSON escaping prevents remote labels from becoming terminal
+              # control characters. These are public display fields only.
+              print("IDM_TOP10_REVIEW", name, json.dumps(review, ensure_ascii=True, separators=(",", ":")))
+          print("Top10 review evidence complete; human relevance judgments still required.")
+          PY
+
+      - name: Archive fixed public corpus Top 10 review
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-discogs-top10-review-${{ github.event.pull_request.head.sha || github.sha }}
+          path: idm-catalog-live-metrics/top10-review/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Archive aggregate live observations and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-catalog-live-observation-${{ env.IDM_CATALOG_LIVE_SCOPE }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            idm-catalog-live-metrics/*.json
+            app/build/test-results/testDevDebugUnitTest/
+            app/build/reports/tests/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
