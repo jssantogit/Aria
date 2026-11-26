@@ -1,0 +1,293 @@
+name: IDM · sealed candidate performance and resilience evidence
+on:
+  push:
+    branches: [audit/idm-aria-namespace-integration-20261126]
+    paths: [.github/workflows/idm-aria-sealed-performance.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  live-observation:
+    name: Three fresh-session live feeding observations
+    concurrency:
+      group: idm-catalog-live-full
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      IDM_CATALOG_LIVE: '1'
+      IDM_CATALOG_LIVE_SCOPE: 'full'
+      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: '30'
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+      IDM_SEARCH_TOP10_REVIEW: '0'
+    steps:
+      - name: Checkout audit source with complete parent history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retrieve the already validated candidate bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          run-id: 45844770994
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sealed-idm
+      - name: Verify exact candidate object and checked out tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          tree=1954dec45b353e7769ab0acf8d1fae6017fe610f
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          sealed="$RUNNER_TEMP/sealed-idm"
+          test "$(cat "$sealed/sealed-commit.txt")" = "$expected"
+          test "$(cat "$sealed/resolved-tree.txt")" = "$tree"
+          git bundle verify "$sealed/sealed-candidate.bundle"
+          git fetch "$sealed/sealed-candidate.bundle" refs/heads/sealed-idm-aria-candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          test "$(git show -s --format=%P "$expected")" = "$main $idm"
+          test "$(git rev-parse "$expected^{tree}")" = "$tree"
+          git checkout --detach "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          echo "Exact sealed source: $expected (tree $tree)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless base properties and isolated reports
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums|itunes-musicbrainz-search) ;; *) exit 1 ;; esac
+          echo "Live scope: $IDM_CATALOG_LIVE_SCOPE (focused results are not full parity)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Repeat only the production feeding observation three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The 100-release capacity gate already passed. Retain the same
+          # bounded landing/continuation/artist diagnostics, cap capacity at 30.
+          root="$IDM_CATALOG_METRICS_DIR"
+          for round in 1 2 3; do
+            export IDM_CATALOG_METRICS_DIR="$root/round-$round"
+            mkdir -p "$IDM_CATALOG_METRICS_DIR"
+            # Each task starts a fresh test JVM; in-process positive cache
+            # reuse within an observation is not a separate warm-cache trial.
+            ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest --rerun \
+              --tests 'com.music.aria.IdmCatalogLiveObservationTest.live_sources_and_collective_fallback_use_canonical_pipeline'
+            cp -R app/build/test-results/testDevDebugUnitTest "$IDM_CATALOG_METRICS_DIR/junit"
+          done
+          test "$(git rev-parse HEAD)" = e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          git diff --exit-code
+      - name: Report medians, maxima and request budgets without hiding failures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, statistics
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          expected = {
+              "musicbrainz", "musicbrainz_app_flow", "musicbrainz_home_granular",
+              "musicbrainz_home_capacity_30", "itunes", "itunes_home_granular",
+              "itunes_home_capacity_30", "discogs", "discogs_granular",
+              "discogs_home_granular", "discogs_genre_12_positions",
+              "discogs_overlapping_landing", "discogs_home_landing",
+              "discogs_artist_30_target", "discogs_home_capacity_30", "collective",
+          }
+          data = []
+          for i in (1, 2, 3):
+              path = root / f"round-{i}"
+              cases = [c for f in (path/"junit").glob("TEST-*.xml")
+                       for c in ET.parse(f).getroot().iter("testcase")]
+              assert len(cases) == 1 and all(c.find(k) is None for c in cases for k in ("failure","error","skipped")), i
+              sample = {p.stem.removeprefix("live_"): json.loads(p.read_text())
+                        for p in path.glob("live_*.json")}
+              assert sample.keys() == expected, (i, sorted(expected-sample.keys()), sorted(sample.keys()-expected))
+              assert all(r["mode"] == "live-network-observation" for r in sample.values()), i
+              data.append(sample)
+          names = sorted(expected)
+          keys = ("status", "displayed_unique", "editorial_eligible", "http_or_transport_reads",
+                  "elapsed_ms", "first_verified_ms", "initial_elapsed_ms", "initial_first_verified_ms",
+                  "source_candidates_consumed", "source_index_reads", "source_master_reads",
+                  "source_release_reads", "verified_target", "verified_landing_genres",
+                  "source_gestures", "source_candidate_budget", "incomplete_coverage")
+          results = {}
+          for name in names:
+              rows = [{k: s[name][k] for k in keys if k in s[name]} for s in data]
+              summary = {"rounds": rows}
+              for key in ("elapsed_ms", "first_verified_ms", "initial_elapsed_ms", "initial_first_verified_ms",
+                          "http_or_transport_reads", "displayed_unique"):
+                  values = [r.get(key) for r in rows]
+                  if all(isinstance(v, (int,float)) for v in values):
+                      summary[key] = {"median": statistics.median(values), "max": max(values), "min": min(values)}
+              results[name] = summary
+              print("IDM_PERFORMANCE", name, json.dumps(summary, sort_keys=True))
+          (root/"performance-summary.json").write_text(json.dumps(results, indent=2))
+          # Report each explicit Discogs bound for the measured productive windows.
+          # A failure/incomplete source response is not a healthy sample.
+          for name in ("discogs_home_granular", "discogs_genre_12_positions"):
+              rows = results[name]["rounds"]
+              healthy = all(r["status"] == "verified" and 6 <= r["displayed_unique"] <= 8 for r in rows)
+              elapsed = results[name].get("elapsed_ms", {})
+              first = results[name].get("first_verified_ms", {})
+              checks = {"three_healthy_windows": healthy,
+                        "first_median_le_5000": first.get("median",float("inf")) <= 5000,
+                        "first_max_le_10000": first.get("max",float("inf")) <= 10000,
+                        "window_median_le_25000": elapsed.get("median",float("inf")) <= 25000,
+                        "window_max_le_40000": elapsed.get("max",float("inf")) <= 40000,
+                        "index_budget": all(r.get("source_index_reads",99)<=3 for r in rows),
+                        "master_budget": all(r.get("source_master_reads",99)<=r["displayed_unique"] for r in rows),
+                        "release_budget": all(r.get("source_release_reads",99)<=r["displayed_unique"] for r in rows),
+                        "total_budget": all(r.get("http_or_transport_reads",99)<=27 for r in rows),
+                        "dense_ratio": all(r.get("http_or_transport_reads",99)<=3*r["displayed_unique"] for r in rows)}
+              print("IDM_PERFORMANCE_BOUNDS", name, json.dumps(checks, sort_keys=True))
+          print("No baseline comparison or independent warm-cache observation is inferred from absent telemetry.")
+          PY
+      - name: Archive three independent live observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-sealed-feeding-performance-e16bf676
+          path: idm-catalog-live-metrics/
+          if-no-files-found: error
+          retention-days: 7
+  deterministic-evidence:
+    name: Existing authorization, cache, cursor and transport fixture evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout audit source with complete parent history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retrieve the already validated candidate bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          run-id: 45844770994
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sealed-idm
+      - name: Verify exact candidate object and checked out tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          tree=1954dec45b353e7769ab0acf8d1fae6017fe610f
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          sealed="$RUNNER_TEMP/sealed-idm"
+          test "$(cat "$sealed/sealed-commit.txt")" = "$expected"
+          test "$(cat "$sealed/resolved-tree.txt")" = "$tree"
+          git bundle verify "$sealed/sealed-candidate.bundle"
+          git fetch "$sealed/sealed-candidate.bundle" refs/heads/sealed-idm-aria-candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          test "$(git show -s --format=%P "$expected")" = "$main $idm"
+          test "$(git rev-parse "$expected^{tree}")" = "$tree"
+          git checkout --detach "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          echo "Exact sealed source: $expected (tree $tree)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Execute only relevant deterministic contracts (no live)
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          suites=(DiscogsClientContractTest DiscogsTransportSafetyTest DiscogsEvidenceContractTest DiscogsGranularEditorialCursorTest DiscogsHomeGranularPagingTest DiscogsGenreGranularPagingTest DiscogsNativeArtistCatalogTest DiscogsNativeProviderIsolationTest ItunesCatalogClientTest ItunesCatalogRateLimiterTest ItunesNativeProviderIsolationTest ApplePublicSearchPagerTest AppleArtistDiscographyPagerTest MusicBrainzCatalogSearchTest MusicBrainzCatalogGraphTest MusicBrainzCachedSearchRepositoryTest MusicBrainzTransportAdmissionTest MusicBrainzRateLimiterTest MusicBrainzExistingIdentitySafetyTest ProviderCachedReadAccessTest ProviderReadLeaseTest ProviderSingleFlightTest ProviderReactiveCacheTest ProviderCapabilitySessionTest ProviderQueryExecutorTest ProviderEngineEndToEndIntegrationTest ProviderCatalogAdaptersTest CatalogProviderRoutingTest CatalogProviderEngineIntegrationTest IdmCatalogCapacityCurveTest IdmCatalogFeedingMeasurementTest)
+          args=()
+          for suite in "${suites[@]}"; do args+=(--tests "*.$suite"); done
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest "${args[@]}"
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          import json
+          files = sorted(Path("app/build/test-results/testDevDebugUnitTest").glob("TEST-*.xml"))
+          assert files
+          for file in files:
+              suite = ET.parse(file).getroot()
+              cases = []
+              for case in suite.iter("testcase"):
+                  cases.append({"name":case.get("name"),"status": "failed" if any(case.find(k) is not None for k in ("failure","error")) else "skipped" if case.find("skipped") is not None else "passed"})
+              print("IDM_RESILIENCE_SUITE", suite.get("name"), json.dumps(cases, ensure_ascii=True, separators=(",",":")))
+          PY
+          git diff --exit-code
+      - name: Preserve deterministic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-sealed-resilience-e16bf676
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
+  backend:
+    name: Independent Aria backend gate on the sealed candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout audit source with complete parent history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retrieve the already validated candidate bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          run-id: 45844770994
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sealed-idm
+      - name: Verify exact candidate object and checked out tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          tree=1954dec45b353e7769ab0acf8d1fae6017fe610f
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          sealed="$RUNNER_TEMP/sealed-idm"
+          test "$(cat "$sealed/sealed-commit.txt")" = "$expected"
+          test "$(cat "$sealed/resolved-tree.txt")" = "$tree"
+          git bundle verify "$sealed/sealed-candidate.bundle"
+          git fetch "$sealed/sealed-candidate.bundle" refs/heads/sealed-idm-aria-candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          test "$(git show -s --format=%P "$expected")" = "$main $idm"
+          test "$(git rev-parse "$expected^{tree}")" = "$tree"
+          git checkout --detach "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          echo "Exact sealed source: $expected (tree $tree)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Validate backend without deployment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go test ./...
+          go build -o "$RUNNER_TEMP/aria-party-server" .
+          bash -n deploy/setup.sh
+          bash -n deploy/aria-deploy.sh
+          python3 -m py_compile tools/jam_probe.py
