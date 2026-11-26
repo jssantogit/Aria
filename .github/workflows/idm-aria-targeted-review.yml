@@ -1,0 +1,279 @@
+name: IDM · sealed candidate targeted search review and album retry
+on:
+  push:
+    branches: [audit/idm-aria-namespace-integration-20261126]
+    paths: [.github/workflows/idm-aria-targeted-review.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  live-observation:
+    name: Search evidence and isolated MusicBrainz album retry
+    concurrency:
+      group: idm-catalog-live-full
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      IDM_CATALOG_LIVE: '1'
+      IDM_CATALOG_LIVE_SCOPE: 'full'
+      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: '100'
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+      IDM_SEARCH_TOP10_REVIEW: '1'
+    steps:
+      - name: Checkout audit source with complete parent history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retrieve the already validated candidate bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          run-id: 45844770994
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sealed-idm
+      - name: Verify exact candidate object and checked out tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          tree=1954dec45b353e7769ab0acf8d1fae6017fe610f
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          sealed="$RUNNER_TEMP/sealed-idm"
+          test "$(cat "$sealed/sealed-commit.txt")" = "$expected"
+          test "$(cat "$sealed/resolved-tree.txt")" = "$tree"
+          git bundle verify "$sealed/sealed-candidate.bundle"
+          git fetch "$sealed/sealed-candidate.bundle" refs/heads/sealed-idm-aria-candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          test "$(git show -s --format=%P "$expected")" = "$main $idm"
+          test "$(git rev-parse "$expected^{tree}")" = "$tree"
+          git checkout --detach "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          echo "Exact sealed source: $expected (tree $tree)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless base properties and isolated reports
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums|itunes-musicbrainz-search) ;; *) exit 1 ;; esac
+          echo "Live scope: $IDM_CATALOG_LIVE_SCOPE (focused results are not full parity)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enable public review evidence for Discogs too (test instrumentation only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt")
+          s = p.read_text()
+          old = '''if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1" &&
+                    (provider == mb || provider == apple)
+                ) {'''
+          new = '''if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1") {'''
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          PY
+          test "$(git diff --name-only)" = "app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt"
+          git diff --check
+          git diff -- app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt
+      - name: Observe fixed live search matrix (#230)
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-albums'
+        run: |
+          ./gradlew --no-daemon --build-cache \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.aria.IdmCatalogLiveObservationTest.live_search_parity_matrix'
+
+      - name: Summarize selected search matrix cells and unresolved labels
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-albums'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          keys = ("status", "target_proven", "top_five_target", "first_ten_rows",
+                  "labelled_target_rows", "labelled_non_target_rows", "unjudged_rows",
+                  "local_category_route_verified", "native_search_supported",
+                  "release_track_path_verified",
+                              "homonym_candidates", "homonym_detail_reads", "homonym_corroborated",
+                  "apple_qualified_title_top_five", "apple_qualified_anchor_top_five",
+                  "apple_continuation_gestures", "apple_continuation_target_recovered",
+                  "apple_continuation_qualified_recovered", "apple_continuation_interrupted",
+                  "apple_landing_discovered_target_rank", "apple_landing_discovered_qualified_rank",
+                  "apple_qualified_identity_verified", "apple_qualified_identity_reads",
+                  "mb_anchor_field_probe", "mb_anchor_artist_id_reads", "mb_landing_raw_target_rank", "mb_landing_curated_target_rank",
+                  "discogs_index_relevant", "discogs_index_master_known", "discogs_index_collapsed",
+                  "discogs_master_hydrated", "discogs_master_mismatch",
+                  "mb_recording_recovery_primary_rows", "mb_recording_recovery_primary_failure",
+                  "mb_recording_recovery_audio_attempted", "mb_recording_recovery_audio_rows",
+                  "mb_recording_recovery_audio_failure", "mb_recording_recovery_admitted",
+                  "mb_recording_exact_raw", "mb_recording_exact_official_audio",
+                  "mb_recording_exact_missing_proof", "mb_recording_exact_uncurated",
+                  "source_interruption", "elapsed_ms")
+          scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
+          providers = ("musicbrainz", "itunes") if scope == "itunes-musicbrainz-search" else ("musicbrainz", "itunes", "discogs")
+          expected = {f"live_search_matrix_{provider}_{i:02d}" for provider in providers for i in range(1, 31)}
+          actual = {p.stem for p in path.glob("live_search_matrix_*.json")}
+          if actual != expected:
+              raise SystemExit(f"Unexpected search matrix cells: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          totals = {}
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #230 fixed search targets (not general relevance adjudication)\n\n")
+              out.write("| Provider | Case | Target | Top 5 | Labelled match | Non-target | Unjudged | Status |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
+              out.write(f"Live scope: {scope}; {len(expected)} required cells.\n\n")
+              for provider in providers:
+                  totals[provider] = {"supported": 0, "top_five": 0, "proven": 0, "category": 0, "remote_top_five": 0, "remote_supported": 0, "qualified_additional": 0}
+                  for i in range(1, 31):
+                      name = f"search_matrix_{provider}_{i:02d}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong search matrix report mode")
+                      if row["labelled_target_rows"] + row["labelled_non_target_rows"] + row["unjudged_rows"] != row["first_ten_rows"]:
+                          raise SystemExit("Search judgement denominator mismatch")
+                      total = totals[provider]
+                      total["supported"] += row["native_search_supported"]
+                      total["top_five"] += row["top_five_target"]
+                      total["proven"] += row["target_proven"]
+                      if provider == "itunes" and not row["top_five_target"] and (
+                          row["apple_qualified_title_top_five"] or row["apple_qualified_anchor_top_five"]
+                      ):
+                          total["qualified_additional"] += 1
+                      if i >= 25:
+                          total["category"] += row["top_five_target"]
+                      elif row["native_search_supported"]:
+                          total["remote_supported"] += 1
+                          total["remote_top_five"] += row["top_five_target"]
+                      print("IDM_SEARCH_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      out.write(f"| {provider} | {i:02d} | {row['target_proven']} | {row['top_five_target']} | "
+                                f"{row['labelled_target_rows']} | {row['labelled_non_target_rows']} | "
+                                f"{row['unjudged_rows']} | {row['status']} |\n")
+              out.write("\n### Search totals by source (fixed targets)\n\n")
+              out.write("| Provider | Supported | Target proven | Top 5 | Remote Top 5 | Local category Top 5 |\n")
+              out.write("|---|---:|---:|---:|---:|---:|\n")
+              for provider, total in totals.items():
+                  out.write(f"| {provider} | {total['supported']} | {total['proven']} | "
+                            f"{total['top_five']}/{total['supported']} | "
+                            f"{total['remote_top_five']}/{total['remote_supported']} | {total['category']}/6 |\n")
+              if "itunes" in totals:
+                  apple = totals["itunes"]
+                  out.write(f"\nApple: {apple['qualified_additional']} additional edition-qualified Top 5 cases; "
+                            f"{apple['top_five'] + apple['qualified_additional']}/30 inclusive. "
+                            "Qualified results are exploratory, not included in strict score.\n")
+              out.write("\nCategory routes are local navigation; not remote catalogue availability. "
+                        "Discogs release track evidence is not native track search. Unjudged namesakes require adjudication.\n")
+          PY
+
+      - name: Validate and expose bounded public Top 10 review evidence
+        if: env.IDM_SEARCH_TOP10_REVIEW == '1'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          folder = root / "top10-review"
+          expected = {f"{p}_{i:02d}" for p in ("musicbrainz", "itunes", "discogs") for i in range(1, 31)}
+          actual = {p.stem for p in folder.glob("*.json")}
+          if actual != expected:
+              raise SystemExit(f"Top10 review completeness: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          for name in sorted(expected):
+              review = json.loads((folder / f"{name}.json").read_text())
+              aggregate = json.loads((root / f"live_search_matrix_{name}.json").read_text())
+              provider, case = name.rsplit("_", 1)
+              rows = review["rows"]
+              if set(review) != {"schema", "provider", "case", "kind", "complete", "rows"} or review["schema"] != 1:
+                  raise SystemExit("Invalid review schema")
+              if review["provider"] != provider or review["case"] != int(case):
+                  raise SystemExit("Review cell mismatch")
+              if len(rows) != aggregate["first_ten_rows"] or len(rows) > 10:
+                  raise SystemExit("Review denominator mismatch")
+              for i, row in enumerate(rows, 1):
+                  if set(row) != {"rank", "title", "credit", "target_label", "qualified_verified"}:
+                      raise SystemExit("Unexpected review fields")
+                  if row["rank"] != i or row["target_label"] not in (-1, 0, 1):
+                      raise SystemExit("Invalid review rank/label")
+                  if any(not isinstance(row[k], str) or len(row[k]) > 180 for k in ("title", "credit")):
+                      raise SystemExit("Unbounded review label")
+              if [sum(r["target_label"] == k for r in rows) for k in (1, 0, -1)] != [
+                  aggregate["labelled_target_rows"], aggregate["labelled_non_target_rows"], aggregate["unjudged_rows"]
+              ]:
+                  raise SystemExit("Review target counts diverged")
+              # JSON escaping prevents remote labels from becoming terminal
+              # control characters. These are public display fields only.
+              print("IDM_TOP10_REVIEW", name, json.dumps(review, ensure_ascii=True, separators=(",", ":")))
+          print("Top10 review evidence complete; human relevance judgments still required.")
+          PY
+
+      - name: Archive fixed public corpus Top 10 review
+        if: env.IDM_SEARCH_TOP10_REVIEW == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-top10-review-e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          path: idm-catalog-live-metrics/top10-review/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Retry only the interrupted MusicBrainz album cell
+        shell: bash
+        run: |
+          set -euo pipefail
+          testfile=app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt
+          git restore -- "$testfile"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt")
+          s = p.read_text()
+          start = s.index("    @Test fun live_album_parity_matrix()")
+          end = s.index("    private data class SearchParityCase", start)
+          block = s[start:end]
+          old = '"full" -> listOf(mb, apple, discogs)'
+          loop = 'for ((index, case) in albumParityCases.withIndex()) {'
+          assert block.count(old) == 1 and block.count(loop) == 1
+          block = block.replace(old, '"full" -> listOf(mb)').replace(loop, loop + '\n                if (index != 14) continue')
+          p.write_text(s[:start] + block + s[end:])
+          PY
+          test "$(git diff --name-only)" = "$testfile"
+          git diff --check
+          git diff -- "$testfile"
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest \
+            --tests 'com.music.aria.IdmCatalogLiveObservationTest.live_album_parity_matrix'
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          files = list(root.glob("live_album_matrix_*.json"))
+          assert [f.name for f in files] == ["live_album_matrix_musicbrainz_15.json"], files
+          row = json.loads(files[0].read_text())
+          assert row["mode"] == "live-network-observation"
+          keys = ("status", "identity_verified", "detail_projected", "type_verified",
+                  "tracklist_partial", "displayed_unique", "source_interruption", "elapsed_ms")
+          print("IDM_ALBUM_RETRY musicbrainz_15", json.dumps({key: row[key] for key in keys}))
+          PY
+          git restore -- "$testfile"
+          git diff --exit-code
+      - name: Archive aggregate live observations and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-targeted-review-e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          path: |
+            idm-catalog-live-metrics/*.json
+            app/build/test-results/testDevDebugUnitTest/
+            app/build/reports/tests/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
