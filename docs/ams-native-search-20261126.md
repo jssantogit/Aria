@@ -1,0 +1,3 @@
+# AMS native search integration
+
+44dce10d passed CI 45895980539. New native AMS search session owns typed first pages and independent source cursor continuation, with policy/order/query guards. Existing search tabs and mixed renderer reuse native source rows, never iTunes IDs or playback objects. Song tap uses a fresh exact unique song-to-album relationship under editorial admission. Artist/album clicks require the current AMS result and existing editorial route. AMS first-priority selection and MB/iTunes filter routing are connected; the legacy Discogs primary path remains separate and arbitrary four-source fallback requires further validation/correction. Search UI contracts are deterministic, no live or smoke claim. Provider remains BLOCKED.

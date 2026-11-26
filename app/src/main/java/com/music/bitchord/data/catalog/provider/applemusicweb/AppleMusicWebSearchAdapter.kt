@@ -115,6 +115,10 @@ internal class AppleMusicWebSearchAdapter(
                 artworkUrl = item.artworkUrl,
                 storeUrl = item.storeUrl,
                 sourcePosition = index + 1,
+                artistNativeId = item.artistId,
+                albumNativeId = item.albumId,
+                releaseDate = item.releaseDate,
+                durationMs = item.durationMillis,
             )
         },
         page = source.page,

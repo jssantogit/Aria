@@ -351,6 +351,20 @@ internal class AppleMusicWebNativeCatalogSession(
             }
         }
 
+    /** Do not infer an album from a song title or query parameter. */
+    suspend fun songAlbumRoute(key: String): String? {
+        val parts = key.split(':')
+        if (parts.size != 4 || parts[0] != "apple_music_web" || parts[2] != "song" ||
+            !parts[1].matches(Regex("[a-z]{2}")) || !parts[3].matches(Regex("[1-9][0-9]{0,11}"))) return null
+        val result = admitted(editorial) { gateway -> gateway.songCollections(parts[3],parts[1]) }
+        val source = (result as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete
+            ?: return null
+        val song = source.value
+        if (song.song.scopedId != key || song.hasMore) return null
+        val album = song.albumIds.singleOrNull() ?: return null
+        return AppleMusicWebNativeRoute.parse("apple_music_web:${parts[1]}:album:$album")?.browseId
+    }
+
     suspend fun search(request: CatalogSearchRequest): ProviderCallResult<CatalogSearchPage> =
         admitted(ProviderCapability.CATALOG_SEARCH) { gateway -> AppleMusicWebSearchAdapter(gateway).search(request) }
 }

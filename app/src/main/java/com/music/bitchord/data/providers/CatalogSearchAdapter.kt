@@ -59,6 +59,10 @@ internal data class CatalogSearchItem(
     val storeUrl: String? = null,
     // Original position within the physical source page, if supplied.
     val sourcePosition: Int? = null,
+    val artistNativeId: String? = null,
+    val albumNativeId: String? = null,
+    val releaseDate: String? = null,
+    val durationMs: Long? = null,
 )
 
 /** Complete here means this requested PAGE; hasMore tracks remaining pages. */

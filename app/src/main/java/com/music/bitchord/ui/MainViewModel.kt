@@ -649,6 +649,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun loadAmsGenreEditorial(tag: String, force: Boolean = false) {
         if (isCanonicalDiscoverySelected()) appleMusicWebEditorialUi.loadGenre(tag, force)
     }
+    internal val appleMusicWebSearchUi by lazy {
+        AppleMusicWebSearchUiSession(viewModelScope,{ ProviderRuntime.gateOrNull() },
+            ::eligibleCatalogSearchProviders,appleMusicWebNativeCatalog::search) { query ->
+            if (_searchSource.value == SearchSource.CANONICAL && _query.value.trim() == query &&
+                searchSubmitted) routeCatalogFilterFromExistingSearch(query)
+        }
+    }
+    private fun selectAmsSearch(query: String) {
+        if (appleMusicWebSearchUi.state.value.selected &&
+            appleMusicWebSearchUi.state.value.query == query && appleMusicWebSearchUi.current()) return
+        canonicalSearchJob?.cancel()
+        canonicalTypeaheadJob?.cancel()
+        appleEditorialSearchJob?.cancel()
+        appleArtistSearchJob?.cancel()
+        appleTrackSearchJob?.cancel()
+        resetCanonicalSearchPagination()
+        resetApplePublicSearchPaging()
+        catalogAppleQuery = null
+        catalogMusicBrainzQuery = null
+        discogsNativeCatalog.clearSearch()
+        discogsNativeCatalog.backAll()
+        backAppleEditorialAlbum()
+        backAppleEditorialArtist()
+        clearCanonicalCatalogNavigation()
+        _detailStack.update { pages -> pages.filterNot { it.browseId.startsWith("catalog:") } }
+        _catalogSearchMusicBrainzVisible.value = false
+        appleMusicWebSearchUi.select(query)
+    }
     internal val appleMusicWebDetailNavigation by lazy {
         AppleMusicWebDetailNavigation(viewModelScope, {
             ProviderReadLease.acquire(ProviderRuntime.gateOrNull(), listOf(
@@ -673,7 +701,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ProviderRuntime.gateOrNull(),
         ProviderCapability.CATALOG_SEARCH,
         setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES,
-            BuiltInProviderKeys.DISCOGS),
+            BuiltInProviderKeys.DISCOGS, BuiltInProviderKeys.APPLE_MUSIC_WEB),
     )
 
     private fun eligibleEditorialProviders() = orderedCatalogProviders(
@@ -1379,6 +1407,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Cancel the old namespace before the new source starts answering the same query. */
     private fun cancelSearchSourceRequests() {
+        appleMusicWebSearchUi.clear()
         appleEditorialSearchJob?.cancel()
         appleEditorialDetailJob?.cancel()
         appleArtistSearchJob?.cancel()
@@ -4674,6 +4703,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     val next = eligibleCatalogSearchProviders()
                     if (next != previous) {
+                        appleMusicWebSearchUi.clear()
                         previous = next
                         // Never reuse rows fetched under an earlier permission/order epoch.
                         catalogAppleQuery = null
@@ -4986,6 +5016,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onQueryChange(newValue: String) {
         val effective = effectiveSearchSource(_searchSource.value, SourceRegistry.configs.value)
+        if (_query.value != newValue) appleMusicWebSearchUi.clear()
         _query.value = newValue
         if (effective != _searchSource.value) {
             switchSearchSource(effective, rerunCurrentQuery = false)
@@ -5385,6 +5416,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Public iTunes has no offset; local pages then query alternate attributes. */
     fun loadMoreApplePublicSearch(section: AppleSearchSection) {
+        if (appleMusicWebSearchUi.state.value.selected) {
+            appleMusicWebSearchUi.loadMore(section)
+            return
+        }
         val pager = applePublicPagers[section] ?: return
         val status = _appleSearchPaging.value[section] ?: return
         if (!status.hasMore || status.loadingMore ||
@@ -5456,6 +5491,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A song tap may open its Apple album, never invent a playable Song. */
     fun openAppleEditorialTrackAlbum(track: AppleEditorialTrackSearchRow) {
+        if (track.key.startsWith("apple_music_web:")) {
+            val snapshot = appleMusicWebSearchUi.state.value
+            if (!snapshot.selected || !appleMusicWebSearchUi.current() ||
+                snapshot.query != _query.value.trim() ||
+                snapshot.sections.values.none { section -> section.items.any { amsSearchTrack(it) == track } }) return
+            viewModelScope.launch {
+                val item = appleMusicWebNativeCatalog.songAlbumRoute(track.key) ?: return@launch
+                if (appleMusicWebSearchUi.state.value.query != snapshot.query ||
+                    !appleMusicWebSearchUi.state.value.selected || !appleMusicWebSearchUi.current() ||
+                    _searchSource.value != SearchSource.CANONICAL) return@launch
+                openAppleMusicWebDetail(ShelfItem("Álbum",track.artistName,track.artworkUri,null,item))
+            }
+            return
+        }
         val albumId = track.albumBrowseId ?: return
         val route = AppleCatalogBrowseRoute.parse(albumId)
             ?.takeIf { it.kind ==
@@ -5474,6 +5523,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Search and artist-shelf routes retain their exact storefront namespace. */
     fun openAppleEditorialEntry(row: AppleEditorialSearchRow) {
+        if (row.browseId.startsWith("apple_music_web:")) {
+            val snapshot = appleMusicWebSearchUi.state.value
+            if (snapshot.selected && appleMusicWebSearchUi.current() &&
+                snapshot.query == _query.value.trim() &&
+                snapshot.sections.values.any { section -> section.items.any { amsSearchRow(it) == row } }) {
+                openAppleMusicWebDetail(ShelfItem(row.title,row.artistName,row.artworkUri,
+                    null,row.browseId,appleStoreUrl=row.appleStoreUrl))
+            }
+            return
+        }
         appleMusicWebDetailNavigation.clear()
         when (row.kind) {
             AppleEditorialSearchKind.ARTIST -> openAppleEditorialArtist(row)
@@ -6057,8 +6116,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun runCanonicalCatalogSearch(query: String) {
         appleMusicWebDetailNavigation.clear()
+        appleMusicWebSearchUi.clear()
         val providers = eligibleCatalogSearchProviders()
         when (providers.firstOrNull()) {
+            BuiltInProviderKeys.APPLE_MUSIC_WEB -> {
+                _searchScrollReset.value += 1
+                selectAmsSearch(query)
+            }
             BuiltInProviderKeys.DISCOGS -> {
                 // Source-native pages must not inherit a previous Apple detail
                 // route when a provider is switched or reordered.
@@ -6131,11 +6195,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val current = eligibleCatalogSearchProviders()
                     if (!appleFound && _searchSource.value == SearchSource.CANONICAL &&
                         _query.value.trim() == query &&
-                        current.firstOrNull() == BuiltInProviderKeys.ITUNES &&
-                        BuiltInProviderKeys.MUSICBRAINZ in current
+                        current.firstOrNull() == BuiltInProviderKeys.ITUNES
                     ) {
-                        _catalogSearchMusicBrainzVisible.value = true
-                        runMusicBrainzCatalogSearch(query)
+                        if (BuiltInProviderKeys.APPLE_MUSIC_WEB in current)
+                            viewModelScope.launch { routeCatalogFilterFromExistingSearch(query) }
+                        else if (BuiltInProviderKeys.MUSICBRAINZ in current) {
+                            _catalogSearchMusicBrainzVisible.value = true
+                            runMusicBrainzCatalogSearch(query)
+                        }
                     }
                 }
             }
@@ -6540,12 +6607,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 eligibleCatalogSearchProviders().firstOrNull() == BuiltInProviderKeys.MUSICBRAINZ &&
                 BuiltInProviderKeys.ITUNES in eligibleCatalogSearchProviders()
             ) {
-                _catalogSearchMusicBrainzVisible.value = false
-                runAppleEditorialArtistSearch(query)
-                runAppleEditorialTrackSearch(query)
-                runAppleEditorialAlbumSearch(query)
+                if (BuiltInProviderKeys.APPLE_MUSIC_WEB in eligibleCatalogSearchProviders())
+                    viewModelScope.launch { routeCatalogFilterFromExistingSearch(query) }
+                else {
+                    _catalogSearchMusicBrainzVisible.value = false
+                    runAppleEditorialArtistSearch(query)
+                    runAppleEditorialTrackSearch(query)
+                    runAppleEditorialAlbumSearch(query)
+                }
+            } else if (!matchedFilter && BuiltInProviderKeys.APPLE_MUSIC_WEB in eligibleCatalogSearchProviders()) {
+                viewModelScope.launch { routeCatalogFilterFromExistingSearch(query) }
             }
-            // Preserve the same native presentation paths for both providers.
+            // Preserve the same native presentation paths for all providers.
         }
         val unregister = permissionGate.onRevoke(permissionTicket) { searchJob.cancel() }
         searchJob.invokeOnCompletion { unregister() }
@@ -6912,12 +6985,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ?.data?.isNotEmpty() == true,
             )) CatalogFilterCoverage.MATCHING else CatalogFilterCoverage.EMPTY
         }
+        // Preserve the existing three-source path when AMS is not eligible.
+        // For an AMS chain, Discogs is still handled by its existing primary
+        // entry point; do not claim it has a song index or a settled miss.
+        val ams = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val amsState = appleMusicWebSearchUi.state.value
+        val amsCoverage = if (amsState.query == query && appleMusicWebSearchUi.current())
+            amsState.coverage(selected) else CatalogFilterCoverage.NOT_QUERIED
         val choice = catalogSearchFilterRoute(order, mapOf(
             BuiltInProviderKeys.MUSICBRAINZ to mbCoverage,
             BuiltInProviderKeys.ITUNES to appleCoverage,
+            ams to amsCoverage,
         ))
         when (choice.provider) {
+            ams -> selectAmsSearch(query)
             BuiltInProviderKeys.MUSICBRAINZ -> {
+                appleMusicWebSearchUi.deselect()
                 _catalogSearchMusicBrainzVisible.value = true
                 if (choice.shouldFetch) {
                     runMusicBrainzCatalogSearch(
@@ -6929,6 +7012,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             BuiltInProviderKeys.ITUNES -> {
+                appleMusicWebSearchUi.deselect()
                 _catalogSearchMusicBrainzVisible.value = false
                 if (choice.shouldFetch) {
                     runAppleEditorialArtistSearch(query)

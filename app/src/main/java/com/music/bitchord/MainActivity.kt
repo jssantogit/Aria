@@ -1149,6 +1149,7 @@ private fun BitChordApp(
     )
 
     val catalogRuntime = collectCanonicalCatalogRuntime(viewModel)
+    val nativeAppleSearch = com.music.bitchord.ui.collectNativeAppleSearchPresentation(viewModel)
     val canonicalDiscoveryCatalog = catalogRuntime.discovery
     val canonicalHomeLocalPicks = catalogRuntime.localPicks
     val canonicalHomeRemotePicks = catalogRuntime.remotePicks
@@ -4930,12 +4931,12 @@ private fun BitChordApp(
                             canonicalResults = viewModel.canonicalResults.collectAsStateWithLifecycle().value,
                             catalogSearchMusicBrainzVisible =
                                 viewModel.catalogSearchMusicBrainzVisible.collectAsStateWithLifecycle().value,
-                            appleResults = viewModel.appleEditorialResults.collectAsStateWithLifecycle().value,
-                            appleArtistResults = viewModel.appleEditorialArtists.collectAsStateWithLifecycle().value,
-                            appleTrackResults = viewModel.appleEditorialTracks.collectAsStateWithLifecycle().value,
+                            appleResults = nativeAppleSearch.albums,
+                            appleArtistResults = nativeAppleSearch.artists,
+                            appleTrackResults = nativeAppleSearch.tracks,
                             onAppleOpen = viewModel::openAppleEditorialEntry,
                             onAppleTrackOpen = viewModel::openAppleEditorialTrackAlbum,
-                            applePaging = viewModel.appleSearchPaging.collectAsStateWithLifecycle().value,
+                            applePaging = nativeAppleSearch.paging,
                             onAppleLoadMore = viewModel::loadMoreApplePublicSearch,
                             discogsArtistResults = viewModel.discogsNativeCatalog.artists
                                 .collectAsStateWithLifecycle().value,
