@@ -156,6 +156,32 @@ internal class AppleMusicWebNativeCatalogSession(
         ProviderCallResult.Stale -> ProviderCallResult.Stale
     }
 
+    /** Projection remains inside an outer editorial ticket. Reuse the
+     * existing native DetailScreen payload, without publishing foreign IDs. */
+    suspend fun sharedDetail(browseId: String):
+        ProviderCallResult<AppleMusicWebOutcome<com.music.bitchord.ui.screens.AppleSharedDetail>> =
+        admitted(editorial) {
+            when (val result = detail(browseId)) {
+                is ProviderCallResult.Success -> {
+                    fun project(value: AppleMusicWebNativeDetail, incomplete: Boolean) =
+                        com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail(browseId,value,incomplete)
+                    val outcome = when (val source = result.value) {
+                        is AppleMusicWebOutcome.Complete -> project(source.value,false)?.let {
+                            AppleMusicWebOutcome.Complete(it)
+                        }
+                        is AppleMusicWebOutcome.Partial -> project(source.value,true)?.let {
+                            AppleMusicWebOutcome.Partial(it,source.reason)
+                        }
+                        is AppleMusicWebOutcome.Unavailable -> source
+                    } ?: AppleMusicWebOutcome.Unavailable("Invalid AMS presentation identity")
+                    ProviderCallResult.Success(outcome)
+                }
+                is ProviderCallResult.Failed -> result
+                ProviderCallResult.Denied -> ProviderCallResult.Denied
+                ProviderCallResult.Stale -> ProviderCallResult.Stale
+            }
+        }
+
     suspend fun search(request: CatalogSearchRequest): ProviderCallResult<CatalogSearchPage> =
         admitted(ProviderCapability.CATALOG_SEARCH) { gateway -> AppleMusicWebSearchAdapter(gateway).search(request) }
 }
