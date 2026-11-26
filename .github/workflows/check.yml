@@ -72,10 +72,14 @@ jobs:
           key: ${{ steps.robolectric-cache.outputs.cache-primary-key }}
 
       - name: Verify Robolectric framework availability
-        run: ./gradlew --build-cache -PariaRobolectricFrameworkDir="$RUNNER_TEMP/aria-robolectric" -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
+        env:
+          ORG_GRADLE_PROJECT_ariaRobolectricFrameworkDir: ${{ runner.temp }}/aria-robolectric
+        run: ./gradlew --build-cache -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
 
       - name: Run Android unit tests
-        run: ./gradlew --build-cache -PariaRobolectricFrameworkDir="$RUNNER_TEMP/aria-robolectric" :app:testDevDebugUnitTest
+        env:
+          ORG_GRADLE_PROJECT_ariaRobolectricFrameworkDir: ${{ runner.temp }}/aria-robolectric
+        run: ./gradlew --build-cache :app:testDevDebugUnitTest
 
       # Automix's cueing logic lives in commonMain, and its commonTest
       # regression is not exercised by :app:testDevDebugUnitTest.
