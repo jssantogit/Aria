@@ -12,6 +12,9 @@ import com.music.bitchord.data.providers.ProviderPolicyGate
 import com.music.bitchord.data.providers.ProviderReadiness
 import com.music.bitchord.data.providers.RateLimitedProviderTransport
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
+import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebProtocolException
+import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebHttpException
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -47,16 +50,48 @@ class AppleMusicWebLiveCanaryTest {
         val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
             admission = RateLimitedProviderTransport { gate },
         ))
-        for (offset in 0..1) {
-            val country = countries[(seed + offset) % countries.size]
-            val query = queries[(seed + offset) % queries.size]
-            val result = catalog.search(AppleMusicWebKind.ARTIST, query, country, limit = 5)
-            assertTrue("No Apple artists returned for $country", result.items.isNotEmpty())
-            val first = result.items.first()
-            assertTrue(first.scopedId.startsWith("apple_music_web:$country:artist:"))
-            assertFalse(first.playable)
-            val overview = catalog.artist(first.id, country)
-            assertEquals(first.scopedId, overview.identity.scopedId)
+        // FR was common to both failing rotations; retain it during diagnosis
+        // without losing the two normal rotating storefront observations.
+        val probes = ((0..1).map { (seed + it) % countries.size } + 1).distinct()
+        val failures = mutableListOf<String>()
+        for (index in probes) {
+            val country = countries[index]
+            val query = queries[index]
+            var stage = "search"
+            try {
+                val result = catalog.search(AppleMusicWebKind.ARTIST, query, country, limit = 5)
+                assertTrue("No Apple artists returned", result.items.isNotEmpty())
+                val first = result.items.first()
+                assertTrue(first.scopedId.startsWith("apple_music_web:$country:artist:"))
+                assertFalse(first.playable)
+                stage = "artist_detail"
+                val overview = catalog.artist(first.id, country)
+                assertEquals(first.scopedId, overview.identity.scopedId)
+                println("AMS_CANARY|storefront=$country|status=success")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                val reason = when (failure) {
+                    is AppleMusicWebHttpException -> "http_" + failure.status
+                    is AppleMusicWebProtocolException -> when (failure.message) {
+                        "Missing attributes", "Missing title", "Missing ID",
+                        "Missing or ambiguous Apple detail", "Wrong Apple resource identity",
+                        "Missing search results envelope", "Missing requested search result type",
+                        "Invalid search data", "Search error envelope", "Invalid catalog JSON",
+                        "Invalid array", "Invalid catalog item", "Oversized response",
+                        "Apple web bundle unavailable", "Apple web token unavailable",
+                        "Invalid artist", "Cyclic cursor" -> failure.message.orEmpty()
+                        else -> "protocol_other"
+                    }
+                    is AssertionError -> "contract_assertion"
+                    is java.io.IOException -> "io"
+                    else -> "unexpected"
+                }
+                val diagnostic = "AMS_CANARY|storefront=$country|stage=$stage|reason=$reason"
+                println(diagnostic)
+                failures += diagnostic
+            }
         }
+        assertTrue(failures.joinToString("; "), failures.isEmpty())
     }
 }

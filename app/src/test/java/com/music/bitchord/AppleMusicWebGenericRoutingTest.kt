@@ -115,6 +115,35 @@ class AppleMusicWebGenericRoutingTest {
         assertEquals(listOf("/v1/catalog/br/search"), calls)
     }
 
+    @Test fun continuationPublishesUniqueNativeIdsAndPreservesRawOverlap() = runBlocking {
+        val policy = gate(listOf(apple))
+        val offsets = mutableListOf<String?>()
+        val source = AppleMusicWebTransport { _, _, args ->
+            offsets += args["offset"]
+            fun row(id: String) = """{"id":"$id","type":"artists","attributes":{"name":"Same name"}}"""
+            val (ids, next) = when (args["offset"]) {
+                null -> listOf("1", "2") to "9"
+                "9" -> listOf("1", "2") to "18"
+                "18" -> listOf("2", "3") to null
+                else -> error("Unexpected cursor")
+            }
+            val cursor = next?.let { ""","next":"/v1/catalog/br/search?offset=$it"""" }.orEmpty()
+            """{"results":{"artists":{"data":[""" + ids.joinToString(",") { row(it) } + "]" + cursor + "}}}"
+        }
+        val reader = com.music.bitchord.data.providers.CatalogSearchAdapterReader(policy, listOf(
+            AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(AppleMusicWebCatalog(source), policy)),
+        ))
+        val request = CatalogSearchRequest(CatalogSearchKind.ARTIST, "Same name", "br")
+        val first = (reader.read(apple, request) as ProviderCallResult.Success).value
+        val next = (reader.read(apple, request.copy(page = 2, continuation = first.continuation))
+            as ProviderCallResult.Success).value
+        assertEquals(listOf("1", "2"), first.items.map { it.identity.nativeId })
+        assertEquals(listOf("3"), next.items.map { it.identity.nativeId })
+        assertEquals(3, next.sourceOverlapCount)
+        assertEquals(listOf(null, "9", "18"), offsets)
+        assertFalse(next.hasMore)
+    }
+
     @Test fun unauthorizedAppleWebAdapterCannotDispatch() = runBlocking {
         var calls = 0
         val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(

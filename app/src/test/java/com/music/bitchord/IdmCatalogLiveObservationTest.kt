@@ -3136,6 +3136,7 @@ class IdmCatalogLiveObservationTest {
             var secondPageChecked = false
             var secondPageRows = 0
             var overlap = 0
+            var rawOverlap = 0
             var continuationFailed = false
             if (case.kind == "category") {
                 val categories = canonicalExploreGenreSearchHits(case.query, limit = 10)
@@ -3166,10 +3167,11 @@ class IdmCatalogLiveObservationTest {
                     if (first.hasMore) {
                         secondPageChecked = true
                         val next = first.continuation?.let { read(kind, case.query, 2, it) }
-                        if (next == null || next.items.isEmpty()) {
+                        if (next == null || (next.items.isEmpty() && next.hasMore)) {
                             continuationFailed = true
                         } else {
                             secondPageRows = next.items.size
+                            rawOverlap = next.sourceOverlapCount
                             overlap = next.items.map(::nativeId).toSet().intersect(rows.map { it.id }.toSet()).size
                             if (overlap > 0) println("AMS_SEARCH_PAGE_OVERLAP|case=" + (index + 1) + "|count=" + overlap)
                         }
@@ -3260,6 +3262,7 @@ class IdmCatalogLiveObservationTest {
                     "second_page_checked" to if (secondPageChecked) 1 else 0,
                     "second_page_rows" to secondPageRows,
                     "second_page_overlap" to overlap,
+                    "second_page_source_overlap" to rawOverlap,
                     "continuation_interruption" to if (continuationFailed) 1 else 0,
                     "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
                         .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),

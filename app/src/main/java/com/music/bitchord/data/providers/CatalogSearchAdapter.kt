@@ -27,11 +27,14 @@ internal data class CatalogSearchContinuation(
     val page: Int,
     val limit: Int,
     val token: String,
+    val seenNativeIds: Set<String> = emptySet(),
+    val visitedTokens: Set<String> = emptySet(),
 ) {
     fun matches(provider: ProviderKey, request: CatalogSearchRequest): Boolean =
         this.provider == provider && kind == request.kind && query == request.query &&
             storefront.equals(request.storefront, ignoreCase = true) && page == request.page &&
-            page > 1 && limit == request.limit && token.isNotBlank() && token.length <= 4096
+            page > 1 && limit == request.limit && token.isNotBlank() && token.length <= 4096 &&
+            seenNativeIds.size <= 6000 && visitedTokens.size <= 60 && token !in visitedTokens
 }
 
 /** Native identity is scoped to its OWN source; storefronts are not MBIDs. */
@@ -67,6 +70,8 @@ internal data class CatalogSearchPage(
     val hasMore: Boolean,
     val partial: Boolean,
     val continuation: CatalogSearchContinuation? = null,
+    // Physical source overlaps are retained as diagnostics, not visible rows.
+    val sourceOverlapCount: Int = 0,
 )
 
 internal interface CatalogSearchAdapter {

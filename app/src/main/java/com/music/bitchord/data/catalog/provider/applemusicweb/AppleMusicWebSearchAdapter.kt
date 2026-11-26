@@ -34,37 +34,56 @@ internal class AppleMusicWebSearchAdapter(
             CatalogSearchKind.ALBUM -> AppleMusicWebKind.ALBUM
             CatalogSearchKind.TRACK -> AppleMusicWebKind.SONG
         }
-        return when (val response = gateway.search(
-            sourceKind, request.query, request.storefront, request.page, request.limit,
-            request.continuation?.token,
-        )) {
-            ProviderCallResult.Denied -> ProviderCallResult.Denied
-            ProviderCallResult.Stale -> ProviderCallResult.Stale
-            is ProviderCallResult.Failed -> ProviderCallResult.Failed(response.cause)
-            is ProviderCallResult.Success -> {
-                val source = response.value
-                if (source.provider != key ||
-                    source.capability != ProviderCapability.CATALOG_SEARCH
-                ) {
-                    ProviderCallResult.Failed(
-                        AppleMusicWebProtocolException("Wrong Apple catalog provenance"),
-                    )
-                } else {
+        val previous = request.continuation
+        val seen = previous?.seenNativeIds.orEmpty().toMutableSet()
+        val visited = previous?.visitedTokens.orEmpty().toMutableSet()
+        var cursor = previous?.token
+        var overlaps = 0
+        // Every physical request still passes through the policy gateway.
+        // Skip at most three entirely repeated upstream pages; never fabricate
+        // a terminal page when the source still advertises more.
+        repeat(3) {
+            if (cursor != null && !visited.add(requireNotNull(cursor)))
+                return ProviderCallResult.Failed(AppleMusicWebProtocolException("Cyclic cursor"))
+            val response = gateway.search(
+                sourceKind, request.query, request.storefront, request.page, request.limit, cursor,
+            )
+            val raw = when (response) {
+                ProviderCallResult.Denied -> return ProviderCallResult.Denied
+                ProviderCallResult.Stale -> return ProviderCallResult.Stale
+                is ProviderCallResult.Failed -> return ProviderCallResult.Failed(response.cause)
+                is ProviderCallResult.Success -> {
+                    val source = response.value
+                    if (source.provider != key || source.capability != ProviderCapability.CATALOG_SEARCH)
+                        return ProviderCallResult.Failed(AppleMusicWebProtocolException("Wrong Apple catalog provenance"))
                     when (val outcome = source.outcome) {
-                        is AppleMusicWebOutcome.Complete ->
-                            ProviderCallResult.Success(project(request, source.storefront,
-                                outcome.value, partial = false))
+                        is AppleMusicWebOutcome.Complete -> project(request, source.storefront, outcome.value, false)
                         is AppleMusicWebOutcome.Partial ->
-                            ProviderCallResult.Success(project(request, source.storefront,
-                                outcome.value, partial = true))
+                            return ProviderCallResult.Failed(AppleMusicWebProtocolException("Partial Apple search page"))
                         is AppleMusicWebOutcome.Unavailable ->
-                            ProviderCallResult.Failed(
-                                AppleMusicWebProtocolException("Apple catalog unavailable"),
-                            )
+                            return ProviderCallResult.Failed(AppleMusicWebProtocolException("Apple catalog unavailable"))
                     }
                 }
             }
+            val unique = raw.items.filter { seen.add(it.identity.nativeId) }
+            overlaps += raw.items.size - unique.size
+            val next = raw.continuation?.token
+            if (next != null && next in visited)
+                return ProviderCallResult.Failed(AppleMusicWebProtocolException("Cyclic cursor"))
+            if (unique.isNotEmpty() || !raw.hasMore) {
+                return ProviderCallResult.Success(raw.copy(
+                    items = unique,
+                    sourceOverlapCount = overlaps,
+                    continuation = raw.continuation?.copy(
+                        seenNativeIds = seen.toSet(), visitedTokens = visited.toSet(),
+                    ),
+                ))
+            }
+            if (next == null)
+                return ProviderCallResult.Failed(AppleMusicWebProtocolException("Missing Apple continuation"))
+            cursor = next
         }
+        return ProviderCallResult.Failed(AppleMusicWebProtocolException("No unique Apple search progress"))
     }
 
     private fun project(

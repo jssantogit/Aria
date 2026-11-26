@@ -67,15 +67,16 @@ jobs:
                        target=labels.count(1), non_target=labels.count(0), unresolved=labels.count(-1),
                        top5=int(1 in labels[:5]), top10=int(1 in labels),
                        proof_interruptions=agg['proof_interruption'], second_pages=agg['second_page_checked'],
-                       overlap=agg['second_page_overlap'], continuation_interruptions=agg['continuation_interruption'])
+                       overlap=agg['second_page_overlap'], source_overlap=agg['second_page_source_overlap'],
+                       continuation_interruptions=agg['continuation_interruption'])
               print('AMS_TOP10_REVIEW', json.dumps(row, ensure_ascii=True, separators=(',',':')))
           for kind, t in totals.items():
               print('AMS_SEARCH_AGGREGATE', kind, json.dumps(t, sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('## AMS native adapter baseline (BR)\nNot production UI precision; categories are local. Target labels are not final relevance judgments.\n\n')
-              f.write('| Category | Cases | Complete | Rows | Target | Non-target | Unresolved | Top5 | Top10 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n')
+              f.write('| Category | Cases | Complete | Rows | Target | Non-target | Unresolved | Top5 | Top10 | Source overlap | Visible overlap |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n')
               for kind,t in totals.items():
-                  f.write(f"| {kind} | {t['cases']} | {t['complete']} | {t['rows']} | {t['target']} | {t['non_target']} | {t['unresolved']} | {t['top5']} | {t['top10']} |\n")
+                  f.write(f"| {kind} | {t['cases']} | {t['complete']} | {t['rows']} | {t['target']} | {t['non_target']} | {t['unresolved']} | {t['top5']} | {t['top10']} | {t['source_overlap']} | {t['overlap']} |\n")
           PY
       - uses: actions/upload-artifact@v4
         if: always()
