@@ -279,7 +279,12 @@ jobs:
                        "provider-rea-integration-preflight.yml"):
               path = ".github/workflows/" + name
               assert (root / path).is_file(), path
-              git("rm", "--", path)
+              # These exact obsolete files were introduced by the staged merge.
+              # Their removal is intentional and restricted to this worktree.
+              assert not git("ls-files", "-u", "--", path).strip(), path
+              assert not git("diff", "--", path).strip(), path
+              git("rm", "-f", "--", path)
+              assert not (root / path).exists(), path
           # Restore the approved symbol name in all current module sources,
           # including the IDM's newly extracted Compose helpers and comments.
           changed = []
