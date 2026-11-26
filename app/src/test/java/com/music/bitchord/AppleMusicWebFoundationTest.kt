@@ -26,10 +26,11 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 
 class AppleMusicWebFoundationTest {
-    @Test fun defaultInventoryIsBlockedEvenWhenUserExplicitlyEnablesBothCapabilities() {
+    @Test fun defaultInventoryIsBlockedEvenWhenUserExplicitlyEnablesAllCapabilities() {
         val inventory = ProviderCapabilityRegistry.inventory()
         val rows = inventory.filter { it.key == BuiltInProviderKeys.APPLE_MUSIC_WEB }
-        assertEquals(2, rows.size)
+        assertEquals(setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            ProviderCapability.CHART_MOST_PLAYED), rows.map { it.capability }.toSet())
         assertTrue(rows.all { it.readiness == ProviderReadiness.BLOCKED })
         val choices = rows.groupBy { it.capability }.mapValues { (_, items) ->
             listOf(ProviderChoice(items.first().key, enabled = true, order = 0))
@@ -38,6 +39,7 @@ class AppleMusicWebFoundationTest {
         val gate = ProviderPolicyGate(policy)
         assertNull(gate.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.APPLE_MUSIC_WEB))
         assertNull(gate.open(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.APPLE_MUSIC_WEB))
+        assertNull(gate.open(ProviderCapability.CHART_MOST_PLAYED, BuiltInProviderKeys.APPLE_MUSIC_WEB))
     }
 
     @Test fun cacheKeysSeparateMarketLanguageCapabilityAndNeverContainCredentials() {
