@@ -106,9 +106,12 @@ internal fun AmsSearchHeldMenu(
 /** Context is captured with the lifted card, not reconstructed by title. */
 internal data class AmsShelfHoldScope(val tab: Int, val genre: String?, val detail: String?)
 internal data class AmsShelfHeldTarget(
-    val card: com.music.bitchord.data.model.ShelfItem,
     val scope: AmsShelfHoldScope,
-)
+    val card: com.music.bitchord.data.model.ShelfItem? = null,
+    val track: NativeMetadataTrack? = null,
+) {
+    init { require((card != null) != (track != null)) }
+}
 internal class AmsShelfHeldState {
     var target by mutableStateOf<AmsShelfHeldTarget?>(null)
         private set
@@ -120,7 +123,14 @@ internal class AmsShelfHeldState {
             card.videoId != null || card.title.isBlank()) return
         origin = LongPressOrigin.consume()
         if (origin == null) return
-        target = AmsShelfHeldTarget(card,scope)
+        target = AmsShelfHeldTarget(scope,card=card)
+    }
+    fun holdTrack(track: NativeMetadataTrack, scope: AmsShelfHoldScope) {
+        if (scope.detail == null || !track.key.startsWith("apple_music_web:") ||
+            appleMusicWebVerifiedRouteUrl(track.sourceStoreUrl,track.key) == null) return
+        origin = LongPressOrigin.consume()
+        if (origin == null) return
+        target = AmsShelfHeldTarget(scope,track=track)
     }
     fun dismiss() { target = null }
 }
@@ -149,19 +159,25 @@ internal fun AmsShelfHeldMenu(
     HeldContextMenu(
         item=target,held=held.origin,hazeState=hazeState,
         bottomChromeClearance=bottomChromeClearance,hostProvidesBlur=true,
-        onDismiss=held::dismiss,onPreviewClick=::open,
+        onDismiss=held::dismiss,onPreviewClick=if (target?.card != null) ::open else null,
     ) { item ->
         val card = item.card
-        val route = com.music.bitchord.ui.AppleMusicWebNativeRoute.parse(card.browseId)
-        val link = appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId)
+        val track = item.track
+        val id = card?.browseId ?: track?.key
+        val route = com.music.bitchord.ui.AppleMusicWebNativeRoute.parse(id)
+        val link = appleMusicWebVerifiedRouteUrl(card?.appleStoreUrl ?: track?.sourceStoreUrl,id)
         BrowseActionsSheet(
-            target=BrowseTarget(browseId=card.browseId.orEmpty(),title=card.title,
-                subtitle=card.subtitle,thumbnailUrl=card.thumbnailUrl,
-                type=if (route?.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ARTIST)
-                    BrowseType.ARTIST else BrowseType.ALBUM,fromCard=false),
+            target=BrowseTarget(browseId=id,title=card?.title ?: track?.title.orEmpty(),
+                subtitle=card?.subtitle ?: track?.credit.orEmpty(),
+                thumbnailUrl=card?.thumbnailUrl ?: track?.artworkUri,
+                type=when {
+                    route?.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ARTIST -> BrowseType.ARTIST
+                    card != null -> BrowseType.ALBUM
+                    else -> BrowseType.OTHER
+                },fromCard=false),
             presentation=SongActionsPresentation.Menu,
             onOpenLabel="Ver detalhes",
-            onOpen={ open(item) },
+            onOpen=if (card != null) ({ open(item) }) else null,
             onViewSource=link?.let { url ->
                 { if (latestAllowed(item)) { held.dismiss(); runCatching { uri.openUri(url) }; Unit } }
             },
