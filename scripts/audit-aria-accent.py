@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Inventory blue UI color candidates without changing data/brand palettes."""
 import colorsys
+from collections import Counter
 import json
+from xml.etree import ElementTree as ET
 import re
 import subprocess
 from pathlib import Path
@@ -12,6 +14,59 @@ RGB = re.compile(r"\b(?:Color|(?:android\.graphics\.)?Color\.rgb|rgb)\(\s*(\d{1,
 NAMED = re.compile(r"(?i)\bColor\.(?:blue|cyan)\b|@(?:android:)?color/[\w]*(?:blue|cyan)[\w]*|\b(?:fill|stroke|color)\s*=\s*['\"](?:blue|cyan)['\"]")
 FILL = re.compile(r"(?:background|containerColor|checkedTrackColor|checkedBorderColor|activeTrackColor|tint|color)\s*[=(].*(?:appleMusicKeyColor|ariaAccentColor|AppleMusic(?:Dark|Light)Key|Aria(?:Dark|Light)Accent)")
 INK = re.compile(r"(?:contentColor|checkedThumbColor|color|tint)\s*=\s*Color\.White\b")
+# Reviewed non-accent occurrences: artwork and placeholder gradients, service
+# and genre cards, Google trademark, and the semantic five-star rating scale.
+# Exact path/color multiplicity is enforced; no wildcard exemptions.
+ALLOWED_BLUE = {
+    "app/src/main/java/com/music/aria/ui/replay/ReplayPoster.kt": [
+        "0xFF2B5876"
+    ],
+    "app/src/main/java/com/music/aria/widget/MediaWidgetArt.kt": [
+        "0xFF2E3446"
+    ],
+    "app/src/main/res/drawable/widget_pill_art_placeholder.xml": [
+        "#FF2E3446"
+    ],
+    "app/src/main/res/drawable/widget_preview_art.xml": [
+        "#FF2E3446"
+    ],
+    "app/src/main/res/drawable/widget_preview_pill.xml": [
+        "#FF2E3446"
+    ],
+    "app/src/main/res/drawable/widget_preview_square.xml": [
+        "#FF2E3446"
+    ],
+    "app/src/main/res/drawable/widget_preview_wide.xml": [
+        "#FF2E3446"
+    ],
+    "sharedUi/src/commonMain/composeResources/drawable/ic_google_g.xml": [
+        "#FF4285F4"
+    ],
+    "sharedUi/src/jvmSharedMain/kotlin/com/music/aria/ui/components/CompactRatingIndicator.kt": [
+        "0xFF0091FF"
+    ],
+    "sharedUi/src/jvmSharedMain/kotlin/com/music/aria/ui/player/MeshGradient.kt": [
+        "0xFF2B5876"
+    ],
+    "sharedUi/src/jvmSharedMain/kotlin/com/music/aria/ui/screens/ExploreScreen.kt": [
+        "0xFF8090C8",
+        "0xFF6A88B0",
+        "0xFF7AAED0"
+    ],
+    "sharedUi/src/jvmSharedMain/kotlin/com/music/aria/ui/screens/HomeScreen.kt": [
+        "0xFF25304E",
+        "0xFF485573",
+        "0xFF374153",
+        "0xFF1E3C72",
+        "0xFF2A5298",
+        "0xFF134E5E",
+        "0xFF2C5364",
+        "0xFF135960",
+        "0xFF1C4279",
+        "0xFF436CB6"
+    ]
+}
+OLD_BRAND = re.compile(r"bitchord", re.I)
 def blue(rgb):
     h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))
     return 185 <= h * 360 <= 255 and s >= .25 and v >= .25
@@ -33,7 +88,7 @@ def main():
     results = []
     reviewed = 0
     for name in sorted(filter(None, tracked)):
-        if not (name.startswith(("app/src/main/", "app/src/dev/", "app/src/prod/", "sharedUi/src/", "shared/src/"))):
+        if not name.startswith(("app/src/", "sharedUi/src/", "shared/src/")):
             continue
         if re.search(r"/(?:test|androidTest|[^/]*Test)/", name):
             continue
@@ -42,6 +97,15 @@ def main():
             continue
         reviewed += 1
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        # Inspect displayed resource values, not persisted resource identifiers.
+        # This covers translations, arrays and plurals across all runtime flavors.
+        if path.suffix == ".xml" and path.parent.name.startswith("values"):
+            root = ET.parse(path).getroot()
+            for node in root:
+                if node.tag not in {"string", "string-array", "plurals"}:
+                    continue
+                if OLD_BRAND.search("".join(node.itertext())):
+                    results.append({"path":name,"line":0,"kind":"old-brand-resource-value","value":node.get("name","?")})
         for index, line in enumerate(lines):
             for value in sorted(set(candidates(line))):
                 results.append({"path":name,"line":index+1,"kind":"literal-blue","value":value})
@@ -55,6 +119,15 @@ def main():
         print(f'{result["path"]}:{result["line"]} [{result["kind"]}] {result["value"]}')
     output = ROOT / "accent-audit.json"
     output.write_text(json.dumps({"files":reviewed,"candidates":results},indent=2)+"\n")
-    print("Audit inventory complete; classify candidates by actual role.")
+    permitted = Counter((name, value.lower()) for name, values in ALLOWED_BLUE.items() for value in values)
+    observed = Counter((r["path"], r["value"].lower()) for r in results if r["kind"] == "literal-blue")
+    unexpected = observed - permitted
+    old_resources = [r for r in results if r["kind"] == "old-brand-resource-value"]
+    print(f"Approved non-accent blue occurrences: {sum((observed & permitted).values())}")
+    if unexpected or old_resources:
+        for (name, value), count in unexpected.items():
+            print(f"REVIEW REQUIRED: {name}: {value} ({count})")
+        raise SystemExit("Unreviewed blue or retired user-facing brand resource")
+    print("Reviewed blue and visible resource identity gate passed; contrast candidates still require review.")
 if __name__ == "__main__":
     main()

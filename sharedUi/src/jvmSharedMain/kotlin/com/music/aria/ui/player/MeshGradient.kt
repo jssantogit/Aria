@@ -34,6 +34,8 @@ import com.music.aria.ui.graphics.toImageBitmap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.music.aria.ui.graphics.ColorUtils
+import com.music.aria.ui.theme.AriaLightAccent
+import com.music.aria.ui.theme.AriaDarkAccent
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -221,23 +223,18 @@ fun MeshGradientBackground(
 const val MESH_CYCLE_MILLIS = 3_600
 
 /**
- * BitChord's own colours, for the surfaces that have no artwork to take them
- * from: the welcome pages and the sign-in card on Home. Starts on Apple
- * Music's red and wanders off from there.
+ * Aria Notation brand surfaces: welcome and Home sign-in, without artwork.
+ * Preserve the existing six-stage mesh cycle; vary amber, honey and ember
+ * rather than the retired red/blue/violet brand palette. Artwork fallbacks
+ * above remain independent.
  */
 val WelcomeMeshPalettes: List<MeshPalette> = listOf(
-    // Red, violet, ember.
-    MeshPalette(listOf(Color(0xFFFA2D48), Color(0xFF7B2FF7), Color(0xFFFF7A45), Color(0xFF2E1A8A))),
-    // Sunset.
-    MeshPalette(listOf(Color(0xFFFF4E8A), Color(0xFFFF9A3C), Color(0xFFE0245E), Color(0xFF6A1B9A))),
-    // Ocean.
-    MeshPalette(listOf(Color(0xFF1E88E5), Color(0xFF00BFA5), Color(0xFF5E35B1), Color(0xFF0D47A1))),
-    // Aurora.
-    MeshPalette(listOf(Color(0xFF00C853), Color(0xFF00B8D4), Color(0xFF7C4DFF), Color(0xFF1A237E))),
-    // Grape and rose.
-    MeshPalette(listOf(Color(0xFFD500F9), Color(0xFFFF4081), Color(0xFF651FFF), Color(0xFF4A148C))),
-    // Gold.
-    MeshPalette(listOf(Color(0xFFFFB300), Color(0xFFFF5252), Color(0xFFF06292), Color(0xFF6D2E46))),
+    MeshPalette(listOf(Color(0xFF4A1108), AriaLightAccent, AriaDarkAccent, Color(0xFF731B06))),
+    MeshPalette(listOf(Color(0xFF482410), Color(0xFFCC7022), Color(0xFFFFD28D), Color(0xFF8E3813))),
+    MeshPalette(listOf(Color(0xFF3A2415), Color(0xFF99501A), Color(0xFFF09320), Color(0xFF5A2B13))),
+    MeshPalette(listOf(Color(0xFF4A190C), Color(0xFFB83B06), Color(0xFFF89513), Color(0xFF6A3015))),
+    MeshPalette(listOf(Color(0xFF422717), Color(0xFFB66A24), Color(0xFFDB933B), Color(0xFF623912))),
+    MeshPalette(listOf(Color(0xFF352014), AriaLightAccent, Color(0xFFFFD05B), AriaDarkAccent)),
 )
 
 /**
