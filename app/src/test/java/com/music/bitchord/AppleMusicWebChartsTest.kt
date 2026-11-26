@@ -72,6 +72,50 @@ class AppleMusicWebChartsTest {
         }
     }
 
+    @Test fun canonicalGenreMatchingNeverSubstitutesParentOrAmbiguousNames() {
+        val native = listOf(
+            AppleMusicWebGenre("1","br","Rock"),
+            AppleMusicWebGenre("2","br","Electronic"),
+            AppleMusicWebGenre("3","br","R&B/Soul"),
+            AppleMusicWebGenre("4","br","Hard Rock"),
+            AppleMusicWebGenre("5","us","House"),
+        )
+        assertEquals("4", resolveAppleMusicWebCanonicalGenre(native,"br","hard rock")?.id)
+        assertEquals("3", resolveAppleMusicWebCanonicalGenre(native,"br","rnb")?.id)
+        assertNull(resolveAppleMusicWebCanonicalGenre(native,"br","house"))
+        assertNull(resolveAppleMusicWebCanonicalGenre(native + native[0].copy(id="9"),"br","rock"))
+    }
+
+    @Test fun liveCanonicalGenreCoverage() = runBlocking {
+        org.junit.Assume.assumeTrue(System.getenv("AMS_GENRE_MATRIX_LIVE") == "1")
+        val gate = gate(charts, editorial)
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
+            admission = RateLimitedProviderTransport { gate },
+        )), gate)
+        val result = gateway.genres("br")
+        val native = ((result as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+        assertNotNull(native)
+        val corpus = com.music.bitchord.ui.idmParityMainGenres + com.music.bitchord.ui.idmParitySubgenres
+        assertEquals(15, corpus.size)
+        var failed = 0
+        for (tag in corpus) {
+            val genre = resolveAppleMusicWebCanonicalGenre(native.orEmpty(), "br", tag)
+            if (genre == null) {
+                println("AMS_CANONICAL_GENRE|tag=$tag|status=unmapped")
+                continue
+            }
+            val chart = gateway.mostPlayedChart(AppleMusicWebKind.ALBUM,"br",genre.id,limit=25)
+            val page = ((chart as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+            val grouping = gateway.browseRooms("br",genre.id)
+            val rooms = ((grouping as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+            if (page == null || rooms == null) failed++
+            println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
+                (if (page != null && rooms != null) "observed" else "interrupted") +
+                "|albums=" + (page?.items?.size ?: 0) + "|rooms=" + (rooms?.size ?: 0))
+        }
+        assertEquals(0, failed)
+    }
+
     @Test fun liveChartsAndGenres() = runBlocking {
         org.junit.Assume.assumeTrue(System.getenv("AMS_CHARTS_LIVE") == "1")
         val gate = gate(charts, editorial)

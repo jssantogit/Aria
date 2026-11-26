@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 25
     env:
       AMS_CHARTS_LIVE: '1'
+      AMS_GENRE_MATRIX_LIVE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +32,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: |
           chmod +x gradlew
-          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebChartsTest.liveChartsAndGenres'
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebChartsTest.liveChartsAndGenres' --tests 'com.music.bitchord.AppleMusicWebChartsTest.liveCanonicalGenreCoverage'
       - name: Emit bounded chart observations
         if: always()
         run: |
@@ -41,7 +42,7 @@ jobs:
           for file in Path('app/build/test-results/testDevDebugUnitTest').glob('*AppleMusicWebChartsTest.xml'):
               for node in ET.parse(file).iter('system-out'):
                   for line in (node.text or '').splitlines():
-                      if line.startswith(('AMS_CHART|','AMS_GENRES|','AMS_GENRE_CHART|')):
+                      if line.startswith(('AMS_CHART|','AMS_GENRES|','AMS_GENRE_CHART|','AMS_CANONICAL_GENRE|')):
                           print(line)
           PY
       - uses: actions/upload-artifact@v4

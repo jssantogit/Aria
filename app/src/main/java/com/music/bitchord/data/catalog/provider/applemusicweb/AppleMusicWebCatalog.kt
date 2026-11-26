@@ -421,11 +421,14 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         require(limit in 1..100 && room.id.matches(Regex("[0-9]{1,12}")))
         val sf = storefront(room.storefront)
         val path = "/v1/editorial/$sf/rooms/" + room.id + "/contents"
-        val base = mapOf("limit" to limit.toString(), "l" to "en-US")
+        // The grouping index requests English for semantic matching, but
+        // content uses the storefront's default locale (as in the Python oracle).
+        // The source-issued cursor can carry that market's own language.
+        val base = mapOf("limit" to limit.toString())
         fun cursorArgs(next: String): Map<String, String> {
             val args = follow(next, path)
             if (args.keys.any { it !in setOf("limit", "offset", "l", "sort") } ||
-                args["l"]?.let { it != "en-US" } == true)
+                args["l"]?.matches(Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}")) == false)
                 throw AppleMusicWebProtocolException("Changed room cursor")
             return base + args
         }
