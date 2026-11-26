@@ -3152,17 +3152,18 @@ class IdmCatalogLiveObservationTest {
                                         credits = matchingCredits(exact?.page?.items.orEmpty())
                                     }
                                     if (credits.isEmpty() && !case.anchor.isNullOrBlank()) {
-                                        // Last independent evidence route: inspect the native
-                                        // discographies of at most three literal namesakes already
-                                        // present in the search landing. Never promote an artist
-                                        // solely for matching text or change the landing order.
-                                        val namesakes = response?.page?.items.orEmpty().filter {
+                                        // Last independent evidence route: search the anchor
+                                        // by native MBID and literal title, rather than hoping
+                                        // the work occurs in the first general discography page.
+                                        // At most the five visible literal namesakes; no change
+                                        // to ranking and no identity inference from name alone.
+                                        val namesakes = response?.page?.items.orEmpty().take(5).filter {
                                             case.artistMatches(it.name)
-                                        }.distinctBy { it.musicBrainzId }.take(3)
+                                        }.distinctBy { it.musicBrainzId }
                                         for (artist in namesakes) {
                                             mbAnchorArtistIdReads++
-                                            val discography = mbSearch.searchReleaseGroupsForArtistMbid(
-                                                artist.musicBrainzId, limit = 50,
+                                            val discography = mbSearch.searchReleaseGroupsForArtistMbidAndTitle(
+                                                artist.musicBrainzId, case.anchor,
                                             ) as? MusicBrainzCatalogSearchResult.Success
                                             val found = matchingCredits(discography?.page?.items.orEmpty())
                                                 .filter { it == artist.musicBrainzId }

@@ -659,17 +659,28 @@ internal class ApplePublicSearchPager(
         val support = rows.values.filter {
             exactWork(it) || applePublicQualifiedAlbumMatch(query, it)
         }.mapNotNull(::family).groupingBy { it }.eachCount()
-        val ranked = rows.values.sortedWith(compareBy<ItunesCatalogItem> {
-            when {
-                exactWork(it) -> 0
-                applePublicQualifiedAlbumMatch(query, it) -> 1
-                else -> 2 + (applePublicSearchMatchRank(query, it) ?: 99)
-            }
-        }.thenByDescending {
-            if (exactWork(it) || applePublicQualifiedAlbumMatch(query, it))
-                support[family(it)] ?: 0
+        // Native source order is the primary evidence within each textual
+        // tier. Edition count is only a modest nudge, never an unlimited
+        // override of that order (many reissues need not mean relevance).
+        fun tier(row: ItunesCatalogItem): Int = when {
+            exactWork(row) -> 0
+            applePublicQualifiedAlbumMatch(query, row) -> 1
+            else -> 2 + (applePublicSearchMatchRank(query, row) ?: 99)
+        }
+        val tierPositions = mutableMapOf<Int, Int>()
+        val positions = rows.values.associate { row ->
+            val key = tier(row)
+            val position = tierPositions.getOrDefault(key, 0)
+            tierPositions[key] = position + 1
+            row.id to position
+        }
+        fun boost(row: ItunesCatalogItem): Int =
+            if (tier(row) <= 1)
+                ((support[family(row)] ?: 1) - 1).coerceIn(0, 2)
             else 0
-        })
+        val ranked = rows.values.sortedWith(compareBy<ItunesCatalogItem> { tier(it) }
+            .thenBy { positions.getValue(it.id) - boost(it) }
+            .thenByDescending(::boost))
         // In a title-only search, a single work family with many editions
         // must not monopolize the exact-title part of the landing. Give each
         // distinct native identity one representative before its extra

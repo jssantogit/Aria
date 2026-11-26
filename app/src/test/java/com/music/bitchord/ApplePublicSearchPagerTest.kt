@@ -643,6 +643,30 @@ class ApplePublicSearchPagerTest {
         assertEquals(initial.visible, pager.snapshot().visible)
     }
 
+    @Test fun editionEvidenceCannotEraseStrongNativeOrderAcrossManyNamesakes() = runBlocking {
+        val query = "Example Work"
+        val originals = (1L..8L).map {
+            album(it, title = query).copy(artistId = 100 + it, artistName = "Artist $it")
+        }
+        // Later families with many commercial variants may outrank a nearby
+        // candidate, but should not displace the whole native leading page.
+        val extras = (4L..8L).flatMap { id ->
+            (1L..5L).map { edition ->
+                originals[(id - 1).toInt()].copy(
+                    id = 1000 + id * 10 + edition, title = "$query (Remastered)",
+                )
+            }
+        }
+        val fake = Fake(ItunesCatalogResult.Success(originals + extras))
+            .apply { expectedQuery = query }
+        val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM, "br", source = fake)
+        val first = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertTrue(first.visible.take(5).any { it.id == 1L })
+        assertTrue(first.visible.take(5).any { it.id == 2L })
+        assertEquals(1, fake.calls.size)
+        assertEquals(originals.size + extras.size, first.discoveredCount)
+    }
+
     @Test fun titleOnlyAlbumLandingDiversifiesExactNamesakesWithoutMergingEditions() = runBlocking {
         val query = "Example Work"
         val dominant = (1L..7L).map {

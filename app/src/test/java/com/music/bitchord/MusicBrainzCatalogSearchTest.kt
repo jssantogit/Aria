@@ -83,6 +83,27 @@ class MusicBrainzCatalogSearchTest {
         assertEquals(1, result.page.consumedCount)
     }
 
+    @Test fun exactArtistIdAndTitleCorroborationIsBoundedAndQuotesLiteralTitle() = runBlocking {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("release-group", path)
+                    calls += parameters
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchReleaseGroupsForArtistMbidAndTitle(id, "Work") is MusicBrainzCatalogSearchResult.Success)
+        assertEquals("arid:$id AND releasegroup:\"Work\"", calls.single()["query"])
+        assertEquals("12", calls.single()["limit"])
+        assertEquals("false", calls.single()["dismax"])
+        assertTrue(source.searchReleaseGroupsForArtistMbidAndTitle("invalid", "Work") is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(1, calls.size)
+    }
+
     @Test fun exactReleaseGroupCorroborationUsesQuotedSourceFieldsAndBoundedLimit() = runBlocking {
         val calls = mutableListOf<Map<String, String>>()
         val source = MusicBrainzCatalogSearch(MusicBrainzClient(
@@ -223,7 +244,7 @@ class MusicBrainzCatalogSearchTest {
         assertEquals(2, result.page.items.first().searchOfficialAudioReleaseMbids.size)
         assertEquals(1, result.page.nextOffset)
         assertEquals(2, calls.size)
-        assertEquals("50", calls[1]["limit"])
+        assertEquals("100", calls[1]["limit"])
         assertEquals("recording:\"Work\" AND status:official", calls[1]["query"])
     }
 

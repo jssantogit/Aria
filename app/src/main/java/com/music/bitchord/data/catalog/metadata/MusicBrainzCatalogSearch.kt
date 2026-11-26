@@ -327,6 +327,22 @@ internal class MusicBrainzCatalogSearch(
         )
     }
 
+    /** Exact-title discovery within an independently selected artist MBID.
+     * Used for independent corroboration; returned rows still require matching
+     * title, credit and credited MBID. No name-only identity assignment. */
+    suspend fun searchReleaseGroupsForArtistMbidAndTitle(
+        artistMbid: String, title: String,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
+        val id = artistMbid.validSearchMbidOrNull()
+            ?: return MusicBrainzCatalogSearchResult.Failure(MusicBrainzCatalogSearchFailure.INVALID_QUERY)
+        if (title.isBlank() || title.length > 80 || title.any(Char::isISOControl))
+            return MusicBrainzCatalogSearchResult.Failure(MusicBrainzCatalogSearchFailure.INVALID_QUERY)
+        val quoted = "\"" + title.trim().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        return searchReleaseGroupsInternal(
+            "arid:$id AND releasegroup:$quoted", 12, 0, fieldedQuery = true,
+        )
+    }
+
     suspend fun searchReleaseGroupsForArtistMbid(
         artistMbid: String,
         limit: Int = 25,
@@ -631,10 +647,10 @@ internal class MusicBrainzCatalogSearch(
         val fielded = publicWorkProbeQuery("recording", query,
             initial.page.items.map { it.artistDisplay }, " AND status:official")
         // A single literal work phrase without a source-supported credit
-        // boundary needs a broader candidate window for common titles.
-        // Reuse the same one request; compound credit probes retain 12.
-        val probeLimit = if (fielded.contains(" AND artist:")) 12
-            else MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT
+        // boundary can be ambiguous across many artists. On an already
+        // weak landing, use the supported maximum of the SAME recovery
+        // request. Compound credit probes retain the small budget.
+        val probeLimit = if (fielded.contains(" AND artist:")) 12 else 100
         val probe = searchRecordingsInternal(fielded, probeLimit, 0, fieldedQuery = true)
             as? MusicBrainzCatalogSearchResult.Success ?: return ranked
         val original = initial.page.items.associateBy { it.musicBrainzId }
