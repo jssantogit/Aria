@@ -469,8 +469,6 @@ internal fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Rounded.Person,
                     title = accountTitle,
-                    subtitle = account?.email?.takeIf { it.isNotBlank() }
-                        ?: stringResource(if (signedIn) R.string.signed_in else R.string.not_signed_in),
                     onClick = onAccountScrobbling,
                 )
             }

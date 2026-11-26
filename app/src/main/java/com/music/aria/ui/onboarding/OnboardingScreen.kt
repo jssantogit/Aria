@@ -71,7 +71,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.aria.R
 import com.music.aria.sharedui.resources.Res
-import com.music.aria.sharedui.resources.ic_google_g
 import com.music.aria.sharedui.resources.ic_logo
 import org.jetbrains.compose.resources.painterResource
 import com.music.aria.ui.icons.AriaIcons
@@ -100,25 +99,15 @@ fun OnboardingScreen(
     initialName: String,
     /** Saves the party name. Called on Next, before the second page. */
     onNameChosen: (String) -> Unit,
-    /** Opens the Google sign-in. The caller finishes onboarding once it lands. */
+    /** Legacy caller compatibility; onboarding no longer connects an account. */
     onSignIn: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var page by rememberSaveable { mutableIntStateOf(PAGE_NAME) }
     var name by rememberSaveable { mutableStateOf(initialName) }
     val focusManager = LocalFocusManager.current
 
-    BackHandler(enabled = page == PAGE_CONNECT) { page = PAGE_NAME }
-    // "Sign in with Google" goes through the app's own sign-in WebView, raised
-    // over this page; the account landing is what ends the welcome.
-    LaunchedEffect(signedIn, page) {
-        if (signedIn && page == PAGE_CONNECT) onFinish()
-    }
-
-    // The mesh never settles on one palette: each crossfade is as long as the
-    // hold, so one runs straight into the next.
-    val palette = cyclingMeshPalette(if (page == PAGE_NAME) WelcomeMeshPalettes else ConnectPalettes)
+    val palette = cyclingMeshPalette(WelcomeMeshPalettes)
 
     Box(
         modifier
@@ -131,7 +120,7 @@ fun OnboardingScreen(
     ) {
         MeshGradientBackground(
             palette = palette,
-            trackKey = page,
+            trackKey = PAGE_NAME,
             continuous = true,
             driftMillis = 6_000,
             colorFadeMillis = MESH_CYCLE_MILLIS,
@@ -150,41 +139,19 @@ fun OnboardingScreen(
                 ),
         )
 
-        AnimatedContent(
-            targetState = page,
-            transitionSpec = {
-                val forward = targetState > initialState
-                val slide = tween<IntOffset>(420)
-                (slideInHorizontally(slide) { if (forward) it / 3 else -it / 3 } + fadeIn(tween(320, 100)))
-                    .togetherWith(
-                        slideOutHorizontally(slide) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(200)),
-                    )
-            },
-            label = "onboardingPage",
-            modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .imePadding(),
-        ) { shown ->
+        Box(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
             OnboardingPage {
-                when (shown) {
-                    PAGE_NAME -> NamePage(
-                        name = name,
-                        onNameChange = { name = it.take(NAME_LIMIT) },
-                        onNext = next@{
-                            val chosen = name.trim()
-                            if (chosen.isEmpty()) return@next
-                            focusManager.clearFocus()
-                            onNameChosen(chosen)
-                            if (signedIn) onFinish() else page = PAGE_CONNECT
-                        },
-                    )
-                    else -> ConnectPage(
-                        onBack = { page = PAGE_NAME },
-                        onSignIn = onSignIn,
-                        onSkip = onFinish,
-                    )
-                }
+                NamePage(
+                    name = name,
+                    onNameChange = { name = it.take(NAME_LIMIT) },
+                    onNext = next@{
+                        val chosen = name.trim()
+                        if (chosen.isEmpty()) return@next
+                        focusManager.clearFocus()
+                        onNameChosen(chosen)
+                        onFinish()
+                    },
+                )
             }
         }
     }
@@ -255,48 +222,6 @@ private fun ColumnScope.NamePage(
         onClick = onNext,
         enabled = name.isNotBlank(),
         primary = true,
-    )
-    Spacer(Modifier.height(16.dp))
-}
-
-@Composable
-private fun ColumnScope.ConnectPage(
-    onBack: () -> Unit,
-    onSignIn: () -> Unit,
-    onSkip: () -> Unit,
-) {
-    Spacer(Modifier.height(16.dp))
-    BackButton(onBack)
-    Spacer(Modifier.height(20.dp))
-    Title(stringResource(R.string.onboarding_connect_title))
-    Spacer(Modifier.height(14.dp))
-    Text(
-        text = stringResource(R.string.onboarding_connect_body),
-        style = MaterialTheme.typography.bodyLarge,
-        fontSize = 17.sp,
-        lineHeight = 23.sp,
-        color = Color.White.copy(alpha = 0.72f),
-    )
-
-    Spacer(Modifier.weight(1f))
-
-    PillButton(
-        label = stringResource(R.string.onboarding_sign_in_google),
-        onClick = onSignIn,
-        primary = true,
-        leading = {
-            Image(
-                painter = painterResource(Res.drawable.ic_google_g),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-            )
-        },
-    )
-    Spacer(Modifier.height(12.dp))
-    PillButton(
-        label = stringResource(R.string.onboarding_skip_sign_in),
-        onClick = onSkip,
-        primary = false,
     )
     Spacer(Modifier.height(16.dp))
 }
@@ -436,7 +361,6 @@ private fun BackButton(onClick: () -> Unit) {
 }
 
 private const val PAGE_NAME = 0
-private const val PAGE_CONNECT = 1
 
 /** Long enough for a full name; the party server keeps the first 80. */
 private const val NAME_LIMIT = 40
@@ -445,9 +369,3 @@ private const val NAME_LIMIT = 40
  * Connection onboarding is a brand surface, not a data-derived artwork.
  * Keep the original restrained dark mesh and use warm Notation hues.
  */
-private val ConnectPalettes = listOf(
-    MeshPalette(listOf(Color(0xFF28190F), AriaLightAccent, Color(0xFFD98A2A), Color(0xFF302014))),
-    MeshPalette(listOf(Color(0xFF482410), Color(0xFF99501A), Color(0xFFCA7927), Color(0xFF24160E))),
-    MeshPalette(listOf(Color(0xFF302016), Color(0xFFC46B20), Color(0xFFAD6928), Color(0xFF362217))),
-    MeshPalette(listOf(Color(0xFF452615), AriaDarkAccent, Color(0xFFB86D25), Color(0xFF2D1A10))),
-)

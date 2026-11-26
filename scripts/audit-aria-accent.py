@@ -22,32 +22,11 @@ NAMED = re.compile(r"(?i)\bColor\.(?:blue|cyan)\b|@(?:android:)?color/[\w]*(?:bl
 FILL = re.compile(r"(?:background|containerColor|checkedTrackColor|checkedBorderColor|activeTrackColor|tint|color)\s*[=(].*(?:appleMusicKeyColor|ariaAccentColor|AppleMusic(?:Dark|Light)Key|Aria(?:Dark|Light)Accent)")
 INK = re.compile(r"(?:contentColor|checkedThumbColor|color|tint)\s*=\s*Color\.White\b")
 # Reviewed non-accent occurrences: artwork and placeholder gradients, service
-# and genre cards, Google trademark, and the semantic five-star rating scale.
+# and genre cards, and the semantic five-star rating scale.
 # Exact path/color multiplicity is enforced; no wildcard exemptions.
 ALLOWED_BLUE = {
     "app/src/main/java/com/music/aria/ui/replay/ReplayPoster.kt": [
         "0xFF2B5876"
-    ],
-    "app/src/main/java/com/music/aria/widget/MediaWidgetArt.kt": [
-        "0xFF2E3446"
-    ],
-    "app/src/main/res/drawable/widget_pill_art_placeholder.xml": [
-        "#FF2E3446"
-    ],
-    "app/src/main/res/drawable/widget_preview_art.xml": [
-        "#FF2E3446"
-    ],
-    "app/src/main/res/drawable/widget_preview_pill.xml": [
-        "#FF2E3446"
-    ],
-    "app/src/main/res/drawable/widget_preview_square.xml": [
-        "#FF2E3446"
-    ],
-    "app/src/main/res/drawable/widget_preview_wide.xml": [
-        "#FF2E3446"
-    ],
-    "sharedUi/src/commonMain/composeResources/drawable/ic_google_g.xml": [
-        "#FF4285F4"
     ],
     "sharedUi/src/jvmSharedMain/kotlin/com/music/aria/ui/components/CompactRatingIndicator.kt": [
         "0xFF0091FF"

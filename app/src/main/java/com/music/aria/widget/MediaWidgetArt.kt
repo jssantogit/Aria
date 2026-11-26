@@ -371,7 +371,7 @@ internal object MediaWidgetArt {
             Paint().apply {
                 shader = LinearGradient(
                     0f, 0f, 0f, height.toFloat(),
-                    intArrayOf(0xFF2E3446.toInt(), 0xFF1B2130.toInt(), 0xFF07090E.toInt()),
+                    intArrayOf(0xFF39312B.toInt(), 0xFF211D19.toInt(), 0xFF0D0B0A.toInt()),
                     floatArrayOf(0f, 0.45f, 1f),
                     Shader.TileMode.CLAMP,
                 )
