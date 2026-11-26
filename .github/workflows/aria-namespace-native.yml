@@ -145,3 +145,46 @@ jobs:
           path: smoke-evidence/
           if-no-files-found: warn
           retention-days: 7
+
+  production-identity:
+    name: Production APK identity (disposable signing key)
+    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && github.head_ref == 'feat/aria-identity-notation-2.1' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Generate disposable test signing key
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/aria-identity-test.p12" -storetype PKCS12 -storepass disposable-test -keypass disposable-test -alias identity-test -keyalg RSA -keysize 2048 -validity 7 -dname 'CN=Aria CI identity test (not for distribution)'
+          keytool -exportcert -keystore "$RUNNER_TEMP/aria-identity-test.p12" -storepass disposable-test -alias identity-test -file "$RUNNER_TEMP/aria-identity-test.der"
+          printf 'ARIA_EXPECTED_CERT_SHA256=%s\n' "$(sha256sum "$RUNNER_TEMP/aria-identity-test.der" | cut -d ' ' -f 1)" >> "$GITHUB_ENV"
+          printf 'storeFile=%s\nstorePassword=disposable-test\nkeyAlias=identity-test\nkeyPassword=disposable-test\n' "$RUNNER_TEMP/aria-identity-test.p12" > keystore.properties
+      - name: Verify APK inspection tool contracts
+        run: python3 -m unittest discover -s tests -p test_aria_production_apk.py -v
+      - name: Assemble actual production variant with R8
+        run: |
+          chmod +x gradlew
+          ./gradlew --build-cache :app:assembleProdRelease
+          test -s app/build/outputs/mapping/prodRelease/mapping.txt
+      - name: Verify package, SDKs, native libraries, version and test certificate
+        run: python3 scripts/verify-aria-production-apks.py app/build/outputs/apk/prod/release production-evidence/identity.json
+      - name: Upload identity evidence only (never test-signed APKs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-production-identity-${{ github.event.pull_request.head.sha || github.sha }}
+          path: production-evidence/
+          if-no-files-found: error
+          retention-days: 7

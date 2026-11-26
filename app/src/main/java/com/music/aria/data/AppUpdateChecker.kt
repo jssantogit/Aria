@@ -96,17 +96,13 @@ object AppUpdateChecker {
     }
 
     /**
-     * One release carries the phone app and the TV app, each as a universal
-     * APK plus per-ABI splits:
+     * Aria Android releases carry a universal APK and per-ABI builds:
      *
-     *     BitChord-v1.8.apk     BitChord-v1.8_arm64-v8a.apk     ...
-     *     BitChordTV-v1.8.apk   BitChordTV-v1.8_arm64-v8a.apk   ...
+     *     Aria-v1.8.1.apk     Aria-v1.8.1_arm64-v8a.apk     ...
      *
-     * so this app's APKs are the ones named with its own
-     * [BuildConfig.UPDATE_APK_PREFIX] — "BitChord-" never matches a TV file,
-     * since the prefix ends at the hyphen. The universal build (no `_ABI`
-     * suffix) is taken first, as it installs anywhere; failing that, the split
-     * for this device's ABI. A release with neither leaves
+     * Only assets with [BuildConfig.UPDATE_APK_PREFIX] are considered.
+     * The universal build (no `_ABI` suffix) is preferred, falling back to
+     * the APK for this device's ABI. A release with neither leaves
      * [UpdateInfo.apkUrl] null and the UI falls back to opening the releases
      * page.
      */
