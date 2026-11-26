@@ -82,9 +82,10 @@ internal class AppleMusicWebEditorialGateway(
         country: String,
         page: Int = 1,
         limit: Int = 25,
+        continuation: String? = null,
     ): ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebPage>> =
         guarded(ProviderCapability.CATALOG_SEARCH, country) { storefront ->
-            val result = catalog.search(kind, query, storefront, page, limit)
+            val result = catalog.search(kind, query, storefront, page, limit, continuation)
             validateItems(result.items, storefront, setOf(kind))
             AppleMusicWebOutcome.Complete(result)
         }

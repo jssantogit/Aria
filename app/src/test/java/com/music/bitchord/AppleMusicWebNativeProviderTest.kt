@@ -55,6 +55,47 @@ class AppleMusicWebNativeProviderTest {
         assertTrue(fake.calls.all { it.first == ProviderCapability.CATALOG_SEARCH })
     }
 
+    @Test fun searchContinuesExactIssuedCursorWithoutReplayingLanding() = runBlocking {
+        val fake = FakeTransport { _, _, args ->
+            if (args["offset"] == "9") {
+                assertEquals("3", args["limit"])
+                """{"results":{"songs":{"data":[{"id":"3","type":"songs","attributes":{"name":"Third"}}]}}}"""
+            } else {
+                """{"results":{"songs":{"data":[{"id":"1","type":"songs","attributes":{"name":"First"}}],
+                    "next":"/v1/catalog/br/search?offset=9&limit=3"}}}"""
+            }
+        }
+        val catalog = AppleMusicWebCatalog(fake)
+        val first = catalog.search(AppleMusicWebKind.SONG, "Rock", "br", limit = 24)
+        val second = catalog.search(AppleMusicWebKind.SONG, "Rock", "br", page = 2,
+            limit = 24, continuation = requireNotNull(first.nextCursor))
+        assertEquals(2, fake.calls.size)
+        assertEquals("9", fake.calls.last().third["offset"])
+        assertEquals(listOf("3"), second.items.map { it.id })
+        assertFalse(second.hasMore)
+        assertNull(second.nextCursor)
+    }
+
+    @Test fun explicitEmptyResultsAreValidButMalformedEnvelopesAreNot() = runBlocking {
+        for (body in listOf("""{"results":{}}""", """{"results":{"artists":{"data":[]}}}""")) {
+            val page = AppleMusicWebCatalog(FakeTransport { _, _, _ -> body })
+                .search(AppleMusicWebKind.ARTIST, "Unknown", "br")
+            assertTrue(page.items.isEmpty())
+            assertFalse(page.hasMore)
+        }
+        for (body in listOf("{}", """{"results":null}""",
+            """{"results":{"artists":{}}}""", """{"results":{"songs":{"data":[]}}}""",
+            """{"results":{},"errors":[{"status":"403"}]}""")) {
+            try {
+                AppleMusicWebCatalog(FakeTransport { _, _, _ -> body })
+                    .search(AppleMusicWebKind.ARTIST, "Unknown", "br")
+                fail("Malformed search envelope must not be treated as empty")
+            } catch (_: AppleMusicWebProtocolException) {
+                // Fail closed.
+            }
+        }
+    }
+
     @Test fun searchFailsClosedOnForeignOrCrossStorefrontNextCursor() = runBlocking {
         for (cursor in listOf(
             "https://evil.example/v1/catalog/br/search?offset=9",

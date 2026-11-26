@@ -38,6 +38,8 @@ internal class CatalogSearchAdapterReader(
             ?: return ProviderCallResult.Denied
         val ticket = policy.open(ProviderCapability.CATALOG_SEARCH, provider)
             ?: return ProviderCallResult.Denied
+        if (request.continuation?.matches(provider, request) == false)
+            return ProviderCallResult.Failed(IllegalArgumentException("Foreign catalog continuation"))
         val originalOrder = selected.map(CatalogSearchAdapter::key)
 
         val response: ProviderCallResult<CatalogSearchPage> = try {
@@ -79,6 +81,8 @@ internal class CatalogSearchAdapterReader(
             (page.storefront != null &&
                 !page.storefront.equals(request.storefront, ignoreCase = true))
         ) return false
+        if (page.continuation?.let { !page.hasMore || !it.matches(provider, request.copy(page = request.page + 1)) } == true)
+            return false
         val scoped = HashSet<CatalogNativeIdentity>()
         return page.items.all { item ->
             val identity = item.identity

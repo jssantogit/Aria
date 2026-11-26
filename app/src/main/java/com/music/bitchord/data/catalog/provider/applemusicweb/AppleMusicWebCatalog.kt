@@ -44,6 +44,7 @@ internal data class AppleMusicWebItem(
 
 internal data class AppleMusicWebPage(
     val items: List<AppleMusicWebItem>, val page: Int, val limit: Int, val hasMore: Boolean,
+    val nextCursor: String? = null,
 )
 
 internal enum class AppleMusicWebArtistShelf(val endpoint: String) {
@@ -193,31 +194,50 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         return pairs
     }
 
+    /** The typed results envelope may explicitly contain no matches. */
+    private fun searchBlock(body: String, kind: AppleMusicWebKind): JsonObject {
+        val response = parse(body)
+        if ("errors" in response) throw AppleMusicWebProtocolException("Search error envelope")
+        val results = response.obj("results")
+            ?: throw AppleMusicWebProtocolException("Missing search results envelope")
+        if (results.isEmpty()) return JsonObject(mapOf("data" to JsonArray(emptyList())))
+        val block = results.obj(kind.apiType)
+            ?: throw AppleMusicWebProtocolException("Missing requested search result type")
+        if (block["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid search data")
+        return block
+    }
+
     /** Next offsets are opaque: NEVER calculate page*limit for Apple's web search. */
     suspend fun search(
         kind: AppleMusicWebKind, query: String, country: String,
-        page: Int = 1, limit: Int = 25,
+        page: Int = 1, limit: Int = 25, continuation: String? = null,
     ): AppleMusicWebPage {
         require(page in 1..20 && limit in 1..100)
         require(query.isNotBlank() && query.length <= 120 && query.none(Char::isISOControl))
+        require(continuation == null || page > 1)
         val sf = storefront(country)
         val path = "/v1/catalog/$sf/search"
         val base = mapOf("term" to query, "types" to kind.apiType, "limit" to limit.toString())
-        var block = parse(transport.get(ProviderCapability.CATALOG_SEARCH, path, base))
-            .obj("results")?.obj(kind.apiType)
-            ?: throw AppleMusicWebProtocolException("Missing search results")
+        suspend fun load(args: Map<String, String>): JsonObject =
+            searchBlock(transport.get(ProviderCapability.CATALOG_SEARCH, path, args), kind)
+        // Cursor-issued pagination arguments are authoritative. The base fills
+        // missing fields only; follow() rejects changes to query/type/origin.
+        fun nextArgs(cursor: String) = base + follow(cursor, path, query, kind)
+        var block = if (continuation == null) load(base) else load(nextArgs(continuation))
         val seen = mutableSetOf<String>()
-        for (index in 1 until page) {
+        if (continuation != null) seen += continuation
+        if (continuation == null) for (index in 1 until page) {
             val cursor = block.str("next") ?: return AppleMusicWebPage(
                 emptyList(), page, limit, false,
             )
             if (!seen.add(cursor)) throw AppleMusicWebProtocolException("Cyclic cursor")
-            val args = follow(cursor, path, query, kind) + base
-            block = parse(transport.get(ProviderCapability.CATALOG_SEARCH, path, args))
-                .obj("results")?.obj(kind.apiType)
-                ?: throw AppleMusicWebProtocolException("Missing search next page")
+            block = load(nextArgs(cursor))
         }
-        return AppleMusicWebPage(items(block, sf), page, limit, block.str("next") != null)
+        val cursor = block.str("next")
+        if (cursor != null && cursor in seen)
+            throw AppleMusicWebProtocolException("Cyclic cursor")
+        return AppleMusicWebPage(items(block, sf), page, limit, cursor != null, cursor)
     }
 
     private suspend fun detail(

@@ -2,6 +2,7 @@ package com.music.bitchord.data.catalog.provider.applemusicweb
 
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.CatalogNativeIdentity
+import com.music.bitchord.data.providers.CatalogSearchContinuation
 import com.music.bitchord.data.providers.CatalogSearchAdapter
 import com.music.bitchord.data.providers.CatalogSearchItem
 import com.music.bitchord.data.providers.CatalogSearchKind
@@ -26,6 +27,8 @@ internal class AppleMusicWebSearchAdapter(
     override suspend fun search(
         request: CatalogSearchRequest,
     ): ProviderCallResult<CatalogSearchPage> {
+        if (request.continuation?.matches(key, request) == false)
+            return ProviderCallResult.Failed(IllegalArgumentException("Foreign Apple continuation"))
         val sourceKind = when (request.kind) {
             CatalogSearchKind.ARTIST -> AppleMusicWebKind.ARTIST
             CatalogSearchKind.ALBUM -> AppleMusicWebKind.ALBUM
@@ -33,6 +36,7 @@ internal class AppleMusicWebSearchAdapter(
         }
         return when (val response = gateway.search(
             sourceKind, request.query, request.storefront, request.page, request.limit,
+            request.continuation?.token,
         )) {
             ProviderCallResult.Denied -> ProviderCallResult.Denied
             ProviderCallResult.Stale -> ProviderCallResult.Stale
@@ -48,10 +52,10 @@ internal class AppleMusicWebSearchAdapter(
                 } else {
                     when (val outcome = source.outcome) {
                         is AppleMusicWebOutcome.Complete ->
-                            ProviderCallResult.Success(project(request.kind, source.storefront,
+                            ProviderCallResult.Success(project(request, source.storefront,
                                 outcome.value, partial = false))
                         is AppleMusicWebOutcome.Partial ->
-                            ProviderCallResult.Success(project(request.kind, source.storefront,
+                            ProviderCallResult.Success(project(request, source.storefront,
                                 outcome.value, partial = true))
                         is AppleMusicWebOutcome.Unavailable ->
                             ProviderCallResult.Failed(
@@ -64,7 +68,7 @@ internal class AppleMusicWebSearchAdapter(
     }
 
     private fun project(
-        kind: CatalogSearchKind,
+        request: CatalogSearchRequest,
         storefront: String,
         source: AppleMusicWebPage,
         partial: Boolean,
@@ -72,7 +76,7 @@ internal class AppleMusicWebSearchAdapter(
         provider = key,
         capability = ProviderCapability.CATALOG_SEARCH,
         storefront = storefront,
-        kind = kind,
+        kind = request.kind,
         items = source.items.map { item ->
             val sourceKind = when (item.kind) {
                 AppleMusicWebKind.ARTIST -> CatalogSearchKind.ARTIST
@@ -80,11 +84,11 @@ internal class AppleMusicWebSearchAdapter(
                 AppleMusicWebKind.SONG -> CatalogSearchKind.TRACK
                 else -> throw AppleMusicWebProtocolException("Wrong Apple catalog type")
             }
-            if (sourceKind != kind || item.storefront != storefront)
+            if (sourceKind != request.kind || item.storefront != storefront)
                 throw AppleMusicWebProtocolException("Cross-source Apple catalog item")
             CatalogSearchItem(
                 identity = CatalogNativeIdentity(
-                    provider = key, kind = kind,
+                    provider = key, kind = request.kind,
                     nativeId = item.id, storefront = item.storefront,
                 ),
                 title = item.title,
@@ -96,5 +100,9 @@ internal class AppleMusicWebSearchAdapter(
         page = source.page,
         hasMore = source.hasMore,
         partial = partial,
+        continuation = source.nextCursor?.let {
+            CatalogSearchContinuation(key, request.kind, request.query, storefront,
+                source.page + 1, request.limit, it)
+        },
     )
 }

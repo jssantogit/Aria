@@ -3094,10 +3094,31 @@ class IdmCatalogLiveObservationTest {
             "apple_music_web:" + item.identity.storefront + ":" +
                 item.identity.kind.name.lowercase(java.util.Locale.ROOT) + ":" + item.identity.nativeId
 
-        suspend fun read(kind: CatalogSearchKind, query: String, page: Int = 1): CatalogSearchPage? =
+        suspend fun read(kind: CatalogSearchKind, query: String, page: Int = 1,
+                         continuation: CatalogSearchContinuation? = null): CatalogSearchPage? =
             withTimeoutOrNull(60_000L) {
-                (reader.read(source, CatalogSearchRequest(kind, query, sf, page, 24))
-                    as? ProviderCallResult.Success)?.value?.takeUnless { it.partial }
+                when (val result = reader.read(source, CatalogSearchRequest(kind, query, sf, page, 24, continuation))) {
+                    is ProviderCallResult.Success -> result.value.takeUnless { it.partial }
+                    is ProviderCallResult.Failed -> {
+                        val cause = result.cause
+                        val reason = when (cause) {
+                            is AppleMusicWebHttpException -> "http_" + cause.status
+                            is AppleMusicWebProtocolException -> when (cause.message) {
+                                "Missing search results envelope" -> "missing_results_envelope"
+                                "Missing requested search result type" -> "missing_requested_type"
+                                "Invalid search data" -> "invalid_search_data"
+                                "Search error envelope" -> "search_error_envelope"
+                                "Cyclic cursor" -> "cyclic_cursor"
+                                else -> "protocol"
+                            }
+                            is java.io.IOException -> "io"
+                            else -> "other"
+                        }
+                        println("AMS_SEARCH_READ_FAILURE|kind=" + kind.name + "|page=" + page + "|reason=" + reason)
+                        null
+                    }
+                    ProviderCallResult.Denied, ProviderCallResult.Stale -> null
+                }
             }
 
         val dir = File(System.getenv("IDM_CATALOG_METRICS_DIR") ?: "build/ams-search-metrics", "top10-review")
@@ -3144,12 +3165,13 @@ class IdmCatalogLiveObservationTest {
                     // never used to repair or inflate the Top5/Top10 result.
                     if (first.hasMore) {
                         secondPageChecked = true
-                        val next = read(kind, case.query, 2)
+                        val next = first.continuation?.let { read(kind, case.query, 2, it) }
                         if (next == null || next.items.isEmpty()) {
                             continuationFailed = true
                         } else {
                             secondPageRows = next.items.size
                             overlap = next.items.map(::nativeId).toSet().intersect(rows.map { it.id }.toSet()).size
+                            if (overlap > 0) println("AMS_SEARCH_PAGE_OVERLAP|case=" + (index + 1) + "|count=" + overlap)
                         }
                     }
                     if (kind == CatalogSearchKind.ARTIST) {

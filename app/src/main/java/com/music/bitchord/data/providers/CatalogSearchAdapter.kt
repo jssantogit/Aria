@@ -15,7 +15,24 @@ internal data class CatalogSearchRequest(
     val storefront: String = "br",
     val page: Int = 1,
     val limit: Int = 25,
+    val continuation: CatalogSearchContinuation? = null,
 )
+
+/** Opaque, request-scoped next cursor. Never persist or log its token. */
+internal data class CatalogSearchContinuation(
+    val provider: ProviderKey,
+    val kind: CatalogSearchKind,
+    val query: String,
+    val storefront: String,
+    val page: Int,
+    val limit: Int,
+    val token: String,
+) {
+    fun matches(provider: ProviderKey, request: CatalogSearchRequest): Boolean =
+        this.provider == provider && kind == request.kind && query == request.query &&
+            storefront.equals(request.storefront, ignoreCase = true) && page == request.page &&
+            page > 1 && limit == request.limit && token.isNotBlank() && token.length <= 4096
+}
 
 /** Native identity is scoped to its OWN source; storefronts are not MBIDs. */
 internal data class CatalogNativeIdentity(
@@ -49,6 +66,7 @@ internal data class CatalogSearchPage(
     val page: Int,
     val hasMore: Boolean,
     val partial: Boolean,
+    val continuation: CatalogSearchContinuation? = null,
 )
 
 internal interface CatalogSearchAdapter {
