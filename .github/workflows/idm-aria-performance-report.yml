@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      IDM_CATALOG_METRICS_DIR: ${{ runner.temp }}/sealed-performance
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/sealed-performance
     steps:
       - name: Download exact three completed observations
         uses: actions/download-artifact@v4
@@ -20,7 +20,7 @@ jobs:
           name: idm-sealed-feeding-performance-e16bf676
           run-id: 45896487733
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/sealed-performance
+          path: ${{ github.workspace }}/sealed-performance
       - name: Report medians, maxima and request budgets without hiding failures
         shell: bash
         run: |
@@ -102,6 +102,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idm-sealed-performance-summary-e16bf676
-          path: ${{ runner.temp }}/sealed-performance/performance-summary.json
+          path: ${{ github.workspace }}/sealed-performance/performance-summary.json
           if-no-files-found: error
           retention-days: 7
