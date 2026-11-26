@@ -172,6 +172,7 @@ internal fun AmsShelfHeldMenu(
                 thumbnailUrl=card?.thumbnailUrl ?: track?.artworkUri,
                 type=when {
                     route?.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ARTIST -> BrowseType.ARTIST
+                    route?.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST -> BrowseType.PLAYLIST
                     card != null -> BrowseType.ALBUM
                     else -> BrowseType.OTHER
                 },fromCard=false),

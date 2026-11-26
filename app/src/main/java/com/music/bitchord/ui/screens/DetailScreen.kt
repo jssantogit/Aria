@@ -178,6 +178,7 @@ import com.music.bitchord.ui.components.ROW_DIVIDER_INSET
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.SongRow
 import com.music.bitchord.ui.components.NativeDetailTrackRowLayout
+import com.music.bitchord.ui.components.NativeDetailTrackArtwork
 import com.music.bitchord.ui.components.NativeDetailTrackNumber
 import com.music.bitchord.ui.components.CanonicalSongRatingStars
 import com.music.bitchord.ui.components.SearchPlayingBars
@@ -1151,9 +1152,9 @@ internal fun DetailScreen(
                         },
                     ) { visibleIndex, originalIndex ->
                         val track = metadataTracks[originalIndex]
-                        val subtitle = nativeMetadataAlbumTrackSubtitle(
-                            track, albumRowCredit.orEmpty(),
-                        )
+                        val playlist = page.type == BrowseType.PLAYLIST
+                        val subtitle = if (playlist) track.credit?.takeIf { it.isNotBlank() }
+                            else nativeMetadataAlbumTrackSubtitle(track, albumRowCredit.orEmpty())
                         NativeDetailTrackRowLayout(
                             onClick = null,
                             onLongPress = if (track.sourceStoreUrl != null)
@@ -1161,7 +1162,14 @@ internal fun DetailScreen(
                             onMore = null,
                             textGap = PAGE_GUTTER,
                             leading = {
-                                NativeMetadataAlbumTrackPosition(track, originalIndex, palette)
+                                if (playlist) NativeDetailTrackArtwork(showPlayingBars=false) {
+                                    Box(Modifier.fillMaxSize()) {
+                                        CoverPlaceholder(page.placeholderIcon(), modifier=Modifier.matchParentSize())
+                                        AsyncImage(model=track.artworkUri.artworkAt(ROW_ART_PX),
+                                            contentDescription=null,contentScale=ContentScale.Crop,
+                                            modifier=Modifier.matchParentSize())
+                                    }
+                                } else NativeMetadataAlbumTrackPosition(track, originalIndex, palette)
                             },
                             title = {
                                 Text(
@@ -1189,7 +1197,7 @@ internal fun DetailScreen(
                         )
                         if (visibleIndex < metadataVisibleTrackIndices.lastIndex) {
                             HorizontalDivider(
-                                modifier = Modifier.padding(start = NUMBERED_ROW_DIVIDER_INSET),
+                                modifier = Modifier.padding(start = if (playlist) ROW_DIVIDER_INSET else NUMBERED_ROW_DIVIDER_INSET),
                                 thickness = 0.5.dp,
                                 color = palette.divider,
                             )
@@ -1306,6 +1314,16 @@ internal fun DetailScreen(
                     NativeAlbumMetadataFooter(
                         metadata = sourceAlbumMetadata ?: CanonicalAlbumFooterMetadata(year, summary),
                         palette = palette,
+                    )
+                }
+            }
+
+            if (page.type == BrowseType.PLAYLIST && page.browseId.startsWith("apple_music_web:") &&
+                metadataTracks.isNotEmpty() && query.isBlank()) {
+                item(key="ams-playlist-member-summary") {
+                    NativePlaylistDetailFooter(
+                        "${metadataTracks.size} ${if (metadataTracks.size == 1) "música carregada" else "músicas carregadas"}",
+                        palette,
                     )
                 }
             }

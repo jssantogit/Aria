@@ -35,8 +35,11 @@ internal data class AppleMusicWebDetailEntry(
             else -> AppleSharedDetail(
                 page = DetailPage(
                     browseId = route.browseId, title = title, subtitle = subtitle,
-                    thumbnailUrl = artwork, type = if (route.kind == AppleMusicWebKind.ARTIST)
-                        BrowseType.ARTIST else BrowseType.ALBUM,
+                    thumbnailUrl = artwork, type = when (route.kind) {
+                        AppleMusicWebKind.ARTIST -> BrowseType.ARTIST
+                        AppleMusicWebKind.PLAYLIST -> BrowseType.PLAYLIST
+                        else -> BrowseType.ALBUM
+                    },
                     songs = if (value is UiState.Error) UiState.Error(value.message) else UiState.Loading,
                 ),
             )

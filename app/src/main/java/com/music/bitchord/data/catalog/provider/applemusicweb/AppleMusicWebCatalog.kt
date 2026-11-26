@@ -104,6 +104,8 @@ internal data class AppleMusicWebSongCollections(
     val hasMore: Boolean,
 )
 
+internal data class AppleMusicWebPlaylist(val identity: AppleMusicWebItem, val tracks: List<AppleMusicWebItem>)
+
 internal data class AppleMusicWebAlbum(
     val identity: AppleMusicWebItem,
     val tracks: List<AppleMusicWebItem>,
@@ -189,7 +191,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             ?: throw AppleMusicWebProtocolException("Missing title")
         return AppleMusicWebItem(
             id = id, kind = kind, storefront = sf, title = name,
-            artistName = attr.str("artistName"), artistId = attr.str("artistId"),
+            artistName = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("curatorName") else attr.str("artistName"), artistId = attr.str("artistId"),
             albumId = attr.str("albumId"),
             albumName = attr.str("albumName"),
             artworkUrl = attr.obj("artwork")?.str("url")?.takeIf { it.startsWith("https://") },
@@ -777,6 +779,59 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         if (ids.size != ids.distinct().size)
             throw AppleMusicWebProtocolException("Duplicate song album linkage")
         return AppleMusicWebSongCollections(song, ids, albums.str("next") != null)
+    }
+
+    /** Public editorial playlist: preserve order and intentional repeated songs.
+     * No video, library account or playback access. Bound reads and disclose gaps. */
+    suspend fun playlist(id: String, country: String): AppleMusicWebOutcome<AppleMusicWebPlaylist> {
+        val sf = storefront(country)
+        val playlistId = resourceId(id,AppleMusicWebKind.PLAYLIST)
+        val raw = detail(sf,AppleMusicWebKind.PLAYLIST,playlistId,mapOf("include" to "tracks"))
+        val identity = convert(raw,sf) ?: throw AppleMusicWebProtocolException("Invalid playlist")
+        val path = "/v1/catalog/$sf/playlists/$playlistId"
+        var block = raw.obj("relationships")?.obj("tracks")
+        val rows = mutableListOf<AppleMusicWebItem>()
+        val visited = hashSetOf<String>()
+        var partial: AppleMusicWebCompleteness? = null
+        for (page in 1..5) {
+            val current = block
+            if (current == null || current["data"] !is JsonArray || "errors" in current) {
+                partial = AppleMusicWebCompleteness.MISSING_TRACKLIST
+                break
+            }
+            for (entry in current.objects("data")) {
+                val type = entry.str("type")
+                if (type == AppleMusicWebKind.MUSIC_VIDEO.apiType) continue
+                if (type != AppleMusicWebKind.SONG.apiType)
+                    throw AppleMusicWebProtocolException("Wrong playlist track type")
+                resourceId(entry.str("id") ?: throw AppleMusicWebProtocolException("Missing ID"),AppleMusicWebKind.SONG)
+                if (entry["attributes"] == null || entry["attributes"].toString() == "null") {
+                    partial = AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES
+                    continue
+                }
+                if (rows.size == 500) {
+                    partial = AppleMusicWebCompleteness.PAGE_LIMIT
+                    break
+                }
+                rows += convert(entry,sf) ?: throw AppleMusicWebProtocolException("Invalid playlist song")
+            }
+            val next = current.str("next") ?: break
+            if (page == 5 || rows.size == 500) {
+                partial = AppleMusicWebCompleteness.PAGE_LIMIT
+                break
+            }
+            if (!visited.add(next)) throw AppleMusicWebProtocolException("Cyclic playlist cursor")
+            val nextPath = runCatching { URI(next).path }.getOrNull()
+                ?: throw AppleMusicWebProtocolException("Malformed playlist cursor")
+            if (nextPath !in setOf("$path/tracks","$path/relationships/tracks"))
+                throw AppleMusicWebProtocolException("Cross-playlist cursor")
+            val args = follow(next,nextPath)
+            if (args.keys.any { it !in setOf("limit","offset","l") })
+                throw AppleMusicWebProtocolException("Changed playlist cursor")
+            block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,nextPath,args))
+        }
+        val result = AppleMusicWebPlaylist(identity,rows.toList())
+        return partial?.let { AppleMusicWebOutcome.Partial(result,it) } ?: AppleMusicWebOutcome.Complete(result)
     }
 
     suspend fun album(id: String, country: String): AppleMusicWebAlbum =

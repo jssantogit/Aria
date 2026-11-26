@@ -321,6 +321,22 @@ internal class AppleMusicWebEditorialGateway(
             else AppleMusicWebOutcome.Complete(record)
         }
 
+    suspend fun playlist(id: String, country: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebPlaylist>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY,country) { storefront ->
+            val outcome = catalog.playlist(id,storefront)
+            val record = when (outcome) {
+                is AppleMusicWebOutcome.Complete -> outcome.value
+                is AppleMusicWebOutcome.Partial -> outcome.value
+                is AppleMusicWebOutcome.Unavailable -> return@guarded outcome
+            }
+            if (record.identity.id != id || record.identity.kind != AppleMusicWebKind.PLAYLIST ||
+                record.identity.storefront != storefront ||
+                record.tracks.any { it.kind != AppleMusicWebKind.SONG || it.storefront != storefront })
+                throw AppleMusicWebProtocolException("Wrong playlist identity")
+            outcome
+        }
+
     suspend fun album(
         id: String,
         country: String,

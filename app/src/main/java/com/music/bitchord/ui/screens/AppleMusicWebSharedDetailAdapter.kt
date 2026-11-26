@@ -55,7 +55,11 @@ internal fun appleMusicWebVerifiedRouteUrl(url: String?, browseId: String?): Str
 
 private fun AppleMusicWebItem.card(kind: AppleMusicWebKind, market: String): ShelfItem? {
     val route = validRoute(kind,market) ?: return null
-    return ShelfItem(title,if (kind == AppleMusicWebKind.ALBUM) year() else "",
+    return ShelfItem(title,when(kind) {
+        AppleMusicWebKind.ALBUM -> year()
+        AppleMusicWebKind.PLAYLIST -> artistName.orEmpty()
+        else -> ""
+    },
         cover(),null,route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(this))
 }
 
@@ -155,10 +159,21 @@ internal fun appleMusicWebAsSharedDetail(
     val identity = when (source) {
         is AppleMusicWebNativeDetail.Album -> source.value.identity
         is AppleMusicWebNativeDetail.Artist -> source.value.identity
+        is AppleMusicWebNativeDetail.Playlist -> source.value.identity
     }
     if (identity.validRoute(route.kind,route.storefront) != route) return null
     val market = route.storefront
     return when (source) {
+        is AppleMusicWebNativeDetail.Playlist -> {
+            if (route.kind != AppleMusicWebKind.PLAYLIST) return null
+            AppleSharedDetail(
+                page=DetailPage(route.browseId,identity.title,identity.artistName.orEmpty(),
+                    identity.cover(1024),UiState.Success(emptyList()),BrowseType.PLAYLIST),
+                metadataTracks=source.value.tracks.flatMap { tracks(listOf(it),market) },
+                notice=if (incomplete) "A lista de músicas desta playlist pode estar incompleta." else null,
+                sourceStoreUrl=appleMusicWebVerifiedStoreUrl(identity),
+            )
+        }
         is AppleMusicWebNativeDetail.Album -> {
             if (route.kind != AppleMusicWebKind.ALBUM) return null
             val record = source.value
@@ -229,6 +244,10 @@ internal fun appleMusicWebAsSharedDetail(
                     addShelf(title,cards.filterNot { it.browseId in conflicts })
                 }
                 addShelf("Outros lançamentos",ambiguous)
+                addShelf("Playlists",record.artistPlaylists.groupBy { it.scopedId }.values.mapNotNull { group ->
+                    group.first().takeIf { first -> group.all { it == first } }
+                        ?.card(AppleMusicWebKind.PLAYLIST,market)
+                })
                 addShelf("Com participação em",amsShelfCards(
                     evidence?.byView?.get(AppleMusicWebArtistShelf.APPEARS_ON).orEmpty(),market)
                     .filterNot { card -> byCategory.values.any { rows -> rows.any { it.browseId == card.browseId } } })

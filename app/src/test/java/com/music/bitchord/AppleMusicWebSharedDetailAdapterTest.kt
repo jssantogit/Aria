@@ -43,6 +43,27 @@ class AppleMusicWebSharedDetailAdapterTest {
         assertNull(appleMusicWebAsSharedDetail(album.scopedId,wrong)?.albumArtistBrowseId)
     }
 
+    @Test fun playlistsAreNativeOrderedAndNeverPlayable() {
+        val playlist = AppleMusicWebItem("pl.abc123",AppleMusicWebKind.PLAYLIST,"br","Essentials",
+            artistName="Apple Music",storeUrl="https://music.apple.com/br/playlist/essentials/pl.abc123")
+        val artistSource = AppleMusicWebNativeDetail.Artist(AppleMusicWebArtist(
+            artist,emptyList(),emptyList(),emptyList(),emptyList(),
+            artistPlaylists=listOf(playlist,playlist.copy(storefront="us"))))
+        val shelf = appleMusicWebAsSharedDetail(artist.scopedId,artistSource)!!.page.sections.single()
+        assertEquals("Playlists",shelf.title)
+        assertEquals(playlist.scopedId,shelf.items.single().browseId)
+        assertEquals("Apple Music",shelf.items.single().subtitle)
+        val detail = appleMusicWebAsSharedDetail(playlist.scopedId,AppleMusicWebNativeDetail.Playlist(
+            AppleMusicWebPlaylist(playlist,listOf(song,song.copy(id="31"),song))),true)!!
+        assertEquals(BrowseType.PLAYLIST,detail.page.type)
+        assertEquals(listOf(song.scopedId,"apple_music_web:br:song:31",song.scopedId),
+            detail.metadataTracks.map { it.key })
+        assertTrue((detail.page.songs as UiState.Success).data.isEmpty())
+        assertNotNull(detail.notice)
+        assertEquals(playlist.storeUrl,detail.sourceStoreUrl)
+        assertNull(appleMusicWebVerifiedRouteUrl(playlist.storeUrl,"apple_music_web:br:playlist:pl.def456"))
+    }
+
     @Test fun artistUsesNativeMembershipAndDoesNotInventReleaseTypes() {
         val short = album.copy(id="21",title="Short")
         val conflict = album.copy(id="22",title="Conflict")

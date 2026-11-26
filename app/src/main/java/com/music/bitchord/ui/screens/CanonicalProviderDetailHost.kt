@@ -87,7 +87,7 @@ internal fun CanonicalProviderDetailHost(
     if (page == null) {
         MessageState(
             if ((if (isDiscogs) discogsDetail
-                else if (routeKey.contains(":album:")) appleAlbumDetail
+                else if (routeKey.contains(":album:") || routeKey.contains(":playlist:")) appleAlbumDetail
                 else appleArtistDetail) is UiState.Error
             ) "Não foi possível carregar os detalhes." else "Carregando…",
         )

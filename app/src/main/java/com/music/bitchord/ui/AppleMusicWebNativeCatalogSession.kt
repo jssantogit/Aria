@@ -19,13 +19,17 @@ internal data class AppleMusicWebNativeRoute(
         fun parse(browseId: String?): AppleMusicWebNativeRoute? {
             val fields = browseId?.split(':') ?: return null
             if (fields.size != 4 || fields[0] != "apple_music_web" ||
-                !fields[1].matches(Regex("[a-z]{2}")) ||
-                !fields[3].matches(Regex("[1-9][0-9]{0,11}"))) return null
+                !fields[1].matches(Regex("[a-z]{2}"))) return null
             val kind = when (fields[2]) {
                 "album" -> AppleMusicWebKind.ALBUM
                 "artist" -> AppleMusicWebKind.ARTIST
+                "playlist" -> AppleMusicWebKind.PLAYLIST
                 else -> return null
             }
+            val valid = if (kind == AppleMusicWebKind.PLAYLIST)
+                fields[3].matches(Regex("pl\\.[A-Za-z0-9-]{6,120}"))
+            else fields[3].matches(Regex("[1-9][0-9]{0,11}"))
+            if (!valid) return null
             return AppleMusicWebNativeRoute(fields[1],kind,fields[3])
         }
     }
@@ -34,6 +38,7 @@ internal data class AppleMusicWebNativeRoute(
 internal sealed interface AppleMusicWebNativeDetail {
     data class Album(val value: AppleMusicWebAlbum) : AppleMusicWebNativeDetail
     data class Artist(val value: AppleMusicWebArtist) : AppleMusicWebNativeDetail
+    data class Playlist(val value: AppleMusicWebPlaylist) : AppleMusicWebNativeDetail
 }
 
 internal fun appleMusicWebGenreSupported(tag: String): Boolean = tag in amsEditorialGenreCorpus
@@ -358,6 +363,7 @@ internal class AppleMusicWebNativeCatalogSession(
             when (route.kind) {
                 AppleMusicWebKind.ALBUM -> mapDetail(gateway.album(route.id,route.storefront)) { AppleMusicWebNativeDetail.Album(it) }
                 AppleMusicWebKind.ARTIST -> mapDetail(gateway.artist(route.id,route.storefront)) { AppleMusicWebNativeDetail.Artist(it) }
+                AppleMusicWebKind.PLAYLIST -> mapDetail(gateway.playlist(route.id,route.storefront)) { AppleMusicWebNativeDetail.Playlist(it) }
                 else -> error("Unsupported AMS route")
             }
         }
@@ -387,6 +393,7 @@ internal class AppleMusicWebNativeCatalogSession(
     ): ProviderCallResult<com.music.bitchord.ui.screens.AmsArtistShelfSnapshot?> {
         val artist = when (source) {
             is AppleMusicWebNativeDetail.Artist -> source.value.identity
+            is AppleMusicWebNativeDetail.Playlist -> return ProviderCallResult.Success(null)
             is AppleMusicWebNativeDetail.Album -> {
                 val album = source.value.identity
                 val candidates = source.value.artists.filter {
@@ -406,6 +413,7 @@ internal class AppleMusicWebNativeCatalogSession(
                 AppleMusicWebArtistShelf.COMPILATIONS,
                 AppleMusicWebArtistShelf.APPEARS_ON,
             )
+            is AppleMusicWebNativeDetail.Playlist -> emptyList()
             is AppleMusicWebNativeDetail.Album -> listOf(
                 AppleMusicWebArtistShelf.STUDIO_ALBUMS,
                 AppleMusicWebArtistShelf.SINGLES_AND_EPS,
