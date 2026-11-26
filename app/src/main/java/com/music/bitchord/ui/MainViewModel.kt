@@ -52,6 +52,8 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchRepositor
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCachedSearchLimits
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
 import com.music.bitchord.data.catalog.metadata.MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT
+import com.music.bitchord.data.catalog.metadata.publicMusicBrainzArtistRows
+import com.music.bitchord.data.catalog.metadata.publicMusicBrainzWorkMatches
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRecording
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzRelease
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
@@ -5071,7 +5073,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         artists = 6, groups = 6, releases = 6, recordings = 8,
                     ), capability = ProviderCapability.CATALOG_SEARCH)
                     buildList {
-                        snapshot.artists.forEach { artist ->
+                        publicMusicBrainzArtistRows(query, snapshot.artists).forEach { artist ->
                             add(CanonicalCatalogSearchRow(
                                 artist.musicBrainzId, CanonicalSearchKind.ARTIST,
                                 artist.name, artist.disambiguation ?: artist.country,
@@ -5080,7 +5082,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         canonicalCuratedCachedMusicBrainzGroups(
                             snapshot.groups,
-                        ).forEach { group ->
+                        ).filter { publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay) }
+                            .forEach { group ->
                             add(CanonicalCatalogSearchRow(
                                 group.musicBrainzId, CanonicalSearchKind.RELEASE_GROUP,
                                 group.title, group.artistDisplay ?: group.primaryType,
@@ -5089,7 +5092,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 fromOfflineCache = true,
                             ))
                         }
-                        snapshot.releases.filter(::isCuratedMusicBrainzRelease).forEach { release ->
+                        snapshot.releases.filter(::isCuratedMusicBrainzRelease)
+                            .filter { publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay) }.forEach { release ->
                             add(CanonicalCatalogSearchRow(
                                 release.musicBrainzId, CanonicalSearchKind.RELEASE,
                                 release.title,
@@ -5098,7 +5102,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 fromOfflineCache = true,
                             ))
                         }
-                        snapshot.recordings.filter(::isCuratedMusicBrainzRecording).forEach { recording ->
+                        snapshot.recordings.filter(::isCuratedMusicBrainzRecording)
+                            .filter { publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay) }.forEach { recording ->
                             add(CanonicalCatalogSearchRow(
                                 recording.musicBrainzId, CanonicalSearchKind.RECORDING,
                                 recording.title, recording.artistDisplay,
@@ -6174,7 +6179,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Resolve the artist identity FIRST. A query exactly naming an
             // artist must browse that artist's MBID, not return unrelated
             // recordings with the same word in their title.
-            val artists = musicBrainzSearch.searchArtists(query, limit = 15)
+            val artists = musicBrainzSearch.searchPublicArtists(query, limit = 15)
             val artistScopeMbid = if (artists is MusicBrainzCatalogSearchResult.Success) {
                 com.music.bitchord.data.catalog.metadata.musicBrainzUnambiguousArtistScope(
                     query, artists.page.items,
@@ -6202,8 +6207,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val recordings = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchRecordingsForArtistMbid(artistScopeMbid, limit = 25)
-            } else musicBrainzSearch.searchRecordings(
-                query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+            } else musicBrainzSearch.searchPublicRecordings(
+                query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT,
             )
             // Do not make listeners wait for the two release endpoints just
             // to see the verified recording results. These are metadata-only
@@ -6233,8 +6238,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val groups = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchReleaseGroupsForArtistMbid(artistScopeMbid, limit = 15)
-            } else musicBrainzSearch.searchReleaseGroups(
-                query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+            } else musicBrainzSearch.searchPublicReleaseGroups(
+                query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT,
             )
             if (groups is MusicBrainzCatalogSearchResult.Success &&
                 mayPublish()
@@ -6261,7 +6266,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val editions = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchReleasesForArtistMbid(artistScopeMbid, limit = 15)
-            } else musicBrainzSearch.searchReleases(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+            } else musicBrainzSearch.searchPublicReleases(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
             if (!mayPublish()) return@launch
             if (groups is MusicBrainzCatalogSearchResult.Success) {
                 try {
@@ -6410,7 +6415,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     )
                                 }).toList(),
                             ).toSet()
-                            known.filter(::isCuratedMusicBrainzRecording).forEach { hit -> add(CanonicalCatalogSearchRow(
+                            known.filter(::isCuratedMusicBrainzRecording)
+                                .filter { publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay) }.forEach { hit -> add(CanonicalCatalogSearchRow(
                                 hit.musicBrainzId, CanonicalSearchKind.RECORDING,
                                 hit.title, hit.artistDisplay,
                                 hasCatalogedAsset = hit.musicBrainzId in available,
@@ -6420,7 +6426,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (CanonicalSearchKind.RELEASE_GROUP in failedKinds) {
                             dao.searchKnownMusicBrainzGroups(query, 25)
-                                .filter(::isCuratedMusicBrainzReleaseGroup).forEach { hit ->
+                                .filter(::isCuratedMusicBrainzReleaseGroup)
+                                .filter { publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay) }.forEach { hit ->
                                 add(CanonicalCatalogSearchRow(
                                     hit.musicBrainzId, CanonicalSearchKind.RELEASE_GROUP, hit.title,
                                     hit.artistDisplay ?: hit.primaryType, fromOfflineCache = true,
@@ -6431,7 +6438,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (CanonicalSearchKind.RELEASE in failedKinds) {
                             dao.searchKnownMusicBrainzReleases(query, 25)
-                                .filter(::isCuratedMusicBrainzRelease).forEach { hit ->
+                                .filter(::isCuratedMusicBrainzRelease)
+                                .filter { publicMusicBrainzWorkMatches(query, it.title, it.artistDisplay) }.forEach { hit ->
                                 add(CanonicalCatalogSearchRow(
                                     hit.musicBrainzId, CanonicalSearchKind.RELEASE, hit.title,
                                     listOfNotNull(hit.artistDisplay, hit.country, hit.releaseDate)
@@ -6440,7 +6448,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                         if (CanonicalSearchKind.ARTIST in failedKinds) {
-                            dao.searchKnownMusicBrainzArtists(query, 25).forEach { hit ->
+                            publicMusicBrainzArtistRows(query, dao.searchKnownMusicBrainzArtists(query, 25)).forEach { hit ->
                                 add(CanonicalCatalogSearchRow(
                                     hit.musicBrainzId, CanonicalSearchKind.ARTIST, hit.name,
                                     hit.disambiguation ?: hit.country, fromOfflineCache = true,
@@ -6525,20 +6533,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val recordings = cursor.recordings?.let { offset ->
                     cursor.artistScopeMbid?.let {
                         musicBrainzSearch.searchRecordingsForArtistMbid(it, limit = 25, offset = offset)
-                    } ?: musicBrainzSearch.searchRecordings(cursor.query, limit = 25, offset = offset)
+                    } ?: musicBrainzSearch.searchPublicRecordings(cursor.query, limit = 25, offset = offset)
                 }
                 val groups = cursor.groups?.let { offset ->
                     cursor.artistScopeMbid?.let {
                         musicBrainzSearch.searchReleaseGroupsForArtistMbid(it, limit = 15, offset = offset)
-                    } ?: musicBrainzSearch.searchReleaseGroups(cursor.query, limit = 15, offset = offset)
+                    } ?: musicBrainzSearch.searchPublicReleaseGroups(cursor.query, limit = 15, offset = offset)
                 }
                 val editions = cursor.releases?.let { offset ->
                     cursor.artistScopeMbid?.let {
                         musicBrainzSearch.searchReleasesForArtistMbid(it, limit = 15, offset = offset)
-                    } ?: musicBrainzSearch.searchReleases(cursor.query, limit = 15, offset = offset)
+                    } ?: musicBrainzSearch.searchPublicReleases(cursor.query, limit = 15, offset = offset)
                 }
                 val artists = cursor.artists?.let {
-                    musicBrainzSearch.searchArtists(cursor.query, limit = 15, offset = it)
+                    musicBrainzSearch.searchPublicArtists(cursor.query, limit = 15, offset = it)
                 }
                 if (!lease.isCurrent() ||
                     !_catalogSearchMusicBrainzVisible.value ||

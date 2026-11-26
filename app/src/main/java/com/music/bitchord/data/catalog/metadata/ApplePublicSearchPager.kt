@@ -348,6 +348,7 @@ internal class ApplePublicSearchPager(
         ItunesCatalogEntity.ALBUM -> ItunesCatalogItemType.ALBUM
         ItunesCatalogEntity.SONG -> ItunesCatalogItemType.TRACK
     }
+    private var artistExactLanding = false
     private var initialized = false
     private var capped = false
     private var probeAttributes = false
@@ -453,7 +454,9 @@ internal class ApplePublicSearchPager(
             .filter { it.type == expected && it.storefront == country &&
                 it.id > 0L && it.title.isNotBlank() && it.id !in disputed }
             .mapNotNull { row ->
-                applePublicSearchMatchRank(matchQuery, row)?.let { it to row }
+                applePublicSearchMatchRank(matchQuery, row)?.takeIf {
+                    !artistExactLanding || entity != ItunesCatalogEntity.ARTIST || it <= 1
+                }?.let { it to row }
             }
             .sortedWith(compareBy<Pair<Int, ItunesCatalogItem>> { it.first }
                 .thenBy { when {
@@ -648,7 +651,7 @@ internal class ApplePublicSearchPager(
                 term in listOf("$credit $title", "$title $credit",
                     "$credit - $title", "$title - $credit"))
         }
-        if (rows.values.none(::exactWork)) return
+        if (rows.values.none { exactWork(it) || applePublicQualifiedAlbumMatch(query, it) }) return
         data class Family(val artistId: Long, val credit: String, val work: String)
         fun family(row: ItunesCatalogItem): Family? {
             val id = row.artistId?.takeIf { it > 0L } ?: return null
@@ -714,6 +717,15 @@ internal class ApplePublicSearchPager(
                 initialized = true
                 capped = result.possiblyTruncated
                 merge(result)
+                if (entity == ItunesCatalogEntity.ARTIST &&
+                    rows.values.any { (applePublicSearchMatchRank(query, it) ?: 99) <= 1 }
+                ) {
+                    artistExactLanding = true
+                    // Exact native names are already offered. Distinct exact
+                    // namesakes remain; prefix-only alternatives no longer
+                    // flood the landing. A prefix-only query still works.
+                    rows.entries.removeAll { (applePublicSearchMatchRank(query, it.value) ?: 99) > 1 }
+                }
                 improveWeakWorkLanding()
                 probeFullAlbumLanding()
                 recoverWeakAlbumLanding()

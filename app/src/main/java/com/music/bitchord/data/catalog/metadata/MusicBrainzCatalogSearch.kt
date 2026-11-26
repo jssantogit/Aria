@@ -198,6 +198,73 @@ internal fun musicBrainzPublicSearchRank(query: String, title: String, credit: S
     return 3
 }
 
+/** Public search display admission, not identity reconciliation. Keep the
+ * source page's raw cursor and leave editorial/independent evidence queries
+ * unfiltered. Exact artist namesakes retain distinct MBIDs. */
+private fun publicSearchWholePrefix(value: String, term: String): Boolean =
+    term.isNotBlank() && value.startsWith(term) &&
+        (value.length == term.length || !value[term.length].isLetterOrDigit())
+
+internal fun publicMusicBrainzArtistRows(
+    query: String, hits: List<MusicBrainzArtistHit>,
+): List<MusicBrainzArtistHit> {
+    val term = musicBrainzPublicSearchKey(query)
+    if (term.isBlank()) return emptyList()
+    fun exact(name: String, key: String): Boolean =
+        name == key || name.removePrefix("the ") == key.removePrefix("the ")
+    val literal = hits.filter { exact(musicBrainzPublicSearchKey(it.name), term) }
+    if (literal.isNotEmpty()) return literal
+    val base = Regex("""^(.+?)\s+\(([2-9]|[1-9]\d{1,3})\)$""")
+        .matchEntire(term)?.groupValues?.get(1)
+    if (base != null) {
+        val alternatives = hits.filter { exact(musicBrainzPublicSearchKey(it.name), base) }
+        if (alternatives.isNotEmpty()) return alternatives
+    }
+    return hits.filter {
+        val name = musicBrainzPublicSearchKey(it.name)
+        publicSearchWholePrefix(name, term) ||
+            publicSearchWholePrefix(name.removePrefix("the "), term.removePrefix("the "))
+    }
+}
+
+internal fun publicMusicBrainzWorkMatches(query: String, title: String, credit: String?): Boolean {
+    val term = musicBrainzPublicSearchKey(query)
+    val work = musicBrainzPublicSearchKey(title)
+    val artist = musicBrainzPublicSearchKey(credit)
+    if (term.isBlank() || work.isBlank()) return false
+    fun meaningfulPrefix(value: String, key: String): Boolean {
+        if (!publicSearchWholePrefix(value, key)) return false
+        if (value == key) return true
+        // A fuzzy repeated-word result is not the requested literal work.
+        // Still admit real partial titles, punctuation and edition suffixes.
+        val tail = value.removePrefix(key).trim()
+        val tokens = tail.split(Regex("""[^\p{L}\p{N}]+""")).filter(String::isNotBlank)
+        val keyTokens = key.split(Regex("""[^\p{L}\p{N}]+""")).filter(String::isNotBlank)
+        return keyTokens.size != 1 || tokens.isEmpty() || tokens.any { it != keyTokens.single() }
+    }
+    if (musicBrainzPublicSearchRank(query, title, credit) <= 2) return true
+    // Both ends of a compound query must be explained by the same source row.
+    // A matching credit alone cannot admit an unrelated album or recording.
+    if (artist.isNotBlank()) {
+        val prefix = listOf("$artist - ", "$artist ").firstOrNull(term::startsWith)
+        val suffix = listOf(" - $artist", " $artist").firstOrNull(term::endsWith)
+        if (prefix != null) return meaningfulPrefix(work, term.removePrefix(prefix))
+        if (suffix != null) return meaningfulPrefix(work, term.removeSuffix(suffix))
+    }
+    return meaningfulPrefix(work, term) || publicSearchWholePrefix(artist, term)
+}
+
+internal fun <T> publicMusicBrainzWorkRows(
+    query: String, hits: List<T>, title: (T) -> String, credit: (T) -> String?,
+): List<T> = hits.filter { publicMusicBrainzWorkMatches(query, title(it), credit(it)) }
+
+private fun <T> MusicBrainzCatalogSearchResult<T>.publicProjection(
+    select: (List<T>) -> List<T>,
+): MusicBrainzCatalogSearchResult<T> = when (this) {
+    is MusicBrainzCatalogSearchResult.Failure -> this
+    is MusicBrainzCatalogSearchResult.Success -> copy(page = page.copy(items = select(page.items)))
+}
+
 /** Never scope all search categories to the first of several namesakes. */
 internal fun musicBrainzUnambiguousArtistScope(
     query: String, artists: List<MusicBrainzArtistHit>,
@@ -244,6 +311,25 @@ internal class MusicBrainzCatalogSearch(
     ): MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> =
         searchArtistsInternal(query, limit, offset)
             .rankPublicPage(query, MusicBrainzArtistHit::name)
+
+    // Interactive searches only; raw adapter calls remain available for
+    // indexing, editorial traversal and independent identity evidence.
+    suspend fun searchPublicArtists(query: String, limit: Int = 15, offset: Int = 0) =
+        searchArtists(query, limit, offset).publicProjection { publicMusicBrainzArtistRows(query, it) }
+
+    suspend fun searchPublicRecordings(query: String, limit: Int = 50, offset: Int = 0) =
+        searchRecordings(query, limit, offset, recoverWeakLanding = offset == 0)
+            .publicProjection { publicMusicBrainzWorkRows(query, it,
+                MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay) }
+
+    suspend fun searchPublicReleaseGroups(query: String, limit: Int = 50, offset: Int = 0) =
+        searchReleaseGroups(query, limit, offset, recoverWeakLanding = offset == 0)
+            .publicProjection { publicMusicBrainzWorkRows(query, it,
+                MusicBrainzReleaseGroupHit::title, MusicBrainzReleaseGroupHit::artistDisplay) }
+
+    suspend fun searchPublicReleases(query: String, limit: Int = 50, offset: Int = 0) =
+        searchReleases(query, limit, offset).publicProjection { publicMusicBrainzWorkRows(query, it,
+            MusicBrainzReleaseHit::title, MusicBrainzReleaseHit::artistDisplay) }
 
     /** A known genre tag is fielded source evidence, not a guessed artist rank. */
     suspend fun searchArtistsForTag(

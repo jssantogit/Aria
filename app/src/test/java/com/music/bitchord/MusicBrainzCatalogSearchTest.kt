@@ -83,6 +83,46 @@ class MusicBrainzCatalogSearchTest {
         assertEquals(1, result.page.consumedCount)
     }
 
+    @Test fun publicSearchAdmissionKeepsLiteralNamesakesAndRequiresBothCompoundFields() {
+        val artists = listOf(
+            MusicBrainzArtistHit("a", "Example", null, null),
+            MusicBrainzArtistHit("b", "EXAMPLE", null, null),
+            MusicBrainzArtistHit("c", "Example Tribute", null, null),
+            MusicBrainzArtistHit("d", "Unrelated", null, null),
+        )
+        assertEquals(listOf("a", "b"), publicMusicBrainzArtistRows("Example", artists).map { it.musicBrainzId })
+        assertEquals(listOf("a", "b"), publicMusicBrainzArtistRows("Example (2)", artists).map { it.musicBrainzId })
+        assertEquals(listOf("c"), publicMusicBrainzArtistRows("Example", artists.drop(2))
+            .map { it.musicBrainzId })
+        assertTrue(publicMusicBrainzWorkMatches("Work Artist", "Work (Live)", "Artist"))
+        assertTrue(publicMusicBrainzWorkMatches("Artist Work", "Work 1988", "Artist"))
+        assertFalse(publicMusicBrainzWorkMatches("Work Artist", "Work", "Other"))
+        assertFalse(publicMusicBrainzWorkMatches("Work Artist", "Artist", "Artist"))
+        assertFalse(publicMusicBrainzWorkMatches("Hello", "Hello, Hello, Hello", "Other"))
+        assertTrue(publicMusicBrainzWorkMatches("Hello", "Hello Again", "Other"))
+        assertTrue(publicMusicBrainzWorkMatches("Artist", "Unrelated title", "Artist"))
+    }
+
+    @Test fun publicArtistProjectionRetainsRawCursorAndDoesNotAlterIndependentSearch() = runBlocking {
+        val first = "11111111-1111-4111-8111-111111111111"
+        val second = "22222222-2222-4222-8222-222222222222"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String =
+                    """{"count":50,"offset":0,"artists":[
+                        {"id":"$first","name":"Example"},{"id":"$second","name":"Unrelated"}
+                    ]}"""
+            },
+        ))
+        val raw = source.searchArtists("Example") as MusicBrainzCatalogSearchResult.Success
+        val display = source.searchPublicArtists("Example") as MusicBrainzCatalogSearchResult.Success
+        assertEquals(2, raw.page.items.size)
+        assertEquals(listOf(first), display.page.items.map { it.musicBrainzId })
+        assertEquals(2, display.page.consumedCount)
+        assertEquals(2, display.page.nextOffset)
+    }
+
     @Test fun exactArtistIdAndTitleCorroborationIsBoundedAndQuotesLiteralTitle() = runBlocking {
         val id = "11111111-1111-4111-8111-111111111111"
         val calls = mutableListOf<Map<String, String>>()

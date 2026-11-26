@@ -409,7 +409,7 @@ class ApplePublicSearchPagerTest {
     }
 
 
-    @Test fun artistQueryRejectsSubstringNamesakesButKeepsExactAndLegitimatePrefixes() =
+    @Test fun artistQueryPrefersExactNativeNamesButRetainsPrefixDiscoveryWhenNoExactName() =
         runBlocking {
             val rows = listOf(
                 ItunesCatalogItem(ItunesCatalogItemType.ARTIST, 10, "br", "MOKA ILLIT",
@@ -430,9 +430,15 @@ class ApplePublicSearchPagerTest {
                 "illit", ItunesCatalogEntity.ARTIST, "br", 24, fake,
             )
             val result = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
-            assertEquals(listOf(14L, 13L), result.visible.map { it.id })
-            assertEquals(2, result.discoveredCount)
+            assertEquals(listOf(14L), result.visible.map { it.id })
+            assertEquals(1, result.discoveredCount)
             assertFalse(result.hasMore)
+            val prefixes = Fake(ItunesCatalogResult.Success(rows.filter { it.id != 14L }))
+                .apply { expectedQuery = "illit" }
+            val prefixOnly = ApplePublicSearchPager("illit", ItunesCatalogEntity.ARTIST,
+                "br", 24, prefixes)
+            assertEquals(listOf(13L),
+                (prefixOnly.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.map { it.id })
         }
 
     @Test fun songsAndAlbumsMatchExactArtistOrActualWorkTitleNotNamesakes() =

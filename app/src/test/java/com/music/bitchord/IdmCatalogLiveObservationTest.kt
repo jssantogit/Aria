@@ -3177,7 +3177,7 @@ class IdmCatalogLiveObservationTest {
                             }
                             provider == mb -> when (case.kind) {
                                 "artist" -> {
-                                    val response = mbSearch.searchArtists(case.query, 15)
+                                    val response = mbSearch.searchPublicArtists(case.query, 15)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
                                     rows = response?.page?.items.orEmpty().map {
@@ -3226,8 +3226,8 @@ class IdmCatalogLiveObservationTest {
                                     offered = provenIds.isNotEmpty()
                                 }
                                 "track" -> {
-                                    val response = mbSearch.searchRecordings(
-                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+                                    val response = mbSearch.searchPublicRecordings(
+                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT,
                                     )
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
@@ -3247,11 +3247,11 @@ class IdmCatalogLiveObservationTest {
                                             isCuratedMusicBrainzRecording(it) }
                                 }
                                 else -> {
-                                    val groups = mbSearch.searchReleaseGroups(
-                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+                                    val groups = mbSearch.searchPublicReleaseGroups(
+                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT,
                                     )
                                         as? MusicBrainzCatalogSearchResult.Success
-                                    val editions = mbSearch.searchReleases(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+                                    val editions = mbSearch.searchPublicReleases(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (groups == null || editions == null) failed = true
                                     val rawGroups = groups?.page?.items.orEmpty()
