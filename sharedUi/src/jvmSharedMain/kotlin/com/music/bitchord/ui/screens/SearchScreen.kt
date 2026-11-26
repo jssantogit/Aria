@@ -1831,28 +1831,35 @@ fun canonicalRowsForQuery(
     val candidates = canonicalRowsForFilter(rows, filter)
         .distinctBy { it.kind to it.musicBrainzId }
     if (normalized.isBlank()) return candidates
+    fun exactArtistName(name: String): Boolean {
+        fun fold(value: String) = java.text.Normalizer.normalize(value,
+            java.text.Normalizer.Form.NFKD).replace(Regex("\\p{M}+"), "")
+            .lowercase(java.util.Locale.ROOT).replace(Regex("\\s+"), " ").trim().removePrefix("the ")
+        return fold(name) == fold(normalized)
+    }
     val exactArtists = candidates.filter {
-        it.kind == CanonicalSearchKind.ARTIST &&
-            it.title.equals(normalized, ignoreCase = true)
+        it.kind == CanonicalSearchKind.ARTIST && exactArtistName(it.title)
     }
     val identityScoped = if (filter == SearchFilter.ALL && exactArtists.isNotEmpty()) {
-        // The General view highlights the best-ranked exact artist from the
-        // MusicBrainz response. Namesakes remain independently accessible in
-        // the Artists filter; never merge their distinct MBIDs in Room.
+        // Explicit source credits take precedence over names and scoped
+        // search hints. A name alone cannot select one of several homonyms.
         val primaryArtist = exactArtists.first()
         candidates.filter { row ->
-            (row.kind == CanonicalSearchKind.ARTIST &&
-                row.musicBrainzId == primaryArtist.musicBrainzId) ||
-                (row.kind != CanonicalSearchKind.ARTIST &&
-                    (row.artistScopeMbid == primaryArtist.musicBrainzId ||
-                        canonicalCreditsMentionArtist(row.subtitle, normalized)))
+            if (row.kind == CanonicalSearchKind.ARTIST)
+                row.musicBrainzId == primaryArtist.musicBrainzId
+            else when {
+                row.artistCreditMbids != null -> primaryArtist.musicBrainzId in row.artistCreditMbids
+                row.artistScopeMbid != null -> row.artistScopeMbid == primaryArtist.musicBrainzId
+                else -> exactArtists.size == 1 &&
+                    canonicalCreditsMentionArtist(row.subtitle, primaryArtist.title)
+            }
         }
     } else candidates
     return identityScoped.sortedWith(
         compareBy<CanonicalCatalogSearchRow> { row ->
             when {
                 row.kind == CanonicalSearchKind.ARTIST &&
-                    row.title.equals(normalized, ignoreCase = true) -> 0
+                    exactArtistName(row.title) -> 0
                 row.title.equals(normalized, ignoreCase = true) -> 1
                 row.kind == CanonicalSearchKind.ARTIST -> 2
                 row.title.startsWith(normalized, ignoreCase = true) -> 3

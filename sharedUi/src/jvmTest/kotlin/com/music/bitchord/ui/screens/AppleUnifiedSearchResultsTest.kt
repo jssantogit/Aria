@@ -70,6 +70,17 @@ class AppleUnifiedSearchResultsTest {
         assertTrue(withoutExact.contains(AppleUnifiedSearchEntry.Album(namesakeAlbum)))
     }
 
+    @Test fun ambiguousExactArtistDoesNotAttachTracksWithoutNativeCreditId() {
+        val primary = artist(1, "ILLIT")
+        val homonym = artist(2, "ILLIT")
+        val verified = track(1).copy(artistBrowseId = primary.browseId)
+        val unknown = track(2)
+        val other = track(3).copy(artistBrowseId = homonym.browseId)
+        assertEquals(listOf(AppleUnifiedSearchEntry.Artist(primary), AppleUnifiedSearchEntry.Track(verified)),
+            appleUnifiedSearchEntries("ILLIT", listOf(primary, homonym),
+                listOf(unknown, other, verified), emptyList()))
+    }
+
     @Test fun accentAndLeadingArticleResolveExactArtistWithoutPunctuationConfusion() {
         val beyonce = artist(10, "Beyoncé")
         val credited = track(1).copy(artistName = "Beyoncé",

@@ -6227,6 +6227,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         coverReleaseMbid = hit.coverReleaseMbid,
                         coverGroupMbid = hit.coverGroupMbid,
                         durationMs = hit.durationMs,
+                        artistCreditMbids = hit.artistCreditMbids,
                     ) }
                 val current = (_canonicalResults.value as? UiState.Success)?.data.orEmpty()
                 if (fresh.isNotEmpty()) {
@@ -6339,6 +6340,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             coverReleaseMbid = hit.coverReleaseMbid,
                             coverGroupMbid = hit.coverGroupMbid,
                             durationMs = hit.durationMs,
+                            artistCreditMbids = hit.artistCreditMbids,
                         ))
                     }
                 }
@@ -6601,8 +6603,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 hit.artistDisplay, hasCatalogedAsset = hit.musicBrainzId in assetMbids,
                                 artistScopeMbid = cursor.artistScopeMbid,
                                 coverReleaseMbid = hit.coverReleaseMbid,
-                            coverGroupMbid = hit.coverGroupMbid,
+                                coverGroupMbid = hit.coverGroupMbid,
                                 durationMs = hit.durationMs,
+                                artistCreditMbids = hit.artistCreditMbids,
                             ))
                         }
                     }

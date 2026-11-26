@@ -22,6 +22,9 @@ internal interface ApplePublicSearchSource {
         originalQuery: String, artistId: Long, credit: String, country: String,
         knownIds: Set<Long>,
     ): ItunesCatalogResult = ItunesCatalogResult.Success(emptyList())
+    /** Optional bounded native album search to rank exact artist namesakes. */
+    suspend fun artistLandingEvidence(query: String, country: String): ItunesCatalogResult =
+        ItunesCatalogResult.Success(emptyList())
     val supportsSongCollectionDiscovery: Boolean get() = false
     suspend fun discoverSongCollections(
         originalQuery: String, workTerm: String, country: String, knownIds: Set<Long>,
@@ -37,6 +40,10 @@ internal class ItunesPublicSearchSource(
         country: String,
         attribute: ItunesCatalogSearchAttribute?,
     ) = client.search(query, entity, country, limit = 200, attribute = attribute)
+
+    override suspend fun artistLandingEvidence(query: String, country: String): ItunesCatalogResult =
+        client.search(query, ItunesCatalogEntity.ALBUM, country, limit = 50,
+            attribute = ItunesCatalogSearchAttribute.ARTIST_TERM)
 
     override val supportsArtistCollectionDiscovery: Boolean get() = true
     override suspend fun discoverArtistCollections(
@@ -627,9 +634,39 @@ internal class ApplePublicSearchPager(
                         applePublicSearchFold(it.title) == applePublicSearchFold(base)
                 }
                 merge(result.copy(items = exact), matchQuery = base)
+                rankInitialArtistLanding(base)
                 visibleCount = minOf(pageSize, rows.size)
             }
         }
+    }
+
+    /**
+     * One native storefront album-index read for exact namesakes.
+     * Editions of one work count once; failed probes retain source order.
+     * Never remove an artist or assign it another ID.
+     */
+    private suspend fun rankInitialArtistLanding(term: String = query) {
+        if (entity != ItunesCatalogEntity.ARTIST) return
+        val candidates = rows.values.filter {
+            (applePublicSearchMatchRank(term, it) ?: 99) <= 1
+        }.associateBy { it.id }
+        if (candidates.size < 2) return
+        val evidence = source.artistLandingEvidence(term, country) as? ItunesCatalogResult.Success ?: return
+        val support = evidence.items.asSequence().filter {
+            it.type == ItunesCatalogItemType.ALBUM && it.storefront == country &&
+                it.id > 0 && it.title.isNotBlank()
+        }.mapNotNull { album ->
+            val id = album.artistId ?: return@mapNotNull null
+            val candidate = candidates[id] ?: return@mapNotNull null
+            if (applePublicSearchFold(album.artistName) != applePublicSearchFold(candidate.title))
+                return@mapNotNull null
+            id to applePublicAlbumWorkKey(album.title)
+        }.distinct().groupingBy { it.first }.eachCount()
+        val ranked = rows.values.sortedByDescending {
+            (support[it.id] ?: 0).takeIf { count -> count >= 2 }?.coerceAtMost(3) ?: 0
+        }
+        rows.clear()
+        ranked.forEach { rows[it.id] = it }
     }
 
     /**
@@ -726,6 +763,7 @@ internal class ApplePublicSearchPager(
                     // flood the landing. A prefix-only query still works.
                     rows.entries.removeAll { (applePublicSearchMatchRank(query, it.value) ?: 99) > 1 }
                 }
+                rankInitialArtistLanding()
                 improveWeakWorkLanding()
                 probeFullAlbumLanding()
                 recoverWeakAlbumLanding()

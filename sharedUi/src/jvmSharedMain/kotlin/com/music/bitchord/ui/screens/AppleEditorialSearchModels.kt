@@ -144,7 +144,8 @@ fun appleUnifiedSearchEntries(
     val primary = exact.firstOrNull()
     fun creditedToPrimary(artistRoute: String?, credit: String): Boolean =
         primary == null || if (artistRoute != null) artistRoute == primary.browseId
-        else appleUnifiedArtistFold(credit) == appleUnifiedArtistFold(primary.title)
+        else exact.map { it.browseId }.distinct().size == 1 &&
+            appleUnifiedArtistFold(credit) == appleUnifiedArtistFold(primary.title)
     val uniqueTracks = tracks.asSequence()
         .filter { creditedToPrimary(it.artistBrowseId, it.artistName) }
         .distinctBy { it.key }.toList()

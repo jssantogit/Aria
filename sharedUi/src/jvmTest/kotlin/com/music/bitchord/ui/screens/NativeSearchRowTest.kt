@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.model.UiState
+import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,6 +45,23 @@ class NativeSearchRowTest {
         assertTrue(visual.artistPortrait)
         assertFalse(visual.downloadBadge)
         assertEquals("Artista", visual.subtitle)
+    }
+
+    @Test fun mixedSearchUsesExplicitCreditsAndDoesNotAttachAmbiguousNamesakes() {
+        val primary = CanonicalCatalogSearchRow("a", CanonicalSearchKind.ARTIST, "Beyoncé", null)
+        val homonym = primary.copy(musicBrainzId = "b")
+        val work = CanonicalCatalogSearchRow("r", CanonicalSearchKind.RECORDING,
+            "Song", "Beyoncé", artistCreditMbids = listOf("a"))
+        val contradictory = work.copy(musicBrainzId = "wrong", artistCreditMbids = listOf("b"),
+            artistScopeMbid = "a")
+        val unknown = work.copy(musicBrainzId = "unknown", artistCreditMbids = null)
+        val rows = listOf(primary, homonym, work, contradictory, unknown)
+        assertEquals(listOf("a", "r"), canonicalRowsForQuery(rows, "Beyonce",
+            SearchFilter.ALL).map { it.musicBrainzId })
+        assertEquals(listOf("a", "b"), canonicalRowsForQuery(rows, "Beyonce",
+            SearchFilter.ARTISTS).map { it.musicBrainzId })
+        assertEquals(setOf("a", "r", "unknown"), canonicalRowsForQuery(
+            rows - homonym, "Beyonce", SearchFilter.ALL).map { it.musicBrainzId }.toSet())
     }
 
     @Test fun unverifiedGroupNeverClaimsThatAnotherEditionCoverIsOfficial() {

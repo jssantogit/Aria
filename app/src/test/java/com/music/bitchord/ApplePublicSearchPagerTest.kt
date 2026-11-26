@@ -441,6 +441,41 @@ class ApplePublicSearchPagerTest {
                 (prefixOnly.start() as ApplePublicSearchPageLoad.Success).snapshot.visible.map { it.id })
         }
 
+    @Test fun ambiguousArtistLandingUsesDistinctNativeWorksWithoutMergingArtists() = runBlocking {
+        val first = album(1, title = "Example").copy(type = ItunesCatalogItemType.ARTIST,
+            artistName = null, artistId = null, collectionId = null)
+        val supported = first.copy(id = 2)
+        val alternative = first.copy(id = 3)
+        val works = listOf(
+            album(10, title = "Same work").copy(artistName = "Example", artistId = 1),
+            album(11, title = "Same work (Remastered)").copy(artistName = "Example", artistId = 1),
+            album(12, title = "Same work (Deluxe)").copy(artistName = "Example", artistId = 1),
+            album(20, title = "First work").copy(artistName = "Example", artistId = 2),
+            album(21, title = "Second work").copy(artistName = "Example", artistId = 2),
+            album(30, country = "us", title = "Foreign").copy(artistName = "Example", artistId = 1),
+            album(31, title = "Wrong credit").copy(artistName = "Other", artistId = 1),
+        )
+        var probes = 0
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(query: String, entity: ItunesCatalogEntity,
+                country: String, attribute: ItunesCatalogSearchAttribute?) =
+                ItunesCatalogResult.Success(listOf(first, supported, alternative))
+            override suspend fun artistLandingEvidence(query: String, country: String): ItunesCatalogResult {
+                probes++
+                assertEquals("Example", query)
+                assertEquals("br", country)
+                return ItunesCatalogResult.Success(works)
+            }
+        }
+        val pager = ApplePublicSearchPager("Example", ItunesCatalogEntity.ARTIST, "br", 2, source)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(2L, 1L), initial.visible.map { it.id })
+        assertEquals(3, initial.discoveredCount)
+        val continued = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(2L, 1L, 3L), continued.visible.map { it.id })
+        assertEquals(1, probes)
+    }
+
     @Test fun songsAndAlbumsMatchExactArtistOrActualWorkTitleNotNamesakes() =
         runBlocking {
             fun song(id: Long, artist: String, title: String) =

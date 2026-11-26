@@ -3181,7 +3181,9 @@ class IdmCatalogLiveObservationTest {
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
                                     val rawArtists = response?.page?.items.orEmpty()
-                                    val displayArtists = publicMusicBrainzArtistRows(case.query, rawArtists)
+                                    val displayArtists = (response?.let {
+                                        mbSearch.projectPublicArtistLanding(case.query, it)
+                                    } as? MusicBrainzCatalogSearchResult.Success)?.page?.items.orEmpty()
                                     rows = displayArtists.map {
                                         SearchParityRow("catalog:ARTIST:${it.musicBrainzId}", it.name)
                                     }

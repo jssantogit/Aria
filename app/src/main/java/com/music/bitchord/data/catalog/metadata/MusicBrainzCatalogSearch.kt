@@ -119,6 +119,8 @@ internal data class MusicBrainzRecordingHit(
     /** Search response's distinct official audio release IDs, not popularity.
      * Never stored as recording identity or used to authorize playback. */
     @Ignore var searchOfficialAudioReleaseMbids: Set<String> = emptySet()
+    /** Complete live source credit; never a name-to-MBID inference. */
+    @Ignore var artistCreditMbids: List<String>? = null
 }
 
 /**
@@ -315,7 +317,52 @@ internal class MusicBrainzCatalogSearch(
     // Interactive searches only; raw adapter calls remain available for
     // indexing, editorial traversal and independent identity evidence.
     suspend fun searchPublicArtists(query: String, limit: Int = 15, offset: Int = 0) =
-        searchArtists(query, limit, offset).publicProjection { publicMusicBrainzArtistRows(query, it) }
+        projectPublicArtistLanding(query, searchArtists(query, limit, offset))
+
+    /**
+     * One bounded release-group index probe for ambiguous literal artist
+     * landings. Only native MBIDs and distinct work titles count. This is
+     * relevance evidence, not popularity or proof of intent; all identities
+     * and the original artist cursor survive, including on probe failure.
+     */
+    internal suspend fun projectPublicArtistLanding(
+        query: String, result: MusicBrainzCatalogSearchResult<MusicBrainzArtistHit>,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzArtistHit> {
+        val display = result.publicProjection { publicMusicBrainzArtistRows(query, it) }
+        if (display !is MusicBrainzCatalogSearchResult.Success ||
+            display.page.offset != 0 || capability != ProviderCapability.CATALOG_SEARCH
+        ) return display
+        val term = musicBrainzPublicSearchKey(query).removePrefix("the ")
+        val literal = display.page.items.filter {
+            musicBrainzPublicSearchKey(it.name).removePrefix("the ") == term
+        }
+        val base = Regex("""^(.+?)\s+\(([2-9]|[1-9]\d{1,3})\)$""")
+            .matchEntire(term)?.groupValues?.get(1)
+        val exact = if (literal.isNotEmpty()) literal else display.page.items.filter {
+            base != null && musicBrainzPublicSearchKey(it.name).removePrefix("the ") == base
+        }
+        val candidates = exact.associateBy { it.musicBrainzId }
+        if (candidates.size < 2) return display
+        val sourceName = exact.first().name
+        if (sourceName.length !in 1..100 || sourceName.any(Char::isISOControl)) return display
+        val quoted = "\"" + sourceName.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        val evidence = searchReleaseGroupsInternal(
+            "artist:$quoted", 50, 0, fieldedQuery = true,
+        ) as? MusicBrainzCatalogSearchResult.Success ?: return display
+        val support = evidence.page.items.asSequence().filter(::isCuratedMusicBrainzReleaseGroup)
+            .filter { it.searchLinkedReleaseMbids.isNotEmpty() }
+            .mapNotNull { work ->
+                val id = work.artistCreditMbids?.singleOrNull() ?: return@mapNotNull null
+                val candidate = candidates[id] ?: return@mapNotNull null
+                if (musicBrainzPublicSearchKey(work.artistDisplay) != musicBrainzPublicSearchKey(candidate.name))
+                    return@mapNotNull null
+                id to musicBrainzPublicSearchKey(work.title)
+            }.distinct().groupingBy { it.first }.eachCount()
+        val ranked = display.page.items.sortedByDescending {
+            (support[it.musicBrainzId] ?: 0).takeIf { count -> count >= 2 }?.coerceAtMost(3) ?: 0
+        }
+        return display.copy(page = display.page.copy(items = ranked))
+    }
 
     suspend fun searchPublicRecordings(query: String, limit: Int = 50, offset: Int = 0) =
         searchRecordings(query, limit, offset, recoverWeakLanding = offset == 0)
@@ -826,6 +873,7 @@ internal class MusicBrainzCatalogSearch(
                         },
                         isVideo = recording.video,
                     ).also { hit ->
+                        hit.artistCreditMbids = recording.artistCredit.completeArtistMbids()
                         if (recording.video != true) {
                             hit.searchOfficialAudioReleaseMbids = audioReleases
                                 .mapNotNull { it.id.validSearchMbidOrNull() }.toSet()

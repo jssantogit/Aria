@@ -127,6 +127,45 @@ class MusicBrainzCatalogSearchTest {
         assertEquals(2, display.page.nextOffset)
     }
 
+    @Test fun ambiguousArtistLandingUsesDistinctSourceWorksButKeepsAllNativeIdentities() = runBlocking {
+        val first = "11111111-1111-4111-8111-111111111111"
+        val supported = "22222222-2222-4222-8222-222222222222"
+        val foreign = "33333333-3333-4333-8333-333333333333"
+        val release = "44444444-4444-4444-8444-444444444444"
+        val calls = mutableListOf<Map<String, String>>()
+        fun group(index: Int, title: String, artist: String, name: String = "Example"): String {
+            val groupId = "00000000-0000-4000-8000-" + index.toString().padStart(12,'0')
+            return """{"id":"$groupId","title":"$title","primary-type":"Album","artist-credit":[{"name":"$name","artist":{"id":"$artist"}}],"releases":[{"id":"$release"}]}"""
+        }
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    calls += parameters
+                    return if (parameters["dismax"] == "false") {
+                        val groups = listOf(group(1,"Repeated",first),group(2,"Repeated",first),
+                            group(3,"Repeated",first),group(4,"First work",supported),
+                            group(5,"Second work",supported),group(6,"Other",foreign),
+                            group(7,"Wrong credit",first,"Other")).joinToString(",")
+                        """{"count":7,"offset":0,"release-groups":[$groups]}"""
+                    } else {
+                        val offset = parameters["offset"]
+                        """{"count":30,"offset":$offset,"artists":[
+                            {"id":"$first","name":"Example"},{"id":"$supported","name":"Example"}]}"""
+                    }
+                }
+            },
+        ))
+        val result = source.searchPublicArtists("Example") as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(supported, first), result.page.items.map { it.musicBrainzId })
+        assertEquals(2, result.page.nextOffset)
+        assertEquals(2, calls.size)
+        assertEquals("artist:\"Example\"", calls[1]["query"])
+        assertEquals("50", calls[1]["limit"])
+        val continuation = source.searchPublicArtists("Example", offset = 2) as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(first, supported), continuation.page.items.map { it.musicBrainzId })
+        assertEquals(3, calls.size)
+    }
+
     @Test fun exactArtistIdAndTitleCorroborationIsBoundedAndQuotesLiteralTitle() = runBlocking {
         val id = "11111111-1111-4111-8111-111111111111"
         val calls = mutableListOf<Map<String, String>>()
