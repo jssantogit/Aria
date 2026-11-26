@@ -138,7 +138,7 @@ class AppleMusicWebChartsTest {
         val result = gateway.genres("br")
         val native = ((result as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
         assertNotNull(native)
-        val corpus = com.music.bitchord.ui.idmParityMainGenres + com.music.bitchord.ui.idmParitySubgenres
+        val corpus = amsEditorialGenreCorpus
         assertEquals(15, corpus.size)
         var failed = 0
         for (tag in corpus) {
@@ -168,25 +168,34 @@ class AppleMusicWebChartsTest {
             val curatorPage = ((curatorRead as? ProviderCallResult.Success)?.value?.outcome
                 as? AppleMusicWebOutcome.Complete)?.value
                 ?.takeIf { it.identity.id == curatorId &&
-                    resolveAppleMusicWebGenreCurator(listOf(it.identity), "br", tag) != null }
+                    appleMusicWebCuratorMatches(it.identity, "br", tag) }
             val curatorAlbums = linkedSetOf<String>()
             var curatorReads = 0
             var curatorFailures = 0
+            val sharedCurator = curatorPage?.let { appleMusicWebCuratorIsSharedForTag(it.identity, tag) } == true
             if (curatorPage != null) {
                 for (room in curatorPage.rooms.filter(::isAppleMusicWebCuratorReleaseRoom).take(3)) {
-                    curatorReads++
-                    val read = gateway.roomContents(room, AppleMusicWebKind.ALBUM)
-                    val page = ((read as? ProviderCallResult.Success)?.value?.outcome
-                        as? AppleMusicWebOutcome.Complete)?.value
-                    if (page == null) curatorFailures++
-                    curatorAlbums += page?.items.orEmpty().map { it.scopedId }
+                    val visited = hashSetOf<String>()
+                    var cursor: String? = null
+                    repeat(if (sharedCurator) 3 else 1) {
+                        if (it > 0 && cursor == null) return@repeat
+                        curatorReads++
+                        val read = gateway.roomContents(room, AppleMusicWebKind.ALBUM, cursor = cursor)
+                        val page = ((read as? ProviderCallResult.Success)?.value?.outcome
+                            as? AppleMusicWebOutcome.Complete)?.value
+                        if (page == null) { curatorFailures++; cursor = null; return@repeat }
+                        curatorAlbums += page.items.filter { album ->
+                            appleMusicWebCuratedAlbumMatches(curatorPage.identity, tag, album)
+                        }.map { it.scopedId }
+                        cursor = page.nextCursor?.takeIf { visited.add(it) }
+                    }
                 }
             }
-            val landingTarget = if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4
+            val landingTarget = 6
             val curatorSufficient = curatorAlbums.size >= landingTarget && curatorFailures == 0
             println("AMS_CANONICAL_GENRE|tag=$tag|curator_candidates=" + curatorCandidates.size +
                 "|curator_matched=" + (curator != null) + "|curator_provenance=$curatorProvenance" +
-                "|curator_search_reads=$curatorSearchReads|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
+                "|curator_search_reads=$curatorSearchReads|shared_curator=$sharedCurator|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
                 "|curator_albums=" + curatorAlbums.size + "|curator_reads=$curatorReads|curator_failures=$curatorFailures" +
                 "|curator_search_reason=" + curatorSearchReason +
                 "|curator_detail_reason=" + (curatorRead?.let(::diagnostic) ?: "not_applicable"))
@@ -197,7 +206,9 @@ class AppleMusicWebChartsTest {
             var discoveryFailures = 0
             var provenance = if (genre != null) "native_index" else "unmapped"
             if (genre == null && curatorSufficient) {
-                println("AMS_CANONICAL_GENRE|tag=$tag|status=curator_editorial|native_genre_id=unmapped|albums=" + curatorAlbums.size)
+                println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
+                    (if (sharedCurator) "shared_curator_label_verified" else "curator_editorial") +
+                    "|native_genre_id=unmapped|albums=" + curatorAlbums.size)
                 continue
             }
             if (genre == null) {
@@ -229,7 +240,7 @@ class AppleMusicWebChartsTest {
                 var scanned = 0
                 var reads = 0
                 var interrupted = false
-                val target = if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4
+                val target = landingTarget
                 for (index in 1..5) {
                     reads++
                     val response = gateway.genreAlbumSearchPage(tag, "br", cursor)
@@ -255,12 +266,11 @@ class AppleMusicWebChartsTest {
             val grouping = gateway.browseRooms("br",genre.id)
             val rooms = ((grouping as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
             val grouping404 = diagnostic(grouping) == "http_404"
-            val enough = page != null && page.items.size >=
-                (if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4)
+            val enough = page != null && page.items.size >= landingTarget
             if ((!enough && !curatorSufficient) ||
                 (rooms == null && !grouping404 && !curatorSufficient)) failed++
             println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
-                (if (curatorSufficient) "curator_editorial" else if (!enough) "interrupted"
+                (if (curatorSufficient) (if (sharedCurator) "shared_curator_label_verified" else "curator_editorial") else if (!enough) "interrupted"
                     else if (rooms != null) "observed"
                     else if (grouping404) "chart_only_grouping_404" else "interrupted") +
                 "|albums=" + (page?.items?.size ?: 0) + "|rooms=" + (rooms?.size ?: 0) +

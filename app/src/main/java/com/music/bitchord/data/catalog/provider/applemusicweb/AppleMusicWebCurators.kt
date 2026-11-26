@@ -21,7 +21,11 @@ internal fun appleMusicWebPublicCuratorReference(storefront: String, tag: String
     if (storefront != "br") null else when (tag) {
         "pop" -> "976439548"
         "rock" -> "976439554"
-        "hip-hop" -> "989061413"
+        "hip-hop", "rap", "trap" -> "989061413"
+        "soul" -> "976439585"
+        "samba", "pagode" -> "982356287"
+        "blues" -> "976439528"
+        "indie" -> "976439541"
         "electronic" -> "989076708"
         "jazz" -> "976439542"
         "k-pop" -> "988658197"
@@ -33,12 +37,17 @@ internal fun appleMusicWebPublicCuratorReference(storefront: String, tag: String
 
 internal fun appleMusicWebCuratorQueries(tag: String): List<String> {
     val localized = when (tag) {
-        "hip-hop" -> "hip-hop/rap"
+        "hip-hop", "rap" -> "hip-hop/rap"
         "electronic" -> "eletrônica"
         "rnb" -> "R&B"
         else -> tag
     }
-    return listOf(localized, "Apple Music " + localized, "Apple Music " + tag).distinct()
+    val shared = when (tag) {
+        "soul" -> "soul e funk"
+        "samba", "pagode" -> "pagode e samba"
+        else -> localized
+    }
+    return listOf(localized, "Apple Music " + localized, "Apple Music " + shared, "Apple Music " + tag).distinct()
 }
 
 /** Require the official resource type (enforced by the parser), exact brand
@@ -57,6 +66,35 @@ internal fun resolveAppleMusicWebGenreCurator(
         (matches(it.title) || it.shortName?.let(::matches) == true) }
         .distinctBy { it.id }.singleOrNull()
 }
+
+/** The source itself groups these categories. This proves editorial origin,
+ * not exact genre membership. Only explicitly labeled albums qualify. */
+internal fun appleMusicWebCuratorIsSharedForTag(ref: AppleMusicWebCuratorRef, tag: String): Boolean {
+    fun matches(name: String): Boolean {
+        val label = curatorFold(name).removePrefix("apple music ").removeSuffix(" apple music")
+        return when (tag) {
+            "soul" -> label in setOf("soul e funk", "soul funk", "soul and funk")
+            "samba", "pagode" -> label in setOf("pagode e samba", "samba e pagode", "samba and pagode", "pagode and samba")
+            "trap" -> label in setOf("hip hop rap", "hip hop", "rap")
+            else -> false
+        }
+    }
+    return matches(ref.title) || ref.shortName?.let(::matches) == true
+}
+
+internal fun appleMusicWebCuratorMatches(ref: AppleMusicWebCuratorRef, storefront: String, tag: String): Boolean =
+    ref.storefront == storefront &&
+        (resolveAppleMusicWebGenreCurator(listOf(ref), storefront, tag) != null ||
+            (appleMusicWebPublicCuratorReference(storefront, tag) == ref.id &&
+                appleMusicWebCuratorIsSharedForTag(ref, tag)))
+
+internal fun appleMusicWebCuratedAlbumMatches(
+    ref: AppleMusicWebCuratorRef, tag: String, item: AppleMusicWebItem,
+): Boolean =
+    item.kind == AppleMusicWebKind.ALBUM && item.storefront == ref.storefront &&
+        appleMusicWebCuratorMatches(ref, ref.storefront, tag) &&
+        (!appleMusicWebCuratorIsSharedForTag(ref, tag) ||
+            item.genreNames.any { appleMusicWebGenreNameMatches(it, tag) })
 
 /** Native genre-curator album shelves only; never fill from unrelated playlists. */
 internal fun isAppleMusicWebCuratorReleaseRoom(room: AppleMusicWebRoomRef): Boolean =

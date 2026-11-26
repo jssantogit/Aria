@@ -66,6 +66,22 @@ class AppleMusicWebCuratorsTest {
         assertTrue("eletrônica" in appleMusicWebCuratorQueries("electronic"))
     }
 
+    @Test fun sharedCuratorDoesNotMakeEveryAlbumBelongToBothGenres() {
+        val shared = AppleMusicWebCuratorRef("982356287","br","Apple Music: pagode e samba")
+        val samba = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A",genreNames=listOf("Samba"))
+        val pagode = samba.copy(id="2",genreNames=listOf("Pagode"))
+        assertTrue(appleMusicWebCuratorMatches(shared,"br","samba"))
+        assertTrue(appleMusicWebCuratorMatches(shared,"br","pagode"))
+        assertTrue(appleMusicWebCuratedAlbumMatches(shared,"samba",samba))
+        assertFalse(appleMusicWebCuratedAlbumMatches(shared,"pagode",samba))
+        assertTrue(appleMusicWebCuratedAlbumMatches(shared,"pagode",pagode))
+        assertFalse(appleMusicWebCuratedAlbumMatches(shared,"samba",pagode))
+        assertFalse(appleMusicWebCuratedAlbumMatches(shared,"pagode",samba.copy(genreNames=emptyList())))
+        assertFalse(appleMusicWebCuratorMatches(shared.copy(id="999"),"br","pagode"))
+        assertEquals(15,amsEditorialGenreCorpus.distinct().size)
+        assertTrue(amsEditorialGenreCorpus.containsAll(listOf("soul","samba","blues","pagode","rap","trap","indie")))
+    }
+
     @Test fun wrongCuratorIdentityOrTypeCannotPublishRooms() = runBlocking {
         for (body in listOf(curator.replace("\"id\":\"123\"","\"id\":\"124\""),
             curator.replace("\"apple-curators\"","\"curators\""))) {
