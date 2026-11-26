@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   native-build:
-    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && github.head_ref == 'feat/aria-identity-notation-2.1' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
+    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && (github.head_ref == 'feat/aria-identity-notation-2.1' || github.head_ref == 'feat/aria-white-logo') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

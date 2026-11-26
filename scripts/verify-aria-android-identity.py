@@ -33,7 +33,36 @@ for workflow in ("desktop-removal-gate.yml", "tv-wear-removal-gate.yml"):
     require(not (ROOT / ".github/workflows" / workflow).exists(), f"Retired CI gate returned: {workflow}")
 
 approved = marks(RES / "drawable/aria_icon_foreground.xml")
-require(len(approved) == 2, "Notation mark must retain its two approved paths")
+require(len(approved) == 1, "Notation mark must be one connected compound path")
+BRAND = ROOT / "docs/branding/notation-2.1"
+SVG = "{http://www.w3.org/2000/svg}"
+canonical = xml(BRAND / "aria-icon.svg").find(SVG + "path")
+require(canonical is not None and canonical.get("d") in approved and
+        canonical.get("fill") == "#FFFFFF" and canonical.get("fill-rule") == "evenodd",
+        "Canonical SVG and launcher mark differ")
+def check_mark(path, launcher=False):
+    root = xml(path)
+    paths = [node for node in root.iter("path") if node.get(A + "pathData") in approved]
+    require(len(paths) == 1, f"Missing or duplicated mark: {path}")
+    node = paths[0]
+    require(node.get(A + "fillColor") == "#FFFFFF" and node.get(A + "fillType") == "evenOdd"
+            and len(node) == 0, f"Mark must be a solid white silhouette: {path}")
+    require(not any(p.get(A + "pathData", "").startswith(("M 307 356", "M 207 364"))
+                    for p in root.iter("path")), f"Legacy mark: {path}")
+    if launcher:
+        group = next((g for g in root.iter("group") if node in list(g)), None)
+        expected = {"scaleX": 0.08046236, "scaleY": 0.08046236,
+                    "translateX": 24.14846104, "translateY": 28.895740875}
+        require(group is not None and all(abs(float(group.get(A + k, "nan")) - v) < 1e-8
+                    for k, v in expected.items()), f"Optical transform mismatch: {path}")
+for path in BRAND.glob("aria-lockup-*.svg"):
+    mark = xml(path).find(SVG + "path")
+    require(mark is not None and mark.get("d") in approved, f"Lockup mark mismatch: {path}")
+for name in ("Logo.svg", "LogoTransparent.svg"):
+    mark = xml(ROOT / "app/src/main/assets" / name).find(SVG + "path")
+    require(mark is not None and mark.get("d") in approved and mark.get("fill") == "#FFFFFF",
+            f"Packaged SVG mark mismatch: {name}")
+check_mark(RES / "drawable/ic_launcher_foreground.xml", launcher=True)
 manifest = xml(ROOT / "app/src/main/AndroidManifest.xml")
 aliases = manifest.findall("./application/activity-alias")
 require(len(aliases) == 13, "Launcher alias inventory changed; review all icon choices")
@@ -47,12 +76,11 @@ for icon in icons:
         require(resource is not None, f"Missing {layer}: {icon}")
         kind, name = resource.attrib[A + "drawable"].removeprefix("@").split("/")
         folder = "mipmap-anydpi" if kind == "mipmap" else kind
-        require(approved <= marks(RES / folder / (name + ".xml")),
-                f"Notation mark missing from {icon} {layer}")
+        check_mark(RES / folder / (name + ".xml"), launcher=True)
 
 for path in (RES / "drawable/ic_logo.xml", RES / "drawable/ic_notification_logo.xml",
              ROOT / "sharedUi/src/commonMain/composeResources/drawable/ic_logo.xml"):
-    require(approved <= marks(path), f"Old logo returned: {path.relative_to(ROOT)}")
+    check_mark(path)
 for density in ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"):
     for path in (RES / ("mipmap-" + density)).glob("ic_*"):
         require(not re.fullmatch(r"ic_(launcher(?:_round)?|(?:liquid|samsung|pixel)_glass.*_foreground|glass.*)\.(png|webp)", path.name),

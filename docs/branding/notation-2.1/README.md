@@ -1,9 +1,9 @@
 # Aria — Notation 2.1
 
-Owner-approved identity: musical A + lowercase ria. Vector paths and colors from the approved Notation 2.1 package. Dark assets (for light backgrounds) use #B66A24 and #DB933B; no legacy dark bronze. Light assets share the ivory-to-honey gradient. No external font dependency.
+Owner-approved identity direction (2026-11-26): musical A + lowercase ria, with a continuous solid white symbol and integrated central ribbon over the original amber gradient. The vector is a hand-reconstructed candidate from the approved preview; exact physical-device acceptance is pending. Dark-background lockups are white; light-background lockups retain solid #B66A24 for legibility, and black/white monochrome exports retain their intended contrast. No external font dependency.
 
 ## Implementation
-- Default adaptive Android icon preserves the approved 108dp layers. All twelve selectable glass variants and notification/shared UI marks use the same Notation geometry; variant treatments await visual acceptance.
+- Default adaptive Android icon preserves its 108dp layers. All twelve selectable glass variants, notification/shared UI marks, packaged SVGs, store artwork and documentation use the same connected Notation geometry; backgrounds and aliases are unchanged. The launcher optical-size proposal is applied once; device validation remains pending.
 - Production and dev application IDs are independent. See [Android identity migration](ANDROID-IDENTITY-MIGRATION.md). Kotlin namespace migration remains pending.
 - Android is the sole product platform. See [Android-only scope](ANDROID-ONLY.md).
 
