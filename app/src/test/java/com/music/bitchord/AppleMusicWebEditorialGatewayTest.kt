@@ -132,7 +132,9 @@ class AppleMusicWebEditorialGatewayTest {
         val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
             AppleMusicWebTransport { _, path, _ ->
                 requests += path
-                if (path.endsWith("/view/top-songs")) {
+                if (path.endsWith("/songs/3")) {
+                    """{"data":[{"id":"3","type":"songs"}]}"""
+                } else if (path.endsWith("/view/top-songs")) {
                     """{"data":[{"id":"2","type":"songs","attributes":{"name":"Recovered"}},
                         {"id":"99","type":"songs","attributes":{"name":"Unrelated"}}]}"""
                 } else {
@@ -147,7 +149,30 @@ class AppleMusicWebEditorialGatewayTest {
         assertEquals(com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES, outcome.reason)
         assertEquals(listOf("1", "2"), outcome.value.topSongs.map { it.id })
         assertEquals(1, outcome.value.unresolvedShelves.values.sum())
-        assertEquals(listOf("/v1/catalog/fr/artists/77", "/v1/catalog/fr/artists/77/view/top-songs"), requests)
+        assertEquals(listOf("/v1/catalog/fr/artists/77", "/v1/catalog/fr/artists/77/view/top-songs", "/v1/catalog/fr/songs/3"), requests)
+    }
+
+    @Test fun missingTopSongCanBeHydratedByExactSameStorefrontIdentity() = runBlocking {
+        val requests = mutableListOf<String>()
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
+            AppleMusicWebTransport { cap, path, _ ->
+                assertEquals(discography, cap)
+                requests += path
+                when (path) {
+                    "/v1/catalog/fr/artists/77" -> """{"data":[{"id":"77","type":"artists",
+                        "attributes":{"name":"Artist"},"views":{"top-songs":{"data":[
+                        {"id":"3","type":"songs"}]}}}]}"""
+                    "/v1/catalog/fr/artists/77/view/top-songs" -> """{"data":[{"id":"3","type":"songs"}]}"""
+                    "/v1/catalog/fr/songs/3" -> """{"data":[{"id":"3","type":"songs",
+                        "attributes":{"name":"Recovered","artistName":"Artist"}}]}"""
+                    else -> error("Unexpected path")
+                }
+            }), gate(discography))
+        val outcome = (gateway.artist("77", "fr") as ProviderCallResult.Success).value.outcome
+            as AppleMusicWebOutcome.Complete
+        assertEquals("apple_music_web:fr:song:3", outcome.value.topSongs.single().scopedId)
+        assertEquals("Recovered", outcome.value.topSongs.single().title)
+        assertEquals(3, requests.size)
     }
 
     @Test fun missingRootIdentityIsNotReplacedByShelfLinkage() = runBlocking {

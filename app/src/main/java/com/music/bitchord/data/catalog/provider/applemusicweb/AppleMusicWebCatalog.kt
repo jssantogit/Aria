@@ -332,12 +332,34 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             } catch (_: java.io.IOException) {
                 emptyMap()
             }
+            val resolved = recovered.toMutableMap()
+            // Some song linkage is not expanded even by its own top-songs
+            // view. Resolve only exact IDs attested by that view, not a text
+            // search or a different market. Bound the extra reads per artist.
+            if (shelf == AppleMusicWebArtistShelf.TOP_SONGS) {
+                for (id in initial.unresolved.filter { it !in resolved }.take(4)) {
+                    val song = try {
+                        val record = detail(sf, AppleMusicWebKind.SONG, id, emptyMap())
+                        if (record["attributes"] == null || record["attributes"].toString() == "null")
+                            null
+                        else convert(record, sf)
+                    } catch (failure: AppleMusicWebHttpException) {
+                        if (failure.status in listOf(401, 403, 429)) throw failure
+                        null
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: java.io.IOException) {
+                        null
+                    }
+                    if (song != null) resolved[id] = song
+                }
+            }
             val original = initial.items.associateBy { it.id }
-            val missing = initial.unresolved.count { it !in recovered }
+            val missing = initial.unresolved.count { it !in resolved }
             if (missing > 0) unresolved[shelf] = missing
             return block?.objects("data").orEmpty().mapNotNull { item ->
                 val id = item.str("id")
-                original[id] ?: if (id in initial.unresolved) recovered[id] else null
+                original[id] ?: if (id in initial.unresolved) resolved[id] else null
             }
         }
         return AppleMusicWebArtist(

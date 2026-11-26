@@ -42,6 +42,9 @@ internal object AppleMusicWebOperationRegistry {
                             else -> false
                         }
                     }
+                    // Public metadata only, exact linked song identity. No
+                    // library, stream, playback or relationship subroutes.
+                    "songs" -> parts.size == 5 && id.matches(parts[4])
                     "albums" -> {
                         if (parts.size < 5 || !id.matches(parts[4])) false
                         else when (parts.size) {

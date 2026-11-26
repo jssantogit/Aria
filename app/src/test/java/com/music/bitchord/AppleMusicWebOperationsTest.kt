@@ -50,10 +50,13 @@ class AppleMusicWebOperationsTest {
             "/v1/catalog/br/albums/99",
             "/v1/catalog/br/albums/99/tracks",
             "/v1/catalog/br/albums/99/relationships/tracks",
+            "/v1/catalog/br/songs/42",
         )
         val denied = listOf(
             "/v1/catalog/br/search",
-            "/v1/catalog/br/songs/42",
+            "/v1/catalog/br/songs/42/relationships/stream",
+            "/v1/catalog/br/songs",
+            "/v1/catalog/br/songs/invalid",
             "/v1/editorial/br/groupings",
             "/v1/catalog/br/artists/42/view/../../search",
             "/v1/catalog/br/artists/42/relationships/library",
