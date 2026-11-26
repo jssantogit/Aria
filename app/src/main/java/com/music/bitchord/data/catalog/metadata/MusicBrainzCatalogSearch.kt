@@ -280,11 +280,14 @@ internal fun publicMusicBrainzRecordingRows(
     if (!diversify) return matched
     val curated = matched.filter(::isCuratedMusicBrainzRecording)
     val others = matched.filterNot(::isCuratedMusicBrainzRecording)
-    return diversifyNativeTrackLanding(curated) { hit ->
+    val diversified = diversifyNativeTrackLanding(curated) { hit ->
         hit.artistCreditMbids?.takeIf { it.isNotEmpty() }?.let {
             it to musicBrainzPublicSearchKey(hit.title)
         }
-    } + others
+    }
+    return prioritizeNativeCompoundCredit(diversified, musicBrainzPublicSearchKey(query),
+        { musicBrainzPublicSearchKey(it.title) },
+        { musicBrainzPublicSearchKey(it.artistDisplay) }) + others
 }
 
 private fun <T> MusicBrainzCatalogSearchResult<T>.publicProjection(

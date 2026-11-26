@@ -495,6 +495,31 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, fake.calls.size)
     }
 
+    @Test fun compoundSongLandingKeepsVerifiedCreditAheadOfUnrelatedTitlePrefixes() = runBlocking {
+        val originals = (1L..7L).map { id ->
+            album(id, title = "Song").copy(type = ItunesCatalogItemType.TRACK, artistName = "Band")
+        }
+        val live = originals.first().copy(id = 8, title = "Song (Live)")
+        val misleading = originals.first().copy(id = 9, title = "Song Band (Tribute)",
+            artistId = 99, artistName = "Other")
+        val all = originals + listOf(misleading, live)
+        val fake = Fake(ItunesCatalogResult.Success(all)).apply { expectedQuery = "Song Band" }
+        val pager = ApplePublicSearchPager("Song Band", ItunesCatalogEntity.SONG, "br", 9, fake)
+        val snapshot = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(9L, snapshot.visible.last().id)
+        assertEquals(all.map { it.id }.toSet(), snapshot.visible.map { it.id }.toSet())
+        assertEquals(1, fake.calls.size)
+    }
+
+    @Test fun compoundPriorityDoesNotAssumeArtistWhenLiteralTitleAlsoExists() {
+        val rows = listOf("Other" to "Song Band", "Band" to "Song", "Band" to "Song (Live)")
+        assertEquals(rows, com.music.bitchord.data.catalog.metadata.prioritizeNativeCompoundCredit(
+            rows, "song band", { it.second.lowercase() }, { it.first.lowercase() }))
+        val ambiguous = listOf("Other" to "A B C D extra", "A" to "B C D", "A B" to "C D")
+        assertEquals(ambiguous, com.music.bitchord.data.catalog.metadata.prioritizeNativeCompoundCredit(
+            ambiguous, "a b c d", { it.second.lowercase() }, { it.first.lowercase() }))
+    }
+
     @Test fun songsAndAlbumsMatchExactArtistOrActualWorkTitleNotNamesakes() =
         runBlocking {
             fun song(id: Long, artist: String, title: String) =

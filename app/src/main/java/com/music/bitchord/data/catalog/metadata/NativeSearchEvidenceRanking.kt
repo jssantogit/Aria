@@ -49,3 +49,29 @@ internal fun <T, K : Any> diversifyNativeTrackLanding(
     }
     return leading + deferred
 }
+
+/**
+ * A single exact title/credit split in the actual native results supplies
+ * stronger textual evidence than a title prefix which merely contains the
+ * entire query. Keep alternative native identities in the tail, never
+ * infer an artist ID or guess a split from arbitrary tokens.
+ * Literal title queries and ambiguous compound splits retain their order.
+ */
+internal fun <T> prioritizeNativeCompoundCredit(
+    rows: List<T>,
+    query: String,
+    title: (T) -> String,
+    credit: (T) -> String,
+): List<T> {
+    if (query.isBlank() || rows.any { title(it) == query }) return rows
+    val exactCredits = rows.mapNotNull { row ->
+        val work = title(row)
+        val artist = credit(row)
+        artist.takeIf { it.isNotBlank() && work.isNotBlank() &&
+            query in listOf("$artist $work", "$work $artist",
+                "$artist - $work", "$work - $artist") }
+    }.distinct()
+    val explicit = exactCredits.singleOrNull() ?: return rows
+    val (matching, alternatives) = rows.partition { credit(it) == explicit }
+    return matching + alternatives
+}

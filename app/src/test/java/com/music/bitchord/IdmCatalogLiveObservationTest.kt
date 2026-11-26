@@ -2974,6 +2974,8 @@ class IdmCatalogLiveObservationTest {
 
     private fun searchLabelKey(text: String?): String =
         java.text.Normalizer.normalize(text.orEmpty().trim(), java.text.Normalizer.Form.NFKD)
+            // Equivalent apostrophe typography is not a different release.
+            .replace('\u2019', '\'').replace('\u2018', '\'')
             .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT)
             .replace(Regex("\\s+"), " ")
 
@@ -3003,6 +3005,12 @@ class IdmCatalogLiveObservationTest {
         append(",\"target_label\":").append(targetJudgement)
         append(",\"qualified_verified\":").append(qualifiedVerified)
         append("}")
+    }
+
+    @Test fun frozenSearchAnchorAllowsOnlyEquivalentApostropheTypography() {
+        assertEquals(searchLabelKey("I've Work"), searchLabelKey("I’ve Work"))
+        assertFalse(searchLabelKey("I've Work") == searchLabelKey("Ive Work"))
+        assertFalse(searchLabelKey("I've Work") == searchLabelKey("I've Work (Live)"))
     }
 
     @Test fun relevanceReviewIsBoundedAndDoesNotPublishNativeIds() {

@@ -746,9 +746,11 @@ internal class ApplePublicSearchPager(
      * visually indistinguishable rows with confirmed native credits. */
     private fun diversifyInitialSongLanding() {
         if (entity != ItunesCatalogEntity.SONG) return
-        val ranked = diversifyNativeTrackLanding(rows.values.toList()) { row ->
+        val diversified = diversifyNativeTrackLanding(rows.values.toList()) { row ->
             row.artistId?.takeIf { it > 0 }?.let { it to applePublicSearchFold(row.title) }
         }
+        val ranked = prioritizeNativeCompoundCredit(diversified, applePublicSearchFold(query),
+            { applePublicSearchFold(it.title) }, { applePublicSearchFold(it.artistName) })
         rows.clear()
         ranked.forEach { rows[it.id] = it }
     }
