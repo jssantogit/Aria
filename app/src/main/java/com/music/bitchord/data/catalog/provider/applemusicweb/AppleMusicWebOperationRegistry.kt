@@ -48,6 +48,7 @@ internal object AppleMusicWebOperationRegistry {
             ProviderCapability.EDITORIAL_DISCOGRAPHY ->
                 when (parts[3]) {
                     "genres" -> parts.size == 4
+                    "apple-curators" -> parts.size == 5 && id.matches(parts[4])
                     "artists" -> {
                         if (parts.size < 5 || !id.matches(parts[4])) false
                         else when (parts.size) {

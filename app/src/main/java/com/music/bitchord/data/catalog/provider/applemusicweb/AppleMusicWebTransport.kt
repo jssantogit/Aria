@@ -165,6 +165,11 @@ internal class AppleMusicWebPolicyTransport(
         require(AppleMusicWebOperationRegistry.allows(capability, path)) {
             "Apple Web operation is not authorized for capability"
         }
+        if (path.contains("/apple-curators/")) {
+            require(params == mapOf("platform" to "web", "include" to "grouping,playlists")) {
+                "Unsupported Apple curator operation"
+            }
+        }
         if (path.startsWith("/v1/editorial/")) {
             if (path.endsWith("/groupings")) {
                 require(params["platform"] == "web" &&

@@ -107,6 +107,18 @@ internal class AppleMusicWebEditorialGateway(
             AppleMusicWebOutcome.Complete(catalog.browseRooms(storefront, genreId))
         }
 
+    suspend fun searchAppleCurators(query: String, country: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebCuratorRef>>> =
+        guarded(ProviderCapability.CATALOG_SEARCH, country) { storefront ->
+            AppleMusicWebOutcome.Complete(catalog.searchAppleCurators(query, storefront))
+        }
+
+    suspend fun appleCurator(id: String, country: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebCurator>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
+            catalog.appleCurator(id, storefront)
+        }
+
     suspend fun roomContents(room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25, cursor: String? = null):
         ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebRoomPage>> =
         guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, room.storefront) { storefront ->

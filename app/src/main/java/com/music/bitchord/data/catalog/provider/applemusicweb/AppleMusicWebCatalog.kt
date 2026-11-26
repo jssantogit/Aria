@@ -492,6 +492,11 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             throw AppleMusicWebProtocolException("Invalid grouping envelope")
         val grouping = body.objects("data").singleOrNull()
             ?: throw AppleMusicWebProtocolException("Missing or ambiguous grouping")
+        return groupingRooms(grouping, sf, genreId)
+    }
+
+    private fun groupingRooms(grouping: JsonObject, sf: String, genreId: String?,
+        curatorId: String? = null): List<AppleMusicWebRoomRef> {
         val tabs = grouping.obj("relationships")?.obj("tabs")
             ?: throw AppleMusicWebProtocolException("Missing grouping tabs")
         if (tabs["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid grouping tabs")
@@ -511,9 +516,56 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
                     ?: throw AppleMusicWebProtocolException("Invalid room identity")
                 if (link.str("type")?.let { it != "rooms" } == true)
                     throw AppleMusicWebProtocolException("Wrong room linkage type")
-                AppleMusicWebRoomRef(sf, genreId, id, title)
+                AppleMusicWebRoomRef(sf, genreId, id, title, curatorId)
             }
         }.distinct()
+    }
+
+    /** Official editorial brands are a separate resource type from genres and
+     * external curators. Never coerce an external curator into an Apple brand. */
+    suspend fun searchAppleCurators(query: String, country: String, limit: Int = 25): List<AppleMusicWebCuratorRef> {
+        val sf = storefront(country)
+        require(query.isNotBlank() && query.length <= 120 && query.none(Char::isISOControl))
+        require(limit in 1..25)
+        val body = parse(transport.get(ProviderCapability.CATALOG_SEARCH,
+            "/v1/catalog/$sf/search", mapOf("term" to query, "types" to "apple-curators", "limit" to limit.toString())))
+        if ("errors" in body) throw AppleMusicWebProtocolException("Curator search error")
+        val results = body.obj("results") ?: throw AppleMusicWebProtocolException("Missing curator results")
+        val block = results.obj("apple-curators")
+            ?: if (results.isEmpty()) return emptyList() else throw AppleMusicWebProtocolException("Missing curator result type")
+        if (block["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid curator results")
+        return block.objects("data").map { curatorRef(it, sf) }.distinctBy { it.id }
+    }
+
+    private fun curatorRef(raw: JsonObject, sf: String): AppleMusicWebCuratorRef {
+        if (raw.str("type") != "apple-curators") throw AppleMusicWebProtocolException("Wrong curator type")
+        val id = raw.str("id")?.takeIf { it.matches(Regex("[0-9]{1,12}")) }
+            ?: throw AppleMusicWebProtocolException("Invalid curator identity")
+        val attr = raw.obj("attributes") ?: throw AppleMusicWebProtocolException("Missing curator attributes")
+        val name = attr.str("name") ?: throw AppleMusicWebProtocolException("Missing curator name")
+        return AppleMusicWebCuratorRef(id, sf, name, attr.str("shortName"))
+    }
+
+    suspend fun appleCurator(id: String, country: String): AppleMusicWebOutcome<AppleMusicWebCurator> {
+        val sf = storefront(country)
+        require(id.matches(Regex("[0-9]{1,12}")))
+        val path = "/v1/catalog/$sf/apple-curators/$id"
+        val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path,
+            mapOf("platform" to "web", "include" to "grouping,playlists")))
+        if ("errors" in body || body["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid curator envelope")
+        val raw = body.objects("data").singleOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing or ambiguous curator")
+        val identity = curatorRef(raw, sf)
+        if (identity.id != id) throw AppleMusicWebProtocolException("Wrong curator identity")
+        val grouping = raw.obj("relationships")?.obj("grouping")
+        if (grouping == null)
+            return AppleMusicWebOutcome.Unavailable("Curator has no grouping relationship")
+        if (grouping["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid curator grouping")
+        val groups = grouping.objects("data")
+        if (groups.isEmpty()) return AppleMusicWebOutcome.Unavailable("Curator grouping absent")
+        val rooms = groups.flatMap { groupingRooms(it, sf, null, id) }.distinct()
+        return AppleMusicWebOutcome.Complete(AppleMusicWebCurator(identity, rooms))
     }
 
     suspend fun roomContents(

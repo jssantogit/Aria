@@ -142,12 +142,46 @@ class AppleMusicWebChartsTest {
         assertEquals(15, corpus.size)
         var failed = 0
         for (tag in corpus) {
+            // Prioritize verified Apple editorial brands before textual
+            // fallback. Chart/genre identities remain independent.
+            val curatorSearch = gateway.searchAppleCurators("Apple Music " + tag, "br")
+            val curatorCandidates = ((curatorSearch as? ProviderCallResult.Success)?.value?.outcome
+                as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+            val curator = resolveAppleMusicWebGenreCurator(curatorCandidates, "br", tag)
+            val curatorRead = curator?.let { gateway.appleCurator(it.id, "br") }
+            val curatorPage = ((curatorRead as? ProviderCallResult.Success)?.value?.outcome
+                as? AppleMusicWebOutcome.Complete)?.value
+                ?.takeIf { resolveAppleMusicWebGenreCurator(listOf(it.identity), "br", tag) != null }
+            val curatorAlbums = linkedSetOf<String>()
+            var curatorReads = 0
+            var curatorFailures = 0
+            if (curatorPage != null) {
+                for (room in curatorPage.rooms.filter(::isAppleMusicWebCuratorReleaseRoom).take(3)) {
+                    curatorReads++
+                    val read = gateway.roomContents(room, AppleMusicWebKind.ALBUM)
+                    val page = ((read as? ProviderCallResult.Success)?.value?.outcome
+                        as? AppleMusicWebOutcome.Complete)?.value
+                    if (page == null) curatorFailures++
+                    curatorAlbums += page?.items.orEmpty().map { it.scopedId }
+                }
+            }
+            val landingTarget = if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4
+            val curatorSufficient = curatorAlbums.size >= landingTarget && curatorFailures == 0
+            println("AMS_CANONICAL_GENRE|tag=$tag|curator_candidates=" + curatorCandidates.size +
+                "|curator_matched=" + (curator != null) + "|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
+                "|curator_albums=" + curatorAlbums.size + "|curator_reads=$curatorReads|curator_failures=$curatorFailures" +
+                "|curator_search_reason=" + diagnostic(curatorSearch) +
+                "|curator_detail_reason=" + (curatorRead?.let(::diagnostic) ?: "not_applicable"))
             var genre = resolveAppleMusicWebCanonicalGenre(native.orEmpty(), "br", tag)
             var discoveryReads = 0
             var candidateRows = 0
             var matchingLabels = 0
             var discoveryFailures = 0
             var provenance = if (genre != null) "native_index" else "unmapped"
+            if (genre == null && curatorSufficient) {
+                println("AMS_CANONICAL_GENRE|tag=$tag|status=curator_editorial|native_genre_id=unmapped|albums=" + curatorAlbums.size)
+                continue
+            }
             if (genre == null) {
                 val linked = mutableListOf<AppleMusicWebGenre>()
                 // Search only nominates albums. A genre name and its native ID
@@ -202,13 +236,15 @@ class AppleMusicWebChartsTest {
             val page = ((chart as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
             val grouping = gateway.browseRooms("br",genre.id)
             val rooms = ((grouping as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
-            val editorialAbsent = diagnostic(grouping) == "http_404"
+            val grouping404 = diagnostic(grouping) == "http_404"
             val enough = page != null && page.items.size >=
                 (if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4)
-            if (!enough || (rooms == null && !editorialAbsent)) failed++
+            if ((!enough && !curatorSufficient) ||
+                (rooms == null && !grouping404 && !curatorSufficient)) failed++
             println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
-                (if (!enough) "interrupted" else if (rooms != null) "observed"
-                    else if (editorialAbsent) "chart_only_editorial_absent" else "interrupted") +
+                (if (curatorSufficient) "curator_editorial" else if (!enough) "interrupted"
+                    else if (rooms != null) "observed"
+                    else if (grouping404) "chart_only_grouping_404" else "interrupted") +
                 "|albums=" + (page?.items?.size ?: 0) + "|rooms=" + (rooms?.size ?: 0) +
                 "|provenance=$provenance|discovery_reads=$discoveryReads|discovery_failures=$discoveryFailures" +
                 "|chart_reason=" + diagnostic(chart) + "|grouping_reason=" + diagnostic(grouping))

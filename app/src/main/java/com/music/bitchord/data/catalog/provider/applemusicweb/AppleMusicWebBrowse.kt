@@ -5,6 +5,7 @@ import java.util.Locale
 
 internal data class AppleMusicWebRoomRef(
     val storefront: String, val genreId: String?, val id: String, val title: String,
+    val curatorId: String? = null,
 )
 internal data class AppleMusicWebRoomPage(
     val room: AppleMusicWebRoomRef, val kind: AppleMusicWebKind,
@@ -27,6 +28,6 @@ internal fun resolveAppleMusicWebHomeRoom(
         .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     val keys = shelf.labels.map(::fold).toSet()
-    return rooms.filter { it.storefront == storefront && it.genreId == null && fold(it.title) in keys }
+    return rooms.filter { it.storefront == storefront && it.genreId == null && it.curatorId == null && fold(it.title) in keys }
         .distinctBy { it.id }.singleOrNull()
 }
