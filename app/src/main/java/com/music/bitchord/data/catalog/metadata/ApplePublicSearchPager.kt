@@ -662,8 +662,8 @@ internal class ApplePublicSearchPager(
                 return@mapNotNull null
             id to applePublicAlbumWorkKey(album.title)
         }.distinct().groupingBy { it.first }.eachCount()
-        val ranked = rows.values.sortedByDescending {
-            (support[it.id] ?: 0).takeIf { count -> count >= 2 }?.coerceAtMost(3) ?: 0
+        val ranked = boundedNativeArtistEvidenceOrder(rows.values.toList()) {
+            support[it.id] ?: 0
         }
         rows.clear()
         ranked.forEach { rows[it.id] = it }
@@ -742,6 +742,17 @@ internal class ApplePublicSearchPager(
         diversified.forEach { rows[it.id] = it }
     }
 
+    /** Before publication only: preserve all track IDs while diversifying
+     * visually indistinguishable rows with confirmed native credits. */
+    private fun diversifyInitialSongLanding() {
+        if (entity != ItunesCatalogEntity.SONG) return
+        val ranked = diversifyNativeTrackLanding(rows.values.toList()) { row ->
+            row.artistId?.takeIf { it > 0 }?.let { it to applePublicSearchFold(row.title) }
+        }
+        rows.clear()
+        ranked.forEach { rows[it.id] = it }
+    }
+
     suspend fun start(): ApplePublicSearchPageLoad {
         if (initialized) return ApplePublicSearchPageLoad.Success(snapshot())
         if (query.trim().isEmpty() || query.length > 120 ||
@@ -768,6 +779,7 @@ internal class ApplePublicSearchPager(
                 probeFullAlbumLanding()
                 recoverWeakAlbumLanding()
                 rankInitialAlbumLanding()
+                diversifyInitialSongLanding()
                 visibleCount = minOf(pageSize, rows.size)
                 // An uncapped fuzzy batch can also be entirely irrelevant.
                 // Spend the same bounded official attribute probes only for

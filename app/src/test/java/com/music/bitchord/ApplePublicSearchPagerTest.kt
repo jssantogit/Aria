@@ -476,6 +476,25 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, probes)
     }
 
+    @Test fun songLandingDiversifiesSameCreditAndTitleWithoutMergingTracks() = runBlocking {
+        val originals = (1L..7L).map { id ->
+            album(id, title = "Song").copy(type = ItunesCatalogItemType.TRACK)
+        }
+        val live = originals.first().copy(id = 8, title = "Song (Live)")
+        val namesake = originals.first().copy(id = 9, artistId = 99)
+        val unknown = originals.first().copy(id = 10, artistId = null)
+        val all = originals + listOf(live, namesake, unknown)
+        val fake = Fake(ItunesCatalogResult.Success(all)).apply { expectedQuery = "Song" }
+        val pager = ApplePublicSearchPager("Song", ItunesCatalogEntity.SONG, "br", 5, fake)
+        val first = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L, 2L, 9L, 10L, 8L), first.visible.map { it.id })
+        assertEquals(all.size, first.discoveredCount)
+        val continued = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(first.visible, continued.visible.take(5))
+        assertEquals(all.map { it.id }.toSet(), continued.visible.map { it.id }.toSet())
+        assertEquals(1, fake.calls.size)
+    }
+
     @Test fun songsAndAlbumsMatchExactArtistOrActualWorkTitleNotNamesakes() =
         runBlocking {
             fun song(id: Long, artist: String, title: String) =

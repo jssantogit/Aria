@@ -260,6 +260,22 @@ internal fun <T> publicMusicBrainzWorkRows(
     query: String, hits: List<T>, title: (T) -> String, credit: (T) -> String?,
 ): List<T> = hits.filter { publicMusicBrainzWorkMatches(query, title(it), credit(it)) }
 
+/** Interactive visual ranking only; keep every independent recording. */
+internal fun publicMusicBrainzRecordingRows(
+    query: String, hits: List<MusicBrainzRecordingHit>, diversify: Boolean = true,
+): List<MusicBrainzRecordingHit> {
+    val matched = publicMusicBrainzWorkRows(query, hits,
+        MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
+    if (!diversify) return matched
+    val curated = matched.filter(::isCuratedMusicBrainzRecording)
+    val others = matched.filterNot(::isCuratedMusicBrainzRecording)
+    return diversifyNativeTrackLanding(curated) { hit ->
+        hit.artistCreditMbids?.takeIf { it.isNotEmpty() }?.let {
+            it to musicBrainzPublicSearchKey(hit.title)
+        }
+    } + others
+}
+
 private fun <T> MusicBrainzCatalogSearchResult<T>.publicProjection(
     select: (List<T>) -> List<T>,
 ): MusicBrainzCatalogSearchResult<T> = when (this) {
@@ -358,16 +374,15 @@ internal class MusicBrainzCatalogSearch(
                     return@mapNotNull null
                 id to musicBrainzPublicSearchKey(work.title)
             }.distinct().groupingBy { it.first }.eachCount()
-        val ranked = display.page.items.sortedByDescending {
-            (support[it.musicBrainzId] ?: 0).takeIf { count -> count >= 2 }?.coerceAtMost(3) ?: 0
+        val ranked = boundedNativeArtistEvidenceOrder(display.page.items) {
+            support[it.musicBrainzId] ?: 0
         }
         return display.copy(page = display.page.copy(items = ranked))
     }
 
     suspend fun searchPublicRecordings(query: String, limit: Int = 50, offset: Int = 0) =
         searchRecordings(query, limit, offset, recoverWeakLanding = offset == 0)
-            .publicProjection { publicMusicBrainzWorkRows(query, it,
-                MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay) }
+            .publicProjection { publicMusicBrainzRecordingRows(query, it, diversify = offset == 0) }
 
     suspend fun searchPublicReleaseGroups(query: String, limit: Int = 50, offset: Int = 0) =
         searchReleaseGroups(query, limit, offset, recoverWeakLanding = offset == 0)

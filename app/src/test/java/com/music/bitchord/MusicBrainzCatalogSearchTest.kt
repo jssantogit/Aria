@@ -166,6 +166,38 @@ class MusicBrainzCatalogSearchTest {
         assertEquals(3, calls.size)
     }
 
+    @Test fun artistEvidenceCannotMoveNativeLeaderAcrossSeveralNamesakes() {
+        val ids = (1..10).toList()
+        val ranked = com.music.bitchord.data.catalog.metadata.boundedNativeArtistEvidenceOrder(ids) {
+            if (it in 5..10) 3 else 0
+        }
+        assertEquals(1, ranked.first())
+        assertEquals(ids.toSet(), ranked.toSet())
+        assertTrue(ids.all { kotlin.math.abs(ranked.indexOf(it) - ids.indexOf(it)) <= 1 })
+        assertEquals(ids, com.music.bitchord.data.catalog.metadata.boundedNativeArtistEvidenceOrder(ids) { 1 })
+    }
+
+    @Test fun trackLandingDiversifiesVisualFamiliesWithoutDeletingRecordings() {
+        val repeated = (1..7).map {
+            com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit(
+                "recording-$it", "Song", "Artist", 180000L,
+                hasOfficialAudioRelease = true,
+            ).also { hit -> hit.artistCreditMbids = listOf("artist-a") }
+        }
+        val alternate = repeated.first().copy(musicBrainzId = "live", title = "Song (Live)")
+            .also { it.artistCreditMbids = listOf("artist-a") }
+        val namesake = repeated.first().copy(musicBrainzId = "other")
+            .also { it.artistCreditMbids = listOf("artist-b") }
+        val unknown = repeated.first().copy(musicBrainzId = "unknown")
+        val original = repeated + listOf(alternate, namesake, unknown)
+        val visible = com.music.bitchord.data.catalog.metadata.publicMusicBrainzRecordingRows("Song", original)
+        assertEquals(listOf("recording-1", "recording-2", "live", "other", "unknown"),
+            visible.take(5).map { it.musicBrainzId })
+        assertEquals(original.map { it.musicBrainzId }.toSet(), visible.map { it.musicBrainzId }.toSet())
+        assertEquals(original, com.music.bitchord.data.catalog.metadata.publicMusicBrainzRecordingRows(
+            "Song", original, diversify = false))
+    }
+
     @Test fun exactArtistIdAndTitleCorroborationIsBoundedAndQuotesLiteralTitle() = runBlocking {
         val id = "11111111-1111-4111-8111-111111111111"
         val calls = mutableListOf<Map<String, String>>()

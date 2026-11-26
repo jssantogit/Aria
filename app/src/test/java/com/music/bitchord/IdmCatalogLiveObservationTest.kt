@@ -3162,6 +3162,10 @@ class IdmCatalogLiveObservationTest {
                 var appleQualifiedIdentityReads = 0
                 var mbAnchorFieldProbe = false
                 var mbAnchorArtistIdReads = 0
+                var mbRecordingExactRaw = 0
+                var mbRecordingExactOfficialAudio = 0
+                var mbRecordingExactMissingProof = 0
+                var mbRecordingExactUncurated = 0
                 var mbLandingRawTargetRank = 0
                 var mbLandingCuratedTargetRank = 0
                 val supported = provider != discogs || case.kind != "track"
@@ -3246,9 +3250,16 @@ class IdmCatalogLiveObservationTest {
                                     mbLandingRawTargetRank = raw.indexOfFirst {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     } + 1
-                                    val curated = publicMusicBrainzWorkRows(case.query, raw,
-                                        MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
-                                        .filter(::isCuratedMusicBrainzRecording)
+                                    val exactRaw = raw.filter {
+                                        case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
+                                    }
+                                    mbRecordingExactRaw = exactRaw.size
+                                    mbRecordingExactOfficialAudio = exactRaw.count { it.hasOfficialAudioRelease == true }
+                                    mbRecordingExactMissingProof = exactRaw.count { it.hasOfficialAudioRelease == null }
+                                    mbRecordingExactUncurated = exactRaw.count { !isCuratedMusicBrainzRecording(it) }
+                                    val curated = com.music.bitchord.data.catalog.metadata.publicMusicBrainzRecordingRows(
+                                        case.query, raw,
+                                    ).filter(::isCuratedMusicBrainzRecording)
                                     mbLandingCuratedTargetRank = curated.indexOfFirst {
                                         case.titleMatches(it.title) && case.artistMatches(it.artistDisplay)
                                     } + 1
@@ -3689,6 +3700,10 @@ class IdmCatalogLiveObservationTest {
                         "apple_qualified_identity_reads" to appleQualifiedIdentityReads,
                         "mb_anchor_field_probe" to if (mbAnchorFieldProbe) 1 else 0,
                         "mb_anchor_artist_id_reads" to mbAnchorArtistIdReads,
+                        "mb_recording_exact_raw" to mbRecordingExactRaw,
+                        "mb_recording_exact_official_audio" to mbRecordingExactOfficialAudio,
+                        "mb_recording_exact_missing_proof" to mbRecordingExactMissingProof,
+                        "mb_recording_exact_uncurated" to mbRecordingExactUncurated,
                         "mb_landing_raw_target_rank" to mbLandingRawTargetRank,
                         "mb_landing_curated_target_rank" to mbLandingCuratedTargetRank,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
