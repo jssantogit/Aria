@@ -115,7 +115,11 @@ internal data class MusicBrainzRecordingHit(
     val isVideo: Boolean? = null,
     /** Direct MusicBrainz Recording -> Official Release -> audio ReleaseGroup. */
     val coverGroupMbid: String? = null,
-)
+) {
+    /** Search response's distinct official audio release IDs, not popularity.
+     * Never stored as recording identity or used to authorize playback. */
+    @Ignore var searchOfficialAudioReleaseMbids: Set<String> = emptySet()
+}
 
 /**
  * Read-only search endpoint for the independent catalog.
@@ -583,6 +587,22 @@ internal class MusicBrainzCatalogSearch(
         else "$field:${quote(query)}$suffix"
     }
 
+    /**
+     * Exact title ties may carry different amounts of positive source
+     * evidence. Use the already-returned official audio releases as a
+     * bounded tie-breaker, not a popularity assertion. No credit is guessed.
+     */
+    private fun rankPublicRecordingLanding(
+        query: String, items: List<MusicBrainzRecordingHit>,
+    ): List<MusicBrainzRecordingHit> = items.sortedWith(compareBy<MusicBrainzRecordingHit> {
+        musicBrainzPublicSearchRank(query, it.title, it.artistDisplay)
+    }.thenByDescending {
+        if (isCuratedMusicBrainzRecording(it) &&
+            musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1)
+            it.searchOfficialAudioReleaseMbids.size.coerceAtMost(20)
+        else 0
+    })
+
     suspend fun searchRecordings(
         query: String,
         limit: Int = 25,
@@ -595,32 +615,41 @@ internal class MusicBrainzCatalogSearch(
         if (!recoverWeakLanding || capability != ProviderCapability.CATALOG_SEARCH ||
             initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
             limit != MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
-            query.any(Char::isISOControl) ||
-            initial.page.items.any {
-                isCuratedMusicBrainzRecording(it) &&
-                    musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1
-            }
+            query.any(Char::isISOControl)
         ) return initial
+        val ranked = initial.copy(page = initial.page.copy(
+            items = rankPublicRecordingLanding(query, initial.page.items),
+        ))
+        if (ranked.page.items.any {
+            isCuratedMusicBrainzRecording(it) &&
+                musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1
+        }) return ranked
 
         // One bounded independent fielded probe for a weak public landing.
         // Source credits may nominate a compound split, but may never supply
         // an artist ID or override the full query's textual relevance.
         val fielded = publicWorkProbeQuery("recording", query,
             initial.page.items.map { it.artistDisplay }, " AND status:official")
-        val probe = searchRecordingsInternal(fielded, 12, 0, fieldedQuery = true)
-            as? MusicBrainzCatalogSearchResult.Success ?: return initial
+        // A single literal work phrase without a source-supported credit
+        // boundary needs a broader candidate window for common titles.
+        // Reuse the same one request; compound credit probes retain 12.
+        val probeLimit = if (fielded.contains(" AND artist:")) 12
+            else MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT
+        val probe = searchRecordingsInternal(fielded, probeLimit, 0, fieldedQuery = true)
+            as? MusicBrainzCatalogSearchResult.Success ?: return ranked
         val original = initial.page.items.associateBy { it.musicBrainzId }
         val recovered = probe.page.items.filter {
             isCuratedMusicBrainzRecording(it) &&
                 musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1 &&
                 (original[it.musicBrainzId]?.let { old -> old == it } ?: true)
         }
-        if (recovered.isEmpty()) return initial
+        if (recovered.isEmpty()) return ranked
         // Keep the original cursor: the independent query did not consume
         // any offsets of the user's original upstream result.
         val merged = (initial.page.items + recovered).distinctBy { it.musicBrainzId }
-            .sortedBy { musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) }
-        return initial.copy(page = initial.page.copy(items = merged))
+        return initial.copy(page = initial.page.copy(
+            items = rankPublicRecordingLanding(query, merged),
+        ))
     }
 
     /**
@@ -694,7 +723,12 @@ internal class MusicBrainzCatalogSearch(
                             else -> audioReleases.isNotEmpty()
                         },
                         isVideo = recording.video,
-                    )
+                    ).also { hit ->
+                        if (recording.video != true) {
+                            hit.searchOfficialAudioReleaseMbids = audioReleases
+                                .mapNotNull { it.id.validSearchMbidOrNull() }.toSet()
+                        }
+                    }
                 }
             }
         }

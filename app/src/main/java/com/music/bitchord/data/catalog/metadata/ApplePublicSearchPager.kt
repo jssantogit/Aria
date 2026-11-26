@@ -670,8 +670,25 @@ internal class ApplePublicSearchPager(
                 support[family(it)] ?: 0
             else 0
         })
+        // In a title-only search, a single work family with many editions
+        // must not monopolize the exact-title part of the landing. Give each
+        // distinct native identity one representative before its extra
+        // editions, preserving the evidence order and every original ID.
+        // Compound artist/title queries remain scoped by their explicit text.
+        val exactTitle = ranked.filter { applePublicSearchFold(it.title) == term }
+        val diversified = if (exactTitle.size >= 2) {
+            val seen = mutableSetOf<Family>()
+            val leading = exactTitle.filter { row ->
+                val key = family(row)
+                key == null || seen.add(key)
+            }
+            val leadingIds = leading.map { it.id }.toSet()
+            val titleIds = exactTitle.map { it.id }.toSet()
+            val reordered = (leading + exactTitle.filter { it.id !in leadingIds }).iterator()
+            ranked.map { if (it.id in titleIds) reordered.next() else it }
+        } else ranked
         rows.clear()
-        ranked.forEach { rows[it.id] = it }
+        diversified.forEach { rows[it.id] = it }
     }
 
     suspend fun start(): ApplePublicSearchPageLoad {

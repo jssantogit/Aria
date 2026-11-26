@@ -679,7 +679,7 @@ jobs:
                   "apple_continuation_qualified_recovered", "apple_continuation_interrupted",
                   "apple_landing_discovered_target_rank", "apple_landing_discovered_qualified_rank",
                   "apple_qualified_identity_verified", "apple_qualified_identity_reads",
-                  "mb_anchor_field_probe", "mb_landing_raw_target_rank", "mb_landing_curated_target_rank",
+                  "mb_anchor_field_probe", "mb_anchor_artist_id_reads", "mb_landing_raw_target_rank", "mb_landing_curated_target_rank",
                   "source_interruption", "elapsed_ms")
           scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
           providers = ("musicbrainz", "itunes") if scope == "itunes-musicbrainz-search" else ("musicbrainz", "itunes", "discogs")

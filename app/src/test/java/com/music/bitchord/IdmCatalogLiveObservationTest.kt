@@ -3109,6 +3109,7 @@ class IdmCatalogLiveObservationTest {
                 var appleQualifiedIdentityVerified = false
                 var appleQualifiedIdentityReads = 0
                 var mbAnchorFieldProbe = false
+                var mbAnchorArtistIdReads = 0
                 var mbLandingRawTargetRank = 0
                 var mbLandingCuratedTargetRank = 0
                 val supported = provider != discogs || case.kind != "track"
@@ -3149,6 +3150,27 @@ class IdmCatalogLiveObservationTest {
                                             case.anchor, case.title,
                                         ) as? MusicBrainzCatalogSearchResult.Success
                                         credits = matchingCredits(exact?.page?.items.orEmpty())
+                                    }
+                                    if (credits.isEmpty() && !case.anchor.isNullOrBlank()) {
+                                        // Last independent evidence route: inspect the native
+                                        // discographies of at most three literal namesakes already
+                                        // present in the search landing. Never promote an artist
+                                        // solely for matching text or change the landing order.
+                                        val namesakes = response?.page?.items.orEmpty().filter {
+                                            case.artistMatches(it.name)
+                                        }.distinctBy { it.musicBrainzId }.take(3)
+                                        for (artist in namesakes) {
+                                            mbAnchorArtistIdReads++
+                                            val discography = mbSearch.searchReleaseGroupsForArtistMbid(
+                                                artist.musicBrainzId, limit = 50,
+                                            ) as? MusicBrainzCatalogSearchResult.Success
+                                            val found = matchingCredits(discography?.page?.items.orEmpty())
+                                                .filter { it == artist.musicBrainzId }
+                                            if (found.isNotEmpty()) {
+                                                credits = found
+                                                break
+                                            }
+                                        }
                                     }
                                     provenIds += credits.map { "catalog:ARTIST:$it" }
                                     mbLandingRawTargetRank = rows.indexOfFirst { it.id in provenIds } + 1
@@ -3563,6 +3585,7 @@ class IdmCatalogLiveObservationTest {
                         "apple_qualified_identity_verified" to if (appleQualifiedIdentityVerified) 1 else 0,
                         "apple_qualified_identity_reads" to appleQualifiedIdentityReads,
                         "mb_anchor_field_probe" to if (mbAnchorFieldProbe) 1 else 0,
+                        "mb_anchor_artist_id_reads" to mbAnchorArtistIdReads,
                         "mb_landing_raw_target_rank" to mbLandingRawTargetRank,
                         "mb_landing_curated_target_rank" to mbLandingCuratedTargetRank,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)

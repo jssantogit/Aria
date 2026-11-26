@@ -190,6 +190,43 @@ class MusicBrainzCatalogSearchTest {
         assertEquals(6, calls.size)
     }
 
+    @Test fun ambiguousTitleRecoveryUsesOneBroaderFieldProbeAndOfficialAudioEvidence() = runBlocking {
+        val wrong = "11111111-1111-4111-8111-111111111111"
+        val first = "22222222-2222-4222-8222-222222222222"
+        val supported = "33333333-3333-4333-8333-333333333333"
+        val releaseA = "44444444-4444-4444-8444-444444444444"
+        val releaseB = "55555555-5555-4555-8555-555555555555"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    calls += parameters
+                    return if (parameters["dismax"] == "false") {
+                        """{"count":2,"offset":0,"recordings":[
+                            {"id":"$first","title":"Work","artist-credit":[{"name":"First"}],
+                             "releases":[{"id":"$releaseA","status":"Official","release-group":{"primary-type":"Album"}}]},
+                            {"id":"$supported","title":"Work","artist-credit":[{"name":"Second"}],
+                             "releases":[{"id":"$releaseA","status":"Official","release-group":{"primary-type":"Album"}},
+                                         {"id":"$releaseB","status":"Official","release-group":{"primary-type":"Single"}},
+                                         {"id":"$releaseB","status":"Official","release-group":{"primary-type":"Single"}}]}
+                        ]}"""
+                    } else """{"count":90,"offset":0,"recordings":[
+                        {"id":"$wrong","title":"Other Work","artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchRecordings("Work", 50, recoverWeakLanding = true)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(supported, first, wrong), result.page.items.map { it.musicBrainzId })
+        assertEquals(2, result.page.items.first().searchOfficialAudioReleaseMbids.size)
+        assertEquals(1, result.page.nextOffset)
+        assertEquals(2, calls.size)
+        assertEquals("50", calls[1]["limit"])
+        assertEquals("recording:\"Work\" AND status:official", calls[1]["query"])
+    }
+
     @Test fun sameNameArtistScopeRequiresAnUnambiguousSourceIdentity() {
         val artist = com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit(
             "11111111-1111-4111-8111-111111111111", "Beyoncé", null, null)

@@ -643,6 +643,26 @@ class ApplePublicSearchPagerTest {
         assertEquals(initial.visible, pager.snapshot().visible)
     }
 
+    @Test fun titleOnlyAlbumLandingDiversifiesExactNamesakesWithoutMergingEditions() = runBlocking {
+        val query = "Example Work"
+        val dominant = (1L..7L).map {
+            album(it, title = query).copy(artistName = "First Artist", artistId = 88)
+        }
+        val other = album(20, title = query).copy(artistName = "Second Artist", artistId = 99)
+        val variant = other.copy(id = 21, title = "$query (Remastered)")
+        val unknown = other.copy(id = 22, artistId = null)
+        val fake = Fake(ItunesCatalogResult.Success(dominant + listOf(other, variant, unknown)))
+            .apply { expectedQuery = query }
+        val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM, "br", 5, fake)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L, 20L, 22L, 2L, 3L), initial.visible.map { it.id })
+        while (pager.snapshot().hasMore) pager.loadMore()
+        assertEquals(initial.visible, pager.snapshot().visible.take(5))
+        assertEquals((dominant + listOf(other, variant, unknown)).map { it.id }.toSet(),
+            pager.snapshot().visible.map { it.id }.toSet())
+        assertEquals(1, fake.calls.size)
+    }
+
     @Test fun cappedMixedAlbumLandingConsumesTitleFieldBeforePublishingButKeepsArtistListingFast() = runBlocking {
         val weak = (1L..25L).map { album(it, title = "Example Work Variant $it") }
         val exact = album(100, title = "Example Work")
