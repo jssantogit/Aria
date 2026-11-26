@@ -403,6 +403,83 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         return AppleMusicWebChartPage(block.str("name"), sf, genreId, kind, rows, next)
     }
 
+    /** Apple's public chart directory, distinct from the most-played endpoint. */
+    suspend fun dailyChartDirectory(): List<AppleMusicWebDailyChartRef> {
+        val body = parse(transport.get(ProviderCapability.CHART_MOST_PLAYED,
+            "/v1/catalog/us/charts", mapOf("chartId" to "119", "limit" to "200", "l" to "en-US")))
+        if ("errors" in body) throw AppleMusicWebProtocolException("Daily chart error envelope")
+        val block = body.obj("results")?.objects("dailyGlobalTopCharts")?.singleOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing daily chart directory")
+        if (block["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid daily chart directory")
+        val rows = block.objects("data").map { raw ->
+            if (raw.str("type") != "playlists") throw AppleMusicWebProtocolException("Wrong daily chart resource")
+            val id = resourceId(raw.str("id") ?: throw AppleMusicWebProtocolException("Missing ID"), AppleMusicWebKind.PLAYLIST)
+            val name = raw.obj("attributes")?.str("name")
+                ?: throw AppleMusicWebProtocolException("Missing daily chart title")
+            AppleMusicWebDailyChartRef(id, name)
+        }
+        if (rows.distinctBy { it.id }.size != rows.size)
+            throw AppleMusicWebProtocolException("Duplicate daily chart resource")
+        return rows
+    }
+
+    /** Exact chart playlist ID observed in the directory; no foreign-market fallback.
+     * Do not silently renumber missing songs or publish a partial chart as Top 100. */
+    suspend fun dailyChart(
+        region: String, entry: AppleMusicWebDailyChartRef,
+    ): AppleMusicWebOutcome<AppleMusicWebDailyChart> {
+        require(resolveAppleMusicWebDailyChart(listOf(entry), region) == entry)
+        val sf = if (region == "global") "us" else storefront(region)
+        val id = resourceId(entry.id, AppleMusicWebKind.PLAYLIST)
+        val path = "/v1/catalog/$sf/playlists/$id"
+        val body = parse(transport.get(ProviderCapability.CHART_MOST_PLAYED, path,
+            mapOf("include" to "tracks")))
+        if ("errors" in body) throw AppleMusicWebProtocolException("Daily chart error envelope")
+        val root = body.objects("data").singleOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing chart playlist")
+        if (root.str("id") != id || root.str("type") != "playlists")
+            throw AppleMusicWebProtocolException("Wrong chart playlist identity")
+        val identity = convert(root, sf) ?: throw AppleMusicWebProtocolException("Invalid chart playlist")
+        var block = root.obj("relationships")?.obj("tracks")
+            ?: throw AppleMusicWebProtocolException("Missing chart tracklist")
+        val rows = mutableListOf<AppleMusicWebItem>()
+        val seen = hashSetOf<String>()
+        val visited = hashSetOf<String>()
+        val allowed = setOf("$path/tracks", "$path/relationships/tracks")
+        var incomplete = false
+        for (page in 1..5) {
+            if (block["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid chart tracklist")
+            for (raw in block.objects("data")) {
+                if (raw.str("type") != "songs") throw AppleMusicWebProtocolException("Wrong daily chart track type")
+                val song = convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid chart song")
+                resourceId(song.id, AppleMusicWebKind.SONG)
+                if (!seen.add(song.scopedId)) throw AppleMusicWebProtocolException("Duplicate daily chart song")
+                rows += song
+                if (rows.size > 100) throw AppleMusicWebProtocolException("Oversized daily chart")
+            }
+            val next = block.str("next")
+            if (next == null) break
+            if (rows.size == 100 || page == 5 || block.objects("data").isEmpty()) {
+                incomplete = true
+                break
+            }
+            if (!visited.add(next)) throw AppleMusicWebProtocolException("Cyclic daily chart cursor")
+            val nextPath = runCatching { URI(next).path }.getOrNull()
+                ?: throw AppleMusicWebProtocolException("Malformed daily chart cursor")
+            if (nextPath !in allowed) throw AppleMusicWebProtocolException("Foreign daily chart cursor")
+            val args = follow(next, nextPath)
+            if (args.keys.any { it !in setOf("offset", "limit", "l") })
+                throw AppleMusicWebProtocolException("Changed daily chart cursor")
+            block = parse(transport.get(ProviderCapability.CHART_MOST_PLAYED, nextPath,
+                mapOf("limit" to (100 - rows.size).toString()) + args))
+            if ("errors" in block) throw AppleMusicWebProtocolException("Daily chart error envelope")
+        }
+        val result = AppleMusicWebDailyChart(region, identity, rows)
+        return if (incomplete || rows.size != 100)
+            AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.PAGE_LIMIT)
+        else AppleMusicWebOutcome.Complete(result)
+    }
+
     /** Resolve actual linked editorial rooms, including empty previews. */
     suspend fun browseRooms(country: String, genreId: String? = null): List<AppleMusicWebRoomRef> {
         val sf = storefront(country)

@@ -127,6 +127,38 @@ internal class AppleMusicWebEditorialGateway(
             AppleMusicWebOutcome.Complete(page)
         }
 
+    suspend fun dailyChartDirectory():
+        ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebDailyChartRef>>> =
+        guarded(ProviderCapability.CHART_MOST_PLAYED, "us") {
+            AppleMusicWebOutcome.Complete(catalog.dailyChartDirectory())
+        }
+
+    suspend fun dailyChart(region: String, entry: AppleMusicWebDailyChartRef):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebDailyChart>> =
+        guarded(ProviderCapability.CHART_MOST_PLAYED, if (region == "global") "us" else region) { storefront ->
+            val outcome = catalog.dailyChart(region, entry)
+            when (outcome) {
+                is AppleMusicWebOutcome.Complete -> validateItems(outcome.value.songs, storefront, setOf(AppleMusicWebKind.SONG))
+                is AppleMusicWebOutcome.Partial -> validateItems(outcome.value.songs, storefront, setOf(AppleMusicWebKind.SONG))
+                is AppleMusicWebOutcome.Unavailable -> Unit
+            }
+            outcome
+        }
+
+    /** Search evidence only: exact genre label, no claim to editorial rank.
+     * Search permission remains independent of discography and charts. */
+    suspend fun genreAlbumSearchPage(tag: String, country: String, cursor: String? = null):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebGenreAlbumPage>> =
+        guarded(ProviderCapability.CATALOG_SEARCH, country) { storefront ->
+            val page = catalog.search(AppleMusicWebKind.ALBUM, tag, storefront,
+                page = if (cursor == null) 1 else 2, limit = 25, continuation = cursor)
+            validateItems(page.items, storefront, setOf(AppleMusicWebKind.ALBUM))
+            AppleMusicWebOutcome.Complete(AppleMusicWebGenreAlbumPage(
+                page.items.filter { item -> item.genreNames.any { appleMusicWebGenreNameMatches(it, tag) } },
+                page.items.size, page.nextCursor,
+            ))
+        }
+
     suspend fun artist(
         id: String,
         country: String,

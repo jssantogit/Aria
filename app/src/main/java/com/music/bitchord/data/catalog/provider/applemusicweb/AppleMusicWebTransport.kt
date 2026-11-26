@@ -174,10 +174,17 @@ internal class AppleMusicWebPolicyTransport(
             } else require(params.keys.all { it in setOf("limit", "offset", "l", "sort") })
         }
         if (capability == ProviderCapability.CHART_MOST_PLAYED) {
-            require(params["chart"] == "most-played" && params["types"] in setOf("songs", "albums") &&
-                params.keys.all { it in setOf("types", "chart", "genre", "limit", "offset", "l") }) {
-                "Unsupported Apple most-played chart operation"
+            val valid = when {
+                path.endsWith("/charts") && params["chartId"] == "119" ->
+                    path == "/v1/catalog/us/charts" &&
+                        params.keys.all { it in setOf("chartId", "limit", "l") }
+                path.endsWith("/charts") ->
+                    params["chart"] == "most-played" && params["types"] in setOf("songs", "albums") &&
+                        params.keys.all { it in setOf("types", "chart", "genre", "limit", "offset", "l") }
+                path.endsWith("/tracks") -> params.keys.all { it in setOf("offset", "limit", "l") }
+                else -> params == mapOf("include" to "tracks")
             }
+            require(valid) { "Unsupported Apple chart operation" }
         }
         require(params.size <= 30 && params.all { (name, value) ->
             name.length in 1..100 && value.length <= 4096 &&

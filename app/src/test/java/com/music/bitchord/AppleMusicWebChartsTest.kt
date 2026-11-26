@@ -171,7 +171,30 @@ class AppleMusicWebChartsTest {
                 if (genre != null) provenance = "album_relationship"
             }
             if (genre == null) {
-                println("AMS_CANONICAL_GENRE|tag=$tag|status=unmapped|candidates=$candidateRows|matching_labels=$matchingLabels" +
+                val seen = linkedSetOf<String>()
+                val visited = hashSetOf<String>()
+                var cursor: String? = null
+                var scanned = 0
+                var reads = 0
+                var interrupted = false
+                val target = if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4
+                for (index in 1..5) {
+                    reads++
+                    val response = gateway.genreAlbumSearchPage(tag, "br", cursor)
+                    val page = ((response as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+                    if (page == null) { interrupted = true; break }
+                    scanned += page.sourceRows
+                    seen += page.items.map { it.scopedId }
+                    if (seen.size >= target || page.nextCursor == null) break
+                    if (!visited.add(page.nextCursor)) { interrupted = true; break }
+                    cursor = page.nextCursor
+                }
+                val sufficient = seen.size >= target && !interrupted
+                if (!sufficient) failed++
+                println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
+                    (if (sufficient) "label_verified" else "label_sparse_or_interrupted") +
+                    "|native_id=unmapped|albums=" + seen.size + "|target=$target|scanned=$scanned|reads=$reads" +
+                    "|candidates=$candidateRows|matching_labels=$matchingLabels" +
                     "|discovery_reads=$discoveryReads|discovery_failures=$discoveryFailures")
                 continue
             }
@@ -179,14 +202,33 @@ class AppleMusicWebChartsTest {
             val page = ((chart as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
             val grouping = gateway.browseRooms("br",genre.id)
             val rooms = ((grouping as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
-            if (page == null || rooms == null) failed++
+            val editorialAbsent = diagnostic(grouping) == "http_404"
+            val enough = page != null && page.items.size >=
+                (if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4)
+            if (!enough || (rooms == null && !editorialAbsent)) failed++
             println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
-                (if (page != null && rooms != null) "observed" else "interrupted") +
+                (if (!enough) "interrupted" else if (rooms != null) "observed"
+                    else if (editorialAbsent) "chart_only_editorial_absent" else "interrupted") +
                 "|albums=" + (page?.items?.size ?: 0) + "|rooms=" + (rooms?.size ?: 0) +
                 "|provenance=$provenance|discovery_reads=$discoveryReads|discovery_failures=$discoveryFailures" +
                 "|chart_reason=" + diagnostic(chart) + "|grouping_reason=" + diagnostic(grouping))
         }
         assertEquals(0, failed)
+    }
+
+    @Test fun labelVerifiedSearchDoesNotInventGenreMembershipFromTitle() = runBlocking {
+        val catalog = AppleMusicWebCatalog(AppleMusicWebTransport { _, _, _ ->
+            """{"results":{"albums":{"data":[
+                {"id":"1","type":"albums","attributes":{"name":"House","genreNames":["Rock"]}},
+                {"id":"2","type":"albums","attributes":{"name":"Collection","genreNames":["House","Music"]}},
+                {"id":"3","type":"albums","attributes":{"name":"Other","genreNames":["Electronic"]}}
+            ]}}}"""
+        })
+        val gateway = AppleMusicWebEditorialGateway(catalog, gate(search))
+        val result = (gateway.genreAlbumSearchPage("house","br") as ProviderCallResult.Success).value.outcome as AppleMusicWebOutcome.Complete
+        assertEquals(3, result.value.sourceRows)
+        assertEquals(listOf("2"), result.value.items.map { it.id })
+        assertEquals(ProviderCallResult.Denied, AppleMusicWebEditorialGateway(catalog, gate(editorial)).genreAlbumSearchPage("house","br"))
     }
 
     @Test fun liveChartsAndGenres() = runBlocking {

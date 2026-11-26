@@ -36,7 +36,15 @@ internal object AppleMusicWebOperationRegistry {
             ProviderCapability.CATALOG_SEARCH ->
                 parts.size == 4 && parts[3] == "search"
             ProviderCapability.CHART_MOST_PLAYED ->
-                parts.size == 4 && parts[3] == "charts"
+                (parts.size == 4 && parts[3] == "charts") ||
+                    (parts.size in 5..7 && parts[3] == "playlists" &&
+                        Regex("pl\\.[A-Za-z0-9-]{6,}").matches(parts[4]) &&
+                        when (parts.size) {
+                            5 -> true
+                            6 -> parts[5] == "tracks"
+                            7 -> parts[5] == "relationships" && parts[6] == "tracks"
+                            else -> false
+                        })
             ProviderCapability.EDITORIAL_DISCOGRAPHY ->
                 when (parts[3]) {
                     "genres" -> parts.size == 4
