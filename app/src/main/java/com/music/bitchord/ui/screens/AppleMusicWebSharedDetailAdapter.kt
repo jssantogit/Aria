@@ -83,7 +83,8 @@ private fun tracks(
         NativeMetadataTrack(key=song.scopedId,title=song.title,credit=song.artistName,
             trackNumber=song.trackNumber?.takeIf { it > 0 },discNumber=song.discNumber?.takeIf { it > 0 },
             durationMs=song.durationMillis?.takeIf { it > 0 },
-            artworkUri=song.cover(),releaseCaption=releaseCaption)
+            artworkUri=song.cover(),releaseCaption=releaseCaption,
+            sourceStoreUrl=appleMusicWebVerifiedStoreUrl(song))
     }
 
 /** The supplemental pages were obtained from exact artist-view endpoints,
