@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Structural regression gate for Android-only scope and the approved launcher mark."""
 from pathlib import Path
+from math import isclose
 from xml.etree import ElementTree as ET
 import re
 
@@ -34,12 +35,28 @@ for workflow in ("desktop-removal-gate.yml", "tv-wear-removal-gate.yml"):
 
 approved = marks(RES / "drawable/aria_icon_foreground.xml")
 require(len(approved) == 2, "Notation mark must retain its two approved paths")
+# Launcher-only reduction: preserve the original 108dp viewport and apply
+# a uniform 85% scale around its centre (54,54). Keep UI/notification marks
+# independent of launcher optical sizing.
+def verify_launcher_mark_geometry(path):
+    root = xml(path)
+    groups = [group for group in root.iter("group")
+              if approved <= {p.get(A + "pathData") for p in group.findall("path")}]
+    require(len(groups) == 1, f"Expected one launcher mark group: {path}")
+    group = groups[0]
+    expected = {"scaleX": 0.0946616 * 0.85, "scaleY": 0.0946616 * 0.85,
+                "translateX": 54 + (18.8805424 - 54) * 0.85,
+                "translateY": 54 + (24.4655775 - 54) * 0.85}
+    require(all(isclose(float(group.get(A + key, "nan")), value, abs_tol=1e-8, rel_tol=0)
+                for key, value in expected.items()),
+            f"Launcher optical size or centring changed: {path}")
+
 manifest = xml(ROOT / "app/src/main/AndroidManifest.xml")
 aliases = manifest.findall("./application/activity-alias")
 require(len(aliases) == 13, "Launcher alias inventory changed; review all icon choices")
 icons = {alias.attrib[A + "icon"].removeprefix("@mipmap/") for alias in aliases}
 require(len(icons) == 13, "Launcher aliases must remain distinct")
-for icon in icons:
+for icon in icons | {"ic_launcher_round"}:
     spec = xml(RES / "mipmap-anydpi" / (icon + ".xml"))
     require(spec.tag == "adaptive-icon", f"Not adaptive: {icon}")
     for layer in ("foreground", "monochrome"):
@@ -49,6 +66,9 @@ for icon in icons:
         folder = "mipmap-anydpi" if kind == "mipmap" else kind
         require(approved <= marks(RES / folder / (name + ".xml")),
                 f"Notation mark missing from {icon} {layer}")
+        verify_launcher_mark_geometry(RES / folder / (name + ".xml"))
+
+verify_launcher_mark_geometry(RES / "drawable/ic_launcher_foreground.xml")
 
 for path in (RES / "drawable/ic_logo.xml", RES / "drawable/ic_notification_logo.xml",
              ROOT / "sharedUi/src/commonMain/composeResources/drawable/ic_logo.xml"):
