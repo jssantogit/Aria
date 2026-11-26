@@ -25,6 +25,7 @@ internal fun appleMusicWebGenreNameMatches(name: String, tag: String): Boolean {
         "samba" -> setOf("Samba")
         "blues" -> setOf("Blues")
         "pagode" -> setOf("Pagode")
+        "forro" -> setOf("Forró")
         "trap" -> setOf("Trap", "Trap Music")
         "indie" -> setOf("Indie", "Indie Music")
         "electronic" -> setOf("Electronic", "Eletrônica", "Electronic Music")

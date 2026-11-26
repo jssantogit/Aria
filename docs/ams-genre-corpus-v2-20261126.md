@@ -1,4 +1,8 @@
-# AMS genre corpus v2 — user-directed revision
+# AMS genre corpus v2 — superseded by v3
+
+The subsequent user correction replaces Hard Rock with Forró. See
+[AMS genre corpus v3](ams-genre-corpus-v3-20261126.md) for the current corpus.
+The text below preserves the historical v2 decision.
 
 Retain Pop, Rock, Electronic, Jazz, K-pop, Metal, R&B and Hard Rock.
 Replace Folk, House, Techno, Trance, Smooth Jazz and Bluegrass with

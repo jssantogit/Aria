@@ -24,6 +24,7 @@ internal fun appleMusicWebPublicCuratorReference(storefront: String, tag: String
         "hip-hop", "rap", "trap" -> "989061413"
         "soul" -> "976439585"
         "samba", "pagode" -> "982356287"
+        "forro" -> "1586015196"
         "blues" -> "976439528"
         "indie" -> "976439541"
         "electronic" -> "989076708"
@@ -40,11 +41,13 @@ internal fun appleMusicWebCuratorQueries(tag: String): List<String> {
         "hip-hop", "rap" -> "hip-hop/rap"
         "electronic" -> "eletrônica"
         "rnb" -> "R&B"
+        "forro" -> "forró"
         else -> tag
     }
     val shared = when (tag) {
         "soul" -> "soul e funk"
         "samba", "pagode" -> "pagode e samba"
+        "forro" -> "forró e piseiro"
         else -> localized
     }
     return listOf(localized, "Apple Music " + localized, "Apple Music " + shared, "Apple Music " + tag).distinct()
@@ -75,6 +78,7 @@ internal fun appleMusicWebCuratorIsSharedForTag(ref: AppleMusicWebCuratorRef, ta
         return when (tag) {
             "soul" -> label in setOf("soul e funk", "soul funk", "soul and funk")
             "samba", "pagode" -> label in setOf("pagode e samba", "samba e pagode", "samba and pagode", "pagode and samba")
+            "forro" -> label in setOf("forro e piseiro", "forro and piseiro")
             "trap" -> label in setOf("hip hop rap", "hip hop", "rap")
             else -> false
         }

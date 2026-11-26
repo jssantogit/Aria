@@ -17,7 +17,8 @@ reuse these IDs in other storefronts or substitute a parent genre.
 | k-pop | https://music.apple.com/br/curator/apple-music-k-pop/988658197 |
 | metal | https://music.apple.com/br/curator/apple-music-metal/976439543 |
 | rnb | https://music.apple.com/br/curator/apple-music-r-b/976439551 |
-| hard rock | https://music.apple.com/br/curator/apple-music-hard-rock/979231690 |
+| hard rock (historical) | https://music.apple.com/br/curator/apple-music-hard-rock/979231690 |
+| forro (shared with piseiro) | https://music.apple.com/br/curator/apple-music-forr%C3%B3-e-piseiro/1586015196 |
 
 Folk, House, Techno, Trance, Smooth Jazz, and Bluegrass have no verified
 exact public curator reference in this audit. Americana, Dance and other

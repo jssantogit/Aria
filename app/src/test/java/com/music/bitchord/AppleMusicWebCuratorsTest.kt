@@ -79,7 +79,26 @@ class AppleMusicWebCuratorsTest {
         assertFalse(appleMusicWebCuratedAlbumMatches(shared,"pagode",samba.copy(genreNames=emptyList())))
         assertFalse(appleMusicWebCuratorMatches(shared.copy(id="999"),"br","pagode"))
         assertEquals(15,amsEditorialGenreCorpus.distinct().size)
-        assertTrue(amsEditorialGenreCorpus.containsAll(listOf("soul","samba","blues","pagode","rap","trap","indie")))
+        assertEquals(listOf("pop","rock","rap","electronic","jazz","k-pop","metal","rnb",
+            "soul","samba","blues","pagode","forro","trap","indie"),amsEditorialGenreCorpus)
+        assertTrue(amsEditorialGenreCorpus.none { it in setOf("folk","hard rock","house","techno","trance","smooth jazz","bluegrass") })
+    }
+
+    @Test fun forroSharedCuratorRequiresExplicitGenreEvidence() {
+        val ref = AppleMusicWebCuratorRef("1586015196","br","Apple Music Forró e piseiro")
+        val album = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A",genreNames=listOf("Forró"))
+        assertEquals("1586015196",appleMusicWebPublicCuratorReference("br","forro"))
+        assertNull(appleMusicWebPublicCuratorReference("us","forro"))
+        assertTrue("forró" in appleMusicWebCuratorQueries("forro"))
+        assertTrue("Apple Music forró e piseiro" in appleMusicWebCuratorQueries("forro"))
+        assertTrue(appleMusicWebCuratorMatches(ref,"br","forro"))
+        assertTrue(appleMusicWebCuratorIsSharedForTag(ref,"forro"))
+        assertTrue(appleMusicWebCuratedAlbumMatches(ref,"forro",album))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"forro",album.copy(genreNames=listOf("Piseiro"))))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"forro",album.copy(genreNames=listOf("Brazilian"))))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"forro",album.copy(genreNames=emptyList())))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"forro",album.copy(storefront="us")))
+        assertFalse(appleMusicWebCuratorMatches(ref.copy(id="999"),"br","forro"))
     }
 
     @Test fun wrongCuratorIdentityOrTypeCannotPublishRooms() = runBlocking {
