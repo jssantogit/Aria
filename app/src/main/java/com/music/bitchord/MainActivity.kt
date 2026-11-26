@@ -1170,11 +1170,11 @@ private fun BitChordApp(
     val appleGenreReleases = catalogRuntime.appleGenres
     val canonicalExplorePublicPopularity by viewModel.canonicalExplorePublicPopularity.collectAsStateWithLifecycle()
     // World charts own their provider permissions and their own Home route.
-    val countryCharts by viewModel.appleCountryCharts.collectAsStateWithLifecycle()
-    val countryAlbumCharts by viewModel.appleCountryAlbumCharts.collectAsStateWithLifecycle()
-    val chartAuthorized = com.music.bitchord.ui.rememberAppleCountryChartAccess()
+    val chartRuntime = com.music.bitchord.ui.rememberCanonicalAppleChartRuntime(viewModel)
+    val chartProvider = chartRuntime.provider
+    val chartAuthorized = chartProvider != null
     val chartNavigation = com.music.bitchord.ui.rememberCountryChartNavigation(
-        chartAuthorized, selectedTab == TAB_HOME,
+        chartAuthorized, selectedTab == TAB_HOME, chartProvider,
     )
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
     // The pushed genre stack lives outside BitChordApp's large Compose method.
@@ -1563,9 +1563,7 @@ private fun BitChordApp(
             heading = canonicalPersonalHeading,
         ) else null
     }
-    val authorizedCountryChartShelf = remember(chartAuthorized) {
-        com.music.bitchord.ui.canonicalCountryChartShelf(chartAuthorized)
-    }
+    val authorizedCountryChartShelf = chartRuntime.shelf
     val canonicalHomePublicPlaylists = publicPlaylistUi.homeShelf
     val canonicalHomePlaylistNotice = publicPlaylistUi.homeNotice
     // Provider-neutral selection owns editorial precedence. Native source
@@ -2686,17 +2684,17 @@ private fun BitChordApp(
     }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
-        com.music.bitchord.data.catalog.metadata.parseAppleAlbumChartBrowseId(item.browseId)?.let { territory ->
+        com.music.bitchord.ui.parseCanonicalAppleChartRoute(item.browseId,chartProvider,true)?.let { territory ->
             if (chartAuthorized) {
                 chartNavigation.openAlbums(territory)
-                viewModel.loadAppleCountryAlbumChart(territory.code)
+                viewModel.loadAppleCountryAlbumChart(territory.code,provider=chartProvider)
             }
             return@click
         }
-        com.music.bitchord.data.catalog.metadata.parseAppleChartBrowseId(item.browseId)?.let { territory ->
+        com.music.bitchord.ui.parseCanonicalAppleChartRoute(item.browseId,chartProvider,false)?.let { territory ->
             if (chartAuthorized) {
                 chartNavigation.open(territory)
-                viewModel.loadAppleCountryChart(territory.code)
+                viewModel.loadAppleCountryChart(territory.code,provider=chartProvider)
             }
             return@click
         }
@@ -4619,13 +4617,13 @@ private fun BitChordApp(
                         TAB_HOME -> com.music.bitchord.ui.screens.AppleCountryHomeRoute(
                             chartAuthorized = chartAuthorized,
                             navigation = chartNavigation,
-                            charts = countryCharts,
-                            albumCharts = countryAlbumCharts,
+                            charts = chartRuntime.songs,
+                            albumCharts = chartRuntime.albums,
                             onAlbumRetry = { country ->
-                                viewModel.loadAppleCountryAlbumChart(country, force = true)
+                                viewModel.loadAppleCountryAlbumChart(country, force = true,provider=chartProvider)
                             },
                             onRetry = { country ->
-                                viewModel.loadAppleCountryChart(country, force = true)
+                                viewModel.loadAppleCountryChart(country, force = true,provider=chartProvider)
                             },
                             contentPadding = listPadding,
                         ) { HomeScreen(

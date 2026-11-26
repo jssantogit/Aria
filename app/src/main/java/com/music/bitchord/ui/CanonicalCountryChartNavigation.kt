@@ -35,8 +35,9 @@ internal class CanonicalCountryChartNavigation {
 internal fun rememberCountryChartNavigation(
     authorized: Boolean,
     homeSelected: Boolean,
+    provider: com.music.bitchord.data.providers.ProviderKey? = null,
 ): CanonicalCountryChartNavigation {
-    val navigation = androidx.compose.runtime.remember { CanonicalCountryChartNavigation() }
+    val navigation = androidx.compose.runtime.remember(provider) { CanonicalCountryChartNavigation() }
     androidx.compose.runtime.LaunchedEffect(authorized, homeSelected) {
         if (!authorized || !homeSelected) navigation.close()
     }

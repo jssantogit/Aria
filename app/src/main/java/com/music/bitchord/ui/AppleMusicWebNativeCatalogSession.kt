@@ -185,6 +185,42 @@ internal class AppleMusicWebNativeCatalogSession(
         }
     }
 
+    /** Country chart reads never borrow editorial or search permission.
+     * Follow only the source cursor; do not re-sort, merge or infer positions. */
+    suspend fun countryChart(country: String, albums: Boolean):
+        ProviderCallResult<AmsCountryChartResult> =
+        admitted(ProviderCapability.CHART_MOST_PLAYED) { gateway ->
+            val territory = com.music.bitchord.data.catalog.metadata.knownAppleChartTerritory(country)
+                ?: return@admitted ProviderCallResult.Failed(IllegalArgumentException("Unknown chart territory"))
+            val kind = if (albums) AppleMusicWebKind.ALBUM else AppleMusicWebKind.SONG
+            val rows = mutableListOf<AppleMusicWebItem>()
+            val seen = hashSetOf<String>()
+            val visited = hashSetOf<String>()
+            var cursor: String? = null
+            for (index in 1..8) {
+                val page = when (val result = gateway.mostPlayedChart(kind,country,limit=25,cursor=cursor)) {
+                    is ProviderCallResult.Success -> (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value
+                        ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Partial chart page"))
+                    is ProviderCallResult.Failed -> return@admitted result
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                }
+                if (page.storefront != country || page.genreId != null || page.kind != kind ||
+                    page.items.any { it.kind != kind || it.storefront != country || !seen.add(it.scopedId) })
+                    return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart membership"))
+                rows += page.items
+                cursor = page.nextCursor
+                if (rows.size >= 100 || cursor == null) break
+                if (page.items.isEmpty() || !visited.add(cursor))
+                    return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart cursor"))
+            }
+            if (rows.isEmpty() || (rows.size < 100 && cursor != null))
+                return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete chart"))
+            val projected = projectAmsCountryChart(territory,albums,rows.take(100),System.currentTimeMillis())
+                ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("No verified chart rows"))
+            ProviderCallResult.Success(projected)
+        }
+
     suspend fun genre(tag: String, storefront: String, refresh: Boolean = false):
         ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>> =
         admitted(editorial) { gateway ->

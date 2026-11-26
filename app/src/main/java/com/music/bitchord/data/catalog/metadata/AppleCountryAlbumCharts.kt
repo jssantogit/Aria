@@ -45,14 +45,16 @@ internal data class AppleChartAlbum(
     val artistName: String,
     val artworkUrl: String?,
     val officialUrl: String,
+    val nativeBrowseId: String? = null,
 ) {
-    val albumBrowseId: String get() = "itunes:$country:album:$albumId"
+    val albumBrowseId: String get() = nativeBrowseId ?: "itunes:$country:album:$albumId"
 }
 
 internal data class AppleCountryAlbumChart(
     val territory: AppleChartTerritory,
     val albums: List<AppleChartAlbum>,
     val fetchedAtMs: Long,
+    val sourceRowCount: Int? = null,
 )
 
 internal sealed interface AppleCountryAlbumChartRead {

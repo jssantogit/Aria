@@ -51,7 +51,7 @@ internal fun AppleCountryChartScreen(
             ArtworkPageBackButton(onClick = onBack, hazeState = null, isCategory = true)
         }
         Text(
-            text = "Top 100 · ${territory.displayName}",
+            text = "Top ${((state as? UiState.Success)?.data?.sourceRowCount ?: 100)} · ${territory.displayName}",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 10.dp),
@@ -115,7 +115,7 @@ internal fun AppleCountryAlbumChartScreen(
             ArtworkPageBackButton(onClick = onBack, hazeState = null, isCategory = true)
         }
         Text(
-            text = "Top 100 álbuns · ${territory.displayName}",
+            text = "Top ${((state as? UiState.Success)?.data?.sourceRowCount ?: 100)} álbuns · ${territory.displayName}",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 10.dp),

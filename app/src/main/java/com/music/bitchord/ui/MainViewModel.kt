@@ -361,13 +361,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** On-demand Apple most-played chart reads, with capability-scoped admission. */
     private val countryChartsController = CanonicalCountryChartController(viewModelScope)
     internal val appleCountryCharts = countryChartsController.snapshots
-    fun loadAppleCountryChart(code: String, force: Boolean = false) =
-        countryChartsController.load(code, force)
+    internal fun loadAppleCountryChart(code: String, force: Boolean = false,
+        provider: ProviderKey? = BuiltInProviderKeys.ITUNES) {
+        if (provider == BuiltInProviderKeys.APPLE_MUSIC_WEB) amsCountryCharts.load(code,false,force)
+        else if (provider == BuiltInProviderKeys.ITUNES) countryChartsController.load(code,force)
+    }
 
     private val albumChartsController = CanonicalCountryAlbumChartController(viewModelScope)
     internal val appleCountryAlbumCharts = albumChartsController.snapshots
-    fun loadAppleCountryAlbumChart(code: String, force: Boolean = false) =
-        albumChartsController.load(code, force)
+    internal fun loadAppleCountryAlbumChart(code: String, force: Boolean = false,
+        provider: ProviderKey? = BuiltInProviderKeys.ITUNES) {
+        if (provider == BuiltInProviderKeys.APPLE_MUSIC_WEB) amsCountryCharts.load(code,true,force)
+        else if (provider == BuiltInProviderKeys.ITUNES) albumChartsController.load(code,force)
+    }
+    internal val amsCountryCharts by lazy {
+        AmsCountryChartController(viewModelScope,{ ProviderRuntime.gateOrNull() },appleMusicWebNativeCatalog::countryChart)
+    }
 
     private val _canonicalTrendingRecordingMbids = MutableStateFlow<List<String>>(emptyList())
     val canonicalTrendingRecordingMbids: StateFlow<List<String>> =
@@ -4615,6 +4624,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 snapshots.collect {
                     discogsNativeCatalog.purgeRevoked()
                     appleMusicWebEditorialUi.purgeRevoked()
+                    amsCountryCharts.purgeRevoked()
                     // iTunes artist pages survive without MusicBrainz. If
                     // the optional verified crosswalk loses consent, remove
                     // only its MB identity evidence, never Apple releases.
