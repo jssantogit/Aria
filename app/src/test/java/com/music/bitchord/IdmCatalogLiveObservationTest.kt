@@ -1,5 +1,6 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.catalog.provider.applemusicweb.*
 import com.music.bitchord.data.catalog.metadata.*
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.model.HomeShelf
@@ -3069,6 +3070,186 @@ class IdmCatalogLiveObservationTest {
         SearchParityCase("hard rock", "category", "hard rock"),
         SearchParityCase("smooth jazz", "category", "smooth jazz"),
     )
+
+    /**
+     * AMS native-adapter baseline on the EXACT same fixed IDM corpus.
+     * No other provider client is constructed. Categories are the shared local
+     * taxonomy, not a claim that Apple Web implements native genre search.
+     * Rank is native adapter order, not yet the production UI projection.
+     */
+    @Test fun live_ams_search_parity_matrix() = runBlocking {
+        assumeTrue("Enable only via the dedicated AMS search workflow",
+            System.getenv("AMS_SEARCH_LIVE") == "1")
+        val source = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val capabilities = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val gate = gateFor(source, capabilities)
+        val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
+            admission = RateLimitedProviderTransport { gate },
+        ))
+        val gateway = AppleMusicWebEditorialGateway(catalog, gate)
+        val reader = CatalogSearchAdapterReader(gate, listOf(AppleMusicWebSearchAdapter(gateway)))
+        val sf = "br"
+        assertEquals(30, searchParityCases.size)
+        fun nativeId(item: CatalogSearchItem): String =
+            "apple_music_web:" + item.identity.storefront + ":" +
+                item.identity.kind.name.lowercase(java.util.Locale.ROOT) + ":" + item.identity.nativeId
+
+        suspend fun read(kind: CatalogSearchKind, query: String, page: Int = 1): CatalogSearchPage? =
+            withTimeoutOrNull(60_000L) {
+                (reader.read(source, CatalogSearchRequest(kind, query, sf, page, 24))
+                    as? ProviderCallResult.Success)?.value?.takeUnless { it.partial }
+            }
+
+        val dir = File(System.getenv("IDM_CATALOG_METRICS_DIR") ?: "build/ams-search-metrics", "top10-review")
+        check(dir.exists() || dir.mkdirs())
+        var interrupted = 0
+        var paginationProblems = 0
+        for ((index, case) in searchParityCases.withIndex()) {
+            val start = System.nanoTime()
+            var rows = emptyList<SearchParityRow>()
+            val provenIds = mutableSetOf<String>()
+            var complete = true
+            var categoryRoute = false
+            var proofComplete = true
+            var offered = false
+            var secondPageChecked = false
+            var secondPageRows = 0
+            var overlap = 0
+            var continuationFailed = false
+            if (case.kind == "category") {
+                val categories = canonicalExploreGenreSearchHits(case.query, limit = 10)
+                assertTrue(categories.all {
+                    it.subtitle == "Categoria" && it.browseId.orEmpty().startsWith("catalog:GENRE:")
+                })
+                rows = categories.mapNotNull { item ->
+                    item.browseId?.let { SearchParityRow(it, item.title) }
+                }
+                categoryRoute = rows.any { it.id == "catalog:GENRE:" + case.title }
+                if (categoryRoute) provenIds += "catalog:GENRE:" + case.title
+                offered = categoryRoute
+            } else {
+                val kind = when (case.kind) {
+                    "artist" -> CatalogSearchKind.ARTIST
+                    "album" -> CatalogSearchKind.ALBUM
+                    "track" -> CatalogSearchKind.TRACK
+                    else -> error("Unexpected search category")
+                }
+                val first = read(kind, case.query)
+                complete = first != null
+                if (first != null) {
+                    assertEquals(source, first.provider)
+                    assertEquals(sf, first.storefront)
+                    rows = first.items.map { SearchParityRow(nativeId(it), it.title, it.subtitle) }
+                    // Preserve raw landing rank. A continuation is observed separately,
+                    // never used to repair or inflate the Top5/Top10 result.
+                    if (first.hasMore) {
+                        secondPageChecked = true
+                        val next = read(kind, case.query, 2)
+                        if (next == null || next.items.isEmpty()) {
+                            continuationFailed = true
+                        } else {
+                            secondPageRows = next.items.size
+                            overlap = next.items.map(::nativeId).toSet().intersect(rows.map { it.id }.toSet()).size
+                        }
+                    }
+                    if (kind == CatalogSearchKind.ARTIST) {
+                        // Independent same-source proof: exact anchor release and its
+                        // explicit artist relationship, never a name-only identity.
+                        val anchor = read(CatalogSearchKind.ALBUM, case.title + " " + case.anchor.orEmpty())
+                        proofComplete = anchor != null
+                        val candidates = anchor?.items.orEmpty().filter {
+                            searchLabelKey(it.title) == searchLabelKey(case.anchor) && case.artistMatches(it.subtitle)
+                        }.take(2)
+                        for (candidate in candidates) {
+                            val response = withTimeoutOrNull(60_000L) {
+                                gateway.album(candidate.identity.nativeId, sf)
+                            } as? ProviderCallResult.Success
+                            val outcome = response?.value?.outcome
+                            val album = (outcome as? AppleMusicWebOutcome.Complete)?.value
+                            if (album == null) {
+                                proofComplete = false
+                                continue
+                            }
+                            if (searchLabelKey(album.identity.title) != searchLabelKey(case.anchor) ||
+                                !case.artistMatches(album.identity.artistName)) continue
+                            provenIds += album.artists.filter {
+                                case.artistMatches(it.title)
+                            }.map { it.scopedId }
+                        }
+                        offered = provenIds.isNotEmpty()
+                    } else {
+                        offered = rows.any { case.titleMatches(it.title) && case.artistMatches(it.artist) }
+                        if (!offered) {
+                            val probe = read(kind, case.title + " " + case.artist.orEmpty())
+                            proofComplete = probe != null
+                            offered = probe?.items.orEmpty().any {
+                                case.titleMatches(it.title) && case.artistMatches(it.subtitle)
+                            }
+                        }
+                    }
+                } else {
+                    proofComplete = false
+                }
+            }
+            assertTrue(rows.all { it.title.isNotBlank() })
+            assertEquals(rows.size, rows.map { it.id }.distinct().size)
+            val labels = rows.take(10).map { row ->
+                when {
+                    case.kind == "category" -> if (row.id in provenIds) 1 else -1
+                    case.kind == "artist" -> if (!case.artistMatches(row.title)) 0
+                        else if (row.id in provenIds) 1 else -1
+                    !case.titleMatches(row.title) -> 0
+                    !case.artistMatches(row.artist) -> -1
+                    else -> 1
+                }
+            }
+            val topFive = labels.take(5).any { it == 1 }
+            val topTen = labels.any { it == 1 }
+            val caseNumber = (index + 1).toString().padStart(2, '0')
+            val review = rows.take(10).mapIndexed { rank, row ->
+                reviewRowJson(rank + 1, row, labels[rank], false)
+            }
+            File(dir, "apple_music_web_" + caseNumber + ".json").writeText(
+                "{\"schema\":1,\"provider\":\"apple_music_web\",\"case\":" + (index + 1) +
+                    ",\"kind\":" + reviewJsonString(case.kind) + ",\"complete\":" + complete +
+                    ",\"rows\":[" + review.joinToString(",") + "]}"
+            )
+            report("search_matrix_apple_music_web_" + caseNumber, Sample(
+                status = when {
+                    case.kind == "category" -> if (categoryRoute) "local_category_verified" else "local_category_missing"
+                    !complete -> "source_interruption"
+                    topFive -> "target_in_top_five"
+                    topTen -> "target_below_top_five"
+                    offered -> "target_proven_not_visible"
+                    else -> "target_not_corroborated"
+                },
+                eligible = labels.count { it == 1 }, visible = rows.size,
+                counts = mapOf(
+                    "target_proven" to if (offered || topTen) 1 else 0,
+                    "top_five_target" to if (topFive) 1 else 0,
+                    "top_ten_target" to if (topTen) 1 else 0,
+                    "first_ten_rows" to labels.size,
+                    "labelled_target_rows" to labels.count { it == 1 },
+                    "labelled_non_target_rows" to labels.count { it == 0 },
+                    "unjudged_rows" to labels.count { it == -1 },
+                    "local_category_route_verified" to if (categoryRoute) 1 else 0,
+                    "source_interruption" to if (!complete) 1 else 0,
+                    "proof_interruption" to if (!proofComplete) 1 else 0,
+                    "second_page_checked" to if (secondPageChecked) 1 else 0,
+                    "second_page_rows" to secondPageRows,
+                    "second_page_overlap" to overlap,
+                    "continuation_interruption" to if (continuationFailed) 1 else 0,
+                    "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                ),
+            ))
+            if (!complete) interrupted++
+            if (continuationFailed || overlap > 0) paginationProblems++
+        }
+        // Retain all case reports even when the native source contract fails.
+        assertEquals("Native landing interruptions", 0, interrupted)
+        assertEquals("Native continuation interruptions or repeated IDs", 0, paginationProblems)
+    }
 
     /**
      * #230 prelabelled targets, not a synthetic popularity ranking. Target
