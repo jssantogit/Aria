@@ -297,7 +297,7 @@ internal fun NativeArtistSourceMetadataTracksSection(
     val shown = tracks.filter { track ->
         query.isBlank() || track.title.contains(query, ignoreCase = true) ||
             track.credit?.contains(query, ignoreCase = true) == true
-    }.take(16)
+    }.take(if (ranked) 20 else 16)
     NativeArtistTracksShelf(
         title = if (ranked) androidx.compose.ui.res.stringResource(com.music.bitchord.R.string.top_songs) else "Faixas",
         tracks = shown,

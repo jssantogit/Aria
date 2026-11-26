@@ -1816,14 +1816,19 @@ private fun BitChordApp(
 
     // Explore genre thumbnails must belong to an Apple product whose own
     // primary genre is independently compatible with that category.
-    val appleExploreGenreCovers = remember(appleHomeReleases, appleGenreReleases) {
+    val appleExploreGenreCovers = remember(appleHomeReleases, appleGenreReleases,
+        catalogRuntime.amsEditorial.genres, catalogEditorialOrder) {
         val homeProducts = (appleHomeReleases as? UiState.Success)?.data.orEmpty()
         val genreProducts = appleGenreReleases.values.flatMap { state ->
             (state as? UiState.Success)?.data.orEmpty()
         }
-        com.music.bitchord.ui.appleExploreGenreCoverMap(
-            appleAlbums = homeProducts + genreProducts,
-            tags = com.music.bitchord.ui.canonicalExploreGenres.map { it.tag },
+        com.music.bitchord.ui.orderedAppleExploreGenreCovers(
+            catalogEditorialOrder,
+            com.music.bitchord.ui.appleExploreGenreCoverMap(
+                appleAlbums = homeProducts + genreProducts,
+                tags = com.music.bitchord.ui.canonicalExploreGenres.map { it.tag },
+            ),
+            com.music.bitchord.ui.amsExploreGenreCoverMap(catalogRuntime.amsEditorial.genres),
         )
     }
 

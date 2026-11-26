@@ -89,4 +89,29 @@ class AppleMusicWebNativeCatalogSessionTest {
         )
         assertFalse(disabled is UiState.Success && disabled.data.isNotEmpty())
     }
+
+    @Test fun genreCoverUsesOnlyAdmittedTypedAmsCardsAndProviderOrder() {
+        val art = "https://is1-ssl.mzstatic.com/image/thumb/album/600x600bb.jpg"
+        val good = com.music.bitchord.data.model.ShelfItem("Release","Artist",art,null,"apple_music_web:br:album:123")
+        fun state(item: com.music.bitchord.data.model.ShelfItem) =
+            com.music.bitchord.data.model.UiState.Success(listOf(com.music.bitchord.data.model.HomeShelf("Lançamentos",listOf(item))))
+        val covers = com.music.bitchord.ui.amsExploreGenreCoverMap(mapOf(
+            "soul" to state(good),
+            "metal" to state(good.copy(browseId="apple_music_web:us:album:123")),
+            "reggae" to state(good.copy(browseId="itunes:br:album:123")),
+            "blues" to state(good.copy(thumbnailUrl="https://evil.example/cover.jpg")),
+            "unknown" to state(good),
+        ))
+        assertEquals(mapOf("soul" to art),covers)
+        val ams = com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val itunes = com.music.bitchord.data.providers.BuiltInProviderKeys.ITUNES
+        val alternate = mapOf("soul" to "other-cover","metal" to "verified-metal")
+        assertEquals(art,com.music.bitchord.ui.orderedAppleExploreGenreCovers(
+            listOf(ams,itunes),alternate,covers)["soul"])
+        assertEquals("other-cover",com.music.bitchord.ui.orderedAppleExploreGenreCovers(
+            listOf(itunes,ams),alternate,covers)["soul"])
+        assertTrue(com.music.bitchord.ui.orderedAppleExploreGenreCovers(
+            emptyList(),alternate,covers).isEmpty())
+    }
+
 }

@@ -65,14 +65,16 @@ internal fun AmsSearchHeldMenu(
     val session = viewModel.appleMusicWebSearchUi
     val snapshot by session.state.collectAsStateWithLifecycle()
     val uri = LocalUriHandler.current
-    fun allowed(target: AmsSearchHeldTarget): Boolean =
-        snapshot.selected && session.current() && snapshot.sections.values.any { section ->
+    fun allowed(target: AmsSearchHeldTarget): Boolean {
+        val live = session.state.value
+        return live.selected && session.current() && live.sections.values.any { section ->
             section.items.any { item ->
                 (target.row != null && amsSearchRow(item) == target.row) ||
                     (target.track != null && amsSearchTrack(item) == target.track)
             }
         }
-    val target = held.target?.takeIf(::allowed)
+    }
+    val target = held.target?.takeIf { snapshot.selected && allowed(it) }
     LaunchedEffect(target,held.target) {
         if (target == null && held.target != null) held.dismiss()
     }

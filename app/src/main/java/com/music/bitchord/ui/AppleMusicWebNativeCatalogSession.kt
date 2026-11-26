@@ -5,6 +5,7 @@ import com.music.bitchord.data.catalog.CanonicalCatalogDatabase
 import com.music.bitchord.data.catalog.provider.applemusicweb.*
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.*
 import com.music.bitchord.data.catalog.metadata.safeAppleArtwork
 import com.music.bitchord.ui.screens.appleMusicWebVerifiedStoreUrl
@@ -54,10 +55,46 @@ internal fun projectAppleMusicWebGenreLanding(
             appleMusicWebCuratedAlbumEvidence(landing.curator.identity, tag, item, row.room) != row.evidence ||
             !seen.add(route.browseId)) return@mapNotNull null
         ShelfItem(title = item.title, subtitle = item.artistName.orEmpty(),
-            thumbnailUrl = item.artworkUrl, videoId = null, browseId = route.browseId,
-            appleStoreUrl = item.storeUrl)
+            thumbnailUrl = safeAppleArtwork(item.artworkUrl?.replace("{w}", "600")
+                ?.replace("{h}", "600")?.replace("{f}", "jpg")),
+            videoId = null, browseId = route.browseId,
+            appleStoreUrl = appleMusicWebVerifiedStoreUrl(item))
     }
     return if (items.isEmpty()) emptyList() else listOf(HomeShelf(releasesHeading,items))
+}
+
+/** The existing Explore grid can use only art already admitted by its
+ * exact curator and genre projection. No Home album is repurposed by name,
+ * no other market, no eager 15-curator network fan-out.
+ */
+internal fun amsExploreGenreCoverMap(
+    genres: Map<String, UiState<List<HomeShelf>>>,
+    storefront: String = "br",
+): Map<String, String> = genres.mapNotNull { (tag,state) ->
+    if (!appleMusicWebGenreSupported(tag)) return@mapNotNull null
+    val cover = (state as? UiState.Success)?.data.orEmpty().asSequence()
+        .flatMap { it.items.asSequence() }
+        .filter { card ->
+            val route = AppleMusicWebNativeRoute.parse(card.browseId)
+            route?.kind == AppleMusicWebKind.ALBUM && route.storefront == storefront &&
+                card.videoId == null
+        }.mapNotNull { safeAppleArtwork(it.thumbnailUrl) }.firstOrNull()
+    cover?.let { tag to it }
+}.toMap()
+
+/** Select existing verified covers by configured Apple provider order.
+ * No cross-source identity merge; the selected image is just genre art.
+ */
+internal fun orderedAppleExploreGenreCovers(
+    order: List<ProviderKey>,
+    itunes: Map<String,String>,
+    ams: Map<String,String>,
+): Map<String,String> = buildMap {
+    for (provider in order.asReversed()) when (provider) {
+        BuiltInProviderKeys.ITUNES -> putAll(itunes)
+        BuiltInProviderKeys.APPLE_MUSIC_WEB -> putAll(ams)
+        else -> Unit
+    }
 }
 
 /** A globally linked room proves editorial membership, not playback or a
