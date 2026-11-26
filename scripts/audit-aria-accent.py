@@ -11,6 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HEX = re.compile(r"(?i)(?<!\w)(?:0x|#)([0-9a-f]{8}|[0-9a-f]{6})(?![0-9a-f])")
 RGB = re.compile(r"\b(?:Color|(?:android\.graphics\.)?Color\.rgb|rgb)\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*[,)]")
+# Additional literal forms used by Compose, Android graphics and SVG.
+FLOAT_COMPONENT = r"(?:\d+\.\d*|\.\d+|\d+)[fF]"
+NORMALIZED_RGB = re.compile(
+    rf"\bColor\(\s*({FLOAT_COMPONENT})\s*,\s*({FLOAT_COMPONENT})\s*,\s*({FLOAT_COMPONENT})\s*[,)]"
+)
+ARGB = re.compile(r"\bColor\.argb\(\s*\d{1,3}\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)")
+SHORT_PAINT = re.compile(r"""(?i)\b(?:[\w-]+:)?(?:fill(?:Color)?|stroke(?:Color)?|(?:text|background|tint|stop)[-]?color|color|tint)\s*=\s*['"](#(?:[0-9a-f]{4}|[0-9a-f]{3}))['"]""")
 NAMED = re.compile(r"(?i)\bColor\.(?:blue|cyan)\b|@(?:android:)?color/[\w]*(?:blue|cyan)[\w]*|\b(?:fill|stroke|color)\s*=\s*['\"](?:blue|cyan)['\"]")
 FILL = re.compile(r"(?:background|containerColor|checkedTrackColor|checkedBorderColor|activeTrackColor|tint|color)\s*[=(].*(?:appleMusicKeyColor|ariaAccentColor|AppleMusic(?:Dark|Light)Key|Aria(?:Dark|Light)Accent)")
 INK = re.compile(r"(?:contentColor|checkedThumbColor|color|tint)\s*=\s*Color\.White\b")
@@ -70,20 +77,60 @@ OLD_BRAND = re.compile(r"bitchord", re.I)
 def blue(rgb):
     h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))
     return 185 <= h * 360 <= 255 and s >= .25 and v >= .25
-def candidates(line):
+def candidates(line, suffix=".kt"):
     for m in HEX.finditer(line):
         raw = m.group(1)
-        # Kotlin/XML ARGB; SVG 8-digit RGBA is separately reviewed if present.
-        rgb = tuple(int(raw[-6:][i:i+2], 16) for i in (0,2,4))
+        # Android XML and Kotlin use ARGB; SVG uses RGBA.
+        channels = raw[:6] if suffix == ".svg" else raw[-6:]
+        rgb = tuple(int(channels[i:i+2], 16) for i in (0,2,4))
         if blue(rgb):
             yield m.group()
     for m in RGB.finditer(line):
         rgb = tuple(map(int, m.groups()))
         if all(x <= 255 for x in rgb) and blue(rgb):
             yield m.group()
+    for m in NORMALIZED_RGB.finditer(line):
+        rgb = tuple(float(x[:-1]) for x in m.groups())
+        if all(0 <= x <= 1 for x in rgb) and blue(tuple(x * 255 for x in rgb)):
+            yield m.group()
+    for m in ARGB.finditer(line):
+        rgb = tuple(map(int, m.groups()))
+        if all(x <= 255 for x in rgb) and blue(rgb):
+            yield m.group()
+    if suffix in {".xml", ".svg"}:
+        for m in SHORT_PAINT.finditer(line):
+            raw = m.group(1)[1:]
+            channels = raw[:3] if suffix == ".svg" else raw[-3:]
+            if blue(tuple(int(x * 2, 16) for x in channels)):
+                yield m.group(1)
     for m in NAMED.finditer(line):
         yield m.group()
+def self_test():
+    # Exercise the exact scanner used by the inventory on every CI invocation.
+    cases = [
+        ("Color(0xFF0091FF)", ".kt", ["0xFF0091FF"]),
+        ("Color(0xFF0091FF); Color(0xFF0091FF)", ".kt", ["0xFF0091FF", "0xFF0091FF"]),
+        ("Color(0f, .5f, 1.0f)", ".kt", ["Color(0f, .5f, 1.0f)"]),
+        ("Color(0f, .5f, 2f)", ".kt", []),
+        ("Color.argb(128, 0, 128, 255)", ".java", ["Color.argb(128, 0, 128, 255)"]),
+        ('fill="#0088ff80"', ".svg", ["#0088ff80"]),
+        ('android:fillColor="#800088ff"', ".xml", ["#800088ff"]),
+        ('fill="#08f8"', ".svg", ["#08f8"]),
+        ('android:fillColor="#808f"', ".xml", ["#808f"]),
+        ('stroke="#08f"', ".svg", ["#08f"]),
+        ('href="#08f"', ".svg", []),
+        ('fill="#ffb74780"', ".svg", []),
+        ("Color(0xFFB74D0A)", ".kt", []),
+        ("Color.Blue", ".kt", ["Color.Blue"]),
+    ]
+    for line, suffix, expected in cases:
+        actual = list(candidates(line, suffix))
+        if actual != expected:
+            raise AssertionError(f"Accent scanner regression: {line}: {actual!r} != {expected!r}")
+    print(f"Accent scanner self-tests: {len(cases)} passed")
+
 def main():
+    self_test()
     tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
     results = []
     reviewed = 0
@@ -107,7 +154,7 @@ def main():
                 if OLD_BRAND.search("".join(node.itertext())):
                     results.append({"path":name,"line":0,"kind":"old-brand-resource-value","value":node.get("name","?")})
         for index, line in enumerate(lines):
-            for value in sorted(set(candidates(line))):
+            for value in sorted(candidates(line, path.suffix)):
                 results.append({"path":name,"line":index+1,"kind":"literal-blue","value":value})
             if FILL.search(line):
                 for delta, nearby in enumerate(lines[index:index+20]):
