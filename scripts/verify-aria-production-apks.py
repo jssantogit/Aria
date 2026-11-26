@@ -104,6 +104,28 @@ def verify_manifest(manifest_text):
     return sorted(names)
 
 
+def verify_signers(output, expected, apk_name):
+    # apksigner versions report either numbered signers, SDK-ranged signers
+    # or signature-scheme-qualified signers. Accept only the approved public
+    # fingerprint across every reported signer, never merely one matching row.
+    lines = [line.strip() for line in output.splitlines()]
+    counts = [line.split(":", 1)[1].strip() for line in lines
+              if line.startswith("Number of signers:")]
+    require(counts == ["1"], f"{apk_name}: expected exactly one signer; reported {counts}")
+    certs = []
+    for line in lines:
+        if "certificate SHA-256 digest:" not in line or "Signer" not in line:
+            continue
+        match = re.fullmatch(
+            r"(?:V[123](?:\.\d+)? )?Signer(?: #\d+| \(.*\))?:?[ \t]+certificate SHA-256 digest:[ \t]*([0-9a-fA-F:]+)",
+            line, re.I)
+        require(match is not None, f"{apk_name}: unrecognized signer digest: {line}")
+        certs.append(fingerprint(match.group(1)))
+    require(certs, f"{apk_name}: no signer certificate SHA-256 digest reported")
+    print(f"{apk_name}: expected certificate={expected}; observed={sorted(set(certs))}", flush=True)
+    require(set(certs) == {expected}, f"{apk_name}: unexpected signing certificate")
+
+
 def inspect(apk, expected, aapt, apksigner, apkanalyzer):
     badging = run(aapt, "dump", "badging", apk)
     package_line = next((line for line in badging.splitlines() if line.startswith("package:")), "")
@@ -123,9 +145,9 @@ def inspect(apk, expected, aapt, apksigner, apkanalyzer):
           repr([line for line in badging.splitlines() if line.startswith("launchable-activity:")]), flush=True)
     aliases = verify_manifest(run(apkanalyzer, "manifest", "print", apk))
 
-    signed = run(apksigner, "verify", "--print-certs", "--min-sdk-version", "26", apk)
-    certs = re.findall(r"^Signer #\d+ certificate SHA-256 digest:\s*([0-9a-fA-F:]+)\s*$", signed, re.M)
-    require(len(certs) == 1 and fingerprint(certs[0]) == expected, f"{apk.name}: unexpected signing certificate")
+    signed = run(apksigner, "verify", "--verbose", "--print-certs", "--min-sdk-version", "26", apk)
+    print(f"{apk.name}: signature verification report:\n{signed}", flush=True)
+    verify_signers(signed, expected, apk.name)
 
     libraries = {}
     with ZipFile(apk) as archive:

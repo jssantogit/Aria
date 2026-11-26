@@ -108,8 +108,19 @@ grep -Fx 'Status: ok' "$out/start.txt"
 stage=survival
 echo "$stage"
 sleep 10
-timeout 25s adb shell pidof "$pkg" | tee "$out/pid.txt"
-test -s "$out/pid.txt"
+# A timeout is an ADB transport failure, not proof of a dead app.
+# Permit one bounded retry of the observation, never restart the app.
+if timeout 60s adb shell pidof "$pkg" > "$out/pid.txt"; then
+    :
+else
+    rc=$?
+    if [[ "$rc" != 124 ]]; then exit "$rc"; fi
+    echo "ADB PID observation timed out; retry once without relaunch" | tee "$out/survival-retry.txt"
+    timeout 15s adb get-state | grep -Fx device
+    timeout 60s adb shell pidof "$pkg" > "$out/pid.txt"
+fi
+cat "$out/pid.txt"
+grep -Eq '^[0-9]+([[:space:]]+[0-9]+)*[[:space:]]*$' "$out/pid.txt"
 stage=screenshot
 echo "$stage"
 timeout 25s adb exec-out screencap -p > "$out/launch.png"
