@@ -54,6 +54,7 @@ internal fun CanonicalProviderDetailHost(
     songSort: SongSort,
     viewModel: MainViewModel,
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
+    onMetadataTrackHold: ((NativeMetadataTrack) -> Unit)? = null,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
     val isAms = routeKey.startsWith("apple_music_web:")
@@ -220,6 +221,7 @@ internal fun CanonicalProviderDetailHost(
             ?: applePage?.albumArtistDisplayName,
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         sourceArtistTracksRanked = applePage?.sourceArtistTracksRanked == true,
+        onMetadataTrackHold = if (isAms) onMetadataTrackHold else null,
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,
         songSort = songSort,
