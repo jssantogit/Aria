@@ -30,6 +30,7 @@ internal fun projectCanonicalHomeEditorial(
     singlesHeading: String = "Singles e EPs",
     moreHeading: String = "Mais",
     discogsEditorial: UiState<List<HomeShelf>> = UiState.Loading,
+    amsEditorial: UiState<List<HomeShelf>> = UiState.Loading,
 ): CatalogEditorialSelection {
     val mb = BuiltInProviderKeys.MUSICBRAINZ
     val apple = BuiltInProviderKeys.ITUNES
@@ -103,7 +104,7 @@ internal fun projectCanonicalHomeEditorial(
         // preserving earlier providers' pending/verified priority.
         requestCanStart = shouldStartAppleHomeEditorial(
             catalogEditorialOrder, canonicalWorldwideLoading,
-            canonicalHomeShelves, releasesHeading, discogsEditorial,
+            canonicalHomeShelves, releasesHeading, discogsEditorial, amsEditorial,
         ),
         evidenceAuthorized = apple in catalogEditorialOrder,
     )
@@ -115,6 +116,7 @@ internal fun projectCanonicalHomeEditorial(
                 ),
             apple to appleState,
             discogs to discogsEditorial,
+            BuiltInProviderKeys.APPLE_MUSIC_WEB to amsEditorial,
         ),
     )
 }

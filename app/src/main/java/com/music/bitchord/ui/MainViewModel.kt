@@ -639,6 +639,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val appleMusicWebNativeCatalog by lazy {
         AppleMusicWebNativeCatalogSession(getApplication<Application>())
     }
+    internal val appleMusicWebEditorialUi by lazy {
+        AppleMusicWebEditorialUiSession(viewModelScope, { ProviderRuntime.gateOrNull() },
+            appleMusicWebNativeCatalog::home, appleMusicWebNativeCatalog::genre)
+    }
+    internal fun loadAmsHomeEditorial(force: Boolean = false) {
+        if (isCanonicalDiscoverySelected()) appleMusicWebEditorialUi.loadHome(force)
+    }
+    internal fun loadAmsGenreEditorial(tag: String, force: Boolean = false) {
+        if (isCanonicalDiscoverySelected()) appleMusicWebEditorialUi.loadGenre(tag, force)
+    }
     internal val appleMusicWebDetailNavigation by lazy {
         AppleMusicWebDetailNavigation(viewModelScope, {
             ProviderReadLease.acquire(ProviderRuntime.gateOrNull(), listOf(
@@ -670,7 +680,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ProviderRuntime.gateOrNull(),
         ProviderCapability.EDITORIAL_DISCOGRAPHY,
         setOf(BuiltInProviderKeys.MUSICBRAINZ, BuiltInProviderKeys.ITUNES,
-            BuiltInProviderKeys.DISCOGS),
+            BuiltInProviderKeys.DISCOGS, BuiltInProviderKeys.APPLE_MUSIC_WEB),
     )
 
     private val _catalogEditorialOrder = MutableStateFlow(eligibleEditorialProviders())
@@ -4490,6 +4500,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun onCanonicalDiscoveryModeChanged(enabled: Boolean) {
+        if (!enabled) {
+            appleMusicWebEditorialUi.clear()
+            appleMusicWebDetailNavigation.clear()
+        }
         _usesCanonicalDiscovery.value = enabled
         cancelDiscoveryRequests()
         _home.value = UiState.Loading
@@ -4559,6 +4573,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ) != null
                 snapshots.collect {
                     discogsNativeCatalog.purgeRevoked()
+                    appleMusicWebEditorialUi.purgeRevoked()
                     // iTunes artist pages survive without MusicBrainz. If
                     // the optional verified crosswalk loses consent, remove
                     // only its MB identity evidence, never Apple releases.

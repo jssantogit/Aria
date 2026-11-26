@@ -22,6 +22,7 @@ internal fun shouldStartAppleHomeEditorial(
     visibleHomeShelves: List<HomeShelf>,
     releasesHeading: String,
     discogsState: UiState<List<HomeShelf>> = UiState.Loading,
+    amsState: UiState<List<HomeShelf>> = UiState.Loading,
 ): Boolean {
     if (BuiltInProviderKeys.ITUNES !in ordered) return false
     return ordered.takeWhile { it != BuiltInProviderKeys.ITUNES }.all { source ->
@@ -31,6 +32,7 @@ internal fun shouldStartAppleHomeEditorial(
                     visibleHomeShelves, releasesHeading,
                 ).isEmpty()
             BuiltInProviderKeys.DISCOGS -> editorialPrimaryMiss(discogsState)
+            BuiltInProviderKeys.APPLE_MUSIC_WEB -> editorialPrimaryMiss(amsState)
             else -> false
         }
     }
@@ -42,12 +44,14 @@ internal fun shouldStartMusicBrainzHomeEditorial(
     ordered: List<ProviderKey>,
     appleState: UiState<List<ItunesEditorialRelease>>,
     discogsState: UiState<List<HomeShelf>> = UiState.Loading,
+    amsState: UiState<List<HomeShelf>> = UiState.Loading,
 ): Boolean {
     if (BuiltInProviderKeys.MUSICBRAINZ !in ordered) return false
     return ordered.takeWhile { it != BuiltInProviderKeys.MUSICBRAINZ }.all { source ->
         when (source) {
             BuiltInProviderKeys.ITUNES -> editorialPrimaryMiss(appleState)
             BuiltInProviderKeys.DISCOGS -> editorialPrimaryMiss(discogsState)
+            BuiltInProviderKeys.APPLE_MUSIC_WEB -> editorialPrimaryMiss(amsState)
             else -> false
         }
     }
@@ -61,6 +65,7 @@ internal fun shouldStartDiscogsHomeEditorial(
     visibleHomeShelves: List<HomeShelf>,
     releasesHeading: String,
     appleState: UiState<List<ItunesEditorialRelease>>,
+    amsState: UiState<List<HomeShelf>> = UiState.Loading,
 ): Boolean {
     if (BuiltInProviderKeys.DISCOGS !in ordered) return false
     val preceding = ordered.takeWhile { it != BuiltInProviderKeys.DISCOGS }
@@ -69,6 +74,28 @@ internal fun shouldStartDiscogsHomeEditorial(
             BuiltInProviderKeys.MUSICBRAINZ -> !mbLoading &&
                 musicBrainzHomeEditorialShelves(visibleHomeShelves, releasesHeading).isEmpty()
             BuiltInProviderKeys.ITUNES -> editorialPrimaryMiss(appleState)
+            BuiltInProviderKeys.APPLE_MUSIC_WEB -> editorialPrimaryMiss(amsState)
+            else -> false
+        }
+    }
+}
+
+internal fun shouldStartAmsHomeEditorial(
+    ordered: List<ProviderKey>,
+    mbLoading: Boolean,
+    visibleHomeShelves: List<HomeShelf>,
+    releasesHeading: String,
+    appleState: UiState<List<ItunesEditorialRelease>>,
+    discogsState: UiState<List<HomeShelf>>,
+): Boolean {
+    val ams = BuiltInProviderKeys.APPLE_MUSIC_WEB
+    if (ams !in ordered) return false
+    return ordered.takeWhile { it != ams }.all { source ->
+        when (source) {
+            BuiltInProviderKeys.MUSICBRAINZ -> !mbLoading &&
+                musicBrainzHomeEditorialShelves(visibleHomeShelves, releasesHeading).isEmpty()
+            BuiltInProviderKeys.ITUNES -> editorialPrimaryMiss(appleState)
+            BuiltInProviderKeys.DISCOGS -> editorialPrimaryMiss(discogsState)
             else -> false
         }
     }
@@ -87,6 +114,8 @@ internal object CanonicalHomeEditorialDispatch {
                 viewModel.loadAppleHomeEditorial(force)
             BuiltInProviderKeys.DISCOGS ->
                 viewModel.discogsNativeCatalog.loadHomeEditorial(force)
+            BuiltInProviderKeys.APPLE_MUSIC_WEB ->
+                viewModel.loadAmsHomeEditorial(force)
         }
     }
 
@@ -110,6 +139,7 @@ internal object CanonicalHomeEditorialDispatch {
             ordered,
             viewModel.canonicalWorldwideLoading.value,
             visibleHomeShelves, releasesHeading, discogsState,
+            viewModel.appleMusicWebEditorialUi.state.value.home,
         )) viewModel.loadAppleHomeEditorial()
     }
 
@@ -123,7 +153,20 @@ internal object CanonicalHomeEditorialDispatch {
     ) {
         if (shouldStartDiscogsHomeEditorial(
             ordered, mbLoading, homeShelves, releasesHeading, appleState,
+            viewModel.appleMusicWebEditorialUi.state.value.home,
         )) viewModel.discogsNativeCatalog.loadHomeEditorial()
+    }
+
+    fun maybeStartAms(
+        viewModel: MainViewModel,
+        ordered: List<ProviderKey>,
+        homeShelves: List<HomeShelf>,
+        releasesHeading: String,
+    ) {
+        if (shouldStartAmsHomeEditorial(ordered, viewModel.canonicalWorldwideLoading.value,
+            homeShelves, releasesHeading, viewModel.appleHomeReleases.value,
+            viewModel.discogsNativeCatalog.homeEditorial.value))
+            viewModel.loadAmsHomeEditorial()
     }
 
     fun maybeStartAfterDiscogsMiss(
@@ -136,6 +179,7 @@ internal object CanonicalHomeEditorialDispatch {
         when (ordered.getOrNull(1)) {
             BuiltInProviderKeys.MUSICBRAINZ -> viewModel.loadCanonicalWorldwideReleases()
             BuiltInProviderKeys.ITUNES -> viewModel.loadAppleHomeEditorial()
+            BuiltInProviderKeys.APPLE_MUSIC_WEB -> viewModel.loadAmsHomeEditorial()
         }
     }
 
@@ -148,7 +192,8 @@ internal object CanonicalHomeEditorialDispatch {
         // Preferred MB is dispatched by preferred(); this only starts it
         // after every earlier provider in an arbitrary three-way order misses.
         if (ordered.firstOrNull() != BuiltInProviderKeys.MUSICBRAINZ &&
-            shouldStartMusicBrainzHomeEditorial(ordered, appleState, discogsState)
+            shouldStartMusicBrainzHomeEditorial(ordered, appleState, discogsState,
+                viewModel.appleMusicWebEditorialUi.state.value.home)
         ) viewModel.loadCanonicalWorldwideReleases()
     }
 }

@@ -597,6 +597,7 @@ private fun CanonicalHomeEditorialEffects(
     appleHomeReleases: UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>,
     discogsHomeReleases: UiState<List<HomeShelf>>,
     discogsGenreReleases: Map<String, UiState<List<HomeShelf>>>,
+    amsEditorial: com.music.bitchord.ui.AppleMusicWebEditorialUiState,
     activeCanonicalGenre: com.music.bitchord.ui.CanonicalExploreGenre?,
     canonicalGenreResults: UiState<List<CanonicalCatalogSearchRow>>,
     appleGenreReleases: Map<String, UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>>,
@@ -613,6 +614,7 @@ private fun CanonicalHomeEditorialEffects(
             if (catalogEditorialOrder.firstOrNull() in setOf(
                     com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
                     com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS,
+                    com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB,
                 )
             ) com.music.bitchord.ui.CanonicalHomeEditorialDispatch.preferred(
                 viewModel, catalogEditorialOrder,
@@ -626,7 +628,7 @@ private fun CanonicalHomeEditorialEffects(
     }
 
     LaunchedEffect(selectedTab, catalogEditorialOrder, appleHomeReleases,
-        discogsHomeReleases,
+        discogsHomeReleases, amsEditorial.home,
     ) {
         if (selectedTab == TAB_HOME) {
             // Expired Discogs samples are actively evicted even when Home
@@ -647,7 +649,7 @@ private fun CanonicalHomeEditorialEffects(
     }
 
     LaunchedEffect(activeCanonicalGenre?.tag, canonicalGenreResults,
-        appleGenreReleases, discogsGenreReleases,
+        appleGenreReleases, discogsGenreReleases, amsEditorial.genres,
         catalogEditorialOrder, genrePopularityAuthorized,
     ) {
         val tag = activeCanonicalGenre?.tag ?: return@LaunchedEffect
@@ -675,6 +677,7 @@ private fun CanonicalHomeEditorialEffects(
                 mbState = viewModel.canonicalGenreResults.value,
                 appleByTag = viewModel.appleGenreReleases.value,
                 discogsByTag = viewModel.discogsNativeCatalog.genreEditorial.value,
+                amsByTag = viewModel.appleMusicWebEditorialUi.state.value.genres,
             )) continue
             when (source) {
                 mb -> if (viewModel.canonicalGenreResultTag != tag)
@@ -683,6 +686,8 @@ private fun CanonicalHomeEditorialEffects(
                         .AppleExploreGenrePolicy.supports(tag)
                     ) viewModel.loadAppleGenreEditorial(tag, emptyList())
                 discogs -> viewModel.discogsNativeCatalog.loadGenreEditorial(tag)
+                com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB ->
+                    viewModel.loadAmsGenreEditorial(tag)
             }
         }
 
@@ -695,9 +700,16 @@ private fun CanonicalHomeEditorialEffects(
     }
 
     LaunchedEffect(selectedTab, canonicalWorldwideLoading, canonicalHomeShelves,
-        catalogEditorialOrder, appleHomeReleases, discogsHomeReleases,
+        catalogEditorialOrder, appleHomeReleases, discogsHomeReleases, amsEditorial.home,
     ) {
         if (selectedTab == TAB_HOME) {
+            // Start MB synchronously when it owns the priority before assessing an AMS fallback.
+            if (catalogEditorialOrder.firstOrNull() ==
+                com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ)
+                viewModel.loadCanonicalWorldwideReleases()
+            com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartAms(
+                viewModel, catalogEditorialOrder, canonicalHomeShelves, canonicalReleasesHeading,
+            )
             com.music.bitchord.ui.CanonicalHomeEditorialDispatch.maybeStartApple(
                 viewModel, catalogEditorialOrder, canonicalWorldwideLoading,
                 canonicalHomeShelves, canonicalReleasesHeading,
@@ -727,6 +739,7 @@ private data class CanonicalCatalogRuntime(
     val appleHome: UiState<List<com.music.bitchord.data.catalog.metadata.ItunesEditorialRelease>>,
     val discogsHome: UiState<List<HomeShelf>>,
     val discogsGenres: Map<String, UiState<List<HomeShelf>>>,
+    val amsEditorial: com.music.bitchord.ui.AppleMusicWebEditorialUiState,
     val worldwideLoading: Boolean,
     val genreResults: UiState<List<CanonicalCatalogSearchRow>>,
     val genreArtists: com.music.bitchord.ui.CanonicalGenreArtistSnapshot?,
@@ -746,6 +759,7 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
     val appleHome by viewModel.appleHomeReleases.collectAsStateWithLifecycle()
     val discogsHome by viewModel.discogsNativeCatalog.homeEditorial.collectAsStateWithLifecycle()
     val discogsGenres by viewModel.discogsNativeCatalog.genreEditorial.collectAsStateWithLifecycle()
+    val amsEditorial by viewModel.appleMusicWebEditorialUi.state.collectAsStateWithLifecycle()
     val worldwideLoading by viewModel.canonicalWorldwideLoading.collectAsStateWithLifecycle()
     val genreResults by viewModel.canonicalGenreResults.collectAsStateWithLifecycle()
     val genreArtists by viewModel.canonicalGenreArtists.collectAsStateWithLifecycle()
@@ -762,6 +776,7 @@ private fun collectCanonicalCatalogRuntime(viewModel: MainViewModel): CanonicalC
         appleHome = appleHome,
         discogsHome = discogsHome,
         discogsGenres = discogsGenres,
+        amsEditorial = amsEditorial,
         worldwideLoading = worldwideLoading,
         genreResults = genreResults,
         genreArtists = genreArtists,
@@ -1481,6 +1496,7 @@ private fun BitChordApp(
         appleHomeReleases = appleHomeReleases,
         discogsHomeReleases = discogsHomeReleases,
         discogsGenreReleases = discogsGenreReleases,
+        amsEditorial = catalogRuntime.amsEditorial,
         activeCanonicalGenre = activeCanonicalGenre,
         canonicalGenreResults = canonicalGenreResults,
         appleGenreReleases = appleGenreReleases,
@@ -1565,6 +1581,7 @@ private fun BitChordApp(
             singlesHeading = canonicalPublicSinglesHeading,
             moreHeading = canonicalPublicMoreHeading,
             discogsEditorial = discogsHomeReleases,
+            amsEditorial = catalogRuntime.amsEditorial.home,
         )
     val canonicalHomePaging by viewModel.canonicalHomePaging.collectAsStateWithLifecycle()
     val appleHomeVerifiedPool by viewModel.appleHomeVerifiedPool.collectAsStateWithLifecycle()
@@ -1604,12 +1621,18 @@ private fun BitChordApp(
         // refresh target. In Apple -> Discogs mode a K-pop-substyle Retry
         // must reach Discogs, not turn into an inert Apple-only action.
         val refreshSource = catalogEditorialOrder.firstOrNull { source ->
-            source != catalogApple || com.music.bitchord.data.catalog.metadata
-                .AppleExploreGenrePolicy.supports(tag)
+            when (source) {
+                catalogApple -> com.music.bitchord.data.catalog.metadata.AppleExploreGenrePolicy.supports(tag)
+                com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB ->
+                    com.music.bitchord.ui.appleMusicWebGenreSupported(tag)
+                else -> true
+            }
         }
         when (refreshSource) {
             catalogMb -> viewModel.loadCanonicalGenre(tag)
             catalogDiscogs -> viewModel.discogsNativeCatalog.loadGenreEditorial(tag, force)
+            com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB ->
+                viewModel.loadAmsGenreEditorial(tag, force)
             catalogApple -> {
                 viewModel.loadAppleGenreEditorial(tag, emptyList(), force)
                 if (catalogMb in catalogEditorialOrder)
@@ -1645,6 +1668,7 @@ private fun BitChordApp(
         musicBrainzPaging = canonicalGenrePaging,
         discogsPaging = discogsGenrePaging,
         appleVisibleCount = appleGenreRevealed,
+        amsByTag = catalogRuntime.amsEditorial.genres,
     )
     val genreMbOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsMusicBrainzReleases(canonicalGenreState)
@@ -5650,7 +5674,8 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
-                        appleNativeRouteKey?.startsWith("apple_music_web:") == true -> backAmsDetail
+                        appleNativeRouteKey?.startsWith("apple_music_web:") == true ->
+                            ({ backAmsDetail(); Unit })
                         appleNativeRouteKey != null &&
                             appleNativeKind == AppleNativeDetailKind.ALBUM ->
                             ({ backAppleAlbum() })
