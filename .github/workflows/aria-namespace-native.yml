@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      run_emulator_smoke:
+        description: 'Run optional Android emulator instrumentation and launch smoke'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,7 +52,10 @@ jobs:
       - name: Grant Gradle wrapper execute permission
         run: chmod +x gradlew
       - name: Assemble Android APK including JNI
-        run: ./gradlew --build-cache :app:assembleDevDebug :app:assembleDevDebugAndroidTest
+        run: ./gradlew --build-cache :app:assembleDevDebug
+      - name: Assemble optional instrumentation APK
+        if: github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke
+        run: ./gradlew --build-cache :app:assembleDevDebugAndroidTest
       - name: Verify packaged native library identity
         run: |
           python3 - <<'PY'
@@ -57,10 +65,11 @@ jobs:
           required = {"libaria_analysis.so", "libaria_dsd.so", "libaria_dst.so"}
           retired = {"libbitchord_analysis.so", "libbitchord_dsd.so", "libbitchord_dst.so"}
           apks = sorted(Path("app/build/outputs/apk/dev/debug").glob("*.apk"))
-          assert apks, "No APK produced"
+          assert len(apks) == 4, "Expected one universal and three ABI APKs"
           supported = {"armeabi-v7a", "arm64-v8a", "x86_64"}
           checked = 0
           observed = set()
+          variants = []
           for apk in apks:
               with ZipFile(apk) as archive:
                   libs = {}
@@ -70,6 +79,8 @@ jobs:
                           libs.setdefault(parts[1], set()).add(parts[2])
                   expected = supported if "universal" in apk.name else {abi for abi in supported if abi in apk.name}
                   assert expected, f"Unknown APK ABI: {apk.name}"
+                  assert set(libs) == expected, f"{apk.name}: unexpected native ABIs {set(libs)}; expected {expected}"
+                  variants.append(frozenset(expected))
                   for abi, names in libs.items():
                       assert not retired & names, f"{apk.name}/{abi}: retired native library"
                   for abi in expected:
@@ -78,9 +89,11 @@ jobs:
                       observed.add(abi)
                       checked += 1
           assert observed == supported, f"Missing supported ABIs: {supported - observed}"
+          assert set(variants) == {frozenset(supported)} | {frozenset({abi}) for abi in supported}, "Duplicate or missing APK variant"
           print(f"Verified Aria native library names across {checked} packaged APK/ABI pairs")
           PY
       - name: Upload exact instrumentation APK
+        if: github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke
         uses: actions/upload-artifact@v4
         with:
           name: aria-identity-instrumentation-${{ github.event.pull_request.head.sha || github.sha }}
@@ -96,6 +109,7 @@ jobs:
           retention-days: 7
 
   launch-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_emulator_smoke
     needs: native-build
     name: Launch smoke API ${{ matrix.api-level }}
     runs-on: ubuntu-latest

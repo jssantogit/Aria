@@ -185,6 +185,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     packaging {
+        jniLibs {
+            // Transitive AARs may supply 32-bit x86 libraries even when the
+            // ABI split list excludes x86. Keep the universal APK consistent
+            // with the three supported ABIs and their Aria JNI implementations.
+            excludes += "**/x86/**"
+        }
         resources {
             // SMBJ's BouncyCastle and jspecify both ship this descriptor.
             excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
