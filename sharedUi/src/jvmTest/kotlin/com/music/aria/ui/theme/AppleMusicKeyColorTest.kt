@@ -30,6 +30,8 @@ class AppleMusicKeyColorTest {
             }
             assertTrue(ratio(accent, foreground) >= 4.5f)
             assertTrue(ratio(accent, canvas) >= 4.5f)
+            val neutralPlate = if (dark) Color(0xFF29292D) else Color(0xFFF2F2F7)
+            assertTrue(ratio(accent, neutralPlate) >= 4.5f)
         }
     }
 }

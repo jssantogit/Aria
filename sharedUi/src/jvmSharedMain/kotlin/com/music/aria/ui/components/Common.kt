@@ -93,6 +93,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.SolidColor
 import com.music.aria.ui.theme.appleMusicKeyColor
+import com.music.aria.ui.theme.ariaOnAccentColor
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -414,7 +415,7 @@ fun MessageState(
                 Text(
                     actionLabel,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    color = ariaOnAccentColor(),
                     modifier = Modifier.padding(horizontal = 18.dp),
                 )
             }

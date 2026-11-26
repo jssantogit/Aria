@@ -1,0 +1,26 @@
+name: Aria accent audit
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    if: github.repository == 'jssantogit/Aria' && ((github.event_name == 'pull_request' && github.head_ref == 'feat/aria-identity-notation-2.1' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/aria-identity-notation-2.1'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Inventory accent candidates
+        run: python3 scripts/audit-aria-accent.py
+      - name: Upload inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-accent-audit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: accent-audit.json
+          if-no-files-found: error
+          retention-days: 7

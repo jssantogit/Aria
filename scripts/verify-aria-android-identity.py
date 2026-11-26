@@ -179,22 +179,20 @@ require(not retired_symbols, "Retired Android identity symbols returned: " + "; 
 print("Aria Android application, icons, theme, native library and version symbols verified.")
 
 
-# Report remaining literal blue candidates so semantic blue, artwork, service
-# branding and legacy accent can be reviewed separately; never recolor data blindly.
-legacy_accent = re.compile(
-    r"(?i)(?:0x(?:ff)?|#)(?:0088ff|0091ff|007aff|0a84ff|2196f3|0000ff|1e90ff)\b"
-    r"|\bColor\.(?:Blue|BLUE)\b"
-)
-print("Aria accent audit: literal blue candidates (review by role):")
-for name in sorted(filter(None, tracked)):
-    if not (name.startswith("app/src/main/") or
-            name.startswith("sharedUi/src/") and "Test/" not in name):
-        continue
-    source = ROOT / name
-    if not source.is_file() or source.suffix not in {".kt", ".java", ".xml", ".svg"}:
-        continue
-    for i, line in enumerate(source.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-        matches = legacy_accent.findall(line)
-        if matches:
-            print(f"  {name}:{i} {', '.join(matches)}")
-print("Aria accent audit complete.")
+# Keep native XML and Compose theme tokens synchronized.
+accent_source = (ROOT / "sharedUi/src/jvmSharedMain/kotlin/com/music/aria/ui/theme/AppleMusicKeyColor.kt").read_text()
+accent_resources = {node.attrib["name"]: node.text for node in xml(RES / "values/colors.xml").findall("color")}
+for symbol, resource, folder in (
+    ("AriaLightAccent", "aria_light_accent", "values"),
+    ("AriaDarkAccent", "aria_dark_accent", "values-night"),
+):
+    match = re.search(r"val " + symbol + r" = Color\(0x([0-9A-Fa-f]{8})\)", accent_source)
+    require(match and accent_resources.get(resource, "").upper() == "#" + match.group(1).upper(),
+            f"Native accent differs from Compose: {symbol}")
+    theme = xml(RES / folder / "themes.xml")
+    items = {node.attrib["name"]: node.text for node in theme.findall(".//item")}
+    for name in ("colorAccent", "android:colorAccent"):
+        require(items.get(name) == "@color/" + resource, f"{folder}: missing native amber accent")
+print("Aria Compose and native XML accent parity verified.")
+
+# Full source inventory runs separately; keep the fast native build gate focused.

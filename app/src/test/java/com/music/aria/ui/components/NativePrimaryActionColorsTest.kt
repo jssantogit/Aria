@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
+import com.music.aria.ui.theme.AriaTheme
+import com.music.aria.ui.theme.AriaDarkAccent
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -41,6 +44,17 @@ class NativePrimaryActionColorsTest {
             .assertHeightIsEqualTo(52.dp)
             .performClick()
         compose.runOnIdle { assertEquals(1, taps) }
+    }
+
+    @Test fun filledActionUsesContrastingForegroundInDarkTheme() {
+        compose.setContent {
+            AriaTheme(darkTheme = true) {
+                val colors = applePrimaryButtonColors()
+                assertEquals(AriaDarkAccent, colors.containerColor)
+                assertEquals(Color.Black, colors.contentColor)
+            }
+        }
+        compose.waitForIdle()
     }
 
     @Test fun sharedMessageStateActionUsesFiftyDpNativeControl() {

@@ -2,6 +2,7 @@ package com.music.aria.ui.screens
 
 import com.music.aria.ui.components.contextClick
 import com.music.aria.ui.theme.appleMusicKeyColor
+import com.music.aria.ui.theme.ariaAccentColor
 import com.music.aria.ui.AppUi
 import com.music.aria.sharedui.resources.*
 import org.jetbrains.compose.resources.painterResource
@@ -1025,7 +1026,8 @@ private fun HeroCard(
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.titleLarge,
-                color = if (isCurrent) appleMusicKeyColor() else Color.White,
+                // The artwork caption is always on a dark scrim, regardless of app theme.
+                color = if (isCurrent) ariaAccentColor(dark = true) else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
