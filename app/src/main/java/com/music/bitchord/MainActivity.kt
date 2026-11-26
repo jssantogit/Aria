@@ -4939,7 +4939,7 @@ private fun BitChordApp(
                             applePaging = nativeAppleSearch.paging,
                             onAppleLoadMore = viewModel::loadMoreApplePublicSearch,
                             discogsArtistResults = viewModel.discogsNativeCatalog.artists
-                                .collectAsStateWithLifecycle().value,
+                                .collectAsStateWithLifecycle().value.takeIf { nativeAppleSearch.discogsVisible },
                             discogsHasMore = viewModel.discogsNativeCatalog.searchHasMore
                                 .collectAsStateWithLifecycle().value,
                             onDiscogsLoadMore = viewModel.discogsNativeCatalog::loadNextSearchPage,
@@ -4948,7 +4948,7 @@ private fun BitChordApp(
                                 viewModel.discogsNativeCatalog.openArtist(row)
                             },
                             discogsReleaseResults = viewModel.discogsNativeCatalog.releaseSearch
-                                .collectAsStateWithLifecycle().value,
+                                .collectAsStateWithLifecycle().value.takeIf { nativeAppleSearch.discogsVisible },
                             discogsReleaseHasMore = viewModel.discogsNativeCatalog.releaseSearchHasMore
                                 .collectAsStateWithLifecycle().value,
                             onDiscogsReleaseLoadMore =

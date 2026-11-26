@@ -1087,7 +1087,8 @@ private fun LazyListScope.appleUnifiedSearchRows(
                         artworkUri = result.row.artworkUri,
                         artistPortrait = false,
                     ),
-                    onClick = if (result.row.albumBrowseId != null)
+                    onClick = if (result.row.albumBrowseId != null ||
+                        result.row.key.startsWith("apple_music_web:"))
                         ({ onTrackOpen(result.row) }) else null,
                 )
                 is AppleUnifiedSearchEntry.Album -> NativeSearchResultRow(
@@ -1215,7 +1216,8 @@ private fun LazyListScope.appleEditorialTrackRows(
                     artworkUri = track.artworkUri,
                     artistPortrait = false,
                 ),
-                onClick = if (track.albumBrowseId != null) {
+                onClick = if (track.albumBrowseId != null ||
+                    track.key.startsWith("apple_music_web:")) {
                     { onAlbumOpen(track) }
                 } else null,
                 onLongPress = null,
