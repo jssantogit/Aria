@@ -18,7 +18,7 @@ jobs:
       - name: Compare pinned IDM and Aria trees without writing remote refs
         shell: bash
         env:
-          IDM_SHA: 29f665606f90c69cc3e30a82ef9fe6518d4a31c5
+          IDM_SHA: 6efa91fb6dd2c2ad2a35897946aaf01e8812851a
           ARIA_SHA: 58d8d9143fa04302cb3356df510e77c76a2eae57
           MIGRATION_SOURCE: e74400a7e58cba41a64f535a90af1399e5c718da
         run: |
@@ -367,7 +367,7 @@ jobs:
           run-id: 45844770994
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/prior-sealed-idm
-      - name: Prove the only changes from the previous approved tree are the four Master-budget files
+      - name: Prove the only changes from the previous approved tree are the five Master-budget files
         shell: bash
         run: |
           set -euo pipefail
@@ -386,6 +386,7 @@ jobs:
           printf '%s\n' \
             app/src/main/java/com/music/aria/data/catalog/metadata/discogs/DiscogsClient.kt \
             app/src/main/java/com/music/aria/data/catalog/metadata/discogs/DiscogsEvidence.kt \
+            app/src/test/java/com/music/aria/DiscogsEvidenceContractTest.kt \
             app/src/test/java/com/music/aria/DiscogsMasterContractTest.kt \
             app/src/test/java/com/music/aria/DiscogsTransportSafetyTest.kt | sort > "$RUNNER_TEMP/idm-expected-delta.txt"
           diff -u "$RUNNER_TEMP/idm-expected-delta.txt" "$RUNNER_TEMP/idm-actual-delta.txt"
@@ -430,7 +431,7 @@ jobs:
               print(f"{location}: {len(cases)} tests, {failed} failed, {skipped} skipped")
           PY
           main=58d8d9143fa04302cb3356df510e77c76a2eae57
-          idm=29f665606f90c69cc3e30a82ef9fe6518d4a31c5
+          idm=6efa91fb6dd2c2ad2a35897946aaf01e8812851a
           candidate="$(printf 'integration(idm): reconcile provider engine with Aria identity and current launcher branding\n\nValidated identity, Android and sharedUI unit suites in isolated CI. No physical smoke or MAIN merge.\n' | git commit-tree "$tree" -p "$main" -p "$idm")"
           test "$(git rev-parse "$candidate^{tree}")" = "$tree"
           test "$(git show -s --format=%P "$candidate")" = "$main $idm"
