@@ -40,13 +40,11 @@ if [[ "$api" == 26 ]]; then
     adb wait-for-device
     test "$(adb shell id -u | tr -d '\r')" = 2000
 else
-    if [[ "$api" == 36 ]]; then
-        stage=api36-airplane
-        echo "$stage"
-        # Persist radio isolation instead of merely toggling data and Wi-Fi.
-        adb shell cmd connectivity airplane-mode enable
-        test "$(adb shell settings get global airplane_mode_on | tr -d '\r')" = 1
-    fi
+    stage=airplane-mode
+    echo "$stage"
+    # All modern emulator APIs use the persistent radio isolation command.
+    adb shell cmd connectivity airplane-mode enable
+    test "$(adb shell settings get global airplane_mode_on | tr -d '\r')" = 1
     stage=disable-wifi
     echo "$stage"
     adb shell svc wifi disable
@@ -58,11 +56,10 @@ verify_offline() {
     local checkpoint="$1" consecutive=0
     stage="offline-$checkpoint"
     echo "$stage"
-    if [[ "$api" == 26 || "$api" == 36 ]]; then
-        test "$(adb shell settings get global airplane_mode_on | tr -d '\r')" = 1
-    fi
-    # Three consecutive samples; a transient "none" does not prove isolation.
+    # Every sample must observe airplane mode as well as no default network.
+    # Do not recover from a radio policy change by hiding it.
     for attempt in {1..30}; do
+        test "$(adb shell settings get global airplane_mode_on | tr -d '\r')" = 1
         adb shell dumpsys connectivity | tr -d '\r' > "$out/connectivity-$checkpoint.txt"
         grep 'Active default network:' "$out/connectivity-$checkpoint.txt" >> "$out/network-state.txt" || true
         if grep -Eq '^[[:space:]]*Active default network: none[[:space:]]*$' "$out/connectivity-$checkpoint.txt"; then
@@ -76,6 +73,8 @@ verify_offline() {
         fi
         sleep 1
     done
+    echo "Offline checkpoint failed: $checkpoint" >&2
+    tail -n 30 "$out/network-state.txt" >&2
     return 1
 }
 verify_offline before-install
