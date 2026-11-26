@@ -8,7 +8,7 @@ permissions:
 jobs:
   merge-analysis:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -187,6 +187,134 @@ jobs:
           PY
           git -C "$candidate" diff --cached --stat > "$report/staged-stat.txt"
           git -C "$candidate" diff --cached --check -- app/src/main/res/values-pt/acquisition_destination.xml app/src/main/res/values/acquisition_destination.xml app/src/main/res/values/strings_opensubsonic.xml app/src/main/java/com/music/aria/data/sources/addon/AddonClient.kt app/src/main/java/com/music/aria/ui/components/FrostedTopBar.kt app/src/test/java/com/music/aria/HomeSettingsOverflowAlignmentTest.kt
+      - name: Reconcile remaining four semantic conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/idm-aria-resolve"
+          report="$RUNNER_TEMP/idm-aria-audit"
+          python3 - "$candidate" "$report" <<'PY'
+          from pathlib import Path
+          import re, subprocess, sys
+          root, report = map(Path, sys.argv[1:])
+          def git(*args):
+              return subprocess.check_output(["git", "-C", str(root), *args])
+          # Each resolution checks the expected hunk contents, rather than
+          # accepting an entire side of a conflicted production file.
+          pattern = re.compile(r"^<<<<<<< HEAD\n(.*?)^=======\n(.*?)^>>>>>>> [^\n]+\n", re.M | re.S)
+          def resolve(path, rules, post=lambda x: x):
+              file = root / path
+              source = file.read_text()
+              found = list(pattern.finditer(source))
+              assert len(found) == len(rules), (path, len(found), len(rules))
+              for match, (left_hint, right_hint, choose) in reversed(list(zip(found, rules))):
+                  left, right = match.groups()
+                  assert left_hint in left and right_hint in right, (path, left_hint, right_hint)
+                  source = source[:match.start()] + choose(left, right) + source[match.end():]
+              source = post(source)
+              assert not pattern.search(source), path
+              file.write_text(source)
+              git("add", "--", path)
+          def lines_without(text, *tokens):
+              return "".join(line for line in text.splitlines(keepends=True) if not any(token in line for token in tokens))
+          def no_account_or_wear(left, right):
+              return lines_without(right, "showWearOs", "showAccountSelector")
+          def strip_wear_condition(text):
+              return text.replace(" && !showWearOs", "").replace("!showWearOs && ", "")
+          def main_post(text):
+              # One closing callback brace was outside its conflict marker.
+              # The retired settings row has no replacement callback.
+              old = '                                showSources = true\n                            },\n                            },\n                            onSpotifyCanvasAuth'
+              new = '                                showSources = true\n                            },\n                            onSpotifyCanvasAuth'
+              assert text.count(old) == 1, "Expected orphaned settings callback"
+              text = text.replace(old, new)
+              # Keep the local Composable extraction required to stay below
+              # JVM method size; no account selector from the old Google flow.
+              text, count = re.subn(r'(?m)^            if \(showAccountSelector\) \{\n.*?^            \}\n', '', text, flags=re.S)
+              assert count == 1, ("legacy selector", count)
+              # Its declarations may survive a clean textual merge.
+              text = lines_without(text, "val showAccountSelector:", "showAccountSelector = remember",
+                                   "val showWearOs:", "showWearOs = remember")
+              return text
+          resolve("app/src/main/java/com/music/aria/MainActivity.kt", [
+              ("showAccountScrobbling by rememberSaveable", "showAccountScrobbling by mainVisibility", no_account_or_wear),
+              ("librarySortMenuOpen by remember", "librarySortMenuOpen by mainVisibility", no_account_or_wear),
+              ("onAccountScrobbling", "onSignIn", lambda l,r: ""),
+              ("onSoulseek", "onWearOs", lambda l,r: ""),
+              ("val chromePageColor", "val appleDetailPalette", lambda l,r: strip_wear_condition(r)),
+              ("WelcomeOnboardingOverlay(visibleState", "fun LegacyFullWindowOverlays()", lambda l,r:
+                  r[:r.index("            WelcomeOnboardingOverlay(")] +
+                  "            WelcomeOnboardingOverlay(visibleState = onboardingShown)\n"),
+              ("LanguageSettingsOverlays", "FrostedFolderMenu", lambda l,r: r),
+          ], main_post)
+          resolve("app/src/main/java/com/music/aria/playback/PlaybackService.kt", [
+              ("mediaSourceFactory = DefaultMediaSourceFactory", "val buildSourceTransport", lambda l,r:
+                  lines_without(r, "WearBridge.attachStreams", "// The watch, when it is the speaker")),
+          ])
+          resolve("app/src/main/java/com/music/aria/ui/screens/SettingsNavigation.kt", [
+              ("onListenTogether", "showWear", lambda l,r: ""),
+          ])
+          resolve("app/src/main/java/com/music/aria/ui/screens/SettingsSheet.kt", [
+              ("onAccountScrobbling", "signedIn", lambda l,r: ""),
+              ("onSoulseek", "onWearOs", lambda l,r: ""),
+              ("onListenTogether", "WatchInstaller", lambda l,r: ""),
+              ("SettingsSection.ACCOUNT", "", lambda l,r: ""),
+          ])
+          assert not git("ls-files", "-u").strip(), "Unmerged index"
+          # Normalize the newly introduced IDM workflow selectors as well:
+          # the historical migration intentionally only touched modules.
+          workflow = root / ".github/workflows/idm-catalog-feeding-measurements.yml"
+          source = workflow.read_text()
+          for old,new in (("com.music.bitchord","com.music.aria"),
+                          ("com/music/bitchord","com/music/aria"),
+                          ("com_music_bitchord","com_music_aria")):
+              source = source.replace(old,new)
+          workflow.write_text(source)
+          git("add", "--", str(workflow.relative_to(root)))
+          tree = git("write-tree").decode().strip()
+          print("Resolved candidate tree:", tree)
+          (report / "resolved-tree.txt").write_text(tree + "\n")
+          # Inspect newly reintroduced contracts and their locations.
+          # No attempt to silently delete functionality on the basis of a
+          # regex: an identity finding must be reviewed in context.
+          rx = re.compile(r"\b(?:WearBridge|WatchInstaller|WatchOutputState|WatchOutputUi|WatchEntry|WatchUpdateState|WatchPairingState|WatchAppStatus|WearCommandService|WatchSpeaker|WearOsScreen|WearOsSettingsRow|showWearOs|onWearOs|refreshWatchOutput|selectWatchOutput|leaveWatchOutput|setWatchVolume|watchOutput|watchSpeaker|WATCH_SESSION_FOREGROUND_MS|AccountProfileSelector|showAccountSelector|googleAccounts|activeAccountId|activeProfileId|GoogleAccount|BitChordApp)\b|\bSettingsSection\.WEAR\b")
+          findings = []
+          for name in git("ls-files", "-z").decode().split("\0"):
+              if not name.startswith(("app/","shared/","sharedUi/")) or not name.endswith(".kt"):
+                  continue
+              for i,line in enumerate((root / name).read_text(errors="surrogateescape").splitlines(),1):
+                  hits = sorted(set(m.group() for m in rx.finditer(line)))
+                  if hits:
+                      findings.append(f"{name}:{i}: {', '.join(hits)}")
+          (report / "candidate-contract-inventory.txt").write_text("\n".join(findings)+"\n")
+          print("Candidate contract inventory:")
+          print("\n".join(findings))
+          PY
+          git -C "$candidate" diff --cached --stat > "$report/resolved-stat.txt"
+          # Gate on exact candidate, not the workflow's original checkout.
+          cd "$candidate"
+          python3 scripts/verify-aria-android-identity.py > "$report/identity-gate.txt" 2>&1 || {
+            tail -n 35 "$report/identity-gate.txt"
+            exit 1
+          }
+          tail -n 10 "$report/identity-gate.txt"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Compile and test the resolved candidate (no smoke)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/idm-aria-resolve"
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest :sharedUi:jvmTest
       - name: Archive path-only analysis
         if: always()
         uses: actions/upload-artifact@v4
@@ -201,5 +329,9 @@ jobs:
             ${{ runner.temp }}/idm-aria-audit/normalized-merge.txt
             ${{ runner.temp }}/idm-aria-audit/remaining-hunks.txt
             ${{ runner.temp }}/idm-aria-audit/staged-stat.txt
+            ${{ runner.temp }}/idm-aria-audit/resolved-tree.txt
+            ${{ runner.temp }}/idm-aria-audit/resolved-stat.txt
+            ${{ runner.temp }}/idm-aria-audit/candidate-contract-inventory.txt
+            ${{ runner.temp }}/idm-aria-audit/identity-gate.txt
             ${{ runner.temp }}/idm-aria-audit/namespace-*/namespace-review.txt
           if-no-files-found: error
