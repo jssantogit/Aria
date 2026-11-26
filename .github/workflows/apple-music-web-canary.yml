@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: apple-music-web-live-canary
-  cancel-in-progress: false
+  group: apple-music-web-live-canary-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   live:

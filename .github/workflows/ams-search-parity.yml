@@ -11,8 +11,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: apple-music-web-live-canary
-  cancel-in-progress: false
+  group: ams-search-matrix-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   apple-search:
     if: github.event_name != 'pull_request' || github.head_ref == 'integration/ams-apple-music-web-20261126'
