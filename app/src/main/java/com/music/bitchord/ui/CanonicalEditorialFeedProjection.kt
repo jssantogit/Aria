@@ -216,6 +216,7 @@ internal fun projectCanonicalGenreState(
     musicBrainzPaging: CanonicalGenrePageSnapshot = CanonicalGenrePageSnapshot(),
     discogsPaging: DiscogsGenrePageSnapshot = DiscogsGenrePageSnapshot(),
     appleVisibleCount: Int = 24,
+    amsByTag: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
 ): UiState<List<HomeShelf>> {
     val playlistShelf = canonicalPublicPlaylistShelf(playlistHeading, genrePlaylists)
     if (tag == null) return UiState.Success(emptyList())
@@ -248,12 +249,15 @@ internal fun projectCanonicalGenreState(
         UiState.Loading -> UiState.Loading
         is UiState.Error -> source
     }
-    val eligibleProviders = if (appleSupported) ordered
-        else ordered.filterNot { it == BuiltInProviderKeys.ITUNES }
+    val eligibleProviders = ordered.filterNot {
+        (it == BuiltInProviderKeys.ITUNES && !appleSupported) ||
+            (it == BuiltInProviderKeys.APPLE_MUSIC_WEB && !appleMusicWebGenreSupported(tag))
+    }
     val chosen = selectCatalogEditorial(eligibleProviders, mapOf(
         BuiltInProviderKeys.MUSICBRAINZ to mbState,
         BuiltInProviderKeys.ITUNES to appleState,
         BuiltInProviderKeys.DISCOGS to (discogsByTag[tag] ?: UiState.Loading),
+        BuiltInProviderKeys.APPLE_MUSIC_WEB to (amsByTag[tag] ?: UiState.Loading),
     ))
     val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
     val continuation = canonicalGenreContinuationShelf(

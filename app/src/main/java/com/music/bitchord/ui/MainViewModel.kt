@@ -635,6 +635,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val discogsNativeCatalog by lazy {
         DiscogsNativeCatalogSession(getApplication<Application>(), viewModelScope)
     }
+    // Keep AMS BLOCKED until native presentation routes are complete.
+    internal val appleMusicWebNativeCatalog by lazy {
+        AppleMusicWebNativeCatalogSession(getApplication<Application>())
+    }
     private val _catalogSearchMusicBrainzVisible = MutableStateFlow(false)
     val catalogSearchMusicBrainzVisible: StateFlow<Boolean> =
         _catalogSearchMusicBrainzVisible.asStateFlow()

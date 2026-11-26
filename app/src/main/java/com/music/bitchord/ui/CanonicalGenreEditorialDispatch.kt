@@ -21,6 +21,7 @@ internal fun shouldDispatchCanonicalGenreSource(
     mbState: UiState<List<CanonicalCatalogSearchRow>>,
     appleByTag: Map<String, UiState<List<ItunesEditorialRelease>>>,
     discogsByTag: Map<String, UiState<List<HomeShelf>>>,
+    amsByTag: Map<String, UiState<List<HomeShelf>>> = emptyMap(),
 ): Boolean {
     if (target !in ordered) return false
     val preceding = ordered.takeWhile { it != target }
@@ -40,6 +41,8 @@ internal fun shouldDispatchCanonicalGenreSource(
                 !AppleExploreGenrePolicy.supports(tag) ||
                     editorialPrimaryMiss(appleByTag[tag])
             BuiltInProviderKeys.DISCOGS -> editorialPrimaryMiss(discogsByTag[tag])
+            BuiltInProviderKeys.APPLE_MUSIC_WEB ->
+                !appleMusicWebGenreSupported(tag) || editorialPrimaryMiss(amsByTag[tag])
             else -> false
         }
     }
