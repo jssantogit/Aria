@@ -128,7 +128,6 @@
     <string name="open_releases_page">Открыть страницу релизов</string>
     <string name="whats_new">Что нового</string>
     <string name="log_copied">Журнал скопирован · %1$d строк</string>
-    <string name="sign_in_youtube_music">Войти в YouTube Music</string>
     <string name="sign_in_discord">Войти в Discord</string>
     <string name="personalized_recommendations">Получайте персональные рекомендации</string>
     <string name="play_next">Следующим</string>
@@ -333,7 +332,6 @@
     <string name="wifi_only_download_refusal">Загрузки ограничены сетью Wi-Fi. Отключите это в настройках, чтобы использовать мобильные данные.</string>
     <string name="pinned_playlist_limit">Можно закрепить не более %1$d плейлистов</string>
     <string name="downloaded_playlist">Загруженный плейлист</string>
-    <string name="library_sign_in_description">Войдите в свой аккаунт Google, чтобы видеть понравившиеся песни, плейлисты и историю YouTube Music.</string>
     <string name="downloads_progress">Загрузки · %1$d%%</string>
     <string name="downloads_finished">Загрузки · завершено</string>
     <string name="downloading_progress">Загрузка · %1$d%%</string>
@@ -680,8 +678,6 @@
     <string name="swipe_plays_next">Свайп песни ставит её следующей</string>
     <string name="swipe_adds_to_queue">Если отключено, свайп добавляет песню в конец очереди</string>
     <string name="import_backup_warning">Это заменит настройки и историю прослушивания на этом устройстве содержимым файла. Сначала экспортируйте текущие данные, если хотите их сохранить.</string>
-    <string name="youtube_music_account">Аккаунт YouTube Music</string>
-    <string name="tap_to_sign_in_google">Нажмите, чтобы войти через Google</string>
     <string name="export_succeeded">Экспортированы настройки и %1$s</string>
     <string name="export_failed">Ошибка экспорта: %1$s</string>
     <string name="import_succeeded">Импортировано %1$s из v%2$s</string>
@@ -704,7 +700,6 @@
     <string name="listen_together">Слушать вместе</string>
     <string name="listen_together_subtitle">Поделитесь кодом и слушайте одну музыку синхронно</string>
     <string name="listen_together_in_party">В вечеринке · %1$s</string>
-    <string name="listen_together_sign_in_footer">Для совместного прослушивания нужен аккаунт, чтобы все участники видели, кто ещё слушает.</string>
     <string name="listen_together_server">Сервер вечеринки</string>
     <string name="listen_together_server_online">В сети · %1$d мс</string>
     <string name="listen_together_server_online_fallback">В сети (резервный по умолчанию) · %1$d мс</string>
@@ -814,7 +809,6 @@
         <item quantity="other">%1$d треков</item>
     </plurals>
 
-    <string name="account_profiles_help">У аккаунта Google могут быть личный и брендовый профили. У каждого своя медиатека и история.</string>
 
     <string name="accounts">Аккаунты</string>
 
@@ -876,7 +870,6 @@
 
     <string name="current_profile">Текущий профиль</string>
 
-    <string name="default_youtube_profile">Стандартный профиль YouTube Music</string>
 
     <string name="dolby_atmos">Dolby Atmos</string>
 
@@ -1359,10 +1352,6 @@
     <string name="onboarding_name_hint">Ваше имя</string>
     <string name="onboarding_name_footer">Друзья увидят его в режиме «Слушать вместе». Позже вы сможете изменить его в Настройках.</string>
     <string name="onboarding_next">Далее</string>
-    <string name="onboarding_connect_title">Подключите аккаунт YouTube</string>
-    <string name="onboarding_connect_body">Перенесите свою библиотеку, плейлисты и миксы и устройте сессию «Слушать вместе» с друзьями.</string>
-    <string name="onboarding_sign_in_google">Войти через Google</string>
-    <string name="onboarding_skip_sign_in">Пропустить вход</string>
     <string name="onboarding_back">Назад</string>
     <string name="wear_os_section">Aria для Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

@@ -141,7 +141,6 @@
     <string name="open_releases_page">Apri la pagina delle release</string>
     <string name="whats_new">Novità</string>
     <string name="log_copied">Log copiato · %1$d righe</string>
-    <string name="sign_in_youtube_music">Accedi a YouTube Music</string>
     <string name="choose_a_channel">Scegli un canale</string>
     <string name="channel_session_unavailable">Nessuna sessione ancora su questa pagina — apri prima YouTube Music</string>
     <string name="channel_switch_instructions">Passa da un account all\'altro con l\'avatar, poi tocca Usa questo canale</string>
@@ -366,7 +365,6 @@
     <string name="wifi_only_download_refusal">I download sono limitati al Wi-Fi. Disattivalo nelle Impostazioni per usare i dati mobili.</string>
     <string name="pinned_playlist_limit">È possibile fissare solo %1$d playlist</string>
     <string name="downloaded_playlist">Playlist scaricata</string>
-    <string name="library_sign_in_description">Accedi al tuo account Google per vedere i brani che ti piacciono, le playlist e la cronologia di YouTube Music.</string>
     <string name="downloads_progress">Download · %1$d%%</string>
     <string name="downloads_finished">Download · completati</string>
     <string name="downloading_progress">Download in corso · %1$d%%</string>
@@ -703,8 +701,6 @@
     <string name="swipe_plays_next">Scorrere un brano lo riproduce come successivo</string>
     <string name="swipe_adds_to_queue">Quando disattivato, scorrere aggiunge il brano alla fine della coda</string>
     <string name="import_backup_warning">Questo sostituisce le impostazioni e la cronologia di ascolto di questo dispositivo con il contenuto del file. Esporta prima i dati attuali se vuoi conservarli.</string>
-    <string name="youtube_music_account">Account YouTube Music</string>
-    <string name="tap_to_sign_in_google">Tocca per accedere con Google</string>
     <string name="export_succeeded">Impostazioni e %1$s esportati</string>
     <string name="export_failed">Esportazione non riuscita: %1$s</string>
     <string name="import_succeeded">%1$s importati da v%2$s</string>
@@ -732,8 +728,6 @@
     <string name="current_profile">Profilo attuale</string>
     <string name="selected_account">Account selezionato</string>
     <string name="listen_as">Ascolta come</string>
-    <string name="default_youtube_profile">Profilo predefinito di YouTube Music</string>
-    <string name="account_profiles_help">Un account Google può avere profili Personale e Brand. Ciascuno ha la propria libreria, i propri Mi piace e la propria cronologia.</string>
     <string name="choose_profile">Scegli un profilo</string>
     <string name="use_this_profile">Usa questo profilo</string>
     <string name="switch_profile_hint">Cambia usando l\'avatar, poi usa questo profilo.</string>
@@ -743,7 +737,6 @@
     <string name="listen_together">Ascoltare insieme</string>
     <string name="listen_together_subtitle">Condividi un codice e ascoltate la stessa musica, in sincrono</string>
     <string name="listen_together_in_party">In un party · %1$s</string>
-    <string name="listen_together_sign_in_footer">Per ascoltare insieme serve un account, così tutti nel party vedono chi altro c’è.</string>
     <string name="listen_together_server">Server del party</string>
     <string name="listen_together_server_online">Online · %1$d ms</string>
     <string name="listen_together_server_online_fallback">Online (riserva predefinita) · %1$d ms</string>
@@ -1266,10 +1259,6 @@
     <string name="onboarding_name_hint">Il tuo nome</string>
     <string name="onboarding_name_footer">Gli amici lo vedono quando usi Ascolto condiviso. Potrai cambiarlo più tardi in Impostazioni.</string>
     <string name="onboarding_next">Avanti</string>
-    <string name="onboarding_connect_title">Collega il tuo account YouTube</string>
-    <string name="onboarding_connect_body">Porta con te libreria, playlist e mix e avvia una sessione di Ascolto condiviso con gli amici.</string>
-    <string name="onboarding_sign_in_google">Accedi con Google</string>
-    <string name="onboarding_skip_sign_in">Salta l’accesso</string>
     <string name="onboarding_back">Indietro</string>
     <string name="wear_os_section">Aria per Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

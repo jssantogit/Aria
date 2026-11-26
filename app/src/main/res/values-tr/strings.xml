@@ -123,7 +123,6 @@
     <string name="open_releases_page">Sürümler Sayfasını Aç</string>
     <string name="whats_new">Yenilikler</string>
     <string name="log_copied">Günlük kopyalandı · %1$d satır</string>
-    <string name="sign_in_youtube_music">YouTube Music\'e giriş yap</string>
     <string name="choose_a_channel">Bir kanal seç</string>
     <string name="channel_session_unavailable">Bu sayfada henüz oturum yok — önce YouTube Music\'i aç</string>
     <string name="channel_switch_instructions">Avatarla değiştir, sonra Bu kanalı kullan\'a dokun</string>
@@ -348,7 +347,6 @@
     <string name="wifi_only_download_refusal">İndirmeler yalnızca Wi-Fi ile sınırlıdır. Mobil veri kullanmak için Ayarlar\'dan bunu kapatın.</string>
     <string name="pinned_playlist_limit">Yalnızca %1$d çalma listesi sabitlenebilir</string>
     <string name="downloaded_playlist">İndirilen çalma listesi</string>
-    <string name="library_sign_in_description">Beğendiğin şarkıları, çalma listelerini ve YouTube Music geçmişini görmek için Google hesabınla giriş yap.</string>
     <string name="downloads_progress">İndirmeler · %1$d%%</string>
     <string name="downloads_finished">İndirmeler · tamamlandı</string>
     <string name="downloading_progress">İndiriliyor · %1$d%%</string>
@@ -685,8 +683,6 @@
     <string name="swipe_plays_next">Bir şarkıyı kaydırmak onu sonraki olarak çalar</string>
     <string name="swipe_adds_to_queue">Kapalıyken kaydırmak şarkıyı sıranın sonuna ekler</string>
     <string name="import_backup_warning">Bu, dosyanın içeriğiyle bu cihazın ayarlarını ve dinleme geçmişini değiştirir. Korumak istiyorsan önce mevcut verileri dışa aktar.</string>
-    <string name="youtube_music_account">YouTube Music hesabı</string>
-    <string name="tap_to_sign_in_google">Google ile giriş yapmak için dokun</string>
     <string name="export_succeeded">Ayarlar ve %1$s dışa aktarıldı</string>
     <string name="export_failed">Dışa aktarma başarısız: %1$s</string>
     <string name="import_succeeded">v%2$s\'den %1$s içe aktarıldı</string>
@@ -714,8 +710,6 @@
     <string name="current_profile">Mevcut profil</string>
     <string name="selected_account">Seçili hesap</string>
     <string name="listen_as">Şu şekilde dinle</string>
-    <string name="default_youtube_profile">YouTube Music varsayılan profili</string>
-    <string name="account_profiles_help">Bir Google hesabının Kişisel ve Marka profilleri olabilir. Her birinin kendi kitaplığı, beğenileri ve geçmişi vardır.</string>
     <string name="choose_profile">Bir profil seç</string>
     <string name="use_this_profile">Bu profili kullan</string>
     <string name="switch_profile_hint">Avatarı kullanarak değiştir, sonra bu profili kullan.</string>
@@ -725,7 +719,6 @@
     <string name="listen_together">Birlikte dinle</string>
     <string name="listen_together_subtitle">Bir kod paylaş, aynı müziği aynı anda dinleyin</string>
     <string name="listen_together_in_party">Partide · %1$s</string>
-    <string name="listen_together_sign_in_footer">Birlikte dinlemek için hesap gerekir; böylece partideki herkes kimlerin olduğunu görür.</string>
     <string name="listen_together_server">Parti sunucusu</string>
     <string name="listen_together_server_online">Çevrimiçi · %1$d ms</string>
     <string name="listen_together_server_online_fallback">Çevrimiçi (varsayılan yedek) · %1$d ms</string>
@@ -1284,10 +1277,6 @@
     <string name="onboarding_name_hint">Adınız</string>
     <string name="onboarding_name_footer">Birlikte Dinle’yi kullandığınızda arkadaşlarınız bunu görür. Daha sonra Ayarlar’dan değiştirebilirsiniz.</string>
     <string name="onboarding_next">İleri</string>
-    <string name="onboarding_connect_title">YouTube hesabınızı bağlayın</string>
-    <string name="onboarding_connect_body">Kitaplığınızı, çalma listelerinizi ve miksleri yanınızda taşıyın, arkadaşlarınızla Birlikte Dinle oturumu başlatın.</string>
-    <string name="onboarding_sign_in_google">Google ile giriş yap</string>
-    <string name="onboarding_skip_sign_in">Girişi atla</string>
     <string name="onboarding_back">Geri</string>
     <string name="wear_os_section">Wear OS için Aria</string>
     <string name="wear_os_page_title">Wear OS</string>

@@ -177,7 +177,6 @@
     <string name="open_releases_page">Open Releases Page</string>
     <string name="whats_new">What’s new</string>
     <string name="log_copied">Log copied · %1$d lines</string>
-    <string name="sign_in_youtube_music">Sign in to YouTube Music</string>
     <string name="choose_a_channel">Choose a channel</string>
     <string name="channel_session_unavailable">No session on this page yet — open YouTube Music first</string>
     <string name="channel_switch_instructions">Switch with the avatar, then tap Use this channel</string>
@@ -522,7 +521,6 @@
     <string name="wifi_only_download_refusal">Downloads are limited to Wi-Fi. Turn that off in Settings to use mobile data.</string>
     <string name="pinned_playlist_limit">Only %1$d playlists can be pinned</string>
     <string name="downloaded_playlist">Downloaded playlist</string>
-    <string name="library_sign_in_description">Sign in to your Google account to see your liked songs, playlists, and YouTube Music history.</string>
     <string name="downloads_progress">Downloads · %1$d%%</string>
     <string name="downloads_finished">Downloads · finished</string>
     <string name="downloading_progress">Downloading · %1$d%%</string>
@@ -889,8 +887,6 @@
     <string name="swipe_plays_next">Swiping a song plays it next</string>
     <string name="swipe_adds_to_queue">When disabled, swiping adds the song to the end of the queue</string>
     <string name="import_backup_warning">This replaces this device’s settings and listening history with the contents of the file. Export the current data first if you want to keep it.</string>
-    <string name="youtube_music_account">YouTube Music account</string>
-    <string name="tap_to_sign_in_google">Tap to sign in with Google</string>
     <string name="export_succeeded">Exported settings and %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>
     <string name="import_succeeded">Imported %1$s from v%2$s</string>
@@ -919,8 +915,6 @@
     <string name="current_profile">Current profile</string>
     <string name="selected_account">Selected account</string>
     <string name="listen_as">Listen as</string>
-    <string name="default_youtube_profile">YouTube Music default profile</string>
-    <string name="account_profiles_help">A Google account can have Personal and Brand profiles. Each has its own library, likes and history.</string>
     <string name="choose_profile">Choose a profile</string>
     <string name="use_this_profile">Use this profile</string>
     <string name="switch_profile_hint">Switch using the avatar, then use this profile.</string>
@@ -930,7 +924,6 @@
     <string name="listen_together">Listen together</string>
     <string name="listen_together_subtitle">Share a code and play the same music, in time</string>
     <string name="listen_together_in_party">In a party · %1$s</string>
-    <string name="listen_together_sign_in_footer">Listening together needs an account, so everyone in the party can see who else is in it.</string>
     <string name="listen_together_server">Party server</string>
     <string name="listen_together_server_online">Online · %1$d ms</string>
     <string name="listen_together_server_online_fallback">Online (default fallback) · %1$d ms</string>
@@ -1199,10 +1192,6 @@
     <string name="onboarding_name_hint">Your name</string>
     <string name="onboarding_name_footer">Friends see this when you Listen Together. You can change it later in Settings.</string>
     <string name="onboarding_next">Next</string>
-    <string name="onboarding_connect_title">Connect your YouTube account</string>
-    <string name="onboarding_connect_body">Bring your library, playlists and mixes with you, and start a Listen Together party with friends.</string>
-    <string name="onboarding_sign_in_google">Sign in with Google</string>
-    <string name="onboarding_skip_sign_in">Skip sign in</string>
     <string name="onboarding_back">Back</string>
     <!-- Settings: Aria for Wear OS -->
     <string name="wear_os_section">Aria for Wear OS</string>

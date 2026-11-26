@@ -113,7 +113,6 @@
     <string name="open_releases_page">開啟發布頁面</string>
     <string name="whats_new">新版本說明</string>
     <string name="log_copied">日誌已複製 · %1$d 行</string>
-    <string name="sign_in_youtube_music">登入 YouTube Music</string>
     <string name="sign_in_discord">登入 Discord</string>
     <string name="personalized_recommendations">獲取個性化推薦</string>
     <string name="play_next">下一首播放</string>
@@ -318,7 +317,6 @@
     <string name="wifi_only_download_refusal">下載已限制為僅使用 Wi-Fi。請在設定中關閉此項以使用移動資料。</string>
     <string name="pinned_playlist_limit">最多隻能固定 %1$d 個播放列表</string>
     <string name="downloaded_playlist">已下載的播放列表</string>
-    <string name="library_sign_in_description">登入 Google 賬號即可檢視你喜歡的歌曲、播放列表和 YouTube Music 歷史記錄。</string>
     <string name="downloads_progress">下載 · %1$d%%</string>
     <string name="downloads_finished">下載 · 已完成</string>
     <string name="downloading_progress">正在下載 · %1$d%%</string>
@@ -636,8 +634,6 @@
     <string name="swipe_plays_next">滑動歌曲後將其設為下一首播放</string>
     <string name="swipe_adds_to_queue">關閉後，滑動會將歌曲新增到播放佇列末尾</string>
     <string name="import_backup_warning">這將用檔案中的內容替換此裝置上的設定和收聽記錄。如果想保留當前資料，請先將其匯出。</string>
-    <string name="youtube_music_account">YouTube Music 賬號</string>
-    <string name="tap_to_sign_in_google">點按以使用 Google 登入</string>
     <string name="export_succeeded">已匯出設定和%1$s</string>
     <string name="export_failed">匯出失敗：%1$s</string>
     <string name="import_succeeded">已從 v%2$s 匯入%1$s</string>
@@ -658,7 +654,6 @@
     <string name="listen_together">一起聽</string>
     <string name="listen_together_subtitle">分享一個程式碼，同步播放同一首音樂</string>
     <string name="listen_together_in_party">派對中 · %1$s</string>
-    <string name="listen_together_sign_in_footer">一起聽需要賬號，這樣派對裡的每個人都能看到還有誰在。</string>
     <string name="listen_together_server">派對伺服器</string>
     <string name="listen_together_server_online">線上 · %1$d 毫秒</string>
     <string name="listen_together_server_online_fallback">線上（預設備用）· %1$d 毫秒</string>
@@ -765,7 +760,6 @@
         <item quantity="other">%1$d 首曲目</item>
     </plurals>
 
-    <string name="account_profiles_help">Google 賬號可以擁有個人和品牌資料。每個資料都有自己的媒體庫、頂和歷史記錄。</string>
 
     <string name="accounts">賬號</string>
 
@@ -827,7 +821,6 @@
 
     <string name="current_profile">當前個人資料</string>
 
-    <string name="default_youtube_profile">YouTube Music 預設個人資料</string>
 
     <string name="dolby_atmos">杜比全景聲 (Dolby Atmos)</string>
 
@@ -1297,10 +1290,6 @@
     <string name="onboarding_name_hint">你的名字</string>
     <string name="onboarding_name_footer">使用「一起聽」時，好友會看到這個名字。你可以稍後在「設定」中修改。</string>
     <string name="onboarding_next">下一步</string>
-    <string name="onboarding_connect_title">連結你的 YouTube 帳號</string>
-    <string name="onboarding_connect_body">帶上你的音樂庫、播放清單和合輯，與好友開啟「一起聽」派對。</string>
-    <string name="onboarding_sign_in_google">使用 Google 登入</string>
-    <string name="onboarding_skip_sign_in">略過登入</string>
     <string name="onboarding_back">返回</string>
     <string name="wear_os_section">適用於 Wear OS 的 Aria</string>
     <string name="wear_os_page_title">Wear OS</string>

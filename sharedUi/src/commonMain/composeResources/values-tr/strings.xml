@@ -140,7 +140,6 @@
     <string name="downloaded">İndirildi</string>
     <string name="explore">Keşfet</string>
     <string name="library">Kitaplık</string>
-    <string name="library_sign_in_description">Beğendiğin şarkıları, çalma listelerini ve YouTube Music geçmişini görmek için Google hesabınla giriş yap.</string>
     <string name="new_playlist">Yeni çalma listesi</string>
     <string name="on_device">Cihazda</string>
     <string name="personalized_recommendations">Size özel öneriler alın</string>
@@ -187,7 +186,6 @@
     <string name="shelf_youtube_charts">YouTube Listeleri</string>
     <string name="show_all">Tümünü göster</string>
     <string name="sign_in">Giriş yap</string>
-    <string name="sign_in_youtube_music">YouTube Music\'e giriş yap</string>
     <string name="subscriptions">Abonelikler</string>
     <string name="switch_to_grid_view">Izgara görünümüne geç</string>
     <string name="switch_to_list_view">Liste görünümüne geç</string>

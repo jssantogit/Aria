@@ -119,7 +119,6 @@
     <string name="open_releases_page">Abrir página de lanzamientos</string>
     <string name="whats_new">Novedades</string>
     <string name="log_copied">Registro copiado · %1$d líneas</string>
-    <string name="sign_in_youtube_music">Iniciar sesión en YouTube Music</string>
     <string name="sign_in_discord">Iniciar sesión en Discord</string>
     <string name="personalized_recommendations">Recibe recomendaciones personalizadas</string>
     <string name="play_next">Reproducir después</string>
@@ -336,7 +335,6 @@
     <string name="wifi_only_download_refusal">Las descargas están limitadas a Wi-Fi. Desactiva esa opción en Ajustes para usar datos móviles.</string>
     <string name="pinned_playlist_limit">Solo se pueden fijar %1$d playlists</string>
     <string name="downloaded_playlist">Playlist descargada</string>
-    <string name="library_sign_in_description">Inicia sesión en tu cuenta de Google para ver tus canciones favoritas, playlists e historial de YouTube Music.</string>
     <string name="downloads_progress">Descargas · %1$d%%</string>
     <string name="downloads_finished">Descargas · finalizadas</string>
     <string name="downloading_progress">Descargando · %1$d%%</string>
@@ -668,8 +666,6 @@
     <string name="swipe_plays_next">Al deslizar una canción, se reproduce a continuación</string>
     <string name="swipe_adds_to_queue">Cuando está desactivado, deslizar añade la canción al final de la cola</string>
     <string name="import_backup_warning">Esto reemplaza los ajustes y el historial de reproducción de este dispositivo con el contenido del archivo. Exporta primero los datos actuales si quieres conservarlos.</string>
-    <string name="youtube_music_account">Cuenta de YouTube Music</string>
-    <string name="tap_to_sign_in_google">Toca para iniciar sesión con Google</string>
     <string name="export_succeeded">Se exportaron los ajustes y %1$s</string>
     <string name="export_failed">Error al exportar: %1$s</string>
     <string name="import_succeeded">Se importó %1$s desde v%2$s</string>
@@ -697,8 +693,6 @@
     <string name="current_profile">Perfil actual</string>
     <string name="selected_account">Cuenta seleccionada</string>
     <string name="listen_as">Escuchar como</string>
-    <string name="default_youtube_profile">Perfil predeterminado de YouTube Music</string>
-    <string name="account_profiles_help">Una cuenta de Google puede tener perfiles Personal y de marca. Cada uno tiene su propia biblioteca, Me gusta e historial.</string>
     <string name="choose_profile">Elegir un perfil</string>
     <string name="use_this_profile">Usar este perfil</string>
     <string name="switch_profile_hint">Cambia con el avatar y luego usa este perfil.</string>
@@ -708,7 +702,6 @@
     <string name="listen_together">Escuchar juntos</string>
     <string name="listen_together_subtitle">Comparte un código para escuchar la misma música al mismo tiempo</string>
     <string name="listen_together_in_party">En una fiesta · %1$s</string>
-    <string name="listen_together_sign_in_footer">Escuchar juntos requiere una cuenta, para que todos en la fiesta vean quién más está.</string>
     <string name="listen_together_server">Servidor de la fiesta</string>
     <string name="listen_together_server_online">En línea · %1$d ms</string>
     <string name="listen_together_server_online_fallback">En línea (respaldo predeterminado) · %1$d ms</string>
@@ -1299,10 +1292,6 @@
     <string name="onboarding_name_hint">Tu nombre</string>
     <string name="onboarding_name_footer">Tus amigos lo ven cuando usas Escuchar juntos. Puedes cambiarlo más tarde en Ajustes.</string>
     <string name="onboarding_next">Siguiente</string>
-    <string name="onboarding_connect_title">Conecta tu cuenta de YouTube</string>
-    <string name="onboarding_connect_body">Trae contigo tu biblioteca, listas y mixes, y empieza una sesión de Escuchar juntos con tus amigos.</string>
-    <string name="onboarding_sign_in_google">Iniciar sesión con Google</string>
-    <string name="onboarding_skip_sign_in">Omitir inicio de sesión</string>
     <string name="onboarding_back">Atrás</string>
     <string name="wear_os_section">Aria para Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

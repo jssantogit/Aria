@@ -117,7 +117,6 @@
     <string name="open_releases_page">เปิดหน้าเวอร์ชันที่เผยแพร่</string>
     <string name="whats_new">มีอะไรใหม่</string>
     <string name="log_copied">คัดลอกล็อกแล้ว · %1$d บรรทัด</string>
-    <string name="sign_in_youtube_music">ลงชื่อเข้าใช้ YouTube Music</string>
     <string name="choose_a_channel">เลือกช่อง</string>
     <string name="channel_session_unavailable">ยังไม่มีเซสชันในหน้านี้ — เปิด YouTube Music ก่อน</string>
     <string name="channel_switch_instructions">สลับด้วยรูปโปรไฟล์ แล้วแตะใช้ช่องนี้</string>
@@ -342,7 +341,6 @@
     <string name="wifi_only_download_refusal">การดาวน์โหลดจำกัดไว้เฉพาะ Wi-Fi ปิดการตั้งค่านี้เพื่อใช้เน็ตมือถือ</string>
     <string name="pinned_playlist_limit">ปักหมุดได้สูงสุด %1$d เพลย์ลิสต์</string>
     <string name="downloaded_playlist">เพลย์ลิสต์ที่ดาวน์โหลดไว้</string>
-    <string name="library_sign_in_description">ลงชื่อเข้าใช้บัญชี Google เพื่อดูเพลงที่ถูกใจ เพลย์ลิสต์ และประวัติ YouTube Music ของคุณ</string>
     <string name="downloads_progress">การดาวน์โหลด · %1$d%%</string>
     <string name="downloads_finished">การดาวน์โหลด · เสร็จสิ้น</string>
     <string name="downloading_progress">กำลังดาวน์โหลด · %1$d%%</string>
@@ -665,8 +663,6 @@
     <string name="swipe_plays_next">การปัดเพลงจะเล่นเพลงนั้นต่อไป</string>
     <string name="swipe_adds_to_queue">เมื่อปิด การปัดจะเพิ่มเพลงไปที่ท้ายคิวแทน</string>
     <string name="import_backup_warning">การดำเนินการนี้จะแทนที่การตั้งค่าและประวัติการฟังของอุปกรณ์นี้ด้วยเนื้อหาในไฟล์ ส่งออกข้อมูลปัจจุบันก่อนหากต้องการเก็บไว้</string>
-    <string name="youtube_music_account">บัญชี YouTube Music</string>
-    <string name="tap_to_sign_in_google">แตะเพื่อลงชื่อเข้าใช้ด้วย Google</string>
     <string name="export_succeeded">ส่งออกการตั้งค่าและ %1$s แล้ว</string>
     <string name="export_failed">ส่งออกไม่สำเร็จ: %1$s</string>
     <string name="import_succeeded">นำเข้า %1$s จาก v%2$s แล้ว</string>
@@ -693,8 +689,6 @@
     <string name="current_profile">โปรไฟล์ปัจจุบัน</string>
     <string name="selected_account">บัญชีที่เลือก</string>
     <string name="listen_as">ฟังในฐานะ</string>
-    <string name="default_youtube_profile">โปรไฟล์เริ่มต้นของ YouTube Music</string>
-    <string name="account_profiles_help">บัญชี Google หนึ่งบัญชีสามารถมีโปรไฟล์ส่วนตัวและโปรไฟล์แบรนด์ได้ แต่ละโปรไฟล์มีคลังเพลง เพลงที่ถูกใจ และประวัติของตัวเอง</string>
     <string name="choose_profile">เลือกโปรไฟล์</string>
     <string name="use_this_profile">ใช้โปรไฟล์นี้</string>
     <string name="switch_profile_hint">สลับโดยใช้รูปโปรไฟล์ แล้วใช้โปรไฟล์นี้</string>
@@ -704,7 +698,6 @@
     <string name="listen_together">ฟังด้วยกัน</string>
     <string name="listen_together_subtitle">แชร์รหัสแล้วเล่นเพลงเดียวกันพร้อมกัน</string>
     <string name="listen_together_in_party">อยู่ในปาร์ตี้ · %1$s</string>
-    <string name="listen_together_sign_in_footer">การฟังด้วยกันต้องมีบัญชี เพื่อให้ทุกคนในปาร์ตี้เห็นว่ามีใครอยู่ด้วย</string>
     <string name="listen_together_server">เซิร์ฟเวอร์ปาร์ตี้</string>
     <string name="listen_together_server_online">ออนไลน์ · %1$d มิลลิวินาที</string>
     <string name="listen_together_server_online_fallback">ออนไลน์ (สำรองเริ่มต้น) · %1$d มิลลิวินาที</string>
@@ -1310,10 +1303,6 @@
     <string name="onboarding_name_hint">ชื่อของคุณ</string>
     <string name="onboarding_name_footer">เพื่อน ๆ จะเห็นชื่อนี้เมื่อคุณฟังด้วยกัน คุณเปลี่ยนได้ภายหลังในการตั้งค่า</string>
     <string name="onboarding_next">ถัดไป</string>
-    <string name="onboarding_connect_title">เชื่อมต่อบัญชี YouTube ของคุณ</string>
-    <string name="onboarding_connect_body">นำคลัง เพลย์ลิสต์ และมิกซ์ของคุณมาด้วย แล้วเริ่มปาร์ตี้ฟังด้วยกันกับเพื่อน ๆ</string>
-    <string name="onboarding_sign_in_google">ลงชื่อเข้าใช้ด้วย Google</string>
-    <string name="onboarding_skip_sign_in">ข้ามการลงชื่อเข้าใช้</string>
     <string name="onboarding_back">กลับ</string>
     <string name="wear_os_section">Aria สำหรับ Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

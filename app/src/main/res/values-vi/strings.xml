@@ -120,7 +120,6 @@
     <string name="open_releases_page">Mở trang Bản phát hành</string>
     <string name="whats_new">Có gì mới</string>
     <string name="log_copied">Đã sao chép nhật ký · %1$d dòng</string>
-    <string name="sign_in_youtube_music">Đăng nhập vào YouTube Music</string>
     <string name="choose_a_channel">Chọn một kênh</string>
     <string name="channel_session_unavailable">Chưa có phiên nào trên trang này — hãy mở YouTube Music trước</string>
     <string name="channel_switch_instructions">Chuyển bằng ảnh đại diện, sau đó nhấn Sử dụng kênh này</string>
@@ -357,7 +356,6 @@
     <string name="wifi_only_download_refusal">Tải xuống đang bị giới hạn chỉ qua Wi-Fi. Hãy tắt tùy chọn đó trong Cài đặt để sử dụng dữ liệu di động.</string>
     <string name="pinned_playlist_limit">Chỉ có thể ghim tối đa %1$d danh sách phát</string>
     <string name="downloaded_playlist">Danh sách phát đã tải</string>
-    <string name="library_sign_in_description">Đăng nhập vào tài khoản Google của bạn để xem các bài hát đã thích, danh sách phát và lịch sử YouTube Music.</string>
     <string name="downloads_progress">Tải xuống · %1$d%%</string>
     <string name="downloads_finished">Tải xuống · hoàn tất</string>
     <string name="downloading_progress">Đang tải xuống · %1$d%%</string>
@@ -679,8 +677,6 @@
     <string name="swipe_plays_next">Vuốt bài hát để phát tiếp theo</string>
     <string name="swipe_adds_to_queue">Khi tắt, vuốt sẽ thêm bài hát vào cuối hàng đợi</string>
     <string name="import_backup_warning">Thao tác này sẽ thay thế cài đặt và lịch sử nghe trên thiết bị bằng nội dung của tệp sao lưu. Hãy xuất dữ liệu hiện tại trước nếu bạn muốn giữ lại.</string>
-    <string name="youtube_music_account">Tài khoản YouTube Music</string>
-    <string name="tap_to_sign_in_google">Nhấn để đăng nhập bằng Google</string>
     <string name="export_succeeded">Đã xuất cài đặt và %1$s</string>
     <string name="export_failed">Xuất dữ liệu thất bại: %1$s</string>
     <string name="import_succeeded">Đã nhập %1$s từ v%2$s</string>
@@ -707,8 +703,6 @@
     <string name="current_profile">Hồ sơ hiện tại</string>
     <string name="selected_account">Tài khoản đã chọn</string>
     <string name="listen_as">Nghe dưới danh nghĩa</string>
-    <string name="default_youtube_profile">Hồ sơ mặc định của YouTube Music</string>
-    <string name="account_profiles_help">Một tài khoản Google có thể có hồ sơ Cá nhân và Thương hiệu. Mỗi hồ sơ có thư viện, lượt thích và lịch sử riêng.</string>
     <string name="choose_profile">Chọn một hồ sơ</string>
     <string name="use_this_profile">Sử dụng hồ sơ này</string>
     <string name="switch_profile_hint">Chuyển đổi bằng ảnh đại diện, sau đó sử dụng hồ sơ này.</string>
@@ -1019,7 +1013,6 @@
 
     <string name="listen_together_in_party">In a party · %1$s</string>
 
-    <string name="listen_together_sign_in_footer">Listening together needs an account, so everyone in the party can see who else is in it.</string>
 
     <string name="listen_together_server">Party server</string>
 
@@ -1244,10 +1237,6 @@
     <string name="onboarding_name_hint">Tên của bạn</string>
     <string name="onboarding_name_footer">Bạn bè sẽ thấy tên này khi bạn dùng Nghe cùng nhau. Bạn có thể đổi sau trong Cài đặt.</string>
     <string name="onboarding_next">Tiếp</string>
-    <string name="onboarding_connect_title">Kết nối tài khoản YouTube của bạn</string>
-    <string name="onboarding_connect_body">Mang theo thư viện, danh sách phát và mix của bạn, rồi bắt đầu buổi Nghe cùng nhau với bạn bè.</string>
-    <string name="onboarding_sign_in_google">Đăng nhập bằng Google</string>
-    <string name="onboarding_skip_sign_in">Bỏ qua đăng nhập</string>
     <string name="onboarding_back">Quay lại</string>
     <string name="wear_os_section">Aria cho Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

@@ -140,7 +140,6 @@
     <string name="downloaded">Загружено</string>
     <string name="explore">Обзор</string>
     <string name="library">Библиотека</string>
-    <string name="library_sign_in_description">Войдите в свой аккаунт Google, чтобы видеть понравившиеся песни, плейлисты и историю YouTube Music.</string>
     <string name="new_playlist">Новый плейлист</string>
     <string name="on_device">На устройстве</string>
     <string name="personalized_recommendations">Получайте персональные рекомендации</string>
@@ -187,7 +186,6 @@
     <string name="shelf_youtube_charts">Чарты YouTube</string>
     <string name="show_all">Показать все</string>
     <string name="sign_in">Войти</string>
-    <string name="sign_in_youtube_music">Войти в YouTube Music</string>
     <string name="subscriptions">Подписки</string>
     <string name="switch_to_grid_view">Переключить на сетку</string>
     <string name="switch_to_list_view">Переключить на список</string>

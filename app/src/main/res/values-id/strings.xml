@@ -113,7 +113,6 @@
     <string name="open_releases_page">Buka Halaman Rilis</string>
     <string name="whats_new">Yang baru</string>
     <string name="log_copied">Log disalin · %1$d baris</string>
-    <string name="sign_in_youtube_music">Masuk ke YouTube Music</string>
     <string name="sign_in_discord">Masuk ke Discord</string>
     <string name="personalized_recommendations">Dapatkan rekomendasi yang dipersonalisasi</string>
     <string name="play_next">Putar berikutnya</string>
@@ -318,7 +317,6 @@
     <string name="wifi_only_download_refusal">Unduhan dibatasi hanya lewat Wi-Fi. Nonaktifkan itu di Pengaturan untuk menggunakan data seluler.</string>
     <string name="pinned_playlist_limit">Hanya %1$d playlist yang dapat disematkan</string>
     <string name="downloaded_playlist">Playlist yang diunduh</string>
-    <string name="library_sign_in_description">Masuk ke akun Google Anda untuk melihat lagu yang disukai, playlist, dan riwayat YouTube Music Anda.</string>
     <string name="downloads_progress">Unduhan · %1$d%%</string>
     <string name="downloads_finished">Unduhan · selesai</string>
     <string name="downloading_progress">Mengunduh · %1$d%%</string>
@@ -636,8 +634,6 @@
     <string name="swipe_plays_next">Menggeser lagu memutarnya berikutnya</string>
     <string name="swipe_adds_to_queue">Saat dinonaktifkan, menggeser menambahkan lagu ke akhir antrean</string>
     <string name="import_backup_warning">Ini akan mengganti pengaturan dan riwayat mendengarkan perangkat ini dengan isi file tersebut. Ekspor data saat ini terlebih dahulu jika ingin menyimpannya.</string>
-    <string name="youtube_music_account">Akun YouTube Music</string>
-    <string name="tap_to_sign_in_google">Ketuk untuk masuk dengan Google</string>
     <string name="export_succeeded">Berhasil mengekspor pengaturan dan %1$s</string>
     <string name="export_failed">Ekspor gagal: %1$s</string>
     <string name="import_succeeded">Berhasil mengimpor %1$s dari v%2$s</string>
@@ -658,7 +654,6 @@
     <string name="listen_together">Dengar bersama</string>
     <string name="listen_together_subtitle">Bagikan kode dan putar musik yang sama, serempak</string>
     <string name="listen_together_in_party">Dalam pesta · %1$s</string>
-    <string name="listen_together_sign_in_footer">Mendengar bersama butuh akun, supaya semua orang di pesta bisa lihat siapa saja yang ikut.</string>
     <string name="listen_together_server">Server pesta</string>
     <string name="listen_together_server_online">Online · %1$d ms</string>
     <string name="listen_together_server_online_fallback">Online (cadangan bawaan) · %1$d ms</string>
@@ -765,7 +760,6 @@
         <item quantity="other">%1$d lagu</item>
     </plurals>
 
-    <string name="account_profiles_help">Akun Google dapat memiliki profil Pribadi dan Merek. Masing-masing memiliki perpustakaan dan histori sendiri.</string>
 
     <string name="accounts">Akun</string>
 
@@ -827,7 +821,6 @@
 
     <string name="current_profile">Profil saat ini</string>
 
-    <string name="default_youtube_profile">Profil default YouTube Music</string>
 
     <string name="dolby_atmos">Dolby Atmos</string>
 
@@ -1304,10 +1297,6 @@
     <string name="onboarding_name_hint">Nama Anda</string>
     <string name="onboarding_name_footer">Teman akan melihatnya saat Anda memakai Dengarkan Bersama. Anda bisa mengubahnya nanti di Pengaturan.</string>
     <string name="onboarding_next">Berikutnya</string>
-    <string name="onboarding_connect_title">Hubungkan akun YouTube Anda</string>
-    <string name="onboarding_connect_body">Bawa pustaka, playlist, dan mix Anda, lalu mulai sesi Dengarkan Bersama dengan teman.</string>
-    <string name="onboarding_sign_in_google">Masuk dengan Google</string>
-    <string name="onboarding_skip_sign_in">Lewati masuk</string>
     <string name="onboarding_back">Kembali</string>
     <string name="wear_os_section">Aria untuk Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

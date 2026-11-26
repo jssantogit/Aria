@@ -140,7 +140,6 @@
     <string name="downloaded">已下载</string>
     <string name="explore">探索</string>
     <string name="library">资料库</string>
-    <string name="library_sign_in_description">登录 Google 账号即可查看你喜欢的歌曲、播放列表和 YouTube Music 历史记录。</string>
     <string name="new_playlist">新建播放列表</string>
     <string name="on_device">设备内</string>
     <string name="personalized_recommendations">获取个性化推荐</string>
@@ -187,7 +186,6 @@
     <string name="shelf_youtube_charts">YouTube 排行榜</string>
     <string name="show_all">查看全部</string>
     <string name="sign_in">登录</string>
-    <string name="sign_in_youtube_music">登录 YouTube Music</string>
     <string name="subscriptions">订阅</string>
     <string name="switch_to_grid_view">切换到网格视图</string>
     <string name="switch_to_list_view">切换到列表视图</string>

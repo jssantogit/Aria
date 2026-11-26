@@ -140,7 +140,6 @@
     <string name="downloaded">डाउनलोड किया गया</string>
     <string name="explore">एक्सप्लोर करें</string>
     <string name="library">लाइब्रेरी</string>
-    <string name="library_sign_in_description">अपने पसंदीदा गाने, प्लेलिस्ट और YouTube Music इतिहास देखने के लिए अपने Google खाते में साइन इन करें।</string>
     <string name="new_playlist">नई प्लेलिस्ट</string>
     <string name="on_device">डिवाइस पर</string>
     <string name="personalized_recommendations">अपने लिए पर्सनलाइज़्ड सुझाव पाएं</string>
@@ -187,7 +186,6 @@
     <string name="shelf_youtube_charts">YouTube चार्ट्स</string>
     <string name="show_all">सभी देखें</string>
     <string name="sign_in">साइन इन करें</string>
-    <string name="sign_in_youtube_music">YouTube Music में साइन इन करें</string>
     <string name="subscriptions">सदस्यताएं</string>
     <string name="switch_to_grid_view">ग्रिड व्यू पर स्विच करें</string>
     <string name="switch_to_list_view">लिस्ट व्यू पर स्विच करें</string>

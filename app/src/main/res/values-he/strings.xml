@@ -120,7 +120,6 @@
     <string name="open_releases_page">פתיחת דף הגרסאות</string>
     <string name="whats_new">מה חדש</string>
     <string name="log_copied">היומן הועתק · %1$d שורות</string>
-    <string name="sign_in_youtube_music">התחברות ל-YouTube Music</string>
     <string name="sign_in_discord">התחברות ל-Discord</string>
     <string name="personalized_recommendations">קבל המלצות מותאמות אישית עבורך</string>
     <string name="play_next">נגן הבא</string>
@@ -324,7 +323,6 @@
     <string name="wifi_only_download_refusal">הורדות מוגבלות ל-Wi-Fi. כבה זאת בהגדרות כדי להשתמש בנתונים סלולריים.</string>
     <string name="pinned_playlist_limit">ניתן לנעוץ רק %1$d רשימות השמעה</string>
     <string name="downloaded_playlist">רשימת השמעה שהורדה</string>
-    <string name="library_sign_in_description">היכנס לחשבון הגוגל שלך כדי לראות את השירים שאהבת, רשימות ההשמעה והיסטוריית ה-YouTube Music.</string>
     <string name="downloads_progress">הורדות · %1$d%%</string>
     <string name="downloads_finished">הורדות · הסתיימו</string>
     <string name="downloading_progress">מוריד · %1$d%%</string>
@@ -607,8 +605,6 @@
     <string name="swipe_plays_next">החלקה של שיר מנגנת אותו בהמשך</string>
     <string name="swipe_adds_to_queue">כאשר מושבת, החלקה מוסיפה את השיר לסוף התור</string>
     <string name="import_backup_warning">זה מחליף את ההגדרות והיסטוריית ההאזנה של מכשיר זה בתוכן הקובץ. ייצא את הנתונים הנוכחיים תחילה אם תרצה לשמור אותם.</string>
-    <string name="youtube_music_account">חשבון YouTube Music</string>
-    <string name="tap_to_sign_in_google">הקש כדי להתחבר עם גוגל</string>
     <string name="export_succeeded">הגדרות ו-%1$s יוצאו בהצלחה</string>
     <string name="export_failed">הייצוא נכשל: %1$s</string>
     <string name="import_succeeded">יובאו %1$s מ-v%2$s</string>
@@ -683,7 +679,6 @@
     <string name="listen_together">להאזין ביחד</string>
     <string name="listen_together_subtitle">שתפו קוד ונגנו את אותה מוזיקה, יחד</string>
     <string name="listen_together_in_party">במסיבה · %1$s</string>
-    <string name="listen_together_sign_in_footer">האזנה משותפת דורשת חשבון, כדי שכל מי שבמסיבה יראה מי עוד נמצא בה.</string>
     <string name="listen_together_server">שרת המסיבה</string>
     <string name="listen_together_server_online">מחובר · %1$d מ״ש</string>
     <string name="listen_together_server_online_fallback">מחובר (גיבוי ברירת מחדל) · %1$d מ״ש</string>
@@ -791,7 +786,6 @@
         <item quantity="other">%1$d רצועות</item>
     </plurals>
 
-    <string name="account_profiles_help">לחשבון Google יכולים להיות פרופילים אישיים ועסקיים, לכל אחד ספרייה והיסטוריה משלו.</string>
 
     <string name="accounts">חשבונות</string>
 
@@ -853,7 +847,6 @@
 
     <string name="current_profile">פרופיל נוכחי</string>
 
-    <string name="default_youtube_profile">פרופיל ברירת מחדל של YouTube Music</string>
 
     <string name="dolby_atmos">Dolby Atmos</string>
 
@@ -1332,10 +1325,6 @@
     <string name="onboarding_name_hint">השם שלך</string>
     <string name="onboarding_name_footer">חברים רואים את זה כשמאזינים יחד. אפשר לשנות זאת מאוחר יותר בהגדרות.</string>
     <string name="onboarding_next">הבא</string>
-    <string name="onboarding_connect_title">חיבור חשבון YouTube</string>
-    <string name="onboarding_connect_body">הביאו איתכם את הספרייה, הפלייליסטים והמיקסים, והתחילו מסיבת האזנה משותפת עם חברים.</string>
-    <string name="onboarding_sign_in_google">התחברות עם Google</string>
-    <string name="onboarding_skip_sign_in">דילוג על ההתחברות</string>
     <string name="onboarding_back">חזרה</string>
     <string name="wear_os_section">Aria ל-Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

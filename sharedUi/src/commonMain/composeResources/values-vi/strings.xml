@@ -140,7 +140,6 @@
     <string name="downloaded">Đã tải</string>
     <string name="explore">Khám phá</string>
     <string name="library">Thư viện</string>
-    <string name="library_sign_in_description">Đăng nhập vào tài khoản Google của bạn để xem các bài hát đã thích, danh sách phát và lịch sử YouTube Music.</string>
     <string name="new_playlist">Danh sách phát mới</string>
     <string name="on_device">Trên thiết bị</string>
     <string name="personalized_recommendations">Nhận các đề xuất dành riêng cho bạn</string>
@@ -187,7 +186,6 @@
     <string name="shelf_youtube_charts">Bảng xếp hạng YouTube</string>
     <string name="show_all">Xem tất cả</string>
     <string name="sign_in">Đăng nhập</string>
-    <string name="sign_in_youtube_music">Đăng nhập vào YouTube Music</string>
     <string name="subscriptions">Đã đăng ký</string>
     <string name="switch_to_grid_view">Chuyển sang dạng lưới</string>
     <string name="switch_to_list_view">Chuyển sang dạng danh sách</string>

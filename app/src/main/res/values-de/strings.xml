@@ -118,7 +118,6 @@
     <string name="open_releases_page">Release-Seite öffnen</string>
     <string name="whats_new">Neuerungen</string>
     <string name="log_copied">Protokoll kopiert · %1$d Zeilen</string>
-    <string name="sign_in_youtube_music">Bei YouTube Music anmelden</string>
     <string name="sign_in_discord">Bei Discord anmelden</string>
     <string name="personalized_recommendations">Erhalte personalisierte Empfehlungen</string>
     <string name="play_next">Als Nächstes wiedergeben</string>
@@ -323,7 +322,6 @@
     <string name="wifi_only_download_refusal">Downloads sind auf WLAN beschränkt. Schalte das in den Einstellungen aus, um mobile Daten zu nutzen.</string>
     <string name="pinned_playlist_limit">Es können nur %1$d Playlists angeheftet werden</string>
     <string name="downloaded_playlist">Heruntergeladene Playlist</string>
-    <string name="library_sign_in_description">Melde dich mit deinem Google-Konto an, um deine gelikten Songs, Playlists und den YouTube-Music-Verlauf zu sehen.</string>
     <string name="downloads_progress">Downloads · %1$d%%</string>
     <string name="downloads_finished">Downloads · fertig</string>
     <string name="downloading_progress">Wird heruntergeladen · %1$d%%</string>
@@ -655,8 +653,6 @@
     <string name="swipe_plays_next">Ein gewischter Song wird als Nächstes gespielt</string>
     <string name="swipe_adds_to_queue">Wenn deaktiviert, fügt Wischen den Song ans Ende der Warteschlange hinzu</string>
     <string name="import_backup_warning">Dies ersetzt die Einstellungen und den Hörverlauf dieses Geräts durch den Inhalt der Datei. Exportiere zuerst die aktuellen Daten, wenn du sie behalten möchtest.</string>
-    <string name="youtube_music_account">YouTube-Music-Konto</string>
-    <string name="tap_to_sign_in_google">Tippen, um sich mit Google anzumelden</string>
     <string name="export_succeeded">Einstellungen und %1$s exportiert</string>
     <string name="export_failed">Export fehlgeschlagen: %1$s</string>
     <string name="import_succeeded">%1$s von v%2$s importiert</string>
@@ -678,7 +674,6 @@
     <string name="listen_together">Gemeinsam hören</string>
     <string name="listen_together_subtitle">Teile einen Code und hört dieselbe Musik, synchron</string>
     <string name="listen_together_in_party">In einer Party · %1$s</string>
-    <string name="listen_together_sign_in_footer">Gemeinsames Hören braucht ein Konto, damit jeder in der Party sieht, wer sonst dabei ist.</string>
     <string name="listen_together_server">Party-Server</string>
     <string name="listen_together_server_online">Online · %1$d ms</string>
     <string name="listen_together_server_online_fallback">Online (Standard-Fallback) · %1$d ms</string>
@@ -786,7 +781,6 @@
         <item quantity="other">%1$d Titel</item>
     </plurals>
 
-    <string name="account_profiles_help">Ein Google-Konto kann persönliche und Markenprofile haben, jeweils mit eigener Mediathek.</string>
 
     <string name="accounts">Konten</string>
 
@@ -848,7 +842,6 @@
 
     <string name="current_profile">Aktuelles Profil</string>
 
-    <string name="default_youtube_profile">Standard-YouTube Music-Profil</string>
 
     <string name="dolby_atmos">Dolby Atmos</string>
 
@@ -1327,10 +1320,6 @@
     <string name="onboarding_name_hint">Dein Name</string>
     <string name="onboarding_name_footer">Freunde sehen das bei Gemeinsam hören. Du kannst es später in den Einstellungen ändern.</string>
     <string name="onboarding_next">Weiter</string>
-    <string name="onboarding_connect_title">Verbinde dein YouTube-Konto</string>
-    <string name="onboarding_connect_body">Bring deine Mediathek, Playlists und Mixe mit und starte eine Gemeinsam-hören-Party mit Freunden.</string>
-    <string name="onboarding_sign_in_google">Mit Google anmelden</string>
-    <string name="onboarding_skip_sign_in">Anmeldung überspringen</string>
     <string name="onboarding_back">Zurück</string>
     <string name="wear_os_section">Aria für Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

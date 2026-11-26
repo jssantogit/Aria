@@ -140,7 +140,6 @@
     <string name="downloaded">Baixado</string>
     <string name="explore">Explorar</string>
     <string name="library">Biblioteca</string>
-    <string name="library_sign_in_description">Faça login em sua conta do Google para ver suas músicas curtidas, playlists e histórico do YouTube Music.</string>
     <string name="new_playlist">Nova playlist</string>
     <string name="on_device">No dispositivo</string>
     <string name="personalized_recommendations">Receba recomendações personalizadas</string>
@@ -187,7 +186,6 @@
     <string name="shelf_youtube_charts">Paradas do YouTube</string>
     <string name="show_all">Ver tudo</string>
     <string name="sign_in">Entrar</string>
-    <string name="sign_in_youtube_music">Entrar no YouTube Music</string>
     <string name="subscriptions">Inscrições</string>
     <string name="switch_to_grid_view">Alternar para visualização em grade</string>
     <string name="switch_to_list_view">Alternar para visualização em lista</string>

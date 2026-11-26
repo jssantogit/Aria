@@ -119,7 +119,6 @@
     <string name="open_releases_page">Ouvrir la page des versions</string>
     <string name="whats_new">Nouveautés</string>
     <string name="log_copied">Journal copié · %1$d lignes</string>
-    <string name="sign_in_youtube_music">Se connecter à YouTube Music</string>
     <string name="sign_in_discord">Se connecter à Discord</string>
     <string name="personalized_recommendations">Recevez des recommandations personnalisées</string>
     <string name="play_next">Lire ensuite</string>
@@ -324,7 +323,6 @@
     <string name="wifi_only_download_refusal">Les téléchargements sont limités au Wi-Fi. Désactivez cette option dans les paramètres pour utiliser les données mobiles.</string>
     <string name="pinned_playlist_limit">Seulement %1$d playlists peuvent être épinglées</string>
     <string name="downloaded_playlist">Playlist téléchargée</string>
-    <string name="library_sign_in_description">Connectez-vous à votre compte Google pour voir vos chansons aimées, vos playlists et votre historique YouTube Music.</string>
     <string name="downloads_progress">Téléchargements · %1$d%%</string>
     <string name="downloads_finished">Téléchargements · terminés</string>
     <string name="downloading_progress">Téléchargement · %1$d%%</string>
@@ -656,8 +654,6 @@
     <string name="swipe_plays_next">Glisser une chanson la fait jouer ensuite</string>
     <string name="swipe_adds_to_queue">Lorsque c\'est désactivé, glisser ajoute la chanson à la fin de la file d\'attente</string>
     <string name="import_backup_warning">Cela remplace les paramètres et l\'historique d\'écoute de cet appareil par le contenu du fichier. Exportez d\'abord les données actuelles si vous voulez les conserver.</string>
-    <string name="youtube_music_account">Compte YouTube Music</string>
-    <string name="tap_to_sign_in_google">Appuyez pour vous connecter avec Google</string>
     <string name="export_succeeded">Paramètres et %1$s exportés</string>
     <string name="export_failed">Échec de l\'exportation : %1$s</string>
     <string name="import_succeeded">%1$s importé depuis v%2$s</string>
@@ -679,7 +675,6 @@
     <string name="listen_together">Écouter ensemble</string>
     <string name="listen_together_subtitle">Partage un code et écoutez la même musique, en même temps</string>
     <string name="listen_together_in_party">Dans une session · %1$s</string>
-    <string name="listen_together_sign_in_footer">L’écoute commune nécessite un compte, pour que chacun puisse voir qui d’autre participe.</string>
     <string name="listen_together_server">Serveur de session</string>
     <string name="listen_together_server_online">En ligne · %1$d ms</string>
     <string name="listen_together_server_online_fallback">En ligne (secours par défaut) · %1$d ms</string>
@@ -787,7 +782,6 @@
         <item quantity="other">%1$d pistes</item>
     </plurals>
 
-    <string name="account_profiles_help">Un compte Google peut avoir des profils personnel et de marque, chacun avec sa bibliothèque et son historique.</string>
 
     <string name="accounts">Comptes</string>
 
@@ -849,7 +843,6 @@
 
     <string name="current_profile">Profil actuel</string>
 
-    <string name="default_youtube_profile">Profil par défaut de YouTube Music</string>
 
     <string name="dolby_atmos">Dolby Atmos</string>
 
@@ -1328,10 +1321,6 @@
     <string name="onboarding_name_hint">Votre nom</string>
     <string name="onboarding_name_footer">Vos amis le voient quand vous utilisez Écoute partagée. Vous pourrez le modifier plus tard dans les Réglages.</string>
     <string name="onboarding_next">Suivant</string>
-    <string name="onboarding_connect_title">Connectez votre compte YouTube</string>
-    <string name="onboarding_connect_body">Retrouvez votre bibliothèque, vos playlists et vos mix, et lancez une soirée Écoute partagée avec vos amis.</string>
-    <string name="onboarding_sign_in_google">Se connecter avec Google</string>
-    <string name="onboarding_skip_sign_in">Passer la connexion</string>
     <string name="onboarding_back">Retour</string>
     <string name="wear_os_section">Aria pour Wear OS</string>
     <string name="wear_os_page_title">Wear OS</string>

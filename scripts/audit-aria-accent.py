@@ -56,6 +56,7 @@ OLD_BRAND = re.compile(r"bitchord", re.I)
 # Ban the removed logo and banner anywhere in runtime sources. Other legacy
 # references are inventoried by symbol (not source text) for compatibility review.
 RETIRED_GOOGLE_UI = re.compile(r"\b(?:ic_google_g|SignInBanner|GoogleAccountSession|YouTubeProfile|BrowserSession|CapturedSession|WebSessionMode|AccountProfileSelector|AccountChannelDialog|AccountCard|hasApiSid|sign_in_with_google|tap_to_sign_in_google|onboarding_sign_in_google|sign_in_youtube_music|library_sign_in_description|listen_together_sign_in_footer)\b|accounts\.google\.com")
+RETIRED_GOOGLE_RESOURCE_KEYS = {"sign_in_youtube_music", "sign_in_with_google", "library_sign_in_description", "tap_to_sign_in_google", "onboarding_sign_in_google", "listen_together_sign_in_footer", "onboarding_connect_title", "onboarding_connect_body", "onboarding_skip_sign_in", "account_profiles_help", "default_youtube_profile", "youtube_music_account"}
 GOOGLE_ACCOUNT_RESIDUAL = re.compile(r"\b(?:GoogleAccountSession|YouTubeProfile|BrowserSession|CapturedSession|WebSessionMode|AccountProfileSelector|AccountChannelDialog|AccountCard|activeSession|hasApiSid|sign_in_with_google|tap_to_sign_in_google|onboarding_sign_in_google|sign_in_youtube_music|library_sign_in_description|listen_together_sign_in_footer)\b|accounts\.google\.com", re.I)
 def blue(rgb):
     h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))
@@ -136,10 +137,15 @@ def main():
             for node in root:
                 if node.tag not in {"string", "string-array", "plurals"}:
                     continue
+                if node.get("name") in RETIRED_GOOGLE_RESOURCE_KEYS:
+                    results.append({"path":name,"line":0,"kind":"retired-google-ui","value":node.get("name")})
                 if OLD_BRAND.search("".join(node.itertext())):
                     results.append({"path":name,"line":0,"kind":"old-brand-resource-value","value":node.get("name","?")})
         for index, line in enumerate(lines):
             if path.suffix in {".kt", ".java"}:
+                for key in RETIRED_GOOGLE_RESOURCE_KEYS:
+                    if re.search(r"\b" + re.escape(key) + r"\b", line):
+                        results.append({"path":name,"line":index+1,"kind":"retired-google-ui","value":key})
                 for match in RETIRED_GOOGLE_UI.finditer(line):
                     results.append({"path":name,"line":index+1,"kind":"retired-google-ui","value":match.group()})
                 for match in GOOGLE_ACCOUNT_RESIDUAL.finditer(line):
