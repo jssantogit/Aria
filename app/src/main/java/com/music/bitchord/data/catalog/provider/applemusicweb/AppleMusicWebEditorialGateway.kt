@@ -95,6 +95,22 @@ internal class AppleMusicWebEditorialGateway(
             AppleMusicWebOutcome.Complete(catalog.genres(storefront))
         }
 
+    suspend fun browseRooms(country: String, genreId: String? = null):
+        ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebRoomRef>>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
+            AppleMusicWebOutcome.Complete(catalog.browseRooms(storefront, genreId))
+        }
+
+    suspend fun roomContents(room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25, cursor: String? = null):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebRoomPage>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, room.storefront) { storefront ->
+            val page = catalog.roomContents(room, kind, limit, cursor)
+            validateItems(page.items, storefront, setOf(kind))
+            if (page.unresolvedReferences > 0)
+                AppleMusicWebOutcome.Partial(page, AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES)
+            else AppleMusicWebOutcome.Complete(page)
+        }
+
     suspend fun mostPlayedChart(
         kind: AppleMusicWebKind, country: String, genreId: String? = null,
         limit: Int = 25, cursor: String? = null,

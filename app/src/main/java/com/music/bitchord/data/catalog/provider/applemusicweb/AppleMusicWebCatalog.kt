@@ -377,6 +377,87 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         return AppleMusicWebChartPage(block.str("name"), sf, genreId, kind, rows, next)
     }
 
+    /** Resolve actual linked editorial rooms, including empty previews. */
+    suspend fun browseRooms(country: String, genreId: String? = null): List<AppleMusicWebRoomRef> {
+        val sf = storefront(country)
+        require(genreId == null || genreId.matches(Regex("[0-9]{1,12}")))
+        val args = mapOf("platform" to "web", "l" to "en-US") +
+            (if (genreId == null) mapOf("name" to "music") else mapOf("genre" to genreId))
+        val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            "/v1/editorial/$sf/groupings", args))
+        if ("errors" in body || body["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid grouping envelope")
+        val grouping = body.objects("data").singleOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing or ambiguous grouping")
+        val tabs = grouping.obj("relationships")?.obj("tabs")
+            ?: throw AppleMusicWebProtocolException("Missing grouping tabs")
+        if (tabs["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid grouping tabs")
+        val first = tabs.objects("data").firstOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing grouping tab")
+        val children = first.obj("relationships")?.obj("children")
+            ?: throw AppleMusicWebProtocolException("Missing grouping children")
+        if (children["data"] !is JsonArray) throw AppleMusicWebProtocolException("Invalid grouping children")
+        return children.objects("data").flatMap { shelf ->
+            val attrs = shelf.obj("attributes")
+            val title = attrs?.str("name") ?: attrs?.str("title")
+            val room = shelf.obj("relationships")?.obj("room")
+            if (room != null && room["data"] !is JsonArray)
+                throw AppleMusicWebProtocolException("Invalid room linkage")
+            if (title == null) emptyList() else room?.objects("data").orEmpty().map { link ->
+                val id = link.str("id")?.takeIf { it.matches(Regex("[0-9]{1,12}")) }
+                    ?: throw AppleMusicWebProtocolException("Invalid room identity")
+                if (link.str("type")?.let { it != "rooms" } == true)
+                    throw AppleMusicWebProtocolException("Wrong room linkage type")
+                AppleMusicWebRoomRef(sf, genreId, id, title)
+            }
+        }.distinct()
+    }
+
+    suspend fun roomContents(
+        room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25,
+        cursor: String? = null,
+    ): AppleMusicWebRoomPage {
+        require(kind in setOf(AppleMusicWebKind.SONG, AppleMusicWebKind.ALBUM))
+        require(limit in 1..100 && room.id.matches(Regex("[0-9]{1,12}")))
+        val sf = storefront(room.storefront)
+        val path = "/v1/editorial/$sf/rooms/" + room.id + "/contents"
+        val base = mapOf("limit" to limit.toString(), "l" to "en-US")
+        fun cursorArgs(next: String): Map<String, String> {
+            val args = follow(next, path)
+            if (args.keys.any { it !in setOf("limit", "offset", "l", "sort") } ||
+                args["l"]?.let { it != "en-US" } == true)
+                throw AppleMusicWebProtocolException("Changed room cursor")
+            return base + args
+        }
+        val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path,
+            cursor?.let(::cursorArgs) ?: base))
+        if ("errors" in body || body["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid room contents envelope")
+        val raw = body.objects("data")
+        var excluded = 0
+        var unresolved = 0
+        val seen = hashSetOf<String>()
+        val rows = raw.mapNotNull { row ->
+            if (row.str("type") != kind.apiType) {
+                excluded++
+                null
+            } else {
+                val id = resourceId(row.str("id") ?: throw AppleMusicWebProtocolException("Missing ID"), kind)
+                if (!seen.add(id)) throw AppleMusicWebProtocolException("Duplicate room resource")
+                if (row["attributes"] == null || row["attributes"].toString() == "null") {
+                    unresolved++
+                    null
+                } else convert(row, sf) ?: throw AppleMusicWebProtocolException("Invalid room resource")
+            }
+        }
+        val next = body.str("next")
+        if (next != null) {
+            cursorArgs(next)
+            if (next == cursor) throw AppleMusicWebProtocolException("Cyclic room cursor")
+        }
+        return AppleMusicWebRoomPage(room, kind, rows, raw.size, excluded, unresolved, next)
+    }
+
     private suspend fun detail(
         sf: String, kind: AppleMusicWebKind, id: String, args: Map<String, String>,
     ): JsonObject {

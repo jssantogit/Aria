@@ -42,6 +42,7 @@ jobs:
           chmod +x gradlew
           ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest \
             --tests 'com.music.bitchord.AppleMusicWebReleaseClassificationTest' \
+            --tests 'com.music.bitchord.AppleMusicWebBrowseTest' \
             --tests 'com.music.bitchord.AppleMusicWebChartsTest' \
             --tests 'com.music.bitchord.AppleMusicWebNativeProviderTest' \
             --tests 'com.music.bitchord.AppleMusicWebTransportPolicyTest' \

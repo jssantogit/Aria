@@ -165,6 +165,14 @@ internal class AppleMusicWebPolicyTransport(
         require(AppleMusicWebOperationRegistry.allows(capability, path)) {
             "Apple Web operation is not authorized for capability"
         }
+        if (path.startsWith("/v1/editorial/")) {
+            if (path.endsWith("/groupings")) {
+                require(params["platform"] == "web" &&
+                    ((params["name"] == "music" && "genre" !in params) ||
+                        ("name" !in params && params["genre"]?.matches(Regex("[0-9]{1,12}")) == true)) &&
+                    params.keys.all { it in setOf("platform", "name", "genre", "l") })
+            } else require(params.keys.all { it in setOf("limit", "offset", "l", "sort") })
+        }
         if (capability == ProviderCapability.CHART_MOST_PLAYED) {
             require(params["chart"] == "most-played" && params["types"] in setOf("songs", "albums") &&
                 params.keys.all { it in setOf("types", "chart", "genre", "limit", "offset", "l") }) {

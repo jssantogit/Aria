@@ -25,9 +25,13 @@ internal object AppleMusicWebOperationRegistry {
             '?' in path || '#' in path || '%' in path
         ) return false
         val parts = path.split('/').drop(1)
-        if (parts.size < 4 || parts[0] != "v1" ||
-            parts[1] != "catalog" || !market.matches(parts[2])
-        ) return false
+        if (parts.size < 4 || parts[0] != "v1" || !market.matches(parts[2]))
+            return false
+        if (parts[1] == "editorial")
+            return capability == ProviderCapability.EDITORIAL_DISCOGRAPHY &&
+                ((parts.size == 4 && parts[3] == "groupings") ||
+                    (parts.size == 6 && parts[3] == "rooms" && id.matches(parts[4]) && parts[5] == "contents"))
+        if (parts[1] != "catalog") return false
         return when (capability) {
             ProviderCapability.CATALOG_SEARCH ->
                 parts.size == 4 && parts[3] == "search"
