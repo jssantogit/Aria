@@ -167,6 +167,25 @@ class AppleMusicWebGenericRoutingTest {
         }
     }
 
+    @Test fun titleOnlyRankingKeepsCommercialEditionsAndCompoundCreditBeatsTitleCollision() = runBlocking {
+        val policy = gate(listOf(apple))
+        val source = AppleMusicWebTransport { _, _, _ ->
+            """{"results":{"albums":{"data":[
+                {"id":"1","type":"albums","attributes":{"name":"Work (Deluxe)","artistName":"Band"}},
+                {"id":"2","type":"albums","attributes":{"name":"Work","artistName":"Other"}},
+                {"id":"3","type":"albums","attributes":{"name":"Work","artistName":"Band"}},
+                {"id":"4","type":"albums","attributes":{"name":"Work Band","artistName":"Other"}},
+                {"id":"5","type":"albums","attributes":{"name":"Work (Live)","artistName":"Band"}}
+            ]}}}"""
+        }
+        val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(AppleMusicWebCatalog(source), policy))
+        suspend fun ids(query: String): List<String> =
+            (adapter.search(CatalogSearchRequest(CatalogSearchKind.ALBUM, query, "br"))
+                as ProviderCallResult.Success).value.items.map { it.identity.nativeId }
+        assertEquals(listOf("1", "2", "3"), ids("Work").take(3))
+        assertEquals(listOf("3", "1", "5"), ids("Work Band").take(3))
+    }
+
     @Test fun artistRankingDoesNotMergeNamesakesOrChangeEqualRankOrder() = runBlocking {
         val policy = gate(listOf(apple))
         val source = AppleMusicWebTransport { _, _, _ ->

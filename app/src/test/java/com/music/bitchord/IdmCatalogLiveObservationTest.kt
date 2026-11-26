@@ -3130,6 +3130,8 @@ class IdmCatalogLiveObservationTest {
             var rows = emptyList<SearchParityRow>()
             var nativeRows = emptyList<SearchParityRow>()
             val provenIds = mutableSetOf<String>()
+            val qualifiedIds = mutableSetOf<String>()
+            var evidenceReads = 0
             var complete = true
             var categoryRoute = false
             var proofComplete = true
@@ -3184,26 +3186,62 @@ class IdmCatalogLiveObservationTest {
                         // explicit artist relationship, never a name-only identity.
                         val anchor = read(CatalogSearchKind.ALBUM, case.title + " " + case.anchor.orEmpty())
                         proofComplete = anchor != null
+                        fun anchorTitle(title: String): Boolean =
+                            applePublicAlbumWorkKey(title) == searchLabelKey(case.anchor)
                         val candidates = anchor?.items.orEmpty().filter {
-                            searchLabelKey(it.title) == searchLabelKey(case.anchor) && case.artistMatches(it.subtitle)
-                        }.take(2)
-                        for (candidate in candidates) {
+                            anchorTitle(it.title) && case.artistMatches(it.subtitle)
+                        }.take(3)
+                        val checkedAlbums = mutableSetOf<String>()
+                        suspend fun proveAnchor(albumId: String) {
+                            if (!checkedAlbums.add(albumId)) return
+                            evidenceReads++
                             val response = withTimeoutOrNull(60_000L) {
-                                gateway.album(candidate.identity.nativeId, sf)
+                                gateway.album(albumId, sf)
                             } as? ProviderCallResult.Success
-                            val outcome = response?.value?.outcome
-                            val album = (outcome as? AppleMusicWebOutcome.Complete)?.value
+                            // Artist relationship evidence is independent of
+                            // tracklist completeness; only exact returned
+                            // album/artist IDs and credit may be credited.
+                            val album = when (val outcome = response?.value?.outcome) {
+                                is AppleMusicWebOutcome.Complete -> outcome.value
+                                is AppleMusicWebOutcome.Partial -> outcome.value
+                                else -> null
+                            }
                             if (album == null) {
                                 proofComplete = false
-                                continue
+                                return
                             }
-                            if (searchLabelKey(album.identity.title) != searchLabelKey(case.anchor) ||
-                                !case.artistMatches(album.identity.artistName)) continue
-                            provenIds += album.artists.filter {
-                                case.artistMatches(it.title)
-                            }.map { it.scopedId }
+                            if (!anchorTitle(album.identity.title) ||
+                                !case.artistMatches(album.identity.artistName)) return
+                            val ids = album.artists.filter { case.artistMatches(it.title) }.map { it.scopedId }
+                            if (searchLabelKey(album.identity.title) == searchLabelKey(case.anchor)) provenIds += ids
+                            else qualifiedIds += ids
                         }
-                        offered = provenIds.isNotEmpty()
+                        for (candidate in candidates) proveAnchor(candidate.identity.nativeId)
+                        // Same-source, exact-ID discography probe for visible
+                        // homonyms when search did not provide the anchor.
+                        if (provenIds.isEmpty() && qualifiedIds.isEmpty()) {
+                            for (candidate in first.items.take(10).filter { case.artistMatches(it.title) }.take(3)) {
+                                evidenceReads++
+                                val response = withTimeoutOrNull(60_000L) {
+                                    gateway.artist(candidate.identity.nativeId, sf)
+                                } as? ProviderCallResult.Success
+                                val artist = when (val outcome = response?.value?.outcome) {
+                                    is AppleMusicWebOutcome.Complete -> outcome.value
+                                    is AppleMusicWebOutcome.Partial -> outcome.value
+                                    else -> null
+                                }
+                                if (artist == null) {
+                                    proofComplete = false
+                                    continue
+                                }
+                                val releases = (artist.albums + artist.singlesAndEps + artist.featuredAlbums)
+                                    .distinctBy { it.scopedId }
+                                for (release in releases.filter { anchorTitle(it.title) }.take(2)) {
+                                    proveAnchor(release.id)
+                                }
+                            }
+                        }
+                        offered = provenIds.isNotEmpty() || qualifiedIds.isNotEmpty()
                     } else {
                         offered = rows.any { case.titleMatches(it.title) && case.artistMatches(it.artist) }
                         if (!offered) {
@@ -3211,6 +3249,31 @@ class IdmCatalogLiveObservationTest {
                             proofComplete = probe != null
                             offered = probe?.items.orEmpty().any {
                                 case.titleMatches(it.title) && case.artistMatches(it.subtitle)
+                            }
+                        }
+                        if (kind == CatalogSearchKind.ALBUM) {
+                            // Confirm recognized edition titles by their exact
+                            // native collection detail, not by ranker's score.
+                            for (candidate in first.items.take(10).filter {
+                                !case.titleMatches(it.title) && case.artistMatches(it.subtitle) &&
+                                    applePublicAlbumWorkKey(it.title) == searchLabelKey(case.title)
+                            }.take(3)) {
+                                evidenceReads++
+                                val response = withTimeoutOrNull(60_000L) {
+                                    gateway.album(candidate.identity.nativeId, sf)
+                                } as? ProviderCallResult.Success
+                                val album = (response?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+                                if (album == null) {
+                                    proofComplete = false
+                                    continue
+                                }
+                                if (album.identity.id == candidate.identity.nativeId &&
+                                    searchLabelKey(album.identity.title) == searchLabelKey(candidate.title) &&
+                                    case.artistMatches(album.identity.artistName) &&
+                                    album.artists.any { case.artistMatches(it.title) } &&
+                                    album.tracks.isNotEmpty()) {
+                                    qualifiedIds += nativeId(candidate)
+                                }
                             }
                         }
                     }
@@ -3233,14 +3296,16 @@ class IdmCatalogLiveObservationTest {
             val nativeLabels = (if (case.kind == "category") rows else nativeRows).take(10).map(::label)
             val topFive = labels.take(5).any { it == 1 }
             val topTen = labels.any { it == 1 }
+            val qualifiedTopFive = rows.take(5).any { it.id in qualifiedIds }
+            val qualifiedTopTen = rows.take(10).any { it.id in qualifiedIds }
             val caseNumber = (index + 1).toString().padStart(2, '0')
             val review = rows.take(10).mapIndexed { rank, row ->
-                reviewRowJson(rank + 1, row, labels[rank], false)
+                reviewRowJson(rank + 1, row, labels[rank], row.id in qualifiedIds)
             }
             val nativeDir = File(dir.parentFile, "native-order-review")
             check(nativeDir.exists() || nativeDir.mkdirs())
             val rawReview = (if (case.kind == "category") rows else nativeRows).take(10).mapIndexed { rank, row ->
-                reviewRowJson(rank + 1, row, nativeLabels[rank], false)
+                reviewRowJson(rank + 1, row, nativeLabels[rank], row.id in qualifiedIds)
             }
             File(nativeDir, "apple_music_web_" + caseNumber + ".json").writeText(
                 "{\"schema\":1,\"provider\":\"apple_music_web\",\"case\":" + (index + 1) +
@@ -3266,6 +3331,11 @@ class IdmCatalogLiveObservationTest {
                     "target_proven" to if (offered || topTen) 1 else 0,
                     "top_five_target" to if (topFive) 1 else 0,
                     "top_ten_target" to if (topTen) 1 else 0,
+                    "qualified_top_five" to if (qualifiedTopFive) 1 else 0,
+                    "qualified_top_ten" to if (qualifiedTopTen) 1 else 0,
+                    "strict_or_qualified_top_five" to if (topFive || qualifiedTopFive) 1 else 0,
+                    "strict_or_qualified_top_ten" to if (topTen || qualifiedTopTen) 1 else 0,
+                    "identity_evidence_reads" to evidenceReads,
                     "native_top_five_target" to if (nativeLabels.take(5).any { it == 1 }) 1 else 0,
                     "native_top_ten_target" to if (nativeLabels.any { it == 1 }) 1 else 0,
                     "native_first_ten_rows" to nativeLabels.size,

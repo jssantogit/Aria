@@ -65,6 +65,8 @@ jobs:
                   assert item['rank'] == rank and item['target_label'] in (-1,0,1)
                   assert all(isinstance(item[k],str) and len(item[k]) <= 180 for k in ('title','credit'))
                   labels.append(item['target_label'])
+              assert int(any(item['qualified_verified'] for item in rows[:5])) == agg['qualified_top_five']
+              assert int(any(item['qualified_verified'] for item in rows)) == agg['qualified_top_ten']
               assert labels.count(1) == agg['labelled_target_rows']
               assert labels.count(0) == agg['labelled_non_target_rows']
               assert labels.count(-1) == agg['unjudged_rows']
@@ -73,6 +75,10 @@ jobs:
                        target=labels.count(1), non_target=labels.count(0), unresolved=labels.count(-1),
                        top5=int(1 in labels[:5]), top10=int(1 in labels),
                        native_top5=agg['native_top_five_target'], native_top10=agg['native_top_ten_target'],
+                       qualified_top5=agg['qualified_top_five'], qualified_top10=agg['qualified_top_ten'],
+                       strict_or_qualified_top5=agg['strict_or_qualified_top_five'],
+                       strict_or_qualified_top10=agg['strict_or_qualified_top_ten'],
+                       identity_evidence_reads=agg['identity_evidence_reads'],
                        proof_interruptions=agg['proof_interruption'], second_pages=agg['second_page_checked'],
                        overlap=agg['second_page_overlap'], source_overlap=agg['second_page_source_overlap'],
                        continuation_interruptions=agg['continuation_interruption'])

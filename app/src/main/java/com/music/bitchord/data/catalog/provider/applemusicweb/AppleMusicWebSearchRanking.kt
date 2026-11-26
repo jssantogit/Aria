@@ -17,13 +17,21 @@ internal fun rankAppleMusicWebSearchPage(
     fun fold(value: String?): String = Normalizer.normalize(value.orEmpty(), Normalizer.Form.NFKD)
         .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-    fun matches(term: String, title: String, credit: String): Boolean =
-        title.isNotBlank() && (term == title || (credit.isNotBlank() &&
-            term in setOf("$title $credit", "$credit $title")))
+    fun compound(term: String, title: String, credit: String): Boolean =
+        title.isNotBlank() && credit.isNotBlank() &&
+            term in setOf("$title $credit", "$credit $title")
     fun containsPhrase(text: String, phrase: String): Boolean =
         phrase.isNotBlank() && " $text ".contains(" $phrase ")
     val term = fold(query)
     if (term.isBlank()) return rows
+    // Source-returned credits can establish a title/artist boundary; never
+    // guess an intended artist when the query is only a work title.
+    val hasCompoundEvidence = kind != CatalogSearchKind.ARTIST && rows.any { row ->
+        val credit = fold(row.subtitle)
+        val title = fold(row.title)
+        val work = fold(applePublicAlbumWorkKey(row.title))
+        compound(term, title, credit) || compound(term, work, credit)
+    }
     fun rank(row: CatalogSearchItem): Int {
         val title = fold(row.title)
         val credit = fold(row.subtitle)
@@ -33,9 +41,13 @@ internal fun rankAppleMusicWebSearchPage(
             if (containsPhrase(title, term)) return 3
             return 5
         }
-        if (matches(term, title, credit)) return 0
         val work = fold(applePublicAlbumWorkKey(row.title))
-        if (work != title && matches(term, work, credit)) return 1
+        if (compound(term, title, credit)) return 0
+        if (compound(term, work, credit)) return 1
+        // On title-only queries, preserve the provider's relative rank among
+        // exact work titles and recognized commercial editions. Otherwise a
+        // less popular namesake could displace the requested remaster.
+        if (term == title || term == work) return if (hasCompoundEvidence) 3 else 0
         // Same-work variants are still useful; a full query may include credit
         // in either order. Keep them below exact and recognized mastering hits.
         val titlePart = when {
@@ -43,7 +55,8 @@ internal fun rankAppleMusicWebSearchPage(
             credit.isNotBlank() && term.endsWith(" $credit") -> term.removeSuffix(" $credit")
             else -> term
         }
-        if (containsPhrase(title, titlePart)) return 2
+        if (containsPhrase(title, titlePart))
+            return if (!hasCompoundEvidence || titlePart != term) 2 else 4
         if (term.split(' ').all { containsPhrase("$title $credit", it) }) return 3
         if (containsPhrase(credit, term)) return 4
         return 5
