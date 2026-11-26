@@ -83,12 +83,7 @@ import com.music.aria.ui.theme.AriaDarkAccent
 import com.music.aria.ui.theme.AriaLightAccent
 
 /**
- * The two welcome pages: a name for Listen Together, then the YouTube sign-in.
- *
- * Shown once — to new installs and, because the flag it sets is new, to anyone
- * updating from a build without it. The second page is skipped for an account
- * that is already signed in; asking somebody to connect what is connected
- * reads as the app having forgotten them.
+ * A local welcome page that saves the listener's display name once.
  *
  * Always drawn dark, whatever the theme, for the same reason Replay is: the
  * mesh is colour, and white type is what sits on colour.
@@ -97,7 +92,7 @@ import com.music.aria.ui.theme.AriaLightAccent
 fun OnboardingScreen(
     signedIn: Boolean,
     initialName: String,
-    /** Saves the party name. Called on Next, before the second page. */
+    /** Saves the local display name before completing onboarding. */
     onNameChosen: (String) -> Unit,
     /** Legacy caller compatibility; onboarding no longer connects an account. */
     onSignIn: () -> Unit,
@@ -364,8 +359,3 @@ private const val PAGE_NAME = 0
 
 /** Long enough for a full name; the party server keeps the first 80. */
 private const val NAME_LIMIT = 40
-
-/**
- * Connection onboarding is a brand surface, not a data-derived artwork.
- * Keep the original restrained dark mesh and use warm Notation hues.
- */

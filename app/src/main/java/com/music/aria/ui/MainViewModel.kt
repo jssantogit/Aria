@@ -2555,22 +2555,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * acting as whichever channel YouTube Music serves by default.
      */
     private val _selectedChannelKey = MutableStateFlow(
-        authStore.activeSession?.activeProfileId ?: authStore.channelPageId ?: authStore.channelDataSyncId,
+        null as String?,
     )
     val selectedChannelKey: StateFlow<String?> = _selectedChannelKey.asStateFlow()
 
     private val _selectedChannelName = MutableStateFlow(
-        authStore.activeSession?.profiles?.firstOrNull { it.profileId == authStore.activeProfileId }?.name
-            ?: authStore.channelName,
+        null as String?,
     )
     val selectedChannelName: StateFlow<String?> = _selectedChannelName.asStateFlow()
 
     /** Source of truth for Google sessions and their YouTube identities. */
-    private val _googleAccounts = MutableStateFlow(authStore.sessions)
+    private val _googleAccounts = MutableStateFlow<List<GoogleAccountSession>>(emptyList())
     val googleAccounts: StateFlow<List<GoogleAccountSession>> = _googleAccounts.asStateFlow()
-    private val _activeAccountId = MutableStateFlow(authStore.activeSession?.accountId)
+    private val _activeAccountId = MutableStateFlow<String?>(null)
     val activeAccountId: StateFlow<String?> = _activeAccountId.asStateFlow()
-    private val _activeProfileId = MutableStateFlow(authStore.activeProfileId)
+    private val _activeProfileId = MutableStateFlow<String?>(null)
     val activeProfileId: StateFlow<String?> = _activeProfileId.asStateFlow()
 
     private val _history = MutableStateFlow<UiState<List<Song>>>(UiState.Loading)

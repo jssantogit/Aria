@@ -96,7 +96,7 @@ class AuthStore(context: Context) {
     }
 
     val isSignedIn: Boolean
-        get() = activeSession?.cookie?.let { hasApiSid(it) } == true
+        get() = false // Retired Google/YouTube identity cannot activate any runtime feature.
 
     /** The Discord account's bearer token. See DiscordRPC for why a user token. */
     var discordToken: String?

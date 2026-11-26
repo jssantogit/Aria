@@ -176,7 +176,6 @@ import com.music.aria.data.settings.AppSettings
 import com.music.aria.ui.LocalReduceAnimations
 import com.music.aria.data.settings.LibrarySort
 import com.music.aria.data.settings.ThemeMode
-import com.music.aria.ui.components.AccountProfileSelector
 import com.music.aria.ui.rememberCanonicalPublicArtistFeaturedRelease
 import com.music.aria.ui.screens.AccountAndScrobblingScreen
 import com.music.aria.ui.screens.DiscordDialog
@@ -701,7 +700,6 @@ private fun AriaApp(
     var showLyricsSources by remember { mutableStateOf(false) }
     var showAppLanguage by remember { mutableStateOf(false) }
     var showTranslationLanguage by remember { mutableStateOf(false) }
-    var showAccountSelector by remember { mutableStateOf(false) }
     var showListenBrainzLogin by remember { mutableStateOf(false) }
     var showLastfmLogin by remember { mutableStateOf(false) }
     var showWebDavEditor by remember { mutableStateOf(false) }
@@ -971,9 +969,6 @@ private fun AriaApp(
     }
     val account by viewModel.account.collectAsStateWithLifecycle()
     val selectedChannelName by viewModel.selectedChannelName.collectAsStateWithLifecycle()
-    val googleAccounts by viewModel.googleAccounts.collectAsStateWithLifecycle()
-    val activeAccountId by viewModel.activeAccountId.collectAsStateWithLifecycle()
-    val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
     val historyState by viewModel.history.collectAsStateWithLifecycle()
     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
@@ -3644,10 +3639,7 @@ private fun AriaApp(
                                 showSettings = false
                                 showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
                             },
-                            onSwitchChannel = {
-                                viewModel.loadChannels()
-                                showAccountSelector = true
-                            },
+                            onSwitchChannel = {},
                             onSignOut = { viewModel.signOut() },
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                             onOpenLastfmLogin = { showLastfmLogin = true },
@@ -3665,18 +3657,13 @@ private fun AriaApp(
                         )
                     } else if (key == "listen_together") {
                         ListenTogetherScreen(
-                            signedIn = signedIn,
                             inviteCode = activeJamInviteCode,
                             inviteServer = activeJamInviteServer,
                             onInviteHandled = {
                                 activeJamInviteCode = null
                                 activeJamInviteServer = null
                             },
-                            onSignIn = {
-                                showListenTogether = false
-                                showSettings = false
-                                showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                            },
+
                             contentPadding = listPadding,
                             onEditServer = { editingPartyServer = true },
                         )
@@ -4594,10 +4581,7 @@ private fun AriaApp(
                                     showSettings = false
                                     showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
                                 },
-                                onSwitchChannel = {
-                                    viewModel.loadChannels()
-                                    showAccountSelector = true
-                                },
+                                onSwitchChannel = {},
                                 onSignOut = { viewModel.signOut() },
                                 onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                                 onOpenLastfmLogin = { showLastfmLogin = true },
@@ -4649,18 +4633,13 @@ private fun AriaApp(
                             color = MaterialTheme.colorScheme.background,
                         ) {
                             ListenTogetherScreen(
-                                signedIn = signedIn,
                                 inviteCode = activeJamInviteCode,
                                 inviteServer = activeJamInviteServer,
                                 onInviteHandled = {
                                     activeJamInviteCode = null
                                     activeJamInviteServer = null
                                 },
-                                onSignIn = {
-                                    settingsSubScreen = null
-                                    showSettings = false
-                                    showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                                },
+
                                 contentPadding = listPadding,
                                 onEditServer = { editingPartyServer = true },
                             )
@@ -6672,30 +6651,6 @@ private fun AriaApp(
                     folderMenuOpen = false
                 },
                 onDismiss = { folderMenuOpen = false },
-            )
-        }
-
-        if (showAccountSelector) {
-            BackHandler { showAccountSelector = false }
-            AccountProfileSelector(
-                accounts = googleAccounts,
-                activeAccountId = activeAccountId,
-                activeProfileId = activeProfileId,
-                hazeState = hazeState,
-                onSelect = { selected, profile -> viewModel.selectProfile(selected.accountId, profile.profileId) },
-                onAddAccount = {
-                    showAccountSelector = false
-                    showQueueNotice(context.getString(R.string.legacy_library_youtube_disabled))
-                },
-                onRemoveAccount = { selected ->
-                    viewModel.removeAccount(selected.accountId)
-                    showAccountSelector = false
-                },
-                onOpenSettings = {
-                    showAccountSelector = false
-                    showSettings = true
-                },
-                onDismiss = { showAccountSelector = false },
             )
         }
 

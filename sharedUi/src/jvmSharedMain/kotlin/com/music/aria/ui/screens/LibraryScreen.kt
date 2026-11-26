@@ -224,13 +224,6 @@ fun LibraryScreen(
                         onShowAll = { onShowAll(emptyPlaylists) },
                     )
                 }
-                if (playlistsSection == null) item {
-                    MessageState(
-                        message = stringResource(Res.string.library_sign_in_description),
-                        actionLabel = stringResource(Res.string.sign_in),
-                        onAction = onSignIn,
-                    )
-                }
                 return@LazyColumn
             }
             when (state) {

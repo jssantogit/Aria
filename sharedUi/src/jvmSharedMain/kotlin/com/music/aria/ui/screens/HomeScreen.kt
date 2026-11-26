@@ -93,7 +93,6 @@ import com.music.aria.ui.components.PullToRefresh
 import com.music.aria.ui.components.SHELF_CARD_WIDTH
 import com.music.aria.ui.components.NativeMediaCardMetrics
 import com.music.aria.ui.components.SearchPlayingBars
-import com.music.aria.ui.components.SignInBanner
 import com.music.aria.ui.components.feedMoreSkeleton
 import com.music.aria.ui.components.feedSkeleton
 import com.music.aria.ui.components.recentlyPlayedSkeleton
@@ -244,11 +243,6 @@ fun HomeScreen(
             if (title != null) {
                 item(key = "home-title") {
                     HomeTitle(title, actions = headerActions, onBack = onBack, trailing = headerTrailing)
-                }
-            }
-            if (!signedIn && onSignIn != null) {
-                item {
-                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
                 }
             }
             when (state) {
