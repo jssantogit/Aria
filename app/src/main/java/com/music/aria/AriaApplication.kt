@@ -134,18 +134,7 @@ class AriaApplication : Application(), SingletonImageLoader.Factory {
                 }
             }
         }
-        // Migration-safe: an old single cookie becomes the first encrypted
-        // session, while newer installs restore the profile the listener chose.
-        val restoredSession = Diagnostics.span(DiagnosticCategory.STARTUP, "auth_session_read") {
-            authStore.activeSession
-        }
-        Diagnostics.span(DiagnosticCategory.STARTUP, "auth_session_restore") {
-            if (restoredSession != null && authStore.activeAccountId == null) {
-                authStore.select(restoredSession.accountId, restoredSession.activeProfileId)
-            }
-            authStore.cookie = restoredSession?.cookie
-
-        }
+        // The retired account registry is archival; never restore its session at startup.
         Diagnostics.span(DiagnosticCategory.STARTUP, "app_settings_init") {
             AppSettings.init(this, authStore)
         }

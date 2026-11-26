@@ -247,8 +247,7 @@ fun ListenTogetherScreen(
         }
     }
 
-    // A link tap is already an explicit request to join. Signed-out users keep
-    // the populated code while the sign-in page is open.
+    // A link tap is an explicit request to preview a party; the join sheet collects the local name.
     LaunchedEffect(inviteCode, inviteServer) {
         val code = inviteCode ?: return@LaunchedEffect
         if (busy) return@LaunchedEffect

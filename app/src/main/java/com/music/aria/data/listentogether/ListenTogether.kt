@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
-import com.music.aria.AriaApplication
 import com.music.aria.BuildConfig
 import com.music.aria.data.DebugLog as Log
 import com.music.aria.data.settings.AppSettings
@@ -58,7 +57,6 @@ import kotlinx.serialization.json.put
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import java.net.URI
-import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -762,7 +760,7 @@ object ListenTogether {
         return job.await()
     }
 
-    /** Whether this device has an account it can jam as. */
+    /** Whether this installation has a local display identity. */
     fun canJoin(): Boolean = identity() != null
 
     fun nickname(): String = prefs.getString(KEY_NICKNAME, null).orEmpty()
@@ -935,9 +933,9 @@ object ListenTogether {
         withContext(Dispatchers.IO) {
             val who = identity(nickname)
                 ?: return@withContext if (_state.value.inParty) {
-                    SwitchPartyResult.TargetFailedRecovered(_state.value.code.orEmpty(), "Sign in to listen together.")
+                    SwitchPartyResult.TargetFailedRecovered(_state.value.code.orEmpty(), "Choose a display name to listen together.")
                 } else {
-                    SwitchPartyResult.TargetFailedNoParty("Sign in to listen together.")
+                    SwitchPartyResult.TargetFailedNoParty("Choose a display name to listen together.")
                 }
 
             val normTarget = when (val res = parseAndNormalizeServerUrl(targetCustomServer)) {
@@ -1445,23 +1443,10 @@ object ListenTogether {
 
     // ------------------------------------------------------------- plumbing --
 
-    private data class Identity(
-        val userId: String,
-        val deviceId: String,
-        val name: String,
-        val avatar: String?,
-    )
-
-    /** Local pseudonymous identity; server-issued membership tokens still authenticate requests. */
-    private fun identity(nickname: String = nickname()): Identity? {
-        val name = nickname.trim().take(80).takeIf { it.isNotBlank() } ?: return null
-        val installId = deviceId()
-        return Identity(
-            userId = sha256("aria-party:$installId").take(32),
-            deviceId = installId,
-            name = name,
-            avatar = null,
-        )
+    private fun identity(nickname: String = nickname()): LocalPartyIdentity? {
+        val name = nickname.trim().take(80)
+        if (name.isBlank()) return null
+        return localPartyIdentity(deviceId(), name)
     }
 
     // ------------------------------------------------------- recent kicks --
@@ -1540,8 +1525,9 @@ object ListenTogether {
      * from a sixth device — so it has to survive a sign-out, an account switch
      * and a process death, and must not survive an uninstall.
      */
+    @Synchronized
     private fun deviceId(): String {
-        prefs.getString(KEY_DEVICE, null)?.let { return it }
+        prefs.getString(KEY_DEVICE, null)?.takeIf { it.isNotBlank() }?.let { return it }
         return UUID.randomUUID().toString().also {
             prefs.edit().putString(KEY_DEVICE, it).apply()
         }
@@ -1665,10 +1651,6 @@ object ListenTogether {
             .replaceFirst("https://", "wss://")
             .replaceFirst("http://", "ws://")
     }
-
-    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray())
-        .joinToString("") { "%02x".format(it) }
 
     const val CODE_LENGTH = 6
 

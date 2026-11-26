@@ -53,6 +53,10 @@ ALLOWED_BLUE = {
     ]
 }
 OLD_BRAND = re.compile(r"bitchord", re.I)
+# Ban the removed logo and banner anywhere in runtime sources. Other legacy
+# references are inventoried by symbol (not source text) for compatibility review.
+RETIRED_GOOGLE_UI = re.compile(r"\b(?:ic_google_g|SignInBanner)\b")
+GOOGLE_ACCOUNT_RESIDUAL = re.compile(r"\b(?:GoogleAccountSession|YouTubeProfile|BrowserSession|CapturedSession|WebSessionMode|AccountProfileSelector|AccountChannelDialog|AccountCard|activeSession|hasApiSid|sign_in_with_google|tap_to_sign_in_google|onboarding_sign_in_google|sign_in_youtube_music|library_sign_in_description|listen_together_sign_in_footer)\b|accounts\.google\.com", re.I)
 def blue(rgb):
     h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))
     return 185 <= h * 360 <= 255 and s >= .25 and v >= .25
@@ -123,6 +127,8 @@ def main():
             continue
         reviewed += 1
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        if path.stem == "ic_google_g":
+            results.append({"path":name,"line":0,"kind":"retired-google-ui","value":"ic_google_g"})
         # Inspect displayed resource values, not persisted resource identifiers.
         # This covers translations, arrays and plurals across all runtime flavors.
         if path.suffix == ".xml" and path.parent.name.startswith("values"):
@@ -133,6 +139,11 @@ def main():
                 if OLD_BRAND.search("".join(node.itertext())):
                     results.append({"path":name,"line":0,"kind":"old-brand-resource-value","value":node.get("name","?")})
         for index, line in enumerate(lines):
+            if path.suffix in {".kt", ".java"}:
+                for match in RETIRED_GOOGLE_UI.finditer(line):
+                    results.append({"path":name,"line":index+1,"kind":"retired-google-ui","value":match.group()})
+                for match in GOOGLE_ACCOUNT_RESIDUAL.finditer(line):
+                    results.append({"path":name,"line":index+1,"kind":"legacy-account-inventory","value":match.group()})
             for value in sorted(candidates(line, path.suffix)):
                 results.append({"path":name,"line":index+1,"kind":"literal-blue","value":value})
             if FILL.search(line):
@@ -150,7 +161,10 @@ def main():
     unexpected = observed - permitted
     old_resources = [r for r in results if r["kind"] == "old-brand-resource-value"]
     print(f"Approved non-accent blue occurrences: {sum((observed & permitted).values())}")
-    if unexpected or old_resources:
+    retired_ui = [r for r in results if r["kind"] == "retired-google-ui"]
+    print(f"Retired Google logo/banner references: {len(retired_ui)}")
+    print(f"Legacy account inventory: {sum(r['kind'] == 'legacy-account-inventory' for r in results)}")
+    if unexpected or old_resources or retired_ui:
         for (name, value), count in unexpected.items():
             print(f"REVIEW REQUIRED: {name}: {value} ({count})")
         raise SystemExit("Unreviewed blue or retired user-facing brand resource")
