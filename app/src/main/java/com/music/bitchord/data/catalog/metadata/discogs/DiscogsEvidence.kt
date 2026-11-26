@@ -201,7 +201,7 @@ internal object DiscogsRecordParser {
 
     /** Safely parse group-level context; never import images, release tracks or user data. */
     fun parseMaster(expected: DiscogsLink, raw: String): DiscogsMasterRecord? {
-        if (expected.kind != DiscogsKind.MASTER || !boundedDetail(raw, DISCOGS_STANDARD_BODY_BYTES)) return null
+        if (expected.kind != DiscogsKind.MASTER || !boundedDetail(raw, DISCOGS_MASTER_BODY_BYTES)) return null
         return try {
             val obj = json.parseToJsonElement(raw) as? JsonObject ?: return null
             if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id) return null

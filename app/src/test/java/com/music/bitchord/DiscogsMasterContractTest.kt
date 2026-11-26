@@ -25,6 +25,21 @@ class DiscogsMasterContractTest {
         assertNull(DiscogsRecordParser.parseMaster(link, """{"id":2222,"title":"Other"}"""))
     }
 
+    @Test fun masterDetailBudgetPreservesIdentityAndStructuralValidation() {
+        val link = DiscogsLink(DiscogsKind.MASTER, 2024)
+        fun payload(size: Int, id: Long = 2024): String =
+            """{"id":$id,"title":"Album","artists":[{"name":"Artist"}],"main_release":42,"genres":["Electronic"],"styles":["House"],"ignored":"""" +
+                "x".repeat(size) + "\"}"
+        val valid = payload(DISCOGS_STANDARD_BODY_BYTES + 1)
+        val record = DiscogsRecordParser.parseMaster(link, valid)
+        assertNotNull(record)
+        assertEquals(42L, record!!.mainReleaseId)
+        assertEquals("Album", record.title)
+        assertNull(DiscogsRecordParser.parseMaster(link, payload(DISCOGS_STANDARD_BODY_BYTES + 1, 2025)))
+        assertNull(DiscogsRecordParser.parseMaster(link, payload(DISCOGS_MASTER_BODY_BYTES)))
+        assertNull(DiscogsRecordParser.parseMaster(link, valid.dropLast(1)))
+    }
+
     @Test fun masterVersionListingRejectsIncompleteOrDuplicateUntrustedResults() = runBlocking {
         val bodies = listOf(
             """{"pagination":{"page":1,"pages":1,"per_page":8,"items":2},
