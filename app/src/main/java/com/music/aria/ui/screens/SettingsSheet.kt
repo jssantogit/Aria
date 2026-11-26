@@ -131,14 +131,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
 import com.music.aria.AppIcon
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -374,12 +368,6 @@ internal fun SettingsScreen(
     var showListenBrainzTokenDialog by remember { mutableStateOf(false) }
     var showLastfmLoginDialog by remember { mutableStateOf(false) }
     val scrobbleScope = rememberCoroutineScope()
-
-    val version = remember(context) {
-        runCatching {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        }.getOrNull() ?: "1.0"
-    }
 
     // Made fresh on every pass rather than remembered: it tallies the rows
     // that answered to the query, and that tally has to start from zero each
@@ -1597,36 +1585,8 @@ internal fun SettingsScreen(
             MessageState(stringResource(R.string.settings_search_empty, searchQuery))
         }
 
-        // The version line is the page's colophon, not a setting: it belongs to
-        // the whole list, so it goes when the list is narrowed to a few rows.
         if (selectedSection == SettingsSection.ABOUT && searchQuery.isBlank()) {
-        Text(
-            text = buildAnnotatedString {
-                append("Aria $version  ")
-                val linkStyles = TextLinkStyles(
-                    style = SpanStyle(
-                        color = appleMusicKeyColor(),
-                        textDecoration = TextDecoration.Underline,
-                    ),
-                )
-                // The fork is the app users installed. Preserve upstream
-                // attribution separately rather than directing them to an
-                // unrelated support website or advertising a legacy provider.
-                withLink(LinkAnnotation.Url("https://github.com/jssantogit/Aria", linkStyles)) {
-                    append("GitHub")
-                }
-                append("  ·  ")
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx/BitChord", linkStyles)) {
-                    append("Upstream credits")
-                }
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 8.dp),
-        )
+            AriaAboutScreen()
         }
     }
 

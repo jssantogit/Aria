@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_version_format">Version %1$s</string>
+    <string name="about_android_app_info">Android app info</string>
+    <string name="about_upstream_credits">Upstream credits</string>
+    <string name="about_app_info_unavailable">Could not open app info.</string>
+</resources>
