@@ -2698,6 +2698,8 @@ private fun BitChordApp(
             }
             return@click
         }
+        if (item.browseId?.startsWith("catalog:CHART:") == true ||
+            item.browseId?.startsWith("catalog:ALBUM_CHART:") == true) return@click
         com.music.bitchord.data.catalog.metadata.publicPlaylistMbid(item.browseId)?.let { id ->
             val candidate = canonicalPublicPlaylists.values.asSequence()
                 .flatMap { it.asSequence() }.firstOrNull { it.mbid == id }

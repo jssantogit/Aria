@@ -265,7 +265,9 @@ internal fun projectCanonicalGenreState(
         BuiltInProviderKeys.DISCOGS to (discogsByTag[tag] ?: UiState.Loading),
         BuiltInProviderKeys.APPLE_MUSIC_WEB to (amsByTag[tag] ?: UiState.Loading),
     ))
-    val releases = (chosen.state as? UiState.Success)?.data.orEmpty()
+    val initialReleases = (chosen.state as? UiState.Success)?.data.orEmpty()
+    val releases = if (chosen.provider == BuiltInProviderKeys.APPLE_MUSIC_WEB)
+        amsGenreWithPlaylistContinuation(initialReleases,amsPagingByTag[tag]) else initialReleases
     val continuation = canonicalGenreContinuationShelf(
         tag = tag,
         selectedProviderIsMusicBrainz = chosen.provider == BuiltInProviderKeys.MUSICBRAINZ,
@@ -297,7 +299,8 @@ internal fun projectCanonicalGenreState(
     // earlier would remount the existing artists/playlists and jump the scroll.
     val all = releases + listOfNotNull(popular) +
         listOfNotNull(knownArtists) +
-        listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() }) +
+        listOfNotNull(playlistShelf?.takeIf { it.items.isNotEmpty() &&
+            releases.none { shelf -> shelf.title == "Playlists" } }) +
         listOfNotNull(continuation, discogsContinuation, appleContinuation)
     val amsContinuation = if (chosen.provider == BuiltInProviderKeys.APPLE_MUSIC_WEB)
         amsEditorialContinuationShelf(all,amsPagingByTag[tag],true) else null

@@ -68,6 +68,25 @@ internal fun projectAppleMusicWebGenreLanding(
     return if (items.isEmpty()) emptyList() else listOf(HomeShelf(releasesHeading,items))
 }
 
+internal fun projectAppleMusicWebGenrePlaylistRoom(
+    curator: AppleMusicWebCuratorRef, tag: String, page: AppleMusicWebRoomPage,
+): HomeShelf? {
+    if (page.kind != AppleMusicWebKind.PLAYLIST) return null
+    val cards = page.items.filter {
+        appleMusicWebCuratedPlaylistMatches(curator,tag,it,page.room)
+    }.groupBy { it.scopedId }.values.mapNotNull { group ->
+        val item = group.first()
+        if (group.any { it != item } || item.title.isBlank()) return@mapNotNull null
+        val route = AppleMusicWebNativeRoute.parse(item.scopedId) ?: return@mapNotNull null
+        if (route.kind != AppleMusicWebKind.PLAYLIST) return@mapNotNull null
+        ShelfItem(title=item.title,subtitle=item.artistName.orEmpty(),
+            thumbnailUrl=safeAppleArtwork(item.artworkUrl?.replace("{w}","600")
+                ?.replace("{h}","600")?.replace("{f}","jpg")),
+            videoId=null,browseId=route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(item))
+    }
+    return cards.takeIf { it.isNotEmpty() }?.let { HomeShelf("Playlists",it) }
+}
+
 /** The existing Explore grid can use only art already admitted by its
  * exact curator and genre projection. No Home album is repurposed by name,
  * no other market, no eager 15-curator network fan-out.
@@ -228,8 +247,8 @@ internal class AppleMusicWebNativeCatalogSession(
             when (result) {
                 is ProviderCallResult.Success -> {
                     val market = result.value.storefront
-                    fun project(landing: AppleMusicWebCuratorLanding): AmsEditorialPage {
-                        val shelves = projectAppleMusicWebGenreLanding(landing,market,tag)
+                    suspend fun project(landing: AppleMusicWebCuratorLanding): ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>> {
+                        val shelves = projectAppleMusicWebGenreLanding(landing,market,tag).toMutableList()
                         val requests = landing.continuations.map<AppleMusicWebRoomContinuation,AmsEditorialRequest> {
                             AmsEditorialRequest.Room(it, curator = landing.curator.identity, tag = tag)
                         }.ifEmpty {
@@ -237,13 +256,62 @@ internal class AppleMusicWebNativeCatalogSession(
                                 listOf(AmsEditorialRequest.RefreshGenre(tag,landing.curator.identity))
                             else emptyList()
                         }
-                        return AmsEditorialPage(shelves,requests,landing.curator.identity)
+                        val pending = requests.toMutableList()
+                        val playlistCards = mutableListOf<ShelfItem>()
+                        var playlistIncomplete = false
+                        // Do not let playlist-only results claim ownership of the genre's releases.
+                        if (shelves.isNotEmpty()) {
+                            val curator = landing.curator.identity
+                            val playlistRooms = landing.curator.rooms.filter {
+                                isAppleMusicWebCuratorPlaylistRoom(it) && it.storefront == market &&
+                                    it.curatorId == curator.id && it.genreId == null
+                            }
+                            for (room in playlistRooms.take(2)) {
+                                val result = gateway.roomContents(room,AppleMusicWebKind.PLAYLIST,limit=25)
+                                val page = when (result) {
+                                    ProviderCallResult.Denied -> return ProviderCallResult.Denied
+                                    ProviderCallResult.Stale -> return ProviderCallResult.Stale
+                                    is ProviderCallResult.Failed -> {
+                                        val failure = result.cause
+                                        if (failure is AppleMusicWebHttpException && failure.status in listOf(401,403,429))
+                                            return result
+                                        playlistIncomplete = true
+                                        continue
+                                    }
+                                    is ProviderCallResult.Success -> when (val outcome = result.value.outcome) {
+                                        is AppleMusicWebOutcome.Complete -> outcome.value
+                                        is AppleMusicWebOutcome.Partial -> { playlistIncomplete = true; outcome.value }
+                                        is AppleMusicWebOutcome.Unavailable -> { playlistIncomplete = true; continue }
+                                    }
+                                }
+                                playlistCards += projectAppleMusicWebGenrePlaylistRoom(curator,tag,page)?.items.orEmpty()
+                                if (page.unresolvedReferences == 0) page.nextCursor?.let {
+                                    pending += AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(room,it),
+                                        curator=curator,tag=tag,resourceKind=AppleMusicWebKind.PLAYLIST)
+                                }
+                            }
+                            pending += playlistRooms.drop(2).map {
+                                AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(it,null),
+                                    curator=curator,tag=tag,resourceKind=AppleMusicWebKind.PLAYLIST)
+                            }
+                        }
+                        val playlists = playlistCards.groupBy { it.browseId }.values.mapNotNull { group ->
+                            group.first().takeIf { first -> group.all { it == first } }
+                        }
+                        if (playlists.isNotEmpty()) shelves += HomeShelf("Playlists",playlists)
+                        val page = AmsEditorialPage(shelves,pending,landing.curator.identity)
+                        val previous = result.value.outcome as? AppleMusicWebOutcome.Partial<AppleMusicWebCuratorLanding>
+                        return ProviderCallResult.Success(when {
+                            previous != null -> AppleMusicWebOutcome.Partial(page,previous.reason)
+                            playlistIncomplete -> AppleMusicWebOutcome.Partial(page,AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED)
+                            else -> AppleMusicWebOutcome.Complete(page)
+                        })
                     }
-                    ProviderCallResult.Success(when (val outcome = result.value.outcome) {
-                        is AppleMusicWebOutcome.Complete -> AppleMusicWebOutcome.Complete(project(outcome.value))
-                        is AppleMusicWebOutcome.Partial -> AppleMusicWebOutcome.Partial(project(outcome.value),outcome.reason)
-                        is AppleMusicWebOutcome.Unavailable -> outcome
-                    })
+                    when (val outcome = result.value.outcome) {
+                        is AppleMusicWebOutcome.Complete -> project(outcome.value)
+                        is AppleMusicWebOutcome.Partial -> project(outcome.value)
+                        is AppleMusicWebOutcome.Unavailable -> ProviderCallResult.Success(outcome)
+                    }
                 }
                 is ProviderCallResult.Failed -> result
                 ProviderCallResult.Denied -> ProviderCallResult.Denied
@@ -342,25 +410,32 @@ internal class AppleMusicWebNativeCatalogSession(
         val tag = request.tag
         val curator = request.curator
         val homeKind = request.homeKind
+        val resourceKind = request.resourceKind
         val valid = if (homeKind != null) curator == null && tag == null &&
             resolveAppleMusicWebHomeRoom(listOf(room),market,homeKind) == room &&
-            homeKind.kind == AppleMusicWebKind.ALBUM
+            homeKind.kind == AppleMusicWebKind.ALBUM && resourceKind == AppleMusicWebKind.ALBUM
         else tag != null && curator != null && appleMusicWebGenreSupported(tag) &&
             appleMusicWebCuratorMatches(curator,market,tag) && room.curatorId == curator.id &&
-            room.genreId == null && isAppleMusicWebCuratorReleaseRoom(room)
+            room.genreId == null && when (resourceKind) {
+                AppleMusicWebKind.ALBUM -> isAppleMusicWebCuratorReleaseRoom(room)
+                AppleMusicWebKind.PLAYLIST -> isAppleMusicWebCuratorPlaylistRoom(room)
+                else -> false
+            }
         if (!valid || (position.cursor != null && position.cursor in position.visited))
             return ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid editorial continuation"))
         return admitted(editorial) { gateway ->
-            when (val result = gateway.roomContents(room,AppleMusicWebKind.ALBUM,cursor=position.cursor)) {
+            when (val result = gateway.roomContents(room,resourceKind,cursor=position.cursor)) {
                 is ProviderCallResult.Success -> {
                     val page = (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value
                         ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete editorial page"))
                     val visited = position.visited + listOfNotNull(position.cursor)
                     val next = page.nextCursor
-                    if (page.room != room || page.kind != AppleMusicWebKind.ALBUM || (next != null && next in visited))
+                    if (page.room != room || page.kind != resourceKind || (next != null && next in visited))
                         return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid editorial page or cyclic cursor"))
                     val shelf = if (homeKind != null)
                         projectAppleMusicWebHomeRoom(room,page,market,homeKind)
+                    else if (resourceKind == AppleMusicWebKind.PLAYLIST)
+                        projectAppleMusicWebGenrePlaylistRoom(requireNotNull(curator),requireNotNull(tag),page)
                     else {
                         val verified = page.items.filter {
                             appleMusicWebCuratedAlbumEvidence(requireNotNull(curator),requireNotNull(tag),it,room) !=
@@ -539,7 +614,8 @@ internal class AppleMusicWebNativeCatalogSession(
             return ProviderCallResult.Failed(IllegalArgumentException("Invalid artist continuation"))
         val allowed = setOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS,AppleMusicWebArtistShelf.SINGLES_AND_EPS,
             AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS,AppleMusicWebArtistShelf.LIVE_ALBUMS,
-            AppleMusicWebArtistShelf.COMPILATIONS,AppleMusicWebArtistShelf.APPEARS_ON)
+            AppleMusicWebArtistShelf.COMPILATIONS,AppleMusicWebArtistShelf.APPEARS_ON,
+            AppleMusicWebArtistShelf.ARTIST_PLAYLISTS)
         if (request.view !in allowed)
             return ProviderCallResult.Failed(IllegalArgumentException("Unsupported artist view"))
         return admitted(editorial) { gateway ->
@@ -559,6 +635,7 @@ internal class AppleMusicWebNativeCatalogSession(
                         AppleMusicWebArtistShelf.STUDIO_ALBUMS -> source = source.copy(albums=append(source.albums))
                         AppleMusicWebArtistShelf.SINGLES_AND_EPS -> source = source.copy(singlesAndEps=append(source.singlesAndEps))
                         AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS -> source = source.copy(featuredAlbums=append(source.featuredAlbums))
+                        AppleMusicWebArtistShelf.ARTIST_PLAYLISTS -> source = source.copy(artistPlaylists=append(source.artistPlaylists))
                         else -> {
                             val old = extra?.takeIf { it.artistBrowseId == route.browseId }
                                 ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Missing artist view evidence"))

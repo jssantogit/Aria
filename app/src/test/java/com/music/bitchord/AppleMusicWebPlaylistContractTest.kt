@@ -2,6 +2,7 @@ package com.music.bitchord
 
 import com.music.bitchord.data.catalog.provider.applemusicweb.*
 import com.music.bitchord.data.providers.*
+import com.music.bitchord.ui.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -26,6 +27,39 @@ class AppleMusicWebPlaylistContractTest {
         assertEquals(listOf("1","2","1"),result.value.tracks.map { it.id })
         assertEquals("Apple Music",result.value.identity.artistName)
         assertEquals(listOf(path,"$path/tracks"),calls)
+    }
+
+    @Test fun editorialPlaylistRouteIsExplicitAndPrivateRoutesRemainDenied() {
+        val root = "/v1/catalog/br/playlists/pl.abc123"
+        val editorial = ProviderCapability.EDITORIAL_DISCOGRAPHY
+        val search = ProviderCapability.CATALOG_SEARCH
+        for (path in listOf(root,"$root/tracks","$root/relationships/tracks")) {
+            assertTrue(AppleMusicWebOperationRegistry.allows(editorial,path))
+            assertFalse(AppleMusicWebOperationRegistry.allows(search,path))
+        }
+        for (path in listOf("$root/relationships/library","/v1/me/library/playlists","$root/playback"))
+            assertFalse(AppleMusicWebOperationRegistry.allows(editorial,path))
+    }
+
+    @Test fun exactCuratorPlaylistRoomKeepsSharedGenresIsolated() {
+        val curator = AppleMusicWebCuratorRef("976439585","br","Apple Music Soul e funk")
+        val room = AppleMusicWebRoomRef("br",null,"456","Playlists",curator.id)
+        val playlist = AppleMusicWebItem("pl.abc123",AppleMusicWebKind.PLAYLIST,"br","Soul",
+            genreNames=listOf("Soul"),artistName="Apple Music")
+        val other = playlist.copy(id="pl.def456",title="Funk",genreNames=listOf("Funk"))
+        val page = AppleMusicWebRoomPage(room,AppleMusicWebKind.PLAYLIST,
+            listOf(playlist,other,playlist.copy(storefront="us")),3,0,0,null)
+        val shelf = projectAppleMusicWebGenrePlaylistRoom(curator,"soul",page)!!
+        assertEquals(listOf(playlist.scopedId),shelf.items.map { it.browseId })
+        assertNull(projectAppleMusicWebGenrePlaylistRoom(curator,"soul",
+            page.copy(room=room.copy(curatorId="999"))))
+        assertNull(projectAppleMusicWebGenrePlaylistRoom(curator,"soul",
+            page.copy(room=room.copy(title="Lançamentos"))))
+        val extra = shelf.items.single().copy(browseId="apple_music_web:br:playlist:pl.xyz999")
+        val paging = AmsEditorialPaging(additional=listOf(extra))
+        assertEquals(listOf(shelf.items.single(),extra),
+            amsGenreWithPlaylistContinuation(listOf(shelf),paging).single().items)
+        assertNull(amsEditorialContinuationShelf(listOf(shelf),paging,true))
     }
 
     @Test fun crossPlaylistCursorIsRejected(): Unit = runBlocking {

@@ -19,6 +19,7 @@ internal sealed interface AmsEditorialRequest {
         val homeKind: AppleMusicWebHomeShelf? = null,
         val curator: AppleMusicWebCuratorRef? = null,
         val tag: String? = null,
+        val resourceKind: AppleMusicWebKind = AppleMusicWebKind.ALBUM,
     ) : AmsEditorialRequest
     data class RefreshGenre(val tag: String,val curator: AppleMusicWebCuratorRef) : AmsEditorialRequest
 }
@@ -45,10 +46,25 @@ internal fun amsEditorialContinuationShelf(
 ): HomeShelf? {
     val seen = original.flatMap { it.items }.mapNotNull { it.browseId }.toHashSet()
     val cards = paging?.additional.orEmpty().filter { card ->
-        card.browseId?.let(seen::add) == true
+        AppleMusicWebNativeRoute.parse(card.browseId)?.kind == AppleMusicWebKind.ALBUM &&
+            card.browseId?.let(seen::add) == true
     }
     return cards.takeIf { it.isNotEmpty() }?.let {
         HomeShelf(if (genre) "Mais do gênero" else "Mais do catálogo",it)
+    }
+}
+
+internal fun amsGenreWithPlaylistContinuation(
+    initial: List<HomeShelf>,paging: AmsEditorialPaging?,
+): List<HomeShelf> {
+    val extra = paging?.additional.orEmpty().filter {
+        AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST
+    }
+    if (extra.isEmpty()) return initial
+    val index = initial.indexOfFirst { it.title == "Playlists" }
+    if (index < 0) return initial + HomeShelf("Playlists",extra.distinctBy { it.browseId })
+    return initial.mapIndexed { i,shelf ->
+        if (i == index) shelf.copy(items=(shelf.items + extra).distinctBy { it.browseId }) else shelf
     }
 }
 
@@ -166,11 +182,12 @@ internal class AppleMusicWebEditorialUiSession(
                 .mapNotNull { it.browseId }.toHashSet()
             val additional = page.shelves.flatMap { it.items }.filter { card ->
                 val route = AppleMusicWebNativeRoute.parse(card.browseId)
-                route?.kind == AppleMusicWebKind.ALBUM && route.storefront == "br" &&
+                route != null && (route.kind == AppleMusicWebKind.ALBUM ||
+                    (tag != null && route.kind == AppleMusicWebKind.PLAYLIST)) && route.storefront == "br" &&
                     card.videoId == null && card.title.isNotBlank() && seen.add(route.browseId)
             }
             publishPaging(tag,paging.copy(
-                pending=paging.pending.drop(1) + page.pending,
+                pending=(paging.pending.drop(1) + page.pending).distinct(),
                 additional=paging.additional + additional,
                 loading=false,failed=false,pages=paging.pages+1,
             ))

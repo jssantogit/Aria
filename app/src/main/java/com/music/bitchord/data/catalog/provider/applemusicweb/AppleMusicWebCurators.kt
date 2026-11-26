@@ -128,6 +128,22 @@ internal fun appleMusicWebCuratedAlbumMatches(
 ): Boolean = appleMusicWebCuratedAlbumEvidence(ref, tag, item, room) !=
     AppleMusicWebCuratedAlbumEvidence.REJECTED
 
+/** Only the source's explicit playlist room, never a global playlist search. */
+internal fun isAppleMusicWebCuratorPlaylistRoom(room: AppleMusicWebRoomRef): Boolean =
+    room.curatorId != null && curatorFold(room.title) in setOf(
+        "playlists","featured playlists","essential playlists",
+        "playlists em destaque","playlists essenciais","playlists a la une",
+    )
+
+internal fun appleMusicWebCuratedPlaylistMatches(
+    ref: AppleMusicWebCuratorRef, tag: String, item: AppleMusicWebItem, room: AppleMusicWebRoomRef,
+): Boolean = item.kind == AppleMusicWebKind.PLAYLIST && item.storefront == ref.storefront &&
+    appleMusicWebCuratorMatches(ref,ref.storefront,tag) && room.curatorId == ref.id &&
+    room.storefront == ref.storefront && room.genreId == null &&
+    isAppleMusicWebCuratorPlaylistRoom(room) &&
+    (!appleMusicWebCuratorIsSharedForTag(ref,tag) ||
+        item.genreNames.any { appleMusicWebGenreNameMatches(it,tag) })
+
 /** Native genre-curator album shelves only; never fill from unrelated playlists. */
 internal fun isAppleMusicWebCuratorReleaseRoom(room: AppleMusicWebRoomRef): Boolean =
     room.curatorId != null && curatorFold(room.title) in setOf(

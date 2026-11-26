@@ -143,6 +143,7 @@ internal fun CanonicalProviderDetailHost(
         "Álbuns essenciais" -> AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS
         "Álbuns ao vivo" -> AppleMusicWebArtistShelf.LIVE_ALBUMS
         "Coletâneas" -> AppleMusicWebArtistShelf.COMPILATIONS
+        "Playlists" -> AppleMusicWebArtistShelf.ARTIST_PLAYLISTS
         "Com participação em" -> AppleMusicWebArtistShelf.APPEARS_ON
         else -> null
     }

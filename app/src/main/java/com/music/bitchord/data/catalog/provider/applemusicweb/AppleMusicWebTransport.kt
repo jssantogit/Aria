@@ -178,6 +178,10 @@ internal class AppleMusicWebPolicyTransport(
                     params.keys.all { it in setOf("platform", "name", "genre", "l") })
             } else require(params.keys.all { it in setOf("limit", "offset", "l", "sort") })
         }
+        if (capability == ProviderCapability.EDITORIAL_DISCOGRAPHY && path.contains("/playlists/")) {
+            require(if (path.endsWith("/tracks")) params.keys.all { it in setOf("offset","limit","l") }
+                else params == mapOf("include" to "tracks")) { "Unsupported editorial playlist operation" }
+        }
         if (capability == ProviderCapability.CHART_MOST_PLAYED) {
             val valid = when {
                 path.endsWith("/charts") && params["chartId"] == "119" ->

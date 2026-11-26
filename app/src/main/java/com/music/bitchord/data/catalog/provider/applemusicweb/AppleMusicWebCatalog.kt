@@ -581,7 +581,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25,
         cursor: String? = null,
     ): AppleMusicWebRoomPage {
-        require(kind in setOf(AppleMusicWebKind.SONG, AppleMusicWebKind.ALBUM))
+        require(kind in setOf(AppleMusicWebKind.SONG, AppleMusicWebKind.ALBUM, AppleMusicWebKind.PLAYLIST))
         require(limit in 1..100 && room.id.matches(Regex("[0-9]{1,12}")))
         val sf = storefront(room.storefront)
         val path = "/v1/editorial/$sf/rooms/" + room.id + "/contents"
@@ -661,7 +661,8 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             val initial = artistShelfItems(block, sf, shelf)
             if (initial.unresolved.isEmpty()) {
                 if (shelf in setOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS,
-                    AppleMusicWebArtistShelf.SINGLES_AND_EPS,AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS)) {
+                    AppleMusicWebArtistShelf.SINGLES_AND_EPS,AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS,
+                    AppleMusicWebArtistShelf.ARTIST_PLAYLISTS)) {
                     val path = "/v1/catalog/$sf/artists/$artistId/" + shelf.endpoint
                     block?.str("next")?.let { next ->
                         // Never expose a cursor belonging to another artist/view.
