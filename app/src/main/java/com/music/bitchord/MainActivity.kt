@@ -1930,7 +1930,7 @@ private fun BitChordApp(
     LaunchedEffect(
         detailStack.map { it.browseId },
         appleArtistNavigation?.browseId, appleAlbumNavigation?.browseId,
-        discogsBrowseId,
+        discogsBrowseId, nativeProviderState.amsOpenRoutes,
     ) {
         val open = detailStack.mapTo(HashSet()) { it.browseId }
         // Source-native detail pages use the exact same list-state map as
@@ -1939,6 +1939,7 @@ private fun BitChordApp(
         appleArtistNavigation?.browseId?.let(open::add)
         appleAlbumNavigation?.browseId?.let(open::add)
         discogsBrowseId?.let(open::add)
+        open.addAll(nativeProviderState.amsOpenRoutes)
         detailListStates.keys.retainAll(open)
         localFolderStates.keys.retainAll(open)
     }
@@ -2398,7 +2399,10 @@ private fun BitChordApp(
     val onBrowseLongPress: (ShelfItem) -> Unit = { item ->
         val id = item.browseId
         val type = id?.let { viewModel.browseTypeOf(it) }
-        if (id?.startsWith("discogs:") == true) {
+        if (id?.startsWith("apple_music_web:") == true) {
+            // AMS metadata cannot enter legacy playback/download actions.
+            // Exact source attribution for held cards is wired separately.
+        } else if (id?.startsWith("discogs:") == true) {
             // Source-only metadata never enters the legacy collection actions.
             providerHeldCardRoute = id
             providerDetailOverflowOpen = true
@@ -2618,6 +2622,7 @@ private fun BitChordApp(
         // Switching away from a source-owned overlay closes the old album.
         // Otherwise the next Search tab could reopen an unrelated product.
         val origin = appleShelfReturnTab
+        if (selectedTab != (origin ?: TAB_SEARCH)) viewModel.appleMusicWebDetailNavigation.clear()
         if (origin != null && selectedTab != origin) {
             appleShelfReturnTab = null
             viewModel.backAppleEditorialAlbum()
@@ -2628,6 +2633,10 @@ private fun BitChordApp(
         // selectedTab is STILL the originating Home/Explore tab. Unmount the
         // exact Apple detail instead of navigating the root bar twice.
         appleShelfReturnTab = null
+    }
+    val backAmsDetail: () -> Unit = {
+        viewModel.appleMusicWebDetailNavigation.back()
+        if (viewModel.appleMusicWebDetailNavigation.stack.value.isEmpty()) appleShelfReturnTab = null
     }
     val onCanonicalShelfClick: (ShelfItem, String, PlaybackSourceType) -> Unit =
         click@{ item, shelfTitle, tabOrigin ->
@@ -2656,6 +2665,10 @@ private fun BitChordApp(
         }
         com.music.bitchord.ui.canonicalExploreGenreForBrowseId(item.browseId)?.let { genre ->
             genreNavigation.open(genre, fromSearch = false)
+            return@click
+        }
+        if (item.browseId?.startsWith("apple_music_web:") == true) {
+            if (viewModel.openAppleMusicWebDetail(item)) appleShelfReturnTab = selectedTab
             return@click
         }
         if (viewModel.discogsNativeCatalog.openFromShelf(item)) return@click
@@ -3570,6 +3583,11 @@ private fun BitChordApp(
                     appleArtistDetail != null && detailActiveShelf == null,
             ) { viewModel.backAppleEditorialArtist() }
             BackHandler(
+                enabled = detail == null && appleNativeRouteKey?.startsWith("apple_music_web:") == true &&
+                    !showSettings && !showReplay && !showSources &&
+                    !showSmartPlaylistBuilder && detailActiveShelf == null,
+            ) { backAmsDetail() }
+            BackHandler(
                 enabled = detail == null &&
                     !showSettings && !showReplay && !showSources &&
                     !showSmartPlaylistBuilder && discogsRoute != null &&
@@ -3662,7 +3680,9 @@ private fun BitChordApp(
         // and Playlist navigation states cannot both draw controls.
         // iTunes and Discogs share the same native catalog top-bar owner as
         // MusicBrainz. The source changes identity/data, not screen chrome.
-        val toolbarOwner = nativeTopBarRouteOwner(pageRouteKey, visualDetail?.browseId)
+        val toolbarOwner = if (pageRouteKey.startsWith("apple_music_web:"))
+            NativeTopBarRouteOwner.CATALOG_DETAIL
+        else nativeTopBarRouteOwner(pageRouteKey, visualDetail?.browseId)
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // Show the destination on the first frame, already nearly
@@ -4235,7 +4255,7 @@ private fun BitChordApp(
                             onEditSignatureApi = { editingSignatureApi = true },
                             contentPadding = listPadding,
                         )
-                    } else if (key.startsWith("itunes:") ||
+                    } else if (key.startsWith("itunes:") || key.startsWith("apple_music_web:") ||
                         key.startsWith("discogs:artist:") ||
                         key.startsWith("discogs:release:")
                     ) {
@@ -4247,7 +4267,8 @@ private fun BitChordApp(
                             appleSharedVisual = appleSharedVisual,
                             appleArtistDetail = appleArtistDetail,
                             appleAlbumDetail = appleAlbumDetail,
-                            appleReadAllowed = appleReadAllowed,
+                            appleReadAllowed = if (key.startsWith("apple_music_web:"))
+                                nativeProviderState.amsReadAllowed else appleReadAllowed,
                             discogsNativeVisual = discogsNativeVisual,
                             discogsDetail = discogsDetail,
                             discogsReadAllowed = discogsReadAllowed,
@@ -5629,6 +5650,7 @@ private fun BitChordApp(
                         toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST -> ({ openedPublicPlaylist = null })
                         detailActiveShelf != null -> ({ detailActiveShelf = null })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
+                        appleNativeRouteKey?.startsWith("apple_music_web:") == true -> backAmsDetail
                         appleNativeRouteKey != null &&
                             appleNativeKind == AppleNativeDetailKind.ALBUM ->
                             ({ backAppleAlbum() })
@@ -9880,7 +9902,7 @@ private fun NativeDetailAlbumTopBarActions(
 ) {
     val onlineMetadata = browseId.startsWith("catalog:RELEASE:") ||
         browseId.startsWith("catalog:RELEASE_GROUP:") ||
-        browseId.startsWith("itunes:")
+        browseId.startsWith("itunes:") || browseId.startsWith("apple_music_web:")
     val ratingTarget = remember(browseId, isReleaseDetail) {
         if (isReleaseDetail) com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(browseId)
         else null

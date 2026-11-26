@@ -1,3 +1,3 @@
-# AMS detail navigation foundation
+# AMS detail navigation
 
-Run 45852658194 passed the shared detail projection contracts. This slice adds a ViewModel-owned exact-source navigation stack with cancellable reads, permission leases, relationship verification, back snapshots and deterministic tests. It does not yet connect Activity click/Back/chrome or enable the provider. Home/search and supplementary sections remain pending.
+Run 45852658194 passed the shared detail projection contracts. Commit 67fe1d54 adds ViewModel-owned exact-source navigation with cancellable reads, permission leases, relationship validation and back snapshots. This slice connects genre/Home shelf album and artist cards, canonical DetailScreen dispatch, related artist/release clicks, hardware and toolbar Back, tab cleanup and per-route scroll retention. AMS is still BLOCKED. No legacy media/download action for AMS cards. Direct search/Home sourcing, exact overflow source attribution, supplementary shelves and live/physical UI validation remain pending.

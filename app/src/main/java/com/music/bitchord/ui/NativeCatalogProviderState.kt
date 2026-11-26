@@ -1,6 +1,8 @@
 package com.music.bitchord.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.model.UiState
@@ -36,8 +38,20 @@ internal data class NativeCatalogProviderState(
     val discogsNativeVisual: DiscogsNativePage?,
     val appleReadAllowed: Boolean,
     val appleSearchAllowed: Boolean,
+    val amsStack: List<AppleMusicWebDetailEntry> = emptyList(),
+    val amsReadAllowed: Boolean = false,
 ) {
+    val amsOpenRoutes: List<String> get() = amsStack.map { it.route.browseId }
     fun appleDetail(canOpen: Boolean): NativeAppleCatalogDetail {
+        if (canOpen && discogsRoute == null && amsReadAllowed) {
+            val entry = amsStack.lastOrNull()
+            val page = entry?.visible()
+            if (entry != null && page != null) {
+                val kind = if (entry.route.kind == AppleMusicWebKind.ARTIST)
+                    AppleNativeDetailKind.ARTIST else AppleNativeDetailKind.ALBUM
+                return NativeAppleCatalogDetail(kind, entry.route.browseId, page)
+            }
+        }
         val kind = if (canOpen && discogsRoute == null)
             appleNativeDetailKind(appleAlbumDetail, appleArtistDetail)
         else AppleNativeDetailKind.NONE
@@ -89,7 +103,14 @@ internal fun rememberNativeCatalogProviderState(
     val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
     val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
+    val amsStack by viewModel.appleMusicWebDetailNavigation.stack.collectAsStateWithLifecycle()
     val gate = ProviderRuntime.gateOrNull()
+    val amsReadAllowed = gate?.open(
+        ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.APPLE_MUSIC_WEB,
+    ) != null && amsStack.lastOrNull()?.lease?.isCurrent() == true
+    LaunchedEffect(amsReadAllowed, amsStack.isNotEmpty()) {
+        if (!amsReadAllowed && amsStack.isNotEmpty()) viewModel.appleMusicWebDetailNavigation.clear()
+    }
     val discogsReadAllowed = gate?.open(
         ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
     ) != null
@@ -111,5 +132,6 @@ internal fun rememberNativeCatalogProviderState(
         appleAlbumDetail, appleArtistDetail, appleAlbumNavigation,
         appleArtistNavigation, discogsRoute, discogsBrowseId, discogsDetail,
         discogsReadAllowed, discogsNativeVisual, appleReadAllowed, appleSearchAllowed,
+        amsStack, amsReadAllowed,
     )
 }

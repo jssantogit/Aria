@@ -646,6 +646,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ))
         }, appleMusicWebNativeCatalog::sharedDetail)
     }
+    internal fun openAppleMusicWebDetail(item: ShelfItem): Boolean {
+        if (!appleMusicWebDetailNavigation.openRoot(item)) return false
+        backAppleEditorialAlbum()
+        backAppleEditorialArtist()
+        discogsNativeCatalog.backAll()
+        clearCanonicalCatalogNavigation()
+        _detailStack.value = emptyList()
+        return true
+    }
     private val _catalogSearchMusicBrainzVisible = MutableStateFlow(false)
     val catalogSearchMusicBrainzVisible: StateFlow<Boolean> =
         _catalogSearchMusicBrainzVisible.asStateFlow()
@@ -1185,6 +1194,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun openCanonicalNativeDetail(row: CanonicalCatalogSearchRow) {
         if (canonicalMusicBrainzDetailLease(ProviderRuntime.gateOrNull()) == null) return
+        appleMusicWebDetailNavigation.clear()
         backAppleEditorialAlbum()
         backAppleEditorialArtist()
         val nativeType = canonicalNativePageType(row.kind) ?: return
@@ -4809,6 +4819,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearDetail() {
+        appleMusicWebDetailNavigation.clear()
         if (_detailStack.value.isNotEmpty()) _detailStack.value = emptyList()
     }
 
@@ -5448,6 +5459,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Search and artist-shelf routes retain their exact storefront namespace. */
     fun openAppleEditorialEntry(row: AppleEditorialSearchRow) {
+        appleMusicWebDetailNavigation.clear()
         when (row.kind) {
             AppleEditorialSearchKind.ARTIST -> openAppleEditorialArtist(row)
             AppleEditorialSearchKind.ALBUM -> openAppleEditorialAlbum(row)
@@ -6029,6 +6041,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * A provider-owned MediaAsset lookup must be wired before enabling play.
      */
     private fun runCanonicalCatalogSearch(query: String) {
+        appleMusicWebDetailNavigation.clear()
         val providers = eligibleCatalogSearchProviders()
         when (providers.firstOrNull()) {
             BuiltInProviderKeys.DISCOGS -> {

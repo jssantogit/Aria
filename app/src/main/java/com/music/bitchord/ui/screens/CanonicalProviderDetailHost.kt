@@ -56,8 +56,9 @@ internal fun CanonicalProviderDetailHost(
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
+    val isAms = routeKey.startsWith("apple_music_web:")
     val artistState = appleArtistDetail as? UiState.Success
-    val liveApplePage = if (!isDiscogs) appleSharedVisual?.takeIf {
+    val liveApplePage = if (!isDiscogs && (!isAms || appleReadAllowed)) appleSharedVisual?.takeIf {
         it.page.browseId == routeKey
     } else null
     val previousApplePage = remember(routeKey) {
@@ -65,7 +66,7 @@ internal fun CanonicalProviderDetailHost(
     }
     if (liveApplePage != null) previousApplePage.value = liveApplePage
     val applePage = liveApplePage ?: previousApplePage.value.takeIf {
-        !isDiscogs && appleReadAllowed
+        !isDiscogs && !isAms && appleReadAllowed
     }
 
     val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
@@ -94,7 +95,7 @@ internal fun CanonicalProviderDetailHost(
     // One bounded continuation per deliberate scroll to the end. Never
     // eagerly drain the entire Apple catalog merely because a short first
     // page happens to fit the screen; navigation cancels this collector.
-    val appleArtist = if (!isDiscogs) artistState?.data?.takeIf {
+    val appleArtist = if (!isDiscogs && !isAms) artistState?.data?.takeIf {
         it.artist.browseId == routeKey
     } else null
     val canContinueApple = appleArtist?.hasMore == true &&
@@ -153,6 +154,11 @@ internal fun CanonicalProviderDetailHost(
                         DiscogsNativeArtistSearchRow(artistId, artistName),
                     )
                 }
+            } else if (isAms) {
+                if (targetId == applePage?.albumArtistBrowseId && artistName.isNotBlank() &&
+                    viewModel.appleMusicWebDetailNavigation.openRelated(targetId)) {
+                    onActiveShelfChange(null)
+                }
             } else {
                 val route = AppleCatalogBrowseRoute.parse(targetId)
                 if (targetId == applePage?.albumArtistBrowseId &&
@@ -179,7 +185,7 @@ internal fun CanonicalProviderDetailHost(
         onArtistReleaseLoadMore = if (canContinueApple)
             viewModel::loadMoreAppleEditorialArtist else null,
         onSectionItemLongPress = onSectionItemLongPress,
-        onCanonicalFeaturedReleaseOpen = if (isDiscogs) null
+        onCanonicalFeaturedReleaseOpen = if (isDiscogs || isAms) null
             else viewModel::openCanonicalNativeDetail,
         onSectionItemClick = { item ->
             if (isDiscogs) {
@@ -188,6 +194,10 @@ internal fun CanonicalProviderDetailHost(
                         onActiveShelfChange(null)
                         viewModel.discogsNativeCatalog.openRelease(releaseId)
                     }
+            } else if (isAms) {
+                if (viewModel.appleMusicWebDetailNavigation.openRelated(item.browseId)) {
+                    onActiveShelfChange(null)
+                }
             } else {
                 val matched = appleNativeShelfEntry(
                     item.browseId,
