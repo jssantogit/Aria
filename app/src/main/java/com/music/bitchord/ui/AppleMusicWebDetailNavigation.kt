@@ -10,6 +10,8 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.providers.ProviderReadLease
 import com.music.bitchord.ui.screens.AppleSharedDetail
+import com.music.bitchord.ui.screens.NativeMetadataTrack
+import com.music.bitchord.ui.screens.amsDetailCanOpenTrackAlbum
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -73,6 +75,7 @@ internal class AppleMusicWebDetailNavigation(
     private val acquire: () -> ProviderReadLease?,
     private val readNext: suspend (AppleSharedDetail,AppleMusicWebArtistShelf?) -> ProviderCallResult<AppleMusicWebOutcome<AppleSharedDetail>> =
         { _,_ -> ProviderCallResult.Denied },
+    private val resolveSongAlbum: suspend (String) -> String? = { null },
     private val read: suspend (String) -> ProviderCallResult<AppleMusicWebOutcome<AppleSharedDetail>>,
 ) {
     private val _stack = MutableStateFlow<List<AppleMusicWebDetailEntry>>(emptyList())
@@ -105,6 +108,49 @@ internal class AppleMusicWebDetailNavigation(
         val lease = acquire() ?: return false
         if (!lease.isCurrent()) return false
         load(AppleMusicWebDetailEntry(route,target.title,target.subtitle,target.thumbnailUrl,lease))
+        return true
+    }
+
+    /** Exact current membership and source relationship only; retain the
+     * artist/playlist snapshot on Back and suppress stale navigation. */
+    fun openTrackAlbum(track: NativeMetadataTrack,onUnavailable: () -> Unit = {}): Boolean {
+        val current = _stack.value.lastOrNull() ?: return false
+        val detail = (current.state as? UiState.Success)?.data ?: return false
+        if (!current.lease.isCurrent() || track !in detail.metadataTracks ||
+            !amsDetailCanOpenTrackAlbum(current.route.browseId,track) || _stack.value.size >= 32)
+            return false
+        cancelRequest()
+        val parent = _stack.value.lastOrNull() ?: return false
+        val generation = epoch
+        val job = scope.launch(start=CoroutineStart.LAZY) {
+            val id = try { resolveSongAlbum(track.key) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            if (generation != epoch || _stack.value.lastOrNull() !== parent ||
+                !parent.lease.isCurrent()) return@launch
+            val route = AppleMusicWebNativeRoute.parse(id)?.takeIf {
+                it.kind == AppleMusicWebKind.ALBUM && it.storefront == parent.route.storefront
+            }
+            if (route == null) {
+                onUnavailable()
+                return@launch
+            }
+            val previous = _stack.value.indexOfLast { it.route == route && it.lease.isCurrent() }
+            // Do not cancel this coroutine from inside load().
+            request = null
+            if (previous >= 0) {
+                cancelRequest()
+                _stack.value = _stack.value.take(previous + 1)
+                return@launch
+            }
+            val lease = acquire() ?: return@launch
+            if (!lease.isCurrent()) return@launch
+            load(AppleMusicWebDetailEntry(route,"Álbum",track.credit.orEmpty(),null,lease))
+        }
+        request = job
+        val unregister = parent.lease.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+        job.start()
         return true
     }
 

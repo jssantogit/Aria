@@ -54,6 +54,18 @@ internal fun amsEditorialContinuationShelf(
     }
 }
 
+internal fun amsHomeWithTrendingContinuation(
+    initial: List<HomeShelf>, paging: AmsEditorialPaging?,
+): List<HomeShelf> {
+    val extra = paging?.additional.orEmpty().filter { amsSongStorefront(it.browseId) == "br" }
+    if (extra.isEmpty()) return initial
+    val index = initial.indexOfFirst { it.title == "Músicas em alta" }
+    if (index < 0) return initial + HomeShelf("Músicas em alta",extra.distinctBy { it.browseId })
+    return initial.mapIndexed { i,shelf ->
+        if (i == index) shelf.copy(items=(shelf.items + extra).distinctBy { it.browseId }) else shelf
+    }
+}
+
 internal fun amsGenreWithPlaylistContinuation(
     initial: List<HomeShelf>,paging: AmsEditorialPaging?,
 ): List<HomeShelf> {
@@ -182,9 +194,12 @@ internal class AppleMusicWebEditorialUiSession(
                 .mapNotNull { it.browseId }.toHashSet()
             val additional = page.shelves.flatMap { it.items }.filter { card ->
                 val route = AppleMusicWebNativeRoute.parse(card.browseId)
-                route != null && (route.kind == AppleMusicWebKind.ALBUM ||
-                    (tag != null && route.kind == AppleMusicWebKind.PLAYLIST)) && route.storefront == "br" &&
-                    card.videoId == null && card.title.isNotBlank() && seen.add(route.browseId)
+                val song = tag == null && amsSongStorefront(card.browseId) == "br" &&
+                    com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId) != null
+                val collection = route != null && (route.kind == AppleMusicWebKind.ALBUM ||
+                    (tag != null && route.kind == AppleMusicWebKind.PLAYLIST)) && route.storefront == "br"
+                (collection || song) && card.videoId == null && card.title.isNotBlank() &&
+                    card.browseId?.let(seen::add) == true
             }
             publishPaging(tag,paging.copy(
                 pending=(paging.pending.drop(1) + page.pending).distinct(),

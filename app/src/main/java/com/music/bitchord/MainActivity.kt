@@ -2714,7 +2714,13 @@ private fun BitChordApp(
             return@click
         }
         if (item.browseId?.startsWith("apple_music_web:") == true) {
-            if (viewModel.openAppleMusicWebDetail(item)) appleShelfReturnTab = selectedTab
+            if (com.music.bitchord.ui.amsSongStorefront(item.browseId) != null) {
+                if (selectedTab == TAB_HOME && viewModel.appleMusicWebEditorialUi.containsCard(null,item)) {
+                    com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(item.appleStoreUrl,item.browseId)?.let { url ->
+                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(url))) }
+                    }
+                }
+            } else if (viewModel.openAppleMusicWebDetail(item)) appleShelfReturnTab = selectedTab
             return@click
         }
         if (viewModel.discogsNativeCatalog.openFromShelf(item)) return@click
@@ -7372,10 +7378,19 @@ private fun BitChordApp(
                     } else false
                 },
                 onOpen = { target ->
+                    target.track?.let { track ->
+                        viewModel.appleMusicWebDetailNavigation.openTrackAlbum(track) {
+                            Toast.makeText(context,"Não foi possível identificar o álbum.",Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     target.card?.let { card ->
                         if (target.scope.detail != null) {
                             if (viewModel.appleMusicWebDetailNavigation.openRelated(card.browseId))
                                 detailActiveShelf = null
+                        } else if (com.music.bitchord.ui.amsSongStorefront(card.browseId) != null) {
+                            com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId)?.let { url ->
+                                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(url))) }
+                            }
                         } else if (viewModel.openAppleMusicWebDetail(card)) {
                             appleShelfReturnTab = selectedTab
                         }

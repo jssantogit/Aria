@@ -395,6 +395,7 @@ internal fun DetailScreen(
     appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     sourceArtistTracksRanked: Boolean = false,
     onMetadataTrackHold: ((NativeMetadataTrack) -> Unit)? = null,
+    onMetadataTrackOpenAlbum: ((NativeMetadataTrack) -> Unit)? = null,
     sourceAlbumMetadata: CanonicalAlbumFooterMetadata? = null,
     /** Explicit Apple Music URL → MusicBrainz artist relation; never inferred. */
     verifiedAppleArtistMbid: String? = null,
@@ -1008,7 +1009,8 @@ internal fun DetailScreen(
             if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA) {
                 item(key = "source-artist-tracks") {
                     NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette,
-                        ranked = sourceArtistTracksRanked, onTrackHold = onMetadataTrackHold)
+                        ranked = sourceArtistTracksRanked, onTrackHold = onMetadataTrackHold,
+                        onTrackClick = onMetadataTrackOpenAlbum)
                 }
             }
 
@@ -1156,8 +1158,9 @@ internal fun DetailScreen(
                         val subtitle = if (playlist) track.credit?.takeIf { it.isNotBlank() }
                             else nativeMetadataAlbumTrackSubtitle(track, albumRowCredit.orEmpty())
                         NativeDetailTrackRowLayout(
-                            onClick = null,
-                            onLongPress = if (track.sourceStoreUrl != null)
+                            onClick = if (playlist) onMetadataTrackOpenAlbum?.let { open -> { open(track) } } else null,
+                            onLongPress = if (track.sourceStoreUrl != null ||
+                                (playlist && onMetadataTrackOpenAlbum != null))
                                 onMetadataTrackHold?.let { hold -> { hold(track) } } else null,
                             onMore = null,
                             textGap = PAGE_GUTTER,

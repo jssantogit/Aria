@@ -42,6 +42,28 @@ class AppleMusicWebEditorialUiSessionTest {
         assertNull(projectAppleMusicWebHomeRoom(room,roomPage(room,listOf(album)),"br",kind,setOf(album.scopedId)))
     }
 
+    @Test fun trendingUsesOnlyExactEditorialRoomAndVerifiedSongLinks() {
+        val kind = AppleMusicWebHomeShelf.TRENDING_SONGS
+        val ref = room.copy(title="Músicas em alta")
+        val song = AppleMusicWebItem("30",AppleMusicWebKind.SONG,"br","Song",
+            artistName="Artist",storeUrl="https://music.apple.com/br/album/title/20?i=30")
+        val other = song.copy(id="31",storeUrl="https://music.apple.com/br/song/title/31")
+        val wrong = song.copy(id="32",storeUrl="https://music.apple.com/br/song/title/999")
+        val page = AppleMusicWebRoomPage(ref,AppleMusicWebKind.SONG,
+            listOf(song,wrong,album,song.copy(storefront="us")),4,0,0,null)
+        val shelf = projectAppleMusicWebHomeRoom(ref,page,"br",kind)!!
+        assertEquals("Músicas em alta",shelf.title)
+        assertEquals(listOf(song.scopedId),shelf.items.map { it.browseId })
+        assertTrue(shelf.items.all { it.videoId == null })
+        val foreign = ref.copy(curatorId="10")
+        assertNull(projectAppleMusicWebHomeRoom(foreign,page.copy(room=foreign),"br",kind))
+        val extra = projectAppleMusicWebHomeRoom(ref,page.copy(items=listOf(other)),"br",kind)!!.items
+        val paging = AmsEditorialPaging(additional=extra)
+        val combined = amsHomeWithTrendingContinuation(listOf(shelf),paging).single()
+        assertEquals(listOf(song.scopedId,other.scopedId),combined.items.map { it.browseId })
+        assertNull(amsEditorialContinuationShelf(listOf(shelf),paging,false))
+    }
+
     @Test fun dispatchWaitsForEveryEarlierSourceIncludingAms() {
         val order = listOf(discogs,ams,apple,mb)
         val miss = UiState.Success(emptyList<HomeShelf>())

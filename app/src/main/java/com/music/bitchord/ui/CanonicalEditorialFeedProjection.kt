@@ -163,9 +163,13 @@ internal fun projectCanonicalHomeDisplay(
     discogsPaging: DiscogsHomePageSnapshot = DiscogsHomePageSnapshot(),
     amsPaging: AmsEditorialPaging? = null,
 ): List<HomeShelf> {
+    val selectedShelves = (selection.state as? UiState.Success)?.data.orEmpty()
+    val sourceShelves = if (selection.provider == BuiltInProviderKeys.APPLE_MUSIC_WEB)
+        amsHomeWithTrendingContinuation(selectedShelves,amsPaging) else selectedShelves
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
-        (selection.state as? UiState.Success)?.data.orEmpty() +
-        listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() }) +
+        sourceShelves +
+        listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() &&
+            sourceShelves.none { source -> source.title == it.title } }) +
         listOfNotNull(personalRecommendationShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() })
     val other = personalHomeShelves(canonicalHomeShelves)

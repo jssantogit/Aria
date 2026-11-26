@@ -41,6 +41,10 @@ internal sealed interface AppleMusicWebNativeDetail {
     data class Playlist(val value: AppleMusicWebPlaylist) : AppleMusicWebNativeDetail
 }
 
+internal fun amsSongStorefront(key: String?): String? =
+    key?.let { Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$").matchEntire(it) }
+        ?.groupValues?.get(1)
+
 internal fun appleMusicWebGenreSupported(tag: String): Boolean = tag in amsEditorialGenreCorpus
 
 /** Existing HomeShelf model; no new screen and no fake playable IDs. */
@@ -129,25 +133,31 @@ internal fun projectAppleMusicWebHomeRoom(
     storefront: String, shelf: AppleMusicWebHomeShelf,
     excluded: Set<String> = emptySet(),
 ): HomeShelf? {
-    if (shelf.kind != AppleMusicWebKind.ALBUM ||
+    if (shelf !in setOf(AppleMusicWebHomeShelf.RECENT_RELEASES,AppleMusicWebHomeShelf.NEW_THIS_WEEK,
+        AppleMusicWebHomeShelf.TRENDING_SONGS) ||
         resolveAppleMusicWebHomeRoom(listOf(room), storefront, shelf) != room ||
         page.room != room || page.kind != shelf.kind) return null
     val cards = page.items.filter {
-        it.kind == AppleMusicWebKind.ALBUM && it.storefront == storefront &&
+        it.kind == shelf.kind && it.storefront == storefront &&
             it.title.isNotBlank() && it.scopedId !in excluded
     }.groupBy { it.scopedId }.values.mapNotNull { group ->
         val item = group.first()
         if (group.any { it != item }) return@mapNotNull null
-        val route = AppleMusicWebNativeRoute.parse(item.scopedId) ?: return@mapNotNull null
+        val id = if (shelf.kind == AppleMusicWebKind.SONG) {
+            if (amsSongStorefront(item.scopedId) != storefront ||
+                appleMusicWebVerifiedStoreUrl(item) == null) return@mapNotNull null
+            item.scopedId
+        } else AppleMusicWebNativeRoute.parse(item.scopedId)?.browseId ?: return@mapNotNull null
         ShelfItem(title = item.title, subtitle = item.artistName.orEmpty(),
             thumbnailUrl = safeAppleArtwork(item.artworkUrl?.replace("{w}", "600")
                 ?.replace("{h}", "600")?.replace("{f}", "jpg")),
-            videoId = null, browseId = route.browseId,
+            videoId = null, browseId = id,
             appleStoreUrl = appleMusicWebVerifiedStoreUrl(item))
     }
     val heading = when (shelf) {
         AppleMusicWebHomeShelf.RECENT_RELEASES -> "Lançamentos recentes"
         AppleMusicWebHomeShelf.NEW_THIS_WEEK -> "Novidades da semana"
+        AppleMusicWebHomeShelf.TRENDING_SONGS -> "Músicas em alta"
         else -> return null
     }
     return cards.takeIf { it.isNotEmpty() }?.let { HomeShelf(heading, it) }
@@ -337,10 +347,10 @@ internal class AppleMusicWebNativeCatalogSession(
             val seen = hashSetOf<String>()
             var incomplete: AppleMusicWebCompleteness? = null
             for (kind in listOf(AppleMusicWebHomeShelf.RECENT_RELEASES,
-                AppleMusicWebHomeShelf.NEW_THIS_WEEK)) {
+                AppleMusicWebHomeShelf.NEW_THIS_WEEK,AppleMusicWebHomeShelf.TRENDING_SONGS)) {
                 val room = resolveAppleMusicWebHomeRoom(rooms, storefront, kind)
                 if (room == null) {
-                    incomplete = AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED
+                    if (kind.kind == AppleMusicWebKind.ALBUM) incomplete = AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED
                     continue
                 }
                 val outcome = when (val result = gateway.roomContents(room, kind.kind, limit = 25)) {
@@ -368,7 +378,7 @@ internal class AppleMusicWebNativeCatalogSession(
                 }
                 if (page.nextCursor != null && page.unresolvedReferences == 0) {
                     continuations += AmsEditorialRequest.Room(
-                        AppleMusicWebRoomContinuation(room,page.nextCursor), homeKind=kind)
+                        AppleMusicWebRoomContinuation(room,page.nextCursor), homeKind=kind,resourceKind=kind.kind)
                     if (incomplete == null) incomplete = AppleMusicWebCompleteness.PAGE_LIMIT
                 }
                 projectAppleMusicWebHomeRoom(room, page, storefront, kind, seen)?.let { shelf ->
@@ -413,7 +423,8 @@ internal class AppleMusicWebNativeCatalogSession(
         val resourceKind = request.resourceKind
         val valid = if (homeKind != null) curator == null && tag == null &&
             resolveAppleMusicWebHomeRoom(listOf(room),market,homeKind) == room &&
-            homeKind.kind == AppleMusicWebKind.ALBUM && resourceKind == AppleMusicWebKind.ALBUM
+            homeKind in setOf(AppleMusicWebHomeShelf.RECENT_RELEASES,AppleMusicWebHomeShelf.NEW_THIS_WEEK,
+                AppleMusicWebHomeShelf.TRENDING_SONGS) && homeKind.kind == resourceKind
         else tag != null && curator != null && appleMusicWebGenreSupported(tag) &&
             appleMusicWebCuratorMatches(curator,market,tag) && room.curatorId == curator.id &&
             room.genreId == null && when (resourceKind) {

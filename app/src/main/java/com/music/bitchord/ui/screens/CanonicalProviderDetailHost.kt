@@ -249,6 +249,14 @@ internal fun CanonicalProviderDetailHost(
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         sourceArtistTracksRanked = applePage?.sourceArtistTracksRanked == true,
         onMetadataTrackHold = if (isAms) onMetadataTrackHold else null,
+        onMetadataTrackOpenAlbum = if (isAms && appleReadAllowed &&
+            (page.type == com.music.bitchord.data.model.BrowseType.ARTIST ||
+                page.type == com.music.bitchord.data.model.BrowseType.PLAYLIST)) ({ track ->
+            viewModel.appleMusicWebDetailNavigation.openTrackAlbum(track) {
+                android.widget.Toast.makeText(viewModel.getApplication<android.app.Application>(),
+                    "Não foi possível identificar o álbum.",android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }) else null,
         sourceAlbumMetadata = if (isAms) applePage?.sourceAlbumMetadata else null,
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,

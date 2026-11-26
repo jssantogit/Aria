@@ -5,6 +5,7 @@ import com.music.bitchord.data.model.*
 import com.music.bitchord.data.providers.*
 import com.music.bitchord.ui.*
 import com.music.bitchord.ui.screens.AppleSharedDetail
+import com.music.bitchord.ui.screens.NativeMetadataTrack
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -56,6 +57,48 @@ class AppleMusicWebDetailNavigationTest {
         assertEquals(listOf(artist),nav.stack.value.map { it.route.browseId })
         assertEquals(listOf(artist,album,album),calls)
         assertTrue(nav.back())
+        assertTrue(nav.stack.value.isEmpty())
+    }
+
+    @Test fun trackAlbumNavigationPreservesSnapshotAndRejectsForeignMembership(): Unit = runBlocking {
+        val song = NativeMetadataTrack("apple_music_web:br:song:30","Song","Artist",null,null)
+        val parent = page(artist).copy(metadataTracks=listOf(song))
+        val calls = mutableListOf<String>()
+        var target: String? = album
+        var unavailable = 0
+        val nav = AppleMusicWebDetailNavigation(this,::lease,resolveSongAlbum={ key ->
+            calls += key
+            target
+        }) { id ->
+            ProviderCallResult.Success(AppleMusicWebOutcome.Complete(if (id == artist) parent else page(id)))
+        }
+        assertTrue(nav.openRoot(card(artist))); yield()
+        assertFalse(nav.openTrackAlbum(song.copy(title="Foreign")))
+        assertFalse(nav.openTrackAlbum(song.copy(key="apple_music_web:us:song:30")))
+        assertTrue(nav.openTrackAlbum(song)); yield(); yield()
+        assertEquals(album,nav.stack.value.last().route.browseId)
+        assertFalse(nav.openTrackAlbum(song))
+        assertTrue(nav.back())
+        assertEquals(parent,nav.stack.value.last().visible())
+        target = "apple_music_web:us:album:20"
+        assertTrue(nav.openTrackAlbum(song){ unavailable++ }); yield()
+        assertEquals(1,unavailable)
+        assertEquals(artist,nav.stack.value.last().route.browseId)
+        assertEquals(listOf(song.key,song.key),calls)
+    }
+
+    @Test fun trackAlbumResolutionCannotReopenClosedPage(): Unit = runBlocking {
+        val song = NativeMetadataTrack("apple_music_web:br:song:30","Song","Artist",null,null)
+        val pending = CompletableDeferred<Unit>()
+        val nav = AppleMusicWebDetailNavigation(this,::lease,resolveSongAlbum={
+            pending.await()
+            album
+        }) { id -> ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+            page(id).copy(metadataTracks=listOf(song)))) }
+        assertTrue(nav.openRoot(card(artist))); yield()
+        assertTrue(nav.openTrackAlbum(song)); yield()
+        assertTrue(nav.back())
+        pending.complete(Unit); yield()
         assertTrue(nav.stack.value.isEmpty())
     }
 

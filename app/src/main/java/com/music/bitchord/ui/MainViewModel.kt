@@ -691,6 +691,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB,
             ))
         }, readNext = appleMusicWebNativeCatalog::nextArtistDetail,
+            resolveSongAlbum = appleMusicWebNativeCatalog::songAlbumRoute,
             read = appleMusicWebNativeCatalog::sharedDetail)
     }
     internal fun openAppleMusicWebDetail(item: ShelfItem): Boolean {

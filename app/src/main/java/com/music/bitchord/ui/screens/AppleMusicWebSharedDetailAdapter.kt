@@ -63,6 +63,12 @@ private fun AppleMusicWebItem.card(kind: AppleMusicWebKind, market: String): She
         cover(),null,route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(this))
 }
 
+internal fun amsDetailCanOpenTrackAlbum(parent: String?,track: NativeMetadataTrack): Boolean {
+    val route = AppleMusicWebNativeRoute.parse(parent) ?: return false
+    return route.kind in setOf(AppleMusicWebKind.ARTIST,AppleMusicWebKind.PLAYLIST) &&
+        com.music.bitchord.ui.amsSongStorefront(track.key) == route.storefront
+}
+
 private fun tracks(
     items: List<AppleMusicWebItem>,
     market: String,
