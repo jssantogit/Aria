@@ -57,6 +57,26 @@ class AppleMusicWebReleaseClassificationTest {
         assertEquals(album, classifyAppleMusicWebRelease(edition(durations = List(7) { null }, declared = 8, partial = true), false).display)
     }
 
+    @Test fun nativeShortShelfDoesNotInventAnEpForEightTracks() {
+        val artist = AppleMusicWebItem("55", AppleMusicWebKind.ARTIST, "br", "Band")
+        val record = edition(durations = List(8) { 180_000L }, flag = false).copy(artists = listOf(artist))
+        val evidence = AppleMusicWebReleaseShelfEvidence(
+            record.identity.scopedId, artist.scopedId, AppleMusicWebArtistShelf.SINGLES_AND_EPS)
+        val result = classifyAppleMusicWebRelease(record, true, listOf(evidence))
+        assertEquals(album, result.commercialAudio)
+        assertEquals(unknown, result.display)
+        assertEquals(AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS, result.editorialGroup)
+        assertTrue(result.commercialDisagreement)
+        assertEquals(album, classifyAppleMusicWebRelease(record, true, listOf(
+            evidence.copy(artistScopedId = "apple_music_web:br:artist:77"))).display)
+        assertEquals(album, classifyAppleMusicWebRelease(record, true, listOf(
+            evidence.copy(albumScopedId = "apple_music_web:br:album:999"))).display)
+        val conflict = classifyAppleMusicWebRelease(record, true, listOf(evidence,
+            evidence.copy(shelf = AppleMusicWebArtistShelf.STUDIO_ALBUMS)))
+        assertEquals(AppleMusicWebEditorialReleaseGroup.CONFLICT, conflict.editorialGroup)
+        assertEquals(unknown, conflict.display)
+    }
+
     @Test fun duplicatePositionsAndCrossStorefrontEvidenceFailClosed() {
         val original = edition(durations = listOf(100_000L, 200_000L))
         val duplicate = original.copy(tracks = listOf(original.tracks[0], original.tracks[1].copy(trackNumber = 1)))

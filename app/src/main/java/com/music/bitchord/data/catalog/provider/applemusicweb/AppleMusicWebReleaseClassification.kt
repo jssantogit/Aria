@@ -6,8 +6,19 @@ import com.music.bitchord.data.catalog.metadata.ItunesEditorialReleaseFormat
 /** Independent Apple Web source evidence. The shared display enum and title
  * syntax do not convert the native Apple Web identity into an iTunes record. */
 internal enum class AppleMusicWebFormatEvidence {
-    SOURCE_TITLE, SOURCE_SINGLE_FLAG, COMMERCIAL_AUDIO_RULE, UNRESOLVED_CONFLICT, UNCLASSIFIED,
+    SOURCE_TITLE, SOURCE_SINGLE_FLAG, SOURCE_ALBUM_SHELF, SOURCE_SHORT_SHELF_UNSPECIFIED,
+    COMMERCIAL_AUDIO_RULE, UNRESOLVED_CONFLICT, UNCLASSIFIED,
 }
+
+internal enum class AppleMusicWebEditorialReleaseGroup { ALBUMS, SINGLES_AND_EPS, UNKNOWN, CONFLICT }
+
+/** Positive membership only, witnessed by the exact native artist view.
+ * Not finding an album in a bounded page is not negative evidence. */
+internal data class AppleMusicWebReleaseShelfEvidence(
+    val albumScopedId: String,
+    val artistScopedId: String,
+    val shelf: AppleMusicWebArtistShelf,
+)
 
 internal data class AppleMusicWebReleaseClassification(
     val explicitTitle: ItunesEditorialReleaseFormat,
@@ -17,6 +28,8 @@ internal data class AppleMusicWebReleaseClassification(
     val evidence: AppleMusicWebFormatEvidence,
     val explicitConflict: Boolean,
     val commercialDisagreement: Boolean,
+    val editorialGroup: AppleMusicWebEditorialReleaseGroup,
+    val sourceShelfGroup: AppleMusicWebEditorialReleaseGroup,
 )
 
 /** Only evaluate the actual requested edition. A false isSingle is not an
@@ -26,6 +39,7 @@ internal data class AppleMusicWebReleaseClassification(
  */
 internal fun classifyAppleMusicWebRelease(
     album: AppleMusicWebAlbum, complete: Boolean,
+    shelfEvidence: Collection<AppleMusicWebReleaseShelfEvidence> = emptyList(),
 ): AppleMusicWebReleaseClassification {
     val unknown = ItunesEditorialReleaseFormat.UNCLASSIFIED
     val title = ItunesEditorialCatalog.formatFromAppleTitle(album.identity.title)
@@ -57,16 +71,52 @@ internal fun classifyAppleMusicWebRelease(
         songs.size <= 6 && durations.sum() <= 1_800_000L -> ItunesEditorialReleaseFormat.EP
         else -> ItunesEditorialReleaseFormat.ALBUM
     }
-    val explicitConflict = title == ItunesEditorialReleaseFormat.EP && flag == true
+    val artistIds = album.artists.filter {
+        it.kind == AppleMusicWebKind.ARTIST && it.storefront == album.identity.storefront
+    }.map { it.scopedId }.toSet()
+    val shelves = shelfEvidence.filter {
+        it.albumScopedId == album.identity.scopedId && it.artistScopedId in artistIds
+    }.map { it.shelf }.toSet()
+    val inAlbums = AppleMusicWebArtistShelf.STUDIO_ALBUMS in shelves
+    val inShort = AppleMusicWebArtistShelf.SINGLES_AND_EPS in shelves
+    val group = when {
+        inAlbums && inShort -> AppleMusicWebEditorialReleaseGroup.CONFLICT
+        inAlbums -> AppleMusicWebEditorialReleaseGroup.ALBUMS
+        inShort -> AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS
+        else -> AppleMusicWebEditorialReleaseGroup.UNKNOWN
+    }
+    val explicitShort = title in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP) || flag == true
+    val explicitConflict = title == ItunesEditorialReleaseFormat.EP && flag == true ||
+        group == AppleMusicWebEditorialReleaseGroup.CONFLICT ||
+        (explicitShort && inAlbums)
     val (display, evidence) = when {
         explicitConflict -> unknown to AppleMusicWebFormatEvidence.UNRESOLVED_CONFLICT
         title != unknown -> title to AppleMusicWebFormatEvidence.SOURCE_TITLE
         flag == true -> ItunesEditorialReleaseFormat.SINGLE to AppleMusicWebFormatEvidence.SOURCE_SINGLE_FLAG
+        inAlbums -> ItunesEditorialReleaseFormat.ALBUM to AppleMusicWebFormatEvidence.SOURCE_ALBUM_SHELF
+        inShort -> {
+            // The native combined shelf establishes only the group. A
+            // calculated short format may refine it, but a long tracklist
+            // must not turn the shelf's release into an album or invented EP.
+            if (commercial in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP))
+                commercial to AppleMusicWebFormatEvidence.COMMERCIAL_AUDIO_RULE
+            else unknown to AppleMusicWebFormatEvidence.SOURCE_SHORT_SHELF_UNSPECIFIED
+        }
         commercial != unknown -> commercial to AppleMusicWebFormatEvidence.COMMERCIAL_AUDIO_RULE
         else -> unknown to AppleMusicWebFormatEvidence.UNCLASSIFIED
     }
+    val editorialGroup = when {
+        explicitConflict -> AppleMusicWebEditorialReleaseGroup.CONFLICT
+        group != AppleMusicWebEditorialReleaseGroup.UNKNOWN -> group
+        display == ItunesEditorialReleaseFormat.ALBUM -> AppleMusicWebEditorialReleaseGroup.ALBUMS
+        display in setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP) ->
+            AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS
+        else -> AppleMusicWebEditorialReleaseGroup.UNKNOWN
+    }
     return AppleMusicWebReleaseClassification(
         title, flag, commercial, display, evidence, explicitConflict,
-        display != unknown && commercial != unknown && display != commercial,
+        (display != unknown && commercial != unknown && display != commercial) ||
+            (inShort && commercial == ItunesEditorialReleaseFormat.ALBUM),
+        editorialGroup, group,
     )
 }

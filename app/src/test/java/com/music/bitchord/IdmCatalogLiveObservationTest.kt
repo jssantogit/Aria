@@ -3341,11 +3341,43 @@ class IdmCatalogLiveObservationTest {
                 val record = value(selected)
                 val songs = record?.tracks.orEmpty().filter { it.kind == AppleMusicWebKind.SONG }
                 val complete = selected is AppleMusicWebOutcome.Complete
-                val classification = record?.let { classifyAppleMusicWebRelease(it, complete) }
+                val baselineClassification = record?.let { classifyAppleMusicWebRelease(it, complete) }
+                val shelfEvidence = mutableListOf<AppleMusicWebReleaseShelfEvidence>()
+                var classificationShelfReads = 0
+                var classificationShelfFailures = 0
+                // Uniform bounded positive-membership probe on every edition,
+                // not just the known disagreement. No expected class is
+                // supplied to the classifier or used to select a release.
+                if (record != null && complete) {
+                    for (artist in record.artists.take(2)) {
+                        for (shelf in listOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                            AppleMusicWebArtistShelf.SINGLES_AND_EPS)) {
+                            for (page in 1..3) {
+                                classificationShelfReads++
+                                val outcome = withTimeoutOrNull(60_000L) {
+                                    (gateway.artistCollection(artist.id, sf, shelf, page, 50)
+                                        as? ProviderCallResult.Success)?.value?.outcome
+                                }
+                                if (outcome !is AppleMusicWebOutcome.Complete) classificationShelfFailures++
+                                val collection = value(outcome) ?: break
+                                if (collection.items.any { it.scopedId == record.identity.scopedId }) {
+                                    shelfEvidence += AppleMusicWebReleaseShelfEvidence(
+                                        record.identity.scopedId, artist.scopedId, shelf)
+                                    break
+                                }
+                                if (!collection.hasMore) break
+                            }
+                        }
+                    }
+                }
+                val classification = record?.let { classifyAppleMusicWebRelease(it, complete, shelfEvidence) }
                 val expectedFormats = if (case.kind == "single_ep")
                     setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
                 else setOf(ItunesEditorialReleaseFormat.ALBUM)
                 val classificationMatches = classification?.display in expectedFormats
+                val expectedGroup = if (case.kind == "single_ep")
+                    AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS
+                else AppleMusicWebEditorialReleaseGroup.ALBUMS
                 val positions = songs.mapNotNull { track ->
                     track.discNumber?.let { disc -> track.trackNumber?.let { disc to it } }
                 }
@@ -3392,6 +3424,16 @@ class IdmCatalogLiveObservationTest {
                         "is_single_true" to if (record?.identity?.isSingle == true) 1 else 0,
                         "format_display_known" to if (classification != null && classification.display != ItunesEditorialReleaseFormat.UNCLASSIFIED) 1 else 0,
                         "format_display_matches" to if (classificationMatches) 1 else 0,
+                        "format_baseline_matches" to if (baselineClassification?.display in expectedFormats) 1 else 0,
+                        "format_editorial_group_matches" to if (classification?.editorialGroup == expectedGroup) 1 else 0,
+                        "format_native_shelf_group_matches" to if (classification?.sourceShelfGroup == expectedGroup) 1 else 0,
+                        "format_native_shelf_album" to if (classification?.sourceShelfGroup == AppleMusicWebEditorialReleaseGroup.ALBUMS) 1 else 0,
+                        "format_native_shelf_short" to if (classification?.sourceShelfGroup == AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS) 1 else 0,
+                        "format_native_shelf_conflict" to if (classification?.sourceShelfGroup == AppleMusicWebEditorialReleaseGroup.CONFLICT) 1 else 0,
+                        "format_source_album_shelf" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_ALBUM_SHELF) 1 else 0,
+                        "format_source_short_unspecified" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_SHORT_SHELF_UNSPECIFIED) 1 else 0,
+                        "classification_shelf_reads" to classificationShelfReads,
+                        "classification_shelf_failures" to classificationShelfFailures,
                         "format_display_album" to if (classification?.display == ItunesEditorialReleaseFormat.ALBUM) 1 else 0,
                         "format_display_ep" to if (classification?.display == ItunesEditorialReleaseFormat.EP) 1 else 0,
                         "format_display_single" to if (classification?.display == ItunesEditorialReleaseFormat.SINGLE) 1 else 0,
