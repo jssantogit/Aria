@@ -239,7 +239,25 @@ class DiscogsEvidenceContractTest {
         assertFalse(record.toString().contains(padding.take(100)))
         assertFalse(record.toString().contains("restricted.example"))
         assertNull(DiscogsRecordParser.parse(link.copy(id = 4), raw))
-        assertNull(DiscogsRecordParser.parseMaster(DiscogsLink(DiscogsKind.MASTER, 3), raw))
+        // Master detail has its own bounded budget. Use a genuine Master
+        // payload to test that budget, rather than a Release-shaped response.
+        val masterLink = DiscogsLink(DiscogsKind.MASTER, 3)
+        val masterPrefix = """{"id":3,"title":"Verified Album","main_release":12,
+            "artists":[{"name":"Artist"}],"genres":["Electronic"],"styles":["House"],
+            "notes":""""
+        val masterSuffix = "\"}"
+        val masterRaw = masterPrefix + padding + masterSuffix
+        val master = requireNotNull(DiscogsRecordParser.parseMaster(masterLink, masterRaw))
+        assertEquals(12L, master.mainReleaseId)
+        assertEquals(listOf("Electronic"), master.genres)
+        assertEquals(listOf("House"), master.styles)
+        assertFalse(master.toString().contains(padding.take(100)))
+        assertNull(DiscogsRecordParser.parseMaster(masterLink.copy(id = 4), masterRaw))
+        val boundary = masterPrefix +
+            "z".repeat(DISCOGS_MASTER_BODY_BYTES - masterPrefix.length - masterSuffix.length) + masterSuffix
+        assertNotNull(DiscogsRecordParser.parseMaster(masterLink, boundary))
+        assertNull(DiscogsRecordParser.parseMaster(masterLink, boundary + " "))
+        assertNull(DiscogsRecordParser.parseMaster(masterLink, masterRaw.dropLast(1)))
     }
 
     @Test fun releaseByteAndStructuralLimitsRemainFailClosed() {
