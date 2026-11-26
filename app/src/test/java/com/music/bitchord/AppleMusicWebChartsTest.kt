@@ -135,13 +135,18 @@ class AppleMusicWebChartsTest {
         val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
             admission = RateLimitedProviderTransport { gate },
         )), gate)
-        val result = gateway.genres("br")
-        val native = ((result as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
-        assertNotNull(native)
+        val onlyCurator = System.getenv("AMS_CURATOR_ONLY")?.takeIf { it.isNotBlank() }
         val corpus = amsEditorialGenreCorpus
-        assertEquals(15, corpus.size)
+        assertEquals(15, corpus.distinct().size)
+        require(onlyCurator == null || onlyCurator in corpus) { "Unknown AMS curator case" }
+        val native = if (onlyCurator == null) {
+            val result = gateway.genres("br")
+            val genres = ((result as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+            assertNotNull(genres)
+            genres.orEmpty()
+        } else emptyList()
         var failed = 0
-        for (tag in corpus) {
+        for (tag in corpus.filter { onlyCurator == null || it == onlyCurator }) {
             // Prioritize verified Apple editorial brands before textual
             // fallback. Chart/genre identities remain independent.
             val curatorCandidates = mutableListOf<AppleMusicWebCuratorRef>()
@@ -199,7 +204,16 @@ class AppleMusicWebChartsTest {
                 "|curator_albums=" + curatorAlbums.size + "|curator_reads=$curatorReads|curator_failures=$curatorFailures" +
                 "|curator_search_reason=" + curatorSearchReason +
                 "|curator_detail_reason=" + (curatorRead?.let(::diagnostic) ?: "not_applicable"))
-            var genre = resolveAppleMusicWebCanonicalGenre(native.orEmpty(), "br", tag)
+            if (onlyCurator != null) {
+                // Targeted validation must not pass on charts or label search.
+                // Preserve the same curator discovery/room path as the matrix.
+                if (!curatorSufficient) failed++
+                println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
+                    (if (curatorSufficient) (if (sharedCurator) "shared_curator_label_verified" else "curator_editorial")
+                        else "curator_insufficient") + "|albums=" + curatorAlbums.size + "|scope=curator_only")
+                continue
+            }
+            var genre = resolveAppleMusicWebCanonicalGenre(native, "br", tag)
             var discoveryReads = 0
             var candidateRows = 0
             var matchingLabels = 0

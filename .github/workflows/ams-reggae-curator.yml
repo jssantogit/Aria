@@ -1,0 +1,47 @@
+name: AMS · isolated Reggae curator
+on:
+  push:
+    branches:
+      - audit/ams-reggae-curator-20261126
+permissions:
+  contents: read
+concurrency:
+  group: ams-reggae-curator-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  reggae:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AMS_GENRE_MATRIX_LIVE: '1'
+      AMS_CURATOR_ONLY: reggae
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reggae curator only
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebCuratorsTest.reggaeCuratorIsExactAndDoesNotBorrowRapIdentity' --tests 'com.music.bitchord.AppleMusicWebChartsTest.liveCanonicalGenreCoverage'
+      - name: Emit isolated curator evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for file in Path('app/build/test-results/testDevDebugUnitTest').glob('*AppleMusicWebChartsTest.xml'):
+              for node in ET.parse(file).iter('system-out'):
+                  for line in (node.text or '').splitlines():
+                      if line.startswith('AMS_CANONICAL_GENRE|'):
+                          print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-reggae-curator-results
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7

@@ -21,7 +21,8 @@ internal fun appleMusicWebPublicCuratorReference(storefront: String, tag: String
     if (storefront != "br") null else when (tag) {
         "pop" -> "976439548"
         "rock" -> "976439554"
-        "hip-hop", "rap", "trap" -> "989061413"
+        "hip-hop", "rap" -> "989061413"
+        "reggae" -> "976439552"
         "soul" -> "976439585"
         "samba", "pagode" -> "982356287"
         "forro" -> "1586015196"
@@ -79,7 +80,6 @@ internal fun appleMusicWebCuratorIsSharedForTag(ref: AppleMusicWebCuratorRef, ta
             "soul" -> label in setOf("soul e funk", "soul funk", "soul and funk")
             "samba", "pagode" -> label in setOf("pagode e samba", "samba e pagode", "samba and pagode", "pagode and samba")
             "forro" -> label in setOf("forro e piseiro", "forro and piseiro")
-            "trap" -> label in setOf("hip hop rap", "hip hop", "rap")
             else -> false
         }
     }

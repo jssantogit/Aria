@@ -1,4 +1,7 @@
-# AMS genre corpus v3 — current user-directed revision
+# AMS genre corpus v3 — superseded by v4
+
+Trap failed the editorial coverage gate. The user replaced it with Reggae.
+See [corpus v4](ams-genre-corpus-v4-20261126.md) for the current decision.
 
 Retain Pop, Rock, Rap (the existing Hip-hop/rap category), Electronic,
 Jazz, K-pop, Metal and R&B. Replace Folk and the six original subgenre

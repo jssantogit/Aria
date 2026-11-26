@@ -80,8 +80,8 @@ class AppleMusicWebCuratorsTest {
         assertFalse(appleMusicWebCuratorMatches(shared.copy(id="999"),"br","pagode"))
         assertEquals(15,amsEditorialGenreCorpus.distinct().size)
         assertEquals(listOf("pop","rock","rap","electronic","jazz","k-pop","metal","rnb",
-            "soul","samba","blues","pagode","forro","trap","indie"),amsEditorialGenreCorpus)
-        assertTrue(amsEditorialGenreCorpus.none { it in setOf("folk","hard rock","house","techno","trance","smooth jazz","bluegrass") })
+            "soul","samba","blues","pagode","forro","reggae","indie"),amsEditorialGenreCorpus)
+        assertTrue(amsEditorialGenreCorpus.none { it in setOf("folk","hard rock","house","techno","trance","smooth jazz","bluegrass","trap") })
     }
 
     @Test fun forroSharedCuratorRequiresExplicitGenreEvidence() {
@@ -99,6 +99,21 @@ class AppleMusicWebCuratorsTest {
         assertFalse(appleMusicWebCuratedAlbumMatches(ref,"forro",album.copy(genreNames=emptyList())))
         assertFalse(appleMusicWebCuratedAlbumMatches(ref,"forro",album.copy(storefront="us")))
         assertFalse(appleMusicWebCuratorMatches(ref.copy(id="999"),"br","forro"))
+    }
+
+    @Test fun reggaeCuratorIsExactAndDoesNotBorrowRapIdentity() {
+        val ref = AppleMusicWebCuratorRef("976439552","br","Apple Music: reggae")
+        val album = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A")
+        assertEquals("976439552",appleMusicWebPublicCuratorReference("br","reggae"))
+        assertNull(appleMusicWebPublicCuratorReference("us","reggae"))
+        assertNull(appleMusicWebPublicCuratorReference("br","trap"))
+        assertTrue(appleMusicWebCuratorMatches(ref,"br","reggae"))
+        assertFalse(appleMusicWebCuratorIsSharedForTag(ref,"reggae"))
+        assertTrue(appleMusicWebCuratedAlbumMatches(ref,"reggae",album))
+        assertFalse(appleMusicWebCuratedAlbumMatches(ref,"reggae",album.copy(storefront="us")))
+        assertFalse(appleMusicWebCuratorMatches(AppleMusicWebCuratorRef("989061413","br","Apple Music: hip-hop/rap"),"br","reggae"))
+        assertEquals(15,amsEditorialGenreCorpus.distinct().size)
+        assertTrue("reggae" in amsEditorialGenreCorpus && "trap" !in amsEditorialGenreCorpus)
     }
 
     @Test fun wrongCuratorIdentityOrTypeCannotPublishRooms() = runBlocking {
