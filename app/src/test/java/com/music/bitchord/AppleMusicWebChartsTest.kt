@@ -147,90 +147,32 @@ class AppleMusicWebChartsTest {
         } else emptyList()
         var failed = 0
         for (tag in corpus.filter { onlyCurator == null || it == onlyCurator }) {
-            // Prioritize verified Apple editorial brands before textual
-            // fallback. Chart/genre identities remain independent.
-            val curatorCandidates = mutableListOf<AppleMusicWebCuratorRef>()
-            var curatorSearchReason = "not_attempted"
-            var curatorSearchReads = 0
-            var curator: AppleMusicWebCuratorRef? = null
-            for (query in appleMusicWebCuratorQueries(tag)) {
-                curatorSearchReads++
-                val result = gateway.searchAppleCurators(query, "br")
-                curatorSearchReason = diagnostic(result)
-                val candidates = ((result as? ProviderCallResult.Success)?.value?.outcome
-                    as? AppleMusicWebOutcome.Complete)?.value
-                if (candidates == null) break
-                curatorCandidates += candidates
-                curator = resolveAppleMusicWebGenreCurator(curatorCandidates, "br", tag)
-                if (curator != null) break
+            // Exercise the production landing operation, not a test-only
+            // reconstruction of its discovery and aggregation policy.
+            val result = gateway.curatedGenreLanding(tag, "br")
+            val outcome = (result as? ProviderCallResult.Success)?.value?.outcome
+            val landing = when (outcome) {
+                is AppleMusicWebOutcome.Complete -> outcome.value
+                is AppleMusicWebOutcome.Partial -> outcome.value
+                else -> null
             }
-            val publicReference = appleMusicWebPublicCuratorReference("br", tag)
-            // A confirmed public page is a second nomination path, not an
-            // assertion that the endpoint or localized identity still works.
-            val curatorId = curator?.id ?: publicReference
-            val curatorProvenance = if (curator != null) "search" else if (publicReference != null) "public_reference" else "none"
-            val curatorRead = curatorId?.let { gateway.appleCurator(it, "br") }
-            val curatorPage = ((curatorRead as? ProviderCallResult.Success)?.value?.outcome
-                as? AppleMusicWebOutcome.Complete)?.value
-                ?.takeIf { it.identity.id == curatorId &&
-                    appleMusicWebCuratorMatches(it.identity, "br", tag) }
-            val curatorAlbums = linkedSetOf<String>()
-            val curatorRawAlbums = linkedSetOf<String>()
-            val curatorExactAlbums = linkedSetOf<String>()
-            val curatorCombinedAlbums = linkedSetOf<String>()
-            val curatorRejectedAlbums = linkedSetOf<String>()
-            var curatorSourceRows = 0
-            var curatorReads = 0
-            var curatorFailures = 0
-            val sharedCurator = curatorPage?.let { appleMusicWebCuratorIsSharedForTag(it.identity, tag) } == true
-            if (curatorPage != null) {
-                for (room in curatorPage.rooms.filter(::isAppleMusicWebCuratorReleaseRoom).take(3)) {
-                    val visited = hashSetOf<String>()
-                    var cursor: String? = null
-                    repeat(if (tag == "soul" && sharedCurator) 5 else if (sharedCurator) 3 else 1) {
-                        if (it > 0 && cursor == null) return@repeat
-                        curatorReads++
-                        val read = gateway.roomContents(room, AppleMusicWebKind.ALBUM, cursor = cursor)
-                        val page = ((read as? ProviderCallResult.Success)?.value?.outcome
-                            as? AppleMusicWebOutcome.Complete)?.value
-                        if (page == null) { curatorFailures++; cursor = null; return@repeat }
-                        curatorSourceRows += page.sourceRows
-                        for (album in page.items) {
-                            curatorRawAlbums += album.scopedId
-                            when (appleMusicWebCuratedAlbumEvidence(curatorPage.identity, tag, album, room)) {
-                                AppleMusicWebCuratedAlbumEvidence.DEDICATED_CURATOR -> curatorAlbums += album.scopedId
-                                AppleMusicWebCuratedAlbumEvidence.EXACT_GENRE_LABEL -> {
-                                    curatorAlbums += album.scopedId
-                                    curatorExactAlbums += album.scopedId
-                                }
-                                AppleMusicWebCuratedAlbumEvidence.SOUL_COMBINED_LABEL -> {
-                                    curatorAlbums += album.scopedId
-                                    curatorCombinedAlbums += album.scopedId
-                                }
-                                AppleMusicWebCuratedAlbumEvidence.REJECTED -> curatorRejectedAlbums += album.scopedId
-                            }
-                        }
-                        val next = page.nextCursor
-                        if (next != null && !visited.add(next)) {
-                            curatorFailures++
-                            cursor = null
-                        } else cursor = next
-                    }
-                }
-            }
+            val curatorAlbums = landing?.albums.orEmpty().map { it.item.scopedId }.toSet()
+            val sharedCurator = landing?.shared == true
             val landingTarget = 6
-            val curatorSufficient = curatorAlbums.size >= landingTarget && curatorFailures == 0
-            println("AMS_CANONICAL_GENRE|tag=$tag|curator_candidates=" + curatorCandidates.size +
-                "|curator_matched=" + (curator != null) + "|curator_provenance=$curatorProvenance" +
-                "|curator_search_reads=$curatorSearchReads|shared_curator=$sharedCurator|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
-                "|curator_albums=" + curatorAlbums.size + "|curator_reads=$curatorReads|curator_failures=$curatorFailures" +
-                "|source_rows=$curatorSourceRows|distinct_candidates=" + curatorRawAlbums.size +
-                "|exact_labels=" + curatorExactAlbums.size +
-                "|combined_labels=" + (curatorCombinedAlbums - curatorExactAlbums).size +
-                "|rejected_distinct=" + (curatorRawAlbums - curatorAlbums).size +
-                "|rejected_observed=" + curatorRejectedAlbums.size +
-                "|curator_search_reason=" + curatorSearchReason +
-                "|curator_detail_reason=" + (curatorRead?.let(::diagnostic) ?: "not_applicable"))
+            val curatorSufficient = outcome is AppleMusicWebOutcome.Complete && curatorAlbums.size >= landingTarget
+            println("AMS_CANONICAL_GENRE|tag=$tag|curator_candidates=" + (landing?.searchCandidates ?: 0) +
+                "|curator_provenance=" + (landing?.provenance ?: "none") +
+                "|curator_search_reads=" + (landing?.searchReads ?: 0) +
+                "|shared_curator=$sharedCurator|curator_rooms=" + (landing?.curator?.rooms?.size ?: 0) +
+                "|curator_albums=" + curatorAlbums.size +
+                "|curator_reads=" + (landing?.roomReads ?: 0) + "|curator_failures=" + (landing?.roomFailures ?: 0) +
+                "|source_rows=" + (landing?.sourceRows ?: 0) + "|distinct_candidates=" + (landing?.distinctCandidates ?: 0) +
+                "|exact_labels=" + (landing?.exactLabels ?: 0) + "|combined_labels=" + (landing?.combinedLabels ?: 0) +
+                "|rejected_distinct=" + (landing?.rejectedDistinct ?: 0) +
+                "|rejected_observed=" + (landing?.rejectedObserved ?: 0) +
+                "|bounded=" + (landing?.bounded ?: false) +
+                "|curator_search_reason=" + (landing?.searchReason ?: "unavailable") +
+                "|curator_detail_reason=" + diagnostic(result))
             if (onlyCurator != null) {
                 // Targeted validation must not pass on charts or label search.
                 // Preserve the same curator discovery/room path as the matrix.

@@ -1,0 +1,32 @@
+name: AMS · consolidated editorial and cache contracts
+on:
+  push:
+    branches:
+      - integration/ams-editorial-cache-20261126
+permissions:
+  contents: read
+concurrency:
+  group: ams-editorial-cache-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Hermetic consolidated contracts
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebCuratorLandingTest' --tests 'com.music.bitchord.AppleMusicWebCuratorsTest' --tests 'com.music.bitchord.AppleMusicWebChartsTest' --tests 'com.music.bitchord.AppleMusicWebFoundationTest' --tests 'com.music.bitchord.AppleMusicWebCacheBridgeTest'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-editorial-cache-results
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7

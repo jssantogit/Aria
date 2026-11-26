@@ -44,6 +44,7 @@ jobs:
             --tests 'com.music.bitchord.AppleMusicWebReleaseClassificationTest' \
             --tests 'com.music.bitchord.AppleMusicWebBrowseTest' \
             --tests 'com.music.bitchord.AppleMusicWebCuratorsTest' \
+            --tests 'com.music.bitchord.AppleMusicWebCuratorLandingTest' \
             --tests 'com.music.bitchord.AppleMusicWebDailyChartsTest' \
             --tests 'com.music.bitchord.AppleMusicWebChartsTest' \
             --tests 'com.music.bitchord.AppleMusicWebNativeProviderTest' \

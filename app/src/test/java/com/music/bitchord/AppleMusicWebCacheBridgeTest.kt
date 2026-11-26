@@ -35,7 +35,7 @@ class AppleMusicWebCacheBridgeTest {
     ) = AppleMusicWebCachedValue(
         key = key, provider = provider, capability = capability,
         storefront = market, language = "pt-BR",
-        expiresAtMs = expiresAt, outcome = outcome,
+        fetchedAtMs = 0L, expiresAtMs = expiresAt, outcome = outcome,
     )
 
     @Test fun authorizedCompleteHitIsReturnedButProviderDisabledNeverReadsStorage() = runBlocking {
@@ -74,7 +74,7 @@ class AppleMusicWebCacheBridgeTest {
         val bridge = AppleMusicWebCacheBridge(
             access = ProviderCachedReadAccess { gate }, clockMs = { 1000L },
         )
-        val params = mapOf("term" to "Jazz")
+        val params = mapOf("term" to "Jazz", "types" to "albums")
         suspend fun tryCache(transform: (String) -> AppleMusicWebCachedValue<String>) =
             bridge.read(capability, "br", "pt-BR",
                 "/v1/catalog/br/search", params) { transform(it) }
@@ -85,8 +85,31 @@ class AppleMusicWebCacheBridgeTest {
         )) })
         assertNull(tryCache { record(it, outcome = AppleMusicWebOutcome.Unavailable("denied")) })
         assertNull(tryCache { record("other-cache-key") })
+        assertNull(tryCache { record(it).copy(fetchedAtMs = 2000L) })
+        assertNull(tryCache { record(it, expiresAt = 301_000L) })
         assertNull(bridge.read<String>(capability, "br", "pt-BR",
             "/us/404", params) { fail("Non-catalog path must never read a cache"); null })
+    }
+
+    @Test fun completeWritesAreGatedAndHaveOperationBoundedExpiry() = runBlocking {
+        val policy = gate(true)
+        val bridge = AppleMusicWebCacheBridge(ProviderCachedReadAccess { policy }, clockMs = { 1000L })
+        val params = mapOf("term" to "Jazz", "types" to "albums")
+        var saved: AppleMusicWebCachedValue<String>? = null
+        val path = "/v1/catalog/br/search"
+        assertTrue(bridge.writeComplete(capability,"br","pt-BR",path,params,
+            AppleMusicWebOutcome.Complete("album")) { saved = it })
+        assertEquals(1000L,saved!!.fetchedAtMs)
+        assertEquals(301_000L,saved!!.expiresAtMs)
+        assertFalse(bridge.writeComplete(capability,"br","pt-BR",path,params,
+            AppleMusicWebOutcome.Partial("partial",com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebCompleteness.PAGE_LIMIT)) {
+            fail("Partial must not reach storage")
+        })
+        policy.replace(ProviderCapabilityPolicy(listOf(
+            ProviderDescriptor(provider,setOf(capability),readiness=ProviderReadiness.READY),
+        )))
+        assertFalse(bridge.writeComplete(capability,"br","pt-BR",path,params,
+            AppleMusicWebOutcome.Complete("denied")) { fail("Denied must not reach storage") })
     }
 
     @Test fun revocationWhileCacheReadIsSuspendedSuppressesTheOldResult() = runBlocking {
@@ -98,7 +121,7 @@ class AppleMusicWebCacheBridgeTest {
         val release = CompletableDeferred<Unit>()
         val deferred = async {
             bridge.read(capability, "br", "pt-BR",
-                "/v1/catalog/br/search", mapOf("term" to "Jazz")) { key ->
+                "/v1/catalog/br/search", mapOf("term" to "Jazz", "types" to "albums")) { key ->
                 entered.complete(Unit)
                 release.await()
                 record(key)

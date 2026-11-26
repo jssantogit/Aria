@@ -119,6 +119,111 @@ internal class AppleMusicWebEditorialGateway(
             catalog.appleCurator(id, storefront)
         }
 
+    /** Reusable bounded editorial landing, not just a live-test projection.
+     * Search nominations use the independent search capability; exact public
+     * references can be resolved with editorial permission alone. All room
+     * reads and the final aggregate remain under one editorial ticket.
+     */
+    suspend fun curatedGenreLanding(tag: String, country: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebCuratorLanding>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
+            require(tag in amsEditorialGenreCorpus) { "Unknown AMS genre" }
+            val candidates = mutableListOf<AppleMusicWebCuratorRef>()
+            var searchReads = 0
+            var nominated: AppleMusicWebCuratorRef? = null
+            var searchReason = "not_attempted"
+            for (query in appleMusicWebCuratorQueries(tag)) {
+                searchReads++
+                when (val read = searchAppleCurators(query, storefront)) {
+                    is ProviderCallResult.Success -> {
+                        val rows = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value
+                            ?: break
+                        searchReason = "success"
+                        candidates += rows
+                        nominated = resolveAppleMusicWebGenreCurator(candidates, storefront, tag)
+                        if (nominated != null) break
+                    }
+                    ProviderCallResult.Denied -> { searchReason = "denied"; break }
+                    ProviderCallResult.Stale -> { searchReason = "stale"; break }
+                    is ProviderCallResult.Failed -> {
+                        val cause = read.cause
+                        if (cause is AppleMusicWebHttpException && cause.status in setOf(401,403,429))
+                            throw cause
+                        searchReason = "failed"
+                        break
+                    }
+                }
+            }
+            val publicId = appleMusicWebPublicCuratorReference(storefront, tag)
+            val id = nominated?.id ?: publicId
+                ?: return@guarded AppleMusicWebOutcome.Unavailable("No verified curator nomination")
+            val provenance = if (nominated != null) "search" else "public_reference"
+            val curator = (catalog.appleCurator(id, storefront) as? AppleMusicWebOutcome.Complete)?.value
+                ?: return@guarded AppleMusicWebOutcome.Unavailable("Curator grouping unavailable")
+            if (curator.identity.id != id || !appleMusicWebCuratorMatches(curator.identity, storefront, tag))
+                return@guarded AppleMusicWebOutcome.Unavailable("Unverified curator identity")
+            val shared = appleMusicWebCuratorIsSharedForTag(curator.identity, tag)
+            val releaseRooms = curator.rooms.filter(::isAppleMusicWebCuratorReleaseRoom)
+            val all = linkedSetOf<String>()
+            val accepted = linkedMapOf<String, AppleMusicWebCuratedAlbum>()
+            val rejected = linkedSetOf<String>()
+            var sourceRows = 0
+            var reads = 0
+            var failures = 0
+            var bounded = releaseRooms.size > 3
+            val pageBudget = if (tag == "soul" && shared) 5 else if (shared) 3 else 1
+            for (room in releaseRooms.take(3)) {
+                if (room.curatorId != id || room.storefront != storefront || room.genreId != null)
+                    throw AppleMusicWebProtocolException("Foreign curator room")
+                var cursor: String? = null
+                val visited = hashSetOf<String>()
+                for (index in 1..pageBudget) {
+                    reads++
+                    val page = try {
+                        catalog.roomContents(room, AppleMusicWebKind.ALBUM, cursor = cursor)
+                    } catch (failure: AppleMusicWebHttpException) {
+                        if (failure.status in setOf(401,403,429)) throw failure
+                        failures++
+                        break
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: java.io.IOException) {
+                        failures++
+                        break
+                    }
+                    validateItems(page.items, storefront, setOf(AppleMusicWebKind.ALBUM))
+                    if (page.unresolvedReferences > 0) { failures++; break }
+                    sourceRows += page.sourceRows
+                    for (album in page.items) {
+                        all += album.scopedId
+                        val evidence = appleMusicWebCuratedAlbumEvidence(curator.identity, tag, album, room)
+                        if (evidence == AppleMusicWebCuratedAlbumEvidence.REJECTED) {
+                            rejected += album.scopedId
+                            continue
+                        }
+                        val previous = accepted[album.scopedId]
+                        if (previous == null ||
+                            (evidence == AppleMusicWebCuratedAlbumEvidence.EXACT_GENRE_LABEL &&
+                                previous.evidence == AppleMusicWebCuratedAlbumEvidence.SOUL_COMBINED_LABEL))
+                            accepted[album.scopedId] = AppleMusicWebCuratedAlbum(album, evidence, room)
+                    }
+                    val next = page.nextCursor ?: break
+                    if (!visited.add(next)) throw AppleMusicWebProtocolException("Cyclic curator room cursor")
+                    if (index == pageBudget) bounded = true
+                    cursor = next
+                }
+            }
+            val result = AppleMusicWebCuratorLanding(
+                tag = tag, curator = curator, albums = accepted.values.toList(), shared = shared,
+                provenance = provenance, searchCandidates = candidates.size, searchReads = searchReads,
+                searchReason = searchReason, sourceRows = sourceRows, distinctCandidates = all.size,
+                rejectedDistinct = (all - accepted.keys).size, rejectedObserved = rejected.size,
+                roomReads = reads, roomFailures = failures, bounded = bounded,
+            )
+            if (failures > 0) AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED)
+            else AppleMusicWebOutcome.Complete(result)
+        }
+
     suspend fun roomContents(room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25, cursor: String? = null):
         ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebRoomPage>> =
         guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, room.storefront) { storefront ->
