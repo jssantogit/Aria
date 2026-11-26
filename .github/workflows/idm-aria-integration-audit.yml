@@ -117,7 +117,76 @@ jobs:
             echo '#### Conflict paths after normalization'
             grep -E '^CONFLICT|^Auto-merging' "$report/normalized-merge.txt" || true
           } >> "$GITHUB_STEP_SUMMARY"
-          cat "$report/normalized-merge.txt"
+          # Materialize the normalized merge in a disposable worktree.
+          candidate="$RUNNER_TEMP/idm-aria-resolve"
+          git worktree add --detach "$candidate" "$normalized_aria"
+          set +e
+          git -C "$candidate" merge --no-commit --no-ff "$normalized_idm"
+          merge_status=$?
+          set -e
+          test "$merge_status" = 1
+          python3 - "$candidate" "$report" <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          root, report = map(Path, sys.argv[1:])
+          def git(*args):
+              return subprocess.check_output(["git", "-C", str(root), *args])
+          def conflicts():
+              return set(git("diff", "--name-only", "--diff-filter=U", "-z").decode().strip("\0").split("\0")) - {""}
+          def stage(path, side, replacements=()):
+              assert path in conflicts(), path
+              data = git("show", f":{side}:{path}").decode("utf-8")
+              for old, new, count in replacements:
+                  assert data.count(old) == count, (path, old, data.count(old))
+                  data = data.replace(old, new)
+              (root / path).write_bytes(data.encode("utf-8"))
+              git("add", "--", path)
+          # IDM copy contains the approved shorter download labels and
+          # Navidrome naming. Apply only the new Aria brand from MAIN.
+          stage("app/src/main/res/values-pt/acquisition_destination.xml", 3, [
+              ("Music/BitChord", "Music/Aria", 3)])
+          stage("app/src/main/res/values/acquisition_destination.xml", 3, [
+              ("Music/BitChord", "Music/Aria", 3)])
+          stage("app/src/main/res/values/strings_opensubsonic.xml", 3, [
+              ("BitChord", "Aria", 2)])
+          # Preserve IDM's cancellable OkHttp implementation plus Aria UA,
+          # rate-limit error, log tag and human-facing branding.
+          stage("app/src/main/java/com/music/aria/data/sources/addon/AddonClient.kt", 3, [
+              ("BitChord", "Aria", 5)])
+          # MAIN carries the approved geometry and stronger inset test.
+          stage("app/src/test/java/com/music/aria/HomeSettingsOverflowAlignmentTest.kt", 2)
+          stage("app/src/main/java/com/music/aria/ui/components/FrostedTopBar.kt", 2, [
+              (".height(FloatingTopChromeHostHeight),",
+               '.height(FloatingTopChromeHostHeight)\n                .testTag("native-global-floating-chrome-host"),', 1)])
+          # Both inputs already import testTag, verify rather than guess.
+          bar = (root / "app/src/main/java/com/music/aria/ui/components/FrostedTopBar.kt").read_text()
+          assert "import androidx.compose.ui.platform.testTag" in bar
+          expected = {
+              "app/src/main/java/com/music/aria/MainActivity.kt",
+              "app/src/main/java/com/music/aria/playback/PlaybackService.kt",
+              "app/src/main/java/com/music/aria/ui/screens/SettingsNavigation.kt",
+              "app/src/main/java/com/music/aria/ui/screens/SettingsSheet.kt",
+          }
+          assert conflicts() == expected, (conflicts(), expected)
+          # Expose only conflicting hunks plus a few surrounding lines.
+          # No source credentials, no push or promoted merge.
+          blocks = []
+          for path in sorted(expected):
+              lines = (root / path).read_text().splitlines()
+              starts = [i for i, line in enumerate(lines) if line.startswith("<<<<<<<")]
+              ends = [i for i, line in enumerate(lines) if line.startswith(">>>>>>>")]
+              assert len(starts) == len(ends) and starts, path
+              blocks.append(f"=== {path}: {len(starts)} hunks ===")
+              for start, end in zip(starts, ends):
+                  assert start < end
+                  blocks.append(f"--- lines {start+1}-{end+1} ---")
+                  blocks.extend(lines[max(0,start-5):end+6])
+          (report / "remaining-hunks.txt").write_text("\n".join(blocks) + "\n")
+          print("Reviewed resolutions: 6; unresolved: 4")
+          print("\n".join(blocks))
+          PY
+          git -C "$candidate" diff --cached --stat > "$report/staged-stat.txt"
+          git -C "$candidate" diff --cached --check -- app/src/main/res/values-pt/acquisition_destination.xml app/src/main/res/values/acquisition_destination.xml app/src/main/res/values/strings_opensubsonic.xml app/src/main/java/com/music/aria/data/sources/addon/AddonClient.kt app/src/main/java/com/music/aria/ui/components/FrostedTopBar.kt app/src/test/java/com/music/aria/HomeSettingsOverflowAlignmentTest.kt
       - name: Archive path-only analysis
         if: always()
         uses: actions/upload-artifact@v4
@@ -130,5 +199,7 @@ jobs:
             ${{ runner.temp }}/idm-aria-audit/aria-paths.txt
             ${{ runner.temp }}/idm-aria-audit/raw-merge.txt
             ${{ runner.temp }}/idm-aria-audit/normalized-merge.txt
+            ${{ runner.temp }}/idm-aria-audit/remaining-hunks.txt
+            ${{ runner.temp }}/idm-aria-audit/staged-stat.txt
             ${{ runner.temp }}/idm-aria-audit/namespace-*/namespace-review.txt
           if-no-files-found: error
