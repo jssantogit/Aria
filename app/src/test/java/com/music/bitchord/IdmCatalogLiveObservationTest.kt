@@ -2986,9 +2986,9 @@ class IdmCatalogLiveObservationTest {
     private fun reviewLabel(value: String?): String =
         value.orEmpty().filterNot { it.isISOControl() ||
             Character.getType(it) == Character.FORMAT.toInt() }
-            .replace(Regex("\\s+"), " ").trim().take(180)
-            // No workflow-command or URL interpretation of source text.
-            .replace("::", ": :").replace("://", ": / /")
+            .replace(Regex("\\s+"), " ").trim()
+            // Escape before truncating so the final public label is bounded.
+            .replace("::", ": :").replace("://", ": / /").take(180)
 
     private fun reviewJsonString(value: String): String =
         kotlinx.serialization.json.JsonPrimitive(value).toString()
@@ -3017,6 +3017,7 @@ class IdmCatalogLiveObservationTest {
         assertTrue(reviewLabel(row.title).length <= 180)
         assertEquals("A B", reviewLabel(" A  B "))
         assertEquals("A: / /B", reviewLabel("A://B"))
+        assertTrue(reviewLabel("://".repeat(100)).length <= 180)
     }
 
     private fun SearchParityCase.titleMatches(text: String?): Boolean =
