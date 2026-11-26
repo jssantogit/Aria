@@ -271,12 +271,14 @@ internal class MusicBrainzCatalogSearch(
         query: String,
         limit: Int = 25,
         offset: Int = 0,
+        // Only the interactive first page may spend the extra recovery read.
+        recoverWeakLanding: Boolean = false,
     ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
         val initial = searchReleaseGroupsInternal(query, limit, offset)
             .rankPublicPage(query, MusicBrainzReleaseGroupHit::title, MusicBrainzReleaseGroupHit::artistDisplay)
-        if (capability != ProviderCapability.CATALOG_SEARCH ||
+        if (!recoverWeakLanding || capability != ProviderCapability.CATALOG_SEARCH ||
             initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
-            limit < MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
+            limit != MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
             query.any(Char::isISOControl) ||
             initial.page.items.any {
                 isCuratedMusicBrainzReleaseGroup(it) &&
@@ -563,12 +565,14 @@ internal class MusicBrainzCatalogSearch(
         query: String,
         limit: Int = 25,
         offset: Int = 0,
+        // Only the interactive first page may spend the extra recovery read.
+        recoverWeakLanding: Boolean = false,
     ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> {
         val initial = searchRecordingsInternal(query, limit, offset)
             .rankPublicPage(query, MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
-        if (capability != ProviderCapability.CATALOG_SEARCH ||
+        if (!recoverWeakLanding || capability != ProviderCapability.CATALOG_SEARCH ||
             initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
-            limit < MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
+            limit != MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
             query.any(Char::isISOControl) ||
             initial.page.items.any {
                 isCuratedMusicBrainzRecording(it) &&

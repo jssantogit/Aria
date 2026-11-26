@@ -6202,7 +6202,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val recordings = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchRecordingsForArtistMbid(artistScopeMbid, limit = 25)
-            } else musicBrainzSearch.searchRecordings(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+            } else musicBrainzSearch.searchRecordings(
+                query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+            )
             // Do not make listeners wait for the two release endpoints just
             // to see the verified recording results. These are metadata-only
             // until the final local MediaAsset claim query has completed.
@@ -6231,7 +6233,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val groups = if (artistScopeMbid != null) {
                 musicBrainzSearch.searchReleaseGroupsForArtistMbid(artistScopeMbid, limit = 15)
-            } else musicBrainzSearch.searchReleaseGroups(query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+            } else musicBrainzSearch.searchReleaseGroups(
+                query, limit = MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+            )
             if (groups is MusicBrainzCatalogSearchResult.Success &&
                 mayPublish()
             ) {

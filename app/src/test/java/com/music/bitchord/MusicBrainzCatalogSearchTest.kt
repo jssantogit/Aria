@@ -87,15 +87,25 @@ class MusicBrainzCatalogSearchTest {
                 }
             },
         ))
-        val result = source.searchReleaseGroups("Exact Work Artist", 50) as MusicBrainzCatalogSearchResult.Success
+        val result = source.searchReleaseGroups("Exact Work Artist", 50, recoverWeakLanding = true) as MusicBrainzCatalogSearchResult.Success
         assertEquals(listOf(target, wrong), result.page.items.map { it.musicBrainzId })
         assertEquals(1, result.page.consumedCount)
         assertEquals(1, result.page.nextOffset)
         assertEquals(2, requests.size)
         assertEquals("releasegroup:\"exact work\" AND artist:\"artist\"", requests[1]["query"])
         assertEquals("12", requests[1]["limit"])
-        source.searchReleaseGroups("Exact Work Artist", 50, offset = 1)
+        source.searchReleaseGroups("Exact Work Artist", 50, offset = 1, recoverWeakLanding = true)
         assertEquals(3, requests.size)
+        // Capacity/batch reads are strictly one upstream page even if a caller
+        // requests a larger limit or the initial response is all weak matches.
+        val batch = source.searchReleaseGroups("Exact Work Artist", 100)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(wrong), batch.page.items.map { it.musicBrainzId })
+        assertEquals(4, requests.size)
+        source.searchReleaseGroups("Exact Work Artist", 50)
+        assertEquals(5, requests.size)
+        source.searchReleaseGroups("Exact Work Artist", 100, recoverWeakLanding = true)
+        assertEquals(6, requests.size)
     }
 
     @Test fun weakRecordingLandingUsesOneFieldedProbeAndPreservesOriginalCursor() = runBlocking {
@@ -121,7 +131,7 @@ class MusicBrainzCatalogSearchTest {
                 }
             },
         ))
-        val result = source.searchRecordings("Exact Work Artist", 50) as MusicBrainzCatalogSearchResult.Success
+        val result = source.searchRecordings("Exact Work Artist", 50, recoverWeakLanding = true) as MusicBrainzCatalogSearchResult.Success
         assertEquals(listOf(target, wrong), result.page.items.map { it.musicBrainzId })
         assertEquals(1, result.page.consumedCount)
         assertEquals(1, result.page.nextOffset)
@@ -129,8 +139,16 @@ class MusicBrainzCatalogSearchTest {
         assertEquals("false", calls[1]["dismax"])
         assertEquals("recording:\"exact work\" AND artist:\"artist\" AND status:official", calls[1]["query"])
         assertEquals("12", calls[1]["limit"])
-        source.searchRecordings("Exact Work Artist", 50, offset = 1)
+        source.searchRecordings("Exact Work Artist", 50, offset = 1, recoverWeakLanding = true)
         assertEquals(3, calls.size)
+        val batch = source.searchRecordings("Exact Work Artist", 100)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(wrong), batch.page.items.map { it.musicBrainzId })
+        assertEquals(4, calls.size)
+        source.searchRecordings("Exact Work Artist", 50)
+        assertEquals(5, calls.size)
+        source.searchRecordings("Exact Work Artist", 100, recoverWeakLanding = true)
+        assertEquals(6, calls.size)
     }
 
     @Test fun sameNameArtistScopeRequiresAnUnambiguousSourceIdentity() {

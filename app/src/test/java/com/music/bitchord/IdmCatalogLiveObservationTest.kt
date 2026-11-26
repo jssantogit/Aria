@@ -3138,7 +3138,9 @@ class IdmCatalogLiveObservationTest {
                                     offered = provenIds.isNotEmpty()
                                 }
                                 "track" -> {
-                                    val response = mbSearch.searchRecordings(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+                                    val response = mbSearch.searchRecordings(
+                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+                                    )
                                         as? MusicBrainzCatalogSearchResult.Success
                                     if (response == null) failed = true
                                     rows = response?.page?.items.orEmpty().filter(::isCuratedMusicBrainzRecording)
@@ -3150,7 +3152,9 @@ class IdmCatalogLiveObservationTest {
                                             isCuratedMusicBrainzRecording(it) }
                                 }
                                 else -> {
-                                    val groups = mbSearch.searchReleaseGroups(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+                                    val groups = mbSearch.searchReleaseGroups(
+                                        case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT, recoverWeakLanding = true,
+                                    )
                                         as? MusicBrainzCatalogSearchResult.Success
                                     val editions = mbSearch.searchReleases(case.query, MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
                                         as? MusicBrainzCatalogSearchResult.Success
