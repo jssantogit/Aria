@@ -310,6 +310,8 @@ data class NativeMetadataTrack(
     val workTitle: String? = null,
     val artworkUri: String? = null,
     val releaseCaption: String? = null,
+    /** Source-owned URL, never a playable media identifier. */
+    val sourceStoreUrl: String? = null,
 )
 
 internal data class NativeDetailAttribution(
@@ -391,6 +393,7 @@ fun DetailScreen(
     /** Apple artist ID-confirmed recordings, metadata only and never a top chart. */
     appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     sourceArtistTracksRanked: Boolean = false,
+    onMetadataTrackHold: ((NativeMetadataTrack) -> Unit)? = null,
     /** Explicit Apple Music URL → MusicBrainz artist relation; never inferred. */
     verifiedAppleArtistMbid: String? = null,
     /** Exact artist photo if the source has an independently proven identity. */
@@ -1002,7 +1005,7 @@ fun DetailScreen(
             if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA) {
                 item(key = "source-artist-tracks") {
                     NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette,
-                        ranked = sourceArtistTracksRanked)
+                        ranked = sourceArtistTracksRanked, onTrackHold = onMetadataTrackHold)
                 }
             }
 
@@ -1151,7 +1154,8 @@ fun DetailScreen(
                         )
                         NativeDetailTrackRowLayout(
                             onClick = null,
-                            onLongPress = null,
+                            onLongPress = if (track.sourceStoreUrl != null)
+                                onMetadataTrackHold?.let { hold -> { hold(track) } } else null,
                             onMore = null,
                             textGap = PAGE_GUTTER,
                             leading = {
