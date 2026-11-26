@@ -53,6 +53,19 @@ class AppleMusicWebCuratorsTest {
         assertTrue(AppleMusicWebEditorialGateway(catalog,gate(search)).searchAppleCurators("Metal","br") is ProviderCallResult.Failed)
     }
 
+    @Test fun localizedCuratorNamesAndPublicReferenceRemainScoped() {
+        val rnb = AppleMusicWebCuratorRef("123","br","Apple Music: R&B")
+        val electronic = AppleMusicWebCuratorRef("124","br","Apple Music: eletrônica")
+        assertEquals(rnb,resolveAppleMusicWebGenreCurator(listOf(rnb),"br","rnb"))
+        assertEquals(electronic,resolveAppleMusicWebGenreCurator(listOf(electronic),"br","electronic"))
+        assertNull(resolveAppleMusicWebGenreCurator(listOf(electronic),"br","house"))
+        assertEquals("976439543",appleMusicWebPublicCuratorReference("br","metal"))
+        assertNull(appleMusicWebPublicCuratorReference("us","metal"))
+        assertNull(appleMusicWebPublicCuratorReference("br","folk"))
+        assertTrue("R&B" in appleMusicWebCuratorQueries("rnb"))
+        assertTrue("eletrônica" in appleMusicWebCuratorQueries("electronic"))
+    }
+
     @Test fun wrongCuratorIdentityOrTypeCannotPublishRooms() = runBlocking {
         for (body in listOf(curator.replace("\"id\":\"123\"","\"id\":\"124\""),
             curator.replace("\"apple-curators\"","\"curators\""))) {

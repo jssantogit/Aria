@@ -144,14 +144,31 @@ class AppleMusicWebChartsTest {
         for (tag in corpus) {
             // Prioritize verified Apple editorial brands before textual
             // fallback. Chart/genre identities remain independent.
-            val curatorSearch = gateway.searchAppleCurators("Apple Music " + tag, "br")
-            val curatorCandidates = ((curatorSearch as? ProviderCallResult.Success)?.value?.outcome
-                as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
-            val curator = resolveAppleMusicWebGenreCurator(curatorCandidates, "br", tag)
-            val curatorRead = curator?.let { gateway.appleCurator(it.id, "br") }
+            val curatorCandidates = mutableListOf<AppleMusicWebCuratorRef>()
+            var curatorSearchReason = "not_attempted"
+            var curatorSearchReads = 0
+            var curator: AppleMusicWebCuratorRef? = null
+            for (query in appleMusicWebCuratorQueries(tag)) {
+                curatorSearchReads++
+                val result = gateway.searchAppleCurators(query, "br")
+                curatorSearchReason = diagnostic(result)
+                val candidates = ((result as? ProviderCallResult.Success)?.value?.outcome
+                    as? AppleMusicWebOutcome.Complete)?.value
+                if (candidates == null) break
+                curatorCandidates += candidates
+                curator = resolveAppleMusicWebGenreCurator(curatorCandidates, "br", tag)
+                if (curator != null) break
+            }
+            val publicReference = appleMusicWebPublicCuratorReference("br", tag)
+            // A confirmed public page is a second nomination path, not an
+            // assertion that the endpoint or localized identity still works.
+            val curatorId = curator?.id ?: publicReference
+            val curatorProvenance = if (curator != null) "search" else if (publicReference != null) "public_reference" else "none"
+            val curatorRead = curatorId?.let { gateway.appleCurator(it, "br") }
             val curatorPage = ((curatorRead as? ProviderCallResult.Success)?.value?.outcome
                 as? AppleMusicWebOutcome.Complete)?.value
-                ?.takeIf { resolveAppleMusicWebGenreCurator(listOf(it.identity), "br", tag) != null }
+                ?.takeIf { it.identity.id == curatorId &&
+                    resolveAppleMusicWebGenreCurator(listOf(it.identity), "br", tag) != null }
             val curatorAlbums = linkedSetOf<String>()
             var curatorReads = 0
             var curatorFailures = 0
@@ -168,9 +185,10 @@ class AppleMusicWebChartsTest {
             val landingTarget = if (tag in com.music.bitchord.ui.idmParityMainGenres) 6 else 4
             val curatorSufficient = curatorAlbums.size >= landingTarget && curatorFailures == 0
             println("AMS_CANONICAL_GENRE|tag=$tag|curator_candidates=" + curatorCandidates.size +
-                "|curator_matched=" + (curator != null) + "|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
+                "|curator_matched=" + (curator != null) + "|curator_provenance=$curatorProvenance" +
+                "|curator_search_reads=$curatorSearchReads|curator_rooms=" + (curatorPage?.rooms?.size ?: 0) +
                 "|curator_albums=" + curatorAlbums.size + "|curator_reads=$curatorReads|curator_failures=$curatorFailures" +
-                "|curator_search_reason=" + diagnostic(curatorSearch) +
+                "|curator_search_reason=" + curatorSearchReason +
                 "|curator_detail_reason=" + (curatorRead?.let(::diagnostic) ?: "not_applicable"))
             var genre = resolveAppleMusicWebCanonicalGenre(native.orEmpty(), "br", tag)
             var discoveryReads = 0
