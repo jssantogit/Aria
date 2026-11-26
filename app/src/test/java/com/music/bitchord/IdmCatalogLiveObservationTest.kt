@@ -3341,6 +3341,11 @@ class IdmCatalogLiveObservationTest {
                 val record = value(selected)
                 val songs = record?.tracks.orEmpty().filter { it.kind == AppleMusicWebKind.SONG }
                 val complete = selected is AppleMusicWebOutcome.Complete
+                val classification = record?.let { classifyAppleMusicWebRelease(it, complete) }
+                val expectedFormats = if (case.kind == "single_ep")
+                    setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+                else setOf(ItunesEditorialReleaseFormat.ALBUM)
+                val classificationMatches = classification?.display in expectedFormats
                 val positions = songs.mapNotNull { track ->
                     track.discNumber?.let { disc -> track.trackNumber?.let { disc to it } }
                 }
@@ -3385,6 +3390,16 @@ class IdmCatalogLiveObservationTest {
                         "multidisc_observed" to if (record != null && multi(record)) 1 else 0,
                         "is_single_present" to if (record?.identity?.isSingle != null) 1 else 0,
                         "is_single_true" to if (record?.identity?.isSingle == true) 1 else 0,
+                        "format_display_known" to if (classification != null && classification.display != ItunesEditorialReleaseFormat.UNCLASSIFIED) 1 else 0,
+                        "format_display_matches" to if (classificationMatches) 1 else 0,
+                        "format_display_album" to if (classification?.display == ItunesEditorialReleaseFormat.ALBUM) 1 else 0,
+                        "format_display_ep" to if (classification?.display == ItunesEditorialReleaseFormat.EP) 1 else 0,
+                        "format_display_single" to if (classification?.display == ItunesEditorialReleaseFormat.SINGLE) 1 else 0,
+                        "format_source_title" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_TITLE) 1 else 0,
+                        "format_source_flag" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_SINGLE_FLAG) 1 else 0,
+                        "format_commercial_fallback" to if (classification?.evidence == AppleMusicWebFormatEvidence.COMMERCIAL_AUDIO_RULE) 1 else 0,
+                        "format_explicit_conflict" to if (classification?.explicitConflict == true) 1 else 0,
+                        "format_commercial_disagreement" to if (classification?.commercialDisagreement == true) 1 else 0,
                         "release_date_present" to if (record?.identity?.releaseDate != null) 1 else 0,
                         "source_track_count_present" to if (record?.identity?.trackCount != null) 1 else 0,
                         "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
