@@ -22,7 +22,7 @@ jobs:
       - name: Hermetic consolidated contracts
         run: |
           chmod +x gradlew
-          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebCuratorLandingTest' --tests 'com.music.bitchord.AppleMusicWebCuratorsTest' --tests 'com.music.bitchord.AppleMusicWebChartsTest' --tests 'com.music.bitchord.AppleMusicWebFoundationTest' --tests 'com.music.bitchord.AppleMusicWebCacheBridgeTest'
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebCuratorLandingTest' --tests 'com.music.bitchord.AppleMusicWebCuratorsTest' --tests 'com.music.bitchord.AppleMusicWebChartsTest' --tests 'com.music.bitchord.AppleMusicWebFoundationTest' --tests 'com.music.bitchord.AppleMusicWebCacheBridgeTest' --tests 'com.music.bitchord.AppleMusicWebLandingPersistenceTest'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -3,6 +3,7 @@ package com.music.bitchord.data.catalog.provider.applemusicweb
 import java.text.Normalizer
 import java.util.Locale
 
+@kotlinx.serialization.Serializable
 internal data class AppleMusicWebRoomRef(
     val storefront: String, val genreId: String?, val id: String, val title: String,
     val curatorId: String? = null,

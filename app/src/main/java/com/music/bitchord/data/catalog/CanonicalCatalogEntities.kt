@@ -187,3 +187,15 @@ data class ExternalIdentityEntity(
     val externalId: String,
     val entityId: String,
 )
+
+
+/** Source-owned public metadata only. No MediaAsset or canonical identity claim. */
+@Entity(tableName = "catalog_ams_landing_cache", primaryKeys = ["storefront", "tag"])
+internal data class AppleMusicWebLandingCacheEntity(
+    val storefront: String,
+    val tag: String,
+    val schemaVersion: Int,
+    val fetchedAtMs: Long,
+    val expiresAtMs: Long,
+    val payload: String,
+)

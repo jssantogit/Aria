@@ -228,6 +228,27 @@ internal data class CanonicalLocalTagScanRow(
 @Dao
 internal interface CanonicalCatalogDao {
 
+    @Query("SELECT * FROM catalog_ams_landing_cache WHERE storefront = :storefront AND tag = :tag LIMIT 1")
+    suspend fun amsLandingCache(storefront: String, tag: String): AppleMusicWebLandingCacheEntity?
+
+    @Upsert
+    suspend fun upsertAmsLandingCache(entry: AppleMusicWebLandingCacheEntity)
+
+    @Query("DELETE FROM catalog_ams_landing_cache WHERE expiresAtMs <= :now")
+    suspend fun deleteExpiredAmsLandings(now: Long)
+
+    @Query("DELETE FROM catalog_ams_landing_cache WHERE (storefront || ':' || tag) NOT IN (SELECT storefront || ':' || tag FROM catalog_ams_landing_cache ORDER BY fetchedAtMs DESC, storefront, tag LIMIT 128)")
+    suspend fun trimAmsLandings()
+
+    @Transaction
+    suspend fun persistAmsLandingCache(entry: AppleMusicWebLandingCacheEntity) {
+        val previous = amsLandingCache(entry.storefront, entry.tag)
+        if (previous == null || previous.fetchedAtMs <= entry.fetchedAtMs)
+            upsertAmsLandingCache(entry)
+        deleteExpiredAmsLandings(entry.fetchedAtMs)
+        trimAmsLandings()
+    }
+
     @Upsert
     suspend fun upsertMediaAssetTags(tags: MediaAssetTagsEntity)
 

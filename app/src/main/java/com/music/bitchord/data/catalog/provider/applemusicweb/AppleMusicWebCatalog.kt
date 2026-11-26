@@ -15,6 +15,7 @@ import java.util.Base64
 import java.util.Locale
 
 /** Storefront-scoped catalog resources, not MBIDs, personal media, or streams. */
+@kotlinx.serialization.Serializable
 internal enum class AppleMusicWebKind(val apiType: String, val identityType: String) {
     SONG("songs", "song"),
     ALBUM("albums", "album"),
@@ -26,6 +27,7 @@ internal enum class AppleMusicWebKind(val apiType: String, val identityType: Str
     LABEL("record-labels", "label"),
 }
 
+@kotlinx.serialization.Serializable
 internal data class AppleMusicWebItem(
     val id: String,
     val kind: AppleMusicWebKind,

@@ -35,6 +35,7 @@ internal data class AppleMusicWebEditorialResult<T>(
 internal class AppleMusicWebEditorialGateway(
     private val catalog: AppleMusicWebCatalog,
     gate: ProviderPolicyGate,
+    private val landingCache: AppleMusicWebLandingCache? = null,
 ) {
     private val executor = ProviderQueryExecutor(gate)
     private val key = BuiltInProviderKeys.APPLE_MUSIC_WEB
@@ -124,10 +125,13 @@ internal class AppleMusicWebEditorialGateway(
      * references can be resolved with editorial permission alone. All room
      * reads and the final aggregate remain under one editorial ticket.
      */
-    suspend fun curatedGenreLanding(tag: String, country: String):
+    suspend fun curatedGenreLanding(tag: String, country: String, refresh: Boolean = false):
         ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebCuratorLanding>> =
         guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
             require(tag in amsEditorialGenreCorpus) { "Unknown AMS genre" }
+            if (!refresh) landingCache?.read(storefront, tag)?.let {
+                return@guarded AppleMusicWebOutcome.Complete(it)
+            }
             val candidates = mutableListOf<AppleMusicWebCuratorRef>()
             var searchReads = 0
             var nominated: AppleMusicWebCuratorRef? = null
@@ -221,7 +225,10 @@ internal class AppleMusicWebEditorialGateway(
                 roomReads = reads, roomFailures = failures, bounded = bounded,
             )
             if (failures > 0) AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED)
-            else AppleMusicWebOutcome.Complete(result)
+            else {
+                landingCache?.writeComplete(storefront, tag, result)
+                AppleMusicWebOutcome.Complete(result)
+            }
         }
 
     suspend fun roomContents(room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25, cursor: String? = null):

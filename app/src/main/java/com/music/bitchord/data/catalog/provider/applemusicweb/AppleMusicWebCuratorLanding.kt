@@ -2,12 +2,14 @@ package com.music.bitchord.data.catalog.provider.applemusicweb
 
 /** Exact source album, with its independently verified editorial evidence.
  * Combined-label evidence is not a global genre or identity assertion. */
+@kotlinx.serialization.Serializable
 internal data class AppleMusicWebCuratedAlbum(
     val item: AppleMusicWebItem,
     val evidence: AppleMusicWebCuratedAlbumEvidence,
     val room: AppleMusicWebRoomRef,
 )
 
+@kotlinx.serialization.Serializable
 internal data class AppleMusicWebCuratorLanding(
     val tag: String,
     val curator: AppleMusicWebCurator,

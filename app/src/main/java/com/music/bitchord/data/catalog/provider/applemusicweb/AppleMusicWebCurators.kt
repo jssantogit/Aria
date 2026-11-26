@@ -3,9 +3,11 @@ package com.music.bitchord.data.catalog.provider.applemusicweb
 import java.text.Normalizer
 import java.util.Locale
 
+@kotlinx.serialization.Serializable
 internal data class AppleMusicWebCuratorRef(
     val id: String, val storefront: String, val title: String, val shortName: String? = null,
 )
+@kotlinx.serialization.Serializable
 internal data class AppleMusicWebCurator(val identity: AppleMusicWebCuratorRef, val rooms: List<AppleMusicWebRoomRef>)
 
 private fun curatorFold(value: String) = Normalizer.normalize(value, Normalizer.Form.NFKD)
@@ -92,6 +94,7 @@ internal fun appleMusicWebCuratorMatches(ref: AppleMusicWebCuratorRef, storefron
             (appleMusicWebPublicCuratorReference(storefront, tag) == ref.id &&
                 appleMusicWebCuratorIsSharedForTag(ref, tag)))
 
+@kotlinx.serialization.Serializable
 internal enum class AppleMusicWebCuratedAlbumEvidence {
     DEDICATED_CURATOR, EXACT_GENRE_LABEL, SOUL_COMBINED_LABEL, REJECTED,
 }
