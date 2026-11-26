@@ -3129,6 +3129,7 @@ class IdmCatalogLiveObservationTest {
         val providers = when (System.getenv("IDM_CATALOG_LIVE_SCOPE") ?: "full") {
             "full" -> listOf(mb, apple, discogs)
             "itunes-musicbrainz-search" -> listOf(mb, apple)
+            "discogs-search" -> listOf(discogs)
             else -> error("Unsupported IDM live search scope")
         }
         for (provider in providers) {
@@ -3604,7 +3605,8 @@ class IdmCatalogLiveObservationTest {
                     }
                 }
                 if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1" &&
-                    (provider == mb || provider == apple)
+                    (provider == mb || provider == apple ||
+                        (provider == discogs && System.getenv("IDM_CATALOG_LIVE_SCOPE") == "discogs-search"))
                 ) {
                     val dir = File(System.getenv("IDM_CATALOG_METRICS_DIR")
                         ?: "build/idm-catalog-metrics", "top10-review")
