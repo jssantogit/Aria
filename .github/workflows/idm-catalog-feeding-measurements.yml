@@ -35,6 +35,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
       - app/src/test/java/com/music/bitchord/MusicBrainzCatalogSearchTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalSearchCategoryFilterTest.kt
       - app/src/test/java/com/music/bitchord/MusicBrainzCatalogGraphTest.kt
       - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
@@ -76,6 +77,7 @@ on:
       - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
       - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
       - app/src/test/java/com/music/bitchord/MusicBrainzCatalogSearchTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalSearchCategoryFilterTest.kt
       - app/src/test/java/com/music/bitchord/MusicBrainzCatalogGraphTest.kt
       - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
       - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
@@ -181,6 +183,7 @@ jobs:
             --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
             --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
             --tests 'com.music.bitchord.MusicBrainzCatalogSearchTest' \
+            --tests 'com.music.bitchord.CanonicalSearchCategoryFilterTest' \
             --tests 'com.music.bitchord.MusicBrainzCatalogGraphTest' \
             --tests 'com.music.bitchord.AppleArtistDiscographyPagerTest' \
             --tests 'com.music.bitchord.AppleEditorialCatalogRepositoryTest' \
@@ -190,7 +193,8 @@ jobs:
             --tests 'com.music.bitchord.ItunesCatalogClientTest' \
             --tests 'com.music.bitchord.ItunesEditorialCatalogTest' \
             --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork' \
-            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.relevanceReviewIsBoundedAndDoesNotPublishNativeIds'
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.relevanceReviewIsBoundedAndDoesNotPublishNativeIds' \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.frozenSearchAnchorAllowsOnlyEquivalentApostropheTypography'
 
       - name: Exercise shared native search presentation and relevance
         run: |
@@ -280,6 +284,7 @@ jobs:
               "DiscogsMasterVersionPreviewTest",
               "ApplePublicSearchPagerTest",
               "MusicBrainzCatalogSearchTest",
+              "CanonicalSearchCategoryFilterTest",
               "MusicBrainzCatalogGraphTest",
               "AppleArtistDiscographyPagerTest",
               "AppleEditorialCatalogRepositoryTest",
@@ -320,6 +325,11 @@ jobs:
           if len(schema_case) != 1 or any(schema_case[0].find(tag) is not None
                                        for tag in ("failure", "error", "skipped")):
               raise SystemExit("Offline live-report schema regression did not pass")
+          anchor_case = [case for case in schema_tests if case.get("name", "").startswith(
+              "frozenSearchAnchorAllowsOnlyEquivalentApostropheTypography")]
+          if len(anchor_case) != 1 or any(anchor_case[0].find(tag) is not None
+                                        for tag in ("failure", "error", "skipped")):
+              raise SystemExit("Offline search anchor typography regression did not pass")
           # Require all shared native relevance/navigation suites as well.
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
               out.write("\n### Shared search regressions\n\n")
