@@ -1079,6 +1079,7 @@ private fun BitChordApp(
     var heldCatalogSearchRow by remember { mutableStateOf<CanonicalCatalogSearchRow?>(null) }
     var heldCatalogSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
     val amsSearchHeld = remember { com.music.bitchord.ui.screens.AmsSearchHeldState() }
+    val amsShelfHeld = remember { com.music.bitchord.ui.screens.AmsShelfHeldState() }
     var heldPublicPlaylistSearchRow by remember { mutableStateOf<CanonicalPublicPlaylistSearchRow?>(null) }
     var heldPublicPlaylistSearchOrigin by remember { mutableStateOf<HeldItem?>(null) }
     // Remote search results retain provider/MediaAsset identity. They must not
@@ -2427,15 +2428,15 @@ private fun BitChordApp(
      * than a running order, and "add Radiohead to the queue" has no answer that
      * isn't a guess — so holding an artist card does nothing, as it did before.
      */
+    val amsHoldScope = com.music.bitchord.ui.screens.AmsShelfHoldScope(
+        selectedTab, activeCanonicalGenre?.tag, appleNativeRouteKey?.takeIf { it.startsWith("apple_music_web:") },
+    )
     val onBrowseLongPress: (ShelfItem) -> Unit = { item ->
         val id = item.browseId
         val type = id?.let { viewModel.browseTypeOf(it) }
         if (id?.startsWith("apple_music_web:") == true) {
-            // AMS metadata cannot enter legacy playback/download actions.
-            if (com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(item.appleStoreUrl,id) != null) {
-                providerHeldCardRoute = id
-                providerDetailOverflowOpen = true
-            }
+            // Same lifted-card menu as native catalog search; no legacy media actions.
+            amsShelfHeld.hold(item, amsHoldScope)
         } else if (id?.startsWith("discogs:") == true) {
             // Source-only metadata never enters the legacy collection actions.
             providerHeldCardRoute = id
@@ -3646,7 +3647,7 @@ private fun BitChordApp(
             (browseActions != null && browseMenuOrigin != null) ||
             (recentHeldRecording != null && recentHeldOrigin != null) ||
             (heldCatalogSearchRow != null && heldCatalogSearchOrigin != null) ||
-            amsSearchHeld.visible ||
+            amsSearchHeld.visible || amsShelfHeld.visible ||
             (heldPublicPlaylistSearchRow != null && heldPublicPlaylistSearchOrigin != null)
         // Keep the page stable while the held bitmap lifts and returns.
         // Re-blurring the whole Activity each frame flashed its content.
@@ -7336,6 +7337,35 @@ private fun BitChordApp(
             CanonicalSearchContextOverlays()
             com.music.bitchord.ui.screens.AmsSearchHeldMenu(amsSearchHeld, viewModel, hazeState,
                 heldChromeClearance)
+            com.music.bitchord.ui.screens.AmsShelfHeldMenu(
+                held = amsShelfHeld,
+                allowed = { target ->
+                    val scope = target.scope
+                    if (scope != amsHoldScope || !nativeProviderState.amsReadAllowed) false
+                    else if (scope.detail != null) {
+                        val page = viewModel.appleMusicWebDetailNavigation.stack.value.lastOrNull()
+                            ?.visible()?.takeIf { it.page.browseId == scope.detail }
+                        pageRouteKey == scope.detail && page != null &&
+                            com.music.bitchord.ui.appleMusicWebRelatedTarget(page, target.card.browseId) == target.card
+                    } else if (pageRouteKey == "$TAB_KEY$TAB_HOME" && scope.tab == TAB_HOME) {
+                        (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { target.card in it.items } &&
+                            viewModel.appleMusicWebEditorialUi.containsCard(null, target.card)
+                    } else if (pageRouteKey == "$TAB_KEY$TAB_EXPLORE" && scope.tab == TAB_EXPLORE && scope.genre != null) {
+                        (canonicalGenreState as? UiState.Success)?.data.orEmpty().any { target.card in it.items } &&
+                            viewModel.appleMusicWebEditorialUi.containsCard(scope.genre, target.card)
+                    } else false
+                },
+                onOpen = { target ->
+                    if (target.scope.detail != null) {
+                        if (viewModel.appleMusicWebDetailNavigation.openRelated(target.card.browseId))
+                            detailActiveShelf = null
+                    } else if (viewModel.openAppleMusicWebDetail(target.card)) {
+                        appleShelfReturnTab = selectedTab
+                    }
+                },
+                hazeState = hazeState,
+                bottomChromeClearance = heldChromeClearance,
+            )
 
             // ---- Reorder playlist ----
             // Full height, and the list never hands its leftover scroll to the
