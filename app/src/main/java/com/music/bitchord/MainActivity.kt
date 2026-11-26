@@ -7341,7 +7341,7 @@ private fun BitChordApp(
                 held = amsShelfHeld,
                 allowed = { target ->
                     val scope = target.scope
-                    if (scope != amsHoldScope || !nativeProviderState.amsReadAllowed) false
+                    if (scope != amsHoldScope) false
                     else if (scope.detail != null) {
                         val page = viewModel.appleMusicWebDetailNavigation.stack.value.lastOrNull()
                             ?.visible()?.takeIf { it.page.browseId == scope.detail }
