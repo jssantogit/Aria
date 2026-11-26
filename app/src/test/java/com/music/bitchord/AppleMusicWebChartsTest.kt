@@ -10,8 +10,9 @@ class AppleMusicWebChartsTest {
     private val key = BuiltInProviderKeys.APPLE_MUSIC_WEB
     private val charts = ProviderCapability.CHART_MOST_PLAYED
     private val editorial = ProviderCapability.EDITORIAL_DISCOGRAPHY
+    private val search = ProviderCapability.CATALOG_SEARCH
     private fun gate(vararg caps: ProviderCapability) = ProviderPolicyGate(ProviderCapabilityPolicy(
-        listOf(ProviderDescriptor(key, setOf(charts, editorial), ProviderReadiness.READY)),
+        listOf(ProviderDescriptor(key, setOf(charts, editorial, search), ProviderReadiness.READY)),
         caps.associateWith { listOf(ProviderChoice(key, true, 0)) },
     ))
 
@@ -86,9 +87,51 @@ class AppleMusicWebChartsTest {
         assertNull(resolveAppleMusicWebCanonicalGenre(native + native[0].copy(id="9"),"br","rock"))
     }
 
+    @Test fun albumGenreRelationshipCannotBorrowSearchPermissionOrInventName() = runBlocking {
+        var calls = 0
+        val catalog = AppleMusicWebCatalog(AppleMusicWebTransport { cap, path, args ->
+            calls++
+            assertEquals(editorial, cap)
+            assertEquals("/v1/catalog/br/albums/123", path)
+            assertEquals("genres", args["include"])
+            """{"data":[{"id":"123","type":"albums","relationships":{"genres":{"data":[
+              {"id":"77","type":"genres","attributes":{"name":"House"}},
+              {"id":"88","type":"genres"}
+            ]}}}]}"""
+        })
+        val denied = AppleMusicWebEditorialGateway(catalog, gate(search))
+        assertEquals(ProviderCallResult.Denied, denied.albumGenres("123","br"))
+        assertEquals(0, calls)
+        val reader = AppleMusicWebEditorialGateway(catalog, gate(editorial))
+        val genres = (reader.albumGenres("123","br") as ProviderCallResult.Success).value.outcome as AppleMusicWebOutcome.Complete
+        assertEquals(listOf(AppleMusicWebGenre("77","br","House")), genres.value)
+        assertNull(resolveAppleMusicWebCanonicalGenre(genres.value, "br", "techno"))
+    }
+
+    private fun diagnostic(result: ProviderCallResult<*>): String = when (result) {
+        is ProviderCallResult.Failed -> when (val cause = result.cause) {
+            is AppleMusicWebHttpException -> "http_" + cause.status
+            is AppleMusicWebProtocolException -> when (cause.message) {
+                "Missing or ambiguous grouping" -> "grouping_identity"
+                "Missing grouping tabs" -> "grouping_tabs"
+                "Missing grouping tab" -> "grouping_tab"
+                "Missing grouping children" -> "grouping_children"
+                "Invalid room identity" -> "room_id"
+                "Wrong room linkage type" -> "room_type"
+                else -> "protocol"
+            }
+            is java.io.IOException -> "io"
+            is IllegalArgumentException -> "invalid_argument"
+            else -> "other"
+        }
+        ProviderCallResult.Denied -> "denied"
+        ProviderCallResult.Stale -> "stale"
+        is ProviderCallResult.Success -> "success"
+    }
+
     @Test fun liveCanonicalGenreCoverage() = runBlocking {
         org.junit.Assume.assumeTrue(System.getenv("AMS_GENRE_MATRIX_LIVE") == "1")
-        val gate = gate(charts, editorial)
+        val gate = gate(charts, editorial, search)
         val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
             admission = RateLimitedProviderTransport { gate },
         )), gate)
@@ -99,9 +142,37 @@ class AppleMusicWebChartsTest {
         assertEquals(15, corpus.size)
         var failed = 0
         for (tag in corpus) {
-            val genre = resolveAppleMusicWebCanonicalGenre(native.orEmpty(), "br", tag)
+            var genre = resolveAppleMusicWebCanonicalGenre(native.orEmpty(), "br", tag)
+            var discoveryReads = 0
+            var candidateRows = 0
+            var matchingLabels = 0
+            var discoveryFailures = 0
+            var provenance = if (genre != null) "native_index" else "unmapped"
             if (genre == null) {
-                println("AMS_CANONICAL_GENRE|tag=$tag|status=unmapped")
+                val linked = mutableListOf<AppleMusicWebGenre>()
+                // Search only nominates albums. A genre name and its native ID
+                // must be materially present in the exact album relationship.
+                val response = gateway.search(AppleMusicWebKind.ALBUM, tag, "br", limit = 25)
+                val page = ((response as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+                if (page == null) discoveryFailures++
+                candidateRows = page?.items?.size ?: 0
+                val matches = page?.items.orEmpty().filter { item ->
+                    item.genreNames.any { appleMusicWebGenreNameMatches(it, tag) }
+                }
+                matchingLabels = matches.size
+                for (album in matches.take(5)) {
+                    discoveryReads++
+                    val detail = gateway.albumGenres(album.id, "br")
+                    val values = ((detail as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+                    if (values == null) discoveryFailures++
+                    linked += values.orEmpty()
+                }
+                genre = resolveAppleMusicWebCanonicalGenre(linked, "br", tag)
+                if (genre != null) provenance = "album_relationship"
+            }
+            if (genre == null) {
+                println("AMS_CANONICAL_GENRE|tag=$tag|status=unmapped|candidates=$candidateRows|matching_labels=$matchingLabels" +
+                    "|discovery_reads=$discoveryReads|discovery_failures=$discoveryFailures")
                 continue
             }
             val chart = gateway.mostPlayedChart(AppleMusicWebKind.ALBUM,"br",genre.id,limit=25)
@@ -111,7 +182,9 @@ class AppleMusicWebChartsTest {
             if (page == null || rooms == null) failed++
             println("AMS_CANONICAL_GENRE|tag=$tag|status=" +
                 (if (page != null && rooms != null) "observed" else "interrupted") +
-                "|albums=" + (page?.items?.size ?: 0) + "|rooms=" + (rooms?.size ?: 0))
+                "|albums=" + (page?.items?.size ?: 0) + "|rooms=" + (rooms?.size ?: 0) +
+                "|provenance=$provenance|discovery_reads=$discoveryReads|discovery_failures=$discoveryFailures" +
+                "|chart_reason=" + diagnostic(chart) + "|grouping_reason=" + diagnostic(grouping))
         }
         assertEquals(0, failed)
     }

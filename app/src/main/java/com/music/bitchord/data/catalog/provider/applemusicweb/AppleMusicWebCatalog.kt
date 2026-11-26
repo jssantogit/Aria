@@ -45,6 +45,7 @@ internal data class AppleMusicWebItem(
     val durationMillis: Long? = null,
     val discNumber: Int? = null,
     val trackNumber: Int? = null,
+    val genreNames: List<String> = emptyList(),
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
@@ -194,6 +195,9 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             durationMillis = (attr["durationInMillis"] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 },
             discNumber = (attr["discNumber"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 },
             trackNumber = (attr["trackNumber"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 },
+            genreNames = (attr["genreNames"] as? JsonArray).orEmpty().mapNotNull {
+                (it as? JsonPrimitive)?.takeIf { value -> value.isString }?.contentOrNull?.takeIf(String::isNotBlank)
+            }.distinct(),
         )
     }
 
@@ -332,6 +336,28 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         }
     }
 
+    /** Only materialized genre relationships of an exact album, not guessed IDs.
+     * Bare linkage is insufficient to bind a name to an identifier. */
+    suspend fun albumGenres(id: String, country: String): List<AppleMusicWebGenre> {
+        val sf = storefront(country)
+        val albumId = resourceId(id, AppleMusicWebKind.ALBUM)
+        val raw = detail(sf, AppleMusicWebKind.ALBUM, albumId, mapOf("include" to "genres"))
+        val block = raw.obj("relationships")?.obj("genres") ?: return emptyList()
+        if (block["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid album genre linkage")
+        val genres = block.objects("data").mapNotNull { row ->
+            val genreId = row.str("id")?.takeIf { it.matches(Regex("[0-9]{1,12}")) }
+                ?: throw AppleMusicWebProtocolException("Invalid genre identity")
+            if (row.str("type") != "genres")
+                throw AppleMusicWebProtocolException("Wrong album genre linkage type")
+            val name = row.obj("attributes")?.str("name") ?: return@mapNotNull null
+            AppleMusicWebGenre(genreId, sf, name)
+        }
+        if (genres.groupBy { it.id }.values.any { rows -> rows.distinct().size > 1 })
+            throw AppleMusicWebProtocolException("Conflicting album genre identity")
+        return genres.distinct()
+    }
+
     /** Public most-played rank, not a fabricated stream count or daily playlist. */
     suspend fun mostPlayedChart(
         kind: AppleMusicWebKind, country: String, genreId: String? = null,
@@ -381,8 +407,8 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
     suspend fun browseRooms(country: String, genreId: String? = null): List<AppleMusicWebRoomRef> {
         val sf = storefront(country)
         require(genreId == null || genreId.matches(Regex("[0-9]{1,12}")))
-        val args = mapOf("platform" to "web", "l" to "en-US") +
-            (if (genreId == null) mapOf("name" to "music") else mapOf("genre" to genreId))
+        val args = mapOf("platform" to "web") +
+            (if (genreId == null) mapOf("name" to "music", "l" to "en-US") else mapOf("genre" to genreId))
         val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
             "/v1/editorial/$sf/groupings", args))
         if ("errors" in body || body["data"] !is JsonArray)

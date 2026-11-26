@@ -95,6 +95,12 @@ internal class AppleMusicWebEditorialGateway(
             AppleMusicWebOutcome.Complete(catalog.genres(storefront))
         }
 
+    suspend fun albumGenres(id: String, country: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebGenre>>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
+            AppleMusicWebOutcome.Complete(catalog.albumGenres(id, storefront))
+        }
+
     suspend fun browseRooms(country: String, genreId: String? = null):
         ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebRoomRef>>> =
         guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->

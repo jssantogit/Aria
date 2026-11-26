@@ -8,6 +8,11 @@ import java.util.Locale
 internal fun resolveAppleMusicWebCanonicalGenre(
     native: List<AppleMusicWebGenre>, storefront: String, tag: String,
 ): AppleMusicWebGenre? {
+    return native.filter { it.storefront == storefront && appleMusicWebGenreNameMatches(it.title, tag) }
+        .distinctBy { it.id }.singleOrNull()
+}
+
+internal fun appleMusicWebGenreNameMatches(name: String, tag: String): Boolean {
     fun fold(text: String) = Normalizer.normalize(text, Normalizer.Form.NFKD)
         .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
@@ -20,7 +25,7 @@ internal fun resolveAppleMusicWebCanonicalGenre(
         "k-pop" -> setOf("K-Pop")
         "metal" -> setOf("Metal")
         "rnb" -> setOf("R&B/Soul", "R&B", "R&B e Soul")
-        "folk" -> setOf("Folk")
+        "folk" -> setOf("Folk", "Música Folk")
         "hard rock" -> setOf("Hard Rock")
         "house" -> setOf("House")
         "techno" -> setOf("Techno")
@@ -29,6 +34,5 @@ internal fun resolveAppleMusicWebCanonicalGenre(
         "bluegrass" -> setOf("Bluegrass")
         else -> emptySet()
     }.map(::fold).toSet()
-    return native.filter { it.storefront == storefront && fold(it.title) in aliases }
-        .distinctBy { it.id }.singleOrNull()
+    return fold(name) in aliases
 }
