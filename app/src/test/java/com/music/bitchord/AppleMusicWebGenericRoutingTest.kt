@@ -202,6 +202,17 @@ class AppleMusicWebGenericRoutingTest {
         assertEquals(listOf("2", "3", "4", "1"), page.items.map { it.identity.nativeId })
     }
 
+    @Test fun releaseDiscoveryHandlesQualifiedAliasesAndRepeatedArtistWorkWithoutGuessingIdentity() {
+        val discovery = com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebReleaseDiscovery
+        assertEquals(listOf("Same Name", "Same Name Alternate"), discovery.alternateQueries(
+            "Same Name", "Same Name", setOf("Alternate")))
+        assertTrue(discovery.titleMatches("Work (Alternate) [Deluxe]", "Work", setOf("Work (Alternate)")))
+        assertFalse(discovery.titleMatches("Work (Live)", "Work"))
+        assertTrue(discovery.relatedSingleYear("Work 2011 - Single", "Work"))
+        assertFalse(discovery.relatedSingleYear("Work 2011", "Work"))
+        assertFalse(discovery.creditMatches("Other Band", "Band"))
+    }
+
     @Test fun unauthorizedAppleWebAdapterCannotDispatch() = runBlocking {
         var calls = 0
         val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(

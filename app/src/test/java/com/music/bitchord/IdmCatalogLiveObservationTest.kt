@@ -3207,44 +3207,120 @@ class IdmCatalogLiveObservationTest {
             assertEquals(15, albumParityCases.size)
             for ((index, case) in albumParityCases.withIndex()) {
                 val start = System.nanoTime()
-                val candidates = search(CatalogSearchKind.ALBUM, case.artist + " " + case.title)
+                val discovery = AppleMusicWebReleaseDiscovery
                 var selected: AppleMusicWebOutcome<AppleMusicWebAlbum>? = null
                 var reads = 0
+                var searchReads = 0
+                var searchFailures = 0
+                var shelfReads = 0
+                var shelfFailures = 0
+                var discoveredRows = 0
+                var candidateRows = 0
+                val checked = mutableSetOf<String>()
                 fun multi(record: AppleMusicWebAlbum): Boolean =
                     record.tracks.filter { it.kind == AppleMusicWebKind.SONG }
                         .mapNotNull { it.discNumber }.distinct().size > 1
-                for (candidate in candidates.orEmpty().filter {
-                    case.matchesArtist(it.subtitle) &&
-                        (case.matchesTitle(it.title) || workMatches(it.title, case.title))
-                }.take(4)) {
+                fun preferred(): Boolean {
+                    val record = value(selected) ?: return false
+                    return selected is AppleMusicWebOutcome.Complete && (case.kind != "multi" || multi(record))
+                }
+                fun matchesCredit(credit: String?): Boolean =
+                    discovery.creditMatches(credit, case.artist, case.artistAliases)
+                fun candidateTitle(title: String): Boolean =
+                    discovery.candidateTitle(title, case.title, case.titleAliases, case.kind == "single_ep")
+                fun verifiedTitle(record: AppleMusicWebAlbum): Boolean {
+                    if (discovery.titleMatches(record.identity.title, case.title, case.titleAliases)) return true
+                    // A year-qualified single is only accepted with a complete
+                    // audio relationship proving the named work and its credit.
+                    return case.kind == "single_ep" &&
+                        discovery.relatedSingleYear(record.identity.title, case.title) &&
+                        !record.possiblyTruncated && record.tracks.any {
+                            it.kind == AppleMusicWebKind.SONG &&
+                                workMatches(it.title, case.title) && matchesCredit(it.artistName)
+                        }
+                }
+                suspend fun consider(id: String, expectedArtistId: String? = null) {
+                    if (reads >= 10 || !checked.add(id)) return
                     reads++
-                    val outcome = album(candidate.identity.nativeId)
-                    val record = value(outcome) ?: continue
-                    if (record.identity.id != candidate.identity.nativeId ||
-                        !case.matchesArtist(record.identity.artistName) ||
-                        !(case.matchesTitle(record.identity.title) || workMatches(record.identity.title, case.title)) ||
-                        !record.artists.any { case.matchesArtist(it.title) }) continue
+                    val outcome = album(id)
+                    val record = value(outcome) ?: return
+                    if (record.identity.id != id || !matchesCredit(record.identity.artistName) ||
+                        !verifiedTitle(record) || !record.artists.any {
+                            matchesCredit(it.title) && (expectedArtistId == null || it.id == expectedArtistId)
+                        }) return
                     val previous = value(selected)
                     if (previous == null ||
                         (outcome is AppleMusicWebOutcome.Complete && selected !is AppleMusicWebOutcome.Complete) ||
                         (outcome is AppleMusicWebOutcome.Complete && case.kind == "multi" && multi(record) && !multi(previous)))
                         selected = outcome
-                    if (outcome is AppleMusicWebOutcome.Complete && (case.kind != "multi" || multi(record))) break
+                }
+                // First preserve the existing compound route. Only unsuccessful
+                // or non-preferred discovery opens bounded alternate routes.
+                for (query in discovery.alternateQueries(case.artist, case.title, case.titleAliases)) {
+                    if (preferred() || reads >= 10) break
+                    searchReads++
+                    val found = search(CatalogSearchKind.ALBUM, query)
+                    if (found == null) { searchFailures++; continue }
+                    discoveredRows += found.size
+                    for (candidate in found.filter { matchesCredit(it.subtitle) && candidateTitle(it.title) }) {
+                        candidateRows++
+                        consider(candidate.identity.nativeId)
+                        if (preferred() || reads >= 10) break
+                    }
+                }
+                // If search never exposes the release, inspect the native
+                // shelves of matching artist IDs, then verify the same ID is
+                // present in the exact album's artist relationship.
+                if (!preferred() && reads < 10) {
+                    searchReads++
+                    val artists = search(CatalogSearchKind.ARTIST, case.artist)
+                    if (artists == null) searchFailures++
+                    val shelves = when (case.kind) {
+                        "single_ep" -> listOf(AppleMusicWebArtistShelf.SINGLES_AND_EPS, AppleMusicWebArtistShelf.ALL_ALBUMS)
+                        else -> listOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS, AppleMusicWebArtistShelf.ALL_ALBUMS)
+                    }
+                    for (artist in artists.orEmpty().filter { matchesCredit(it.title) }.take(2)) {
+                        if (preferred() || reads >= 10) break
+                        for (shelf in shelves) {
+                            if (preferred() || reads >= 10) break
+                            for (page in 1..3) {
+                                shelfReads++
+                                val result = withTimeoutOrNull(60_000L) {
+                                    (gateway.artistCollection(artist.identity.nativeId, sf, shelf, page, 25)
+                                        as? ProviderCallResult.Success)?.value?.outcome
+                                }
+                                if (result !is AppleMusicWebOutcome.Complete) shelfFailures++
+                                val collection = value(result) ?: break
+                                discoveredRows += collection.items.size
+                                for (release in collection.items.filter {
+                                    candidateTitle(it.title) && (it.artistName == null || matchesCredit(it.artistName))
+                                }) {
+                                    candidateRows++
+                                    consider(release.id, artist.identity.nativeId)
+                                    if (preferred() || reads >= 10) break
+                                }
+                                if (preferred() || reads >= 10 || !collection.hasMore) break
+                            }
+                        }
+                    }
                 }
                 val record = value(selected)
                 val songs = record?.tracks.orEmpty().filter { it.kind == AppleMusicWebKind.SONG }
                 val complete = selected is AppleMusicWebOutcome.Complete
-                val status = when {
-                    candidates == null -> "search_interruption"
-                    record == null -> "identity_not_corroborated"
-                    !complete -> "partial_detail"
-                    songs.isEmpty() -> "no_audio_metadata"
-                    else -> "complete"
-                }
-                if (status != "complete") failed++
                 val positions = songs.mapNotNull { track ->
                     track.discNumber?.let { disc -> track.trackNumber?.let { disc to it } }
                 }
+                val status = when {
+                    record == null && searchFailures == searchReads -> "search_interruption"
+                    record == null -> "identity_not_corroborated"
+                    !complete -> "partial_detail"
+                    songs.isEmpty() -> "no_audio_metadata"
+                    case.kind == "multi" && !multi(record) -> "multidisc_not_corroborated"
+                    positions.size != songs.size || positions.distinct().size != positions.size -> "track_positions_incomplete"
+                    songs.any { it.durationMillis == null } -> "track_durations_incomplete"
+                    else -> "complete"
+                }
+                if (status != "complete") failed++
                 report("ams_album_" + (index + 1).toString().padStart(2, '0'), Sample(
                     status = status, eligible = if (record != null) 1 else 0, visible = songs.size,
                     artwork = if (record?.identity?.artworkUrl != null) 1 else 0,
@@ -3252,6 +3328,12 @@ class IdmCatalogLiveObservationTest {
                         "identity_verified" to if (record != null) 1 else 0,
                         "detail_complete" to if (complete) 1 else 0,
                         "identity_evidence_reads" to reads,
+                        "discovery_search_reads" to searchReads,
+                        "discovery_search_failures" to searchFailures,
+                        "discovery_shelf_reads" to shelfReads,
+                        "discovery_shelf_failures" to shelfFailures,
+                        "discovery_rows" to discoveredRows,
+                        "discovery_candidate_rows" to candidateRows,
                         "source_track_rows" to (record?.tracks?.size ?: 0),
                         "audio_metadata_rows" to songs.size,
                         "non_audio_rows" to ((record?.tracks?.size ?: 0) - songs.size),
