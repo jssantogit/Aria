@@ -350,9 +350,10 @@ internal class AppleMusicWebEditorialGateway(
         shelf: AppleMusicWebArtistShelf,
         page: Int = 1,
         limit: Int = 20,
+        continuation: String? = null,
     ): ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebPage>> =
         guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
-            val result = catalog.artistCollection(id, storefront, shelf, page, limit)
+            val result = catalog.artistCollection(id, storefront, shelf, page, limit, continuation)
             val kind = when (shelf) {
                 AppleMusicWebArtistShelf.TOP_SONGS -> setOf(AppleMusicWebKind.SONG)
                 AppleMusicWebArtistShelf.SIMILAR_ARTISTS -> setOf(AppleMusicWebKind.ARTIST)

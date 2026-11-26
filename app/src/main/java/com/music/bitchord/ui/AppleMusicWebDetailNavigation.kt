@@ -1,6 +1,7 @@
 package com.music.bitchord.ui
 
 import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind
+import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebArtistShelf
 import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebOutcome
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
@@ -11,6 +12,7 @@ import com.music.bitchord.data.providers.ProviderReadLease
 import com.music.bitchord.ui.screens.AppleSharedDetail
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +26,7 @@ internal data class AppleMusicWebDetailEntry(
     val artwork: String?,
     val lease: ProviderReadLease,
     val state: UiState<AppleSharedDetail> = UiState.Loading,
+    val pagingLoading: Boolean = false,
 ) {
     fun visible(): AppleSharedDetail? {
         if (!lease.isCurrent()) return null
@@ -65,6 +68,8 @@ internal fun appleMusicWebRelatedTarget(
 internal class AppleMusicWebDetailNavigation(
     private val scope: CoroutineScope,
     private val acquire: () -> ProviderReadLease?,
+    private val readNext: suspend (AppleSharedDetail,AppleMusicWebArtistShelf?) -> ProviderCallResult<AppleMusicWebOutcome<AppleSharedDetail>> =
+        { _,_ -> ProviderCallResult.Denied },
     private val read: suspend (String) -> ProviderCallResult<AppleMusicWebOutcome<AppleSharedDetail>>,
 ) {
     private val _stack = MutableStateFlow<List<AppleMusicWebDetailEntry>>(emptyList())
@@ -112,10 +117,45 @@ internal class AppleMusicWebDetailNavigation(
         _stack.value = emptyList()
     }
 
+    fun loadNextArtist(routeKey: String, view: AppleMusicWebArtistShelf? = null) {
+        val current = _stack.value.lastOrNull() ?: return
+        val detail = (current.state as? UiState.Success)?.data ?: return
+        val paging = detail.amsArtistPaging ?: return
+        if (current.route.browseId != routeKey || current.pagingLoading ||
+            request?.isActive == true || !current.lease.isCurrent() || !paging.hasMore ||
+            paging.pending.none { view == null || it.view == view }) return
+        cancelRequest()
+        val generation = epoch
+        val loading = current.copy(pagingLoading=true)
+        _stack.value = _stack.value.dropLast(1) + loading
+        val job = scope.launch(start=CoroutineStart.LAZY) {
+            val result = try { readNext(detail,view) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            if (generation != epoch || _stack.value.lastOrNull() !== loading) return@launch
+            if (!current.lease.isCurrent() || result == ProviderCallResult.Stale ||
+                result == ProviderCallResult.Denied) {
+                _stack.value = _stack.value.dropLast(1).filter { it.lease.isCurrent() }
+                return@launch
+            }
+            val updated = ((result as? ProviderCallResult.Success)?.value as? AppleMusicWebOutcome.Complete)
+                ?.value?.takeIf { it.page.browseId == routeKey }
+            _stack.value = _stack.value.dropLast(1) +
+                current.copy(state=updated?.let { UiState.Success(it) } ?: current.state)
+        }
+        request = job
+        val unregister = current.lease.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+        job.start()
+    }
+
     private fun cancelRequest() {
         ++epoch
         request?.cancel()
         request = null
+        val current = _stack.value.lastOrNull()
+        if (current?.pagingLoading == true)
+            _stack.value = _stack.value.dropLast(1) + current.copy(pagingLoading=false)
     }
 
     private fun load(entry: AppleMusicWebDetailEntry) {

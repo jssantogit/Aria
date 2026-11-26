@@ -30,6 +30,27 @@ class AppleMusicWebDiscographyPagingTest {
         assertEquals("apple_music_web:br:album:33", page.items.single().scopedId)
     }
 
+    @Test fun continuationDoesNotReplayFirstArtistPageAndRejectsForeignCursor(): Unit = runBlocking {
+        val requests = mutableListOf<Map<String,String>>()
+        val path = "/v1/catalog/br/artists/42/view/full-albums"
+        val catalog = AppleMusicWebCatalog(AppleMusicWebTransport { _,actual,args ->
+            assertEquals(path,actual)
+            requests += args
+            """{"data":[{"id":"33","type":"albums","attributes":{"name":"Final album"}}]}"""
+        })
+        val page = catalog.artistCollection("42","br",AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+            continuation="$path?offset=7&limit=24")
+        assertEquals("7",requests.single()["offset"])
+        assertFalse(page.hasMore)
+        assertNull(page.nextCursor)
+        try {
+            catalog.artistCollection("42","br",AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                continuation="/v1/catalog/br/artists/43/view/full-albums?offset=7")
+            fail("Foreign cursor accepted")
+        } catch (_: AppleMusicWebProtocolException) { }
+        assertEquals(1,requests.size)
+    }
+
     @Test fun albumTracksFollowOnlyItsOwnRelationshipCursor() = runBlocking {
         val requests = mutableListOf<String>()
         val transport = AppleMusicWebTransport { capability, path, args ->

@@ -121,7 +121,22 @@ internal data class AmsArtistShelfSnapshot(
     val artistBrowseId: String,
     val byView: Map<AppleMusicWebArtistShelf, List<AppleMusicWebItem>>,
     val incomplete: Boolean = false,
+    val nextCursors: Map<AppleMusicWebArtistShelf,String> = emptyMap(),
 )
+
+internal data class AmsArtistCursor(
+    val view: AppleMusicWebArtistShelf, val cursor: String,
+    val visited: Set<String> = emptySet(),
+)
+internal data class AmsArtistPaging(
+    val source: AppleMusicWebArtist,
+    val supplemental: AmsArtistShelfSnapshot?,
+    val pending: List<AmsArtistCursor>,
+    val incomplete: Boolean = false,
+    val pages: Int = 0,
+) {
+    val hasMore get() = pending.isNotEmpty() && pages < 40
+}
 
 private fun amsShelfCards(
     items: List<AppleMusicWebItem>, market: String,
@@ -229,6 +244,10 @@ internal fun appleMusicWebAsSharedDetail(
                 metadataTracks=tracks(record.topSongs,market,record.albums + record.singlesAndEps +
                     record.featuredAlbums + listOfNotNull(record.latestRelease)).take(20),
                 sourceArtistTracksRanked=true,
+                amsArtistPaging=AmsArtistPaging(record,evidence,
+                    (record.nextCursors + evidence?.nextCursors.orEmpty()).map { (view,cursor) ->
+                        AmsArtistCursor(view,cursor)
+                    },incomplete),
                 artistHeroUrl=identity.cover(1024),
                 featuredRelease=record.latestRelease?.card(AppleMusicWebKind.ALBUM,market),
                 notice=if (incomplete || record.unresolvedShelves.isNotEmpty() || evidence?.incomplete == true)

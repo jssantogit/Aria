@@ -60,6 +60,7 @@ internal data class AppleSharedDetail(
     val sourceStoreUrl: String? = null,
     val sourceArtistTracksRanked: Boolean = false,
     val sourceAlbumMetadata: CanonicalAlbumFooterMetadata? = null,
+    val amsArtistPaging: AmsArtistPaging? = null,
 )
 
 internal fun appleArtistAsSharedDetail(

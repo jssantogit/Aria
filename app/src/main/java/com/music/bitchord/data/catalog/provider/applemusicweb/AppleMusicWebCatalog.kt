@@ -94,6 +94,7 @@ internal data class AppleMusicWebArtist(
     val artistPlaylists: List<AppleMusicWebItem> = emptyList(),
     val unresolvedShelves: Map<AppleMusicWebArtistShelf, Int> = emptyMap(),
     val latestRelease: AppleMusicWebItem? = null,
+    val nextCursors: Map<AppleMusicWebArtistShelf,String> = emptyMap(),
 )
 
 /** Exact song resource plus native album linkage; linkage alone is not an album. */
@@ -652,10 +653,22 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val identity = convert(root, sf) ?: throw AppleMusicWebProtocolException("Invalid artist")
         val views = raw.obj("views")
         val unresolved = linkedMapOf<AppleMusicWebArtistShelf, Int>()
+        val cursors = linkedMapOf<AppleMusicWebArtistShelf,String>()
         suspend fun shelf(shelf: AppleMusicWebArtistShelf): List<AppleMusicWebItem> {
             val block = views?.obj(shelf.endpoint.removePrefix("view/"))
             val initial = artistShelfItems(block, sf, shelf)
-            if (initial.unresolved.isEmpty()) return initial.items
+            if (initial.unresolved.isEmpty()) {
+                if (shelf in setOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                    AppleMusicWebArtistShelf.SINGLES_AND_EPS,AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS)) {
+                    val path = "/v1/catalog/$sf/artists/$artistId/" + shelf.endpoint
+                    block?.str("next")?.let { next ->
+                        // Never expose a cursor belonging to another artist/view.
+                        if (runCatching { follow(next,path) }.isSuccess) cursors[shelf] = next
+                        else unresolved[shelf] = 1
+                    }
+                }
+                return initial.items
+            }
             // One bounded, same-artist, same-view recovery. Only hydrate IDs
             // explicitly present in the original shelf; preserve its order.
             val recovered = try {
@@ -707,6 +720,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             shelf(AppleMusicWebArtistShelf.SIMILAR_ARTISTS), shelf(AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS),
             shelf(AppleMusicWebArtistShelf.ARTIST_PLAYLISTS), unresolved,
             latestRelease = shelf(AppleMusicWebArtistShelf.LATEST_RELEASE).singleOrNull(),
+            nextCursors = cursors.toMap(),
         )
     }
 
@@ -716,15 +730,15 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
      */
     suspend fun artistCollection(
         id: String, country: String, shelf: AppleMusicWebArtistShelf,
-        page: Int = 1, limit: Int = 20,
+        page: Int = 1, limit: Int = 20, continuation: String? = null,
     ): AppleMusicWebPage {
-        require(page in 1..20 && limit in 1..100)
+        require(page in 1..20 && limit in 1..100 && (continuation == null || page == 1))
         val sf = storefront(country)
         val artistId = resourceId(id, AppleMusicWebKind.ARTIST)
         val path = "/v1/catalog/$sf/artists/$artistId/${shelf.endpoint}"
         val firstParams = mapOf("limit" to limit.toString())
         var block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
-            path, firstParams))
+            path, firstParams + (continuation?.let { follow(it,path) } ?: emptyMap())))
         val visited = mutableSetOf<String>()
         for (index in 1 until page) {
             val cursor = block.str("next")
@@ -733,9 +747,17 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             val params = firstParams + follow(cursor, path)
             block = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY, path, params))
         }
+        if ("errors" in block || block["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid artist collection envelope")
         val parsed = artistShelfItems(block, sf, shelf)
-        return AppleMusicWebPage(parsed.items, page, limit, block.str("next") != null,
-            unresolvedReferences = parsed.unresolved.size)
+        val next = block.str("next")
+        if (next != null) {
+            follow(next,path)
+            if (next == continuation || next in visited)
+                throw AppleMusicWebProtocolException("Cyclic artist cursor")
+        }
+        return AppleMusicWebPage(parsed.items, page, limit, next != null,
+            nextCursor=next,unresolvedReferences = parsed.unresolved.size)
     }
 
     suspend fun songCollections(id: String, country: String): AppleMusicWebSongCollections {

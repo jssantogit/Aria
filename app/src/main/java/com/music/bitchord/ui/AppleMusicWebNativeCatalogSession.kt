@@ -412,6 +412,7 @@ internal class AppleMusicWebNativeCatalogSession(
             )
         }
         val rows = linkedMapOf<AppleMusicWebArtistShelf,List<AppleMusicWebItem>>()
+        val cursors = linkedMapOf<AppleMusicWebArtistShelf,String>()
         var incomplete = false
         for (view in views) {
             val result = gateway.artistCollection(route.id,route.storefront,view,limit=24)
@@ -427,7 +428,9 @@ internal class AppleMusicWebNativeCatalogSession(
                 is ProviderCallResult.Success -> when (val outcome = result.value.outcome) {
                     is AppleMusicWebOutcome.Complete -> {
                         rows[view] = outcome.value.items
-                        incomplete = incomplete || outcome.value.hasMore
+                        if (source is AppleMusicWebNativeDetail.Artist) {
+                            outcome.value.nextCursor?.let { cursors[view] = it }
+                        } else incomplete = incomplete || outcome.value.hasMore
                     }
                     is AppleMusicWebOutcome.Partial -> {
                         rows[view] = outcome.value.items
@@ -438,7 +441,7 @@ internal class AppleMusicWebNativeCatalogSession(
             }
         }
         return ProviderCallResult.Success(com.music.bitchord.ui.screens.AmsArtistShelfSnapshot(
-            route.browseId,rows,incomplete))
+            route.browseId,rows,incomplete,cursors))
     }
 
     /** Projection remains inside an outer editorial ticket. Reuse the
@@ -476,6 +479,62 @@ internal class AppleMusicWebNativeCatalogSession(
                 ProviderCallResult.Stale -> ProviderCallResult.Stale
             }
         }
+
+    /** Advance one exact view and re-project through the same classification
+     * rules, including conflicts across studio/singles/live/compilation views. */
+    suspend fun nextArtistDetail(previous: com.music.bitchord.ui.screens.AppleSharedDetail,
+        requestedView: AppleMusicWebArtistShelf? = null):
+        ProviderCallResult<AppleMusicWebOutcome<com.music.bitchord.ui.screens.AppleSharedDetail>> {
+        val paging = previous.amsArtistPaging
+            ?: return ProviderCallResult.Failed(IllegalArgumentException("No artist continuation"))
+        val route = AppleMusicWebNativeRoute.parse(previous.page.browseId)
+        val request = paging.pending.firstOrNull { requestedView == null || it.view == requestedView }
+        if (route == null || route.kind != AppleMusicWebKind.ARTIST || !paging.hasMore ||
+            request == null || paging.source.identity.scopedId != route.browseId ||
+            request.cursor in request.visited)
+            return ProviderCallResult.Failed(IllegalArgumentException("Invalid artist continuation"))
+        val allowed = setOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS,AppleMusicWebArtistShelf.SINGLES_AND_EPS,
+            AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS,AppleMusicWebArtistShelf.LIVE_ALBUMS,
+            AppleMusicWebArtistShelf.COMPILATIONS,AppleMusicWebArtistShelf.APPEARS_ON)
+        if (request.view !in allowed)
+            return ProviderCallResult.Failed(IllegalArgumentException("Unsupported artist view"))
+        return admitted(editorial) { gateway ->
+            when (val result = gateway.artistCollection(route.id,route.storefront,request.view,
+                limit=24,continuation=request.cursor)) {
+                is ProviderCallResult.Success -> {
+                    val page = (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value
+                        ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete artist continuation"))
+                    val visited = request.visited + request.cursor
+                    val next = page.nextCursor
+                    if (next != null && next in visited)
+                        return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Cyclic artist continuation"))
+                    fun append(rows: List<AppleMusicWebItem>) = (rows + page.items).distinctBy { it.scopedId }
+                    var source = paging.source
+                    var extra = paging.supplemental
+                    when (request.view) {
+                        AppleMusicWebArtistShelf.STUDIO_ALBUMS -> source = source.copy(albums=append(source.albums))
+                        AppleMusicWebArtistShelf.SINGLES_AND_EPS -> source = source.copy(singlesAndEps=append(source.singlesAndEps))
+                        AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS -> source = source.copy(featuredAlbums=append(source.featuredAlbums))
+                        else -> {
+                            val old = extra?.takeIf { it.artistBrowseId == route.browseId }
+                                ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Missing artist view evidence"))
+                            extra = old.copy(byView=old.byView + (request.view to append(old.byView[request.view].orEmpty())))
+                        }
+                    }
+                    val advanced = paging.pending.filterNot { it == request } +
+                        listOfNotNull(next?.let { request.copy(cursor=it,visited=visited) })
+                    val projected = com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail(
+                        route.browseId,AppleMusicWebNativeDetail.Artist(source),paging.incomplete,extra)
+                        ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid artist detail"))
+                    ProviderCallResult.Success(AppleMusicWebOutcome.Complete(projected.copy(
+                        amsArtistPaging=paging.copy(source=source,supplemental=extra,pending=advanced,pages=paging.pages+1))))
+                }
+                is ProviderCallResult.Failed -> result
+                ProviderCallResult.Denied -> ProviderCallResult.Denied
+                ProviderCallResult.Stale -> ProviderCallResult.Stale
+            }
+        }
+    }
 
     /** Do not infer an album from a song title or query parameter. */
     suspend fun songAlbumRoute(key: String): String? {

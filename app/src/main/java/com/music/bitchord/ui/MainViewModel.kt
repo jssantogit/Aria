@@ -681,7 +681,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ProviderReadLease.acquire(ProviderRuntime.gateOrNull(), listOf(
                 ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB,
             ))
-        }, appleMusicWebNativeCatalog::sharedDetail)
+        }, readNext = appleMusicWebNativeCatalog::nextArtistDetail,
+            read = appleMusicWebNativeCatalog::sharedDetail)
     }
     internal fun openAppleMusicWebDetail(item: ShelfItem): Boolean {
         if (!appleMusicWebDetailNavigation.openRoot(item)) return false

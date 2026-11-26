@@ -12,6 +12,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebArtistShelf
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.settings.SongSort
@@ -130,6 +132,25 @@ internal fun CanonicalProviderDetailHost(
             viewModel.discogsNativeCatalog.loadNextArtistPage()
         }
     }
+    val amsStack by viewModel.appleMusicWebDetailNavigation.stack.collectAsStateWithLifecycle()
+    val amsEntry = amsStack.lastOrNull()?.takeIf { isAms && it.route.browseId == routeKey }
+    val amsPaging = applePage?.amsArtistPaging
+    val canContinueAms = amsEntry != null && appleReadAllowed &&
+        amsPaging?.hasMore == true && !searching
+    val amsShelfView = when (activeShelf?.title) {
+        "Álbuns" -> AppleMusicWebArtistShelf.STUDIO_ALBUMS
+        "Singles e EPs" -> AppleMusicWebArtistShelf.SINGLES_AND_EPS
+        "Álbuns essenciais" -> AppleMusicWebArtistShelf.ESSENTIAL_ALBUMS
+        "Álbuns ao vivo" -> AppleMusicWebArtistShelf.LIVE_ALBUMS
+        "Coletâneas" -> AppleMusicWebArtistShelf.COMPILATIONS
+        "Com participação em" -> AppleMusicWebArtistShelf.APPEARS_ON
+        else -> null
+    }
+    com.music.bitchord.ui.CanonicalGenreGranularPagingEffect(
+        tag=routeKey,enabled=canContinueAms && activeShelf == null,
+        hasMore=amsPaging?.hasMore == true,loading=amsEntry?.pagingLoading == true,
+        listState=listState,onLoadMore={ viewModel.appleMusicWebDetailNavigation.loadNextArtist(routeKey) },
+    )
     DetailScreen(
         page = page,
         currentSong = null,
@@ -183,8 +204,13 @@ internal fun CanonicalProviderDetailHost(
         sourceFeaturedRelease = applePage?.featuredRelease,
         onArtistReleaseSearch = if (appleArtist != null)
             viewModel::searchMoreAppleEditorialArtist else null,
-        onArtistReleaseLoadMore = if (canContinueApple)
-            viewModel::loadMoreAppleEditorialArtist else null,
+        onArtistReleaseLoadMore = when {
+            canContinueApple -> viewModel::loadMoreAppleEditorialArtist
+            canContinueAms && amsShelfView != null && amsEntry?.pagingLoading == false &&
+                amsPaging?.pending?.any { it.view == amsShelfView } == true ->
+                ({ viewModel.appleMusicWebDetailNavigation.loadNextArtist(routeKey,amsShelfView) })
+            else -> null
+        },
         onSectionItemLongPress = onSectionItemLongPress,
         onCanonicalFeaturedReleaseOpen = if (isDiscogs || isAms) null
             else viewModel::openCanonicalNativeDetail,
