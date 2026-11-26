@@ -64,6 +64,40 @@ class MusicBrainzCatalogSearchTest {
         }
     }
 
+    @Test fun weakReleaseGroupLandingProbesExactWorkAndKeepsOriginalOffsets() = runBlocking {
+        val wrong = "11111111-1111-4111-8111-111111111111"
+        val target = "22222222-2222-4222-8222-222222222222"
+        val other = "33333333-3333-4333-8333-333333333333"
+        val requests = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    requests += parameters
+                    assertEquals("release-group", path)
+                    val offset = parameters["offset"]
+                    return if (parameters["dismax"] == "false") {
+                        """{"count":2,"offset":0,"release-groups":[
+                            {"id":"$target","title":"Exact Work","primary-type":"Single","artist-credit":[{"name":"Artist"}]},
+                            {"id":"$other","title":"Exact Work","primary-type":"Other","artist-credit":[{"name":"Artist"}]}
+                        ]}"""
+                    } else """{"count":90,"offset":$offset,"release-groups":[
+                        {"id":"$wrong","title":"Wrong Work","primary-type":"Album","artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchReleaseGroups("Exact Work Artist", 50) as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(target, wrong), result.page.items.map { it.musicBrainzId })
+        assertEquals(1, result.page.consumedCount)
+        assertEquals(1, result.page.nextOffset)
+        assertEquals(2, requests.size)
+        assertEquals("releasegroup:\"exact work\" AND artist:\"artist\"", requests[1]["query"])
+        assertEquals("12", requests[1]["limit"])
+        source.searchReleaseGroups("Exact Work Artist", 50, offset = 1)
+        assertEquals(3, requests.size)
+    }
+
     @Test fun weakRecordingLandingUsesOneFieldedProbeAndPreservesOriginalCursor() = runBlocking {
         val wrong = "11111111-1111-4111-8111-111111111111"
         val target = "22222222-2222-4222-8222-222222222222"

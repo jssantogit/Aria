@@ -514,6 +514,56 @@ internal class ApplePublicSearchPager(
     }
 
     /**
+     * A capped/full initial album batch can hide a work behind loosely related
+     * products. Consume the existing albumTerm continuation before publication
+     * in this case, not a new unbounded query. A pure exact-artist listing is
+     * already productive and does not warrant this extra read.
+     */
+    private suspend fun probeFullAlbumLanding() {
+        if (entity != ItunesCatalogEntity.ALBUM || rows.size < 5 ||
+            (!capped && rows.size < pageSize) ||
+            nextAttribute != 0 || nextCompoundTerm != 0 ||
+            rows.values.all { applePublicSearchMatchRank(query, it) == 0 }
+        ) return
+        val term = applePublicSearchFold(query)
+        val exactTitleRows = rows.values.count {
+            applePublicSearchFold(it.title) == term ||
+                applePublicQualifiedAlbumMatch(query, it) ||
+                (applePublicSearchMatchRank(query, it) == 1 &&
+                    applePublicSearchFold(it.artistName) != term)
+        }
+        // A full set of strong work hits is not a weak landing. Do not try
+        // to infer which of several artists the user intended from a title.
+        if (exactTitleRows >= 3) return
+        val hint = creditHints.values.firstOrNull()
+        val work = hint?.work ?: query
+        when (val result = source.search(work, entity, country, compoundAttribute)) {
+            is ItunesCatalogResult.Failure -> {
+                capped = true
+            }
+            is ItunesCatalogResult.Success -> {
+                capped = capped || result.possiblyTruncated
+                merge(result)
+                if (hint == null) nextAttribute = 1
+                else {
+                    frozenCompoundProbes = compoundProbes
+                    if (compoundProbes.firstOrNull() == CompoundProbe(work, compoundAttribute))
+                        nextCompoundTerm = 1
+                }
+                val ranked = rows.values.sortedWith(compareBy<ItunesCatalogItem> {
+                    applePublicSearchMatchRank(query, it) ?: 99
+                }.thenBy { when {
+                    applePublicQualifiedAlbumMatch(query, it) -> 0
+                    applePublicRelatedYearEditionMatch(query, it) -> 2
+                    else -> 1
+                } })
+                rows.clear()
+                ranked.forEach { rows[it.id] = it }
+            }
+        }
+    }
+
+    /**
      * A populated page of prefix-only albums is not a successful work
      * landing. Reuse the existing bounded song-index discovery before the
      * first publication, not after the user has to scroll past weak matches.
@@ -561,6 +611,7 @@ internal class ApplePublicSearchPager(
                 capped = result.possiblyTruncated
                 merge(result)
                 improveWeakWorkLanding()
+                probeFullAlbumLanding()
                 recoverWeakAlbumLanding()
                 visibleCount = minOf(pageSize, rows.size)
                 // An uncapped fuzzy batch can also be entirely irrelevant.

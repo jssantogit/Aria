@@ -581,6 +581,33 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, calls.count { it == ("example work" to ItunesCatalogSearchAttribute.ALBUM_TERM) })
     }
 
+    @Test fun cappedMixedAlbumLandingConsumesTitleFieldBeforePublishingButKeepsArtistListingFast() = runBlocking {
+        val weak = (1L..25L).map { album(it, title = "Example Work Variant $it") }
+        val exact = album(100, title = "Example Work")
+        val calls = mutableListOf<ItunesCatalogSearchAttribute?>()
+        val source = object : ApplePublicSearchSource {
+            override suspend fun search(query: String, entity: ItunesCatalogEntity,
+                country: String, attribute: ItunesCatalogSearchAttribute?): ItunesCatalogResult {
+                calls += attribute
+                return when (attribute) {
+                    null -> ItunesCatalogResult.Success(weak, true)
+                    ItunesCatalogSearchAttribute.ALBUM_TERM -> ItunesCatalogResult.Success(listOf(exact))
+                    else -> ItunesCatalogResult.Success(emptyList())
+                }
+            }
+        }
+        val pager = ApplePublicSearchPager("Example Work", ItunesCatalogEntity.ALBUM, "br", source = source)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(100L, initial.visible.first().id)
+        assertEquals(listOf(null, ItunesCatalogSearchAttribute.ALBUM_TERM), calls)
+        while (pager.snapshot().hasMore) pager.loadMore()
+        assertEquals(1, calls.count { it == ItunesCatalogSearchAttribute.ALBUM_TERM })
+        assertEquals(initial.visible, pager.snapshot().visible.take(initial.visible.size))
+        calls.clear()
+        ApplePublicSearchPager("Artist", ItunesCatalogEntity.ALBUM, "br", source = source).start()
+        assertEquals(listOf(null), calls)
+    }
+
     @Test fun weakAlbumLandingRecoversVerifiedCollectionBeforePublishingWithoutRepeatReads() = runBlocking {
         val query = "Example Work"
         val weak = (1L..10L).map { album(it, title = "Example Work Variant $it") }

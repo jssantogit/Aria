@@ -271,9 +271,36 @@ internal class MusicBrainzCatalogSearch(
         query: String,
         limit: Int = 25,
         offset: Int = 0,
-    ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> =
-        searchReleaseGroupsInternal(query, limit, offset)
+    ): MusicBrainzCatalogSearchResult<MusicBrainzReleaseGroupHit> {
+        val initial = searchReleaseGroupsInternal(query, limit, offset)
             .rankPublicPage(query, MusicBrainzReleaseGroupHit::title, MusicBrainzReleaseGroupHit::artistDisplay)
+        if (capability != ProviderCapability.CATALOG_SEARCH ||
+            initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
+            limit < MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
+            query.any(Char::isISOControl) ||
+            initial.page.items.any {
+                isCuratedMusicBrainzReleaseGroup(it) &&
+                    musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1
+            }
+        ) return initial
+        val fielded = publicWorkProbeQuery("releasegroup", query,
+            initial.page.items.map { it.artistDisplay })
+        val probe = searchReleaseGroupsInternal(fielded, 12, 0, fieldedQuery = true)
+            as? MusicBrainzCatalogSearchResult.Success ?: return initial
+        val original = initial.page.items.associateBy { it.musicBrainzId }
+        val recovered = probe.page.items.filter {
+            isCuratedMusicBrainzReleaseGroup(it) &&
+                musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1 &&
+                (original[it.musicBrainzId]?.let { old ->
+                    old == it && old.artistCreditMbids == it.artistCreditMbids
+                } ?: true)
+        }
+        if (recovered.isEmpty()) return initial
+        return initial.copy(page = initial.page.copy(items =
+            (initial.page.items + recovered).distinctBy { it.musicBrainzId }
+                .sortedBy { musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) },
+        ))
+    }
 
     suspend fun searchReleaseGroupsForArtistMbid(
         artistMbid: String,
@@ -507,28 +534,13 @@ internal class MusicBrainzCatalogSearch(
             }
         }
 
-    suspend fun searchRecordings(
-        query: String,
-        limit: Int = 25,
-        offset: Int = 0,
-    ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> {
-        val initial = searchRecordingsInternal(query, limit, offset)
-            .rankPublicPage(query, MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
-        if (initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
-            limit < MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
-            query.any(Char::isISOControl) ||
-            initial.page.items.any {
-                isCuratedMusicBrainzRecording(it) &&
-                    musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1
-            }
-        ) return initial
-
-        // One bounded independent fielded probe for a weak public landing.
-        // Source credits may nominate a compound split, but may never supply
-        // an artist ID or override the full query's textual relevance.
+    /** Only fixed internal fields and quoted user/source text enter the Lucene query. */
+    private fun publicWorkProbeQuery(
+        field: String, query: String, credits: List<String?>, suffix: String = "",
+    ): String {
         val term = musicBrainzPublicSearchKey(query)
-        val hints = initial.page.items.mapNotNull { item ->
-            val credit = musicBrainzPublicSearchKey(item.artistDisplay)
+        val hints = credits.mapNotNull { value ->
+            val credit = musicBrainzPublicSearchKey(value)
             if (credit.isBlank()) return@mapNotNull null
             val prefix = listOf("$credit - ", "$credit ").firstOrNull(term::startsWith)
             val suffix = listOf(" - $credit", " $credit").firstOrNull(term::endsWith)
@@ -542,9 +554,33 @@ internal class MusicBrainzCatalogSearch(
         val hint = hints.singleOrNull()
         fun quote(value: String): String =
             "\"" + value.trim().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-        val fielded = if (hint != null)
-            "recording:${quote(hint.first)} AND artist:${quote(hint.second)} AND status:official"
-        else "recording:${quote(query)} AND status:official"
+        return if (hint != null)
+            "$field:${quote(hint.first)} AND artist:${quote(hint.second)}$suffix"
+        else "$field:${quote(query)}$suffix"
+    }
+
+    suspend fun searchRecordings(
+        query: String,
+        limit: Int = 25,
+        offset: Int = 0,
+    ): MusicBrainzCatalogSearchResult<MusicBrainzRecordingHit> {
+        val initial = searchRecordingsInternal(query, limit, offset)
+            .rankPublicPage(query, MusicBrainzRecordingHit::title, MusicBrainzRecordingHit::artistDisplay)
+        if (capability != ProviderCapability.CATALOG_SEARCH ||
+            initial !is MusicBrainzCatalogSearchResult.Success || offset != 0 ||
+            limit < MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT || query.trim().length !in 1..100 ||
+            query.any(Char::isISOControl) ||
+            initial.page.items.any {
+                isCuratedMusicBrainzRecording(it) &&
+                    musicBrainzPublicSearchRank(query, it.title, it.artistDisplay) <= 1
+            }
+        ) return initial
+
+        // One bounded independent fielded probe for a weak public landing.
+        // Source credits may nominate a compound split, but may never supply
+        // an artist ID or override the full query's textual relevance.
+        val fielded = publicWorkProbeQuery("recording", query,
+            initial.page.items.map { it.artistDisplay }, " AND status:official")
         val probe = searchRecordingsInternal(fielded, 12, 0, fieldedQuery = true)
             as? MusicBrainzCatalogSearchResult.Success ?: return initial
         val original = initial.page.items.associateBy { it.musicBrainzId }
