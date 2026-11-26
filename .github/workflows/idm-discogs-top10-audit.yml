@@ -1,4 +1,4 @@
-name: 'IDM #224 · Isolated Discogs Top 10 audit'
+name: 'IDM #224 · Isolated Discogs search candidate'
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   discogs-top10:
-    name: Discogs · frozen 30-query search audit
+    name: Discogs · Master grouping and frozen 30-query audit
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -30,13 +30,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Verify frozen production baseline and credential availability
+      - name: Verify isolated candidate scope and credential availability
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor 460930789fa029a1a3649b9fd79adc00c71a2278 HEAD
-          unexpected=$(git diff --name-only 460930789fa029a1a3649b9fd79adc00c71a2278 HEAD | grep -vFx -e '.github/workflows/idm-discogs-top10-audit.yml' -e 'app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt' || true)
+          unexpected=$(git diff --name-only 460930789fa029a1a3649b9fd79adc00c71a2278 HEAD | grep -vFx -e 'app/src/main/java/com/music/bitchord/data/catalog/metadata/discogs/DiscogsNativeReleaseSearch.kt' -e 'sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt' -e 'app/src/main/java/com/music/bitchord/ui/DiscogsNativeCatalogSession.kt' -e 'app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt' -e 'sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt' -e 'app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt' -e '.github/workflows/idm-discogs-top10-audit.yml' || true)
           test -z "$unexpected"
           test -n "$IDM_CATALOG_DISCOGS_TOKEN" || { echo 'Discogs CI credential unavailable'; exit 1; }
           echo "Exact tested checkout: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
@@ -51,6 +51,14 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           mkdir -p "$IDM_CATALOG_METRICS_DIR"
+      - name: Verify deterministic Discogs search contracts
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.DiscogsNativeReleaseSearchTest'
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :sharedUi:jvmTest \
+            --tests 'com.music.bitchord.ui.screens.DiscogsSearchRelevanceTest'
       - name: Observe fixed live search matrix (#230)
         run: |
           ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
@@ -68,6 +76,8 @@ jobs:
                   "labelled_target_rows", "labelled_non_target_rows", "unjudged_rows",
                   "local_category_route_verified", "native_search_supported",
                   "release_track_path_verified",
+                  "discogs_index_relevant", "discogs_index_master_known", "discogs_index_collapsed",
+                  "discogs_master_hydrated", "discogs_master_mismatch",
                               "homonym_candidates", "homonym_detail_reads", "homonym_corroborated",
                   "apple_qualified_title_top_five", "apple_qualified_anchor_top_five",
                   "apple_continuation_gestures", "apple_continuation_target_recovered",
@@ -111,6 +121,10 @@ jobs:
                           total["remote_supported"] += 1
                           total["remote_top_five"] += row["top_five_target"]
                       print("IDM_SEARCH_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      if row["discogs_master_mismatch"]:
+                          raise SystemExit("Discogs search Master hint contradicts hydrated Release")
+                      if not 0 <= row["discogs_index_collapsed"] <= row["discogs_index_master_known"] <= row["discogs_index_relevant"]:
+                          raise SystemExit("Discogs grouping counts invalid")
                       out.write(f"| {provider} | {i:02d} | {row['target_proven']} | {row['top_five_target']} | "
                                 f"{row['labelled_target_rows']} | {row['labelled_non_target_rows']} | "
                                 f"{row['unjudged_rows']} | {row['status']} |\n")

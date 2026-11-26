@@ -105,6 +105,27 @@ class DiscogsSearchRelevanceTest {
             discogsSearchReleaseDisplay("Album"))
     }
 
+    @Test fun releaseProjectionGroupsOnlyExplicitMasterIdentityAcrossPages() {
+        val first = DiscogsNativeReleaseSearchRow(20, "Artist - Album", 900)
+        val edition = DiscogsNativeReleaseSearchRow(10, "Artist - Album", 900)
+        val independent = DiscogsNativeReleaseSearchRow(30, "Artist - Album", 901)
+        val unknown = DiscogsNativeReleaseSearchRow(40, "Artist - Album")
+        val zero = DiscogsNativeReleaseSearchRow(50, "Artist - Album", 0)
+        val previous = discogsSearchDistinctReleases("album", listOf(first, edition))
+        assertEquals(listOf(first), previous)
+        val merged = discogsSearchDistinctReleases("album",
+            previous + listOf(edition, independent, unknown, zero, unknown))
+        assertEquals(listOf(first, independent, unknown, zero), merged)
+        assertEquals("discogs:release:20", merged.first().browseId)
+        assertEquals(merged.map { DiscogsUnifiedSearchEntry.Release(it) },
+            discogsUnifiedSearchEntries("album", emptyList(),
+                listOf(first, edition, independent, unknown, zero)))
+        val duplicatePage = discogsSearchDistinctReleases("album", previous + edition)
+        assertTrue(discogsSearchNeedsNextRelevantPage(duplicatePage.size - previous.size, 3))
+        val unrelated = DiscogsNativeReleaseSearchRow(60, "Other - Other", 900)
+        assertEquals(listOf(first), discogsSearchDistinctReleases("album", listOf(unrelated, first)))
+    }
+
     @Test fun initialServerPagesFullOfJunkAreSkippedWithinExistingHardCap() {
         assertTrue(discogsSearchNeedsNextRelevantPage(0, 2))
         assertTrue(discogsSearchNeedsNextRelevantPage(0, 3))

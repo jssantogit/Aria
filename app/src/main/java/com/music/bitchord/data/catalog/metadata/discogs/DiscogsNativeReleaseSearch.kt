@@ -22,6 +22,8 @@ import kotlinx.serialization.json.longOrNull
 internal data class DiscogsNativeReleaseSearchHit(
     val releaseId: Long,
     val title: String,
+    /** Source index hint for grouping editions in Search only. */
+    val masterId: Long? = null,
 ) {
     val browseId: String get() = "discogs:release:$releaseId"
 }
@@ -73,9 +75,14 @@ internal object DiscogsNativeReleaseSearchParsing {
                 ?.trim()?.takeIf {
                     it.length in 1..240 && it.none(Character::isISOControl)
                 } ?: return@mapNotNull null
-            DiscogsNativeReleaseSearchHit(id, title)
+            val masterId = (item["master_id"] as? JsonPrimitive)?.longOrNull
+                ?.takeIf { it in 1..999_999_999_999L }
+            DiscogsNativeReleaseSearchHit(id, title, masterId)
         }.groupBy { it.releaseId }.values.mapNotNull { sameId ->
-            sameId.first().takeIf { hit -> sameId.all { it.title == hit.title } }
+            val first = sameId.first()
+            if (sameId.any { it.title != first.title }) return@mapNotNull null
+            // Conflicting index hints cannot establish a Master grouping.
+            first.copy(masterId = sameId.mapNotNull { it.masterId }.distinct().singleOrNull())
         }
         return DiscogsNativeReleaseSearchPage(
             releases = releases,

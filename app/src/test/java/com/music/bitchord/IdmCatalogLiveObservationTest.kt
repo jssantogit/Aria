@@ -3142,6 +3142,11 @@ class IdmCatalogLiveObservationTest {
                 var failed = false
                 var categoryRoute = false
                 var releasePath = false
+                var discogsIndexRelevant = 0
+                var discogsIndexMasterKnown = 0
+                var discogsIndexCollapsed = 0
+                var discogsMasterHydrated = 0
+                var discogsMasterMismatch = 0
                 var homonymCandidates = 0
                 var homonymDetailReads = 0
                 var homonymCorroborated = false
@@ -3516,22 +3521,31 @@ class IdmCatalogLiveObservationTest {
                                 }
                                 else -> {
                                     var page = 1
-                                    var accepted = emptyList<DiscogsNativeReleaseSearchHit>()
+                                    var accepted = emptyList<com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow>()
+                                    val rawRelevant = linkedMapOf<Long, DiscogsNativeReleaseSearchHit>()
                                     while (page in 1..3) {
                                         val answer = discogsReleases.search(case.query, page)
                                             as? DiscogsNativeReleaseSearchResult.Success
                                         if (answer == null) { failed = true; break }
-                                        accepted = answer.page.releases.filter {
+                                        answer.page.releases.filter {
                                             com.music.bitchord.ui.screens.discogsSearchReleaseRank(case.query, it.title) != null
-                                        }.sortedWith(compareBy<DiscogsNativeReleaseSearchHit> {
-                                            com.music.bitchord.ui.screens.discogsSearchReleaseRank(case.query, it.title)
-                                                ?: Int.MAX_VALUE
-                                        }.thenBy { it.releaseId })
+                                        }.forEach { rawRelevant.putIfAbsent(it.releaseId, it) }
+                                        val previous = accepted
+                                        accepted = com.music.bitchord.ui.screens.discogsSearchDistinctReleases(
+                                            case.query, previous + answer.page.releases.map {
+                                                com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow(
+                                                    it.releaseId, it.title, it.masterId,
+                                                )
+                                            },
+                                        )
                                         if (!com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage(
-                                            accepted.size, answer.page.nextPage,
+                                            (accepted.size - previous.size).coerceAtLeast(0), answer.page.nextPage,
                                         )) break
                                         page = answer.page.nextPage ?: break
                                     }
+                                    discogsIndexRelevant = rawRelevant.size
+                                    discogsIndexMasterKnown = rawRelevant.values.count { it.masterId != null }
+                                    discogsIndexCollapsed = rawRelevant.size - accepted.size
                                     rows = accepted.map {
                                         val display = com.music.bitchord.ui.screens.discogsSearchReleaseDisplay(it.title)
                                         SearchParityRow(it.browseId, display.title,
@@ -3549,6 +3563,10 @@ class IdmCatalogLiveObservationTest {
                                             response is DiscogsLookupResult.Disabled) { failed = true; break }
                                         val record = (response as? DiscogsLookupResult.Found)?.record ?: continue
                                         assertTrue(record.link.id == id)
+                                        accepted.firstOrNull { it.releaseId == id }?.masterId?.let { hint ->
+                                            discogsMasterHydrated++
+                                            if (record.masterId != hint) discogsMasterMismatch++
+                                        }
                                         val name = record.artistNames.singleOrNull()?.let {
                                             com.music.bitchord.ui.screens.discogsArtistDisplayName(it)
                                         }
@@ -3651,6 +3669,11 @@ class IdmCatalogLiveObservationTest {
                         "native_search_supported" to if (supported) 1 else 0,
                         "release_track_path_verified" to if (releasePath) 1 else 0,
                         "source_interruption" to if (failed) 1 else 0,
+                        "discogs_index_relevant" to discogsIndexRelevant,
+                        "discogs_index_master_known" to discogsIndexMasterKnown,
+                        "discogs_index_collapsed" to discogsIndexCollapsed,
+                        "discogs_master_hydrated" to discogsMasterHydrated,
+                        "discogs_master_mismatch" to discogsMasterMismatch,
                         "homonym_candidates" to homonymCandidates,
                         "homonym_detail_reads" to homonymDetailReads,
                         "homonym_corroborated" to if (homonymCorroborated) 1 else 0,

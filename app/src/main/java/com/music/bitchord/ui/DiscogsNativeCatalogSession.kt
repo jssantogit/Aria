@@ -16,7 +16,7 @@ import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.discogsSearchArtistRank
 import com.music.bitchord.ui.screens.discogsSearchDistinctArtists
 import com.music.bitchord.ui.screens.discogsArtistDisplayName
-import com.music.bitchord.ui.screens.discogsSearchReleaseRank
+import com.music.bitchord.ui.screens.discogsSearchDistinctReleases
 import com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage
 import com.music.bitchord.ui.screens.NativeMetadataTrack
 import kotlinx.coroutines.CancellationException
@@ -759,29 +759,25 @@ internal class DiscogsNativeCatalogSession(
                 if (query != subject || !authorization.isCurrent()) return@launch
                 when (result) {
                     is DiscogsNativeReleaseSearchResult.Success -> {
-                        val rows = result.page.releases.asSequence()
-                            .map { DiscogsNativeReleaseSearchRow(it.releaseId, it.title) }
-                            .filter { discogsSearchReleaseRank(subject, it.title) != null }
-                            .toList()
+                        val rows = result.page.releases.map {
+                            DiscogsNativeReleaseSearchRow(it.releaseId, it.title, it.masterId)
+                        }
                         val previous =
                             (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
+                        val merged = discogsSearchDistinctReleases(subject, previous + rows)
                         releaseSearchPage = currentPage
                         _releaseSearchHasMore.value = result.page.nextPage != null
-                        val known = previous.map { it.releaseId }.toSet()
                         if (discogsSearchNeedsNextRelevantPage(
-                                rows.count { it.releaseId !in known }, result.page.nextPage,
+                                (merged.size - previous.size).coerceAtLeast(0), result.page.nextPage,
                             )
                         ) {
+                            // Publish a better-ranked representative even when this
+                            // page contributes no new Master/Release identity.
+                            if (merged != previous) _releasesSearch.value = UiState.Success(merged)
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
-                        _releasesSearch.value = UiState.Success(
-                            (previous + rows).distinctBy { it.releaseId }
-                                .sortedWith(compareBy<DiscogsNativeReleaseSearchRow> {
-                                    discogsSearchReleaseRank(subject, it.title)
-                                        ?: Int.MAX_VALUE
-                                }.thenBy { it.releaseId }),
-                        )
+                        _releasesSearch.value = UiState.Success(merged)
                     }
                     DiscogsNativeReleaseSearchResult.AuthenticationRequired ->
                         _releasesSearch.value = UiState.Error("discogs_token_required")
