@@ -1,5 +1,6 @@
 package com.music.bitchord.data.providers
 
+import com.music.bitchord.BuildConfig
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
@@ -50,7 +51,17 @@ internal data class OpenSubsonicProviderAccountState(
  * prior to PR #216 reconciliation) remain [ProviderReadiness.NOT_IMPLEMENTED]
  * and never claim READY. Retired providers (JioSaavn, YouTube) are excluded.
  */
+/** The smoke APK has its own package and preferences. Explicit provider
+ * choices are still required; no production/release build can pass this gate. */
+internal fun amsReadinessForBuild(debug: Boolean, optIn: Boolean, applicationId: String): ProviderReadiness =
+    if (debug && optIn && applicationId == "com.dev.bitchord.ams.smoke") ProviderReadiness.READY
+    else ProviderReadiness.BLOCKED
+
 internal object ProviderCapabilityRegistry {
+    private fun amsReadiness() = amsReadinessForBuild(
+        BuildConfig.DEBUG, BuildConfig.AMS_PHYSICAL_SMOKE, BuildConfig.APPLICATION_ID,
+    )
+
     fun inventory(
         sources: List<SourceConfig> = emptyList(),
         soulseekConfigured: Boolean = false,
@@ -123,9 +134,9 @@ internal object ProviderCapabilityRegistry {
             capability = ProviderCapability.CHART_MOST_PLAYED,
             tab = ProviderSettingsTab.STATISTICS_AND_CHARTS,
             displayName = "Apple Music Web (Rankings)",
-            readiness = ProviderReadiness.BLOCKED,
+            readiness = amsReadiness(),
             supportsReordering = true,
-            notes = "Native most-played charts; pending independent live and canonical consumer validation",
+            notes = "Native most-played charts; isolated debug smoke only until visual approval",
         ))
         // Separate native Web adapter; policy owns ordering and explicit opt-in.
         // Until the canonical consumer is wired, readiness is deliberately BLOCKED.
@@ -139,9 +150,9 @@ internal object ProviderCapabilityRegistry {
                 tab = ProviderSettingsTab.CATALOG,
                 displayName = if (capability == ProviderCapability.CATALOG_SEARCH)
                     "Apple Music Web (Busca)" else "Apple Music Web (Discografia)",
-                readiness = ProviderReadiness.BLOCKED,
+                readiness = amsReadiness(),
                 supportsReordering = true,
-                notes = "Kotlin-native Apple Web; blocked pending generic catalog consumer validation",
+                notes = "Kotlin-native Apple Web; isolated debug smoke only until visual approval",
             ))
         }
 

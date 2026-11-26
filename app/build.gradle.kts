@@ -56,6 +56,9 @@ val listenTogetherServer: String = (
 // See the root build.gradle.kts: one version for the phone and its watch app.
 val betaSuffix = rootProject.extra["bitchordBetaSuffix"] as String
 
+// Explicit, isolated dev-only physical smoke build; never a release opt-in.
+val amsPhysicalSmoke = providers.gradleProperty("aria.amsPhysicalSmoke").orNull == "true"
+
 android {
     namespace = "com.music.bitchord"
     // InnerTubeX's AAR requires compiling against 37; targetSdk (runtime behaviour) stays 36.
@@ -71,6 +74,7 @@ android {
         versionName = rootProject.extra["bitchordVersionName"] as String
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "AMS_PHYSICAL_SMOKE", "false")
 
         // Last.fm credentials are supplied locally and never committed.
         buildConfigField("String", "LASTFM_API_KEY", "\"${lastfmApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
@@ -115,8 +119,9 @@ android {
     productFlavors {
         create("dev") {
             dimension = "env"
-            applicationId = "com.dev.bitchord"
-            resValue("string", "app_name", "BitChord Dev")
+            applicationId = if (amsPhysicalSmoke) "com.dev.bitchord.ams.smoke" else "com.dev.bitchord"
+            resValue("string", "app_name", if (amsPhysicalSmoke) "Aria AMS Smoke" else "BitChord Dev")
+            buildConfigField("boolean", "AMS_PHYSICAL_SMOKE", amsPhysicalSmoke.toString())
         }
         create("prod") {
             dimension = "env"
