@@ -80,12 +80,13 @@ jobs:
           from pathlib import Path
           p = Path("app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt")
           s = p.read_text()
-          old = '''if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1" &&
-                    (provider == mb || provider == apple)
-                ) {'''
-          new = '''if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1") {'''
-          assert s.count(old) == 1
-          p.write_text(s.replace(old, new))
+          # YAML strips the enclosing run-block indentation. Match the
+          # Kotlin condition itself, independently of either indentation.
+          import re
+          pattern = r'if \(System\.getenv\("IDM_SEARCH_TOP10_REVIEW"\) == "1" &&\s*\(provider == mb \|\| provider == apple\)\s*\) \{'
+          revised, count = re.subn(pattern, 'if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1") {', s)
+          assert count == 1, f"Expected exactly one review guard, got {count}"
+          p.write_text(revised)
           PY
           test "$(git diff --name-only)" = "app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt"
           git diff --check
