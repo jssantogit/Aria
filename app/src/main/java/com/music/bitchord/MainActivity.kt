@@ -4317,6 +4317,7 @@ private fun BitChordApp(
                             onSearchingChange = { detailSearching = it },
                             songSort = songSort,
                             viewModel = viewModel,
+                            onMetadataTrackHold = { track -> amsShelfHeld.holdTrack(track, amsHoldScope) },
                             onSectionItemLongPress = { item ->
                                 val selected = item.browseId
                                 if (selected?.startsWith("itunes:") == true ||
@@ -7341,26 +7342,31 @@ private fun BitChordApp(
                 held = amsShelfHeld,
                 allowed = { target ->
                     val scope = target.scope
+                    val card = target.card
+                    val track = target.track
                     if (scope != amsHoldScope) false
                     else if (scope.detail != null) {
                         val page = viewModel.appleMusicWebDetailNavigation.stack.value.lastOrNull()
                             ?.visible()?.takeIf { it.page.browseId == scope.detail }
                         pageRouteKey == scope.detail && page != null &&
-                            com.music.bitchord.ui.appleMusicWebRelatedTarget(page, target.card.browseId) == target.card
-                    } else if (pageRouteKey == "$TAB_KEY$TAB_HOME" && scope.tab == TAB_HOME) {
-                        (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { target.card in it.items } &&
-                            viewModel.appleMusicWebEditorialUi.containsCard(null, target.card)
-                    } else if (pageRouteKey == "$TAB_KEY$TAB_EXPLORE" && scope.tab == TAB_EXPLORE && scope.genre != null) {
-                        (canonicalGenreState as? UiState.Success)?.data.orEmpty().any { target.card in it.items } &&
-                            viewModel.appleMusicWebEditorialUi.containsCard(scope.genre, target.card)
+                            (if (track != null) track in page.metadataTracks
+                            else card != null && com.music.bitchord.ui.appleMusicWebRelatedTarget(page, card.browseId) == card)
+                    } else if (card != null && pageRouteKey == "$TAB_KEY$TAB_HOME" && scope.tab == TAB_HOME) {
+                        (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { card in it.items } &&
+                            viewModel.appleMusicWebEditorialUi.containsCard(null, card)
+                    } else if (card != null && pageRouteKey == "$TAB_KEY$TAB_EXPLORE" && scope.tab == TAB_EXPLORE && scope.genre != null) {
+                        (canonicalGenreState as? UiState.Success)?.data.orEmpty().any { card in it.items } &&
+                            viewModel.appleMusicWebEditorialUi.containsCard(scope.genre, card)
                     } else false
                 },
                 onOpen = { target ->
-                    if (target.scope.detail != null) {
-                        if (viewModel.appleMusicWebDetailNavigation.openRelated(target.card.browseId))
-                            detailActiveShelf = null
-                    } else if (viewModel.openAppleMusicWebDetail(target.card)) {
-                        appleShelfReturnTab = selectedTab
+                    target.card?.let { card ->
+                        if (target.scope.detail != null) {
+                            if (viewModel.appleMusicWebDetailNavigation.openRelated(card.browseId))
+                                detailActiveShelf = null
+                        } else if (viewModel.openAppleMusicWebDetail(card)) {
+                            appleShelfReturnTab = selectedTab
+                        }
                     }
                 },
                 hazeState = hazeState,
