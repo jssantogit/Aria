@@ -38,11 +38,35 @@ internal fun rankMusicBrainzInitialAlbumRows(
                 musicBrainzPublicSearchRank(query, hit.title, hit.artistDisplay))
         }
     }
+    // The same title can identify dozens of unrelated works. Among equally
+    // strong title matches, prefer positive catalogue evidence: distinct
+    // linked release MBIDs, not invented popularity or a title-based merge.
+    // Union group response evidence with official curated editions already
+    // fetched for this exact group; never issue another lookup.
+    val linkedByGroup = editions.filter { it.status.equals("Official", ignoreCase = true) }
+        .mapNotNull { edition -> edition.releaseGroupMbid?.let { it to edition.musicBrainzId } }
+        .groupBy({ it.first }, { it.second })
+    val groupSupport = groups.associate { group ->
+        group.musicBrainzId to (group.searchLinkedReleaseMbids +
+            linkedByGroup[group.musicBrainzId].orEmpty()).size
+    }
+    val editionGroup = editions.associate { it.musicBrainzId to it.releaseGroupMbid }
+    fun support(row: CanonicalCatalogSearchRow): Int {
+        val rank = ranks[row.kind to row.musicBrainzId] ?: 3
+        if (rank > 1) return 0
+        val groupId = when (row.kind) {
+            CanonicalSearchKind.RELEASE_GROUP -> row.musicBrainzId
+            CanonicalSearchKind.RELEASE -> editionGroup[row.musicBrainzId]
+            else -> null
+        } ?: return 0
+        return (groupSupport[groupId] ?: linkedByGroup[groupId].orEmpty().distinct().size)
+            .coerceAtMost(20)
+    }
     fun isAlbum(row: CanonicalCatalogSearchRow) =
         row.kind == CanonicalSearchKind.RELEASE_GROUP ||
             row.kind == CanonicalSearchKind.RELEASE
-    val ranked = rows.filter(::isAlbum).sortedBy {
+    val ranked = rows.filter(::isAlbum).sortedWith(compareBy<CanonicalCatalogSearchRow> {
         ranks[it.kind to it.musicBrainzId] ?: 3
-    }.iterator()
+    }.thenByDescending(::support)).iterator()
     return rows.map { if (isAlbum(it)) ranked.next() else it }
 }

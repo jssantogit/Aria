@@ -618,6 +618,31 @@ class ApplePublicSearchPagerTest {
         assertEquals(1, calls.count { it == ("example work" to ItunesCatalogSearchAttribute.ALBUM_TERM) })
     }
 
+    @Test fun albumLandingRanksExactWorkBeforeArtistNamesakeAndUsesNativeEditionSupport() = runBlocking {
+        val query = "Example Work"
+        val artistOnly = (1L..8L).map {
+            album(it, title = "Unrelated Work $it").copy(artistName = query, artistId = 88)
+        }
+        val namesake = album(20, title = query).copy(artistId = 99)
+        val exact = album(30, title = query)
+        val remaster = album(31, title = "$query (Remastered)")
+        val unrelated = album(32, title = "$query (Tribute)")
+        val foreign = remaster.copy(id = 33, storefront = "us")
+        val otherIdentity = remaster.copy(id = 34, artistId = 100)
+        val fake = Fake(ItunesCatalogResult.Success(artistOnly +
+            listOf(namesake, exact, remaster, unrelated, foreign, otherIdentity)))
+            .apply { expectedQuery = query }
+        val pager = ApplePublicSearchPager(query, ItunesCatalogEntity.ALBUM, "br", source = fake)
+        val initial = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(30L, 20L, 31L, 34L), initial.visible.take(4).map { it.id })
+        assertEquals(1, fake.calls.size)
+        assertEquals(0, pager.firstDiscoveredRank { it.id == 33L })
+        assertTrue(initial.visible.any { it.id == 32L })
+        assertTrue(initial.visible.any { it.id == 1L })
+        pager.loadMore()
+        assertEquals(initial.visible, pager.snapshot().visible)
+    }
+
     @Test fun cappedMixedAlbumLandingConsumesTitleFieldBeforePublishingButKeepsArtistListingFast() = runBlocking {
         val weak = (1L..25L).map { album(it, title = "Example Work Variant $it") }
         val exact = album(100, title = "Example Work")

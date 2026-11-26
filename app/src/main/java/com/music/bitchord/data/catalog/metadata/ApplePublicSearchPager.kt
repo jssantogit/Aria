@@ -629,6 +629,51 @@ internal class ApplePublicSearchPager(
         }
     }
 
+    /**
+     * Album-tab relevance is not artist-tab relevance. If actual work titles
+     * match, exact title/credit or literal work evidence outranks albums
+     * merely owned by an artist with the same name as the typed query.
+     * Within tied exact titles, several independently returned editions
+     * sharing native artist ID, credit and a narrow work key are a weak
+     * catalogue-evidence tie-breaker, not a popularity score or crosswalk.
+     * Run once before publication; do not rearrange a user's scrolled pages.
+     */
+    private fun rankInitialAlbumLanding() {
+        if (entity != ItunesCatalogEntity.ALBUM || rows.size < 2) return
+        val term = applePublicSearchFold(query)
+        fun exactWork(row: ItunesCatalogItem): Boolean {
+            val title = applePublicSearchFold(row.title)
+            val credit = applePublicSearchFold(row.artistName)
+            return title == term || (credit.isNotBlank() &&
+                term in listOf("$credit $title", "$title $credit",
+                    "$credit - $title", "$title - $credit"))
+        }
+        if (rows.values.none(::exactWork)) return
+        data class Family(val artistId: Long, val credit: String, val work: String)
+        fun family(row: ItunesCatalogItem): Family? {
+            val id = row.artistId?.takeIf { it > 0L } ?: return null
+            val credit = applePublicSearchFold(row.artistName)
+            val work = applePublicAlbumWorkKey(row.title)
+            return if (credit.isBlank() || work.isBlank()) null else Family(id, credit, work)
+        }
+        val support = rows.values.filter {
+            exactWork(it) || applePublicQualifiedAlbumMatch(query, it)
+        }.mapNotNull(::family).groupingBy { it }.eachCount()
+        val ranked = rows.values.sortedWith(compareBy<ItunesCatalogItem> {
+            when {
+                exactWork(it) -> 0
+                applePublicQualifiedAlbumMatch(query, it) -> 1
+                else -> 2 + (applePublicSearchMatchRank(query, it) ?: 99)
+            }
+        }.thenByDescending {
+            if (exactWork(it) || applePublicQualifiedAlbumMatch(query, it))
+                support[family(it)] ?: 0
+            else 0
+        })
+        rows.clear()
+        ranked.forEach { rows[it.id] = it }
+    }
+
     suspend fun start(): ApplePublicSearchPageLoad {
         if (initialized) return ApplePublicSearchPageLoad.Success(snapshot())
         if (query.trim().isEmpty() || query.length > 120 ||
@@ -644,6 +689,7 @@ internal class ApplePublicSearchPager(
                 improveWeakWorkLanding()
                 probeFullAlbumLanding()
                 recoverWeakAlbumLanding()
+                rankInitialAlbumLanding()
                 visibleCount = minOf(pageSize, rows.size)
                 // An uncapped fuzzy batch can also be entirely irrelevant.
                 // Spend the same bounded official attribute probes only for

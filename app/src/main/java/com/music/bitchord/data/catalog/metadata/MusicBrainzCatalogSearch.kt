@@ -66,6 +66,9 @@ internal data class MusicBrainzReleaseGroupHit(
     @Ignore var artistCreditMbids: List<String>? = null
     /** Search-only source tags, not persisted genre assignments. */
     @Ignore var editorialGenreTags: List<String> = emptyList()
+    /** Positive linked-release evidence carried by this search response.
+     * Never persisted or treated as a listener/popularity count. */
+    @Ignore var searchLinkedReleaseMbids: Set<String> = emptySet()
 }
 
 internal data class MusicBrainzReleaseHit(
@@ -455,6 +458,9 @@ internal class MusicBrainzCatalogSearch(
                             ?.joinToString("|"),
                     ).also {
                         it.artistCreditMbids = group.artistCredit.completeArtistMbids()
+                        it.searchLinkedReleaseMbids = group.releases.orEmpty()
+                            .mapNotNull { release -> release.id.validSearchMbidOrNull() }
+                            .toSet()
                         it.editorialGenreTags = group.tags.orEmpty().asSequence()
                             .filter { tag -> (tag.count ?: 0) > 0 }
                             .mapNotNull { tag -> tag.name.nonEmpty()?.lowercase(Locale.ROOT) }
@@ -822,7 +828,11 @@ private data class SearchReleaseGroupEntry(
     @SerialName("first-release-date") val firstReleaseDate: String? = null,
     @SerialName("artist-credit") val artistCredit: List<SearchArtistCredit>? = null,
     val tags: List<SearchReleaseGroupTag>? = null,
+    val releases: List<SearchReleaseGroupReleaseReference>? = null,
 )
+
+@Serializable
+private data class SearchReleaseGroupReleaseReference(val id: String? = null)
 
 @Serializable
 private data class SearchReleaseGroupReference(

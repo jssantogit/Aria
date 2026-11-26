@@ -64,6 +64,25 @@ class MusicBrainzCatalogSearchTest {
         }
     }
 
+    @Test fun releaseGroupSearchRetainsDistinctValidLinkedEditionIds() = runBlocking {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val linked = "22222222-2222-4222-8222-222222222222"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String =
+                    """{"count":1,"offset":0,"release-groups":[
+                        {"id":"$id","title":"Work","primary-type":"Album",
+                         "artist-credit":[{"name":"Artist"}],
+                         "releases":[{"id":"$linked"},{"id":"$linked"},{"id":"invalid"},{}]}
+                    ]}"""
+            },
+        ))
+        val result = source.searchReleaseGroups("Work") as MusicBrainzCatalogSearchResult.Success
+        assertEquals(setOf(linked), result.page.items.single().searchLinkedReleaseMbids)
+        assertEquals(1, result.page.consumedCount)
+    }
+
     @Test fun exactReleaseGroupCorroborationUsesQuotedSourceFieldsAndBoundedLimit() = runBlocking {
         val calls = mutableListOf<Map<String, String>>()
         val source = MusicBrainzCatalogSearch(MusicBrainzClient(
