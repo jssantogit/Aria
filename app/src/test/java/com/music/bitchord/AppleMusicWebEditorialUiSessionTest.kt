@@ -73,6 +73,10 @@ class AppleMusicWebEditorialUiSessionTest {
         yield()
         assertEquals(1,calls)
         assertTrue(session.state.value.home is UiState.Success)
+        assertTrue(session.containsCard(null,shelf.items.single()))
+        assertFalse(session.containsCard("soul",shelf.items.single()))
+        assertFalse(session.containsCard(null,shelf.items.single().copy(title="Changed")))
+
         session.loadHome()
         yield()
         assertEquals(1,calls)
@@ -83,6 +87,7 @@ class AppleMusicWebEditorialUiSessionTest {
         yield()
         assertEquals(UiState.Loading,session.state.value.genres["soul"])
         g = gate()
+        assertFalse(session.containsCard(null,shelf.items.single()))
         session.purgeRevoked()
         wait.complete(Unit)
         yield()
