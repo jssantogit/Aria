@@ -1,0 +1,60 @@
+name: AMS · focused album chart live
+on:
+  push:
+    branches: [audit/ams-native-visual-parity-20261126]
+    paths:
+      - '.github/workflows/ams-album-chart-live.yml'
+      - 'app/src/test/java/com/music/bitchord/AppleMusicWebAlbumChartLiveTest.kt'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-album-chart-live-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  album-charts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AMS_ALBUM_CHART_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Validate all ten album charts
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebAlbumChartLiveTest'
+      - name: Report exact chart failures
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files = list(Path('app/build/test-results/testDevDebugUnitTest').glob('*AppleMusicWebAlbumChartLiveTest.xml'))
+          assert files, 'Missing album chart report'
+          results = []
+          for file in files:
+              root = ET.parse(file).getroot()
+              assert int(root.attrib.get('tests','0')) == 1
+              assert int(root.attrib.get('skipped','0')) == 0
+              for node in root.iter('system-out'):
+                  for line in (node.text or '').splitlines():
+                      if line.startswith('AMS_CHART_LIVE|'):
+                          print(line)
+                          if '|scope=result|' in line:
+                              results.append(line)
+          assert len(results) == 10, 'Incomplete market coverage'
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## AMS album rankings\n\n'+'\n'.join('- '+line for line in results)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-album-chart-live-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          retention-days: 7

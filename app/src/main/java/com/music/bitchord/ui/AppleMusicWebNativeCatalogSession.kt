@@ -222,32 +222,64 @@ internal class AppleMusicWebNativeCatalogSession(
             val territory = com.music.bitchord.data.catalog.metadata.knownAppleChartTerritory(country)
                 ?: return@admitted ProviderCallResult.Failed(IllegalArgumentException("Unknown chart territory"))
             val kind = if (albums) AppleMusicWebKind.ALBUM else AppleMusicWebKind.SONG
-            val rows = mutableListOf<AppleMusicWebItem>()
-            val seen = hashSetOf<String>()
-            val visited = hashSetOf<String>()
-            var cursor: String? = null
-            for (index in 1..8) {
-                val page = when (val result = gateway.mostPlayedChart(kind,country,limit=25,cursor=cursor)) {
-                    is ProviderCallResult.Success -> (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value
-                        ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Partial chart page"))
-                    is ProviderCallResult.Failed -> return@admitted result
-                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
-                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+            // Rankings can change between requests. Ask for one atomic Top 100
+            // album snapshot first; the existing proven song path is unchanged.
+            // If the API caps the page, follow only its own continuation.
+            var limit = if (albums) 100 else 25
+            var restarted = false
+            while (true) {
+                val rows = mutableListOf<AppleMusicWebItem>()
+                val seen = hashSetOf<String>()
+                val visited = hashSetOf<String>()
+                var cursor: String? = null
+                var restart = false
+                for (index in 1..8) {
+                    val page = when (val result = gateway.mostPlayedChart(kind,country,limit=limit,cursor=cursor)) {
+                        is ProviderCallResult.Success -> (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value
+                            ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Partial chart page"))
+                        is ProviderCallResult.Failed -> {
+                            // A storefront may reject a larger requested page.
+                            // Retry once using the established smaller request,
+                            // only for explicit request-validation HTTP errors.
+                            if (index == 1 && limit == 100 &&
+                                (result.cause as? AppleMusicWebHttpException)?.status in setOf(400,422)) {
+                                limit = 25
+                                restart = true
+                                break
+                            }
+                            return@admitted result
+                        }
+                        ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    }
+                    if (page.storefront != country || page.genreId != null || page.kind != kind ||
+                        page.items.any { it.kind != kind || it.storefront != country })
+                        return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart membership"))
+                    if (page.items.any { !seen.add(it.scopedId) }) {
+                        // Never deduplicate and renumber a moving chart. Discard
+                        // the entire snapshot, then retry from the origin once.
+                        if (index > 1 && !restarted) {
+                            restarted = true
+                            restart = true
+                            break
+                        }
+                        return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Overlapping chart pages"))
+                    }
+                    rows += page.items
+                    cursor = page.nextCursor
+                    if (rows.size >= 100 || cursor == null) break
+                    if (page.items.isEmpty() || !visited.add(cursor))
+                        return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart cursor"))
                 }
-                if (page.storefront != country || page.genreId != null || page.kind != kind ||
-                    page.items.any { it.kind != kind || it.storefront != country || !seen.add(it.scopedId) })
-                    return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart membership"))
-                rows += page.items
-                cursor = page.nextCursor
-                if (rows.size >= 100 || cursor == null) break
-                if (page.items.isEmpty() || !visited.add(cursor))
-                    return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart cursor"))
+                if (restart) continue
+                if (rows.isEmpty() || (rows.size < 100 && cursor != null))
+                    return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete chart"))
+                val projected = projectAmsCountryChart(territory,albums,rows.take(100),System.currentTimeMillis())
+                    ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("No verified chart rows"))
+                return@admitted ProviderCallResult.Success(projected)
             }
-            if (rows.isEmpty() || (rows.size < 100 && cursor != null))
-                return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete chart"))
-            val projected = projectAmsCountryChart(territory,albums,rows.take(100),System.currentTimeMillis())
-                ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("No verified chart rows"))
-            ProviderCallResult.Success(projected)
+            @Suppress("UNREACHABLE_CODE")
+            ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete chart"))
         }
 
     suspend fun genre(tag: String, storefront: String, refresh: Boolean = false):

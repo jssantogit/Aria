@@ -76,6 +76,86 @@ class AmsCountryChartIntegrationTest {
         assertEquals(2,requests.size)
     }
 
+    private fun albumChartBody(ids: List<Int>,next: String? = null): String {
+        val data = ids.joinToString(",") { id ->
+            """{"id":"$id","type":"albums","attributes":{"name":"Album $id","artistName":"Artist",
+            "url":"https://music.apple.com/br/album/album/$id"}}"""
+        }
+        val cursor = next?.let { ",\"next\":\"$it\"" }.orEmpty()
+        return """{"results":{"albums":[{"chart":"most-played","data":[$data]$cursor}]}}"""
+    }
+
+    @Test fun albumChartPrefersOneAtomicTop100Response(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(ams))
+        val calls = mutableListOf<Map<String,String>>()
+        val native = AppleMusicWebNativeCatalogSession({gate}) { g ->
+            AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebTransport { _,_,args ->
+                calls += args
+                albumChartBody((1..100).toList())
+            }),g)
+        }
+        val result = (native.countryChart("br",true) as ProviderCallResult.Success).value as AmsCountryChartResult.Albums
+        assertEquals(1,calls.size)
+        assertEquals("100",calls.single()["limit"])
+        assertEquals((1..100).toList(),result.chart.albums.map { it.position })
+    }
+
+    @Test fun rejectedLargePageUsesOnlySourceIssuedSmallerCursor(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(ams))
+        val calls = mutableListOf<Pair<String?,String?>>()
+        val native = AppleMusicWebNativeCatalogSession({gate}) { g ->
+            AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebTransport { _,_,args ->
+                calls += args["limit"] to args["offset"]
+                if (args["limit"] == "100") throw AppleMusicWebHttpException(400)
+                if (args["offset"] == null) albumChartBody(listOf(1),
+                    "/v1/catalog/br/charts?types=albums&chart=most-played&offset=25&limit=25")
+                else albumChartBody(listOf(2))
+            }),g)
+        }
+        val result = (native.countryChart("br",true) as ProviderCallResult.Success).value as AmsCountryChartResult.Albums
+        assertEquals(listOf("100" to null,"25" to null,"25" to "25"),calls)
+        assertEquals(listOf(1L,2L),result.chart.albums.map { it.albumId })
+    }
+
+    @Test fun overlappingPagesRestartFromOriginWithoutMergingSnapshots(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(ams))
+        val requests = mutableListOf<String?>()
+        val cursor = "/v1/catalog/br/charts?types=albums&chart=most-played&offset=25&limit=25"
+        val native = AppleMusicWebNativeCatalogSession({gate}) { g ->
+            AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebTransport { _,_,args ->
+                requests += args["offset"]
+                when (requests.size) {
+                    1 -> albumChartBody(listOf(1,2),cursor)
+                    2 -> albumChartBody(listOf(2,3))
+                    3 -> albumChartBody(listOf(5,6),cursor)
+                    4 -> albumChartBody(listOf(7,8))
+                    else -> error("Unexpected retry")
+                }
+            }),g)
+        }
+        val result = (native.countryChart("br",true) as ProviderCallResult.Success).value as AmsCountryChartResult.Albums
+        assertEquals(listOf(null,"25",null,"25"),requests)
+        assertEquals(listOf(5L,6L,7L,8L),result.chart.albums.map { it.albumId })
+        assertEquals(listOf(1,2,3,4),result.chart.albums.map { it.position })
+    }
+
+    @Test fun persistentOverlapNeverPublishesRenumberedRanking(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(ams))
+        var calls = 0
+        val native = AppleMusicWebNativeCatalogSession({gate}) { g ->
+            AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebTransport { _,_,args ->
+                calls++
+                if (args["offset"] == null) albumChartBody(listOf(1,2),
+                    "/v1/catalog/br/charts?types=albums&chart=most-played&offset=25&limit=25")
+                else albumChartBody(listOf(2,3))
+            }),g)
+        }
+        val result = native.countryChart("br",true)
+        assertTrue(result is ProviderCallResult.Failed)
+        assertEquals("Overlapping chart pages",(result as ProviderCallResult.Failed).cause.message)
+        assertEquals(4,calls)
+    }
+
     @Test fun controllerDoesNotPublishRevokedChartSnapshots(): Unit = runBlocking {
         val gate = ProviderPolicyGate(policy(ams))
         val result = projectAmsCountryChart(territory,false,listOf(song),123L)!!
