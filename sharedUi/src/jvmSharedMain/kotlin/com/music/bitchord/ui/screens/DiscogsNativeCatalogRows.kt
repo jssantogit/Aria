@@ -15,6 +15,7 @@ data class DiscogsNativeArtistSearchRow(
 data class DiscogsNativeReleaseSearchRow(
     val releaseId: Long,
     val title: String,
+    val masterId: Long? = null,
 ) {
     val browseId: String get() = "discogs:release:$releaseId"
 }
@@ -113,6 +114,26 @@ fun discogsSearchReleaseRank(query: String, combinedTitle: String): Int? {
     }
 }
 
+/**
+ * Search displays one representative Release per explicit positive Master ID.
+ * Missing/conflicting Master evidence keeps the exact Release identity;
+ * equal text alone is never evidence of an edition relationship.
+ * Keep source order for equal relevance, including earlier loaded pages.
+ * Detail and edition selection still use the original Release ID.
+ */
+fun discogsSearchDistinctReleases(
+    query: String,
+    releases: List<DiscogsNativeReleaseSearchRow>,
+): List<DiscogsNativeReleaseSearchRow> =
+    releases.mapNotNull { row ->
+        discogsSearchReleaseRank(query, row.title)?.let { it to row }
+    }.distinctBy { it.second.releaseId }
+        .sortedBy { it.first }
+        .distinctBy { (_, row) ->
+            row.masterId?.takeIf { it in 1..999_999_999_999L }
+                ?.let { "master:$it" } ?: "release:${row.releaseId}"
+        }.map { it.second }
+
 sealed interface DiscogsUnifiedSearchEntry {
     data class Artist(val row: DiscogsNativeArtistSearchRow) : DiscogsUnifiedSearchEntry
     data class Release(val row: DiscogsNativeReleaseSearchRow) : DiscogsUnifiedSearchEntry
@@ -138,17 +159,12 @@ fun discogsUnifiedSearchEntries(
     val exactArtist = rankedArtists.any { it.first <= 2 }
     val leaders = if (exactArtist) rankedArtists.filter { it.first <= 2 }.take(2)
         else rankedArtists.take(2)
-    val matches = releases.mapNotNull { release ->
-        discogsSearchReleaseRank(query, release.title)?.let { rank ->
-            (rank to release).takeIf { !exactArtist || rank <= 2 }
-        }
-    }.distinctBy { it.second.releaseId }.sortedWith(
-        compareBy<Pair<Int, DiscogsNativeReleaseSearchRow>> { it.first }
-            .thenBy { it.second.releaseId },
-    )
+    val matches = discogsSearchDistinctReleases(query, releases.filter { release ->
+        !exactArtist || (discogsSearchReleaseRank(query, release.title) ?: 99) <= 2
+    })
     return buildList {
         leaders.forEach { add(DiscogsUnifiedSearchEntry.Artist(it.second)) }
-        matches.forEach { add(DiscogsUnifiedSearchEntry.Release(it.second)) }
+        matches.forEach { add(DiscogsUnifiedSearchEntry.Release(it)) }
     }
 }
 

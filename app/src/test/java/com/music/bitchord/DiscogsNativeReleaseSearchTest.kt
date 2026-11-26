@@ -28,6 +28,25 @@ class DiscogsNativeReleaseSearchTest {
             """{"pagination":{"page":2,"pages":3},"results":[]}""", 1))
     }
 
+    @Test fun searchIndexRetainsOnlyConsistentPositiveMasterHintsWithoutDroppingEditions() {
+        val page = requireNotNull(DiscogsNativeReleaseSearchParsing.page("""
+            {"pagination":{"page":1,"pages":1},"results":[
+                {"type":"release","id":1,"title":"A - Album","master_id":900},
+                {"type":"release","id":2,"title":"A - Album","master_id":900},
+                {"type":"release","id":3,"title":"A - Album","master_id":0},
+                {"type":"release","id":4,"title":"A - Album","master_id":901},
+                {"type":"release","id":4,"title":"A - Album","master_id":902},
+                {"type":"release","id":5,"title":"A - Album","master_id":-1},
+                {"type":"release","id":6,"title":"A - Album"},
+                {"type":"release","id":7,"title":"A - Album","master_id":903},
+                {"type":"release","id":7,"title":"A - Album"}
+            ]}
+        """.trimIndent(), 1))
+        assertEquals((1L..7L).toList(), page.releases.map { it.releaseId })
+        assertEquals(listOf(900L, 900L, null, null, null, null, 903L),
+            page.releases.map { it.masterId })
+    }
+
     @Test fun multidiscDiscoveryBalancesBothIndexesAndNeverExceedsEightUniqueDetails() {
         fun hits(ids: LongRange) = ids.map { DiscogsNativeReleaseSearchHit(it, "Edition $it") }
         assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L),
