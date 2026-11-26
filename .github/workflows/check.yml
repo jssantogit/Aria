@@ -53,13 +53,29 @@ jobs:
       - name: Check Android-only scope and launcher identity
         run: python3 scripts/verify-aria-android-identity.py
 
-      # Resolve both framework versions used by the suite before thousands of
-      # assertions. An unavailable dependency fails here, not once per test.
+      # Keep runtime framework downloads out of the JVM test process.
+      - name: Restore pinned Robolectric framework cache
+        id: robolectric-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/aria-robolectric
+          key: aria-robolectric-${{ runner.os }}-${{ hashFiles('scripts/aria-robolectric-frameworks.py') }}
+
+      - name: Prepare and verify pinned Robolectric frameworks
+        run: python3 scripts/aria-robolectric-frameworks.py "$RUNNER_TEMP/aria-robolectric"
+
+      - name: Save verified framework cache
+        if: steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/aria-robolectric
+          key: ${{ steps.robolectric-cache.outputs.cache-primary-key }}
+
       - name: Verify Robolectric framework availability
-        run: bash scripts/aria-robolectric-preflight.sh ./gradlew --build-cache -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
+        run: ./gradlew --build-cache -PariaRobolectricFrameworkDir="$RUNNER_TEMP/aria-robolectric" -PariaRobolectricPreflight=true :app:testDevDebugUnitTest --tests "com.music.aria.RobolectricFrameworkAvailabilityTest"
 
       - name: Run Android unit tests
-        run: ./gradlew --build-cache :app:testDevDebugUnitTest
+        run: ./gradlew --build-cache -PariaRobolectricFrameworkDir="$RUNNER_TEMP/aria-robolectric" :app:testDevDebugUnitTest
 
       # Automix's cueing logic lives in commonMain, and its commonTest
       # regression is not exercised by :app:testDevDebugUnitTest.

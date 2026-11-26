@@ -202,6 +202,13 @@ android {
         // canonical Maven Central endpoint as Gradle instead of its repo1 default.
         unitTests.all {
             it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+            // CI prepares the exact pinned framework jars before starting tests.
+            // Local developers retain the existing online default unless opted in.
+            providers.gradleProperty("ariaRobolectricFrameworkDir").orNull?.let { directory ->
+                it.systemProperty("robolectric.offline", "true")
+                it.systemProperty("robolectric.dependency.dir", directory)
+                it.inputs.dir(directory)
+            }
             if (providers.gradleProperty("ariaRobolectricPreflight").isPresent) {
                 it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
             }
