@@ -189,7 +189,8 @@ jobs:
             --tests 'com.music.bitchord.AppleAlbumEditionReconciliationServiceTest' \
             --tests 'com.music.bitchord.ItunesCatalogClientTest' \
             --tests 'com.music.bitchord.ItunesEditorialCatalogTest' \
-            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork'
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork' \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.relevanceReviewIsBoundedAndDoesNotPublishNativeIds'
 
       - name: Exercise shared native search presentation and relevance
         run: |
@@ -372,6 +373,8 @@ jobs:
       IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
       IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
       IDM_CATALOG_DISCOGS_TOKEN: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full') == 'full' && secrets.DISCOGS_TOKEN || '' }}
+      # Only the fixed, public MB/Apple corpus in the focused review.
+      IDM_SEARCH_TOP10_REVIEW: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full') == 'itunes-musicbrainz-search' && '1' || '0' }}
 
     steps:
       - name: Checkout exact candidate HEAD
@@ -734,6 +737,56 @@ jobs:
               out.write("\nCategory routes are local navigation; not remote catalogue availability. "
                         "Discogs release track evidence is not native track search. Unjudged namesakes require adjudication.\n")
           PY
+
+      - name: Validate and expose bounded public Top 10 review evidence
+        if: env.IDM_SEARCH_TOP10_REVIEW == '1'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          folder = root / "top10-review"
+          expected = {f"{p}_{i:02d}" for p in ("musicbrainz", "itunes") for i in range(1, 31)}
+          actual = {p.stem for p in folder.glob("*.json")}
+          if actual != expected:
+              raise SystemExit(f"Top10 review completeness: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          for name in sorted(expected):
+              review = json.loads((folder / f"{name}.json").read_text())
+              aggregate = json.loads((root / f"live_search_matrix_{name}.json").read_text())
+              provider, case = name.rsplit("_", 1)
+              rows = review["rows"]
+              if set(review) != {"schema", "provider", "case", "kind", "complete", "rows"} or review["schema"] != 1:
+                  raise SystemExit("Invalid review schema")
+              if review["provider"] != provider or review["case"] != int(case):
+                  raise SystemExit("Review cell mismatch")
+              if len(rows) != aggregate["first_ten_rows"] or len(rows) > 10:
+                  raise SystemExit("Review denominator mismatch")
+              for i, row in enumerate(rows, 1):
+                  if set(row) != {"rank", "title", "credit", "target_label", "qualified_verified"}:
+                      raise SystemExit("Unexpected review fields")
+                  if row["rank"] != i or row["target_label"] not in (-1, 0, 1):
+                      raise SystemExit("Invalid review rank/label")
+                  if any(not isinstance(row[k], str) or len(row[k]) > 180 for k in ("title", "credit")):
+                      raise SystemExit("Unbounded review label")
+              if [sum(r["target_label"] == k for r in rows) for k in (1, 0, -1)] != [
+                  aggregate["labelled_target_rows"], aggregate["labelled_non_target_rows"], aggregate["unjudged_rows"]
+              ]:
+                  raise SystemExit("Review target counts diverged")
+              # JSON escaping prevents remote labels from becoming terminal
+              # control characters. These are public display fields only.
+              print("IDM_TOP10_REVIEW", name, json.dumps(review, ensure_ascii=True, separators=(",", ":")))
+          print("Top10 review evidence complete; human relevance judgments still required.")
+          PY
+
+      - name: Archive fixed public corpus Top 10 review
+        if: env.IDM_SEARCH_TOP10_REVIEW == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-top10-review-${{ github.event.pull_request.head.sha || github.sha }}
+          path: idm-catalog-live-metrics/top10-review/*.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Archive aggregate live observations and test results
         if: always()

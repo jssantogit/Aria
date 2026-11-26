@@ -24,7 +24,10 @@ import org.junit.Test
  * rather than pretending a fixture proves network availability. A Discogs
  * token is taken from CI secrets, never a source file or test fixture.
  *
- * There are no raw JSON bodies, queries, names, IDs or tokens in artifacts.
+ * Aggregate observations retain no raw JSON bodies, queries, names, IDs or tokens.
+ * The opt-in fixed-public-corpus relevance review is separate: only bounded
+ * displayed title/credit, ordinal, kind, and existing target evidence; never
+ * native IDs, raw responses, arbitrary user queries, credentials or URLs.
  */
 class IdmCatalogLiveObservationTest {
     private val mb = BuiltInProviderKeys.MUSICBRAINZ
@@ -2974,6 +2977,48 @@ class IdmCatalogLiveObservationTest {
             .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT)
             .replace(Regex("\\s+"), " ")
 
+    /**
+     * Reviewer input, not a relevance verdict. An exact title with another
+     * artist can be relevant for a title-only query, whereas an explicit
+     * artist/work query requires its credit. Do not use the production rank
+     * function as its own judge. Retain the evidence for independent review.
+     */
+    private fun reviewLabel(value: String?): String =
+        value.orEmpty().filterNot { it.isISOControl() ||
+            Character.getType(it) == Character.FORMAT.toInt() }
+            .replace(Regex("\\s+"), " ").trim().take(180)
+            // No workflow-command or URL interpretation of source text.
+            .replace("::", ": :").replace("://", ": / /")
+
+    private fun reviewJsonString(value: String): String =
+        kotlinx.serialization.json.JsonPrimitive(value).toString()
+
+    private fun reviewRowJson(
+        ordinal: Int, row: SearchParityRow, targetJudgement: Int,
+        qualifiedVerified: Boolean,
+    ): String = buildString {
+        append("{\"rank\":").append(ordinal)
+        append(",\"title\":").append(reviewJsonString(reviewLabel(row.title)))
+        append(",\"credit\":").append(reviewJsonString(reviewLabel(row.artist)))
+        append(",\"target_label\":").append(targetJudgement)
+        append(",\"qualified_verified\":").append(qualifiedVerified)
+        append("}")
+    }
+
+    @Test fun relevanceReviewIsBoundedAndDoesNotPublishNativeIds() {
+        val id = "itunes:br:album:123456789"
+        val row = SearchParityRow(id, "Work\n::warning::\u202e" + "x".repeat(220), "Credit")
+        val json = reviewRowJson(1, row, -1, false)
+        val obj = kotlinx.serialization.json.Json.parseToJsonElement(json)
+            as kotlinx.serialization.json.JsonObject
+        assertEquals(setOf("rank", "title", "credit", "target_label", "qualified_verified"), obj.keys)
+        assertFalse(json.contains(id))
+        assertFalse(json.contains("::"))
+        assertTrue(reviewLabel(row.title).length <= 180)
+        assertEquals("A B", reviewLabel(" A  B "))
+        assertEquals("A: / /B", reviewLabel("A://B"))
+    }
+
     private fun SearchParityCase.titleMatches(text: String?): Boolean =
         text != null && (aliases + title).any { searchLabelKey(it) == searchLabelKey(text) }
 
@@ -3107,6 +3152,7 @@ class IdmCatalogLiveObservationTest {
                 var appleLandingDiscoveredTargetRank = 0
                 var appleLandingDiscoveredQualifiedRank = 0
                 var appleQualifiedIdentityVerified = false
+                val reviewVerifiedQualifiedIds = mutableSetOf<String>()
                 var appleQualifiedIdentityReads = 0
                 var mbAnchorFieldProbe = false
                 var mbAnchorArtistIdReads = 0
@@ -3368,6 +3414,8 @@ class IdmCatalogLiveObservationTest {
                                                 searchLabelKey(exact.title) == searchLabelKey(candidate.title) &&
                                                 qualifiedTitle(exact.title)
                                         }
+                                        if (appleQualifiedIdentityVerified)
+                                            reviewVerifiedQualifiedIds += candidate.scopedId
                                     }
                                 }
                                 // Measure later availability only if the initial page has
@@ -3543,6 +3591,24 @@ class IdmCatalogLiveObservationTest {
                         provider == discogs && row.id !in provenIds -> -1
                         else -> 1
                     }
+                }
+                if (System.getenv("IDM_SEARCH_TOP10_REVIEW") == "1" &&
+                    (provider == mb || provider == apple)
+                ) {
+                    val dir = File(System.getenv("IDM_CATALOG_METRICS_DIR")
+                        ?: "build/idm-catalog-metrics", "top10-review")
+                    check(dir.exists() || dir.mkdirs())
+                    val caseNumber = (index + 1).toString().padStart(2, '0')
+                    val review = rows.take(10).mapIndexed { rank, row ->
+                        reviewRowJson(rank + 1, row, judgements[rank],
+                            row.id in reviewVerifiedQualifiedIds)
+                    }
+                    File(dir, "${sourceName}_${caseNumber}.json").writeText(
+                        "{\"schema\":1,\"provider\":${reviewJsonString(sourceName)}," +
+                            "\"case\":${index + 1},\"kind\":${reviewJsonString(case.kind)}," +
+                            "\"complete\":${complete != null && !failed},\"rows\":[" +
+                            review.joinToString(",") + "]}"
+                    )
                 }
                 val found = judgements.take(5).any { it == 1 }
                 val targetProven = offered || (case.kind == "category" && categoryRoute) ||
