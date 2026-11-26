@@ -45,6 +45,16 @@ internal object AppleMusicWebReleaseDiscovery {
                 if (fold(query) == fold("$artist $artist") && fold(title) == fold(artist)) title else query
             }.distinctBy(::fold).filter { it.isNotBlank() && it.length <= 120 }.take(6)
 
+    /** Only nominate a track version when its base work is explicitly visible
+     * before a structured qualifier. This is discovery, not recording equality. */
+    fun songWorkMatches(actual: String, title: String): Boolean {
+        if (titleMatches(actual, title)) return true
+        val key = fold(actual)
+        val work = fold(title)
+        return work.isNotBlank() && key.startsWith("$work ") &&
+            key.removePrefix(work).trimStart().firstOrNull() in listOf('(', '[')
+    }
+
     fun candidateTitle(actual: String, title: String, aliases: Set<String>, singleOrEp: Boolean): Boolean =
         titleMatches(actual, title, aliases) || (singleOrEp && relatedSingleYear(actual, title))
 }

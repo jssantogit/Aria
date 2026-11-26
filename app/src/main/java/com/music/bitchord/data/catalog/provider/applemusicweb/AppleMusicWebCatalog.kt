@@ -83,6 +83,13 @@ internal data class AppleMusicWebArtist(
     val unresolvedShelves: Map<AppleMusicWebArtistShelf, Int> = emptyMap(),
 )
 
+/** Exact song resource plus native album linkage; linkage alone is not an album. */
+internal data class AppleMusicWebSongCollections(
+    val song: AppleMusicWebItem,
+    val albumIds: List<String>,
+    val hasMore: Boolean,
+)
+
 internal data class AppleMusicWebAlbum(
     val identity: AppleMusicWebItem,
     val tracks: List<AppleMusicWebItem>,
@@ -412,6 +419,25 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val parsed = artistShelfItems(block, sf, shelf)
         return AppleMusicWebPage(parsed.items, page, limit, block.str("next") != null,
             unresolvedReferences = parsed.unresolved.size)
+    }
+
+    suspend fun songCollections(id: String, country: String): AppleMusicWebSongCollections {
+        val sf = storefront(country)
+        val songId = resourceId(id, AppleMusicWebKind.SONG)
+        val raw = detail(sf, AppleMusicWebKind.SONG, songId, mapOf("include" to "albums"))
+        val song = convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid song")
+        val albums = raw.obj("relationships")?.obj("albums")
+            ?: throw AppleMusicWebProtocolException("Missing song albums relationship")
+        if (albums["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Missing song album linkage")
+        val ids = albums.objects("data").map { row ->
+            if (row.str("type") != AppleMusicWebKind.ALBUM.apiType)
+                throw AppleMusicWebProtocolException("Wrong song album linkage type")
+            resourceId(row.str("id") ?: throw AppleMusicWebProtocolException("Missing ID"), AppleMusicWebKind.ALBUM)
+        }
+        if (ids.size != ids.distinct().size)
+            throw AppleMusicWebProtocolException("Duplicate song album linkage")
+        return AppleMusicWebSongCollections(song, ids, albums.str("next") != null)
     }
 
     suspend fun album(id: String, country: String): AppleMusicWebAlbum =

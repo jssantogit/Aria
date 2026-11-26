@@ -175,6 +175,36 @@ class AppleMusicWebEditorialGatewayTest {
         assertEquals(3, requests.size)
     }
 
+    @Test fun songAlbumLinkageDoesNotInventCollectionIdentityOrBorrowPermission() = runBlocking {
+        var calls = 0
+        val transport = AppleMusicWebTransport { cap, path, args ->
+            calls++
+            assertEquals(discography, cap)
+            assertEquals("/v1/catalog/br/songs/3", path)
+            assertEquals("albums", args["include"])
+            """{"data":[{"id":"3","type":"songs","attributes":{"name":"Work","artistName":"Band"},
+                "relationships":{"albums":{"data":[{"id":"10","type":"albums"}]}}}]}"""
+        }
+        val denied = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(transport), gate(search))
+        assertEquals(ProviderCallResult.Denied, denied.songCollections("3", "br"))
+        assertEquals(0, calls)
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(transport), gate(discography))
+        val outcome = (gateway.songCollections("3", "br") as ProviderCallResult.Success).value.outcome
+            as AppleMusicWebOutcome.Complete
+        assertEquals(listOf("10"), outcome.value.albumIds)
+        assertEquals("apple_music_web:br:song:3", outcome.value.song.scopedId)
+        assertEquals(1, calls)
+    }
+
+    @Test fun malformedSongAlbumLinkageFailsClosed() = runBlocking {
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
+            AppleMusicWebTransport { _, _, _ ->
+                """{"data":[{"id":"3","type":"songs","attributes":{"name":"Work"},
+                    "relationships":{"albums":{"data":[{"id":"10","type":"artists"}]}}}]}"""
+            }), gate(discography))
+        assertTrue(gateway.songCollections("3", "br") is ProviderCallResult.Failed)
+    }
+
     @Test fun missingRootIdentityIsNotReplacedByShelfLinkage() = runBlocking {
         val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
             AppleMusicWebTransport { _, _, _ -> """{"data":[{"id":"77","type":"artists"}]}""" }),

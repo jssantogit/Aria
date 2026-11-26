@@ -109,6 +109,19 @@ internal class AppleMusicWebEditorialGateway(
             else AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES)
         }
 
+    suspend fun songCollections(
+        id: String,
+        country: String,
+    ): ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebSongCollections>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
+            val record = catalog.songCollections(id, storefront)
+            if (record.song.id != id || record.song.kind != AppleMusicWebKind.SONG ||
+                record.song.storefront != storefront)
+                throw AppleMusicWebProtocolException("Wrong Apple song identity")
+            if (record.hasMore) AppleMusicWebOutcome.Partial(record, AppleMusicWebCompleteness.PAGE_LIMIT)
+            else AppleMusicWebOutcome.Complete(record)
+        }
+
     suspend fun album(
         id: String,
         country: String,

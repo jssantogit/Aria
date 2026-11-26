@@ -3216,6 +3216,12 @@ class IdmCatalogLiveObservationTest {
                 var shelfFailures = 0
                 var discoveredRows = 0
                 var candidateRows = 0
+                var songLinkReads = 0
+                var songLinkFailures = 0
+                var rejectedDetail = 0
+                var rejectedCredit = 0
+                var rejectedTitle = 0
+                var rejectedArtistLink = 0
                 val checked = mutableSetOf<String>()
                 fun multi(record: AppleMusicWebAlbum): Boolean =
                     record.tracks.filter { it.kind == AppleMusicWebKind.SONG }
@@ -3236,18 +3242,20 @@ class IdmCatalogLiveObservationTest {
                         discovery.relatedSingleYear(record.identity.title, case.title) &&
                         !record.possiblyTruncated && record.tracks.any {
                             it.kind == AppleMusicWebKind.SONG &&
-                                workMatches(it.title, case.title) && matchesCredit(it.artistName)
+                                discovery.songWorkMatches(it.title, case.title) && matchesCredit(it.artistName)
                         }
                 }
                 suspend fun consider(id: String, expectedArtistId: String? = null) {
                     if (reads >= 10 || !checked.add(id)) return
                     reads++
                     val outcome = album(id)
-                    val record = value(outcome) ?: return
-                    if (record.identity.id != id || !matchesCredit(record.identity.artistName) ||
-                        !verifiedTitle(record) || !record.artists.any {
+                    val record = value(outcome)
+                    if (record == null || record.identity.id != id) { rejectedDetail++; return }
+                    if (!matchesCredit(record.identity.artistName)) { rejectedCredit++; return }
+                    if (!verifiedTitle(record)) { rejectedTitle++; return }
+                    if (!record.artists.any {
                             matchesCredit(it.title) && (expectedArtistId == null || it.id == expectedArtistId)
-                        }) return
+                        }) { rejectedArtistLink++; return }
                     val previous = value(selected)
                     if (previous == null ||
                         (outcome is AppleMusicWebOutcome.Complete && selected !is AppleMusicWebOutcome.Complete) ||
@@ -3304,6 +3312,32 @@ class IdmCatalogLiveObservationTest {
                         }
                     }
                 }
+                // A source-owned song can expose a release that album search
+                // omits. It nominates only native relationship IDs, not an
+                // inferred album ID, title, or artist ownership.
+                if (!preferred() && reads < 10 && case.kind == "single_ep") {
+                    searchReads++
+                    val tracks = search(CatalogSearchKind.TRACK, case.title + " " + case.artist)
+                    if (tracks == null) searchFailures++
+                    for (track in tracks.orEmpty().filter {
+                        matchesCredit(it.subtitle) && discovery.songWorkMatches(it.title, case.title)
+                    }.take(5)) {
+                        if (preferred() || reads >= 10) break
+                        songLinkReads++
+                        val linked = withTimeoutOrNull(60_000L) {
+                            (gateway.songCollections(track.identity.nativeId, sf)
+                                as? ProviderCallResult.Success)?.value?.outcome
+                        }
+                        val collection = value(linked)
+                        if (collection == null) { songLinkFailures++; continue }
+                        if (!matchesCredit(collection.song.artistName) ||
+                            !discovery.songWorkMatches(collection.song.title, case.title)) continue
+                        for (id in collection.albumIds.take(4)) {
+                            consider(id)
+                            if (preferred() || reads >= 10) break
+                        }
+                    }
+                }
                 val record = value(selected)
                 val songs = record?.tracks.orEmpty().filter { it.kind == AppleMusicWebKind.SONG }
                 val complete = selected is AppleMusicWebOutcome.Complete
@@ -3334,6 +3368,12 @@ class IdmCatalogLiveObservationTest {
                         "discovery_shelf_failures" to shelfFailures,
                         "discovery_rows" to discoveredRows,
                         "discovery_candidate_rows" to candidateRows,
+                        "discovery_song_link_reads" to songLinkReads,
+                        "discovery_song_link_failures" to songLinkFailures,
+                        "rejected_detail" to rejectedDetail,
+                        "rejected_credit" to rejectedCredit,
+                        "rejected_title" to rejectedTitle,
+                        "rejected_artist_link" to rejectedArtistLink,
                         "source_track_rows" to (record?.tracks?.size ?: 0),
                         "audio_metadata_rows" to songs.size,
                         "non_audio_rows" to ((record?.tracks?.size ?: 0) - songs.size),
