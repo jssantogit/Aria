@@ -80,6 +80,8 @@ import com.music.aria.ui.player.MESH_CYCLE_MILLIS
 import com.music.aria.ui.player.MeshPalette
 import com.music.aria.ui.player.WelcomeMeshPalettes
 import com.music.aria.ui.player.cyclingMeshPalette
+import com.music.aria.ui.theme.AriaDarkAccent
+import com.music.aria.ui.theme.AriaLightAccent
 
 /**
  * The two welcome pages: a name for Listen Together, then the YouTube sign-in.
@@ -440,13 +442,12 @@ private const val PAGE_CONNECT = 1
 private const val NAME_LIMIT = 40
 
 /**
- * Connection onboarding no longer echoes retired YouTube red.
- * This restrained blue/navy mesh is a BitChord adaptation built around the
- * documented key blue; AM-DECOMP does not establish onboarding background hues.
+ * Connection onboarding is a brand surface, not a data-derived artwork.
+ * Keep the original restrained dark mesh and use warm Notation hues.
  */
 private val ConnectPalettes = listOf(
-    MeshPalette(listOf(Color(0xFF08243E), Color(0xFF145A88), Color(0xFF007CD9), Color(0xFF16263F))),
-    MeshPalette(listOf(Color(0xFF11345A), Color(0xFF1B78B7), Color(0xFF244A78), Color(0xFF0D1D34))),
-    MeshPalette(listOf(Color(0xFF052B44), Color(0xFF007FA5), Color(0xFF4367B0), Color(0xFF12243A))),
-    MeshPalette(listOf(Color(0xFF143A63), Color(0xFF0091FF), Color(0xFF2A659E), Color(0xFF131F3D))),
+    MeshPalette(listOf(Color(0xFF28190F), AriaLightAccent, Color(0xFFD98A2A), Color(0xFF302014))),
+    MeshPalette(listOf(Color(0xFF482410), Color(0xFF99501A), Color(0xFFCA7927), Color(0xFF24160E))),
+    MeshPalette(listOf(Color(0xFF302016), Color(0xFFC46B20), Color(0xFFAD6928), Color(0xFF362217))),
+    MeshPalette(listOf(Color(0xFF452615), AriaDarkAccent, Color(0xFFB86D25), Color(0xFF2D1A10))),
 )

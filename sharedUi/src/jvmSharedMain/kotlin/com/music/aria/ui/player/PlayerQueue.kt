@@ -907,13 +907,13 @@ private fun InlineQueueRow(
                         .align(if (swipeTranslation > 0f) Alignment.CenterStart else Alignment.CenterEnd)
                         .width(with(LocalDensity.current) { kotlin.math.abs(swipeTranslation).toDp() })
                         .fillMaxHeight()
-                        .background(Color(0xFF0091FF)),
+                        .background(com.music.aria.ui.theme.ariaAccentColor(dark = true)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         Icons.Rounded.Delete,
                         contentDescription = stringResource(Res.string.remove_from_queue),
-                        tint = Color.White,
+                        tint = com.music.aria.ui.theme.ariaOnAccentColor(dark = true),
                         modifier = Modifier.size(24.dp),
                     )
                 }

@@ -28,6 +28,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import androidx.compose.ui.graphics.toArgb
 
 /**
  * The Replay as one picture, drawn to a bitmap you can send.
@@ -784,7 +785,7 @@ private const val CARD_ROWS = 5
 private const val COLUMN_GAP = 36f
 private const val ROW_HEIGHT = 116f
 private const val ART = 84f
-private const val ACCENT = 0xFF0091FF.toInt()
+private val ACCENT = com.music.aria.ui.theme.AriaDarkAccent.toArgb()
 
 private const val POSTER_ROWS = 5
 private const val POSTER_ALBUMS = 3
