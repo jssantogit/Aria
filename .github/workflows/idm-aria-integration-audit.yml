@@ -5,6 +5,7 @@ on:
     paths: [.github/workflows/idm-aria-integration-audit.yml]
 permissions:
   contents: read
+  actions: read
 jobs:
   merge-analysis:
     runs-on: ubuntu-latest
@@ -17,7 +18,7 @@ jobs:
       - name: Compare pinned IDM and Aria trees without writing remote refs
         shell: bash
         env:
-          IDM_SHA: cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          IDM_SHA: 29f665606f90c69cc3e30a82ef9fe6518d4a31c5
           ARIA_SHA: 58d8d9143fa04302cb3356df510e77c76a2eae57
           MIGRATION_SOURCE: e74400a7e58cba41a64f535a90af1399e5c718da
         run: |
@@ -359,6 +360,36 @@ jobs:
             }
           done
           printf 'All %s newly changed MAIN paths match exactly.\n' "${#updated[@]}"
+      - name: Retrieve previously approved integrated tree for exact delta verification
+        uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          run-id: 45844770994
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-sealed-idm
+      - name: Prove the only changes from the previous approved tree are the four Master-budget files
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reconstruct the prior tree by importing the preserved bundle
+          # through a separate read-only artifact download below.
+          cd "$RUNNER_TEMP/idm-aria-resolve"
+          old=e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          prior_tree=1954dec45b353e7769ab0acf8d1fae6017fe610f
+          bundle="$RUNNER_TEMP/prior-sealed-idm/sealed-candidate.bundle"
+          git bundle verify "$bundle"
+          git fetch "$bundle" refs/heads/sealed-idm-aria-candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$old"
+          test "$(git rev-parse "$old^{tree}")" = "$prior_tree"
+          current="$(git write-tree)"
+          git diff --name-only "$prior_tree" "$current" | sort > "$RUNNER_TEMP/idm-actual-delta.txt"
+          printf '%s\n' \
+            app/src/main/java/com/music/aria/data/catalog/metadata/discogs/DiscogsClient.kt \
+            app/src/main/java/com/music/aria/data/catalog/metadata/discogs/DiscogsEvidence.kt \
+            app/src/test/java/com/music/aria/DiscogsMasterContractTest.kt \
+            app/src/test/java/com/music/aria/DiscogsTransportSafetyTest.kt | sort > "$RUNNER_TEMP/idm-expected-delta.txt"
+          diff -u "$RUNNER_TEMP/idm-expected-delta.txt" "$RUNNER_TEMP/idm-actual-delta.txt"
+          git diff --stat "$prior_tree" "$current"
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -399,7 +430,7 @@ jobs:
               print(f"{location}: {len(cases)} tests, {failed} failed, {skipped} skipped")
           PY
           main=58d8d9143fa04302cb3356df510e77c76a2eae57
-          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          idm=29f665606f90c69cc3e30a82ef9fe6518d4a31c5
           candidate="$(printf 'integration(idm): reconcile provider engine with Aria identity and current launcher branding\n\nValidated identity, Android and sharedUI unit suites in isolated CI. No physical smoke or MAIN merge.\n' | git commit-tree "$tree" -p "$main" -p "$idm")"
           test "$(git rev-parse "$candidate^{tree}")" = "$tree"
           test "$(git show -s --format=%P "$candidate")" = "$main $idm"
@@ -410,7 +441,7 @@ jobs:
       - name: Upload tested candidate bundle
         uses: actions/upload-artifact@v4
         with:
-          name: sealed-idm-aria-candidate
+          name: sealed-idm-aria-candidate-master-budget
           path: |
             ${{ runner.temp }}/idm-aria-audit/sealed-candidate.bundle
             ${{ runner.temp }}/idm-aria-audit/sealed-commit.txt
@@ -457,53 +488,3 @@ jobs:
             ${{ runner.temp }}/idm-aria-audit/namespace-*/namespace-review.txt
           if-no-files-found: error
 
-  publish-isolated-candidate:
-    name: Publish tested candidate to a new isolated branch
-    needs: merge-analysis
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/download-artifact@v4
-        with:
-          name: sealed-idm-aria-candidate
-          path: sealed
-      - name: Verify sealed object and publish only the isolated candidate ref
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          main=58d8d9143fa04302cb3356df510e77c76a2eae57
-          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
-          dest=refs/heads/integration/idm-aria-candidate-20261126
-          # Check the original refs again so a concurrent change cannot
-          # accidentally be presented as the current integrated candidate.
-          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$main"
-          test "$(git ls-remote origin refs/heads/integration/idm-providers-main-20261121 | cut -f1)" = "$idm"
-          git bundle verify sealed/sealed-candidate.bundle
-          git fetch sealed/sealed-candidate.bundle refs/heads/sealed-idm-aria-candidate
-          candidate="$(cat sealed/sealed-commit.txt)"
-          test "$(git rev-parse FETCH_HEAD)" = "$candidate"
-          test "$(git show -s --format=%P "$candidate")" = "$main $idm"
-          test "$(git rev-parse "$candidate^{tree}")" = "$(cat sealed/resolved-tree.txt)"
-          askpass="$RUNNER_TEMP/idm-candidate-askpass.sh"
-          cat > "$askpass" <<'SH'
-          #!/bin/sh
-          case "$1" in
-            *Username*) printf '%s\n' x-access-token ;;
-            *Password*) printf '%s\n' "$GH_TOKEN" ;;
-            *) exit 1 ;;
-          esac
-          SH
-          chmod 700 "$askpass"
-          export GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0
-          # Empty expected ref enforces creation only. No MAIN or IDM writes.
-          git -c credential.helper= push --force-with-lease="$dest:" origin "$candidate:$dest"
-          test "$(git ls-remote origin "$dest" | cut -f1)" = "$candidate"
-          printf 'Published isolated candidate %s\n' "$candidate" | tee -a "$GITHUB_STEP_SUMMARY"
