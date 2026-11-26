@@ -146,6 +146,20 @@ class AppleMusicWebSharedDetailAdapterTest {
         assertNull(appleMusicWebVerifiedRouteUrl("https://music.apple.com/br/album/name/20?i=30&token=x",key))
     }
 
+    @Test fun sourceAlbumCaptionUsesNativeGenreAndYearAndTrackLinksAreExact() {
+        val exact = album.copy(genreNames=listOf("Music","Metal"),trackCount=1)
+        val link = "https://music.apple.com/br/album/album/20?i=30"
+        val record = AppleMusicWebAlbum(exact,listOf(song.copy(storeUrl=link)),listOf(artist),false)
+        val projected = appleMusicWebAsSharedDetail(exact.scopedId,AppleMusicWebNativeDetail.Album(record))!!
+        assertEquals("Metal · 2025",com.music.bitchord.ui.screens.nativeAlbumHeaderCaption(projected.sourceAlbumMetadata))
+        assertEquals(link,projected.metadataTracks.single().sourceStoreUrl)
+        val unknown = exact.copy(genreNames=listOf("Music"),releaseDate="2025-02-30")
+        val foreign = record.copy(identity=unknown,tracks=listOf(song.copy(storeUrl="https://music.apple.com/us/song/song/30")))
+        val missing = appleMusicWebAsSharedDetail(exact.scopedId,AppleMusicWebNativeDetail.Album(foreign))!!
+        assertEquals("",com.music.bitchord.ui.screens.nativeAlbumHeaderCaption(missing.sourceAlbumMetadata))
+        assertNull(missing.metadataTracks.single().sourceStoreUrl)
+    }
+
     @Test fun storeLinkMustBelongToExactNativeProduct() {
         assertEquals(album.storeUrl,appleMusicWebVerifiedStoreUrl(album))
         for (url in listOf("https://music.apple.com/us/album/album/20",

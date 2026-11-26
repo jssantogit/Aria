@@ -222,6 +222,7 @@ internal fun CanonicalProviderDetailHost(
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         sourceArtistTracksRanked = applePage?.sourceArtistTracksRanked == true,
         onMetadataTrackHold = if (isAms) onMetadataTrackHold else null,
+        sourceAlbumMetadata = if (isAms) applePage?.sourceAlbumMetadata else null,
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,
         songSort = songSort,

@@ -87,6 +87,33 @@ private fun tracks(
             sourceStoreUrl=appleMusicWebVerifiedStoreUrl(song))
     }
 
+/** The source's verified fields fill the existing native genre/year caption.
+ * A partial or filtered tracklist must never produce a fabricated total time.
+ */
+internal fun amsAlbumMetadata(
+    album: AppleMusicWebItem,
+    tracks: List<NativeMetadataTrack>,
+    complete: Boolean,
+): CanonicalAlbumFooterMetadata {
+    val genre = album.genreNames.asSequence().map(String::trim).firstOrNull {
+        it.isNotBlank() && !it.equals("Music",ignoreCase=true) && !it.equals("Música",ignoreCase=true)
+    }
+    val declaredCount = album.trackCount?.takeIf { it > 0 }
+    val count = declaredCount ?: tracks.size.takeIf { complete && it > 0 }
+    val total = if (complete && tracks.isNotEmpty() &&
+        (declaredCount == null || declaredCount == tracks.size) &&
+        tracks.all { (it.durationMs ?: 0L) > 0L })
+        tracks.sumOf { it.durationMs ?: 0L } else null
+    val minutes = total?.let { ((it + 30_000L) / 60_000L).coerceAtLeast(1L) }
+    val summary = count?.let {
+        "$it ${if (it == 1) "música" else "músicas"}" +
+            (minutes?.let { min -> ", $min ${if (min == 1L) "minuto" else "minutos"}" } ?: "")
+    }
+    return CanonicalAlbumFooterMetadata(
+        canonicalAlbumFooterMetadata(album.releaseDate,emptyList()).year,summary,
+    ).copy(genre=genre)
+}
+
 /** The supplemental pages were obtained from exact artist-view endpoints,
  * under the same editorial lease as the requested detail. Keep their
  * provenance tied to the artist route; no title-only crosswalk.
@@ -146,12 +173,16 @@ internal fun appleMusicWebAsSharedDetail(
                 "Alguns lançamentos relacionados podem estar incompletos."
                     .takeIf { evidence?.incomplete == true },
             )
+            val metadataTracks = tracks(record.tracks,market)
+            val completeTracks = !incomplete && !record.possiblyTruncated &&
+                metadataTracks.size == record.tracks.size
             AppleSharedDetail(
                 page=DetailPage(route.browseId,identity.title,
                     listOf(credit,identity.year()).filter(String::isNotBlank).joinToString(" • "),
                     identity.cover(1024),UiState.Success(emptyList()),BrowseType.ALBUM,
                     sections=if (cards.isEmpty()) emptyList() else listOf(HomeShelf("Mais do artista",cards))),
-                metadataTracks=tracks(record.tracks,market),
+                metadataTracks=metadataTracks,
+                sourceAlbumMetadata=amsAlbumMetadata(identity,metadataTracks,completeTracks),
                 albumArtistBrowseId=artist?.scopedId,
                 albumArtistDisplayName=artist?.title,
                 notice=notices.joinToString(" ").takeIf { it.isNotBlank() },

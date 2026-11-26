@@ -394,6 +394,7 @@ fun DetailScreen(
     appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     sourceArtistTracksRanked: Boolean = false,
     onMetadataTrackHold: ((NativeMetadataTrack) -> Unit)? = null,
+    sourceAlbumMetadata: CanonicalAlbumFooterMetadata? = null,
     /** Explicit Apple Music URL → MusicBrainz artist relation; never inferred. */
     verifiedAppleArtistMbid: String? = null,
     /** Exact artist photo if the source has an independently proven identity. */
@@ -835,6 +836,7 @@ fun DetailScreen(
                         metadataTracks = metadataTracks,
                         sourceAlbumArtistBrowseId = sourceAlbumArtistBrowseId,
                         sourceAlbumArtistDisplayName = sourceAlbumArtistDisplayName,
+                        sourceAlbumMetadata = sourceAlbumMetadata,
                         onPlay = {
                             if (songs.isNotEmpty()) onSongClick(songs, 0)
                             else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
@@ -1302,7 +1304,7 @@ fun DetailScreen(
                             } ?: "")
                     }
                     NativeAlbumMetadataFooter(
-                        metadata = CanonicalAlbumFooterMetadata(year, summary),
+                        metadata = sourceAlbumMetadata ?: CanonicalAlbumFooterMetadata(year, summary),
                         palette = palette,
                     )
                 }
@@ -1524,6 +1526,7 @@ private fun ReleaseHeader(
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
     sourceAlbumArtistBrowseId: String? = null,
     sourceAlbumArtistDisplayName: String? = null,
+    sourceAlbumMetadata: CanonicalAlbumFooterMetadata? = null,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onArtistClick: ((String, String) -> Unit)?,
@@ -1556,7 +1559,8 @@ private fun ReleaseHeader(
         },
         if (songs.isNotEmpty()) songs.playtime() else canonicalTime,
     )
-    val meta = if (page.type == BrowseType.ALBUM) "" else metaOverride ?: originalMeta
+    val meta = if (page.type == BrowseType.ALBUM) nativeAlbumHeaderCaption(sourceAlbumMetadata)
+        else metaOverride ?: originalMeta
     // Every row on a release carries the same credit — see [pageCredit] — so
     // the first one speaks for the whole page, the same source the rows'
     // own long-press "Open artist" already reads from.
