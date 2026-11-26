@@ -5,6 +5,8 @@ import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.AppleMusicWebNativeDetail
 import com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail
+import com.music.bitchord.ui.screens.AmsArtistShelfSnapshot
+import com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl
 import com.music.bitchord.ui.screens.appleMusicWebVerifiedStoreUrl
 import org.junit.Assert.*
 import org.junit.Test
@@ -60,6 +62,49 @@ class AppleMusicWebSharedDetailAdapterTest {
         assertTrue(detail.page.sections.flatMap { it.items }.all { it.videoId == null })
         assertTrue((detail.page.songs as UiState.Success).data.isEmpty())
         assertNull(detail.verifiedArtistMbid)
+    }
+
+    @Test fun supplementalViewsNeverInferTypesOrAcceptForeignArtist() {
+        val live = album.copy(id="40",title="Concert")
+        val compilation = album.copy(id="41",title="Collection")
+        val appearance = album.copy(id="42",title="Guest Release",artistName="Other")
+        val conflict = album.copy(id="43",title="Conflicting")
+        val extra = AmsArtistShelfSnapshot(artist.scopedId,mapOf(
+            AppleMusicWebArtistShelf.LIVE_ALBUMS to listOf(live,conflict),
+            AppleMusicWebArtistShelf.COMPILATIONS to listOf(compilation,conflict),
+            AppleMusicWebArtistShelf.APPEARS_ON to listOf(appearance,live),
+        ),true)
+        val source = AppleMusicWebNativeDetail.Artist(AppleMusicWebArtist(
+            artist,emptyList(),listOf(album),emptyList(),emptyList()))
+        val detail = appleMusicWebAsSharedDetail(artist.scopedId,source,supplemental=extra)!!
+        val shelves = detail.page.sections.associate { it.title to it.items.map { card -> card.browseId } }
+        assertEquals(listOf(live.scopedId),shelves["Álbuns ao vivo"])
+        assertEquals(listOf(compilation.scopedId),shelves["Coletâneas"])
+        assertEquals(listOf(appearance.scopedId),shelves["Com participação em"])
+        assertEquals(listOf(conflict.scopedId),shelves["Outros lançamentos"])
+        assertNotNull(detail.notice)
+        val foreign = appleMusicWebAsSharedDetail(artist.scopedId,source,
+            supplemental=extra.copy(artistBrowseId="apple_music_web:br:artist:99"))!!
+        assertFalse(foreign.page.sections.any { it.title == "Álbuns ao vivo" })
+    }
+
+    @Test fun albumRelatedReleasesRequireExactArtistViewAndMatchingCredit() {
+        val related = album.copy(id="50",title="Another",artistId=artist.id)
+        val other = related.copy(id="51",artistId="99")
+        val differentCredit = related.copy(id="52",artistName="Different")
+        val foreign = related.copy(id="53",storefront="us")
+        val extra = AmsArtistShelfSnapshot(artist.scopedId,mapOf(
+            AppleMusicWebArtistShelf.STUDIO_ALBUMS to listOf(album,related,other,differentCredit,foreign),
+        ))
+        val source = AppleMusicWebNativeDetail.Album(AppleMusicWebAlbum(album,listOf(song),listOf(artist),false))
+        val detail = appleMusicWebAsSharedDetail(album.scopedId,source,supplemental=extra)!!
+        assertEquals("Mais do artista",detail.page.sections.single().title)
+        assertEquals(listOf(related.scopedId),detail.page.sections.single().items.map { it.browseId })
+        assertEquals(album.storeUrl,detail.sourceStoreUrl)
+        assertNull(appleMusicWebVerifiedRouteUrl(album.storeUrl,"itunes:br:album:20"))
+        assertTrue(appleMusicWebAsSharedDetail(album.scopedId,source.copy(
+            value=source.value.copy(artists=listOf(artist,artist.copy(id="99")))),
+            supplemental=extra)!!.page.sections.isEmpty())
     }
 
     @Test fun storeLinkMustBelongToExactNativeProduct() {

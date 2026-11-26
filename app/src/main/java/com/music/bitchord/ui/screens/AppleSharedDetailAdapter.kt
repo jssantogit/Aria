@@ -57,6 +57,7 @@ internal data class AppleSharedDetail(
     val featuredRelease: ShelfItem? = null,
     val notice: String? = null,
     val attribution: NativeDetailAttribution? = null,
+    val sourceStoreUrl: String? = null,
 )
 
 internal fun appleArtistAsSharedDetail(

@@ -251,25 +251,99 @@ internal class AppleMusicWebNativeCatalogSession(
         ProviderCallResult.Stale -> ProviderCallResult.Stale
     }
 
+    /** A bounded first page per supplemental view. Only the artist's own
+     * source identity authorizes the request; 401/403/429 never become a
+     * successful partial. Unknown/failed optional views remain incomplete.
+     */
+    private suspend fun supplementalDetail(
+        gateway: AppleMusicWebEditorialGateway,
+        source: AppleMusicWebNativeDetail,
+    ): ProviderCallResult<com.music.bitchord.ui.screens.AmsArtistShelfSnapshot?> {
+        val artist = when (source) {
+            is AppleMusicWebNativeDetail.Artist -> source.value.identity
+            is AppleMusicWebNativeDetail.Album -> {
+                val album = source.value.identity
+                val candidates = source.value.artists.filter {
+                    it.kind == AppleMusicWebKind.ARTIST && it.storefront == album.storefront &&
+                        AppleMusicWebNativeRoute.parse(it.scopedId) != null
+                }.distinctBy { it.scopedId }
+                candidates.singleOrNull()?.takeIf {
+                    !album.artistName.isNullOrBlank() && it.title.equals(album.artistName,ignoreCase=true)
+                }
+            }
+        } ?: return ProviderCallResult.Success(null)
+        val route = AppleMusicWebNativeRoute.parse(artist.scopedId)
+            ?.takeIf { it.kind == AppleMusicWebKind.ARTIST } ?: return ProviderCallResult.Success(null)
+        val views = when (source) {
+            is AppleMusicWebNativeDetail.Artist -> listOf(
+                AppleMusicWebArtistShelf.LIVE_ALBUMS,
+                AppleMusicWebArtistShelf.COMPILATIONS,
+                AppleMusicWebArtistShelf.APPEARS_ON,
+            )
+            is AppleMusicWebNativeDetail.Album -> listOf(
+                AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                AppleMusicWebArtistShelf.SINGLES_AND_EPS,
+            )
+        }
+        val rows = linkedMapOf<AppleMusicWebArtistShelf,List<AppleMusicWebItem>>()
+        var incomplete = false
+        for (view in views) {
+            val result = gateway.artistCollection(route.id,route.storefront,view,limit=24)
+            when (result) {
+                ProviderCallResult.Denied -> return ProviderCallResult.Denied
+                ProviderCallResult.Stale -> return ProviderCallResult.Stale
+                is ProviderCallResult.Failed -> {
+                    val failure = result.cause
+                    if (failure is AppleMusicWebHttpException && failure.status in listOf(401,403,429))
+                        return result
+                    incomplete = true
+                }
+                is ProviderCallResult.Success -> when (val outcome = result.value.outcome) {
+                    is AppleMusicWebOutcome.Complete -> {
+                        rows[view] = outcome.value.items
+                        incomplete = incomplete || outcome.value.hasMore
+                    }
+                    is AppleMusicWebOutcome.Partial -> {
+                        rows[view] = outcome.value.items
+                        incomplete = true
+                    }
+                    is AppleMusicWebOutcome.Unavailable -> incomplete = true
+                }
+            }
+        }
+        return ProviderCallResult.Success(com.music.bitchord.ui.screens.AmsArtistShelfSnapshot(
+            route.browseId,rows,incomplete))
+    }
+
     /** Projection remains inside an outer editorial ticket. Reuse the
      * existing native DetailScreen payload, without publishing foreign IDs. */
     suspend fun sharedDetail(browseId: String):
         ProviderCallResult<AppleMusicWebOutcome<com.music.bitchord.ui.screens.AppleSharedDetail>> =
-        admitted(editorial) {
+        admitted(editorial) { gateway ->
             when (val result = detail(browseId)) {
                 is ProviderCallResult.Success -> {
-                    fun project(value: AppleMusicWebNativeDetail, incomplete: Boolean) =
-                        com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail(browseId,value,incomplete)
-                    val outcome = when (val source = result.value) {
-                        is AppleMusicWebOutcome.Complete -> project(source.value,false)?.let {
-                            AppleMusicWebOutcome.Complete(it)
-                        }
-                        is AppleMusicWebOutcome.Partial -> project(source.value,true)?.let {
-                            AppleMusicWebOutcome.Partial(it,source.reason)
-                        }
-                        is AppleMusicWebOutcome.Unavailable -> source
-                    } ?: AppleMusicWebOutcome.Unavailable("Invalid AMS presentation identity")
-                    ProviderCallResult.Success(outcome)
+                    val source = result.value
+                    val value = when (source) {
+                        is AppleMusicWebOutcome.Complete -> source.value
+                        is AppleMusicWebOutcome.Partial -> source.value
+                        is AppleMusicWebOutcome.Unavailable ->
+                            return@admitted ProviderCallResult.Success(source)
+                    }
+                    val extra = when (val supplemental = supplementalDetail(gateway,value)) {
+                        is ProviderCallResult.Success -> supplemental.value
+                        is ProviderCallResult.Failed -> return@admitted supplemental
+                        ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    }
+                    val page = com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail(
+                        browseId,value,source is AppleMusicWebOutcome.Partial,extra)
+                        ?: return@admitted ProviderCallResult.Success(
+                            AppleMusicWebOutcome.Unavailable("Invalid AMS presentation identity"))
+                    ProviderCallResult.Success(when {
+                        source is AppleMusicWebOutcome.Partial -> AppleMusicWebOutcome.Partial(page,source.reason)
+                        extra?.incomplete == true -> AppleMusicWebOutcome.Partial(page,AppleMusicWebCompleteness.PAGE_LIMIT)
+                        else -> AppleMusicWebOutcome.Complete(page)
+                    })
                 }
                 is ProviderCallResult.Failed -> result
                 ProviderCallResult.Denied -> ProviderCallResult.Denied

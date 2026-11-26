@@ -28,9 +28,12 @@ private fun AppleMusicWebItem.year(): String = releaseDate?.take(10)?.let {
     runCatching { LocalDate.parse(it).year.toString() }.getOrNull()
 }.orEmpty()
 
-internal fun appleMusicWebVerifiedStoreUrl(item: AppleMusicWebItem): String? {
-    val route = AppleMusicWebNativeRoute.parse(item.scopedId) ?: return null
-    val link = item.storeUrl?.takeIf { it.length <= 2048 } ?: return null
+internal fun appleMusicWebVerifiedStoreUrl(item: AppleMusicWebItem): String? =
+    appleMusicWebVerifiedRouteUrl(item.storeUrl, item.scopedId)
+
+internal fun appleMusicWebVerifiedRouteUrl(url: String?, browseId: String?): String? {
+    val route = AppleMusicWebNativeRoute.parse(browseId) ?: return null
+    val link = url?.takeIf { it.length <= 2048 } ?: return null
     val uri = runCatching { URI(link) }.getOrNull() ?: return null
     if (uri.scheme != "https" || uri.host != "music.apple.com" || uri.userInfo != null ||
         uri.port != -1 || uri.rawQuery != null || uri.fragment != null) return null
@@ -57,10 +60,28 @@ private fun tracks(items: List<AppleMusicWebItem>, market: String): List<NativeM
             durationMs=song.durationMillis?.takeIf { it > 0 })
     }
 
+/** The supplemental pages were obtained from exact artist-view endpoints,
+ * under the same editorial lease as the requested detail. Keep their
+ * provenance tied to the artist route; no title-only crosswalk.
+ */
+internal data class AmsArtistShelfSnapshot(
+    val artistBrowseId: String,
+    val byView: Map<AppleMusicWebArtistShelf, List<AppleMusicWebItem>>,
+    val incomplete: Boolean = false,
+)
+
+private fun amsShelfCards(
+    items: List<AppleMusicWebItem>, market: String,
+): List<ShelfItem> = items.groupBy { it.scopedId }.values.mapNotNull { group ->
+    val first = group.first()
+    if (group.any { it != first }) null else first.card(AppleMusicWebKind.ALBUM,market)
+}
+
 internal fun appleMusicWebAsSharedDetail(
     requestedBrowseId: String,
     source: AppleMusicWebNativeDetail,
     incomplete: Boolean = false,
+    supplemental: AmsArtistShelfSnapshot? = null,
 ): AppleSharedDetail? {
     val route = AppleMusicWebNativeRoute.parse(requestedBrowseId) ?: return null
     val identity = when (source) {
@@ -82,15 +103,32 @@ internal fun appleMusicWebAsSharedDetail(
             val artist = artists.singleOrNull()?.takeIf {
                 credit.isNotBlank() && it.title.equals(credit,ignoreCase=true)
             }
+            val evidence = supplemental?.takeIf { artist != null && it.artistBrowseId == artist.scopedId }
+            val related = evidence?.byView.orEmpty().filterKeys {
+                it == AppleMusicWebArtistShelf.STUDIO_ALBUMS ||
+                    it == AppleMusicWebArtistShelf.SINGLES_AND_EPS
+            }.values.flatten().filter {
+                it.scopedId != route.browseId &&
+                    it.artistName?.equals(credit,ignoreCase=true) == true &&
+                    (it.artistId == null || it.artistId == artist?.id)
+            }
+            val cards = amsShelfCards(related,market).take(24)
+            val notices = listOfNotNull(
+                "A lista de faixas deste lançamento pode estar incompleta."
+                    .takeIf { incomplete || record.possiblyTruncated },
+                "Alguns lançamentos relacionados podem estar incompletos."
+                    .takeIf { evidence?.incomplete == true },
+            )
             AppleSharedDetail(
                 page=DetailPage(route.browseId,identity.title,
                     listOf(credit,identity.year()).filter(String::isNotBlank).joinToString(" • "),
-                    identity.cover(1024),UiState.Success(emptyList()),BrowseType.ALBUM),
+                    identity.cover(1024),UiState.Success(emptyList()),BrowseType.ALBUM,
+                    sections=if (cards.isEmpty()) emptyList() else listOf(HomeShelf("Mais do artista",cards))),
                 metadataTracks=tracks(record.tracks,market),
                 albumArtistBrowseId=artist?.scopedId,
                 albumArtistDisplayName=artist?.title,
-                notice=if (incomplete || record.possiblyTruncated)
-                    "A lista de faixas deste lançamento pode estar incompleta." else null,
+                notice=notices.joinToString(" ").takeIf { it.isNotBlank() },
+                sourceStoreUrl=appleMusicWebVerifiedStoreUrl(identity),
             )
         }
         is AppleMusicWebNativeDetail.Artist -> {
@@ -98,16 +136,30 @@ internal fun appleMusicWebAsSharedDetail(
             val record = source.value
             // The source's exact full-albums and singles views determine
             // the editorial group. Conflicting memberships stay unresolved.
-            val albums = record.albums.mapNotNull { it.card(AppleMusicWebKind.ALBUM,market) }.distinctBy { it.browseId }
-            val shorts = record.singlesAndEps.mapNotNull { it.card(AppleMusicWebKind.ALBUM,market) }.distinctBy { it.browseId }
-            val conflicts = albums.map { it.browseId }.toSet().intersect(shorts.map { it.browseId }.toSet())
+            val evidence = supplemental?.takeIf { it.artistBrowseId == route.browseId }
+            val byCategory = linkedMapOf(
+                "Álbuns" to amsShelfCards(record.albums,market),
+                "Singles e EPs" to amsShelfCards(record.singlesAndEps,market),
+                "Álbuns ao vivo" to amsShelfCards(evidence?.byView?.get(AppleMusicWebArtistShelf.LIVE_ALBUMS).orEmpty(),market),
+                "Coletâneas" to amsShelfCards(evidence?.byView?.get(AppleMusicWebArtistShelf.COMPILATIONS).orEmpty(),market),
+            )
+            val conflicts = byCategory.values.flatten().groupBy { it.browseId }
+                .filterValues { it.size > 1 }.keys
+            val ambiguous = byCategory.values.flatten().filter { it.browseId in conflicts }
+                .groupBy { it.browseId }.values.mapNotNull { group ->
+                    group.first().takeIf { first -> group.all { it == first } }
+                }
             val shelves = buildList {
                 fun addShelf(title: String, cards: List<ShelfItem>) {
                     if (cards.isNotEmpty()) add(HomeShelf(title,cards))
                 }
-                addShelf("Álbuns",albums.filterNot { it.browseId in conflicts })
-                addShelf("Singles e EPs",shorts.filterNot { it.browseId in conflicts })
-                addShelf("Outros lançamentos",albums.filter { it.browseId in conflicts })
+                byCategory.forEach { (title,cards) ->
+                    addShelf(title,cards.filterNot { it.browseId in conflicts })
+                }
+                addShelf("Outros lançamentos",ambiguous)
+                addShelf("Com participação em",amsShelfCards(
+                    evidence?.byView?.get(AppleMusicWebArtistShelf.APPEARS_ON).orEmpty(),market)
+                    .filterNot { card -> byCategory.values.any { rows -> rows.any { it.browseId == card.browseId } } })
                 addShelf("Álbuns essenciais",record.featuredAlbums.mapNotNull {
                     it.card(AppleMusicWebKind.ALBUM,market)
                 }.distinctBy { it.browseId })
@@ -119,8 +171,9 @@ internal fun appleMusicWebAsSharedDetail(
                     UiState.Success(emptyList()),BrowseType.ARTIST,sections=shelves),
                 metadataTracks=tracks(record.topSongs,market).take(16),
                 artistHeroUrl=identity.cover(1024),
-                notice=if (incomplete || record.unresolvedShelves.isNotEmpty())
+                notice=if (incomplete || record.unresolvedShelves.isNotEmpty() || evidence?.incomplete == true)
                     "Algumas seções deste artista podem estar incompletas." else null,
+                sourceStoreUrl=appleMusicWebVerifiedStoreUrl(identity),
             )
         }
     }

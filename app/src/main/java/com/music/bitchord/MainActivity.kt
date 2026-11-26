@@ -2425,7 +2425,10 @@ private fun BitChordApp(
         val type = id?.let { viewModel.browseTypeOf(it) }
         if (id?.startsWith("apple_music_web:") == true) {
             // AMS metadata cannot enter legacy playback/download actions.
-            // Exact source attribution for held cards is wired separately.
+            if (com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(item.appleStoreUrl,id) != null) {
+                providerHeldCardRoute = id
+                providerDetailOverflowOpen = true
+            }
         } else if (id?.startsWith("discogs:") == true) {
             // Source-only metadata never enters the legacy collection actions.
             providerHeldCardRoute = id
@@ -6408,14 +6411,22 @@ private fun BitChordApp(
             }
             if (providerDetailOverflowOpen &&
                 (appleSharedVisual != null || discogsNativeVisual != null ||
-                    providerHeldCardRoute?.startsWith("discogs:") == true) &&
+                    providerHeldCardRoute?.startsWith("discogs:") == true ||
+                    providerHeldCardRoute?.startsWith("apple_music_web:") == true) &&
                 (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL ||
                     providerHeldCardRoute != null)
             ) {
                 val currentRoute = providerHeldCardRoute ?:
                     if (pageRouteKey.startsWith("discogs:")) discogsBrowseId
                     else appleNativeRouteKey
-                val exactSourceUrl = if (providerHeldCardRoute == null) {
+                val exactSourceUrl = if (currentRoute?.startsWith("apple_music_web:") == true) {
+                    if (providerHeldCardRoute == null)
+                        appleSharedVisual?.takeIf { it.page.browseId == currentRoute }?.sourceStoreUrl
+                    else (appleSharedVisual?.page?.sections.orEmpty() +
+                        catalogRuntime.amsEditorial.genres.values.flatMap { (it as? UiState.Success)?.data.orEmpty() } +
+                        (catalogRuntime.amsEditorial.home as? UiState.Success)?.data.orEmpty())
+                        .flatMap { it.items }.firstOrNull { it.browseId == currentRoute }?.appleStoreUrl
+                } else if (providerHeldCardRoute == null) {
                     when (appleNativeKind) {
                         AppleNativeDetailKind.ARTIST -> appleArtistNavigation?.appleStoreUrl
                         AppleNativeDetailKind.ALBUM ->
@@ -6432,9 +6443,9 @@ private fun BitChordApp(
                 }
                 val discogsSourceLink =
                     com.music.bitchord.ui.discogsNativeAttributionUrl(currentRoute)
-                val productLink = discogsSourceLink ?:
-                    com.music.bitchord.ui.screens
-                        .verifiedAppleDetailStoreUrl(exactSourceUrl, currentRoute)
+                val productLink = discogsSourceLink ?: if (currentRoute?.startsWith("apple_music_web:") == true)
+                    com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(exactSourceUrl,currentRoute)
+                else com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl(exactSourceUrl,currentRoute)
                 FrostedMenuPanel(
                     hazeState = hazeState,
                     anchorBounds = if (providerHeldCardRoute == null)
