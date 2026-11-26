@@ -39,6 +39,64 @@ import org.robolectric.annotation.ConscryptMode
 class CanonicalExploreGridTest {
     @get:Rule val compose = createComposeRule()
 
+
+    @Test fun searchCategoryRowsUseNativePresentationAndOpenActualCategoryId() {
+        val opened = mutableListOf<String>()
+        compose.setContent {
+            MaterialTheme {
+                SearchScreen(
+                    query = "death metal",
+                    onQueryChange = {},
+                    filter = SearchFilter.ALL,
+                    currentSong = null,
+                    isPlaying = false,
+                    onFilterChange = {},
+                    results = null,
+                    loadingMore = false,
+                    onLoadMore = {},
+                    listState = rememberLazyListState(),
+                    scrollResetTrigger = 0,
+                    focusRequested = false,
+                    onFocusHandled = {},
+                    onSongClick = { _, _ -> },
+                    onSongLongPress = {},
+                    onSongSwipe = {},
+                    onTopResultPlay = {},
+                    onTopResultPlaylist = {},
+                    onBrowseClick = {},
+                    history = emptyList(),
+                    suggestions = emptyList(),
+                    typeaheadResults = emptyList(),
+                    onSubmit = {},
+                    onSuggestionClick = {},
+                    onHistoryClick = {},
+                    onHistoryRemove = {},
+                    onHistoryClear = {},
+                    contentPadding = PaddingValues(0.dp),
+                    topPadding = 0.dp,
+                    showField = false,
+                    searchingCanonical = true,
+                    canonicalResults = UiState.Success(emptyList<CanonicalCatalogSearchRow>()),
+                    searchCommitted = true,
+                    appleResultTabs = true,
+                    categorySearchResults = listOf(
+                        ShelfItem("Death Metal", "Subgênero", null, null, "catalog:GENRE:death metal"),
+                    ),
+                    onCategoryOpen = { opened += it.browseId.orEmpty() },
+                )
+            }
+        }
+        // The clickable native row merges child semantics: the category
+        // artwork tag lives in the *unmerged* tree, by design.
+        compose.onNodeWithTag("genre-search-artwork", useUnmergedTree = true)
+            .assertExists()
+        compose.onNodeWithText("Death Metal").assertExists()
+        compose.onNodeWithTag("native-search-result-row").performClick()
+        compose.runOnIdle {
+            assertEquals(listOf("catalog:GENRE:death metal"), opened)
+        }
+    }
+
     @Test fun searchResultsDelegateHoldWithoutMoreButtonOrDurationText() {
         var held = 0
         compose.setContent {

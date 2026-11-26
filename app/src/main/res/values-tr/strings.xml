@@ -1390,4 +1390,6 @@
     <string name="apple_player_share_song">Şarkıyı paylaş</string>
     <string name="apple_player_share_lyrics">Şarkı sözlerini paylaş…</string>
     <string name="apple_library_search_in_category">%1$s içinde ara</string>
+    <string name="providers_settings">Sağlayıcılar</string>
+    <string name="providers_settings_subtitle">Katalog, kapak, şarkı sözü, istatistik, ses ve indirme sağlayıcılarını yönet</string>
 </resources>

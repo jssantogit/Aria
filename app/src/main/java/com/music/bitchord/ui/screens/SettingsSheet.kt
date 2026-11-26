@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.ui.components.appleSettingsSwitchColors
+import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import com.music.bitchord.ui.components.appleSettingsSliderColors
 import com.music.bitchord.ui.theme.appleSelectionAccentColor
 import com.music.bitchord.ui.theme.appleMusicKeyColor
@@ -203,15 +204,12 @@ internal fun SettingsScreen(
     account: Account?,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
-    onAccountScrobbling: () -> Unit,
     onEqualizer: () -> Unit,
     onOpenReplay: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onLyricsSources: () -> Unit,
     onTranslationLanguage: () -> Unit,
     onSources: () -> Unit,
-    onSoulseek: () -> Unit,
-    onListenTogether: () -> Unit,
     onWearOs: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
@@ -221,9 +219,6 @@ internal fun SettingsScreen(
 ) {
     val context = LocalContext.current
 
-    val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
-    val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
-    val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
     val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
     val pauseResumeFade by AppSettings.pauseResumeFadeMs.collectAsStateWithLifecycle()
     val smartFade by AppSettings.smartFadeEnabled.collectAsStateWithLifecycle()
@@ -259,6 +254,9 @@ internal fun SettingsScreen(
     val showCacheFolder by AppSettings.showCacheFolder.collectAsStateWithLifecycle()
     val downloadQuality by AppSettings.downloadQuality.collectAsStateWithLifecycle()
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
+    // Used by the download Wi-Fi-only "Bloqueando" status. Retiring the
+    // Audio Quality settings section must not remove this live network state.
+    val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
     val exportDownloads by AppSettings.exportDownloads.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
@@ -267,8 +265,6 @@ internal fun SettingsScreen(
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
     val smartVersionAlignment by AppSettings.smartVersionAlignment.collectAsStateWithLifecycle()
     val upgradeLengthSlackSeconds by AppSettings.upgradeLengthSlackSeconds.collectAsStateWithLifecycle()
-    val filterNonMusicAudio by AppSettings.filterNonMusicAudio.collectAsStateWithLifecycle()
-    val localMusicFolderUri by AppSettings.localMusicFolderUri.collectAsStateWithLifecycle()
     val highPerformanceMode by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
     val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
     val currentDisplay = LocalView.current.display
@@ -306,7 +302,6 @@ internal fun SettingsScreen(
     // Filters the rows below — see [SettingsSearch]. Blank shows everything,
     // exactly as if the field weren't there.
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var picking by remember { mutableStateOf<QualityTarget?>(null) }
     var pickingDownloadQuality by remember { mutableStateOf(false) }
     var pickingAutomixPerformance by remember { mutableStateOf(false) }
     // What the last export or import did, shown on the row that did it rather
@@ -327,19 +322,6 @@ internal fun SettingsScreen(
     ) {
         showPerformanceConfirmation = true
     }
-    val localMusicFolderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree(),
-    ) { folder ->
-        if (folder == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                folder,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-        }
-        AppSettings.setLocalMusicFolderUri(folder.toString())
-    }
-
     /**
      * Both halves go through the system document picker rather than a path of
      * this app's own choosing. That is what puts the file somewhere the user can
@@ -407,8 +389,14 @@ internal fun SettingsScreen(
             sectionScrollState.scrollTo(0)
         }
     }
+    // Restored screens removed from the Settings index are redirected home;
+    // they must not survive process recreation as blank detail pages.
     LaunchedEffect(selectedSection) {
-        if (selectedSection != null) sectionScrollState.scrollTo(0)
+        if (selectedSection in SettingsNavigation.hiddenSections) {
+            onSelectSection(null)
+        } else if (selectedSection != null) {
+            sectionScrollState.scrollTo(0)
+        }
     }
 
     // Keep the category/home scroll states and real preference controls.
@@ -430,9 +418,15 @@ internal fun SettingsScreen(
         if (selectedSection == null) {
             Text(
                 text = stringResource(R.string.settings),
-                style = MaterialTheme.typography.displayLarge,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+                modifier = Modifier.padding(
+                    start = 32.dp,
+                    end = 20.dp,
+                    top = NativePageHeaderMetrics.settingsPushedTitleTopPadding,
+                    bottom = 14.dp,
+                ).testTag("native-settings-root-title"),
             )
             SearchField(
                 query = searchQuery,
@@ -451,7 +445,6 @@ internal fun SettingsScreen(
                         }
                     },
                     showWear = remember(context) { WatchInstaller.available(context) },
-                    onListenTogether = onListenTogether,
                 )
             }
         } else {
@@ -460,39 +453,6 @@ internal fun SettingsScreen(
                 filteredQuery = searchQuery,
                 onClearFilter = { searchQuery = "" },
             )
-        }
-
-        if (selectedSection == SettingsSection.ACCOUNT || (selectedSection == null && searchQuery.isNotBlank())) {
-        SearchableSettingsGroup(search, destination = SettingsSection.ACCOUNT, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.ACCOUNT) } else null) {
-            val accountTitle = stringResource(R.string.account_integrations)
-            // What the row opens is the scrobbling screen, so the services it
-            // signs into are worth typing at this field even though none of
-            // them is named on the row itself.
-            row(accountTitle, "scrobbling", "last.fm", "listenbrainz") {
-                SettingsRow(
-                    icon = Icons.Rounded.Person,
-                    title = accountTitle,
-                    subtitle = account?.email?.takeIf { it.isNotBlank() }
-                        ?: stringResource(if (signedIn) R.string.signed_in else R.string.not_signed_in),
-                    onClick = onAccountScrobbling,
-                )
-            }
-            // Sits with the account rather than with Playback: a party is up to
-            // five signed-in people, and being signed in is the whole of what
-            // the row needs before it will do anything.
-            val listenTogetherTitle = stringResource(R.string.listen_together)
-            row(listenTogetherTitle, "jam", "party", "sync", "friends") {
-                SettingsRow(
-                    icon = Icons.Rounded.Groups,
-                    title = listenTogetherTitle,
-                    subtitle = party.code?.let {
-                        stringResource(R.string.listen_together_in_party, it)
-                    } ?: stringResource(R.string.listen_together_subtitle),
-                    badge = party.members.size.takeIf { party.inParty && it > 1 }?.toString(),
-                    onClick = onListenTogether,
-                )
-            }
-        }
         }
 
         // The row that used to sit at the top of this group was called
@@ -508,10 +468,10 @@ internal fun SettingsScreen(
                 onSearchNavigate = if (selectedSection == null) {
                     _: String -> onSelectSection(SettingsSection.SOURCES)
                 } else null,
-                header = stringResource(R.string.sources),
+                header = stringResource(R.string.providers_settings),
             ) {
-            val sourceTitle = stringResource(R.string.source)
-            val sourceSubtitle = stringResource(R.string.sources_subtitle)
+            val sourceTitle = stringResource(R.string.providers_settings)
+            val sourceSubtitle = stringResource(R.string.providers_settings_subtitle)
             row(sourceTitle, sourceSubtitle, "addon", "lossless") {
                 SettingsRow(
                     icon = Icons.Rounded.Extension,
@@ -523,49 +483,19 @@ internal fun SettingsScreen(
             }
         }
 
-        if (selectedSection == SettingsSection.AUDIO_QUALITY || (selectedSection == null && searchQuery.isNotBlank())) {
-        SearchableSettingsGroup(search, destination = SettingsSection.AUDIO_QUALITY, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.AUDIO_QUALITY) } else null, header = stringResource(R.string.audio_quality)) {
-            val onWifiTitle = stringResource(R.string.on_wifi)
-            row(onWifiTitle, "wi-fi", "streaming quality") {
-                SettingsRow(
-                    icon = Icons.Rounded.Wifi,
-                    title = onWifiTitle,
-                    badge = stringResource(R.string.in_use).takeIf { metered == false },
-                    value = wifiQuality.localizedLabel(),
-                    onClick = { picking = QualityTarget.WIFI },
-                )
-            }
-            val onMobileDataTitle = stringResource(R.string.on_mobile_data)
-            row(onMobileDataTitle, "cellular", "streaming quality") {
-                SettingsRow(
-                    icon = Icons.Rounded.SignalCellularAlt,
-                    title = onMobileDataTitle,
-                    badge = stringResource(R.string.in_use).takeIf { metered == true },
-                    value = cellularQuality.localizedLabel(),
-                    onClick = { picking = QualityTarget.CELLULAR },
-                )
-            }
-        }
-        }
-
         if (selectedSection == SettingsSection.DOWNLOADS || (selectedSection == null && searchQuery.isNotBlank())) {
         SearchableSettingsGroup(search, destination = SettingsSection.DOWNLOADS, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.DOWNLOADS) } else null, header = stringResource(R.string.downloads)) {
-            row("Soulseek", "conta", "pesquisa", "baixar") {
-                SettingsRow(
-                    icon = Icons.Rounded.Cloud,
-                    title = "Soulseek",
-                    subtitle = "Conta e downloads manuais (experimental)",
-                    trailing = { Chevron() },
-                    onClick = onSoulseek,
-                )
-            }
+            // Soulseek authentication is owned by Provedores → Conexões.
+            // Download quality and destinations remain here, but no second
+            // account editor should compete with its provider page.
             val downloadQualityTitle = stringResource(R.string.download_quality)
             row(downloadQualityTitle, "offline", "lossless") {
                 SettingsRow(
                     icon = Icons.Rounded.Download,
                     title = downloadQualityTitle,
-                    subtitle = stringResource(R.string.download_quality_subtitle, downloadQuality.perTrack) +
-                        " · " + stringResource(R.string.acquisition_quality_separate),
+                    // The selected value already states the quality; only
+                    // the approximate file size adds useful context here.
+                    subtitle = stringResource(R.string.download_quality_subtitle, downloadQuality.perTrack),
                     value = downloadQuality.localizedLabel(),
                     onClick = { pickingDownloadQuality = true },
                 )
@@ -590,13 +520,6 @@ internal fun SettingsScreen(
                     onCheckedChange = AppSettings::setExportDownloads,
                     subtitle = "Music/BitChord".takeIf { exportDownloads },
                 )
-            }
-            // A1 only reserves the destination for a FUTURE Soulseek publisher.
-            // It must not change the existing offline download save path.
-            val acquisitionDestinationTitle =
-                stringResource(R.string.acquisition_destination_title)
-            row(acquisitionDestinationTitle, "soulseek", "folder", "pasta") {
-                A1AcquisitionDestinationSettingsRow()
             }
         }
         }
@@ -1068,20 +991,6 @@ internal fun SettingsScreen(
                         onClick = { AppSettings.setLyricsBlur(!lyricsBlur) },
                     )
                 }
-                val lyricsSourcesTitle = stringResource(R.string.lyrics_sources)
-                row(lyricsSourcesTitle, "lyrics", "lrclib", "musixmatch") {
-                    SettingsRow(
-                        icon = Icons.Rounded.Language,
-                        title = lyricsSourcesTitle,
-                        // The title identifies what the number counts; a
-                        // numeric value avoids 1 fontes / 1 sources in any locale.
-                        subtitle = if (lyricsSources.isEmpty()) {
-                            stringResource(R.string.no_lyrics_sources_enabled)
-                        } else null,
-                        value = lyricsSourcesCountValue(lyricsSources.size),
-                        onClick = onLyricsSources,
-                    )
-                }
                 val translationLanguageTitle = stringResource(R.string.translation_language)
                 row(translationLanguageTitle, "lyrics", "translate") {
                     SettingsRow(
@@ -1157,48 +1066,6 @@ internal fun SettingsScreen(
                         ),
                     )
                 }
-            }
-        }
-        }
-
-        if (selectedSection == SettingsSection.LOCAL_MUSIC || (selectedSection == null && searchQuery.isNotBlank())) {
-        SearchableSettingsGroup(search, destination = SettingsSection.LOCAL_MUSIC, onSearchNavigate = if (selectedSection == null) { _: String -> onSelectSection(SettingsSection.LOCAL_MUSIC) } else null, header = stringResource(R.string.local_music)) {
-            val localMusicFolderTitle = stringResource(R.string.local_music_folder)
-            row(localMusicFolderTitle, "folder", "offline", "files") {
-                SettingsRow(
-                    icon = Icons.Rounded.Folder,
-                    title = localMusicFolderTitle,
-                    subtitle = LocalMediaRepository.selectedFolderLabel(localMusicFolderUri)
-                        ?: stringResource(R.string.all_audio_folders),
-                    onClick = { localMusicFolderPicker.launch(null) },
-                )
-            }
-            if (localMusicFolderUri.isNotBlank()) {
-                val useAllAudioFoldersTitle = stringResource(R.string.use_all_audio_folders)
-                row(useAllAudioFoldersTitle, "folder") {
-                    SettingsRow(
-                        icon = Icons.Rounded.LibraryMusic,
-                        title = useAllAudioFoldersTitle,
-                        subtitle = stringResource(R.string.use_all_audio_folders_subtitle),
-                        onClick = { AppSettings.setLocalMusicFolderUri("") },
-                    )
-                }
-            }
-            val filterNonMusicAudioTitle = stringResource(R.string.filter_non_music_audio)
-            row(filterNonMusicAudioTitle, "podcast", "recording") {
-                SettingsRow(
-                    icon = Icons.Rounded.FilterAlt,
-                    title = filterNonMusicAudioTitle,
-                    subtitle = stringResource(R.string.filter_non_music_audio_subtitle),
-                    trailing = {
-                        Switch(
-                            checked = filterNonMusicAudio,
-                            onCheckedChange = AppSettings::setFilterNonMusicAudio,
-                            colors = appleSettingsSwitchColors(),
-                        )
-                    },
-                    onClick = { AppSettings.setFilterNonMusicAudio(!filterNonMusicAudio) },
-                )
             }
         }
         }
@@ -1648,36 +1515,6 @@ internal fun SettingsScreen(
                 .fillMaxWidth()
                 .padding(top = 24.dp, bottom = 8.dp),
         )
-        }
-    }
-
-    picking?.let { target ->
-        ModalBottomSheet(
-            onDismissRequest = { picking = null },
-            containerColor = MaterialTheme.colorScheme.background,
-        ) {
-            QualitySheet(
-                target = target,
-                selected = when (target) {
-                    QualityTarget.WIFI -> wifiQuality
-                    QualityTarget.CELLULAR -> cellularQuality
-                },
-                // Writes the one ceiling that was being edited and nothing
-                // else. There used to be a `SourceRegistry.applyQualityPreset`
-                // call here that flipped the module and JioSaavn switches to
-                // match — which meant budgeting *mobile data* switched those
-                // sources off while sitting on Wi-Fi, and coming back to Wi-Fi
-                // never switched them on again. Which sources a rung consults
-                // is now read per stream off the connection in force; see
-                // [AudioQuality.permits].
-                onSelect = { quality ->
-                    when (target) {
-                        QualityTarget.WIFI -> AppSettings.setAudioQualityWifi(quality)
-                        QualityTarget.CELLULAR -> AppSettings.setAudioQualityCellular(quality)
-                    }
-                    picking = null
-                },
-            )
         }
     }
 

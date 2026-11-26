@@ -1,5 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
+import com.music.bitchord.data.providers.ProviderCapability
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -66,6 +68,17 @@ internal data class MusicBrainzCatalogReleaseDetail(
     /** Exact Release lookup only; not inferred from title or group type. */
     val isVideoOnlyContent: Boolean? = null,
     val completeness: MusicBrainzReleaseJsonCompleteness = MusicBrainzReleaseJsonCompleteness(),
+    /** Exact edition source facts for Discogs cross-verification, never display authority. */
+    val hasCompleteTracklist: Boolean = false,
+    val status: String? = null,
+    val barcode: String? = null,
+    val artistCreditNames: List<String> = emptyList(),
+    val editionLabels: List<String> = emptyList(),
+    val editionFormats: List<String> = emptyList(),
+    val editionLabelCatalogPairs: List<Pair<String, String>> = emptyList(),
+    val editionLabelCatalogComplete: Boolean = true,
+    /** Explicit direct Release URL linkage; Group/artist links are not evidence. */
+    val linkedAppleAlbumIds: List<Long> = emptyList(),
 )
 
 /** Transient source proof; defaults deliberately deny destructive reconciliation. */
@@ -80,6 +93,50 @@ internal class MusicBrainzCatalogGraph(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** Exact ReleaseGroup lookup: source-typed format evidence, no title inference. */
+    suspend fun lookupReleaseGroup(
+        mbid: String,
+    ): MusicBrainzCatalogGraphResult<MusicBrainzReleaseGroupHit> {
+        val id = mbid.validMbid() ?: return MusicBrainzCatalogGraphResult.Failure(
+            MusicBrainzCatalogSearchFailure.INVALID_QUERY,
+        )
+        val response = try {
+            client.get("release-group/$id", mapOf(
+                "fmt" to "json", "inc" to "artist-credits",
+            ), capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return MusicBrainzCatalogGraphResult.Failure(
+                MusicBrainzCatalogSearchFailure.UNAVAILABLE,
+            )
+        }
+        return try {
+            val root = json.parseToJsonElement(response).jsonObject
+            if (root.string("id").validMbid() != id) {
+                MusicBrainzCatalogGraphResult.Failure(
+                    MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE,
+                )
+            } else {
+                val title = root.string("title")?.takeIf(String::isNotBlank)
+                    ?: return MusicBrainzCatalogGraphResult.Failure(
+                        MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE,
+                    )
+                MusicBrainzCatalogGraphResult.Success(MusicBrainzReleaseGroupHit(
+                    musicBrainzId = id,
+                    title = title,
+                    primaryType = root.string("primary-type"),
+                    firstReleaseDate = root.string("first-release-date"),
+                    artistDisplay = root.artistDisplay(),
+                ).also { it.artistCreditMbids = root.completeGraphArtistCreditMbids() })
+            }
+        } catch (_: Exception) {
+            MusicBrainzCatalogGraphResult.Failure(
+                MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE,
+            )
+        }
+    }
+
     /**
      * Resolve genuine Recording -> Release relations when a search response
      * omitted its abbreviated release list. Never guess album art by title.
@@ -88,7 +145,9 @@ internal class MusicBrainzCatalogGraph(
     suspend fun lookupRecordingCoverReleases(mbid: String): List<String> {
         val normalized = mbid.validMbid() ?: return emptyList()
         val raw = try {
-            client.get("recording/$normalized", mapOf("fmt" to "json", "inc" to "releases"))
+            client.get("recording/$normalized",
+                mapOf("fmt" to "json", "inc" to "releases"),
+                capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) { return emptyList() }
@@ -117,6 +176,11 @@ internal class MusicBrainzCatalogGraph(
             countKey = "release-group-count", offsetKey = "release-group-offset", arrayKey = "release-groups",
             identity = MusicBrainzReleaseGroupHit::musicBrainzId,
         ) { row ->
+            // The explicit browse relation is sufficient if credits were
+            // omitted. A supplied complete contradictory credit is not.
+            val creditIds = row.completeGraphArtistCreditMbids()
+            if (creditIds != null && artistMbid.trim().lowercase(Locale.ROOT) !in creditIds)
+                return@paged null
             MusicBrainzReleaseGroupHit(
                 musicBrainzId = row.string("id").validMbid() ?: return@paged null,
                 title = row.string("title")?.trim()?.takeIf(String::isNotEmpty) ?: return@paged null,
@@ -147,6 +211,9 @@ internal class MusicBrainzCatalogGraph(
             countKey = "release-count", offsetKey = "release-offset", arrayKey = "releases",
             identity = MusicBrainzReleaseHit::musicBrainzId,
         ) { row ->
+            val creditIds = row.completeGraphArtistCreditMbids()
+            if (creditIds != null && artistMbid.trim().lowercase(Locale.ROOT) !in creditIds)
+                return@paged null
             MusicBrainzReleaseHit(
                 musicBrainzId = row.string("id").validMbid() ?: return@paged null,
                 title = row.string("title") ?: return@paged null,
@@ -207,8 +274,8 @@ internal class MusicBrainzCatalogGraph(
             ?: return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.INVALID_QUERY)
         val raw = try {
             client.get("release/$normalized", mapOf(
-                "fmt" to "json", "inc" to "recordings+artist-credits+release-groups",
-            ))
+                "fmt" to "json", "inc" to "recordings+artist-credits+release-groups+labels+url-rels",
+            ), capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -353,6 +420,46 @@ internal class MusicBrainzCatalogGraph(
                 country = data.string("country"),
                 releaseDate = data.string("date"),
                 tracks = tracks,
+                // The stricter #209 parser's source-completeness gate is the
+                // authority here. Discogs may not verify a partial Track graph.
+                hasCompleteTracklist = tracks.isNotEmpty() &&
+                    // For read-only edition corroboration, a complete, offset-zero
+                    // source track array is ordered even when individual track
+                    // position fields are omitted; #209's stricter completeness
+                    // proof remains separately available for destructive uses.
+                    jsonCompleteness.countsExplicitAndExact &&
+                    jsonCompleteness.offsetsValid &&
+                    (data.integer("media-count") == null ||
+                        data.integer("media-count") == media.size),
+                status = data.string("status"),
+                barcode = data.string("barcode"),
+                linkedAppleAlbumIds = musicBrainzAppleReleaseAlbumIds(data["relations"]),
+                artistCreditNames = data.artistCreditNames(),
+                editionLabels = data.array("label-info").take(12).mapNotNull { entry ->
+                    val info = entry as? JsonObject ?: return@mapNotNull null
+                    val label = (info["label"] as? JsonObject)?.string("name")
+                        ?.takeIf { it.length <= 180 } ?: return@mapNotNull null
+                    val catalogNumber = info.string("catalog-number")
+                        ?.takeIf { it.length <= 80 }
+                    if (catalogNumber != null) "$label ($catalogNumber)" else label
+                }.distinct().take(6),
+                editionLabelCatalogComplete = data["label-info"]?.let { raw ->
+                    raw is JsonArray && raw.size <= 64 &&
+                        raw.all { it is JsonObject }
+                } ?: true,
+                editionLabelCatalogPairs = data.array("label-info").take(64)
+                    .mapNotNull { entry ->
+                        val info = entry as? JsonObject ?: return@mapNotNull null
+                        val label = (info["label"] as? JsonObject)?.string("name")
+                            ?.takeIf { it.length <= 180 } ?: return@mapNotNull null
+                        val catalog = info.string("catalog-number")
+                            ?.takeIf { it.length <= 80 } ?: return@mapNotNull null
+                        label to catalog
+                    }.distinct(),
+                editionFormats = media.mapNotNull { entry ->
+                    (entry as? JsonObject)?.string("format")
+                        ?.takeIf { it.length <= 80 }
+                }.distinct().take(4),
                 isVideoOnlyContent = when {
                     // Conflicting positive source fields are not proof of an
                     // audio-only or video-only edition. Keep it unknown.
@@ -385,7 +492,7 @@ internal class MusicBrainzCatalogGraph(
             client.get(path, mapOf(
                 "fmt" to "json", relation to normalized,
                 "limit" to limit.toString(), "offset" to offset.toString(),
-            ) + extraParameters)
+            ) + extraParameters, capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -401,6 +508,8 @@ internal class MusicBrainzCatalogGraph(
                 ?: return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
             val items = data[arrayKey] as? JsonArray
                 ?: return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
+            if (actualOffset != offset || items.size > limit)
+                return MusicBrainzCatalogGraphResult.Failure(MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE)
             MusicBrainzCatalogGraphResult.Success(
                 MusicBrainzCatalogPage(items.mapNotNull { (it as? JsonObject)?.let(decode) }.distinctBy(identity),
                     total, actualOffset, consumedCount = items.size),
@@ -496,6 +605,29 @@ internal class MusicBrainzCatalogGraph(
                 runCatching { credit["joinphrase"]?.jsonPrimitive?.contentOrNull }
                     .getOrNull().orEmpty()
         }.trim().takeIf(String::isNotEmpty)
+
+    /** All or nothing: malformed credit cannot identify album's artist. */
+    private fun JsonObject.completeGraphArtistCreditMbids(): List<String>? {
+        val credits = this["artist-credit"] as? JsonArray ?: return null
+        if (credits.isEmpty()) return null
+        return credits.map { raw ->
+            val credit = raw as? JsonObject ?: return null
+            val artist = credit["artist"] as? JsonObject ?: return null
+            artist.string("id").validMbid() ?: return null
+        }
+    }
+
+    /** Structured MB credit identities, never split a visible joined name. */
+    private fun JsonObject.artistCreditNames(): List<String> {
+        val credits = array("artist-credit")
+        if (credits.isEmpty()) return emptyList()
+        return credits.map { entry ->
+            val credit = entry as? JsonObject ?: return emptyList()
+            credit.string("name")
+                ?: (credit["artist"] as? JsonObject)?.string("name")
+                ?: return emptyList()
+        }
+    }
 
     private fun String?.validMbid(): String? =
         this?.trim()?.lowercase(Locale.ROOT)?.takeIf(MBID::matches)

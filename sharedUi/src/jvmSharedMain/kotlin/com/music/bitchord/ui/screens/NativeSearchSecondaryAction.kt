@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -42,16 +43,20 @@ fun NativeSearchSecondaryAction(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     loading: Boolean = false,
+    /** All catalog pagination actions use a white, rounded native CTA. */
+    highContrast: Boolean = false,
 ) {
     val active = enabled && !loading
-    val ink = MaterialTheme.colorScheme.onSurface
+    val ink = if (highContrast) Color.Black else MaterialTheme.colorScheme.onSurface
+    val fill = if (highContrast) Color.White else ink.copy(alpha = 0.055f)
+    val outline = if (highContrast) Color.White else ink.copy(alpha = 0.13f)
     val loadingDescription = stringResource(Res.string.canonical_loading_more)
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(if (highContrast) 22.dp else 12.dp)
     Row(
         modifier = modifier
             .clip(shape)
-            .background(ink.copy(alpha = 0.055f))
-            .border(1.dp, ink.copy(alpha = 0.13f), shape)
+            .background(fill)
+            .border(1.dp, outline, shape)
             .clickable(enabled = active, role = Role.Button, onClick = onClick)
             .heightIn(min = 44.dp)
             .padding(horizontal = 15.dp, vertical = 9.dp)
@@ -64,7 +69,7 @@ fun NativeSearchSecondaryAction(
             CircularProgressIndicator(
                 modifier = Modifier.size(19.dp),
                 strokeWidth = 2.dp,
-                color = appleMusicKeyColor(),
+                color = if (highContrast) Color.Black else appleMusicKeyColor(),
             )
         } else if (icon != null) {
             Icon(

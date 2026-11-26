@@ -1,5 +1,8 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit
+import com.music.bitchord.data.catalog.metadata.publicMusicBrainzArtistRows
+import com.music.bitchord.data.catalog.metadata.publicMusicBrainzWorkMatches
 import com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearch
 import com.music.bitchord.data.catalog.metadata.MusicBrainzReleaseGroupHit
 import com.music.bitchord.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
@@ -8,11 +11,535 @@ import com.music.bitchord.data.catalog.metadata.MusicBrainzClient
 import com.music.bitchord.data.catalog.metadata.MusicBrainzTransport
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MusicBrainzCatalogSearchTest {
+    @Test fun workLandingRetainsRawCursorWhileRankingExactMatchBeyondSmallPage() = runBlocking {
+        val target = "99999999-9999-4999-8999-999999999999"
+        val raw = (1..49).map { index ->
+            val id = "00000000-0000-4000-8000-${index.toString().padStart(12, '0')}"
+            """{"id":"$id","title":"Unrelated $index","primary-type":"Album","artist-credit":[{"name":"Other"}]}"""
+        } + """{"id":"$target","title":"Exact Work","primary-type":"Album","artist-credit":[{"name":"Artist"}]}"""
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    assertEquals("50", parameters["limit"])
+                    assertEquals("0", parameters["offset"])
+                    return """{"count":100,"offset":0,"release-groups":[${raw.joinToString(",")}]}"""
+                }
+            },
+        ))
+        val result = source.searchReleaseGroups("Artist Exact Work",
+            com.music.bitchord.data.catalog.metadata.MUSICBRAINZ_PUBLIC_WORK_LANDING_LIMIT)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(target, result.page.items.first().musicBrainzId)
+        assertEquals(50, result.page.consumedCount)
+        assertEquals(0, result.page.offset)
+        assertEquals(100, result.page.total)
+    }
+
+    @Test fun exactTitleCreditRankingIsStableAndPreservesRawPageCursor() = runBlocking {
+        val one = "11111111-1111-4111-8111-111111111111"
+        val two = "22222222-2222-4222-8222-222222222222"
+        val three = "33333333-3333-4333-8333-333333333333"
+        val four = "44444444-4444-4444-8444-444444444444"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String =
+                    """{"count":30,"offset":0,"recordings":[
+                        {"id":"$one","title":"Song","artist-credit":[{"name":"Other"}]},
+                        {"id":"$two","title":"Song (Live)","artist-credit":[{"name":"Beyoncé"}]},
+                        {"id":"$three","title":"Song","artist-credit":[{"name":"Beyoncé"}]},
+                        {"id":"$four","title":"Song","artist-credit":[{"name":"Beyoncé"}]},
+                        {}
+                    ]}"""
+            },
+        ))
+        for (term in listOf("Song Beyonce", "Beyonce Song")) {
+            val page = (source.searchRecordings(term, limit = 5)
+                as MusicBrainzCatalogSearchResult.Success).page
+            assertEquals(listOf(three, four, one, two), page.items.map { it.musicBrainzId })
+            assertEquals(5, page.consumedCount)
+            assertEquals(5, page.nextOffset)
+        }
+    }
+
+    @Test fun releaseGroupSearchRetainsDistinctValidLinkedEditionIds() = runBlocking {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val linked = "22222222-2222-4222-8222-222222222222"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String =
+                    """{"count":1,"offset":0,"release-groups":[
+                        {"id":"$id","title":"Work","primary-type":"Album",
+                         "artist-credit":[{"name":"Artist"}],
+                         "releases":[{"id":"$linked"},{"id":"$linked"},{"id":"invalid"},{}]}
+                    ]}"""
+            },
+        ))
+        val result = source.searchReleaseGroups("Work") as MusicBrainzCatalogSearchResult.Success
+        assertEquals(setOf(linked), result.page.items.single().searchLinkedReleaseMbids)
+        assertEquals(1, result.page.consumedCount)
+    }
+
+    @Test fun publicSearchAdmissionKeepsLiteralNamesakesAndRequiresBothCompoundFields() {
+        val artists = listOf(
+            MusicBrainzArtistHit("a", "Example", null, null),
+            MusicBrainzArtistHit("b", "EXAMPLE", null, null),
+            MusicBrainzArtistHit("c", "Example Tribute", null, null),
+            MusicBrainzArtistHit("d", "Unrelated", null, null),
+        )
+        assertEquals(listOf("a", "b"), publicMusicBrainzArtistRows("Example", artists).map { it.musicBrainzId })
+        assertEquals(listOf("a", "b"), publicMusicBrainzArtistRows("Example (2)", artists).map { it.musicBrainzId })
+        assertEquals(listOf("c"), publicMusicBrainzArtistRows("Example", artists.drop(2))
+            .map { it.musicBrainzId })
+        assertTrue(publicMusicBrainzWorkMatches("Work Artist", "Work (Live)", "Artist"))
+        assertTrue(publicMusicBrainzWorkMatches("Artist Work", "Work 1988", "Artist"))
+        assertFalse(publicMusicBrainzWorkMatches("Work Artist", "Work", "Other"))
+        assertFalse(publicMusicBrainzWorkMatches("Work Artist", "Artist", "Artist"))
+        assertFalse(publicMusicBrainzWorkMatches("Hello", "Hello, Hello, Hello", "Other"))
+        assertTrue(publicMusicBrainzWorkMatches("Hello", "Hello Again", "Other"))
+        assertTrue(publicMusicBrainzWorkMatches("Artist", "Unrelated title", "Artist"))
+    }
+
+    @Test fun publicArtistProjectionRetainsRawCursorAndDoesNotAlterIndependentSearch() = runBlocking {
+        val first = "11111111-1111-4111-8111-111111111111"
+        val second = "22222222-2222-4222-8222-222222222222"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String =
+                    """{"count":50,"offset":0,"artists":[
+                        {"id":"$first","name":"Example"},{"id":"$second","name":"Unrelated"}
+                    ]}"""
+            },
+        ))
+        val raw = source.searchArtists("Example") as MusicBrainzCatalogSearchResult.Success
+        val display = source.searchPublicArtists("Example") as MusicBrainzCatalogSearchResult.Success
+        assertEquals(2, raw.page.items.size)
+        assertEquals(listOf(first), display.page.items.map { it.musicBrainzId })
+        assertEquals(2, display.page.consumedCount)
+        assertEquals(2, display.page.nextOffset)
+    }
+
+    @Test fun ambiguousArtistLandingUsesDistinctSourceWorksButKeepsAllNativeIdentities() = runBlocking {
+        val first = "11111111-1111-4111-8111-111111111111"
+        val supported = "22222222-2222-4222-8222-222222222222"
+        val foreign = "33333333-3333-4333-8333-333333333333"
+        val release = "44444444-4444-4444-8444-444444444444"
+        val calls = mutableListOf<Map<String, String>>()
+        fun group(index: Int, title: String, artist: String, name: String = "Example"): String {
+            val groupId = "00000000-0000-4000-8000-" + index.toString().padStart(12,'0')
+            return """{"id":"$groupId","title":"$title","primary-type":"Album","artist-credit":[{"name":"$name","artist":{"id":"$artist"}}],"releases":[{"id":"$release"}]}"""
+        }
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    calls += parameters
+                    return if (parameters["dismax"] == "false") {
+                        val groups = listOf(group(1,"Repeated",first),group(2,"Repeated",first),
+                            group(3,"Repeated",first),group(4,"First work",supported),
+                            group(5,"Second work",supported),group(6,"Other",foreign),
+                            group(7,"Wrong credit",first,"Other")).joinToString(",")
+                        """{"count":7,"offset":0,"release-groups":[$groups]}"""
+                    } else {
+                        val offset = parameters["offset"]
+                        """{"count":30,"offset":$offset,"artists":[
+                            {"id":"$first","name":"Example"},{"id":"$supported","name":"Example"}]}"""
+                    }
+                }
+            },
+        ))
+        val result = source.searchPublicArtists("Example") as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(supported, first), result.page.items.map { it.musicBrainzId })
+        assertEquals(2, result.page.nextOffset)
+        assertEquals(2, calls.size)
+        assertEquals("artist:\"Example\"", calls[1]["query"])
+        assertEquals("50", calls[1]["limit"])
+        val continuation = source.searchPublicArtists("Example", offset = 2) as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(first, supported), continuation.page.items.map { it.musicBrainzId })
+        assertEquals(3, calls.size)
+    }
+
+    @Test fun artistEvidenceCannotMoveNativeLeaderAcrossSeveralNamesakes() {
+        val ids = (1..10).toList()
+        val ranked = com.music.bitchord.data.catalog.metadata.boundedNativeArtistEvidenceOrder(ids) {
+            if (it in 5..10) 3 else 0
+        }
+        assertEquals(1, ranked.first())
+        assertEquals(ids.toSet(), ranked.toSet())
+        assertTrue(ids.all { kotlin.math.abs(ranked.indexOf(it) - ids.indexOf(it)) <= 1 })
+        assertEquals(ids, com.music.bitchord.data.catalog.metadata.boundedNativeArtistEvidenceOrder(ids) { 1 })
+    }
+
+    @Test fun trackLandingDiversifiesVisualFamiliesWithoutDeletingRecordings() {
+        val repeated = (1..7).map {
+            com.music.bitchord.data.catalog.metadata.MusicBrainzRecordingHit(
+                "recording-$it", "Song", "Artist", 180000L,
+                hasOfficialAudioRelease = true,
+            ).also { hit -> hit.artistCreditMbids = listOf("artist-a") }
+        }
+        val alternate = repeated.first().copy(musicBrainzId = "live", title = "Song (Live)")
+            .also { it.artistCreditMbids = listOf("artist-a") }
+        val namesake = repeated.first().copy(musicBrainzId = "other")
+            .also { it.artistCreditMbids = listOf("artist-b") }
+        val unknown = repeated.first().copy(musicBrainzId = "unknown")
+        val original = repeated + listOf(alternate, namesake, unknown)
+        val visible = com.music.bitchord.data.catalog.metadata.publicMusicBrainzRecordingRows("Song", original)
+        assertEquals(listOf("recording-1", "recording-2", "live", "other", "unknown"),
+            visible.take(5).map { it.musicBrainzId })
+        assertEquals(original.map { it.musicBrainzId }.toSet(), visible.map { it.musicBrainzId }.toSet())
+        assertEquals(original, com.music.bitchord.data.catalog.metadata.publicMusicBrainzRecordingRows(
+            "Song", original, diversify = false))
+    }
+
+    @Test fun exactArtistIdAndTitleCorroborationIsBoundedAndQuotesLiteralTitle() = runBlocking {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("release-group", path)
+                    calls += parameters
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchReleaseGroupsForArtistMbidAndTitle(id, "Work") is MusicBrainzCatalogSearchResult.Success)
+        assertEquals("arid:$id AND releasegroup:\"Work\"", calls.single()["query"])
+        assertEquals("12", calls.single()["limit"])
+        assertEquals("false", calls.single()["dismax"])
+        assertTrue(source.searchReleaseGroupsForArtistMbidAndTitle("invalid", "Work") is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(1, calls.size)
+    }
+
+    @Test fun exactReleaseGroupCorroborationUsesQuotedSourceFieldsAndBoundedLimit() = runBlocking {
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("release-group", path)
+                    calls += parameters
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchReleaseGroupsForTitleArtist("Work", "Artist") is MusicBrainzCatalogSearchResult.Success)
+        assertEquals("releasegroup:\"Work\" AND artist:\"Artist\"", calls.single()["query"])
+        assertEquals("false", calls.single()["dismax"])
+        assertEquals("12", calls.single()["limit"])
+        assertTrue(source.searchReleaseGroupsForTitleArtist("Work", "Artist", 13) is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(1, calls.size)
+    }
+
+    @Test fun weakReleaseGroupLandingProbesExactWorkAndKeepsOriginalOffsets() = runBlocking {
+        val wrong = "11111111-1111-4111-8111-111111111111"
+        val target = "22222222-2222-4222-8222-222222222222"
+        val other = "33333333-3333-4333-8333-333333333333"
+        val requests = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    requests += parameters
+                    assertEquals("release-group", path)
+                    val offset = parameters["offset"]
+                    return if (parameters["dismax"] == "false") {
+                        """{"count":2,"offset":0,"release-groups":[
+                            {"id":"$target","title":"Exact Work","primary-type":"Single","artist-credit":[{"name":"Artist"}]},
+                            {"id":"$other","title":"Exact Work","primary-type":"Other","artist-credit":[{"name":"Artist"}]}
+                        ]}"""
+                    } else """{"count":90,"offset":$offset,"release-groups":[
+                        {"id":"$wrong","title":"Wrong Work","primary-type":"Album","artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchReleaseGroups("Exact Work Artist", 50, recoverWeakLanding = true) as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(target, wrong), result.page.items.map { it.musicBrainzId })
+        assertEquals(1, result.page.consumedCount)
+        assertEquals(1, result.page.nextOffset)
+        assertEquals(2, requests.size)
+        assertEquals("releasegroup:\"exact work\" AND artist:\"artist\"", requests[1]["query"])
+        assertEquals("12", requests[1]["limit"])
+        source.searchReleaseGroups("Exact Work Artist", 50, offset = 1, recoverWeakLanding = true)
+        assertEquals(3, requests.size)
+        // Capacity/batch reads are strictly one upstream page even if a caller
+        // requests a larger limit or the initial response is all weak matches.
+        val batch = source.searchReleaseGroups("Exact Work Artist", 100)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(wrong), batch.page.items.map { it.musicBrainzId })
+        assertEquals(4, requests.size)
+        source.searchReleaseGroups("Exact Work Artist", 50)
+        assertEquals(5, requests.size)
+        source.searchReleaseGroups("Exact Work Artist", 100, recoverWeakLanding = true)
+        assertEquals(6, requests.size)
+    }
+
+    @Test fun weakRecordingLandingUsesOneFieldedProbeAndPreservesOriginalCursor() = runBlocking {
+        val wrong = "11111111-1111-4111-8111-111111111111"
+        val target = "22222222-2222-4222-8222-222222222222"
+        val release = "33333333-3333-4333-8333-333333333333"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    calls += parameters
+                    val offset = parameters["offset"]
+                    return if (parameters["dismax"] == "false") {
+                        """{"count":2,"offset":0,"recordings":[
+                            {"id":"$target","title":"Exact Work","artist-credit":[{"name":"Artist"}],
+                             "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Album"}}]},
+                            {"id":"$wrong","title":"Other Work","artist-credit":[{"name":"Other"}]}
+                        ]}"""
+                    } else """{"count":90,"offset":$offset,"recordings":[
+                        {"id":"$wrong","title":"Wrong Work","artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchRecordings("Exact Work Artist", 50, recoverWeakLanding = true) as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(target, wrong), result.page.items.map { it.musicBrainzId })
+        assertEquals(1, result.page.consumedCount)
+        assertEquals(1, result.page.nextOffset)
+        assertEquals(2, calls.size)
+        assertEquals("false", calls[1]["dismax"])
+        assertEquals("recording:\"exact work\" AND artist:\"artist\" AND status:official", calls[1]["query"])
+        assertEquals("12", calls[1]["limit"])
+        source.searchRecordings("Exact Work Artist", 50, offset = 1, recoverWeakLanding = true)
+        assertEquals(3, calls.size)
+        val batch = source.searchRecordings("Exact Work Artist", 100)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(wrong), batch.page.items.map { it.musicBrainzId })
+        assertEquals(4, calls.size)
+        source.searchRecordings("Exact Work Artist", 50)
+        assertEquals(5, calls.size)
+        source.searchRecordings("Exact Work Artist", 100, recoverWeakLanding = true)
+        assertEquals(6, calls.size)
+    }
+
+    @Test fun ambiguousTitleRecoveryUsesOneBroaderFieldProbeAndOfficialAudioEvidence() = runBlocking {
+        val wrong = "11111111-1111-4111-8111-111111111111"
+        val first = "22222222-2222-4222-8222-222222222222"
+        val supported = "33333333-3333-4333-8333-333333333333"
+        val releaseA = "44444444-4444-4444-8444-444444444444"
+        val releaseB = "55555555-5555-4555-8555-555555555555"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    calls += parameters
+                    return if (parameters["dismax"] == "false") {
+                        """{"count":2,"offset":0,"recordings":[
+                            {"id":"$first","title":"Work","artist-credit":[{"name":"First"}],
+                             "releases":[{"id":"$releaseA","status":"Official","release-group":{"primary-type":"Album"}}]},
+                            {"id":"$supported","title":"Work","artist-credit":[{"name":"Second"}],
+                             "releases":[{"id":"$releaseA","status":"Official","release-group":{"primary-type":"Album"}},
+                                         {"id":"$releaseB","status":"Official","release-group":{"primary-type":"Single"}},
+                                         {"id":"$releaseB","status":"Official","release-group":{"primary-type":"Single"}}]}
+                        ]}"""
+                    } else """{"count":90,"offset":0,"recordings":[
+                        {"id":"$wrong","title":"Other Work","artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchRecordings("Work", 50, recoverWeakLanding = true)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(listOf(supported, first, wrong), result.page.items.map { it.musicBrainzId })
+        assertEquals(2, result.page.items.first().searchOfficialAudioReleaseMbids.size)
+        assertEquals(1, result.page.nextOffset)
+        assertEquals(2, calls.size)
+        assertEquals("100", calls[1]["limit"])
+        assertEquals("recording:\"Work\" AND status:official", calls[1]["query"])
+    }
+
+    @Test fun emptyLiteralRecordingLandingUsesOneNarrowAudioProbeAfterBroadFailure() = runBlocking {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val other = "22222222-2222-4222-8222-222222222222"
+        val release = "33333333-3333-4333-8333-333333333333"
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>, userAgent: String): String {
+                    calls += parameters
+                    return when {
+                        parameters["query"].orEmpty().contains("primarytype:album") ->
+                            """{"count":2,"offset":0,"recordings":[
+                                {"id":"$id","title":"Work","artist-credit":[{"name":"First"}],
+                                 "releases":[{"id":"$release","status":"Official","release-group":{"primary-type":"Album"}}]},
+                                {"id":"$other","title":"Work","artist-credit":[{"name":"Second"}],
+                                 "releases":[{"id":"$release","status":"Bootleg","release-group":{"primary-type":"Album"}}]}]}"""
+                        parameters["dismax"] == "false" -> "invalid JSON"
+                        else -> """{"count":70,"offset":0,"recordings":[{"id":"$other","title":"Different","artist-credit":[{"name":"Second"}]}]}"""
+                    }
+                }
+            },
+        ))
+        val page = (source.searchRecordings("Work", 50, recoverWeakLanding = true)
+            as MusicBrainzCatalogSearchResult.Success).page
+        assertEquals(listOf(id, other), page.items.map { it.musicBrainzId })
+        assertEquals(1, page.nextOffset)
+        assertEquals(3, calls.size)
+        assertEquals("100", calls[1]["limit"])
+        assertEquals("50", calls[2]["limit"])
+        assertEquals("recording:\"Work\" AND status:official AND (primarytype:album OR primarytype:single OR primarytype:ep)", calls[2]["query"])
+        val diagnostic = checkNotNull(page.recordingRecovery)
+        assertEquals(com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE,
+            diagnostic.primaryFailure)
+        assertTrue(diagnostic.audioProbeAttempted)
+        assertEquals(2, diagnostic.audioProbeRows)
+        assertEquals(1, diagnostic.admitted)
+    }
+
+    @Test fun sameNameArtistScopeRequiresAnUnambiguousSourceIdentity() {
+        val artist = com.music.bitchord.data.catalog.metadata.MusicBrainzArtistHit(
+            "11111111-1111-4111-8111-111111111111", "Beyoncé", null, null)
+        val other = artist.copy(musicBrainzId = "22222222-2222-4222-8222-222222222222")
+        assertEquals(artist.musicBrainzId, com.music.bitchord.data.catalog.metadata
+            .musicBrainzUnambiguousArtistScope("Beyonce", listOf(artist, artist)))
+        assertEquals(null, com.music.bitchord.data.catalog.metadata
+            .musicBrainzUnambiguousArtistScope("Beyonce", listOf(artist, other)))
+        assertEquals(null, com.music.bitchord.data.catalog.metadata
+            .musicBrainzUnambiguousArtistScope("Beyonce Song", listOf(artist)))
+    }
+
+    @Test fun searchRejectsWrongCursorAndOversizedPageWithoutAdvancing() = runBlocking {
+        var body = """{"count":20,"offset":0,"artists":[]}"""
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("5", parameters["offset"])
+                    return body
+                }
+            },
+        ))
+        val wrong = source.searchArtists("Artist", limit = 1, offset = 5)
+        assertEquals(MusicBrainzCatalogSearchResult.Failure(
+            com.music.bitchord.data.catalog.metadata.MusicBrainzCatalogSearchFailure.MALFORMED_RESPONSE
+        ), wrong)
+        body = """{"count":20,"offset":5,"artists":[{},{}]}"""
+        assertTrue(source.searchArtists("Artist", limit = 1, offset = 5)
+            is MusicBrainzCatalogSearchResult.Failure)
+        body = """{"count":20,"offset":5,"artists":[{}]}"""
+        val valid = source.searchArtists("Artist", limit = 1, offset = 5)
+            as MusicBrainzCatalogSearchResult.Success
+        assertEquals(6, valid.page.nextOffset)
+        assertTrue(valid.page.items.isEmpty())
+    }
+
+    @Test fun titleArtistEditionSearchUsesDocumentedLuceneFieldsSafely() = runBlocking {
+        val calls = mutableListOf<Map<String, String>>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("release", path)
+                    calls += parameters
+                    return """{"count":0,"offset":0,"releases":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchOfficialReleasesForTitleArtist(
+            "SUPER REAL ME", "ILLIT", limit = 12,
+        ) is MusicBrainzCatalogSearchResult.Success)
+        assertEquals(
+            """release:"SUPER REAL ME" AND artist:"ILLIT" AND status:official""",
+            calls.single()["query"],
+        )
+        assertEquals("false", calls.single()["dismax"])
+        assertEquals("12", calls.single()["limit"])
+        assertTrue(source.searchOfficialReleasesForTitleArtist(
+            "Album", "Test\" OR arid:*", limit = 12,
+        ) is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(calls.last()["query"].orEmpty().contains(
+            """artist:"Test\" OR arid:*" AND status:official""",
+        ))
+        assertTrue(source.searchOfficialReleasesForTitleArtist(
+            "Album\nAnother", "ILLIT",
+        ) is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(source.searchOfficialReleasesForTitleArtist(
+            "Album", "ILLIT", limit = 500,
+        ) is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(2, calls.size)
+    }
+
+    @Test fun editionBarcodeAndTitleArtistQueriesCarryRawMusicBrainzOffsets() =
+        runBlocking {
+            val requests = mutableListOf<Map<String, String>>()
+            val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+                transport = object : MusicBrainzTransport {
+                    override suspend fun get(
+                        path: String, parameters: Map<String, String>, userAgent: String,
+                    ): String {
+                        assertEquals("release", path)
+                        requests += parameters
+                        return """{"count":30,"offset":12,"releases":[]}"""
+                    }
+                },
+            ))
+            assertTrue(search.searchReleasesByBarcode(
+                "8801234567890", limit = 12, offset = 12,
+            ) is MusicBrainzCatalogSearchResult.Success)
+            assertTrue(search.searchOfficialReleasesForTitleArtist(
+                "SUPER REAL ME", "ILLIT", limit = 12, offset = 12,
+            ) is MusicBrainzCatalogSearchResult.Success)
+            assertEquals(listOf("12", "12"), requests.map { it["offset"] })
+            assertEquals("barcode:8801234567890", requests[0]["query"])
+            assertEquals(
+                """release:"SUPER REAL ME" AND artist:"ILLIT" AND status:official""",
+                requests[1]["query"],
+            )
+            assertEquals(listOf("false", "false"), requests.map { it["dismax"] })
+            assertTrue(search.searchOfficialReleasesForTitleArtist(
+                "Album", "ILLIT", offset = -1,
+            ) is MusicBrainzCatalogSearchResult.Failure)
+            assertTrue(search.searchReleasesByBarcode(
+                "8801234567890", offset = -1,
+            ) is MusicBrainzCatalogSearchResult.Failure)
+            assertEquals(2, requests.size)
+        }
+
+    @Test fun barcodeEditionSearchUsesExactFieldAndRejectsUnsafeQueries() = runBlocking {
+        val calls = mutableListOf<Pair<String, Map<String, String>>>()
+        val search = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    calls += path to parameters
+                    return """{"count":1,"offset":0,"releases":[
+                        {"id":"541adf5a-48d4-4f7b-a7bb-afd3cea5af27",
+                         "title":"SUPER REAL ME","status":"Official",
+                         "artist-credit":[{"name":"ILLIT",
+                             "artist":{"id":"11111111-1111-4111-8111-111111111111"}}],
+                         "release-group":{"id":"529f87a1-1081-48a4-8ee1-3c08de229858",
+                             "primary-type":"EP"}}]}"""
+                }
+            },
+        ))
+        assertTrue(search.searchReleasesByBarcode("8801234567890", limit = 12)
+            is MusicBrainzCatalogSearchResult.Success)
+        assertEquals("release", calls.single().first)
+        assertEquals("barcode:8801234567890", calls.single().second["query"])
+        assertEquals("false", calls.single().second["dismax"])
+        assertEquals("12", calls.single().second["limit"])
+        assertTrue(search.searchReleasesByBarcode("123 OR arid:*")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(search.searchReleasesByBarcode("000")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(1, calls.size)
+    }
+
     @Test fun groupAndEditionArtistIdentityMustSurviveSearchParsing() = runBlocking {
         val lead = "11111111-1111-4111-8111-111111111111"
         val guest = "22222222-2222-4222-8222-222222222222"
@@ -59,6 +586,44 @@ class MusicBrainzCatalogSearchTest {
         assertEquals("IU", editions.single().artistDisplay)
     }
 
+    @Test fun recentEditorialPaginationAdvancesByRawRowsNotAcceptedReleaseGroups() = runBlocking {
+        val observed = mutableListOf<Map<String, String>>()
+        val id = "11111111-1111-4111-8111-111111111111"
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    assertEquals("release-group", path)
+                    observed += parameters
+                    return """{"count":200,"offset":100,"release-groups":[
+                        {"id":"bad-id","title":"Unverifiable"},
+                        {"id":"$id","title":"Verified album","primary-type":"Album",
+                            "first-release-date":"2026-11-11",
+                            "artist-credit":[{"name":"Artist"}]},
+                        {"id":"$id","title":"Verified album","primary-type":"Album",
+                            "first-release-date":"2026-11-11",
+                            "artist-credit":[{"name":"Artist"}]}
+                    ]}"""
+                }
+            },
+        ))
+        val result = source.searchRecentReleaseGroups(
+            "2026-10-01", "2026-11-23", limit = 25, offset = 100,
+        )
+        val page = (result as MusicBrainzCatalogSearchResult.Success<
+            MusicBrainzReleaseGroupHit>).page
+        assertEquals(3, page.consumedCount)
+        assertEquals(listOf(id), page.items.map { it.musicBrainzId })
+        assertEquals(100, page.offset)
+        assertEquals(103, page.nextOffset)
+        assertEquals("100", observed.single()["offset"])
+        assertEquals("25", observed.single()["limit"])
+        assertEquals("false", observed.single()["dismax"])
+        assertTrue(observed.single()["query"].orEmpty().contains(
+            "firstreleasedate:[2026-10-01 TO 2026-11-23]"))
+    }
+
     @Test
     fun worldwideReleasesAndGenreUseFieldedQueriesNotLocalIndex() = runBlocking {
         val calls = mutableListOf<Pair<String, Map<String, String>>>()
@@ -99,6 +664,35 @@ class MusicBrainzCatalogSearchTest {
         assertTrue(calls[4].second["query"].orEmpty().contains("tag:\"hip hop\""))
         assertTrue(calls[4].second["query"].orEmpty().contains(
             "firstreleasedate:[2026-10-01 TO 2026-11-05]"))
+    }
+
+    @Test fun verifiedMultiwordGenreTagsUseQuotedFieldedQueriesWithoutLuceneInjection() = runBlocking {
+        val requests = mutableListOf<String>()
+        val source = MusicBrainzCatalogSearch(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(
+                    path: String, parameters: Map<String, String>, userAgent: String,
+                ): String {
+                    requests += parameters["query"].orEmpty()
+                    return """{"count":0,"offset":0,"release-groups":[]}"""
+                }
+            },
+        ))
+        assertTrue(source.searchReleaseGroupsForTag("death metal")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(source.searchRecentReleaseGroupsForTag(
+            "jazz fusion", "2026-01-01", "2026-11-22",
+        ) is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(source.searchAlbumReleaseGroupsForTag("contemporary r&b")
+            is MusicBrainzCatalogSearchResult.Success)
+        assertTrue(requests[0].contains("tag:\"death metal\""))
+        assertTrue(requests[1].contains("tag:\"jazz fusion\""))
+        assertTrue(requests[2].contains("tag:\"contemporary r&b\""))
+        assertTrue(source.searchReleaseGroupsForTag("metal\" OR artist:*")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertTrue(source.searchAlbumReleaseGroupsForTag("death metal AND type:album")
+            is MusicBrainzCatalogSearchResult.Failure)
+        assertEquals(3, requests.size)
     }
 
     @Test fun genreAlbumQueryPinsOfficialTagAndAlbumType() = runBlocking {

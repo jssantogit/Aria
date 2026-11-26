@@ -1410,4 +1410,6 @@
     <string name="apple_player_share_song">Bagikan lagu</string>
     <string name="apple_player_share_lyrics">Bagikan lirik…</string>
     <string name="apple_library_search_in_category">Cari di %1$s</string>
+    <string name="providers_settings">Penyedia</string>
+    <string name="providers_settings_subtitle">Kelola penyedia katalog, sampul, lirik, statistik, audio, dan unduhan</string>
 </resources>

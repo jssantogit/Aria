@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,7 +20,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.sharedui.resources.*
@@ -53,6 +53,7 @@ fun NativeSearchResultRow(
     onClick: (() -> Unit)?,
     onLongPress: (() -> Unit)? = null,
     horizontalPadding: androidx.compose.ui.unit.Dp = PAGE_GUTTER,
+    genreCategoryArtworkTitle: String? = null,
 ) {
     // The same geometry, held capture and touch behavior as SongRow, but
     // without claiming a playable Song, rating or source-specific queue.
@@ -65,15 +66,22 @@ fun NativeSearchResultRow(
         leading = {
             NativeDetailTrackArtwork {
                 val shape = if (row.artistPortrait) CircleShape else RoundedCornerShape(8.dp)
-                AsyncImage(
-                    model = row.artworkUri.artworkAt(ROW_ART_PX),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(shape)
-                        .thumbnailBorder(shape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
+                if (genreCategoryArtworkTitle != null) {
+                    NativeGenreSearchArtwork(
+                        title = genreCategoryArtworkTitle,
+                        modifier = Modifier.matchParentSize().clip(shape),
+                    )
+                } else {
+                    AsyncImage(
+                        model = row.artworkUri.artworkAt(ROW_ART_PX),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clip(shape)
+                            .thumbnailBorder(shape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    )
+                }
                 if (row.downloadBadge && !row.artistPortrait) {
                     Box(
                         modifier = Modifier.align(Alignment.BottomEnd)

@@ -19,10 +19,57 @@ internal fun canonicalPublicReleaseRows(
     hits: List<MusicBrainzReleaseGroupHit>,
     fromIsoDate: String,
     throughIsoDate: String,
-): List<CanonicalCatalogSearchRow> = canonicalPublicTypedReleaseRows(hits, { date ->
-    date != null && date.length == 10 && date >= fromIsoDate &&
-        date <= throughIsoDate && runCatching { LocalDate.parse(date) }.isSuccess
-})
+): List<CanonicalCatalogSearchRow> {
+    // A MusicBrainz source page can hold 100 raw records. Its first 40
+    // verified rows may all be Singles even when the final row is the only
+    // real Album. Reserve both exact source-typed formats before clipping
+    // the *viewport sample*. The offset still advances by all raw rows.
+    val eligible = canonicalPublicTypedReleaseRows(hits, { date ->
+        date != null && date.length == 10 && date >= fromIsoDate &&
+            date <= throughIsoDate && runCatching { LocalDate.parse(date) }.isSuccess
+    }, maxItems = hits.size)
+    val anchors = listOfNotNull(
+        eligible.firstOrNull { canonicalEditorialReleaseType(it) == "Album" },
+        eligible.firstOrNull {
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        },
+    ).plus(musicBrainzHomeGenreAnchors(eligible)).distinctBy { it.musicBrainzId }
+    val reserved = anchors.map { it.musicBrainzId }.toSet()
+    return (anchors + eligible.asSequence()
+        .filterNot { it.musicBrainzId in reserved }
+        .take((40 - anchors.size).coerceAtLeast(0))
+        .toList())
+        .sortedWith(compareByDescending<CanonicalCatalogSearchRow> {
+            it.releaseDate.orEmpty()
+        }.thenBy { it.musicBrainzId })
+}
+
+/**
+ * An unknown or coarse source date is valid *catalogue* evidence, but an
+ * invalid calendar value or known future month/day is not. This deliberately
+ * does NOT upgrade a year/month to a day for "Lançamentos" or popularity.
+ */
+internal fun canonicalCatalogReleaseDateNotFuture(
+    releaseDate: String?, todayIsoDate: String,
+): Boolean {
+    val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull()
+        ?: return false
+    return canonicalCatalogReleaseDateNotFuture(releaseDate, today)
+}
+
+private fun canonicalCatalogReleaseDateNotFuture(
+    releaseDate: String?, today: LocalDate,
+): Boolean = when (releaseDate?.length) {
+    null, 0 -> true
+    4 -> runCatching { java.time.Year.parse(releaseDate).value <= today.year }
+        .getOrDefault(false)
+    7 -> runCatching {
+        java.time.YearMonth.parse(releaseDate) <= java.time.YearMonth.from(today)
+    }.getOrDefault(false)
+    10 -> runCatching { LocalDate.parse(releaseDate) <= today }
+        .getOrDefault(false)
+    else -> false
+}
 
 /**
  * A genre is a historical browse category, NOT a world new-release chart.
@@ -33,22 +80,18 @@ internal fun canonicalPublicReleaseRows(
 internal fun canonicalPublicGenreRows(
     hits: List<MusicBrainzReleaseGroupHit>,
     throughIsoDate: String,
+    /** Initial genre viewport stays at 40; scroll continuations retain their full page. */
+    maxItems: Int = 40,
 ): List<CanonicalCatalogSearchRow> {
+    require(maxItems in 1..100)
     val today = runCatching { LocalDate.parse(throughIsoDate) }.getOrNull()
         ?: return emptyList()
+    // Keep the entire bounded source response until format-aware sampling.
+    // A pre-emptive 120-item cap can hide the only Album behind 120 Singles
+    // even though the final genre viewport displays at most forty cards.
     val valid = canonicalPublicTypedReleaseRows(hits, { date ->
-        when (date?.length) {
-            null, 0 -> true
-            4 -> runCatching { java.time.Year.parse(date).value <= today.year }
-                .getOrDefault(false)
-            7 -> runCatching {
-                java.time.YearMonth.parse(date) <= java.time.YearMonth.from(today)
-            }.getOrDefault(false)
-            10 -> runCatching { LocalDate.parse(date) <= today }
-                .getOrDefault(false)
-            else -> false
-        }
-    }, maxItems = 120)
+        canonicalCatalogReleaseDateNotFuture(date, today)
+    }, maxItems = hits.size)
     // The world-news feed can simply lead with newest releases. A historical
     // genre page must NOT let 40 recent Singles crowd every Album out before
     // the editorial composer ever receives it.
@@ -59,11 +102,11 @@ internal fun canonicalPublicGenreRows(
     }.take(12).map { it.musicBrainzId }.toSet()
     val selected = albumIds + singleIds
     return (valid.filter { it.musicBrainzId in selected } +
-        valid.filterNot { it.musicBrainzId in selected }.take((40 - selected.size).coerceAtLeast(0)))
+        valid.filterNot { it.musicBrainzId in selected }.take((maxItems - selected.size).coerceAtLeast(0)))
         .sortedWith(compareByDescending<CanonicalCatalogSearchRow> {
             it.releaseDate.orEmpty()
         }.thenBy { it.musicBrainzId })
-        .take(40)
+        .take(maxItems)
 }
 
 /** Common type, identity and credit gate for world and genre discovery. */
@@ -94,6 +137,7 @@ private fun canonicalPublicTypedReleaseRows(
             releaseKind = hit.primaryType,
             secondaryTypes = hit.secondaryTypes,
             artworkUri = hit.artworkUri,
+            editorialGenreTags = hit.editorialGenreTags,
         )
     }
     .take(maxItems)
@@ -121,7 +165,7 @@ internal fun canonicalDailyPublicPicks(
         }.toList()
 
 /** Static taxonomy is navigation, not invented audio, release, or chart rows. */
-internal data class CanonicalExploreGenre(val tag: String, val title: String)
+internal data class CanonicalExploreGenre(val tag: String, val title: String, val parentTag: String? = null)
 
 internal val canonicalExploreGenres = listOf(
     CanonicalExploreGenre("pop", "Pop"),
@@ -139,7 +183,7 @@ internal val canonicalExploreGenres = listOf(
 )
 
 internal fun canonicalExploreGenreForBrowseId(browseId: String?): CanonicalExploreGenre? =
-    canonicalExploreGenres.firstOrNull { browseId == "catalog:GENRE:${it.tag}" }
+    canonicalAllExploreGenres.firstOrNull { browseId == canonicalGenreBrowseId(it) }
 
 internal fun canonicalExploreGenreShelf(
     heading: String,
@@ -212,7 +256,9 @@ internal fun canonicalGenreEditorialShelves(
             canonicalEditorialReleaseType(it) != null &&
             !it.subtitle.isNullOrBlank() &&
             canonicalStreamingTitleIsSafe(it.title) &&
-            (it.releaseDate?.let { date -> date <= todayIsoDate } ?: true) }
+            // This composer also receives cached rows directly. Never
+            // trust lexical year/month comparisons to validate calendars.
+            canonicalCatalogReleaseDateNotFuture(it.releaseDate, todayIsoDate) }
         .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
         .sortedWith(compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
             .thenBy { it.musicBrainzId })
@@ -318,6 +364,22 @@ internal fun canonicalPublicNeedsMoreEditorialRows(
         typed.none { canonicalEditorialReleaseType(it) in setOf("Single", "EP") }
 }
 
+/**
+ * Only a source-owned, day-precise date within the last 90 days can enter
+ * the global Home's chronological Launches shelf. Year-only/month-only
+ * MusicBrainz metadata remains valid for search, genres and archive discovery,
+ * but claiming a specific recent launch from it would fabricate precision.
+ * This is NOT a popularity or chart ranking.
+ */
+internal fun canonicalHomeReleaseIsRecent(
+    releaseDate: String?, todayIsoDate: String, maxAgeDays: Long = 90L,
+): Boolean {
+    if (maxAgeDays < 0L || releaseDate?.length != 10) return false
+    val date = runCatching { LocalDate.parse(releaseDate) }.getOrNull() ?: return false
+    val today = runCatching { LocalDate.parse(todayIsoDate) }.getOrNull() ?: return false
+    return !date.isAfter(today) && !date.isBefore(today.minusDays(maxAgeDays))
+}
+
 /** Independent public metadata never becomes a playable song without an asset. */
 internal fun canonicalHomeWithWorldwideEditorial(
     localShelves: List<HomeShelf>,
@@ -341,7 +403,8 @@ internal fun canonicalHomeWithWorldwideEditorial(
     // catalog. Different MusicBrainz editions keep their real MBIDs in search.
     val publicRows = worldwideReleases.asSequence()
         .filter { it.kind == CanonicalSearchKind.RELEASE_GROUP &&
-            canonicalEditorialReleaseType(it) != null }
+            canonicalEditorialReleaseType(it) != null &&
+            canonicalCatalogReleaseDateNotFuture(it.releaseDate, todayIsoDate) }
         .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
         .sortedWith(
             compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
@@ -358,60 +421,108 @@ internal fun canonicalHomeWithWorldwideEditorial(
         val id = card.browseId ?: return@filter false
         selected.add(id)
     }
-    // Give each real editorial format a minimum allocation before the Home
-    // hero and daily picks use the limited first public result page.
-    // If the verified ListenBrainz chart is missing, a distinct 'Mais' shelf
-    // can complete five sections without pretending to be 'Em alta'.
-    val supportsFive = publicRows.size >= 5
-    val reservedAlbum = if (supportsFive) publicRows.asReversed().firstOrNull {
+    // Reserve real album and single evidence even for a sparse historical
+    // archive. Otherwise daily rotation consumes the only two archived
+    // releases before their proper format shelves can present them.
+    val genuinelyRecent = publicRows.filter {
+        canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
+    }
+    // With enough releases reserve distinct formats for a full Home, but do
+    // not force an invented fresh-launch shelf to fill a section quota.
+    // A single verified recent ReleaseGroup must not disappear from the
+    // Launches shelf just because the Home reserves format diversity and a
+    // generic More card from a much larger *historical* source snapshot.
+    // The protected row remains one source-owned, exact-dated identity;
+    // it is not popularity evidence and cannot be shown twice.
+    val launchOrder = compareByDescending<CanonicalCatalogSearchRow> {
+        !it.artworkUri.isNullOrBlank()
+    }.thenByDescending { it.releaseDate.orEmpty() }
+        .thenBy { it.musicBrainzId }
+    val protectedLaunch = genuinelyRecent.sortedWith(launchOrder).firstOrNull()
+    val protectedId = protectedLaunch?.musicBrainzId
+    val supportsFive = publicRows.size >= 5 || genuinelyRecent.isEmpty()
+    // Reserving the oldest identity as the FIRST Album/Single card was
+    // technically diverse but visually weak: an ancient, coverless record
+    // could lead a category despite newer, source-owned cover evidence.
+    // This is presentation quality, NOT a claim of popularity or a chart.
+    val formatAnchorOrder = compareByDescending<CanonicalCatalogSearchRow> {
+        !it.artworkUri.isNullOrBlank()
+    }.thenByDescending { it.releaseDate.orEmpty() }
+        .thenBy { it.musicBrainzId }
+    val reservable = publicRows.filterNot { it.musicBrainzId == protectedId }
+        .sortedWith(formatAnchorOrder)
+    val reservedAlbum = if (supportsFive) reservable.firstOrNull {
         canonicalEditorialReleaseType(it) == "Album"
     } else null
-    val reservedSingle = if (supportsFive) publicRows.asReversed().firstOrNull {
+    val reservedSingle = if (supportsFive) reservable.firstOrNull {
         canonicalEditorialReleaseType(it) in setOf("Single", "EP")
     } else null
     val hasRealChartOrCommunity = worldwideTrending?.items?.isNotEmpty() == true ||
         community?.items?.isNotEmpty() == true
     val reservedMore = if (supportsFive && !hasRealChartOrCommunity) {
-        publicRows.asReversed().firstOrNull {
+        reservable.firstOrNull {
             it.musicBrainzId != reservedAlbum?.musicBrainzId &&
                 it.musicBrainzId != reservedSingle?.musicBrainzId
         }
     } else null
     val reservedIds = listOfNotNull(reservedAlbum, reservedSingle, reservedMore)
         .map(::canonicalNativeBrowseId).toSet()
-    if (publicRows.isNotEmpty()) {
-        // Reserve enough releases for separately curated shelves instead of
-        // using all 24 on the hero and repeating them under Quick Picks.
-        val launchCount = if (publicRows.size <= 10)
-            maxOf(1, publicRows.size / 2) else minOf(10, publicRows.size / 3)
-        val launches = unique(publicRows.filterNot {
-            canonicalNativeBrowseId(it) in reservedIds
-        }.take(launchCount).map(::item))
+    val launchCandidates = genuinelyRecent.filterNot {
+        canonicalNativeBrowseId(it) in reservedIds
+    }.sortedWith(launchOrder)
+    if (launchCandidates.isNotEmpty()) {
+        // Reserve independently verified Albums and Singles, but never fill
+        // "Lançamentos" with historic works merely to complete a carousel.
+        val launchCount = if (launchCandidates.size <= 10)
+            maxOf(1, launchCandidates.size / 2)
+        else minOf(10, launchCandidates.size / 3)
+        val launches = unique(launchCandidates.take(launchCount).map(::item))
         val index = shelves.indexOfFirst { it.title == releasesHeading }
         if (index >= 0) shelves[index] = shelves[index].copy(items = launches)
         else shelves.add(0, HomeShelf(releasesHeading, launches))
     } else {
-        // On a cold offline install, retain only genuinely available local
-        // items. Never present a saved album as a verified worldwide launch.
-        shelves.firstOrNull { it.title == releasesHeading }?.items?.forEach {
-            it.browseId?.let(selected::add)
+        // No verified recent album: keep personal offline cards but discard
+        // an old source group accidentally labeled as a fresh global launch.
+        val index = shelves.indexOfFirst { it.title == releasesHeading }
+        if (index >= 0) {
+            val personal = shelves[index].items.filter { card ->
+                val id = card.browseId.orEmpty()
+                id.startsWith("local:") || id.startsWith("server:") ||
+                    id.startsWith("downloads:")
+            }
+            if (personal.isEmpty()) shelves.removeAt(index)
+            else shelves[index] = shelves[index].copy(items = personal)
+            personal.mapNotNull { it.browseId }.forEach(selected::add)
         }
     }
 
     val picksIndex = shelves.indexOfFirst { it.title == picksHeading }
     val existingPicks = shelves.getOrNull(picksIndex).takeIf { picksIndex >= 0 }?.items.orEmpty()
-    val availablePicks = canonicalDailyPublicPicks(
-        publicRows.filterNot {
-            canonicalNativeBrowseId(it) in selected ||
-                canonicalNativeBrowseId(it) in reservedIds
-        },
-        todayIsoDate, limit = 24,
-    ).sortedWith(compareByDescending<ShelfItem> { !it.thumbnailUrl.isNullOrBlank() })
-    val picks = unique((existingPicks + availablePicks).distinctBy { it.browseId }.take(16))
+    // "Escolha a dedo" may contain genuine user-selected local/server
+    // assets. It must never silently absorb a deterministic public-release
+    // hash rotation and imply human curation or listening popularity.
+    val actualPicks = unique(existingPicks.distinctBy { it.browseId }.take(16))
     if (picksIndex >= 0) {
-        if (picks.isNotEmpty()) shelves[picksIndex] = shelves[picksIndex].copy(items = picks)
+        if (actualPicks.isNotEmpty()) shelves[picksIndex] =
+            shelves[picksIndex].copy(items = actualPicks)
         else shelves.removeAt(picksIndex)
-    } else if (picks.isNotEmpty()) shelves.add(minOf(1, shelves.size), HomeShelf(picksHeading, picks))
+    }
+    // Unknown but verified catalog records belong to an explicitly named
+    // discovery rail, not a faux handpicked recommendation. Keep this
+    // sampling small so source-typed Album and Single shelves have room.
+    val discoveryCandidates = publicRows.filterNot {
+        canonicalNativeBrowseId(it) in selected ||
+            canonicalNativeBrowseId(it) in reservedIds
+    }
+    val genreAnchors = musicBrainzHomeGenreAnchors(discoveryCandidates).take(5)
+    val genreAnchorIds = genreAnchors.map { it.musicBrainzId }.toSet()
+    val availableDiscovery = (genreAnchors.map(::item) + canonicalDailyPublicPicks(
+        discoveryCandidates.filterNot { it.musicBrainzId in genreAnchorIds },
+        todayIsoDate, limit = 8 - genreAnchors.size,
+    )).sortedWith(compareByDescending<ShelfItem> { !it.thumbnailUrl.isNullOrBlank() })
+    val discovery = unique(availableDiscovery.distinctBy { it.browseId })
+    if (discovery.isNotEmpty())
+        shelves.add(minOf(1, shelves.size), HomeShelf("Para descobrir", discovery))
 
     // "Em alta" is ONLY upstream ListenBrainz evidence or verified local
     // listening evidence already present. Recent release dates are not charts.
@@ -426,13 +537,26 @@ internal fun canonicalHomeWithWorldwideEditorial(
     if (worldwideTrending == null && community?.items?.isNotEmpty() == true &&
         community.title.isNotBlank()
     ) shelves.add(minOf(2, shelves.size), community)
-    // Home is a global discovery feed, not the genre's format-by-format
-    // discography. Real public playlists replace the genre-like singles row.
+    // Home is a global discovery feed; public playlists have their own
+    // provenance and must not suppress separately verified Singles and EPs.
     publicPlaylists?.takeIf { it.items.isNotEmpty() }?.let { shelf ->
         shelves.add(minOf(3, shelves.size), shelf)
     }
     fun appendPublic(heading: String, rows: List<CanonicalCatalogSearchRow>) {
-        val cards = unique(rows.map(::item).take(12))
+        // Pagination may supply hundreds of valid releases, but earlier
+        // Home shelves already consumed a leading prefix. Take twelve
+        // *unassigned* source IDs, not twelve raw candidates followed by
+        // deduplication, or a well-stocked catalog can render a nearly
+        // empty Album/Single carousel.
+        val available = rows.asSequence().map(::item)
+            .filter { card ->
+                val id = card.browseId
+                id != null && id !in selected
+            }
+            .distinctBy { it.browseId }
+            .take(12)
+            .toList()
+        val cards = unique(available)
         if (cards.isNotEmpty()) shelves.add(HomeShelf(heading, cards))
     }
     val unused = publicRows.filterNot {
@@ -454,12 +578,10 @@ internal fun canonicalHomeWithWorldwideEditorial(
             canonicalNativeBrowseId(it) in selected ||
                 it.musicBrainzId == reservedMore?.musicBrainzId
         }
-        if (publicPlaylists?.items.isNullOrEmpty()) {
-            appendPublic(singlesHeading,
-                listOfNotNull(reservedSingle) + unusedSingles.filter {
-                    canonicalEditorialReleaseType(it) in setOf("EP", "Single")
-                })
-        }
+        appendPublic(singlesHeading,
+            listOfNotNull(reservedSingle) + unusedSingles.filter {
+                canonicalEditorialReleaseType(it) in setOf("EP", "Single")
+            })
     }
     appendPublic(moreHeading,
         listOfNotNull(reservedMore) + publicRows.filterNot { canonicalNativeBrowseId(it) in selected })

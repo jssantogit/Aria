@@ -1473,4 +1473,6 @@
     <string name="apple_player_share_song">Udostępnij utwór</string>
     <string name="apple_player_share_lyrics">Udostępnij tekst…</string>
     <string name="apple_library_search_in_category">Szukaj w %1$s</string>
+    <string name="providers_settings">Dostawcy</string>
+    <string name="providers_settings_subtitle">Zarządzaj dostawcami katalogu, okładek, tekstów, statystyk, dźwięku i pobierania</string>
 </resources>

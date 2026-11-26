@@ -64,6 +64,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +97,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -110,6 +113,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.music.bitchord.ui.components.ResilientAppleCover
 import coil3.compose.LocalPlatformContext
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
@@ -191,6 +195,10 @@ import com.music.bitchord.ui.theme.ArtworkPalette
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlin.math.roundToInt
 import java.util.Locale
+
+/** A source-scoped Discogs artist never acquires a portrait by matching a name. */
+internal fun nativeArtistAllowsNameBasedAuxiliaryVisuals(browseId: String): Boolean =
+    !browseId.startsWith("discogs:")
 
 private const val MAX_ARTIST_SONGS = 20
 private const val SONGS_PER_COLUMN = 4
@@ -280,6 +288,29 @@ private fun String.looksLikeCredit() = CREDIT_SEPARATOR.containsMatchIn(this)
  * the tint — since that picture runs edge to edge up under the bar. Nothing in
  * either is re-blurred while the page scrolls.
  */
+/**
+ * Source-neutral, non-playable track metadata. Apple/iTunes and other catalogs
+ * must not invent a Song, RecordingId or a MusicBrainz identity to render the
+ * very same numbered rows used by the existing complete DetailScreen.
+ */
+data class NativeMetadataTrack(
+    val key: String,
+    val title: String,
+    val credit: String?,
+    val trackNumber: Int?,
+    val discNumber: Int?,
+    /** Preserve exact source positions such as A1 or CD2-3. */
+    val sourcePosition: String? = null,
+    val durationMs: Long? = null,
+    val workTitle: String? = null,
+)
+
+internal data class NativeDetailAttribution(
+    val text: String,
+    val url: String?,
+    val disclaimer: String?,
+)
+
 @Composable
 fun DetailScreen(
     page: DetailPage,
@@ -303,6 +334,8 @@ fun DetailScreen(
      * wherever it is seen rather than only from its own page.
      */
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
+    /** Artist cards only: Group MBID -> exact promotional artwork and store URL. */
+    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
     /**
      * Whether the filter box is open under the header. Owned by the caller
      * because the control that opens it sits in the top bar, beside the sort
@@ -346,6 +379,19 @@ fun DetailScreen(
     folder: LocalFolder? = null,
     /** Public tracklist metadata; never manufactured as a playable Song. */
     canonicalTracks: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** Generic non-playable tracks rendered through the original numbered list. */
+    metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    /** Apple artist ID-confirmed recordings, metadata only and never a top chart. */
+    appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
+    /** Explicit Apple Music URL → MusicBrainz artist relation; never inferred. */
+    verifiedAppleArtistMbid: String? = null,
+    /** Exact artist photo if the source has an independently proven identity. */
+    artistHeroOverride: String? = null,
+    /** Source-owned album credit ID, supplied only after provider verification. */
+    sourceAlbumArtistBrowseId: String? = null,
+    sourceAlbumArtistDisplayName: String? = null,
+    /** Source-specific supplemental content inside this single native list. */
+    footerContent: LazyListScope.(ArtworkPalette) -> Unit = {},
     onCanonicalTrackPlay: ((String) -> Unit)? = null,
     /** Full-screen lifted metadata menu owned by the root, not an M3 dropdown. */
     onCanonicalTrackHold: ((CanonicalCatalogSearchRow) -> Unit)? = null,
@@ -361,6 +407,12 @@ fun DetailScreen(
     /** MBID, title, creator and description only: no internal DTO in public API. */
     onCanonicalArtistPlaylistOpen: ((String, String, String, String?) -> Unit)? = null,
     onCanonicalArtistPlaylistHold: ((String, String, String, String?) -> Unit)? = null,
+    /** The source's exact dated recent release, rendered as the same native card. */
+    sourceFeaturedRelease: ShelfItem? = null,
+    /** Optional explicit submit for source-owned discography beyond cached pages. */
+    onArtistReleaseSearch: ((String) -> Unit)? = null,
+    /** Same Apple discography pager from the native "Ver tudo" grid. */
+    onArtistReleaseLoadMore: (() -> Unit)? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
@@ -385,9 +437,23 @@ fun DetailScreen(
     // locally available recordings never constitute ranking evidence.
     val legacyRankedArtistFeed = isArtist &&
         nativeArtistLegacyRankedFeed(page.browseId)
+    val appleIdentityAuthorized = if (isArtist && page.browseId.startsWith("itunes:")) {
+        // A disabled identity provider cannot keep publishing a previously
+        // resolved Apple→MB crosswalk or its related-artist shelves.
+        val identitySnapshot = com.music.bitchord.data.providers.ProviderRuntime.state
+            ?.collectAsStateWithLifecycle()?.value
+        identitySnapshot != null &&
+            com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
+            com.music.bitchord.data.providers.ProviderCapability.IDENTITY,
+            com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ,
+        ) != null
+    } else false
     val publicArtistMbid = page.browseId.takeIf {
         isArtist && it.startsWith("catalog:ARTIST:")
-    }?.removePrefix("catalog:ARTIST:")
+    }?.removePrefix("catalog:ARTIST:") ?: verifiedAppleArtistMbid?.takeIf {
+        appleIdentityAuthorized &&
+            Regex("^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
+    }
     val publicTopRows = if (publicArtistMbid != null &&
         onCanonicalPublicTopOpen != null
     ) canonicalPublicTopTracks.filter {
@@ -401,6 +467,14 @@ fun DetailScreen(
         it.kind == CanonicalSearchKind.RECORDING &&
             it.artistScopeMbid?.equals(publicArtistMbid, ignoreCase = true) == true
     } else emptyList()
+    val artistTrackOrigin = nativeArtistTrackOrigin(
+        hasAppleMetadata = isArtist && appleArtistTracks.isNotEmpty(),
+        hasVerifiedCatalog = isArtist && publicTopRows.isNotEmpty() &&
+            onCanonicalPublicTopOpen != null,
+        hasScopedCatalog = isArtist && scopedCanonicalArtistTracks.isNotEmpty(),
+        hasOwnedAudio = isArtist && songs.isNotEmpty(),
+        hasSourceMetadata = isArtist && metadataTracks.isNotEmpty(),
+    )
     val artistVisibleSections = nativeArtistVisibleSections(
         NativeArtistSectionEvidence(
             context = if (isLocalArtist) NativeArtistContext.LIBRARY
@@ -492,8 +566,19 @@ fun DetailScreen(
     LaunchedEffect(topReleaseId) { topReleaseId?.let { onLoadReleaseLibrary?.invoke(it) } }
     // Apple Music's hero photo and title logo for this artist, found by name.
     // Null until (and unless) it arrives; the YouTube header stands in meanwhile.
+    val exactAppleArtist = isArtist && page.browseId.startsWith("itunes:")
+    // A Discogs Artist ID proves neither an Apple portrait nor a
+    // name-matched handwritten signature. Homonyms must not leak visuals
+    // from another artist into this source-native catalog page.
+    val allowAuxiliaryNameVisuals = nativeArtistAllowsNameBasedAuxiliaryVisuals(
+        page.browseId,
+    )
     var appleArt by remember(page.browseId) {
-        mutableStateOf(if (isArtist) AppleArtistArtRepository.cached(page.title) else null)
+        mutableStateOf(
+            if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals)
+                AppleArtistArtRepository.cached(page.title)
+            else null
+        )
     }
     // Secondary provider: handwritten signature from the user's own
     // artist-signature API. Drawn only when Apple has no title logo.
@@ -507,10 +592,14 @@ fun DetailScreen(
     // other name starts the moment the page opens.
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
     LaunchedEffect(page.browseId, page.title, nameSettled) {
-        if (isArtist && nameSettled) appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
+        if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals && nameSettled)
+            appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
     }
     LaunchedEffect(page.browseId, page.title, nameSettled, signatureEnabled, signatureBaseUrl, signatureUpdates) {
-        if (!isArtist || !nameSettled) return@LaunchedEffect
+        if (!isArtist || !nameSettled || !allowAuxiliaryNameVisuals) {
+            signature = null
+            return@LaunchedEffect
+        }
         val base = ArtistSignatureRepository.effectiveBaseUrl(signatureEnabled, signatureBaseUrl)
         if (base == null) {
             signature = null
@@ -530,7 +619,7 @@ fun DetailScreen(
         }
     }
     val palette = rememberArtworkPalette(
-        imageUrl = appleArt?.heroUrl ?: page.thumbnailUrl,
+        imageUrl = artistHeroOverride ?: appleArt?.heroUrl ?: page.thumbnailUrl,
         keyColors = appleArt?.keyColors(),
     )
 
@@ -560,6 +649,11 @@ fun DetailScreen(
     // an album's track numbers stay the album's rather than becoming positions
     // in the filtered list.
     val matches = remember(songs, query) { songs.matching(query) }
+    val metadataVisibleTrackIndices = remember(metadataTracks, query, songSort) {
+        canonicalMetadataAlbumVisibleIndices(
+            metadataTracks.map { it.title to it.credit }, query, songSort,
+        )
+    }
     // What a tap plays: the filtered set of tracks currently standing in the
     // list. When no filter is active, matches contains the full running order
     // and plays the complete release/playlist from the tapped position.
@@ -568,7 +662,11 @@ fun DetailScreen(
     // entering LazyListScope; that builder is not a composition context.
     // Keep one credit source for both canonical and Song-backed rows.
     val albumRowCredit = if (page.type == BrowseType.ALBUM) {
-        val sourceCount = if (songs.isNotEmpty()) songs.size else canonicalTracks.size
+        val sourceCount = when {
+            songs.isNotEmpty() -> songs.size
+            canonicalTracks.isNotEmpty() -> canonicalTracks.size
+            else -> metadataTracks.size
+        }
         val sourceDuration = if (songs.isNotEmpty()) songs.playtime() else null
         page.headerLines(sourceCount, sourceDuration).first
     } else null
@@ -652,7 +750,7 @@ fun DetailScreen(
     // of a screen still filled with artwork. Done as an effect rather than in
     // the tap, so the row it scrolls to is already in the list by the time it
     // runs.
-    val searchStop = with(LocalDensity.current) { topBarContentPadding().roundToPx() }
+    val searchStop = with(LocalDensity.current) { nativeCollectionTopChromeInset().roundToPx() }
     LaunchedEffect(searching) {
         if (searching) {
             focusSearch = true
@@ -688,7 +786,14 @@ fun DetailScreen(
                 // Capping against the window's own height is what keeps the ratio's
                 // math honest once the width it's fed is no longer guaranteed to be
                 // the narrow one it was written for.
-                val artHeight = (maxWidth / ARTIST_PHOTO_RATIO).coerceAtMost(maxHeight * 0.6f)
+                val artHeight = nativeArtistHeroHeight(
+                    hasStill = !artistHeroOverride.isNullOrBlank() ||
+                        !appleArt?.heroUrl.isNullOrBlank() ||
+                        !page.thumbnailUrl.isNullOrBlank(),
+                    hasCanvas = canvas != null,
+                    expandedHeight = (maxWidth / ARTIST_PHOTO_RATIO)
+                        .coerceAtMost(maxHeight * 0.6f),
+                )
                 val sleeveSize = if (nativeReleaseUsesAlbumGeometry(page.browseId, page.type))
                     nativeReleaseSleeveSize(maxWidth, maxHeight)
                 else (maxWidth * SLEEVE_FRACTION)
@@ -716,6 +821,9 @@ fun DetailScreen(
                         offlinePoster = offlineAlbumPoster,
                         songs = songs,
                         canonicalTracks = canonicalTracks,
+                        metadataTracks = metadataTracks,
+                        sourceAlbumArtistBrowseId = sourceAlbumArtistBrowseId,
+                        sourceAlbumArtistDisplayName = sourceAlbumArtistDisplayName,
                         onPlay = {
                             if (songs.isNotEmpty()) onSongClick(songs, 0)
                             else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
@@ -747,6 +855,9 @@ fun DetailScreen(
                         autoFocus = focusSearch,
                         onFocused = { focusSearch = false },
                         palette = palette,
+                        onSubmit = onArtistReleaseSearch?.let { search ->
+                            { query.trim().takeIf { it.length >= 2 }?.let(search) }
+                        },
                     )
                 }
             }
@@ -754,6 +865,8 @@ fun DetailScreen(
             val description = page.description
 
             if (isArtist && (songs.isNotEmpty() || publicTopRows.isNotEmpty() ||
+                appleArtistTracks.isNotEmpty() || scopedCanonicalArtistTracks.isNotEmpty() ||
+                metadataTracks.isNotEmpty() || page.sections.isNotEmpty() ||
                 catalogRatingTarget?.entityType == "ARTIST")) {
                 item(key = "actions") {
                     // The native artist action row does not disappear merely
@@ -779,6 +892,10 @@ fun DetailScreen(
 
             // The first release on the shelves below, pulled out as a card of its own.
             val topRelease = if (isLocalArtist) localArtistRecent
+                // Verified Apple/MusicBrainz relation supplements the Apple
+                // storefront page; it must never hide Apple's own top album.
+                else if (isArtist && page.browseId.startsWith("itunes:"))
+                    sourceFeaturedRelease
                 else if (isArtist && publicArtistMbid == null) page.sections.topRelease()
                 else null
             if (isArtist && publicArtistMbid != null && canonicalFeaturedRelease != null &&
@@ -801,6 +918,10 @@ fun DetailScreen(
                         onClick = { onSectionItemClick(topRelease) },
                         onLongPress = onSectionItemLongPress?.let { { it(topRelease) } },
                         saved = topRelease.browseId?.let { releaseLibrary[it]?.saved },
+                        applePromotion = appleGroupCardBadgeFor(
+                            topRelease.browseId, topRelease.thumbnailUrl,
+                            appleGroupCardPromotions,
+                        ),
                         onToggleSaved = onToggleReleaseLibrary?.let { toggle ->
                             topRelease.browseId?.let { id -> { toggle(id) } }
                         },
@@ -860,12 +981,26 @@ fun DetailScreen(
                 }
             }
             if (!isArtist) aboutItem()
+            if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.APPLE_METADATA) {
+                item(key = "apple-artist-tracks") {
+                    AppleArtistMetadataTracksSection(
+                        tracks = appleArtistTracks,
+                        palette = palette,
+                    )
+                }
+            }
+
+            if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA) {
+                item(key = "source-artist-tracks") {
+                    NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette)
+                }
+            }
 
             // An already verified catalog shelf is not hidden while an
             // unrelated legacy Song feed is loading or failed. Both online
             // and Library artists use the native track shelf geometry.
-            if (isArtist && publicArtistMbid != null &&
-                publicTopRows.isNotEmpty() && onCanonicalPublicTopOpen != null
+            if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.VERIFIED_CATALOG &&
+                publicArtistMbid != null && onCanonicalPublicTopOpen != null
             ) {
                 item(key = "canonical-artist-public-top") {
                     NativeArtistPublicTopSection(
@@ -877,8 +1012,8 @@ fun DetailScreen(
                         onRecordingHold = onCanonicalTrackHold,
                     )
                 }
-            } else if (isArtist && publicArtistMbid != null &&
-                scopedCanonicalArtistTracks.isNotEmpty()
+            } else if (isArtist && artistTrackOrigin == NativeArtistTrackOrigin.SCOPED_CATALOG &&
+                publicArtistMbid != null
             ) {
                 item(key = "canonical-artist-recordings") {
                     NativeArtistPublicTopSection(
@@ -892,6 +1027,10 @@ fun DetailScreen(
                         onRecordingHold = onCanonicalTrackHold,
                     )
                 }
+            } else if (isArtist && (artistTrackOrigin == NativeArtistTrackOrigin.APPLE_METADATA ||
+                artistTrackOrigin == NativeArtistTrackOrigin.SOURCE_METADATA)) {
+                // The source track shelf was painted above; never draw a
+                // second MusicBrainz or Song rail by enrichment fallback.
             } else when (val state = page.songs) {
                 is UiState.Loading -> detailSkeleton(
                     isArtist = isArtist,
@@ -973,6 +1112,66 @@ fun DetailScreen(
 
                         )
                         if (index < canonicalVisibleTrackIndices.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = NUMBERED_ROW_DIVIDER_INSET),
+                                thickness = 0.5.dp,
+                                color = palette.divider,
+                            )
+                        }
+                    }
+                } else if (!isArtist && metadataTracks.isNotEmpty()) {
+                    // iTunes and Discogs have a real source tracklist without a
+                    // RecordingId or playable asset. This is the SAME native
+                    // numbered album list used for MusicBrainz, not another
+                    // screen, Song queue, or pretend playback affordance.
+                    if (metadataVisibleTrackIndices.isEmpty()) {
+                        item(key = "metadata:track:no-matches") {
+                            MessageState(stringResource(R.string.nothing_matches, query))
+                        }
+                    }
+                    itemsIndexed(
+                        items = metadataVisibleTrackIndices,
+                        key = { _, original ->
+                            "metadata:track:${metadataTracks[original].key}:$original"
+                        },
+                    ) { visibleIndex, originalIndex ->
+                        val track = metadataTracks[originalIndex]
+                        val subtitle = nativeMetadataAlbumTrackSubtitle(
+                            track, albumRowCredit.orEmpty(),
+                        )
+                        NativeDetailTrackRowLayout(
+                            onClick = null,
+                            onLongPress = null,
+                            onMore = null,
+                            textGap = PAGE_GUTTER,
+                            leading = {
+                                NativeMetadataAlbumTrackPosition(track, originalIndex, palette)
+                            },
+                            title = {
+                                Text(
+                                    text = track.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = palette.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            subtitle = {
+                                if (subtitle != null) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = palette.onBackgroundVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            rating = {},
+                            showRatingSlot = false,
+                            actions = {},
+                        )
+                        if (visibleIndex < metadataVisibleTrackIndices.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = NUMBERED_ROW_DIVIDER_INSET),
                                 thickness = 0.5.dp,
@@ -1077,7 +1276,11 @@ fun DetailScreen(
                     }) canonicalTracks.sumOf { it.durationMs ?: 0L }
                     else null
                     val minutes = total?.let { ((it + 30_000L) / 60_000L).coerceAtLeast(1L) }
-                    val count = if (songs.isNotEmpty()) songs.size else canonicalTracks.size
+                    val count = when {
+                        songs.isNotEmpty() -> songs.size
+                        metadataTracks.isNotEmpty() -> metadataTracks.size
+                        else -> canonicalTracks.size
+                    }
                     val summary = count.takeIf { it > 0 }?.let {
                         "$it ${if (it == 1) "música" else "músicas"}" +
                             (minutes?.let { min ->
@@ -1123,7 +1326,14 @@ fun DetailScreen(
             }
 
             // Albums / Singles & EPs carousels (artist pages).
-            items(page.sections) { shelf ->
+            val visibleReleaseSections = if (isArtist && searching && query.isNotBlank()) {
+                page.sections.mapNotNull { section ->
+                    section.copy(items = section.items.filter { item ->
+                        item.title.contains(query.trim(), ignoreCase = true)
+                    }).takeIf { it.items.isNotEmpty() }
+                }
+            } else page.sections
+            items(visibleReleaseSections) { shelf ->
                 val canShowAll = shelf.items.size > ARTIST_ROW_MAX_ITEMS
                 val displayItems = remember(shelf.items) {
                     if (canShowAll) shelf.items.take(ARTIST_ROW_MAX_ITEMS) else shelf.items
@@ -1133,7 +1343,8 @@ fun DetailScreen(
                     releases = displayItems,
                     palette = palette,
                     horizontalPadding = ARTIST_CONTENT_GUTTER,
-                    topPadding = 22.dp,
+                    topPadding = NATIVE_ARTIST_RELEASE_TOP_SPACING,
+                    itemSpacing = NATIVE_ARTIST_RELEASE_ITEM_SPACING,
                     onShowAll = if (canShowAll) { { onActiveShelfChange(shelf) } } else null,
                 ) { item ->
                         SectionCard(
@@ -1141,6 +1352,9 @@ fun DetailScreen(
                             palette = palette,
                             onClick = { onSectionItemClick(item) },
                             onLongPress = onSectionItemLongPress?.let { { it(item) } },
+                            applePromotion = appleGroupCardBadgeFor(
+                                item.browseId, item.thumbnailUrl, appleGroupCardPromotions,
+                            ),
                         )
                 }
             }
@@ -1150,6 +1364,8 @@ fun DetailScreen(
                 item(key = "artist-included-in") {
                     NativeArtistIncludedInShelf(
                         artistMbid = publicArtistMbid,
+                        title = if (page.browseId.startsWith("itunes:"))
+                            "Com participação em" else "Incluído em",
                         palette = palette,
                         onOpen = onCanonicalFeaturedReleaseOpen,
                         onLongPress = onCanonicalArtistEntityHold,
@@ -1178,6 +1394,7 @@ fun DetailScreen(
                 }
             }
             if (isArtist) aboutItem()
+            footerContent(palette)
         }
 
                 if (isArtist) {
@@ -1191,7 +1408,7 @@ fun DetailScreen(
                         canvas = canvas,
                         // Preserve the legacy cover fallback at this adapter
                         // boundary; the shared native frame only sees artwork.
-                        heroUrl = appleArt?.heroUrl
+                        heroUrl = artistHeroOverride ?: appleArt?.heroUrl
                             ?: page.thumbnailUrl?.artworkAt(HEADER_ART_PX),
                         content = detailListItems,
                     )
@@ -1230,11 +1447,13 @@ fun DetailScreen(
     }
 } else {
     ArtistShelfGridPage(
-        shelf = targetShelf,
+        shelf = nativeLiveArtistShelf(targetShelf, page.sections),
         palette = palette,
         onItemClick = onSectionItemClick,
         onItemLongPress = onSectionItemLongPress,
         contentPadding = contentPadding,
+        appleGroupCardPromotions = appleGroupCardPromotions,
+        onNearEnd = onArtistReleaseLoadMore,
     )
 }
 }
@@ -1288,6 +1507,9 @@ private fun ReleaseHeader(
     offlinePoster: String?,
     songs: List<Song>,
     canonicalTracks: List<CanonicalCatalogSearchRow>,
+    metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    sourceAlbumArtistBrowseId: String? = null,
+    sourceAlbumArtistDisplayName: String? = null,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onArtistClick: ((String, String) -> Unit)?,
@@ -1313,7 +1535,11 @@ private fun ReleaseHeader(
         )
     }
     val (credit, originalMeta) = page.headerLines(
-        if (songs.isNotEmpty()) songs.size else canonicalTracks.size,
+        when {
+            songs.isNotEmpty() -> songs.size
+            metadataTracks.isNotEmpty() -> metadataTracks.size
+            else -> canonicalTracks.size
+        },
         if (songs.isNotEmpty()) songs.playtime() else canonicalTime,
     )
     val meta = if (page.type == BrowseType.ALBUM) "" else metaOverride ?: originalMeta
@@ -1346,8 +1572,10 @@ private fun ReleaseHeader(
     }
     val creditArtistId = artist?.let { song ->
         detailAlbumArtistBrowseId(page.browseId, song.artistId, song.artist)
-    } ?: albumArtistRoute
-    val creditName = artist?.artist?.takeIf(String::isNotBlank) ?: credit
+    } ?: albumArtistRoute ?: sourceAlbumArtistBrowseId
+    val creditName = (if (sourceAlbumArtistBrowseId != null)
+        sourceAlbumArtistDisplayName?.takeIf(String::isNotBlank) else null)
+        ?: artist?.artist?.takeIf(String::isNotBlank) ?: credit
     val onCreditClick: (() -> Unit)? =
         if (creditArtistId != null && creditName.isNotBlank() && onArtistClick != null) {
             { onArtistClick(creditArtistId, creditName) }
@@ -1377,7 +1605,7 @@ private fun ReleaseHeader(
                     modifier = Modifier.matchParentSize(),
                 )
             }
-            AsyncImage(
+            ResilientAppleCover(
                 model = (offlinePoster ?: page.thumbnailUrl).artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
@@ -1393,7 +1621,9 @@ private fun ReleaseHeader(
             }
         },
         actions = {
-            if (songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
+            if (page.type == BrowseType.ALBUM ||
+                songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
+                metadataTracks.isNotEmpty() ||
                 onToggleCatalogPin != null || onRate != null) {
                 val library = page.library?.takeIf { onToggleLibrary != null }
                 val canPlay = songs.isNotEmpty() ||
@@ -1441,6 +1671,7 @@ internal fun DetailSearchField(
     palette: ArtworkPalette,
     placeholder: String? = null,
     horizontalInset: Dp = HEADER_GUTTER,
+    onSubmit: (() -> Unit)? = null,
 ) = NativeDetailSearchField(
     query = query,
     onQueryChange = onQueryChange,
@@ -1450,6 +1681,7 @@ internal fun DetailSearchField(
     palette = palette,
     placeholder = placeholder,
     horizontalInset = horizontalInset,
+    onSubmit = onSubmit,
 )
 
 internal fun List<Song>.sortedForDetail(sort: SongSort): List<Song> = when (sort) {
@@ -1565,6 +1797,7 @@ private fun StatChip(icon: ImageVector, text: String, palette: ArtworkPalette) {
 /** "Signed by **Name**" — the artist's name in bold, whatever order the language puts it in. */
 /** Compact row used inside the artist song grid; no swipe, to keep the
  *  horizontal pager's gestures unambiguous. */
+/** All artist track rows use the same native layout, with source-owned actions. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CompactSongRow(
@@ -1576,56 +1809,55 @@ private fun CompactSongRow(
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(48.dp)) {
-            AsyncImage(
-                model = com.music.bitchord.ui.player.rememberPlaybackArtworkImageModel(song, ROW_ART_PX),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .thumbnailBorder(RoundedCornerShape(7.dp))
-                    .background(palette.elevated),
-            )
-            if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+    NativeDetailTrackRowLayout(
+        onClick = onClick,
+        onLongPress = onLongPress,
+        onMore = null,
+        horizontalInset = 0.dp,
+        textGap = 12.dp,
+        leading = {
+            Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)) {
+                AsyncImage(
+                    model = com.music.bitchord.ui.player.rememberPlaybackArtworkImageModel(
+                        song, ROW_ART_PX,
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
+                        .clip(RoundedCornerShape(7.dp))
+                        .thumbnailBorder(RoundedCornerShape(7.dp))
+                        .background(palette.elevated),
+                )
+                if (isCurrent && isPlaying)
+                    SearchPlayingBars(Modifier.align(Alignment.Center))
+            }
+        },
+        title = {
             ExplicitSongTitle(
                 song = song,
                 style = MaterialTheme.typography.titleMedium,
                 color = if (isCurrent) palette.accent else palette.onBackground,
             )
-            // An artist page already identifies the performer. Display the
-            // actual album tag on this legacy local song, never a guessed one.
+        },
+        subtitle = {
             song.albumName?.trim()?.takeIf(String::isNotBlank)?.let { album ->
                 Text(
-                    text = album,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = album, style = MaterialTheme.typography.bodyMedium,
                     color = palette.onBackgroundVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        // The weighted title/album block truncates before trailing stars.
-        CanonicalSongRatingStars(
-            song = song,
-            modifier = Modifier.padding(start = 8.dp),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        if (downloadedTint != null) {
-            DownloadedBadge(song.videoId, downloadedTint)
-        }
-        // Artist detail tracks open their lifted menu by holding the row.
-        // The old trailing three-dot icon is intentionally retired here.
-    }
+        },
+        rating = {
+            CanonicalSongRatingStars(
+                song = song,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        showRatingSlot = true,
+        actions = {
+            if (downloadedTint != null) DownloadedBadge(song.videoId, downloadedTint)
+        },
+    )
 }
 
 /**
@@ -1721,7 +1953,10 @@ private fun SuggestedSongRow(
 private fun List<HomeShelf>.topRelease(): ShelfItem? =
     asSequence()
         .flatMap { it.items.asSequence() }
-        .filter { it.browseId?.startsWith("MPRE") == true }
+        .filter { item ->
+            item.browseId?.startsWith("MPRE") == true ||
+                item.browseId?.startsWith("discogs:release:") == true
+        }
         .withIndex()
         .maxWithOrNull(
             compareBy<IndexedValue<ShelfItem>> { it.value.releaseYear() ?: 0 }
@@ -1732,6 +1967,15 @@ private val RELEASE_YEAR = Regex("""\b(19|20)\d{2}\b""")
 
 private fun ShelfItem.releaseYear(): Int? =
     RELEASE_YEAR.find(subtitle)?.value?.toIntOrNull()
+
+/**
+ * Apple storefront classification may be explicitly unknown. A valid dated
+ * product is still a recent release, but "Álbum recente" would invent its
+ * format. This changes only its label, not the shared top-release card.
+ */
+internal fun appleSourceRecentReleaseNeedsGenericLabel(item: ShelfItem): Boolean =
+    item.browseId?.startsWith("itunes:") == true &&
+        Regex("""^(19|20)\d{2}$""").matches(item.subtitle.trim())
 
 /** "Recent Single" and "Recent EP" where the card says so, otherwise "Recent Album". */
 @androidx.annotation.StringRes
@@ -1760,24 +2004,18 @@ private fun TopReleaseCard(
     onLongPress: (() -> Unit)?,
     saved: Boolean?,
     onToggleSaved: (() -> Unit)?,
+    applePromotion: AppleGroupCardBadge? = null,
 ) {
     val haptics = rememberHaptics()
-    val observeCaaCover = rememberCaaCoverLoadObserver(item.thumbnailUrl)
     NativeArtistTopReleaseCard(
         title = item.title,
         subtitle = item.subtitle,
-        label = stringResource(item.recentLabel()),
+        label = if (appleSourceRecentReleaseNeedsGenericLabel(item))
+            "Lançamento recente" else stringResource(item.recentLabel()),
         palette = palette,
         onClick = onClick,
         onLongPress = onLongPress,
-        artwork = {
-            AsyncImage(
-                model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                contentDescription = null,
-                onState = observeCaaCover,
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
+        artwork = { ArtistCardArtwork(item, applePromotion) },
         trailing = if (onToggleSaved != null && saved != null) {
             {
                 Spacer(Modifier.width(10.dp))
@@ -1922,8 +2160,8 @@ private fun SectionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
     onLongPress: (() -> Unit)? = null,
+    applePromotion: AppleGroupCardBadge? = null,
 ) {
-    val observeCaaCover = rememberCaaCoverLoadObserver(item.thumbnailUrl)
     NativeArtistReleaseCard(
         title = item.title,
         // A release in an artist's carousel needs its YEAR, not that artist
@@ -1934,16 +2172,35 @@ private fun SectionCard(
         onClick = onClick,
         modifier = modifier,
         onLongPress = onLongPress,
-        artwork = {
-            AsyncImage(
-                model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                contentDescription = null,
-                onState = observeCaaCover,
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
+        artwork = { ArtistCardArtwork(item, applePromotion) },
     )
 }
+
+/** Only album artwork is rendered, with verified Apple provenance kept internal. */
+@Composable
+private fun ArtistCardArtwork(
+    item: ShelfItem,
+    applePromotion: AppleGroupCardBadge?,
+) {
+    val observer = rememberCaaCoverLoadObserver(item.thumbnailUrl)
+    ResilientAppleCover(
+        // Proof is retained solely to avoid rewriting an Apple CDN image
+        // into an unverified resolution. No store emblem is rendered.
+        model = if (applePromotion != null) item.thumbnailUrl
+            else item.thumbnailUrl.artworkAt(CARD_ART_PX),
+        contentDescription = null,
+        onState = observer,
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+/** Never drain a short grid on first paint; request more only after scroll. */
+internal fun nativeArtistShelfShouldPage(
+    scrolling: Boolean,
+    lastVisibleIndex: Int,
+    totalItems: Int,
+): Boolean = scrolling && totalItems > 0 &&
+    lastVisibleIndex >= totalItems - 4
 
 @Composable
 private fun ArtistShelfGridPage(
@@ -1953,8 +2210,23 @@ private fun ArtistShelfGridPage(
     onItemLongPress: ((ShelfItem) -> Unit)?,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    appleGroupCardPromotions: Map<String, Pair<String, String>> = emptyMap(),
+    onNearEnd: (() -> Unit)? = null,
 ) {
     val gridState = rememberLazyGridState()
+    LaunchedEffect(gridState, shelf.items.size, onNearEnd) {
+        if (onNearEnd != null) {
+            snapshotFlow {
+                val layout = gridState.layoutInfo
+                nativeArtistShelfShouldPage(
+                    scrolling = gridState.isScrollInProgress,
+                    lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                    totalItems = layout.totalItemsCount,
+                )
+            }.first { it }
+            onNearEnd()
+        }
+    }
     BoxWithConstraints(modifier.fillMaxSize().background(palette.background)) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
         LazyVerticalGrid(
@@ -1977,6 +2249,9 @@ private fun ArtistShelfGridPage(
                     onClick = { onItemClick(item) },
                     onLongPress = onItemLongPress?.let { { it(item) } },
                     modifier = Modifier.fillMaxWidth(),
+                    applePromotion = appleGroupCardBadgeFor(
+                        item.browseId, item.thumbnailUrl, appleGroupCardPromotions,
+                    ),
                 )
             }
         }

@@ -1403,4 +1403,6 @@
     <string name="apple_player_share_song">分享歌曲</string>
     <string name="apple_player_share_lyrics">分享歌詞…</string>
     <string name="apple_library_search_in_category">在%1$s中搜尋</string>
+    <string name="providers_settings">供應商</string>
+    <string name="providers_settings_subtitle">管理音樂目錄、封面、歌詞、統計、音訊與下載供應商</string>
 </resources>

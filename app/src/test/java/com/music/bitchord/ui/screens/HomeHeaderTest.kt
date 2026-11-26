@@ -35,6 +35,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -136,12 +137,12 @@ class HomeHeaderTest {
         ).assertExists()
     }
 
-    @Test fun genreTitleStartsOnSameHorizontalLineAsHome() {
+    @Test fun pushedGenreTitleMatchesNativeLibraryCategoryHorizontalInset() {
         compose.setContent {
             MaterialTheme {
                 Column {
                     HomeTitle(title = "Início")
-                    HomeTitle(title = "Rock", onBack = {})
+                    HomeTitle(title = "Rock", pushedCategory = true)
                 }
             }
         }
@@ -149,7 +150,7 @@ class HomeHeaderTest {
             val lefts = compose.onAllNodesWithTag("home-title")
                 .fetchSemanticsNodes().map { it.boundsInRoot.left }
             assertEquals(2, lefts.size)
-            assertEquals(lefts[0], lefts[1], 0.5f)
+            assertTrue("Pushed genre uses the native category gutter", lefts[1] > lefts[0])
         }
     }
 

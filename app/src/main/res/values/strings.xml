@@ -402,7 +402,7 @@
     <string name="full_screen_cover_art_subtitle">Runs the cover to the edges of the player instead of a square sleeve</string>
     <string name="animated_cover_art_subtitle">Plays the looping video some releases ship instead of a still sleeve</string>
     <string name="dont_repeat_songs_subtitle">AutoPlay won’t suggest a song already played or suggested this session</string>
-    <string name="download_quality_subtitle">%1$s per track, whatever the connection</string>
+    <string name="download_quality_subtitle">%1$s per track</string>
     <string name="filter_non_music_audio">Filter non-music audio</string>
     <string name="filter_non_music_audio_subtitle">Hides clips under 30 seconds, WAV files, voice notes, recordings and system sounds</string>
     <string name="performance">Performance</string>
@@ -516,6 +516,8 @@
     <string name="stereo">Stereo</string>
     <string name="history">History</string>
     <string name="sources">Sources</string>
+    <string name="providers_settings">Providers</string>
+    <string name="providers_settings_subtitle">Manage catalog, artwork, lyrics, statistics, audio and download providers</string>
     <string name="wifi">Wi-Fi</string>
     <string name="mobile_data">Mobile data</string>
     <string name="couldnt_load_tracks">Could not load these tracks</string>

@@ -174,7 +174,7 @@ class CanonicalNativeNavigationTest {
             CanonicalSearchKind.ARTIST, listOf(remix, unknown), "Lançamentos",
             albumsHeading = "Álbuns", singlesHeading = "Singles e EPs",
         )
-        assertEquals(listOf("Álbuns"), sections.map { it.title })
+        assertEquals(listOf("Coletâneas"), sections.map { it.title })
         assertEquals("Album · Remix · Compilation", sections.single().items.single().subtitle)
     }
 

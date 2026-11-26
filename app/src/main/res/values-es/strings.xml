@@ -1405,4 +1405,6 @@
     <string name="apple_player_share_song">Compartir canción</string>
     <string name="apple_player_share_lyrics">Compartir letra…</string>
     <string name="apple_library_search_in_category">Buscar en %1$s</string>
+    <string name="providers_settings">Proveedores</string>
+    <string name="providers_settings_subtitle">Gestiona proveedores de catálogo, portadas, letras, estadísticas, audio y descargas</string>
 </resources>

@@ -49,9 +49,71 @@ class CanonicalPublicDiscoveryTest {
             emptyList(), rows, "Lançamentos", "Escolha a dedo", "Em alta",
             null, "2026-11-05",
         )
-        assertEquals(listOf("Lançamentos", "Escolha a dedo"), home.map { it.title })
+        assertEquals(listOf("Lançamentos", "Para descobrir"), home.map { it.title })
         assertEquals("catalog:RELEASE_GROUP:${recent.musicBrainzId}", home.first().items.first().browseId)
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
+    }
+
+    @Test fun publicHomePageReservesAlbumAtRawPositionOneHundred() {
+        // One source page, not 100 pagination calls: the historical first
+        // 40-rows clip lost an album hidden behind 99 source-typed singles.
+        val singles = (1..99).map { index ->
+            another.copy(
+                musicBrainzId = "81000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Verified recent single ${index}",
+                firstReleaseDate = "2026-11-15",
+            )
+        }
+        val lastAlbum = recent.copy(
+            musicBrainzId = "81000000-0000-4000-8000-000000000100",
+            title = "Last source row is a real album",
+            firstReleaseDate = "2026-11-01",
+        )
+        val rows = canonicalPublicReleaseRows(singles + lastAlbum,
+            "2026-10-01", "2026-11-23")
+        assertEquals(40, rows.size)
+        assertTrue(rows.any { it.musicBrainzId == lastAlbum.musicBrainzId })
+        assertTrue(rows.any { it.releaseKind == "Single" })
+        assertFalse(canonicalPublicNeedsMoreEditorialRows(rows))
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertTrue(home.flatMap { it.items }.any {
+            it.browseId == "catalog:RELEASE_GROUP:${lastAlbum.musicBrainzId}"
+        })
+        assertTrue(home.any { it.title == "Álbuns" || it.title == "Lançamentos" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+    }
+
+    @Test fun homeRetainsRarePositiveGenreEvidenceWithoutInventingTags() {
+        val dense = (1..60).map { index ->
+            another.copy(
+                musicBrainzId = "82000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Dense single $index", firstReleaseDate = "2026-11-15",
+            ).apply { editorialGenreTags = listOf("pop") }
+        }
+        val rare = listOf("rock", "jazz", "folk", "metal").mapIndexed { index, tag ->
+            recent.copy(
+                musicBrainzId = "83000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Tagged album $index",
+            ).apply { editorialGenreTags = listOf(tag) }
+        }
+        val rows = canonicalPublicReleaseRows(dense + rare, "2026-10-01", "2026-11-23")
+        assertEquals(40, rows.size)
+        assertTrue(rare.all { hit -> rows.any { it.musicBrainzId == hit.musicBrainzId } })
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(rare.all { "catalog:RELEASE_GROUP:${it.musicBrainzId}" in ids })
+        assertEquals(5, com.music.bitchord.ui.musicBrainzHomeVerifiedGenreCount(
+            (dense + rare).associate { it.musicBrainzId to it.editorialGenreTags.toSet() },
+            ids.toSet(),
+        ))
     }
 
     @Test fun aNonemptyRawShortWindowCanStillHaveNoEligiblePublicRows() {
@@ -97,11 +159,11 @@ class CanonicalPublicDiscoveryTest {
             listOf(stale), fresh, "Lançamentos", "Escolha a dedo", "Em alta",
             null, "2026-11-05",
         )
-        assertEquals(listOf("Lançamentos", "Escolha a dedo"), online.map { it.title })
+        assertEquals(listOf("Lançamentos", "Para descobrir"), online.map { it.title })
         assertEquals(listOf(recent.musicBrainzId),
             online.first().items.map { it.browseId!!.removePrefix("catalog:RELEASE_GROUP:") })
         assertEquals("catalog:RELEASE_GROUP:${another.musicBrainzId}",
-            online.first { it.title == "Escolha a dedo" }.items.single().browseId)
+            online.first { it.title == "Para descobrir" }.items.single().browseId)
         assertEquals(online.flatMap { it.items }.size,
             online.flatMap { it.items }.map { it.browseId }.distinct().size)
         assertTrue(online.first().items.none { it.videoId != null })
@@ -190,6 +252,46 @@ class CanonicalPublicDiscoveryTest {
         assertTrue(shelves.flatMap { it.items }.all {
             it.videoId == null && it.browseId.orEmpty().startsWith("catalog:RELEASE_GROUP:")
         })
+    }
+
+    @Test fun directWorldwideComposerCannotPublishInvalidCachedDate() {
+        val source = canonicalPublicGenreRows(listOf(recent), "2026-11-23").single()
+        val malformed = source.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000999",
+            title = "Invalid date in direct Home", releaseDate = "2025-99",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), listOf(malformed, source),
+            "Lançamentos", "Escolha a dedo", "Em alta",
+            null, "2026-11-23",
+        )
+        assertTrue(home.flatMap { it.items }.none {
+            it.title == malformed.title
+        })
+        assertTrue(home.flatMap { it.items }.any { it.title == source.title })
+    }
+
+    @Test fun directGenreComposerRejectsInvalidCachedCalendarEvidence() {
+        val canonical = canonicalPublicGenreRows(listOf(recent), "2026-11-06").single()
+        val invalidMonth = canonical.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000001",
+            title = "Impossible month", releaseDate = "2025-99",
+        )
+        val invalidDay = canonical.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000002",
+            title = "Impossible day", releaseDate = "2026-02-30",
+        )
+        val yearOnly = canonical.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000003",
+            title = "Verified historical year", releaseDate = "2024",
+        )
+        val shelves = canonicalGenreEditorialShelves(
+            canonicalExploreGenres.first(),
+            listOf(invalidMonth, invalidDay, yearOnly), "2026-11-06",
+        )
+        assertEquals(listOf("Verified historical year"),
+            shelves.flatMap { it.items }.map { it.title }.distinct())
+        assertTrue(shelves.none { it.title == "Lançamentos" })
     }
 
     @Test fun nativeGenreDetailBuildsDistinctEditorialSectionsWithoutInventedCharts() {
@@ -334,7 +436,10 @@ class CanonicalPublicDiscoveryTest {
             publicPlaylists = playlists.copy(title = "Playlists para descobrir"),
         )
         assertTrue(home.any { it.title == "Playlists para descobrir" })
-        assertTrue(home.none { it.title == "Singles e EPs" })
+        // Public playlists and typed singles are distinct sources of discovery.
+        assertTrue(home.any { it.title == "Singles e EPs" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
     }
 
@@ -359,7 +464,7 @@ class CanonicalPublicDiscoveryTest {
             ),
             globalDiscoveryHeading = "Descobertas do mundo",
         )
-        assertEquals(listOf("Lançamentos", "Escolha a dedo",
+        assertEquals(listOf("Lançamentos", "Para descobrir",
             "Playlists para descobrir", "Descobertas do mundo", "Mais"),
             home.map { it.title })
         assertTrue(home.none { it.title == "Álbuns" || it.title == "Singles e EPs" })
@@ -391,7 +496,7 @@ class CanonicalPublicDiscoveryTest {
         val ids = home.flatMap { it.items }.map { it.browseId }
         assertEquals("The same album must not appear twice in Home", ids.size, ids.distinct().size)
         assertTrue(home.flatMap { it.items }.all { it.videoId == null })
-        assertTrue(home.first { it.title == "Escolha a dedo" }.items.first().thumbnailUrl != null)
+        assertTrue(home.first { it.title == "Para descobrir" }.items.first().thumbnailUrl != null)
         // No worldwide ranking is fabricated from release dates alone.
         assertTrue(home.none { it.title == "Em alta" })
     }
@@ -410,7 +515,7 @@ class CanonicalPublicDiscoveryTest {
             null, "2026-11-06", "Álbuns", "Singles e EPs", "Mais para explorar",
         )
         assertEquals(
-            listOf("Lançamentos", "Escolha a dedo", "Álbuns",
+            listOf("Lançamentos", "Para descobrir", "Álbuns",
                 "Singles e EPs", "Mais para explorar"),
             home.map { it.title },
         )
@@ -418,6 +523,250 @@ class CanonicalPublicDiscoveryTest {
         assertEquals(8, cards.size)
         assertEquals(cards.size, cards.map { it.browseId }.distinct().size)
         assertTrue(home.none { it.title == "Em alta" })
+    }
+
+    @Test fun homeLaunchHeroPrefersVerifiedCoverWithoutUsingPopularityOrFutureDates() {
+        val newerWithoutArt = recent.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000001",
+            title = "Recent with no verified sleeve",
+            firstReleaseDate = "2026-11-05", artworkUri = null,
+        )
+        val olderWithArt = recent.copy(
+            musicBrainzId = "60000000-0000-4000-8000-000000000002",
+            title = "Recent with actual sleeve",
+            firstReleaseDate = "2026-10-21",
+            artworkUri = "https://coverartarchive.org/release-group/60000000-0000-4000-8000-000000000002/front-500",
+        )
+        val rows = canonicalPublicReleaseRows(
+            listOf(newerWithoutArt, olderWithArt), "2026-10-01", "2026-11-06",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-06",
+        )
+        assertEquals("Recent with actual sleeve",
+            home.first { it.title == "Lançamentos" }.items.single().title)
+        assertEquals(olderWithArt.artworkUri,
+            home.first { it.title == "Lançamentos" }.items.single().thumbnailUrl)
+        assertTrue(home.none { it.title == "Em alta" || it.title == "Escolha a dedo" })
+    }
+
+    @Test fun largeVerifiedFeedFillsAlbumAndSingleShelvesAfterLaunchAndDiscoveryDedup() {
+        // An 80-record source page is already sufficient to fill every
+        // carousel. Raw take(12) before excluding earlier shelves used to
+        // truncate legitimate Album and Single IDs out of their own rails.
+        val hits = (1..80).map { index ->
+            recent.copy(
+                musicBrainzId = "90000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Verified unique ${index}",
+                primaryType = if (index % 2 == 0) "Album" else "Single",
+                firstReleaseDate = "2026-11-01",
+            )
+        }
+        // The real scanner concatenates multiple typed source pages. Each
+        // page can publish 40 rows; do not treat one-page gate as a global cap.
+        val rows = hits.chunked(40).flatMap {
+            canonicalPublicReleaseRows(it, "2026-10-01", "2026-11-06")
+        }
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo", "Em alta",
+            null, "2026-11-06", "Álbuns", "Singles e EPs", "Mais",
+        )
+        assertEquals(12, home.first { it.title == "Álbuns" }.items.size)
+        assertEquals(12, home.first { it.title == "Singles e EPs" }.items.size)
+        assertEquals(12, home.first { it.title == "Mais" }.items.size)
+        assertTrue(home.none { it.title == "Escolha a dedo" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
+    }
+
+    @Test fun historicalWorldwideGroupsRemainBrowseableButNeverBecomeFreshLaunches() {
+        val historicalAlbum = recent.copy(
+            musicBrainzId = "77777777-1111-4111-8111-111111111111",
+            firstReleaseDate = "2025-02-15", title = "Verified old album",
+        )
+        val historicalSingle = another.copy(
+            musicBrainzId = "88888888-1111-4111-8111-111111111111",
+            firstReleaseDate = "2024-11-03", title = "Verified old single",
+        )
+        val rows = canonicalPublicReleaseRows(
+            listOf(historicalAlbum, historicalSingle),
+            "2024-01-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertTrue(home.none { it.title == "Lançamentos" })
+        assertTrue(home.any { it.title == "Álbuns" })
+        assertTrue(home.any { it.title == "Singles e EPs" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }.toSet()
+        assertEquals(setOf(
+            "catalog:RELEASE_GROUP:${historicalAlbum.musicBrainzId}",
+            "catalog:RELEASE_GROUP:${historicalSingle.musicBrainzId}",
+        ), ids)
+    }
+
+    @Test fun historicalHomeAnchorsPreferOfficialArtAndNewerEvidenceWithinFormat() {
+        val artAlbum = recent.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000001",
+            title = "Verified cover album", firstReleaseDate = "2022-04-03",
+            artworkUri = "https://coverartarchive.org/release-group/90100000-0000-4000-8000-000000000001/front-500",
+        )
+        val newerCoverlessAlbum = recent.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000002",
+            title = "Newer coverless album", firstReleaseDate = "2024-09-03",
+        )
+        val olderAlbum = recent.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000003",
+            title = "Oldest album", firstReleaseDate = "2018-05-04",
+        )
+        val singleOlder = another.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000004",
+            title = "Old single", firstReleaseDate = "2019-05-04",
+        )
+        val singleNewer = another.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000005",
+            title = "New single", firstReleaseDate = "2024-05-04",
+        )
+        val extra = another.copy(
+            musicBrainzId = "90100000-0000-4000-8000-000000000006",
+            title = "Extra single", firstReleaseDate = "2021-06-06",
+        )
+        val rows = canonicalPublicReleaseRows(
+            listOf(olderAlbum, singleOlder, newerCoverlessAlbum,
+                artAlbum, singleNewer, extra),
+            "2018-01-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertTrue(home.none { it.title == "Lançamentos" })
+        assertEquals(artAlbum.title,
+            home.first { it.title == "Álbuns" }.items.first().title)
+        assertEquals(artAlbum.artworkUri,
+            home.first { it.title == "Álbuns" }.items.first().thumbnailUrl)
+        assertEquals(singleNewer.title,
+            home.first { it.title == "Singles e EPs" }.items.first().title)
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+    }
+
+    @Test fun oneFreshAlbumSurvivesHistoricalSingleAndMoreReservations() {
+        // The old allocator could reserve the *only* exact-dated new Album
+        // for the format rail and silently remove "Lançamentos" entirely.
+        val soleFresh = recent.copy(
+            musicBrainzId = "78900000-0000-4000-8000-000000000001",
+            title = "Only verified fresh launch",
+            firstReleaseDate = "2026-11-21",
+        )
+        val historicalSingles = (1..6).map { index ->
+            another.copy(
+                musicBrainzId = "78900000-0000-4000-8000-${(100 + index).toString().padStart(12, '0')}",
+                title = "Historical single ${index}",
+                firstReleaseDate = "2024-08-${index.toString().padStart(2, '0')}",
+            )
+        }
+        val rows = canonicalPublicReleaseRows(
+            historicalSingles + soleFresh, "2023-01-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        assertEquals(listOf("Only verified fresh launch"),
+            home.single { it.title == "Lançamentos" }.items.map { it.title })
+        assertTrue(home.any { it.title == "Singles e EPs" })
+        val ids = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(ids.size, ids.distinct().size)
+        assertTrue(home.none { it.title == "Em alta" })
+    }
+
+    @Test fun coveredFreshAlbumRetainsLaunchHeroAmongManyNewSingles() {
+        val covered = recent.copy(
+            musicBrainzId = "78900000-0000-4000-8000-000000000002",
+            title = "Official cover belongs to actual new album",
+            firstReleaseDate = "2026-11-16",
+            artworkUri = "https://coverartarchive.org/release-group/78900000-0000-4000-8000-000000000002/front-500",
+        )
+        val newerSinglesWithoutArt = (1..6).map { index ->
+            another.copy(
+                musicBrainzId = "78900000-0000-4000-8000-${(200 + index).toString().padStart(12, '0')}",
+                title = "More recent single ${index}",
+                firstReleaseDate = "2026-11-${(17 + index).toString().padStart(2, '0')}",
+                artworkUri = null,
+            )
+        }
+        val rows = canonicalPublicReleaseRows(
+            newerSinglesWithoutArt + covered, "2026-11-01", "2026-11-23",
+        )
+        val home = canonicalHomeWithWorldwideEditorial(
+            emptyList(), rows, "Lançamentos", "Escolha a dedo",
+            "Em alta", null, "2026-11-23",
+        )
+        val hero = home.first { it.title == "Lançamentos" }.items
+        assertTrue(hero.any { it.title == covered.title && it.thumbnailUrl == covered.artworkUri })
+        val allIds = home.flatMap { it.items }.mapNotNull { it.browseId }
+        assertEquals(allIds.size, allIds.distinct().size)
+        assertTrue(home.any { it.title == "Singles e EPs" })
+    }
+
+    @Test fun genreReservesOlderAlbumHiddenBehindHundredsOfRecentSingles() {
+        val singles = (1..125).map { index ->
+            another.copy(
+                musicBrainzId = "70000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+                title = "Tagged Single ${index}",
+                firstReleaseDate = "2026-11-01",
+            )
+        }
+        val album = recent.copy(
+            musicBrainzId = "70000000-0000-4000-8000-000000000999",
+            title = "Older but verified Album",
+            firstReleaseDate = "2024-02-01",
+        )
+        val rows = canonicalPublicGenreRows(singles + album, "2026-11-23")
+        assertEquals(40, rows.size)
+        assertTrue(rows.any { it.musicBrainzId == album.musicBrainzId })
+        assertTrue(rows.any { it.releaseKind == "Single" })
+        // The older Album is not a current chart or fresh release, but its
+        // verified genre membership remains visible in the Album section.
+        val genre = com.music.bitchord.ui.canonicalExploreGenres.first()
+        val shelves = canonicalGenreEditorialShelves(genre, rows, "2026-11-23")
+        assertTrue(shelves.first { it.title == "Álbuns" }.items.any {
+            it.browseId == "catalog:RELEASE_GROUP:${album.musicBrainzId}"
+        })
+    }
+
+    @Test fun partialDatesCannotMasqueradeAsExactNinetyDayReleases() {
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent(null, "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2025-11-22", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11-24", "2026-11-23"))
+        assertFalse(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-13-01", "2026-11-23"))
+        assertTrue(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-11-05", "2026-11-23"))
+        assertTrue(com.music.bitchord.ui.canonicalHomeReleaseIsRecent("2026-08-25", "2026-11-23"))
+    }
+
+    @Test fun catalogDateGateAcceptsUnknownPrecisionButRejectsInvalidCalendarValues() {
+        val current = "2026-11-23"
+        val allowed = listOf(null, "", "2026", "2026-11", "2026-11-23",
+            "2020-02-29", "2025-12")
+        val rejected = listOf("2027", "2026-12", "2026-11-24", "2026-02-30",
+            "2024-13", "2026-00-04", "2026-11-99", "2026-1", "invalid")
+        allowed.forEach { date ->
+            assertTrue("Known/unknown catalog date incorrectly rejected: $date",
+                com.music.bitchord.ui.canonicalCatalogReleaseDateNotFuture(date, current))
+        }
+        rejected.forEach { date ->
+            assertFalse("Impossible/future catalog date incorrectly accepted: $date",
+                com.music.bitchord.ui.canonicalCatalogReleaseDateNotFuture(date, current))
+        }
+        assertFalse(com.music.bitchord.ui.canonicalCatalogReleaseDateNotFuture(
+            "2026-11-22", "not-a-calendar-day",
+        ))
     }
 
     @Test fun rankingShelfKeepsItsRealUpstreamEvidenceRatherThanInventingCharts() {
@@ -457,8 +806,8 @@ class CanonicalPublicDiscoveryTest {
             chart, "2026-11-06", "Álbuns recentes", "Singles e EPs",
         )
         assertEquals(
-            listOf("Lançamentos", "Escolha a dedo", "Em alta",
-                "Álbuns recentes", "Singles e EPs"), home.map { it.title },
+            listOf("Lançamentos", "Para descobrir", "Em alta",
+                "Álbuns recentes", "Singles e EPs", "Mais"), home.map { it.title },
         )
         val cards = home.flatMap { it.items }
         assertEquals(cards.size, cards.map { it.browseId }.distinct().size)

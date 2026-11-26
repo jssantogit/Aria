@@ -1,0 +1,808 @@
+# CI-only measurement of catalogue processing; not an APK or physical smoke.
+# Deterministic transports drive the real source adapters and Home/genre
+# projection. Artifacts contain aggregate counts only, never source payloads.
+# Live Discogs requests read DISCOGS_TOKEN from GitHub Actions Secrets only.
+# Refreshing this workflow on the PR branch reruns both isolated and collective
+# observations without changing production catalog sources or merging main.
+name: 'IDM #224 · Catalogue feeding measurements'
+
+on:
+  push:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - .github/workflows/idm-catalog-feeding-measurements.yml
+      - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
+      - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
+      - app/src/test/java/com/music/bitchord/AppleNativeHomeDiscoveryTest.kt
+      - app/src/test/java/com/music/bitchord/AppleExploreGenreEditorialTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalGenreTaxonomyTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistSearchTest.kt
+      - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
+      - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialNativeSearchBridgeTest.kt
+      - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
+      - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogSearchTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogGraphTest.kt
+      - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
+      - app/src/test/java/com/music/bitchord/AppleMusicBrainzEditionMatcherTest.kt
+      - app/src/test/java/com/music/bitchord/AppleAlbumEditionReconciliationServiceTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesEditorialCatalogTest.kt
+      - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
+      - sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt
+      - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
+      - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
+      - app/src/main/java/com/music/bitchord/ui/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/idm-catalog-feeding-measurements.yml
+      - app/src/test/java/com/music/bitchord/IdmCatalogFeedingMeasurementTest.kt
+      - app/src/test/java/com/music/bitchord/IdmCatalogCapacityCurveTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/AppleHomeVerifiedPoolCapacityTest.kt
+      - app/src/test/java/com/music/bitchord/AppleNativeHomeDiscoveryTest.kt
+      - app/src/test/java/com/music/bitchord/AppleExploreGenreEditorialTest.kt
+      - app/src/test/java/com/music/bitchord/CanonicalGenreTaxonomyTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsHomeGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGenreGranularPagingTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsGranularEditorialCursorTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsClientContractTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsTransportSafetyTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistCatalogTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeReleaseSearchTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsNativeArtistSearchTest.kt
+      - app/src/test/java/com/music/bitchord/NativeArtistTrackOriginTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsEvidenceContractTest.kt
+      - app/src/test/java/com/music/bitchord/NativeMetadataAlbumPresentationTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialNativeSearchBridgeTest.kt
+      - app/src/test/java/com/music/bitchord/AppleSharedDetailAdapterTest.kt
+      - app/src/test/java/com/music/bitchord/DiscogsMasterVersionPreviewTest.kt
+      - app/src/test/java/com/music/bitchord/ApplePublicSearchPagerTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogSearchTest.kt
+      - app/src/test/java/com/music/bitchord/MusicBrainzCatalogGraphTest.kt
+      - app/src/test/java/com/music/bitchord/AppleArtistDiscographyPagerTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialCatalogRepositoryTest.kt
+      - app/src/test/java/com/music/bitchord/AppleEditorialClassificationTest.kt
+      - app/src/test/java/com/music/bitchord/AppleMusicBrainzEditionMatcherTest.kt
+      - app/src/test/java/com/music/bitchord/AppleAlbumEditionReconciliationServiceTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesCatalogClientTest.kt
+      - app/src/test/java/com/music/bitchord/ItunesEditorialCatalogTest.kt
+      - sharedUi/src/jvmSharedMain/kotlin/com/music/bitchord/ui/screens/DiscogsNativeCatalogRows.kt
+      - sharedUi/src/jvmTest/kotlin/com/music/bitchord/ui/screens/DiscogsSearchRelevanceTest.kt
+      - app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt
+      - app/src/main/java/com/music/bitchord/data/catalog/metadata/**
+      - app/src/main/java/com/music/bitchord/ui/**
+  workflow_dispatch:
+    inputs:
+      live_scope:
+        description: 'Live observation scope (full required for final integration audit)'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - 'full'
+          - 'itunes-albums'
+          - 'itunes-musicbrainz-search'
+      discogs_capacity_target:
+        description: 'Cumulative verified Discogs Home capacity target (same Android gestures)'
+        required: true
+        default: '100'
+        type: choice
+        options:
+          - '100'
+          - '300'
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-feeding:
+    name: Real adapters · deterministic MB/Apple/Discogs and collective
+    concurrency:
+      group: idm-catalog-controlled-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-metrics
+
+    steps:
+      - name: Checkout exact candidate HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify tested checkout is the actual PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "Exact tested source: \`$actual\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless Android unit-test environment
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+
+      - name: Exercise app catalog adapters and canonical Home/genre feeds
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogFeedingMeasurementTest' \
+            --tests 'com.music.bitchord.IdmCatalogCapacityCurveTest' \
+            --tests 'com.music.bitchord.CanonicalHomeGranularPagingTest' \
+            --tests 'com.music.bitchord.AppleHomeVerifiedPoolCapacityTest' \
+            --tests 'com.music.bitchord.AppleNativeHomeDiscoveryTest' \
+            --tests 'com.music.bitchord.AppleExploreGenreEditorialTest' \
+            --tests 'com.music.bitchord.ui.CanonicalGenreTaxonomyTest' \
+            --tests 'com.music.bitchord.DiscogsHomeGranularPagingTest' \
+            --tests 'com.music.bitchord.DiscogsGenreGranularPagingTest' \
+            --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest' \
+            --tests 'com.music.bitchord.DiscogsClientContractTest' \
+            --tests 'com.music.bitchord.DiscogsTransportSafetyTest' \
+            --tests 'com.music.bitchord.DiscogsNativeArtistCatalogTest' \
+            --tests 'com.music.bitchord.DiscogsNativeReleaseSearchTest' \
+            --tests 'com.music.bitchord.DiscogsNativeArtistSearchTest' \
+            --tests 'com.music.bitchord.NativeArtistTrackOriginTest' \
+            --tests 'com.music.bitchord.DiscogsEvidenceContractTest' \
+            --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
+            --tests 'com.music.bitchord.AppleEditorialNativeSearchBridgeTest' \
+            --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
+            --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
+            --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
+            --tests 'com.music.bitchord.MusicBrainzCatalogSearchTest' \
+            --tests 'com.music.bitchord.MusicBrainzCatalogGraphTest' \
+            --tests 'com.music.bitchord.AppleArtistDiscographyPagerTest' \
+            --tests 'com.music.bitchord.AppleEditorialCatalogRepositoryTest' \
+            --tests 'com.music.bitchord.AppleEditorialClassificationTest' \
+            --tests 'com.music.bitchord.AppleMusicBrainzEditionMatcherTest' \
+            --tests 'com.music.bitchord.AppleAlbumEditionReconciliationServiceTest' \
+            --tests 'com.music.bitchord.ItunesCatalogClientTest' \
+            --tests 'com.music.bitchord.ItunesEditorialCatalogTest' \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork' \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.relevanceReviewIsBoundedAndDoesNotPublishNativeIds'
+
+      - name: Exercise shared native search presentation and relevance
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :sharedUi:jvmTest \
+            --tests 'com.music.bitchord.ui.screens.DiscogsSearchRelevanceTest' \
+            --tests 'com.music.bitchord.ui.screens.AppleUnifiedSearchResultsTest' \
+            --tests 'com.music.bitchord.ui.screens.NativeSearchRowTest'
+
+      - name: Check completeness and write aggregate comparison
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          folder = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          required = {
+              "musicbrainz_isolated",
+              "itunes_isolated",
+              "discogs_isolated",
+              "collective_all_priorities",
+          }
+          found = {path.stem: json.loads(path.read_text()) for path in folder.glob("*.json")}
+          missing = required - found.keys()
+          if missing:
+              raise SystemExit(f"Missing required measurements: {sorted(missing)}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("### IDM #224: measured catalogue feeding (controlled fixture)\n\n")
+              out.write("Uses production source parsers, editorial projections and dispatch; ")
+              out.write("fixture transport is **not** evidence of live availability or popularity.\n\n")
+              out.write("| Scenario | Raw candidates | Parsed/distinct | Editorial eligible | Visible IDs | Reads | Artwork | Cursor may remain |\n")
+              out.write("|---|---:|---:|---:|---:|---:|---:|---|\n")
+              for key in sorted(required):
+                  row = found[key]
+                  if row.get("mode") != "fixture-production-pipeline" or row.get("schema") != 1:
+                      raise SystemExit(f"Invalid measurement schema: {key}")
+                  cols = [key, row["raw_candidates"], row["parsed_distinct"],
+                          row["editorial_eligible"], row["displayed_unique"],
+                          row["http_or_transport_reads"], row["displayed_with_artwork"],
+                          row["cursor_remaining"]]
+                  out.write("| " + " | ".join(map(str, cols)) + " |\n")
+              out.write("\nAll source identities remain provider-native. ")
+              out.write("Aggregates are fixture counts; do not interpret as live coverage.\n")
+          capacity = {f.stem.removeprefix("capacity_"): json.loads(f.read_text())
+                      for f in folder.glob("capacity_*.json")}
+          expected = {p + "_" + str(n).zfill(3)
+                      for p in ("musicbrainz", "itunes", "discogs")
+                      for n in (30, 100, 300)}
+          if capacity.keys() != expected:
+              raise SystemExit(f"Missing capacity curves: {sorted(expected - capacity.keys())}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### Cursor capacity curves (controlled fixtures)\n\n")
+              out.write("| Provider | Candidate target | Discovered | Verified unique | Reads | Coverage uncertain |\n")
+              out.write("|---|---:|---:|---:|---:|---|\n")
+              for key in sorted(expected):
+                  item = capacity[key]
+                  if item.get("mode") != "capacity-fixture":
+                      raise SystemExit(f"Invalid capacity measurement: {key}")
+                  cols = [item["provider"], item["target"],
+                          item["source_candidates"], item["verified_unique"],
+                          item["transport_reads"], item["coverage_uncertain"]]
+                  out.write("| " + " | ".join(map(str, cols)) + " |\n")
+              out.write("\nA fixture proving 300 local rows is not evidence of ")
+              out.write("300 relevant real-world releases.\n")
+          import xml.etree.ElementTree as ET
+          # Source-curves and the ACTUAL Home handoff must both be exercised.
+          # Counts here are passing fixture regressions, not remote API yield.
+          suites = [
+              "CanonicalHomeGranularPagingTest",
+              "AppleHomeVerifiedPoolCapacityTest",
+              "AppleNativeHomeDiscoveryTest",
+              "AppleExploreGenreEditorialTest",
+              "CanonicalGenreTaxonomyTest",
+              "DiscogsHomeGranularPagingTest",
+              "DiscogsGenreGranularPagingTest",
+              "DiscogsGranularEditorialCursorTest",
+              "DiscogsClientContractTest",
+              "DiscogsTransportSafetyTest",
+              "DiscogsNativeArtistCatalogTest",
+              "DiscogsNativeReleaseSearchTest",
+              "DiscogsNativeArtistSearchTest",
+              "NativeArtistTrackOriginTest",
+              "DiscogsEvidenceContractTest",
+              "NativeMetadataAlbumPresentationTest",
+              "AppleEditorialNativeSearchBridgeTest",
+              "AppleSharedDetailAdapterTest",
+              "DiscogsMasterVersionPreviewTest",
+              "ApplePublicSearchPagerTest",
+              "MusicBrainzCatalogSearchTest",
+              "MusicBrainzCatalogGraphTest",
+              "AppleArtistDiscographyPagerTest",
+              "AppleEditorialCatalogRepositoryTest",
+              "AppleEditorialClassificationTest",
+              "AppleMusicBrainzEditionMatcherTest",
+              "AppleAlbumEditionReconciliationServiceTest",
+              "ItunesCatalogClientTest",
+              "ItunesEditorialCatalogTest",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### Home granular flows (controlled full-adapter regressions)\n\n")
+              out.write("| Suite | Tests | Failures | Errors | Skipped |\n")
+              out.write("|---|---:|---:|---:|---:|\n")
+              for suite in suites:
+                  path = Path("app/build/test-results/testDevDebugUnitTest") / (
+                      ("TEST-com.music.bitchord.ui." if suite == "CanonicalGenreTaxonomyTest"
+                       else "TEST-com.music.bitchord.") + suite + ".xml"
+                  )
+                  if not path.is_file():
+                      raise SystemExit("Missing Home granular regression suite: " + suite)
+                  node = ET.parse(path).getroot()
+                  data = [int(node.get(key, "0"))
+                          for key in ("tests", "failures", "errors", "skipped")]
+                  if data[0] < 1 or data[1] or data[2]:
+                      raise SystemExit("Home granular regression failed: " + suite)
+                  out.write("| " + suite + " | " +
+                            " | ".join(map(str, data)) + " |\n")
+              out.write("\nThis validates code paths with fixture transports; ")
+              out.write("it does not establish remote pagination completeness.\n")
+          # This exact test is deliberately secretless and must pass before
+          # the expensive live job starts, not merely appear as a skipped suite.
+          schema_report = Path("app/build/test-results/testDevDebugUnitTest/TEST-com.music.bitchord.IdmCatalogLiveObservationTest.xml")
+          if not schema_report.is_file():
+              raise SystemExit("Missing offline live-report schema regression")
+          schema_tests = ET.parse(schema_report).getroot().findall("testcase")
+          schema_case = [case for case in schema_tests if case.get("name", "").startswith(
+              "aggregateReportAcceptsHttpStatusCountersWithoutLiveNetwork")]
+          if len(schema_case) != 1 or any(schema_case[0].find(tag) is not None
+                                       for tag in ("failure", "error", "skipped")):
+              raise SystemExit("Offline live-report schema regression did not pass")
+          # Require all shared native relevance/navigation suites as well.
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### Shared search regressions\n\n")
+              out.write("| Suite | Tests | Failures | Errors | Skipped |\n")
+              out.write("|---|---:|---:|---:|---:|\n")
+              for suite in ("DiscogsSearchRelevanceTest", "AppleUnifiedSearchResultsTest", "NativeSearchRowTest"):
+                  path = Path("sharedUi/build/test-results/jvmTest") / (
+                      "TEST-com.music.bitchord.ui.screens." + suite + ".xml"
+                  )
+                  if not path.is_file():
+                      raise SystemExit("Missing shared search regression suite: " + suite)
+                  node = ET.parse(path).getroot()
+                  data = [int(node.get(key, "0")) for key in ("tests", "failures", "errors", "skipped")]
+                  if data[0] < 1 or data[1] or data[2] or data[3] == data[0]:
+                      raise SystemExit("Shared search regression failed: " + suite)
+                  out.write("| " + suite + " | " + " | ".join(map(str, data)) + " |\n")
+          print("IDM_CATALOG_MEASUREMENTS_COMPLETE", sorted(found))
+          PY
+
+      - name: Preserve exact HEAD and aggregate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-catalog-measurements-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            idm-catalog-metrics/*.json
+            app/build/test-results/testDevDebugUnitTest/
+            app/build/reports/tests/testDevDebugUnitTest/
+            sharedUi/build/test-results/jvmTest/
+            sharedUi/build/reports/tests/jvmTest/
+          if-no-files-found: warn
+          retention-days: 14
+
+  live-observation:
+    name: Live API observations · ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full' }}
+    # Non-gating remote availability is reported as a status, never silently
+    # replaced by a fixture. A missing Discogs secret is explicitly blocked.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: canonical-feeding
+    # Let active source observations finish even when a new HEAD is pushed.
+    # All live jobs in this repository share the same Discogs credential budget.
+    concurrency:
+      group: idm-catalog-live-${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full' }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      IDM_CATALOG_LIVE: '1'
+      # Temporary iteration focus for #224; manual full mode remains available.
+      IDM_CATALOG_LIVE_SCOPE: ${{ inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full' }}
+      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: ${{ inputs.discogs_capacity_target || '100' }}
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full') == 'full' && secrets.DISCOGS_TOKEN || '' }}
+      # Only the fixed, public MB/Apple corpus in the focused review.
+      IDM_SEARCH_TOP10_REVIEW: ${{ (inputs.live_scope || (github.head_ref == 'integration/idm-providers-main-20261121' && 'itunes-musicbrainz-search') || 'full') == 'itunes-musicbrainz-search' && '1' || '0' }}
+
+    steps:
+      - name: Checkout exact candidate HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify tested checkout is the actual PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "Exact tested source: \`$actual\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless base properties and isolated reports
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums|itunes-musicbrainz-search) ;; *) exit 1 ;; esac
+          echo "Live scope: $IDM_CATALOG_LIVE_SCOPE (focused results are not full parity)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Observe live provider responses through production catalogue adapters
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_sources_and_collective_fallback_use_canonical_pipeline'
+
+      - name: Summarize exact live results and capability blocks
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          required = {"musicbrainz", "musicbrainz_app_flow",
+                      "musicbrainz_home_granular", "itunes", "itunes_home_granular",
+                      "discogs", "discogs_granular", "discogs_home_granular",
+                      "discogs_genre_12_positions", "discogs_overlapping_landing",
+                      "discogs_home_landing", "discogs_artist_30_target",
+                      "musicbrainz_home_capacity_30", "itunes_home_capacity_30",
+                      "collective"}
+          capacity_target = int(os.environ.get("IDM_CATALOG_DISCOGS_CAPACITY_TARGET", "100"))
+          capacity_scenarios = [f"discogs_home_capacity_{n}" for n in (30, 100, 300)
+                                if n <= capacity_target]
+          required.update(capacity_scenarios)
+          data = {
+              f.stem.removeprefix("live_"): json.loads(f.read_text())
+              for f in path.glob("live_*.json")
+          }
+          if required - data.keys():
+              raise SystemExit("Live observation report missing required source states")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("### Live API observation (not a fixture and not a popularity score)\n\n")
+              out.write("| Source | Status | Raw page rows | Parsed | Eligible | Visible | Artwork | Reads |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---:|\n")
+              for name in ("musicbrainz", "musicbrainz_app_flow",
+                           "musicbrainz_home_granular", "itunes", "itunes_home_granular",
+                           "discogs", "discogs_granular", "discogs_home_granular",
+                           "discogs_genre_12_positions", "discogs_overlapping_landing",
+                           "discogs_home_landing", "discogs_artist_30_target",
+                           "musicbrainz_home_capacity_30", "itunes_home_capacity_30",
+                           *capacity_scenarios, "collective"):
+                  row = data[name]
+                  if row.get("mode") != "live-network-observation":
+                      raise SystemExit("Incorrect live report type")
+                  fields = [name, row["status"], row["raw_candidates"],
+                      row["parsed_distinct"], row["editorial_eligible"],
+                      row["displayed_unique"], row["displayed_with_artwork"],
+                      row["http_or_transport_reads"]]
+                  out.write("| " + " | ".join(map(str, fields)) + " |\n")
+                  # Emit only allowlisted aggregate telemetry, never source payloads.
+                  keys = ("status", "editorial_eligible", "displayed_unique",
+                          "http_or_transport_reads", "source_candidates_consumed",
+                          "source_candidate_budget", "verified_target",
+                          "source_index_reads", "source_master_reads",
+                          "source_index_master_candidates", "source_index_main_release_hints",
+                          "source_release_reads", "elapsed_ms", "first_verified_ms",
+                          "landing_checkpoint_used", "start_page", "start_position",
+                          "initial_elapsed_ms", "initial_first_verified_ms",
+                          "known_verified_masters", "new_verified_emitted",
+                          "source_queries_attempted", "landing_checkpoints",
+                          "source_pages_completed", "incomplete_coverage",
+                          "source_gestures", "source_chunks_attempted",
+                          "continuation_elapsed_ms", "verified_landing_genres",
+                          "next_window_has_more")
+                  aggregate = {key: row[key] for key in keys if key in row}
+                  print("IDM_LIVE_AGGREGATE", name, json.dumps(aggregate, sort_keys=True))
+              out.write("\nA null count means unavailable telemetry, not zero. ")
+              out.write("Discogs without a CI token is **not measured**. ")
+              out.write("This is one sampled observation, not exhaustive source coverage.\n")
+          PY
+
+      - name: Observe fixed live genre matrix (#227)
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_genre_parity_matrix'
+
+      - name: Summarize all 45 genre matrix cells
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          tags = ("pop", "rock", "hip_hop", "electronic", "jazz", "k_pop",
+                  "metal", "rnb", "folk", "hard_rock", "house", "techno", "trance",
+                  "smooth_jazz", "bluegrass")
+          capacity = {"rock", "electronic", "jazz"}
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #227 fixed genre matrix (live observations)\n\n")
+              out.write("| Provider | Tag | Landing | Cumulative | Gestures | Status |\n")
+              out.write("|---|---|---:|---:|---:|---|\n")
+              for provider in ("musicbrainz", "itunes", "discogs"):
+                  for tag in tags:
+                      name = f"genre_matrix_{provider}_{tag}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong report mode")
+                      expected_landing = 6 if tag in tags[:9] else 4
+                      expected_target = 30 if tag in capacity else expected_landing
+                      if row["landing_target"] != expected_landing or row["verified_target"] != expected_target:
+                          raise SystemExit("Frozen parity target mismatch")
+                      keys = ("status", "landing_visible_releases", "landing_target",
+                              "displayed_unique", "verified_target", "source_gestures",
+                              "first_scroll_new_releases", "source_queries_attempted", "elapsed_ms")
+                      aggregate = {key: row[key] for key in keys}
+                      print("IDM_GENRE_MATRIX", name, json.dumps(aggregate, sort_keys=True))
+                      out.write(f"| {provider} | {tag} | {row['landing_visible_releases']} | "
+                                f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
+          PY
+
+      - name: Observe fixed live artist matrix (#228)
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_artist_parity_matrix'
+
+      - name: Summarize all 30 artist matrix cells
+        if: env.IDM_CATALOG_LIVE_SCOPE == 'full'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #228 artist identity and discography projection (not Activity navigation)\n\n")
+              out.write("| Provider | Case | Anchor | Visible | Gestures | Status |\n")
+              out.write("|---|---|---:|---:|---:|---|\n")
+              for provider in ("musicbrainz", "itunes", "discogs"):
+                  for i in range(1, 11):
+                      name = f"artist_matrix_{provider}_{i:02d}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation" or row["verified_target"] != (30 if i <= 5 else 1):
+                          raise SystemExit("Frozen artist matrix mismatch")
+                      keys = ("status", "anchor_verified", "profile_projection_verified",
+                              "displayed_unique", "verified_target", "source_gestures",
+                              "landing_visible_releases", "automatic_pages", "release_sections",
+                              "verified_track_rows", "first_profile_ms", "incomplete_coverage", "elapsed_ms",
+                              "artist_master_lookup_calls", "artist_release_lookup_calls",
+                              "artist_edition_malformed", "artist_edition_unavailable",
+                              "artist_edition_throttled", "artist_edition_unauthorized",
+                              "artist_edition_missing", "artist_edition_disabled",
+                              "detail_http_reads", "detail_local_body_limits",
+                              "detail_upstream_http_413", "detail_http_5xx",
+                              "detail_other_http_failures", "detail_io_failures",
+                              "detail_other_transport_failures",
+                              "detail_parse_body_or_structure", "detail_parse_root",
+                              "detail_parse_identity", "detail_parse_title",
+                              "detail_parse_artists", "detail_parse_labels",
+                              "detail_parse_identifiers", "detail_parse_formats",
+                              "detail_parse_tracklist", "detail_parse_tracklist_limit",
+                              "detail_parse_format_descriptions", "detail_parse_track_title",
+                              "detail_parse_json", "apple_anchor_title_queries", "apple_anchor_credit_matches")
+                      print("IDM_ARTIST_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      out.write(f"| {provider} | {i:02d} | {row['anchor_verified']} | "
+                                f"{row['displayed_unique']} | {row['source_gestures']} | {row['status']} |\n")
+          PY
+
+      - name: Observe fixed live album matrix (#229)
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-musicbrainz-search'
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_album_parity_matrix'
+
+      - name: Summarize selected album matrix cells
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-musicbrainz-search'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          keys = ("status", "identity_verified", "detail_projected",
+                  "editorial_eligible", "displayed_unique", "tracklist_partial",
+                  "type_verified", "apple_header_type_verified", "apple_track_label_type_verified",
+                  "apple_audio_rule_album", "apple_audio_rule_ep", "apple_audio_rule_single",
+                  "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict",
+                  "apple_commercial_type_matches_expected", "apple_display_type_matches_expected",
+                  "apple_display_type_known", "apple_commercial_lower_bound_album",
+                  "apple_selected_public_offer_verified", "apple_independent_offer_display_known",
+                  "apple_independent_offer_display_matches_expected",
+                  "source_discs_observed", "source_track_positions",
+                  "source_track_durations", "artist_route_verified", "related_release_cards",
+                  "version_cards", "version_coverage_uncertain", "detail_candidates_read",
+                  "native_search_gestures", "partial_apple_candidates",
+                  "discogs_format_queries",
+                  "apple_search_requests", "apple_search_decoded_rows",
+                  "apple_search_credit_matches", "apple_search_title_matches",
+                  "apple_search_work_matches", "apple_search_work_rank_admitted",
+                  "apple_seven_plus_audio_tracks",
+                  "apple_artist_collection_discovery_calls", "apple_artist_collection_verified_candidates",
+                  "apple_song_collection_discovery_calls", "apple_song_collection_verified_candidates",
+                  "apple_independent_offer_attempted", "apple_independent_offer_verified",
+                  "apple_independent_detail_complete", "apple_independent_frozen_title_matches",
+                  "apple_frozen_title_verified", "apple_qualified_edition_verified",
+                  "apple_related_year_edition_verified", "apple_related_year_edition_complete",
+                  "apple_mixed_lookup_attempted", "apple_mixed_lookup_verified",
+                  "apple_album_song_search_attempted", "apple_album_song_search_verified",
+                  "apple_alternative_track_route_verified",
+                  "apple_verified_excluded_non_audio",
+                  "apple_video_probe_attempted", "apple_video_probe_same_collection",
+                  "apple_video_probe_verified_rows", "apple_video_probe_count_reconciled",
+                  "apple_lookup_declared_track_count", "apple_lookup_track_count_known",
+                  "apple_lookup_decoded_tracks", "apple_lookup_positionless_tracks",
+                  "apple_lookup_duplicate_positions", "apple_lookup_possibly_truncated",
+                  "apple_lookup_declared_rows", "apple_lookup_raw_rows",
+                  "apple_lookup_matching_songs", "apple_lookup_matching_non_songs",
+                  "apple_lookup_foreign_songs", "apple_lookup_rejected_songs",
+                  "apple_lookup_removed_duplicate_songs",
+                  "source_interruption", "elapsed_ms")
+          scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
+          providers = ("itunes",) if scope == "itunes-albums" else ("musicbrainz", "itunes", "discogs")
+          expected = {f"live_album_matrix_{provider}_{i:02d}" for provider in providers for i in range(1, 16)}
+          actual = {p.stem for p in path.glob("live_album_matrix_*.json")}
+          if actual != expected:
+              raise SystemExit(f"Unexpected album matrix cells: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #229 fixed album matrix (decoded endpoint and canonical projection)\n\n")
+              out.write("| Provider | Case | Detail | Decoded tracks | Visible tracks | Discs | Type | Status |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
+              out.write(f"Live scope: {scope}; {len(expected)} required cells.\\n\\n")
+              apple_totals = {k: 0 for k in ("type_verified", "apple_header_type_verified", "apple_track_label_type_verified", "apple_audio_rule_matches_expected", "apple_audio_rule_explicit_conflict", "apple_commercial_type_matches_expected", "apple_display_type_matches_expected", "apple_display_type_known", "apple_commercial_lower_bound_album")}
+              for provider in providers:
+                  for i in range(1, 16):
+                      name = f"album_matrix_{provider}_{i:02d}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong album matrix report mode")
+                      print("IDM_ALBUM_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      if provider == "itunes":
+                          for k in apple_totals:
+                              apple_totals[k] += row[k]
+                      out.write(f"| {provider} | {i:02d} | {row['detail_projected']} | "
+                                f"{row['editorial_eligible']} | {row['displayed_unique']} | "
+                                f"{row['source_discs_observed']} | {row['type_verified']} | {row['status']} |\n")
+              out.write("\nApple source-declared classifications matching the fixed expectations: " + str(apple_totals["type_verified"]) + "/15.\n")
+              out.write("Header: " + str(apple_totals["apple_header_type_verified"]) + "; exact track-label evidence: " + str(apple_totals["apple_track_label_type_verified"]) + ".\n")
+              out.write("Separate Apple audio-rule diagnostic matches: " + str(apple_totals["apple_audio_rule_matches_expected"]) + "/15; explicit conflicts: " + str(apple_totals["apple_audio_rule_explicit_conflict"]) + ". Not included in source-declared score.\n")
+              out.write("Commercial display known: " + str(apple_totals["apple_display_type_known"]) + "/15; display matches fixed historical expectations: " + str(apple_totals["apple_display_type_matches_expected"]) + "/15; partial lower-bound Albums: " + str(apple_totals["apple_commercial_lower_bound_album"]) + ".\n")
+          PY
+
+      - name: Observe fixed live search matrix (#230)
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-albums'
+        run: |
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_search_parity_matrix'
+
+      - name: Summarize selected search matrix cells and unresolved labels
+        if: env.IDM_CATALOG_LIVE_SCOPE != 'itunes-albums'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          keys = ("status", "target_proven", "top_five_target", "first_ten_rows",
+                  "labelled_target_rows", "labelled_non_target_rows", "unjudged_rows",
+                  "local_category_route_verified", "native_search_supported",
+                  "release_track_path_verified",
+                              "homonym_candidates", "homonym_detail_reads", "homonym_corroborated",
+                  "apple_qualified_title_top_five", "apple_qualified_anchor_top_five",
+                  "apple_continuation_gestures", "apple_continuation_target_recovered",
+                  "apple_continuation_qualified_recovered", "apple_continuation_interrupted",
+                  "apple_landing_discovered_target_rank", "apple_landing_discovered_qualified_rank",
+                  "apple_qualified_identity_verified", "apple_qualified_identity_reads",
+                  "mb_anchor_field_probe", "mb_anchor_artist_id_reads", "mb_landing_raw_target_rank", "mb_landing_curated_target_rank",
+                  "discogs_index_relevant", "discogs_index_master_known", "discogs_index_collapsed",
+                  "discogs_master_hydrated", "discogs_master_mismatch",
+                  "mb_recording_recovery_primary_rows", "mb_recording_recovery_primary_failure",
+                  "mb_recording_recovery_audio_attempted", "mb_recording_recovery_audio_rows",
+                  "mb_recording_recovery_audio_failure", "mb_recording_recovery_admitted",
+                  "mb_recording_exact_raw", "mb_recording_exact_official_audio",
+                  "mb_recording_exact_missing_proof", "mb_recording_exact_uncurated",
+                  "source_interruption", "elapsed_ms")
+          scope = os.environ["IDM_CATALOG_LIVE_SCOPE"]
+          providers = ("musicbrainz", "itunes") if scope == "itunes-musicbrainz-search" else ("musicbrainz", "itunes", "discogs")
+          expected = {f"live_search_matrix_{provider}_{i:02d}" for provider in providers for i in range(1, 31)}
+          actual = {p.stem for p in path.glob("live_search_matrix_*.json")}
+          if actual != expected:
+              raise SystemExit(f"Unexpected search matrix cells: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          totals = {}
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n### #230 fixed search targets (not general relevance adjudication)\n\n")
+              out.write("| Provider | Case | Target | Top 5 | Labelled match | Non-target | Unjudged | Status |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---|\n")
+              out.write(f"Live scope: {scope}; {len(expected)} required cells.\n\n")
+              for provider in providers:
+                  totals[provider] = {"supported": 0, "top_five": 0, "proven": 0, "category": 0, "remote_top_five": 0, "remote_supported": 0, "qualified_additional": 0}
+                  for i in range(1, 31):
+                      name = f"search_matrix_{provider}_{i:02d}"
+                      row = json.loads((path / f"live_{name}.json").read_text())
+                      if row.get("mode") != "live-network-observation":
+                          raise SystemExit("Wrong search matrix report mode")
+                      if row["labelled_target_rows"] + row["labelled_non_target_rows"] + row["unjudged_rows"] != row["first_ten_rows"]:
+                          raise SystemExit("Search judgement denominator mismatch")
+                      total = totals[provider]
+                      total["supported"] += row["native_search_supported"]
+                      total["top_five"] += row["top_five_target"]
+                      total["proven"] += row["target_proven"]
+                      if provider == "itunes" and not row["top_five_target"] and (
+                          row["apple_qualified_title_top_five"] or row["apple_qualified_anchor_top_five"]
+                      ):
+                          total["qualified_additional"] += 1
+                      if i >= 25:
+                          total["category"] += row["top_five_target"]
+                      elif row["native_search_supported"]:
+                          total["remote_supported"] += 1
+                          total["remote_top_five"] += row["top_five_target"]
+                      print("IDM_SEARCH_MATRIX", name, json.dumps({k: row[k] for k in keys}, sort_keys=True))
+                      out.write(f"| {provider} | {i:02d} | {row['target_proven']} | {row['top_five_target']} | "
+                                f"{row['labelled_target_rows']} | {row['labelled_non_target_rows']} | "
+                                f"{row['unjudged_rows']} | {row['status']} |\n")
+              out.write("\n### Search totals by source (fixed targets)\n\n")
+              out.write("| Provider | Supported | Target proven | Top 5 | Remote Top 5 | Local category Top 5 |\n")
+              out.write("|---|---:|---:|---:|---:|---:|\n")
+              for provider, total in totals.items():
+                  out.write(f"| {provider} | {total['supported']} | {total['proven']} | "
+                            f"{total['top_five']}/{total['supported']} | "
+                            f"{total['remote_top_five']}/{total['remote_supported']} | {total['category']}/6 |\n")
+              if "itunes" in totals:
+                  apple = totals["itunes"]
+                  out.write(f"\nApple: {apple['qualified_additional']} additional edition-qualified Top 5 cases; "
+                            f"{apple['top_five'] + apple['qualified_additional']}/30 inclusive. "
+                            "Qualified results are exploratory, not included in strict score.\n")
+              out.write("\nCategory routes are local navigation; not remote catalogue availability. "
+                        "Discogs release track evidence is not native track search. Unjudged namesakes require adjudication.\n")
+          PY
+
+      - name: Validate and expose bounded public Top 10 review evidence
+        if: env.IDM_SEARCH_TOP10_REVIEW == '1'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          folder = root / "top10-review"
+          expected = {f"{p}_{i:02d}" for p in ("musicbrainz", "itunes") for i in range(1, 31)}
+          actual = {p.stem for p in folder.glob("*.json")}
+          if actual != expected:
+              raise SystemExit(f"Top10 review completeness: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          for name in sorted(expected):
+              review = json.loads((folder / f"{name}.json").read_text())
+              aggregate = json.loads((root / f"live_search_matrix_{name}.json").read_text())
+              provider, case = name.rsplit("_", 1)
+              rows = review["rows"]
+              if set(review) != {"schema", "provider", "case", "kind", "complete", "rows"} or review["schema"] != 1:
+                  raise SystemExit("Invalid review schema")
+              if review["provider"] != provider or review["case"] != int(case):
+                  raise SystemExit("Review cell mismatch")
+              if len(rows) != aggregate["first_ten_rows"] or len(rows) > 10:
+                  raise SystemExit("Review denominator mismatch")
+              for i, row in enumerate(rows, 1):
+                  if set(row) != {"rank", "title", "credit", "target_label", "qualified_verified"}:
+                      raise SystemExit("Unexpected review fields")
+                  if row["rank"] != i or row["target_label"] not in (-1, 0, 1):
+                      raise SystemExit("Invalid review rank/label")
+                  if any(not isinstance(row[k], str) or len(row[k]) > 180 for k in ("title", "credit")):
+                      raise SystemExit("Unbounded review label")
+              if [sum(r["target_label"] == k for r in rows) for k in (1, 0, -1)] != [
+                  aggregate["labelled_target_rows"], aggregate["labelled_non_target_rows"], aggregate["unjudged_rows"]
+              ]:
+                  raise SystemExit("Review target counts diverged")
+              # JSON escaping prevents remote labels from becoming terminal
+              # control characters. These are public display fields only.
+              print("IDM_TOP10_REVIEW", name, json.dumps(review, ensure_ascii=True, separators=(",", ":")))
+          print("Top10 review evidence complete; human relevance judgments still required.")
+          PY
+
+      - name: Archive fixed public corpus Top 10 review
+        if: env.IDM_SEARCH_TOP10_REVIEW == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-top10-review-${{ github.event.pull_request.head.sha || github.sha }}
+          path: idm-catalog-live-metrics/top10-review/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Archive aggregate live observations and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-catalog-live-observation-${{ env.IDM_CATALOG_LIVE_SCOPE }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            idm-catalog-live-metrics/*.json
+            app/build/test-results/testDevDebugUnitTest/
+            app/build/reports/tests/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7

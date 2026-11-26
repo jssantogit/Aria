@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Apple provider-only strings; REA-owned resource labels remain unchanged. -->
+    <string name="apple_catalog_unavailable">Apple catalog unavailable. Try again.</string>
+    <string name="apple_no_albums">No Apple catalog albums found.</string>
+    <string name="apple_partial_tracklist">Some tracks are unavailable for this edition.</string>
+    <string name="apple_no_artists">No artists found in the Apple catalog.</string>
+    <string name="apple_partial_discography">Some releases may be missing from this artist's discography.</string>
+    <string name="apple_eps">EPs</string>
+    <string name="apple_singles">Singles</string>
+    <string name="apple_other_releases">Other releases</string>
+    <string name="apple_no_tracks">No songs found in the Apple catalog.</string>
+    <string name="apple_load_more">Load more releases</string>
+    <string name="apple_catalog_coverage_note">The public catalog does not guarantee a complete discography. Search for a specific release to discover more.</string>
+    <string name="apple_find_release">Find another release by title</string>
+    <string name="apple_search_more">Find release</string>
+    <string name="apple_discovery_failed">Could not load additional releases. Please try again.</string>
+    <string name="apple_no_additional_releases">No additional Apple releases found for this artist.</string>
+    <string name="apple_search_coverage_note">Some matching releases may not be shown: the public iTunes search has no guaranteed last page. Try a more specific search.</string>
     <string name="analysis_complete">analysed</string>
     <string name="analysis_in_progress">analysing…</string>
     <string name="analysis_refining">analysed, refining…</string>
@@ -313,4 +330,6 @@
     <string name="apple_queue_continue">Continue Playing</string>
     <string name="apple_queue_empty">No songs in the queue</string>
     <string name="apple_queue_similar">Autoplay of similar songs</string>
+    <string name="shelf_continue_listening">Continue listening</string>
+    <string name="shelf_resume_from">Resume from</string>
 </resources>

@@ -54,6 +54,8 @@ internal data class RecordingMetadataEnrichment(
      * separately indexed that edition; never use a name-based join. */
     val officialAudioReleaseTitle: String? = null,
     val officialAudioReleaseDate: String? = null,
+    /** Exact UPC + complete tracklist proof, separate from CAA cover provenance. */
+    val officialAudioAppleStoreUrl: String? = null,
 )
 
 internal data class ReleaseMetadataEnrichment(
