@@ -169,7 +169,8 @@ internal fun projectCanonicalHomeDisplay(
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
         sourceShelves +
         listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() &&
-            sourceShelves.none { source -> source.title == it.title } }) +
+            (selection.provider != BuiltInProviderKeys.APPLE_MUSIC_WEB ||
+                sourceShelves.none { source -> source.title == it.title }) }) +
         listOfNotNull(personalRecommendationShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() })
     val other = personalHomeShelves(canonicalHomeShelves)
