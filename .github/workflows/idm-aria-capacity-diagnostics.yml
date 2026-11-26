@@ -1,0 +1,133 @@
+name: IDM · sealed candidate recurrent capacity interruption diagnosis
+on:
+  push:
+    branches: [audit/idm-aria-namespace-integration-20261126]
+    paths: [.github/workflows/idm-aria-capacity-diagnostics.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  live-observation:
+    name: One bounded feeding diagnostic with aggregate failure classification
+    concurrency:
+      group: idm-catalog-live-full
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      IDM_CATALOG_LIVE: '1'
+      IDM_CATALOG_LIVE_SCOPE: 'full'
+      IDM_CATALOG_DISCOGS_CAPACITY_TARGET: '100'
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-catalog-live-metrics
+      IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+      IDM_SEARCH_TOP10_REVIEW: '0'
+    steps:
+      - name: Checkout audit source with complete parent history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retrieve the already validated candidate bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sealed-idm-aria-candidate
+          run-id: 45844770994
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sealed-idm
+      - name: Verify exact candidate object and checked out tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=e16bf6764d97fdb5c1dcafa44235a6dd156f102c
+          tree=1954dec45b353e7769ab0acf8d1fae6017fe610f
+          main=58d8d9143fa04302cb3356df510e77c76a2eae57
+          idm=cc23ae77949260fb3ce51a9f6a45d93481c3ed84
+          sealed="$RUNNER_TEMP/sealed-idm"
+          test "$(cat "$sealed/sealed-commit.txt")" = "$expected"
+          test "$(cat "$sealed/resolved-tree.txt")" = "$tree"
+          git bundle verify "$sealed/sealed-candidate.bundle"
+          git fetch "$sealed/sealed-candidate.bundle" refs/heads/sealed-idm-aria-candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          test "$(git show -s --format=%P "$expected")" = "$main $idm"
+          test "$(git rev-parse "$expected^{tree}")" = "$tree"
+          git checkout --detach "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          echo "Exact sealed source: $expected (tree $tree)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare secretless base properties and isolated reports
+        shell: bash
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          mkdir -p "$IDM_CATALOG_METRICS_DIR"
+          case "$IDM_CATALOG_LIVE_SCOPE" in full|itunes-albums|itunes-musicbrainz-search) ;; *) exit 1 ;; esac
+          echo "Live scope: $IDM_CATALOG_LIVE_SCOPE (focused results are not full parity)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Instrument only the existing test harness with bounded outcome counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p = Path("app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt")
+          s = p.read_text()
+          start = s.index("    @Test fun live_sources_and_collective_fallback_use_canonical_pipeline()")
+          end = s.index("    @Test fun live_genre_parity_matrix()", start)
+          block = s[start:end]
+          replacements = json.loads("[[\"        var discogsIndexReads = 0\",\"        val capacityDiagnostic = sortedMapOf<String, Int>()\\n        fun noteCapacityOutcome(kind: String, outcome: String) {\\n            val key = \\\"$kind:$outcome\\\"\\n            capacityDiagnostic[key] = (capacityDiagnostic[key] ?: 0) + 1\\n        }\\n        var discogsIndexReads = 0\"],[\"return upstream.get(path, userAgent)\",\"return upstream.get(path, userAgent).also {\\n                        noteCapacityOutcome(\\\"detail-http\\\", it.status.toString())\\n                    }\"],[\"return upstream.getAuthenticated(path, userAgent, token)\",\"return upstream.getAuthenticated(path, userAgent, token).also {\\n                        noteCapacityOutcome(\\\"detail-auth-http\\\", it.status.toString())\\n                    }\"],[\"val response = liveIndex.search(query, token, userAgent, page)\",\"val response = liveIndex.search(query, token, userAgent, page)\\n                        noteCapacityOutcome(\\\"index-http\\\", response.status.toString())\"],[\"return editions.master(id).also {\",\"return editions.master(id).also {\\n                            noteCapacityOutcome(\\\"master-result\\\", it.javaClass.simpleName)\"],[\"return editions.release(id).also {\",\"return editions.release(id).also {\\n                            noteCapacityOutcome(\\\"release-result\\\", it.javaClass.simpleName)\"],[\"        fun reportCapacity(target: Int, status: String) {\",\"        fun reportCapacity(target: Int, status: String) {\\n            println(\\\"IDM_CAPACITY_DIAG target=$target status=$status outcomes=$capacityDiagnostic\\\")\"],[\"                if (capacityState.failed || gesture.transportException) {\",\"                println(\\\"IDM_CAPACITY_DIAG gesture=$capacityGestures known=\\\" +\\n                    capacityState.knownMasterIds.size + \\\" failed=\\\" + capacityState.failed +\\n                    \\\" transportException=\\\" + gesture.transportException +\\n                    \\\" outcomes=\\\" + capacityDiagnostic)\\n                if (capacityState.failed || gesture.transportException) {\"]]")
+          for old, new in replacements:
+              assert block.count(old) == 1, old
+              block = block.replace(old, new)
+          p.write_text(s[:start] + block + s[end:])
+          PY
+          test "$(git diff --name-only)" = "app/src/test/java/com/music/aria/IdmCatalogLiveObservationTest.kt"
+          git diff --check
+      - name: Run one bounded diagnostic observation (no automatic retries)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest \
+            --tests 'com.music.aria.IdmCatalogLiveObservationTest.live_sources_and_collective_fallback_use_canonical_pipeline'
+      - name: Expose only aggregate diagnostic lines and capacity status
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          import json, os
+          reports = sorted(Path("app/build/test-results/testDevDebugUnitTest").glob("TEST-*IdmCatalogLiveObservationTest.xml"))
+          assert len(reports) == 1, "Missing diagnostic test report"
+          root = ET.parse(reports[0]).getroot()
+          found = []
+          for output in root.iter("system-out"):
+              for line in (output.text or "").splitlines():
+                  if line.startswith("IDM_CAPACITY_DIAG "):
+                      print(line)
+                      found.append(line)
+          assert found, "Missing aggregate capacity outcome counts"
+          folder = Path(os.environ["IDM_CATALOG_METRICS_DIR"])
+          for name in ("musicbrainz_app_flow", "discogs_home_capacity_30", "discogs_home_capacity_100"):
+              row = json.loads((folder / f"live_{name}.json").read_text())
+              fields = ("status", "displayed_unique", "verified_target", "verified_landing_genres",
+                        "source_gestures", "elapsed_ms", "http_or_transport_reads")
+              print("IDM_CAPACITY_RESULT", name, json.dumps({k:row[k] for k in fields if k in row}))
+          PY
+      - name: Archive aggregate-only diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-capacity-diagnostics-e16bf676
+          path: idm-catalog-live-metrics/*.json
+          if-no-files-found: warn
+          retention-days: 7
