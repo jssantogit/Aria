@@ -1,0 +1,63 @@
+name: AMS · Apple Music Web independent live canary
+
+# Isolated catalog observation; no iTunes, MusicBrainz or Discogs live.
+on:
+  pull_request:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - 'app/src/main/java/com/music/bitchord/data/catalog/provider/applemusicweb/**'
+      - 'app/src/main/java/com/music/bitchord/data/providers/**'
+      - 'app/src/test/java/com/music/bitchord/AppleMusicWeb*'
+      - '.github/workflows/apple-music-web-canary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-music-web-live-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    if: github.event_name != 'pull_request' || github.head_ref == 'integration/ams-apple-music-web-20261126'
+    name: Android JVM · Apple Music Web live only
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      APPLE_MUSIC_WEB_LIVE: '1'
+      APPLE_MUSIC_WEB_CANARY_SEED: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Isolated Apple public catalog canary
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebLiveCanaryTest'
+      - name: Print sanitized canary diagnostics
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for p in Path("app/build/test-results/testDevDebugUnitTest").glob("*AppleMusicWebLiveCanaryTest.xml"):
+              root = ET.parse(p).getroot()
+              for node in root.iter("system-out"):
+                  for line in (node.text or "").splitlines():
+                      if line.startswith("AMS_CANARY|"):
+                          print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-canary-results-${{ github.event.pull_request.head.sha || github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,102 @@
+name: AMS · isolated IDM search matrix
+on:
+  pull_request:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - '.github/workflows/ams-search-parity.yml'
+      - 'app/src/test/java/com/music/bitchord/IdmCatalogLiveObservationTest.kt'
+      - 'app/src/main/java/com/music/bitchord/data/catalog/provider/applemusicweb/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-search-matrix-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apple-search:
+    if: github.event_name != 'pull_request' || github.head_ref == 'integration/ams-apple-music-web-20261126'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AMS_SEARCH_LIVE: '1'
+      IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/ams-search-metrics
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Native Apple Music Web search baseline only
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_ams_search_parity_matrix'
+      - name: Validate all 30 cells and summarize target labels
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import collections, json, os
+          from pathlib import Path
+          root = Path(os.environ['IDM_CATALOG_METRICS_DIR'])
+          review = root / 'top10-review'
+          expected = {f'apple_music_web_{n:02}.json' for n in range(1,31)}
+          assert {p.name for p in review.glob('*.json')} == expected, 'Missing or unexpected review cells'
+          totals = collections.defaultdict(collections.Counter)
+          assert {p.name for p in (root / 'native-order-review').glob('*.json')} == expected, 'Missing native baseline'
+          for n in range(1,31):
+              row = json.loads((review / f'apple_music_web_{n:02}.json').read_text())
+              agg = json.loads((root / f'live_search_matrix_apple_music_web_{n:02}.json').read_text())
+              kind = 'artist' if n <= 10 else 'album' if n <= 18 else 'track' if n <= 24 else 'category'
+              assert row['schema'] == 1 and row['case'] == n and row['provider'] == 'apple_music_web' and row['kind'] == kind
+              rows = row['rows']
+              assert len(rows) <= 10 and len(rows) == agg['first_ten_rows']
+              native = json.loads((root / 'native-order-review' / f'apple_music_web_{n:02}.json').read_text())
+              assert native['case'] == n and native['kind'] == kind and native['complete'] == row['complete']
+              raw_labels = [item['target_label'] for item in native['rows']]
+              assert len(raw_labels) == len(rows) == agg['native_first_ten_rows']
+              assert int(1 in raw_labels[:5]) == agg['native_top_five_target'] and int(1 in raw_labels) == agg['native_top_ten_target']
+              labels = []
+              for rank, item in enumerate(rows, 1):
+                  assert set(item) == {'rank','title','credit','target_label','qualified_verified'}
+                  assert item['rank'] == rank and item['target_label'] in (-1,0,1)
+                  assert all(isinstance(item[k],str) and len(item[k]) <= 180 for k in ('title','credit'))
+                  labels.append(item['target_label'])
+              assert int(any(item['qualified_verified'] for item in rows[:5])) == agg['qualified_top_five']
+              assert int(any(item['qualified_verified'] for item in rows)) == agg['qualified_top_ten']
+              assert labels.count(1) == agg['labelled_target_rows']
+              assert labels.count(0) == agg['labelled_non_target_rows']
+              assert labels.count(-1) == agg['unjudged_rows']
+              t = totals[kind]
+              t.update(cases=1, complete=int(row['complete']), rows=len(rows),
+                       target=labels.count(1), non_target=labels.count(0), unresolved=labels.count(-1),
+                       top5=int(1 in labels[:5]), top10=int(1 in labels),
+                       native_top5=agg['native_top_five_target'], native_top10=agg['native_top_ten_target'],
+                       qualified_top5=agg['qualified_top_five'], qualified_top10=agg['qualified_top_ten'],
+                       strict_or_qualified_top5=agg['strict_or_qualified_top_five'],
+                       strict_or_qualified_top10=agg['strict_or_qualified_top_ten'],
+                       identity_evidence_reads=agg['identity_evidence_reads'],
+                       proof_interruptions=agg['proof_interruption'], second_pages=agg['second_page_checked'],
+                       overlap=agg['second_page_overlap'], source_overlap=agg['second_page_source_overlap'],
+                       continuation_interruptions=agg['continuation_interruption'])
+              print('AMS_TOP10_REVIEW', json.dumps(row, ensure_ascii=True, separators=(',',':')))
+          for kind, t in totals.items():
+              print('AMS_SEARCH_AGGREGATE', kind, json.dumps(t, sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('## AMS native and ranked adapter comparison (BR)\nRanked and native order retained; no rows removed. Not production UI precision; categories are local. Target labels are not final relevance judgments.\n\n')
+              f.write('| Category | Cases | Complete | Rows | Target | Non-target | Unresolved | Top5 | Top10 | Source overlap | Visible overlap |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n')
+              for kind,t in totals.items():
+                  f.write(f"| {kind} | {t['cases']} | {t['complete']} | {t['rows']} | {t['target']} | {t['non_target']} | {t['unresolved']} | {t['top5']} | {t['top10']} | {t['source_overlap']} | {t['overlap']} |\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-search-matrix-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ams-search-metrics/
+            app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7

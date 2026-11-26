@@ -1,5 +1,6 @@
 package com.music.bitchord
 
+import com.music.bitchord.data.catalog.provider.applemusicweb.*
 import com.music.bitchord.data.catalog.metadata.*
 import com.music.bitchord.data.catalog.metadata.discogs.*
 import com.music.bitchord.data.model.HomeShelf
@@ -3077,6 +3078,673 @@ class IdmCatalogLiveObservationTest {
         SearchParityCase("hard rock", "category", "hard rock"),
         SearchParityCase("smooth jazz", "category", "smooth jazz"),
     )
+
+    /**
+     * AMS native-adapter baseline on the EXACT same fixed IDM corpus.
+     * No other provider client is constructed. Categories are the shared local
+     * taxonomy, not a claim that Apple Web implements native genre search.
+     * Rank is native adapter order, not yet the production UI projection.
+     */
+    /** Independent AMS editorial matrix, same 10 artist and 15 release cases.
+     * This observes the real provider gateway, not yet UI projection.
+     * No source identifiers or payloads are exported in the aggregate reports.
+     */
+    @Test fun live_ams_editorial_parity_matrix() = runBlocking {
+        assumeTrue("Only the dedicated AMS editorial workflow may access remote services",
+            System.getenv("AMS_EDITORIAL_LIVE") == "1")
+        val scope = System.getenv("AMS_EDITORIAL_SCOPE") ?: error("Missing editorial scope")
+        require(scope in setOf("artist", "album"))
+        val source = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val gate = gateFor(source, setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY))
+        val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(admission = RateLimitedProviderTransport { gate }))
+        val gateway = AppleMusicWebEditorialGateway(catalog, gate)
+        val reader = CatalogSearchAdapterReader(gate, listOf(AppleMusicWebSearchAdapter(gateway)))
+        val sf = "br"
+        suspend fun search(kind: CatalogSearchKind, query: String): List<CatalogSearchItem>? =
+            withTimeoutOrNull(60_000L) {
+                (reader.read(source, CatalogSearchRequest(kind, query, sf, limit = 24))
+                    as? ProviderCallResult.Success)?.value?.items
+            }
+        suspend fun album(id: String): AppleMusicWebOutcome<AppleMusicWebAlbum>? =
+            withTimeoutOrNull(90_000L) {
+                (gateway.album(id, sf) as? ProviderCallResult.Success)?.value?.outcome
+            }
+        fun <T> value(outcome: AppleMusicWebOutcome<T>?): T? = when (outcome) {
+            is AppleMusicWebOutcome.Complete -> outcome.value
+            is AppleMusicWebOutcome.Partial -> outcome.value
+            else -> null
+        }
+        fun workMatches(actual: String, expected: String): Boolean =
+            searchLabelKey(actual) == searchLabelKey(expected) ||
+                applePublicAlbumWorkKey(actual) == searchLabelKey(expected)
+
+        var failed = 0
+        if (scope == "artist") {
+            assertEquals(10, artistParityCases.size)
+            for ((index, case) in artistParityCases.withIndex()) {
+                val start = System.nanoTime()
+                val artists = search(CatalogSearchKind.ARTIST, case.name)
+                val anchors = search(CatalogSearchKind.ALBUM, case.name + " " + case.anchor)
+                val artistIds = artists.orEmpty().filter {
+                    artistParityFold(it.title) == artistParityFold(case.name)
+                }.map { it.identity.nativeId }.toSet()
+                val proven = linkedSetOf<String>()
+                var evidenceReads = 0
+                for (candidate in anchors.orEmpty().filter {
+                    workMatches(it.title, case.anchor) && artistParityFold(it.subtitle) == artistParityFold(case.name)
+                }.take(3)) {
+                    evidenceReads++
+                    val record = value(album(candidate.identity.nativeId)) ?: continue
+                    if (!workMatches(record.identity.title, case.anchor) ||
+                        artistParityFold(record.identity.artistName) != artistParityFold(case.name)) continue
+                    proven += record.artists.filter {
+                        it.id in artistIds && artistParityFold(it.title) == artistParityFold(case.name)
+                    }.map { it.id }
+                }
+                val artistId = proven.singleOrNull()
+                val outcome = artistId?.let { id ->
+                    withTimeoutOrNull(90_000L) {
+                        (gateway.artist(id, sf) as? ProviderCallResult.Success)?.value?.outcome
+                    }
+                }
+                val artist = value(outcome)
+                val verified = artist != null && artist.identity.id == artistId &&
+                    artistParityFold(artist.identity.title) == artistParityFold(case.name)
+                val complete = verified && outcome is AppleMusicWebOutcome.Complete
+                val items = if (artist != null) artist.albums + artist.singlesAndEps +
+                    artist.featuredAlbums + artist.topSongs + artist.similarArtists + artist.artistPlaylists
+                    else emptyList()
+                var pagingChecked = 0
+                var pagingOverlap = 0
+                var pagingIncomplete = 0
+                var nextRows = 0
+                if (verified && case.extensive && artistId != null) {
+                    suspend fun shelf(page: Int): AppleMusicWebOutcome<AppleMusicWebPage>? =
+                        withTimeoutOrNull(60_000L) {
+                            (gateway.artistCollection(artistId, sf, AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                                page, 10) as? ProviderCallResult.Success)?.value?.outcome
+                        }
+                    val first = shelf(1)
+                    val firstPage = value(first)
+                    if (first !is AppleMusicWebOutcome.Complete) pagingIncomplete++
+                    if (firstPage?.hasMore == true) {
+                        pagingChecked++
+                        val second = shelf(2)
+                        val secondPage = value(second)
+                        if (second !is AppleMusicWebOutcome.Complete || secondPage == null ||
+                            (secondPage.items.isEmpty() && secondPage.hasMore)) pagingIncomplete++
+                        nextRows = secondPage?.items?.size ?: 0
+                        pagingOverlap = firstPage.items.map { it.scopedId }.toSet()
+                            .intersect(secondPage?.items.orEmpty().map { it.scopedId }.toSet()).size
+                    }
+                }
+                val status = when {
+                    artists == null || anchors == null -> "search_interruption"
+                    proven.size > 1 -> "ambiguous_identity"
+                    artistId == null -> "identity_not_corroborated"
+                    !verified -> "detail_unavailable"
+                    !complete -> "partial_detail"
+                    pagingIncomplete > 0 || pagingOverlap > 0 -> "pagination_incomplete"
+                    else -> "complete"
+                }
+                if (status != "complete") failed++
+                report("ams_artist_" + (index + 1).toString().padStart(2, '0'), Sample(
+                    status = status, eligible = if (verified) 1 else 0,
+                    visible = items.distinctBy { it.scopedId }.size,
+                    artwork = items.distinctBy { it.scopedId }.count { it.artworkUrl != null },
+                    counts = mapOf(
+                        "identity_verified" to if (verified) 1 else 0,
+                        "detail_complete" to if (complete) 1 else 0,
+                        "identity_evidence_reads" to evidenceReads,
+                        "top_songs" to (artist?.topSongs?.size ?: 0),
+                        "studio_albums" to (artist?.albums?.size ?: 0),
+                        "singles_and_eps" to (artist?.singlesAndEps?.size ?: 0),
+                        "featured_albums" to (artist?.featuredAlbums?.size ?: 0),
+                        "similar_artists" to (artist?.similarArtists?.size ?: 0),
+                        "playlists" to (artist?.artistPlaylists?.size ?: 0),
+                        "unresolved_references" to (artist?.unresolvedShelves?.values?.sum() ?: 0),
+                        "paging_checked" to pagingChecked,
+                        "paging_overlap" to pagingOverlap,
+                        "paging_incomplete" to pagingIncomplete,
+                        "next_page_rows" to nextRows,
+                        "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                    )
+                ))
+            }
+        } else {
+            assertEquals(15, albumParityCases.size)
+            for ((index, case) in albumParityCases.withIndex()) {
+                val start = System.nanoTime()
+                val discovery = AppleMusicWebReleaseDiscovery
+                var selected: AppleMusicWebOutcome<AppleMusicWebAlbum>? = null
+                var reads = 0
+                var searchReads = 0
+                var searchFailures = 0
+                var shelfReads = 0
+                var shelfFailures = 0
+                var discoveredRows = 0
+                var candidateRows = 0
+                var songLinkReads = 0
+                var songLinkFailures = 0
+                var rejectedDetail = 0
+                var rejectedCredit = 0
+                var rejectedTitle = 0
+                var rejectedArtistLink = 0
+                val checked = mutableSetOf<String>()
+                fun multi(record: AppleMusicWebAlbum): Boolean =
+                    record.tracks.filter { it.kind == AppleMusicWebKind.SONG }
+                        .mapNotNull { it.discNumber }.distinct().size > 1
+                fun preferred(): Boolean {
+                    val record = value(selected) ?: return false
+                    return selected is AppleMusicWebOutcome.Complete && (case.kind != "multi" || multi(record))
+                }
+                fun matchesCredit(credit: String?): Boolean =
+                    discovery.creditMatches(credit, case.artist, case.artistAliases)
+                fun candidateTitle(title: String): Boolean =
+                    discovery.candidateTitle(title, case.title, case.titleAliases, case.kind == "single_ep")
+                fun verifiedTitle(record: AppleMusicWebAlbum): Boolean {
+                    if (discovery.titleMatches(record.identity.title, case.title, case.titleAliases)) return true
+                    // A year-qualified single is only accepted with a complete
+                    // audio relationship proving the named work and its credit.
+                    return case.kind == "single_ep" &&
+                        discovery.relatedSingleYear(record.identity.title, case.title) &&
+                        !record.possiblyTruncated && record.tracks.any {
+                            it.kind == AppleMusicWebKind.SONG &&
+                                discovery.songWorkMatches(it.title, case.title) && matchesCredit(it.artistName)
+                        }
+                }
+                suspend fun consider(id: String, expectedArtistId: String? = null) {
+                    if (reads >= 10 || !checked.add(id)) return
+                    reads++
+                    val outcome = album(id)
+                    val record = value(outcome)
+                    if (record == null || record.identity.id != id) { rejectedDetail++; return }
+                    if (!matchesCredit(record.identity.artistName)) { rejectedCredit++; return }
+                    if (!verifiedTitle(record)) { rejectedTitle++; return }
+                    if (!record.artists.any {
+                            matchesCredit(it.title) && (expectedArtistId == null || it.id == expectedArtistId)
+                        }) { rejectedArtistLink++; return }
+                    val previous = value(selected)
+                    if (previous == null ||
+                        (outcome is AppleMusicWebOutcome.Complete && selected !is AppleMusicWebOutcome.Complete) ||
+                        (outcome is AppleMusicWebOutcome.Complete && case.kind == "multi" && multi(record) && !multi(previous)))
+                        selected = outcome
+                }
+                // First preserve the existing compound route. Only unsuccessful
+                // or non-preferred discovery opens bounded alternate routes.
+                for (query in discovery.alternateQueries(case.artist, case.title, case.titleAliases)) {
+                    if (preferred() || reads >= 10) break
+                    searchReads++
+                    val found = search(CatalogSearchKind.ALBUM, query)
+                    if (found == null) { searchFailures++; continue }
+                    discoveredRows += found.size
+                    for (candidate in found.filter { matchesCredit(it.subtitle) && candidateTitle(it.title) }) {
+                        candidateRows++
+                        consider(candidate.identity.nativeId)
+                        if (preferred() || reads >= 10) break
+                    }
+                }
+                // If search never exposes the release, inspect the native
+                // shelves of matching artist IDs, then verify the same ID is
+                // present in the exact album's artist relationship.
+                if (!preferred() && reads < 10) {
+                    searchReads++
+                    val artists = search(CatalogSearchKind.ARTIST, case.artist)
+                    if (artists == null) searchFailures++
+                    val shelves = when (case.kind) {
+                        "single_ep" -> listOf(AppleMusicWebArtistShelf.SINGLES_AND_EPS, AppleMusicWebArtistShelf.ALL_ALBUMS)
+                        else -> listOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS, AppleMusicWebArtistShelf.ALL_ALBUMS)
+                    }
+                    for (artist in artists.orEmpty().filter { matchesCredit(it.title) }.take(2)) {
+                        if (preferred() || reads >= 10) break
+                        for (shelf in shelves) {
+                            if (preferred() || reads >= 10) break
+                            for (page in 1..3) {
+                                shelfReads++
+                                val result = withTimeoutOrNull(60_000L) {
+                                    (gateway.artistCollection(artist.identity.nativeId, sf, shelf, page, 25)
+                                        as? ProviderCallResult.Success)?.value?.outcome
+                                }
+                                if (result !is AppleMusicWebOutcome.Complete) shelfFailures++
+                                val collection = value(result) ?: break
+                                discoveredRows += collection.items.size
+                                for (release in collection.items.filter {
+                                    candidateTitle(it.title) && (it.artistName == null || matchesCredit(it.artistName))
+                                }) {
+                                    candidateRows++
+                                    consider(release.id, artist.identity.nativeId)
+                                    if (preferred() || reads >= 10) break
+                                }
+                                if (preferred() || reads >= 10 || !collection.hasMore) break
+                            }
+                        }
+                    }
+                }
+                // A source-owned song can expose a release that album search
+                // omits. It nominates only native relationship IDs, not an
+                // inferred album ID, title, or artist ownership.
+                if (!preferred() && reads < 10 && case.kind == "single_ep") {
+                    searchReads++
+                    val tracks = search(CatalogSearchKind.TRACK, case.title + " " + case.artist)
+                    if (tracks == null) searchFailures++
+                    for (track in tracks.orEmpty().filter {
+                        matchesCredit(it.subtitle) && discovery.songWorkMatches(it.title, case.title)
+                    }.take(5)) {
+                        if (preferred() || reads >= 10) break
+                        songLinkReads++
+                        val linked = withTimeoutOrNull(60_000L) {
+                            (gateway.songCollections(track.identity.nativeId, sf)
+                                as? ProviderCallResult.Success)?.value?.outcome
+                        }
+                        val collection = value(linked)
+                        if (collection == null) { songLinkFailures++; continue }
+                        if (!matchesCredit(collection.song.artistName) ||
+                            !discovery.songWorkMatches(collection.song.title, case.title)) continue
+                        for (id in collection.albumIds.take(4)) {
+                            consider(id)
+                            if (preferred() || reads >= 10) break
+                        }
+                    }
+                }
+                val record = value(selected)
+                val songs = record?.tracks.orEmpty().filter { it.kind == AppleMusicWebKind.SONG }
+                val complete = selected is AppleMusicWebOutcome.Complete
+                val baselineClassification = record?.let { classifyAppleMusicWebRelease(it, complete) }
+                val shelfEvidence = mutableListOf<AppleMusicWebReleaseShelfEvidence>()
+                var classificationShelfReads = 0
+                var classificationShelfFailures = 0
+                // Uniform bounded positive-membership probe on every edition,
+                // not just the known disagreement. No expected class is
+                // supplied to the classifier or used to select a release.
+                if (record != null && complete) {
+                    for (artist in record.artists.take(2)) {
+                        for (shelf in listOf(AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                            AppleMusicWebArtistShelf.SINGLES_AND_EPS)) {
+                            for (page in 1..3) {
+                                classificationShelfReads++
+                                val outcome = withTimeoutOrNull(60_000L) {
+                                    (gateway.artistCollection(artist.id, sf, shelf, page, 50)
+                                        as? ProviderCallResult.Success)?.value?.outcome
+                                }
+                                if (outcome !is AppleMusicWebOutcome.Complete) classificationShelfFailures++
+                                val collection = value(outcome) ?: break
+                                if (collection.items.any { it.scopedId == record.identity.scopedId }) {
+                                    shelfEvidence += AppleMusicWebReleaseShelfEvidence(
+                                        record.identity.scopedId, artist.scopedId, shelf)
+                                    break
+                                }
+                                if (!collection.hasMore) break
+                            }
+                        }
+                    }
+                }
+                val classification = record?.let { classifyAppleMusicWebRelease(it, complete, shelfEvidence) }
+                val expectedFormats = if (case.kind == "single_ep")
+                    setOf(ItunesEditorialReleaseFormat.SINGLE, ItunesEditorialReleaseFormat.EP)
+                else setOf(ItunesEditorialReleaseFormat.ALBUM)
+                val classificationMatches = classification?.display in expectedFormats
+                val expectedGroup = if (case.kind == "single_ep")
+                    AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS
+                else AppleMusicWebEditorialReleaseGroup.ALBUMS
+                val positions = songs.mapNotNull { track ->
+                    track.discNumber?.let { disc -> track.trackNumber?.let { disc to it } }
+                }
+                val status = when {
+                    record == null && searchFailures == searchReads -> "search_interruption"
+                    record == null -> "identity_not_corroborated"
+                    !complete -> "partial_detail"
+                    songs.isEmpty() -> "no_audio_metadata"
+                    case.kind == "multi" && !multi(record) -> "multidisc_not_corroborated"
+                    positions.size != songs.size || positions.distinct().size != positions.size -> "track_positions_incomplete"
+                    songs.any { it.durationMillis == null } -> "track_durations_incomplete"
+                    else -> "complete"
+                }
+                if (status != "complete") failed++
+                report("ams_album_" + (index + 1).toString().padStart(2, '0'), Sample(
+                    status = status, eligible = if (record != null) 1 else 0, visible = songs.size,
+                    artwork = if (record?.identity?.artworkUrl != null) 1 else 0,
+                    counts = mapOf(
+                        "identity_verified" to if (record != null) 1 else 0,
+                        "detail_complete" to if (complete) 1 else 0,
+                        "identity_evidence_reads" to reads,
+                        "discovery_search_reads" to searchReads,
+                        "discovery_search_failures" to searchFailures,
+                        "discovery_shelf_reads" to shelfReads,
+                        "discovery_shelf_failures" to shelfFailures,
+                        "discovery_rows" to discoveredRows,
+                        "discovery_candidate_rows" to candidateRows,
+                        "discovery_song_link_reads" to songLinkReads,
+                        "discovery_song_link_failures" to songLinkFailures,
+                        "rejected_detail" to rejectedDetail,
+                        "rejected_credit" to rejectedCredit,
+                        "rejected_title" to rejectedTitle,
+                        "rejected_artist_link" to rejectedArtistLink,
+                        "source_track_rows" to (record?.tracks?.size ?: 0),
+                        "audio_metadata_rows" to songs.size,
+                        "non_audio_rows" to ((record?.tracks?.size ?: 0) - songs.size),
+                        "durations_present" to songs.count { it.durationMillis != null },
+                        "positions_present" to positions.size,
+                        "duplicate_positions" to (positions.size - positions.distinct().size),
+                        "distinct_discs" to songs.mapNotNull { it.discNumber }.distinct().size,
+                        "multidisc_expected" to if (case.kind == "multi") 1 else 0,
+                        "multidisc_observed" to if (record != null && multi(record)) 1 else 0,
+                        "is_single_present" to if (record?.identity?.isSingle != null) 1 else 0,
+                        "is_single_true" to if (record?.identity?.isSingle == true) 1 else 0,
+                        "format_display_known" to if (classification != null && classification.display != ItunesEditorialReleaseFormat.UNCLASSIFIED) 1 else 0,
+                        "format_display_matches" to if (classificationMatches) 1 else 0,
+                        "format_baseline_matches" to if (baselineClassification?.display in expectedFormats) 1 else 0,
+                        "format_editorial_group_matches" to if (classification?.editorialGroup == expectedGroup) 1 else 0,
+                        "format_native_shelf_group_matches" to if (classification?.sourceShelfGroup == expectedGroup) 1 else 0,
+                        "format_native_shelf_album" to if (classification?.sourceShelfGroup == AppleMusicWebEditorialReleaseGroup.ALBUMS) 1 else 0,
+                        "format_native_shelf_short" to if (classification?.sourceShelfGroup == AppleMusicWebEditorialReleaseGroup.SINGLES_AND_EPS) 1 else 0,
+                        "format_native_shelf_conflict" to if (classification?.sourceShelfGroup == AppleMusicWebEditorialReleaseGroup.CONFLICT) 1 else 0,
+                        "format_source_album_shelf" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_ALBUM_SHELF) 1 else 0,
+                        "format_source_short_unspecified" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_SHORT_SHELF_UNSPECIFIED) 1 else 0,
+                        "classification_shelf_reads" to classificationShelfReads,
+                        "classification_shelf_failures" to classificationShelfFailures,
+                        "format_display_album" to if (classification?.display == ItunesEditorialReleaseFormat.ALBUM) 1 else 0,
+                        "format_display_ep" to if (classification?.display == ItunesEditorialReleaseFormat.EP) 1 else 0,
+                        "format_display_single" to if (classification?.display == ItunesEditorialReleaseFormat.SINGLE) 1 else 0,
+                        "format_source_title" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_TITLE) 1 else 0,
+                        "format_source_flag" to if (classification?.evidence == AppleMusicWebFormatEvidence.SOURCE_SINGLE_FLAG) 1 else 0,
+                        "format_commercial_fallback" to if (classification?.evidence == AppleMusicWebFormatEvidence.COMMERCIAL_AUDIO_RULE) 1 else 0,
+                        "format_explicit_conflict" to if (classification?.explicitConflict == true) 1 else 0,
+                        "format_commercial_disagreement" to if (classification?.commercialDisagreement == true) 1 else 0,
+                        "release_date_present" to if (record?.identity?.releaseDate != null) 1 else 0,
+                        "source_track_count_present" to if (record?.identity?.trackCount != null) 1 else 0,
+                        "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                    )
+                ))
+            }
+        }
+        assertEquals("Incomplete AMS editorial cells in " + scope, 0, failed)
+    }
+
+    @Test fun live_ams_search_parity_matrix() = runBlocking {
+        assumeTrue("Enable only via the dedicated AMS search workflow",
+            System.getenv("AMS_SEARCH_LIVE") == "1")
+        val source = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val capabilities = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val gate = gateFor(source, capabilities)
+        val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
+            admission = RateLimitedProviderTransport { gate },
+        ))
+        val gateway = AppleMusicWebEditorialGateway(catalog, gate)
+        val reader = CatalogSearchAdapterReader(gate, listOf(AppleMusicWebSearchAdapter(gateway)))
+        val sf = "br"
+        assertEquals(30, searchParityCases.size)
+        fun nativeId(item: CatalogSearchItem): String =
+            "apple_music_web:" + item.identity.storefront + ":" +
+                item.identity.kind.name.lowercase(java.util.Locale.ROOT) + ":" + item.identity.nativeId
+
+        suspend fun read(kind: CatalogSearchKind, query: String, page: Int = 1,
+                         continuation: CatalogSearchContinuation? = null): CatalogSearchPage? =
+            withTimeoutOrNull(60_000L) {
+                when (val result = reader.read(source, CatalogSearchRequest(kind, query, sf, page, 24, continuation))) {
+                    is ProviderCallResult.Success -> result.value.takeUnless { it.partial }
+                    is ProviderCallResult.Failed -> {
+                        val cause = result.cause
+                        val reason = when (cause) {
+                            is AppleMusicWebHttpException -> "http_" + cause.status
+                            is AppleMusicWebProtocolException -> when (cause.message) {
+                                "Missing search results envelope" -> "missing_results_envelope"
+                                "Missing requested search result type" -> "missing_requested_type"
+                                "Invalid search data" -> "invalid_search_data"
+                                "Search error envelope" -> "search_error_envelope"
+                                "Cyclic cursor" -> "cyclic_cursor"
+                                else -> "protocol"
+                            }
+                            is java.io.IOException -> "io"
+                            else -> "other"
+                        }
+                        println("AMS_SEARCH_READ_FAILURE|kind=" + kind.name + "|page=" + page + "|reason=" + reason)
+                        null
+                    }
+                    ProviderCallResult.Denied, ProviderCallResult.Stale -> null
+                }
+            }
+
+        val dir = File(System.getenv("IDM_CATALOG_METRICS_DIR") ?: "build/ams-search-metrics", "top10-review")
+        check(dir.exists() || dir.mkdirs())
+        var interrupted = 0
+        var paginationProblems = 0
+        for ((index, case) in searchParityCases.withIndex()) {
+            val start = System.nanoTime()
+            var rows = emptyList<SearchParityRow>()
+            var nativeRows = emptyList<SearchParityRow>()
+            val provenIds = mutableSetOf<String>()
+            val qualifiedIds = mutableSetOf<String>()
+            var evidenceReads = 0
+            var complete = true
+            var categoryRoute = false
+            var proofComplete = true
+            var offered = false
+            var secondPageChecked = false
+            var secondPageRows = 0
+            var overlap = 0
+            var rawOverlap = 0
+            var continuationFailed = false
+            if (case.kind == "category") {
+                val categories = canonicalExploreGenreSearchHits(case.query, limit = 10)
+                assertTrue(categories.all {
+                    it.subtitle == "Categoria" && it.browseId.orEmpty().startsWith("catalog:GENRE:")
+                })
+                rows = categories.mapNotNull { item ->
+                    item.browseId?.let { SearchParityRow(it, item.title) }
+                }
+                categoryRoute = rows.any { it.id == "catalog:GENRE:" + case.title }
+                if (categoryRoute) provenIds += "catalog:GENRE:" + case.title
+                offered = categoryRoute
+            } else {
+                val kind = when (case.kind) {
+                    "artist" -> CatalogSearchKind.ARTIST
+                    "album" -> CatalogSearchKind.ALBUM
+                    "track" -> CatalogSearchKind.TRACK
+                    else -> error("Unexpected search category")
+                }
+                val first = read(kind, case.query)
+                complete = first != null
+                if (first != null) {
+                    assertEquals(source, first.provider)
+                    assertEquals(sf, first.storefront)
+                    rows = first.items.map { SearchParityRow(nativeId(it), it.title, it.subtitle) }
+                    nativeRows = first.items.sortedBy { it.sourcePosition ?: Int.MAX_VALUE }
+                        .map { SearchParityRow(nativeId(it), it.title, it.subtitle) }
+                    // Observe original landing and ranked landing independently.
+                    // Continuations never repair or inflate either Top5/Top10 result.
+                    if (first.hasMore) {
+                        secondPageChecked = true
+                        val next = first.continuation?.let { read(kind, case.query, 2, it) }
+                        if (next == null || (next.items.isEmpty() && next.hasMore)) {
+                            continuationFailed = true
+                        } else {
+                            secondPageRows = next.items.size
+                            rawOverlap = next.sourceOverlapCount
+                            overlap = next.items.map(::nativeId).toSet().intersect(rows.map { it.id }.toSet()).size
+                            if (overlap > 0) println("AMS_SEARCH_PAGE_OVERLAP|case=" + (index + 1) + "|count=" + overlap)
+                        }
+                    }
+                    if (kind == CatalogSearchKind.ARTIST) {
+                        // Independent same-source proof: exact anchor release and its
+                        // explicit artist relationship, never a name-only identity.
+                        val anchor = read(CatalogSearchKind.ALBUM, case.title + " " + case.anchor.orEmpty())
+                        proofComplete = anchor != null
+                        fun anchorTitle(title: String): Boolean =
+                            applePublicAlbumWorkKey(title) == searchLabelKey(case.anchor)
+                        val candidates = anchor?.items.orEmpty().filter {
+                            anchorTitle(it.title) && case.artistMatches(it.subtitle)
+                        }.take(3)
+                        val checkedAlbums = mutableSetOf<String>()
+                        suspend fun proveAnchor(albumId: String) {
+                            if (!checkedAlbums.add(albumId)) return
+                            evidenceReads++
+                            val response = withTimeoutOrNull(60_000L) {
+                                gateway.album(albumId, sf)
+                            } as? ProviderCallResult.Success
+                            // Artist relationship evidence is independent of
+                            // tracklist completeness; only exact returned
+                            // album/artist IDs and credit may be credited.
+                            val album = when (val outcome = response?.value?.outcome) {
+                                is AppleMusicWebOutcome.Complete -> outcome.value
+                                is AppleMusicWebOutcome.Partial -> outcome.value
+                                else -> null
+                            }
+                            if (album == null) {
+                                proofComplete = false
+                                return
+                            }
+                            if (!anchorTitle(album.identity.title) ||
+                                !case.artistMatches(album.identity.artistName)) return
+                            val ids = album.artists.filter { case.artistMatches(it.title) }.map { it.scopedId }
+                            if (searchLabelKey(album.identity.title) == searchLabelKey(case.anchor)) provenIds += ids
+                            else qualifiedIds += ids
+                        }
+                        for (candidate in candidates) proveAnchor(candidate.identity.nativeId)
+                        // Same-source, exact-ID discography probe for visible
+                        // homonyms when search did not provide the anchor.
+                        if (provenIds.isEmpty() && qualifiedIds.isEmpty()) {
+                            for (candidate in first.items.take(10).filter { case.artistMatches(it.title) }.take(3)) {
+                                evidenceReads++
+                                val response = withTimeoutOrNull(60_000L) {
+                                    gateway.artist(candidate.identity.nativeId, sf)
+                                } as? ProviderCallResult.Success
+                                val artist = when (val outcome = response?.value?.outcome) {
+                                    is AppleMusicWebOutcome.Complete -> outcome.value
+                                    is AppleMusicWebOutcome.Partial -> outcome.value
+                                    else -> null
+                                }
+                                if (artist == null) {
+                                    proofComplete = false
+                                    continue
+                                }
+                                val releases = (artist.albums + artist.singlesAndEps + artist.featuredAlbums)
+                                    .distinctBy { it.scopedId }
+                                for (release in releases.filter { anchorTitle(it.title) }.take(2)) {
+                                    proveAnchor(release.id)
+                                }
+                            }
+                        }
+                        offered = provenIds.isNotEmpty() || qualifiedIds.isNotEmpty()
+                    } else {
+                        offered = rows.any { case.titleMatches(it.title) && case.artistMatches(it.artist) }
+                        if (!offered) {
+                            val probe = read(kind, case.title + " " + case.artist.orEmpty())
+                            proofComplete = probe != null
+                            offered = probe?.items.orEmpty().any {
+                                case.titleMatches(it.title) && case.artistMatches(it.subtitle)
+                            }
+                        }
+                        if (kind == CatalogSearchKind.ALBUM) {
+                            // Confirm recognized edition titles by their exact
+                            // native collection detail, not by ranker's score.
+                            for (candidate in first.items.take(10).filter {
+                                !case.titleMatches(it.title) && case.artistMatches(it.subtitle) &&
+                                    applePublicAlbumWorkKey(it.title) == searchLabelKey(case.title)
+                            }.take(3)) {
+                                evidenceReads++
+                                val response = withTimeoutOrNull(60_000L) {
+                                    gateway.album(candidate.identity.nativeId, sf)
+                                } as? ProviderCallResult.Success
+                                val album = (response?.value?.outcome as? AppleMusicWebOutcome.Complete)?.value
+                                if (album == null) {
+                                    proofComplete = false
+                                    continue
+                                }
+                                if (album.identity.id == candidate.identity.nativeId &&
+                                    searchLabelKey(album.identity.title) == searchLabelKey(candidate.title) &&
+                                    case.artistMatches(album.identity.artistName) &&
+                                    album.artists.any { case.artistMatches(it.title) } &&
+                                    album.tracks.isNotEmpty()) {
+                                    qualifiedIds += nativeId(candidate)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    proofComplete = false
+                }
+            }
+            assertTrue(rows.all { it.title.isNotBlank() })
+            assertEquals(rows.size, rows.map { it.id }.distinct().size)
+            fun label(row: SearchParityRow): Int =
+                when {
+                    case.kind == "category" -> if (row.id in provenIds) 1 else -1
+                    case.kind == "artist" -> if (!case.artistMatches(row.title)) 0
+                        else if (row.id in provenIds) 1 else -1
+                    !case.titleMatches(row.title) -> 0
+                    !case.artistMatches(row.artist) -> -1
+                    else -> 1
+                }
+            val labels = rows.take(10).map(::label)
+            val nativeLabels = (if (case.kind == "category") rows else nativeRows).take(10).map(::label)
+            val topFive = labels.take(5).any { it == 1 }
+            val topTen = labels.any { it == 1 }
+            val qualifiedTopFive = rows.take(5).any { it.id in qualifiedIds }
+            val qualifiedTopTen = rows.take(10).any { it.id in qualifiedIds }
+            val caseNumber = (index + 1).toString().padStart(2, '0')
+            val review = rows.take(10).mapIndexed { rank, row ->
+                reviewRowJson(rank + 1, row, labels[rank], row.id in qualifiedIds)
+            }
+            val nativeDir = File(dir.parentFile, "native-order-review")
+            check(nativeDir.exists() || nativeDir.mkdirs())
+            val rawReview = (if (case.kind == "category") rows else nativeRows).take(10).mapIndexed { rank, row ->
+                reviewRowJson(rank + 1, row, nativeLabels[rank], row.id in qualifiedIds)
+            }
+            File(nativeDir, "apple_music_web_" + caseNumber + ".json").writeText(
+                "{\"schema\":1,\"provider\":\"apple_music_web\",\"case\":" + (index + 1) +
+                    ",\"kind\":" + reviewJsonString(case.kind) + ",\"complete\":" + complete +
+                    ",\"rows\":[" + rawReview.joinToString(",") + "]}"
+            )
+            File(dir, "apple_music_web_" + caseNumber + ".json").writeText(
+                "{\"schema\":1,\"provider\":\"apple_music_web\",\"case\":" + (index + 1) +
+                    ",\"kind\":" + reviewJsonString(case.kind) + ",\"complete\":" + complete +
+                    ",\"rows\":[" + review.joinToString(",") + "]}"
+            )
+            report("search_matrix_apple_music_web_" + caseNumber, Sample(
+                status = when {
+                    case.kind == "category" -> if (categoryRoute) "local_category_verified" else "local_category_missing"
+                    !complete -> "source_interruption"
+                    topFive -> "target_in_top_five"
+                    topTen -> "target_below_top_five"
+                    offered -> "target_proven_not_visible"
+                    else -> "target_not_corroborated"
+                },
+                eligible = labels.count { it == 1 }, visible = rows.size,
+                counts = mapOf(
+                    "target_proven" to if (offered || topTen) 1 else 0,
+                    "top_five_target" to if (topFive) 1 else 0,
+                    "top_ten_target" to if (topTen) 1 else 0,
+                    "qualified_top_five" to if (qualifiedTopFive) 1 else 0,
+                    "qualified_top_ten" to if (qualifiedTopTen) 1 else 0,
+                    "strict_or_qualified_top_five" to if (topFive || qualifiedTopFive) 1 else 0,
+                    "strict_or_qualified_top_ten" to if (topTen || qualifiedTopTen) 1 else 0,
+                    "identity_evidence_reads" to evidenceReads,
+                    "native_top_five_target" to if (nativeLabels.take(5).any { it == 1 }) 1 else 0,
+                    "native_top_ten_target" to if (nativeLabels.any { it == 1 }) 1 else 0,
+                    "native_first_ten_rows" to nativeLabels.size,
+                    "first_ten_rows" to labels.size,
+                    "labelled_target_rows" to labels.count { it == 1 },
+                    "labelled_non_target_rows" to labels.count { it == 0 },
+                    "unjudged_rows" to labels.count { it == -1 },
+                    "local_category_route_verified" to if (categoryRoute) 1 else 0,
+                    "source_interruption" to if (!complete) 1 else 0,
+                    "proof_interruption" to if (!proofComplete) 1 else 0,
+                    "second_page_checked" to if (secondPageChecked) 1 else 0,
+                    "second_page_rows" to secondPageRows,
+                    "second_page_overlap" to overlap,
+                    "second_page_source_overlap" to rawOverlap,
+                    "continuation_interruption" to if (continuationFailed) 1 else 0,
+                    "elapsed_ms" to ((System.nanoTime() - start) / 1_000_000L)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                ),
+            ))
+            if (!complete) interrupted++
+            if (continuationFailed || overlap > 0) paginationProblems++
+        }
+        // Retain all case reports even when the native source contract fails.
+        assertEquals("Native landing interruptions", 0, interrupted)
+        assertEquals("Native continuation interruptions or repeated IDs", 0, paginationProblems)
+    }
 
     /**
      * #230 prelabelled targets, not a synthetic popularity ranking. Target

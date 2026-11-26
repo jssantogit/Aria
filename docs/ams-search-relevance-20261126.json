@@ -1,0 +1,2033 @@
+{
+  "schema": 1,
+  "head": "11eeed04ddb382b2f5e69e800720e9b7ffb10f69",
+  "workflow_run": 45816332934,
+  "reviewer": "assistant_manual_preliminary",
+  "scope": "ranked native adapter BR, first ten returned rows per frozen IDM case",
+  "policy": "Title-only namesakes and legitimate variants are relevant; explicit artist/work must satisfy both. Artist exact-name identities without corroboration remain unresolved; aliases/credits without proof remain unresolved. Local related genres count as relevant. No rows discarded, empty case retained. Not a production ranker or CI gate.",
+  "cells": [
+    {
+      "case": 1,
+      "query": "ILLIT",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "ILLIT",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Illit",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 3,
+          "title": "MOKA ILLIT",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 4,
+          "title": "Naz Illit",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 5,
+          "title": "MOKA ILLIT",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 6,
+          "title": "MOKA ILLIT",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "MOKA ILLIT",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Ill-It",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Johnny Afro feat. ILL-IT Beats",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        }
+      ]
+    },
+    {
+      "case": 2,
+      "query": "IVE",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "IVE",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "IVE",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 3,
+          "title": "IVE",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "IVE",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 5,
+          "title": "ive",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 6,
+          "title": "Ive",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 7,
+          "title": "Ive Mendes",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Greice Ive",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Ive Greice",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Ive & Eve",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 3,
+      "query": "Beyonce",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Beyoncé",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Mc Beyonce",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 3,
+          "title": "Beyoncé Knowles Carter",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "Dominique Beyonce",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 5,
+          "title": "Beyoncé Knowles",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 6,
+          "title": "Beyonce Smith",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "Beyonce's Fiancés",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "LOVATO BEYONCE",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Dama Beyonce",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Bulbous Beyonce Booty",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 4,
+      "query": "Beatles",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "The Beatles",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Beatles Cordel",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 3,
+          "title": "Sex Beatles",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 4,
+          "title": "The Beatles Revival Band",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 5,
+          "title": "The Beatles Connection",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 6,
+          "title": "Beatles Celebration",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "Clube Big Beatles",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Tony Sheridan & The Beatles",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 9,
+          "title": "Black Beatles Band",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "The Silver Beatles",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 5,
+      "query": "Muse",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Muse",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 3,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 5,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 6,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 7,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 8,
+          "title": "MUSE",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 9,
+          "title": "MUSÈ",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 10,
+          "title": "Muse",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        }
+      ]
+    },
+    {
+      "case": 6,
+      "query": "Ghost",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 3,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 5,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 6,
+          "title": "GhoSt",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 7,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 8,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 9,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 10,
+          "title": "Ghost",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        }
+      ]
+    },
+    {
+      "case": 7,
+      "query": "Phoenix",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 3,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 5,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 6,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 7,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 8,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 9,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 10,
+          "title": "Phoenix",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        }
+      ]
+    },
+    {
+      "case": 8,
+      "query": "Joao Gilberto",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "João Gilberto",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "João Gilberto",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 3,
+          "title": "Joao Gilberto",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "João Gilberto",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 5,
+          "title": "João & Gilberto",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 6,
+          "title": "João Gilberto Quintet",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 7,
+          "title": "Stan Getz, Antonio Carlos Jobim & Joao Gilberto",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 8,
+          "title": "João Gilberto Vendito Burse",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "João Gilberto Carequinha",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Gilberto Joao",
+          "credit": "",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 9,
+      "query": "Portishead",
+      "kind": "artist",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Portishead",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 10,
+      "query": "ILLIT (2)",
+      "kind": "artist",
+      "complete": true,
+      "rows": []
+    },
+    {
+      "case": 11,
+      "query": "David Bowie Hunky Dory",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Hunky Dory (2015 Remaster)",
+          "credit": "David Bowie",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "My Bluegrass Heart",
+          "credit": "Béla Fleck",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 12,
+      "query": "Powerslave",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Powerslave",
+          "credit": "Iron Maiden",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Powerslave - Single",
+          "credit": "Heaven Below & The Iron Maidens",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Powerslave (Remastered) - Single",
+          "credit": "Onirika",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Powerslave - Single",
+          "credit": "Iris Divine",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Powerslave - Single",
+          "credit": "SinthetikSlave",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Powerslave - Single",
+          "credit": "Envyro",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Powerslave - Single",
+          "credit": "Civilis",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "Powerslave - Single",
+          "credit": "Dr. Rik",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "Powerslave - Single",
+          "credit": "Koreen",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "Powerslave",
+          "credit": "Appart",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 13,
+      "query": "Violator Depeche Mode",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Violator",
+          "credit": "Depeche Mode",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Violator (Deluxe)",
+          "credit": "Depeche Mode",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Violator The 12\" Singles",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        },
+        {
+          "rank": 4,
+          "title": "The Best of Depeche Mode, Vol. 1 (Deluxe)",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 5,
+          "title": "Spirit (Deluxe)",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 6,
+          "title": "The Singles 86-98",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "101 (Live)",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Music for the Masses",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Memento Mori",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Delta Machine (Deluxe Edition)",
+          "credit": "Depeche Mode",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 14,
+      "query": "Dummy Portishead",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Dummy",
+          "credit": "Portishead",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Portishead",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 3,
+          "title": "Third",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 4,
+          "title": "Roseland, NYC Live",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 5,
+          "title": "Glory Box - EP",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 6,
+          "title": "Only You - Single",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "Roseland NYC Live 25 (Remastered 2023)",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Chase the Tear - Single",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Over - Single",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Sour Times - EP",
+          "credit": "Portishead",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 15,
+      "query": "Mezzanine",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Mezzanine (Deluxe)",
+          "credit": "Massive Attack",
+          "target_label": 0,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Mezzanine",
+          "credit": "Massive Attack",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Mezzanine - Single",
+          "credit": "Gareth Emery",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Mezzanine",
+          "credit": "Katori Walker",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Mezzanine - Single",
+          "credit": "Gran Error",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Mezzanine",
+          "credit": "Keru Not Ever",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Mezzanine",
+          "credit": "ØDYSSEE",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "Mezzanine - Single",
+          "credit": "Lavurn",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "Mezzanine",
+          "credit": "Greenhouse Ensemble",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "Mezzanine - Single",
+          "credit": "Ethan Fields",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 16,
+      "query": "Blue Monday New Order",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Blue Monday (2023 Digital Master) - Single",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Blue Monday (2020 Digital Master)",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Blue Monday '88 (2023 Digital Master) - Single",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "The Best of New Order",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 5,
+          "title": "Substance",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 6,
+          "title": "iTunes Originals: New Order",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "Blue Monday - Single",
+          "credit": "Sebastian Böhm",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Total (Deluxe Version)",
+          "credit": "New Order & Joy Division",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Blue Monday (From \"Atomic Blonde\") - Single",
+          "credit": "HEALTH",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Blue Monday (From the 'Wonder Woman 1984' Trailer) - Single",
+          "credit": "Baltic House Orchestra",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 17,
+      "query": "The Perfect Kiss",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "The Perfect Kiss (2022 Digital Master) - Single",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": true,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "The Perfect Kiss - Single",
+          "credit": "Phil Keegan",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "The Perfect Kiss - Single",
+          "credit": "Monta At Odds",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "The Perfect Kiss - Single",
+          "credit": "Invisible Man",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "The Perfect Kiss - Single",
+          "credit": "Invisible Man",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "The Perfect Kiss (Writing Session Recording) - Single",
+          "credit": "New Order",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Filter",
+          "credit": "The Perfect Kiss",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Perfect Kiss (feat. Yaar & Kaiia) - Single",
+          "credit": "Havana",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "Perfect Kiss (Festum Music Remix Drums) [feat. Yaar & Kaiia] - Single",
+          "credit": "Havana",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "Perfect Duet (with Beyoncé) - Single",
+          "credit": "Ed Sheeran",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 18,
+      "query": "Love Will Tear Us Apart",
+      "kind": "album",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "Joy Division",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "Letrux",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "George Vjestica, Raife Burchell & Lynne Ramsay",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "Jada Facer",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "DJ Kodi",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "Elektrik People",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "Hot 8 Brass Band",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "David Bay",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "Odina",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "Love Will Tear Us Apart - Single",
+          "credit": "R Plus & Amelia Fox",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 19,
+      "query": "Magnetic ILLIT",
+      "kind": "track",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Magnetic",
+          "credit": "ILLIT",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Magnetic (R&B Remix)",
+          "credit": "ILLIT",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Magnetic (Starlight Remix)",
+          "credit": "ILLIT",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Magnetic (Sped Up)",
+          "credit": "ILLIT",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Magnetic (City Night Remix)",
+          "credit": "ILLIT",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Magnetic/ILLIT(Music Box)",
+          "credit": "RELAX MUSIC BOX",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 7,
+          "title": "Magnetic (Illit Acoustic Cover)",
+          "credit": "Audrey Stclair",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Magnetic",
+          "credit": "GOT7",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Magnetic",
+          "credit": "MONSTA X & Sebastián Yatra",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Magnetic",
+          "credit": "The Bausa",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 20,
+      "query": "Hello",
+      "kind": "track",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Hello",
+          "credit": "Adele",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Hello",
+          "credit": "Martin Solveig & Dragonette",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Hello",
+          "credit": "Lionel Richie",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Hello",
+          "credit": "Beyoncé",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Hello?",
+          "credit": "Clairo & Rejjie Snow",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Hello",
+          "credit": "Cardi B",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Hello!",
+          "credit": "Super Simple Songs",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "Hello (Remastered)",
+          "credit": "Oasis",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "Hello",
+          "credit": "Lionel Richie",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "Hello",
+          "credit": "Evanescence",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 21,
+      "query": "One Metallica",
+      "kind": "track",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "One",
+          "credit": "Metallica",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "One (Remastered)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "One (Live)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "One (Live)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "One (Radio Edit)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "One (November 1987 Demo)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "One (Live In Rio de Janeiro, Brazil - September 19th, 2013)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "One (Live / Seattle '89)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "One (Live)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "One (Live in Mexico City)",
+          "credit": "Metallica",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 22,
+      "query": "Halo Beyonce",
+      "kind": "track",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Halo",
+          "credit": "Beyoncé",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Halo",
+          "credit": "Beyoncé",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Halo",
+          "credit": "Beyoncé",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Halo",
+          "credit": "Beyoncé",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Halo (Live)",
+          "credit": "Beyoncé",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Halo (Remix) [Mixed]",
+          "credit": "Beyoncé",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Beyoncé - Halo - Piano Cover (feat. Piano Relaxation & Relaxing Piano)",
+          "credit": "Piano Covers",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 8,
+          "title": "Halo (Piano Version)",
+          "credit": "Piano Superstar",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 9,
+          "title": "Halo",
+          "credit": "2CELLOS",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "Halo (Ao Vivo)",
+          "credit": "LUDMILLA",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        }
+      ]
+    },
+    {
+      "case": 23,
+      "query": "1901 Phoenix",
+      "kind": "track",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "1901",
+          "credit": "Phoenix",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "1901 (L'Aiglon Remix)",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "1901 (BENZI & TWINSICK Remix) [Mixed]",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "1901 (Mixed)",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "1901 (Live)",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "1901 (Baaku & Zephure Remix) [Mixed]",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "1901 (Rad Cat Remix) [Mixed]",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "1901 Bo Flex'd (Passion Pit Remix)",
+          "credit": "Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "1901(Phoenix)",
+          "credit": "Bosley",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "irrelevant"
+        },
+        {
+          "rank": 10,
+          "title": "A Sky for Shoeing Horses Under / 1901 (Mixed)",
+          "credit": "WHY? & Phoenix",
+          "target_label": 0,
+          "qualified_verified": false,
+          "relevance": "unresolved"
+        }
+      ]
+    },
+    {
+      "case": 24,
+      "query": "Chega de Saudade Joao Gilberto",
+      "kind": "track",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Chega De Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 7,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 8,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 9,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 10,
+          "title": "Chega de Saudade",
+          "credit": "João Gilberto",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 25,
+      "query": "metal",
+      "kind": "category",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Metal",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 2,
+          "title": "Black Metal",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 3,
+          "title": "Death Metal",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 4,
+          "title": "Doom Metal",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 5,
+          "title": "Heavy Metal",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        },
+        {
+          "rank": 6,
+          "title": "Thrash Metal",
+          "credit": "",
+          "target_label": -1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 26,
+      "query": "Eletronica",
+      "kind": "category",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Eletrônica",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 27,
+      "query": "k-pop",
+      "kind": "category",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "K-pop",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 28,
+      "query": "house",
+      "kind": "category",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "House",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 29,
+      "query": "hard rock",
+      "kind": "category",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Hard Rock",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    },
+    {
+      "case": 30,
+      "query": "smooth jazz",
+      "kind": "category",
+      "complete": true,
+      "rows": [
+        {
+          "rank": 1,
+          "title": "Smooth Jazz",
+          "credit": "",
+          "target_label": 1,
+          "qualified_verified": false,
+          "relevance": "relevant"
+        }
+      ]
+    }
+  ]
+}

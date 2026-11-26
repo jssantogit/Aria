@@ -1,0 +1,53 @@
+name: AMS · isolated editorial Browse
+on:
+  pull_request:
+    branches:
+      - integration/idm-providers-main-20261121
+    paths:
+      - '.github/workflows/ams-browse.yml'
+      - 'app/src/test/java/com/music/bitchord/AppleMusicWebBrowseTest.kt'
+      - 'app/src/main/java/com/music/bitchord/data/catalog/provider/applemusicweb/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-browse-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  charts:
+    if: github.event_name != 'pull_request' || github.head_ref == 'integration/ams-apple-music-web-20261126'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AMS_BROWSE_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AppleMusicWebBrowseTest.liveBrowseRooms'
+      - name: Emit bounded Browse observations
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for file in Path('app/build/test-results/testDevDebugUnitTest').glob('*AppleMusicWebBrowseTest.xml'):
+              for node in ET.parse(file).iter('system-out'):
+                  for line in (node.text or '').splitlines():
+                      if line.startswith(('AMS_BROWSE|','AMS_ROOM|')):
+                          print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-browse-results
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7
