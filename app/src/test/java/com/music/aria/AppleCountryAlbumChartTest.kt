@@ -43,13 +43,4 @@ class AppleCountryAlbumChartTest {
         assertEquals(2, chart.albums.size)
         assertNull(parseAppleCountryAlbumChart("""{"feed":{"results":[]}}""", "br", 1234))
     }
-    @Test fun separateAlbumAndSongTerritoryChoicesRequireAuthorization() {
-        val allowed = com.music.aria.ui.canonicalCountryChartShelf(true)!!.items
-        assertEquals(appleChartTerritories.size * 2, allowed.size)
-        assertEquals(appleChartBrowseId("br"), allowed[0].browseId)
-        assertEquals(appleAlbumChartBrowseId("br"), allowed[1].browseId)
-        assertNull(allowed[0].videoId)
-        assertNull(allowed[1].videoId)
-        assertNull(com.music.aria.ui.canonicalCountryChartShelf(false))
-    }
 }

@@ -1,7 +1,6 @@
 package com.music.aria.ui
 
 import com.music.aria.data.catalog.metadata.appleChartBrowseId
-import com.music.aria.data.catalog.metadata.appleAlbumChartBrowseId
 import com.music.aria.data.catalog.metadata.appleChartTerritories
 import com.music.aria.data.providers.BuiltInProviderKeys
 import com.music.aria.data.providers.ProviderCapability
@@ -21,22 +20,13 @@ internal fun canonicalCountryChartShelf(
     heading: String = "Rankings pelo mundo",
 ): HomeShelf? = if (!authorized) null else HomeShelf(
     title = heading,
-    items = appleChartTerritories.flatMap { territory ->
-        listOf(
-            ShelfItem(
-                title = "Top 100 músicas · ${territory.displayName}",
-                subtitle = "Apple Music · Músicas mais tocadas",
-                thumbnailUrl = null,
-                videoId = null,
-                browseId = appleChartBrowseId(territory.code),
-            ),
-            ShelfItem(
-                title = "Top 100 álbuns · ${territory.displayName}",
-                subtitle = "Apple Music · Álbuns mais tocados",
-                thumbnailUrl = null,
-                videoId = null,
-                browseId = appleAlbumChartBrowseId(territory.code),
-            ),
+    items = appleChartTerritories.map { territory ->
+        ShelfItem(
+            title = "Top 100 músicas · ${territory.displayName}",
+            subtitle = "Apple Music · Músicas mais tocadas",
+            thumbnailUrl = null,
+            videoId = null,
+            browseId = appleChartBrowseId(territory.code),
         )
     },
 )
