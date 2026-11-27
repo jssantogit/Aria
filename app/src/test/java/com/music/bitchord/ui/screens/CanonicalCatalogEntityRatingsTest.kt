@@ -38,4 +38,27 @@ class CanonicalCatalogEntityRatingsTest {
         assertFalse(canPersistCanonicalCatalogRating(CanonicalEntityRatingTarget("RECORDING", id)))
         assertFalse(canPersistCanonicalCatalogRating(CanonicalEntityRatingTarget("PLAYLIST", "public:fake")))
     }
+    @Test fun nativeProviderRatingsKeepExactMarketTypeAndId() {
+        val routes = mapOf(
+            "itunes:br:artist:123" to "ARTIST",
+            "itunes:us:artist:123" to "ARTIST",
+            "itunes:br:album:123" to "ALBUM",
+            "discogs:artist:123" to "ARTIST",
+            "discogs:release:123" to "ALBUM",
+        )
+        val targets = routes.map { (route, type) ->
+            val target = canonicalCatalogEntityRatingTarget(route)!!
+            assertEquals(CanonicalEntityRatingTarget(type, route), target)
+            assertTrue(canPersistCanonicalCatalogRating(target))
+            assertFalse(canPersistCanonicalCatalogRating(target.copy(entityType = "RELEASE_GROUP")))
+            target
+        }
+        assertEquals(routes.size, targets.toSet().size)
+        for (route in listOf("itunes:br:track:123", "itunes:br:album:0",
+            "itunes:br:artist:123/extra", "discogs:artist:0", "discogs:release:001",
+            "discogs:master:123", "discogs:release:123/extra")) {
+            assertNull(route, canonicalCatalogEntityRatingTarget(route))
+        }
+    }
+
 }
