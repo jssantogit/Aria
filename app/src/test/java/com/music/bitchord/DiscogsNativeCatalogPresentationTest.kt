@@ -321,4 +321,25 @@ class DiscogsNativeCatalogPresentationTest {
         assertNull(discogsReleasePage("Illit", record).albumArtistBrowseId)
     }
 
+    @Test fun onlyEligibleExactDigitalAlbumsRetainVolatileArtworkEvidence() {
+        val edition = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 456L),
+            title = "Edition", artistNames = listOf(artist.name),
+            artistIds = listOf(artist.artistId), country = "KR", year = 2024,
+            labels = emptyList(), barcodes = listOf("8801234567893"),
+            formats = listOf("File", "FLAC", "EP"),
+            tracklist = listOf("1" to "First"), unofficial = false,
+        )
+        val page = discogsReleasePage(artist, edition)
+        assertEquals(edition, page.artworkEvidence)
+        assertNull(page.page.thumbnailUrl)
+        assertNull(discogsReleasePage(artist, edition.copy(
+            formats = listOf("CD", "EP"),
+        )).artworkEvidence)
+        assertNull(discogsReleasePage(artist, edition.copy(
+            barcodes = emptyList(),
+        )).artworkEvidence)
+        assertNull(discogsArtistPage(artist, emptyList(), false, false).artworkEvidence)
+    }
+
 }
