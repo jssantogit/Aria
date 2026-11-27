@@ -102,10 +102,15 @@ internal fun amsExactStylePlaylistTitle(title: String,tag: String): Boolean {
     val name = curatorFold(title)
     val labels = listOf(name, name.removeSuffix(" essenciais"), name.removeSuffix(" essentials"),
         name.removePrefix("essenciais de "), name.removePrefix("essenciais do "),
-        name.removePrefix("essenciais da "),name.removeSuffix(" essential"))
+        name.removePrefix("essenciais da "),name.removeSuffix(" essential"),
+        name.removePrefix("o melhor do "),name.removePrefix("o melhor da "),
+        name.removePrefix("o melhor de "),name.removePrefix("best of "))
     return labels.any { appleMusicWebGenreNameMatches(it,tag) } ||
         (tag == "heavy metal" && labels.any { it in setOf("metal classico","classic metal") }) ||
-        (tag == "thrash metal" && name == "thrash")
+        (tag == "thrash metal" && name == "thrash") ||
+        (tag == "trap" && labels.any { it in setOf("trap stars brasil","trap stars brazil") }) ||
+        (tag == "drill" && labels.any { it in setOf("drill de nova york","new york drill","drill atual") }) ||
+        (tag == "alternative rock" && labels.any { it in setOf("rock alternativo para malhar","rock alternativo da madrugada") })
 }
 
 /** Explicit public Brazilian reference for traditional heavy metal, only a
@@ -238,10 +243,25 @@ internal fun amsVerifiedSearchedStylePlaylist(item: AppleMusicWebItem, tag: Stri
     return credit == "apple music" || (credit != label &&
         (appleMusicWebGenreNameMatches(label,parent) ||
             appleMusicWebGenreNameMatches(label,tag) ||
-            (parent == "rock" && label in setOf("alternative","alternativo")) ||
+            (parent == "rock" && label in setOf("alternative","alternativo","rock classico","classic rock","indie")) ||
             (parent == "pop" && label in setOf("pop","dance")) ||
-            (parent == "rap" && label in setOf("hip hop","hip hop rap")) ||
+            (parent == "rap" && label in setOf("hip hop","hip hop rap","hip hop nacional")) ||
             (parent == "ambient" && label in setOf("electronic","eletronica","ambient","ambiente")) ||
-            (parent == "punk" && label in setOf("rock","punk","alternative","alternativo")) ||
+            (parent == "punk" && label in setOf("rock","punk","alternative","alternativo","indie","alternative indie")) ||
             (parent == "folk" && label in setOf("folk","indie","cantores compositores"))))
 }
+
+/** Public BR nominations, used only if dynamic exact discovery is underfilled.
+ * Resource type, title, credit, identity and market still need live validation.
+ * These are optional editorial seeds, not a style taxonomy or a guarantee.
+ * Sources: music.apple.com/br/playlist/{slug}/{id}.
+ */
+internal fun amsStylePublicPlaylistCandidates(tag: String, market: String): List<String> =
+    if (market != "br") emptyList() else when (tag) {
+        "progressive rock" -> listOf("pl.573d5d1c54c34bee884fe83de0dfa548")
+        "dark ambient" -> listOf("pl.63e840fa5b544de49f20421e5e80e7ee")
+        "trap" -> listOf("pl.9b1b842f97254ed6a8bcbcba73f48643")
+        "drill" -> listOf("pl.7a9e72bd385a4b6aa46695159978c847")
+        "alternative rock" -> listOf("pl.82f8a66b185f4e94a3aa7e6afd2f648b")
+        else -> emptyList()
+    }

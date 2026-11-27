@@ -6,6 +6,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun observedEditorialTitlesAllowNarrowQualifiersWithoutParentSubstitution() {
+        fun playlist(title: String,credit: String) = AppleMusicWebItem("pl.example123",
+            AppleMusicWebKind.PLAYLIST,"br",title,artistName=credit,playlistType="editorial")
+        assertTrue(amsVerifiedSearchedStylePlaylist(playlist("Rock progressivo: essenciais","Apple Music: rock clássico"),"progressive rock","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(playlist("O melhor do dark ambient","Apple Music"),"dark ambient","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(playlist("Trap Stars Brasil","Apple Music: hip-hop/rap"),"trap","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(playlist("Drill de Nova York: essenciais","Apple Music: hip-hop/rap"),"drill","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(playlist("Post-Rock Essentials","Apple Music Indie"),"post-rock","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist("O melhor do rock","Apple Music: rock"),"progressive rock","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist("Trap Stars Brasil","Apple Music: hip-hop/rap"),"drill","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist("O melhor do dark ambient","Apple Music"),"drone","br"))
+        assertTrue(amsStylePublicPlaylistCandidates("trap","us").isEmpty())
+        assertTrue(amsStylePublicPlaylistCandidates("boom bap","br").isEmpty())
+    }
+
     @Test fun searchedPlaylistRequiresEditorialTypeExactStyleAndAppleCredit() {
         val playlist = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br",
             "Post-Punk Essentials",artistName="Apple Music Alternative",playlistType="editorial")

@@ -489,8 +489,10 @@ internal class AppleMusicWebNativeCatalogSession(
             }
             val playlists = mutableListOf<ShelfItem>()
             val albums = mutableListOf<ShelfItem>()
-            for (candidate in candidates.distinctBy { it.id }.take(2)) {
-                val record = when (val read = gateway.playlist(candidate.id,market)) {
+            val candidateIds = (candidates.map { it.id } + amsStylePublicPlaylistCandidates(tag,market))
+                .distinct().filter { "apple_music_web:$market:playlist:$it" !in existing }.take(2)
+            for (candidateId in candidateIds) {
+                val record = when (val read = gateway.playlist(candidateId,market)) {
                     ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
                     ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
                     is ProviderCallResult.Failed -> {
@@ -504,7 +506,7 @@ internal class AppleMusicWebNativeCatalogSession(
                     }
                 }
                 val identity = record.identity
-                if (identity.id != candidate.id || !amsVerifiedSearchedStylePlaylist(identity,tag,market) ||
+                if (identity.id != candidateId || !amsVerifiedSearchedStylePlaylist(identity,tag,market) ||
                     appleMusicWebVerifiedStoreUrl(identity) == null) continue
                 playlists += ShelfItem(title=identity.title,subtitle=identity.artistName.orEmpty(),
                     thumbnailUrl=appleMusicWebArtworkUrl(identity.artworkUrl),videoId=null,

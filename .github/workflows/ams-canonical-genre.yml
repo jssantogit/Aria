@@ -7,6 +7,7 @@ on:
       - audit/ams-composition-review-20261127
       - audit/ams-exact-release-motion-20261127
       - audit/ams-release-media-review-20261127
+      - audit/ams-style-editorial-evidence-20261127
 permissions:
   contents: read
 concurrency:
