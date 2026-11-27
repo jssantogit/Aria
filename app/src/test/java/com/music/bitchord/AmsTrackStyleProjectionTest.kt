@@ -6,6 +6,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun editorialStyleGrammarAndCandidateRankingAreStrictAndBounded() {
+        assertTrue(amsExactStylePlaylistTitle("Tendências: hard rock","hard rock"))
+        assertTrue(amsExactStylePlaylistTitle("Novidades: Hard Rock","hard rock"))
+        assertTrue(amsExactStylePlaylistTitle("Música barroca: essenciais","baroque"))
+        assertFalse(amsExactStylePlaylistTitle("Grandes riffs","hard rock"))
+        assertFalse(amsExactStylePlaylistTitle("Natal roqueiro","hard rock"))
+        assertFalse(amsExactStylePlaylistTitle("Novidades: rock","hard rock"))
+        assertFalse(amsExactStylePlaylistTitle("Novidades: hard rock e metal","hard rock"))
+        assertFalse(amsExactStylePlaylistTitle("J.S. Bach: essenciais","baroque"))
+        fun card(id: String,title: String) = com.music.bitchord.data.model.ShelfItem(
+            title=title,subtitle="Apple Music",thumbnailUrl=null,videoId=null,browseId="apple_music_web:br:playlist:$id")
+        val generic = card("pl.generic123","Grandes riffs")
+        val exact = card("pl.exact123","Tendências: hard rock")
+        val second = card("pl.second123","Novidades: Hard Rock")
+        val unrelated = card("pl.other123","Natal roqueiro")
+        assertEquals(listOf(exact,second),amsStyleCuratorPlaylistCandidates(
+            listOf(generic,exact,unrelated,second),"hard rock"))
+        assertEquals(listOf(second,generic),amsStyleCuratorPlaylistCandidates(
+            listOf(generic,exact,exact.copy(title="Conflicting title"),second),"hard rock"))
+    }
+
     @Test fun curatorPlaylistDetailRequiresUnchangedIdentityAndStyleEvidence() {
         val identity = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br",
             "Jazz Fusion",artistName="Apple Music Jazz",playlistType="editorial",

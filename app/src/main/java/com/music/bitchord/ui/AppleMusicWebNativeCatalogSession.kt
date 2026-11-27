@@ -144,19 +144,33 @@ internal fun amsStylePlaylistAlbumShelf(
     amsStyleTrackAlbumShelf(amsStylePlaylistAlbumIds(playlist,market),market,albums)
         ?.copy(title="Álbuns das playlists")
 
-/** The room is evidence of membership, but detail may have changed since
- * the room response. Do not hydrate albums from a replaced or foreign list. */
+/** Prioritize explicit style titles before generic room membership. Keep
+ * stable room order within each evidence level and bound detail requests. */
+internal fun amsStyleCuratorPlaylistCandidates(cards: List<ShelfItem>, tag: String): List<ShelfItem> =
+    cards.groupBy { it.browseId }.values.mapNotNull { group ->
+        group.first().takeIf { first -> group.all { it == first } &&
+            AppleMusicWebNativeRoute.parse(first.browseId)?.kind == AppleMusicWebKind.PLAYLIST }
+    }.sortedByDescending { amsExactStylePlaylistTitle(it.title,tag) }.take(2)
+
+/** Identity and semantic membership are separate: a verified dedicated room
+ * can contain an editorial playlist not suitable for the style album shelf. */
+internal fun amsStyleCuratorPlaylistIdentityMatches(
+    identity: AppleMusicWebItem, candidateId: String, market: String, roomCard: ShelfItem?,
+): Boolean =
+    identity.kind == AppleMusicWebKind.PLAYLIST && identity.id == candidateId &&
+        identity.storefront == market && identity.playlistType == "editorial" &&
+        appleMusicWebVerifiedStoreUrl(identity) != null && identity.title.isNotBlank() &&
+        (roomCard == null || (roomCard.browseId == identity.scopedId &&
+            roomCard.title.trim() == identity.title.trim() &&
+            (roomCard.subtitle.isBlank() || roomCard.subtitle.trim() == identity.artistName.orEmpty().trim())))
+
+/** Do not hydrate albums from a replaced or foreign list. */
 internal fun amsStyleCuratorPlaylistDetailMatches(
     identity: AppleMusicWebItem, candidateId: String, market: String, tag: String,
     roomCard: ShelfItem?,
 ): Boolean {
-    if (identity.kind != AppleMusicWebKind.PLAYLIST || identity.id != candidateId ||
-        identity.storefront != market || identity.playlistType != "editorial" ||
-        appleMusicWebVerifiedStoreUrl(identity) == null || identity.title.isBlank()) return false
+    if (!amsStyleCuratorPlaylistIdentityMatches(identity,candidateId,market,roomCard)) return false
     if (roomCard == null) return amsVerifiedStylePlaylistReference(identity,tag,market)
-    if (roomCard.browseId != identity.scopedId || roomCard.title.trim() != identity.title.trim() ||
-        (roomCard.subtitle.isNotBlank() && roomCard.subtitle.trim() != identity.artistName.orEmpty().trim()))
-        return false
     return amsExactStylePlaylistTitle(identity.title,tag) ||
         identity.genreNames.any { appleMusicWebGenreNameMatches(it,tag) }
 }
@@ -793,10 +807,7 @@ internal class AppleMusicWebNativeCatalogSession(
                         // Revalidate up to two exact room candidates, only
                         // trying the second if the first is underfilled.
                         if (tag in amsEditorialStyleParents) {
-                            val cards = playlistCards.groupBy { it.browseId }.values.mapNotNull { group ->
-                                group.first().takeIf { first -> group.all { it == first } }
-                            }
-                            val candidates = cards.mapNotNull { card ->
+                            val candidates = amsStyleCuratorPlaylistCandidates(playlistCards,tag).mapNotNull { card ->
                                 AppleMusicWebNativeRoute.parse(card.browseId)?.id?.let { it to card }
                             }.take(2).ifEmpty {
                                 listOfNotNull(amsStylePlaylistReference(tag,market)?.let { it to null })
@@ -820,8 +831,10 @@ internal class AppleMusicWebNativeCatalogSession(
                                 val identity = record.identity
                                 if (!amsStyleCuratorPlaylistDetailMatches(identity,id,market,tag,card)) {
                                     playlistIncomplete = true
-                                    rejected += identity.scopedId
-                                    rejected += "apple_music_web:$market:playlist:$id"
+                                    // A generic title alone does not invalidate the room card.
+                                    // Remove only an actually contradicted identity.
+                                    if (!amsStyleCuratorPlaylistIdentityMatches(identity,id,market,card))
+                                        rejected += "apple_music_web:$market:playlist:$id"
                                     continue
                                 }
                                 if (card == null) playlistCards += ShelfItem(title=identity.title,

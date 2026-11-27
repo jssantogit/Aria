@@ -105,8 +105,11 @@ internal fun amsExactStylePlaylistTitle(title: String,tag: String): Boolean {
         name.removePrefix("essenciais da "),name.removeSuffix(" essential"),
         name.removePrefix("o melhor do "),name.removePrefix("o melhor da "),
         name.removePrefix("o melhor de "),name.removePrefix("best of "),
-        name.removeSuffix(" joias ocultas"), name.removeSuffix(" hidden gems"))
+        name.removeSuffix(" joias ocultas"), name.removeSuffix(" hidden gems"),
+        name.removePrefix("tendencias "), name.removePrefix("novidades "),
+        name.removePrefix("trending "), name.removePrefix("new music "))
     return labels.any { appleMusicWebGenreNameMatches(it,tag) } ||
+        (tag == "baroque" && labels.any { it in setOf("musica barroca","baroque music") }) ||
         (tag == "heavy metal" && labels.any { it in setOf("metal classico","classic metal") }) ||
         (tag == "thrash metal" && name == "thrash") ||
         (tag == "trap" && labels.any { it in setOf("trap stars brasil","trap stars brazil") }) ||
