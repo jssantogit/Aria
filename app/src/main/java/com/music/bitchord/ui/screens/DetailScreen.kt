@@ -514,7 +514,8 @@ fun DetailScreen(
             artworkUrl = trustedCatalogMetadataPinArtwork(page.thumbnailUrl),
         )
     }
-    val canPinCatalogRelease = catalogRatingTarget?.entityType in setOf("ALBUM", "RELEASE_GROUP") &&
+    val canPinCatalogRelease = page.browseId.startsWith("catalog:") &&
+        catalogRatingTarget?.entityType in setOf("ALBUM", "RELEASE_GROUP") &&
         validCatalogMetadataPin(catalogPin)
     // Prefetch one hero and the first visible cards from any metadata
     // provider. The same Coil memory/disk cache serves their eventual native
