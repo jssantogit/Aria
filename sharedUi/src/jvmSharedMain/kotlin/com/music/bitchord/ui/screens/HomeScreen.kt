@@ -184,6 +184,27 @@ private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Bool
     return { it == byName }
 }
 
+/** Construct only exact, typed official source links. Never use free-form
+ * browse IDs as URLs or route a release to a different Master. */
+internal fun discogsAttributionUrlFor(browseId: String?): String? {
+    val match = Regex("discogs:(artist|release):([1-9][0-9]{0,11})")
+        .matchEntire(browseId.orEmpty()) ?: return null
+    return "https://www.discogs.com/${match.groupValues[1]}/${match.groupValues[2]}"
+}
+
+@Composable
+internal fun DiscogsSourceAttribution(browseId: String?, modifier: Modifier = Modifier) {
+    val url = discogsAttributionUrlFor(browseId) ?: return
+    val handler = LocalUriHandler.current
+    Text(
+        text = "Data provided by Discogs.",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.clickable { runCatching { handler.openUri(url) } }
+            .padding(vertical = 4.dp),
+    )
+}
+
 /** Volatile display-only proof; callbacks retain the original ShelfItem. */
 data class EditorialShelfArtwork(
     val artworkUrl: String,
@@ -243,6 +264,7 @@ private fun EditorialShelfCardFrame(
             loaded = state is AsyncImagePainter.State.Success &&
                 editorialShelfArtworkLoaded(proof, state.result.request.data)
         })
+        DiscogsSourceAttribution(item.browseId)
         if (proof != null && loaded) {
             EditorialShelfArtworkBadge(proof, Modifier.padding(top = 4.dp))
         }
