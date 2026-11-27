@@ -15,6 +15,7 @@ import com.music.bitchord.data.AppUpdateChecker
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderCallResult
 import com.music.bitchord.data.providers.ProviderKey
 import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.providers.ProviderReadLease
@@ -700,6 +701,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             read = appleMusicWebNativeCatalog::sharedDetail)
     }
     internal suspend fun loadAmsCollectionLabels(browseId: String): List<com.music.bitchord.ui.screens.CatalogMetadataRecordingLabel>? {
+        val current = appleMusicWebDetailNavigation.stack.value.lastOrNull()
+        val snapshot = current?.takeIf { it.route.browseId == browseId && it.lease.isCurrent() }?.visible()
+        if (snapshot != null && snapshot.notice == null) {
+            com.music.bitchord.ui.screens.amsCollectionRecordingLabels(browseId,snapshot.metadataTracks,true)?.let { return it }
+        }
         val chart = amsDailyCharts.tile(browseId)
         val result = if (chart != null) appleMusicWebNativeCatalog.dailyChartSharedDetail(chart)
             else appleMusicWebNativeCatalog.sharedDetail(browseId)

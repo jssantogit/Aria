@@ -71,10 +71,14 @@ private sealed interface MetadataCollectionLoad {
  * A ListenBrainz list imports only entries carrying genuine Recording MBIDs.
  */
 @Composable
+internal fun CanonicalSearchMetadataPlaylistPicker(target: CatalogSearchPlaylistTarget,onDismiss: () -> Unit) =
+    CanonicalSearchMetadataPlaylistPicker(target,onDismiss,null)
+
+@Composable
 internal fun CanonicalSearchMetadataPlaylistPicker(
     target: CatalogSearchPlaylistTarget,
     onDismiss: () -> Unit,
-    loadSourceLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)? = null,
+    loadSourceLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)?,
 ) {
     val app = LocalContext.current.applicationContext
     val repository = remember(app) {

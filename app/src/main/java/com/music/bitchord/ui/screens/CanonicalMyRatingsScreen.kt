@@ -196,14 +196,16 @@ internal fun CanonicalMyRatingsScreen(
                         // A broken/offline Catalog cannot erase a persisted first-party rating.
                         emptyMap()
                     }
+                    val sourceLabels = CatalogMetadataRecordingLabelRepository.get(context).labels.value.associateBy { it.recordingId }
                     value = MyRatingsUiState.Content(
                         items = snapshot.items.map { rated ->
                             val record = metadata[rated.recordingId]
+                            val sourceLabel = sourceLabels[rated.recordingId]
                             MyRatingsRow(
                                 recordingId = rated.recordingId,
                                 value = rated.value,
-                                title = record?.title,
-                                artistDisplay = record?.artistDisplay,
+                                title = record?.title ?: sourceLabel?.title,
+                                artistDisplay = record?.artistDisplay ?: sourceLabel?.artist,
                             )
                         },
                         hasMore = snapshot.hasMore,
@@ -240,7 +242,11 @@ internal fun CanonicalMyRatingsScreen(
         onEdit = { id -> editingId = id },
     )
     editingId?.let { canonicalId ->
-        CanonicalRecordingRatingDialog(
+        if (com.music.bitchord.ui.amsSongStorefront(canonicalId) != null) {
+            val label = CatalogMetadataRecordingLabelRepository.get(context).labels.value.firstOrNull { it.recordingId == canonicalId }
+            if (label != null) CanonicalMetadataRecordingRatingDialog(canonicalId,{ editingId = null },label)
+            else LaunchedEffect(canonicalId) { editingId = null }
+        } else CanonicalRecordingRatingDialog(
             recordingId = canonicalId,
             onDismiss = { editingId = null },
         )

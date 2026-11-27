@@ -26,8 +26,8 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
     hazeState: dev.chrisbanes.haze.HazeState,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     sourceStoreUrl: String? = null,
-    onSettings: () -> Unit,
     loadAmsLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)? = null,
+    onSettings: () -> Unit,
 ) {
     val spec = remember(browseId,sourceStoreUrl) {
         canonicalCatalogEntityMenuSpec(browseId,sourceStoreUrl)

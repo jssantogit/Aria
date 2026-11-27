@@ -18,14 +18,18 @@ import kotlinx.coroutines.withContext
  * metadata, including recordings without an audio asset. No play capability
  * follows from recording a preference. */
 @Composable
+internal fun CanonicalMetadataRecordingRatingDialog(recordingId: String, onDismiss: () -> Unit) =
+    CanonicalMetadataRecordingRatingDialog(recordingId,onDismiss,null)
+
+@Composable
 internal fun CanonicalMetadataRecordingRatingDialog(
     recordingId: String,
     onDismiss: () -> Unit,
-    sourceLabel: CatalogMetadataRecordingLabel? = null,
+    sourceLabel: CatalogMetadataRecordingLabel?,
 ) {
     if (!isLocalMetadataRecordingId(recordingId) ||
         (com.music.bitchord.ui.amsSongStorefront(recordingId) != null &&
-            (sourceLabel?.recordingId != recordingId || !validCatalogMetadataRecordingLabel(sourceLabel)))) return
+            (sourceLabel == null || sourceLabel.recordingId != recordingId || !validCatalogMetadataRecordingLabel(sourceLabel)))) return
     val context = LocalContext.current.applicationContext
     val dao = remember(context) { ListeningEventDatabase.get(context).recordingRatingDao() }
     val current by remember(dao, recordingId) { dao.observeCurrent(recordingId) }
