@@ -108,4 +108,79 @@ class AmsStyleArtworkLiveTest {
         assertTrue("Insufficient actual style pages: " + gaps.joinToString(),gaps.isEmpty())
     }
 
+    /** Explain rejected room candidates without relaxing identity or genre rules. */
+    @Test fun curatorPlaylistDetailEvidenceInventory(): Unit = runBlocking {
+        assumeTrue(System.getenv("AMS_STYLE_ART_LIVE") == "1")
+        val key = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val caps = setOf(ProviderCapability.EDITORIAL_DISCOGRAPHY,ProviderCapability.CATALOG_SEARCH)
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(key,caps,ProviderReadiness.READY)),
+            caps.associateWith { listOf(ProviderChoice(key,true,0)) },
+        ))
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
+            admission=RateLimitedProviderTransport { gate })),gate)
+        for (tag in listOf("hard rock","baroque")) {
+            val landing = requireNotNull(content(withTimeout(240_000) {
+                gateway.curatedGenreLanding(tag,"br").let { result ->
+                    when (result) {
+                        is ProviderCallResult.Success -> ProviderCallResult.Success(result.value.outcome)
+                        is ProviderCallResult.Failed -> result
+                        ProviderCallResult.Denied -> ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> ProviderCallResult.Stale
+                    }
+                }
+            }))
+            val curator = landing.curator.identity
+            val cards = mutableListOf<com.music.bitchord.data.model.ShelfItem>()
+            for (room in landing.curator.rooms.filter {
+                isAppleMusicWebCuratorPlaylistRoom(it) && it.storefront == "br" &&
+                    it.curatorId == curator.id && it.genreId == null
+            }.take(2)) {
+                var cursor: String? = null
+                val visited = hashSetOf<String>()
+                for (index in 1..3) {
+                    val result = withTimeout(120_000) {
+                        gateway.roomContents(room,AppleMusicWebKind.PLAYLIST,limit=25,cursor=cursor)
+                    }
+                    val outcome = (result as? ProviderCallResult.Success)?.value?.outcome
+                    val page = when (outcome) {
+                        is AppleMusicWebOutcome.Complete -> outcome.value
+                        is AppleMusicWebOutcome.Partial -> outcome.value
+                        else -> break
+                    }
+                    cards += projectAppleMusicWebGenrePlaylistRoom(curator,tag,page)?.items.orEmpty()
+                    val next = page.nextCursor ?: break
+                    if (page.unresolvedReferences != 0 || !visited.add(next)) break
+                    cursor = next
+                }
+            }
+            val candidates = cards.groupBy { it.browseId }.values.mapNotNull { rows ->
+                rows.first().takeIf { first -> rows.all { it == first } }
+            }.take(4)
+            println("AMS_CURATOR_DETAIL|tag=$tag|scope=summary|candidates=${candidates.size}")
+            assertTrue("No candidate playlists for $tag",candidates.isNotEmpty())
+            for (card in candidates) {
+                val id = requireNotNull(AppleMusicWebNativeRoute.parse(card.browseId)).id
+                val response = withTimeout(180_000) { gateway.playlist(id,"br") }
+                val outcome = (response as? ProviderCallResult.Success)?.value?.outcome
+                val playlist = when (outcome) {
+                    is AppleMusicWebOutcome.Complete -> outcome.value
+                    is AppleMusicWebOutcome.Partial -> outcome.value
+                    else -> {
+                        println("AMS_CURATOR_DETAIL|tag=$tag|id=$id|detail=false")
+                        continue
+                    }
+                }
+                val item = playlist.identity
+                val title = card.title.trim() == item.title.trim()
+                val credit = card.subtitle.isBlank() || card.subtitle.trim() == item.artistName.orEmpty().trim()
+                val url = com.music.bitchord.ui.screens.appleMusicWebVerifiedStoreUrl(item) != null
+                val exactTitle = amsExactStylePlaylistTitle(item.title,tag)
+                val label = item.genreNames.any { appleMusicWebGenreNameMatches(it,tag) }
+                val admitted = amsStyleCuratorPlaylistDetailMatches(item,id,"br",tag,card)
+                println("AMS_CURATOR_DETAIL|tag=$tag|id=$id|type=${item.playlistType}|titleMatch=$title|creditMatch=$credit|url=$url|exactTitle=$exactTitle|exactLabel=$label|accepted=$admitted|title=${item.title}|linkedAlbums=${amsStylePlaylistAlbumIds(playlist,"br").size}")
+            }
+        }
+    }
+
 }

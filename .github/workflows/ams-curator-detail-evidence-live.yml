@@ -1,0 +1,50 @@
+name: AMS · curator detail rejection evidence
+on:
+  push:
+    branches: [audit/ams-curator-detail-evidence-20261127]
+    paths:
+      - '.github/workflows/ams-curator-detail-evidence-live.yml'
+      - 'app/src/test/java/com/music/bitchord/AmsStyleArtworkLiveTest.kt'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-curator-detail-evidence-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AMS_STYLE_ART_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compare exact room and detail playlist evidence
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsStyleArtworkLiveTest.curatorPlaylistDetailEvidenceInventory'
+      - name: Report evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=list(Path('app/build/test-results/testDevDebugUnitTest').glob('*AmsStyleArtworkLiveTest.xml'))
+          assert len(files)==1
+          root=ET.parse(files[0]).getroot()
+          assert int(root.attrib['tests'])==1 and int(root.attrib['skipped'])==0
+          for node in root.iter('system-out'):
+              for line in (node.text or '').splitlines():
+                  if line.startswith('AMS_CURATOR_DETAIL|'): print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-curator-detail-evidence-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          retention-days: 7
