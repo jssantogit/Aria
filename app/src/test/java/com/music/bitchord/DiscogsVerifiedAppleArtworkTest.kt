@@ -148,4 +148,41 @@ class DiscogsVerifiedAppleArtworkTest {
         assertEquals("published_promotions_not_rendered_images", metadata["scope"])
     }
 
+    @Test fun proofMemoRequiresExactCurrentEvidenceAndOriginalAuthorization() {
+        val memo = com.music.bitchord.ui.DiscogsEditorialArtworkMemo(capacity = 2)
+        val proof = requireNotNull(discogsVerifiedAppleArtwork(record, upc, result, "br"))
+        var authorized = true
+        memo.remember(record, proof) { authorized }
+        assertEquals(proof, memo.read(record.copy()))
+        // Same source ID alone is not sufficient after contradictory metadata.
+        assertNull(memo.read(record.copy(title = "Revised edition")))
+        assertNull(memo.read(record))
+        memo.remember(record, proof) { authorized }
+        authorized = false
+        assertNull(memo.read(record))
+        authorized = true
+        assertNull(memo.read(record))
+        memo.remember(record, proof.copy(discogsReleaseId = 999L)) { true }
+        assertNull(memo.read(record))
+    }
+
+    @Test fun proofMemoIsBoundedAndNeverKeepsDeniedOrClearedEntries() {
+        val memo = com.music.bitchord.ui.DiscogsEditorialArtworkMemo(capacity = 2)
+        val proof = requireNotNull(discogsVerifiedAppleArtwork(record, upc, result, "br"))
+        fun edition(id: Long) = record.copy(link = DiscogsLink(DiscogsKind.RELEASE, id))
+        fun remember(id: Long) = memo.remember(edition(id), proof.copy(discogsReleaseId = id)) { true }
+        remember(1L)
+        remember(2L)
+        assertNotNull(memo.read(edition(1L)))
+        remember(3L)
+        assertNull(memo.read(edition(2L)))
+        assertNotNull(memo.read(edition(1L)))
+        assertNotNull(memo.read(edition(3L)))
+        memo.remember(edition(4L), proof.copy(discogsReleaseId = 4L)) { false }
+        assertNull(memo.read(edition(4L)))
+        memo.clear()
+        assertNull(memo.read(edition(1L)))
+        assertNull(memo.read(edition(3L)))
+    }
+
 }
