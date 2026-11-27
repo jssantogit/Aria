@@ -64,6 +64,39 @@ class AppleMusicWebEditorialUiSessionTest {
         assertNull(amsEditorialContinuationShelf(listOf(shelf),paging,false))
     }
 
+    @Test fun newHomePlaylistRailsRetainTypedIdentityAndContinuation() {
+        val kind = AppleMusicWebHomeShelf.UPDATED_PLAYLISTS
+        val ref = room.copy(title="Playlists atualizadas")
+        val playlist = AppleMusicWebItem("pl.123456",AppleMusicWebKind.PLAYLIST,"br","Playlist")
+        val other = playlist.copy(id="pl.654321")
+        val page = AppleMusicWebRoomPage(ref,kind.kind,listOf(playlist,album,playlist.copy(storefront="us")),3,0,0,null)
+        val first = projectAppleMusicWebHomeRoom(ref,page,"br",kind)!!
+        assertEquals(listOf(playlist.scopedId),first.items.map { it.browseId })
+        val extra = projectAppleMusicWebHomeRoom(ref,page.copy(items=listOf(other)),"br",kind)!!.items
+        val paging = AmsEditorialPaging(additional=extra,additionalByHeading=mapOf(first.title to extra))
+        assertEquals(listOf(playlist.scopedId,other.scopedId),
+            amsHomeWithTrendingContinuation(listOf(first),paging).single().items.map { it.browseId })
+        assertNull(projectAppleMusicWebHomeRoom(ref.copy(curatorId="1"),page,"br",kind))
+    }
+
+    @Test fun extraGenreRailsRequireCuratorAndRetainTheirHeading() {
+        val curator = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")
+        val ref = room.copy(curatorId=curator.id,title="Álbuns essenciais")
+        val page = roomPage(ref,listOf(album,album.copy(storefront="us")))
+        val projected = projectAmsCuratorExtraRoom(curator,"metal",page)!!
+        assertEquals("Álbuns essenciais",projected.title)
+        assertEquals(listOf(album.scopedId),projected.items.map { it.browseId })
+        assertNull(projectAmsCuratorExtraRoom(curator,"pop",page))
+        assertNull(projectAmsCuratorExtraRoom(curator,"metal",page.copy(room=ref.copy(curatorId="999"))))
+        assertNull(projectAmsCuratorExtraRoom(curator,"metal",page.copy(room=ref.copy(title="Vídeos"))))
+        val paging = AmsEditorialPaging(additional=projected.items,
+            additionalByHeading=mapOf(projected.title to projected.items))
+        assertEquals(listOf(projected),amsGenreWithPlaylistContinuation(emptyList(),paging))
+        assertNull(amsEditorialContinuationShelf(listOf(projected),paging,true))
+        val shared = AppleMusicWebCuratorRef("976439585","br","Apple Music Soul e Funk")
+        assertNull(projectAmsCuratorExtraRoom(shared,"soul",page.copy(room=ref.copy(curatorId=shared.id))))
+    }
+
     @Test fun dispatchWaitsForEveryEarlierSourceIncludingAms() {
         val order = listOf(discogs,ams,apple,mb)
         val miss = UiState.Success(emptyList<HomeShelf>())

@@ -151,3 +151,21 @@ internal fun isAppleMusicWebCuratorReleaseRoom(room: AppleMusicWebRoomRef): Bool
         "lancamentos", "lancamentos recentes", "novidades da semana", "novos albuns",
         "nouveautes", "sorties recentes", "nouveaux albums", "nouveautes de la semaine",
     )
+
+/** Additional typed editorial rails, not release classification or a generic search. */
+internal data class AmsCuratorExtraShelf(val heading: String, val kind: AppleMusicWebKind)
+
+internal fun amsCuratorExtraShelf(room: AppleMusicWebRoomRef): AmsCuratorExtraShelf? {
+    if (room.curatorId == null || room.genreId != null) return null
+    return when (curatorFold(room.title)) {
+        "albuns essenciais", "essential albums" -> AmsCuratorExtraShelf("Álbuns essenciais", AppleMusicWebKind.ALBUM)
+        "artistas que amamos", "artists we love" -> AmsCuratorExtraShelf("Artistas que amamos", AppleMusicWebKind.ARTIST)
+        "playlists de artistas", "essenciais de artistas", "artist playlists", "artist essentials" -> AmsCuratorExtraShelf("Playlists de artistas", AppleMusicWebKind.PLAYLIST)
+        "sucessos por decada", "hits by decade" -> AmsCuratorExtraShelf("Sucessos por década", AppleMusicWebKind.PLAYLIST)
+        "sucessos por ano", "hits by year" -> AmsCuratorExtraShelf("Sucessos por ano", AppleMusicWebKind.PLAYLIST)
+        "musica ao vivo", "live music" -> AmsCuratorExtraShelf("Música ao vivo", AppleMusicWebKind.ALBUM)
+        "em breve", "coming soon" -> AmsCuratorExtraShelf("Em breve", AppleMusicWebKind.ALBUM)
+        "artistas emergentes de r b e soul" -> AmsCuratorExtraShelf("Artistas emergentes de R&B e soul", AppleMusicWebKind.ARTIST)
+        else -> null
+    }
+}

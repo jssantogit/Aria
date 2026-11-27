@@ -20,6 +20,10 @@ internal enum class AppleMusicWebHomeShelf(val labels: Set<String>, val kind: Ap
     RECENT_RELEASES(setOf("Recent Releases", "Lançamentos recentes", "Sorties récentes"), AppleMusicWebKind.ALBUM),
     TRENDING_SONGS(setOf("Trending Songs", "Músicas em alta", "Titres tendances"), AppleMusicWebKind.SONG),
     BEST_NEW_SONGS(setOf("Best New Songs", "Melhores músicas novas", "Titres du moment"), AppleMusicWebKind.SONG),
+    UPDATED_PLAYLISTS(setOf("Updated Playlists", "Playlists atualizadas"), AppleMusicWebKind.PLAYLIST),
+    CITY_CHARTS(setOf("City Charts", "As mais tocadas por cidade"), AppleMusicWebKind.PLAYLIST),
+    ON_TOUR(setOf("On Tour", "Agora em turnê"), AppleMusicWebKind.PLAYLIST),
+    COMING_SOON(setOf("Coming Soon", "Em breve"), AppleMusicWebKind.ALBUM),
 }
 
 internal fun resolveAppleMusicWebHomeRoom(

@@ -59,10 +59,17 @@ internal fun amsEditorialContinuationShelf(
 internal fun amsHomeWithTrendingContinuation(
     initial: List<HomeShelf>, paging: AmsEditorialPaging?,
 ): List<HomeShelf> {
-    val headings = listOf("Músicas em alta","Novas músicas em destaque")
+    val headings = listOf("Músicas em alta","Novas músicas em destaque","Playlists atualizadas","Mais tocadas por cidade","Agora em turnê","Em breve")
     val explicit = paging?.additionalByHeading.orEmpty()
     val extras = headings.associateWith { heading ->
-        explicit[heading].orEmpty().filter { amsSongStorefront(it.browseId) == "br" }
+        explicit[heading].orEmpty().filter { card ->
+            val route = AppleMusicWebNativeRoute.parse(card.browseId)
+            when (heading) {
+                "Músicas em alta","Novas músicas em destaque" -> amsSongStorefront(card.browseId) == "br"
+                "Em breve" -> route?.storefront == "br" && route.kind == AppleMusicWebKind.ALBUM
+                else -> route?.storefront == "br" && route.kind == AppleMusicWebKind.PLAYLIST
+            }
+        }
     }
     var result = initial
     for ((heading,extra) in extras) {
@@ -79,15 +86,25 @@ internal fun amsHomeWithTrendingContinuation(
 internal fun amsGenreWithPlaylistContinuation(
     initial: List<HomeShelf>,paging: AmsEditorialPaging?,
 ): List<HomeShelf> {
-    val extra = paging?.additional.orEmpty().filter {
-        AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST
+    var result = initial
+    val explicit = paging?.additionalByHeading.orEmpty()
+    val named = explicit.filterKeys { it != "Lançamentos" }
+    val alreadyNamed = named.values.flatten().mapNotNull { it.browseId }.toSet()
+    val generic = paging?.additional.orEmpty().filter {
+        AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST &&
+            it.browseId !in alreadyNamed
     }
-    if (extra.isEmpty()) return initial
-    val index = initial.indexOfFirst { it.title == "Playlists" }
-    if (index < 0) return initial + HomeShelf("Playlists",extra.distinctBy { it.browseId })
-    return initial.mapIndexed { i,shelf ->
-        if (i == index) shelf.copy(items=(shelf.items + extra).distinctBy { it.browseId }) else shelf
+    val extras = named + ("Playlists" to (named["Playlists"].orEmpty() + generic))
+    for ((heading,items) in extras) {
+        val valid = items.filter { AppleMusicWebNativeRoute.parse(it.browseId)?.storefront == "br" }
+        if (valid.isEmpty()) continue
+        val index = result.indexOfFirst { it.title == heading }
+        result = if (index < 0) result + HomeShelf(heading,valid.distinctBy { it.browseId })
+            else result.mapIndexed { i,shelf ->
+                if (i == index) shelf.copy(items=(shelf.items + valid).distinctBy { it.browseId }) else shelf
+            }
     }
+    return result
 }
 
 internal fun canonicalGenreShowsAmsReleases(state: UiState<List<HomeShelf>>): Boolean =
@@ -206,18 +223,17 @@ internal class AppleMusicWebEditorialUiSession(
                 val route = AppleMusicWebNativeRoute.parse(card.browseId)
                 val song = tag == null && amsSongStorefront(card.browseId) == "br" &&
                     com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId) != null
-                val collection = route != null && (route.kind == AppleMusicWebKind.ALBUM ||
-                    (tag != null && route.kind == AppleMusicWebKind.PLAYLIST)) && route.storefront == "br"
+                val collection = route != null && route.kind in setOf(AppleMusicWebKind.ALBUM,
+                    AppleMusicWebKind.PLAYLIST,AppleMusicWebKind.ARTIST) && route.storefront == "br"
                 (collection || song) && card.videoId == null && card.title.isNotBlank() &&
                     card.browseId?.let(seen::add) == true
             }
             val byHeading = paging.additionalByHeading.toMutableMap()
             val acceptedIds = additional.mapNotNull { it.browseId }.toSet()
             for (shelf in page.shelves) {
-                val songs = shelf.items.filter { it.browseId in acceptedIds &&
-                    amsSongStorefront(it.browseId) == "br" }
-                if (songs.isNotEmpty()) byHeading[shelf.title] =
-                    (byHeading[shelf.title].orEmpty() + songs).distinctBy { it.browseId }
+                val named = shelf.items.filter { it.browseId in acceptedIds }
+                if (named.isNotEmpty()) byHeading[shelf.title] =
+                    (byHeading[shelf.title].orEmpty() + named).distinctBy { it.browseId }
             }
             publishPaging(tag,paging.copy(
                 pending=(paging.pending.drop(1) + page.pending).distinct(),
