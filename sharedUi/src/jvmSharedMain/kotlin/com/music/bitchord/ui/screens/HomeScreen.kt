@@ -187,7 +187,7 @@ private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Bool
 data class EditorialShelfArtwork(
     val artworkUrl: String,
     val storeUrl: String,
-    val badgeUrl: Any,
+    val badgeUrl: String,
 )
 
 private val LocalEditorialShelfArtwork =
@@ -209,7 +209,7 @@ private fun EditorialShelfArtworkBadge(proof: EditorialShelfArtwork, modifier: M
     val handler = LocalUriHandler.current
     AsyncImage(
         model = proof.badgeUrl,
-        contentDescription = "Abrir no Apple Music",
+        contentDescription = "Abrir produto na Apple",
         contentScale = ContentScale.Fit,
         modifier = modifier.width(92.dp).height(28.dp)
             .clickable { runCatching { handler.openUri(proof.storeUrl) } },
@@ -1110,14 +1110,19 @@ private fun HeroShelf(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(shelf.items) { item ->
-                    HeroCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onLongPress = onItemLongPress?.let { { it(item) } },
-                        modifier = Modifier.width(cardWidth),
-                        isCurrent = isCurrentItem(item),
-                        isPlaying = isCurrentItem(item) && isPlaying,
-                    )
+                    Column(Modifier.width(cardWidth)) {
+                        HeroCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = onItemLongPress?.let { { it(item) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            isCurrent = isCurrentItem(item),
+                            isPlaying = isCurrentItem(item) && isPlaying,
+                        )
+                        editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)?.let {
+                            EditorialShelfArtworkBadge(it, Modifier.padding(top = 4.dp))
+                        }
+                    }
                 }
             }
         }
@@ -1187,14 +1192,11 @@ private fun HeroCard(
         )
         if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
             ResilientAppleCover(
-                model = prominent.artworkAt(HEADER_ART_PX),
+                model = if (proof != null) prominent else prominent.artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        }
-        proof?.let {
-            EditorialShelfArtworkBadge(it, Modifier.align(Alignment.TopEnd).padding(8.dp))
         }
         if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
         if (pressed) {
@@ -1274,13 +1276,18 @@ internal fun Shelf(
         ) {
             leadingCard?.let { card -> item(key = "leading") { card() } }
             items(shelf.items) { item ->
-                ShelfCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = onItemLongPress?.let { { it(item) } },
-                    isCurrent = isCurrentItem(item),
-                    isPlaying = isCurrentItem(item) && isPlaying,
-                )
+                Column(Modifier.width(SHELF_CARD_WIDTH)) {
+                    ShelfCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = onItemLongPress?.let { { it(item) } },
+                        isCurrent = isCurrentItem(item),
+                        isPlaying = isCurrentItem(item) && isPlaying,
+                    )
+                    editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)?.let {
+                        EditorialShelfArtworkBadge(it, Modifier.padding(top = 4.dp))
+                    }
+                }
             }
         }
     }
@@ -1527,14 +1534,11 @@ internal fun ShelfCard(
                     )
                     if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
                         ResilientAppleCover(
-                            model = prominent.artworkAt(CARD_ART_PX),
+                            model = if (proof != null) prominent else prominent.artworkAt(CARD_ART_PX),
                             contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
-                    }
-                    proof?.let {
-                        EditorialShelfArtworkBadge(it, Modifier.align(Alignment.BottomEnd).padding(4.dp))
                     }
                     if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
                 }
