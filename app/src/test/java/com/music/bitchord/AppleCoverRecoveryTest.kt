@@ -37,4 +37,19 @@ class AppleCoverRecoveryTest {
         )) assertNull(url, appleVerifiedCdnCoverFallbackUrl(url))
         assertNull(appleVerifiedCdnCoverFallbackUrl(null))
     }
+    @Test fun promotionRequiresSuccessfulLoadOfSameVerifiedAsset() {
+        val base = "https://is1-ssl.mzstatic.com/image/thumb/Music/a/"
+        val verified = base + "1024x1024bb.jpg"
+        fun matches(model: Any?) = com.music.bitchord.ui.components
+            .appleVerifiedAssetLoadMatches(verified, model)
+        org.junit.Assert.assertTrue(matches(verified))
+        org.junit.Assert.assertTrue(matches(base + "100x100bb.jpg"))
+        org.junit.Assert.assertFalse(matches(base + "600x600bb.jpg"))
+        org.junit.Assert.assertFalse(matches(verified.replace("/a/", "/b/")))
+        org.junit.Assert.assertFalse(matches(null))
+        org.junit.Assert.assertFalse(matches(1))
+        org.junit.Assert.assertFalse(com.music.bitchord.ui.components
+            .appleVerifiedAssetLoadMatches(null, verified))
+    }
+
 }
