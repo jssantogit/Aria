@@ -103,6 +103,12 @@ internal fun amsStyleSupplementalAlbumIds(
         .distinct().take(50).toList()
 }
 
+/** Discovery budget is measured on admitted albums, not raw search hits. */
+internal fun amsStyleNeedsTrackDiscovery(
+    songs: List<AppleMusicWebItem>, market: String, tag: String, albums: List<AppleMusicWebItem>,
+): Boolean = (amsStyleTrackAlbumShelf(amsStyleTrackAlbumIds(songs,market,tag),market,albums)
+    ?.items?.size ?: 0) < 6
+
 internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: List<AppleMusicWebItem>): HomeShelf? {
     val cards = ids.distinct().mapNotNull { id ->
         val observations = albums.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
@@ -620,10 +626,29 @@ internal class AppleMusicWebNativeCatalogSession(
     private suspend fun trackStyleShelf(tag: String, storefront: String):
         ProviderCallResult<HomeShelf?> = admitted(editorial) { gateway ->
             val songs = mutableListOf<AppleMusicWebItem>()
+            val albums = mutableListOf<AppleMusicWebItem>()
+            val requested = hashSetOf<String>()
+            suspend fun hydrateNewTrackCandidates(): ProviderCallResult<Unit> {
+                val ids = amsStyleTrackAlbumIds(songs,storefront,tag)
+                for (batch in ids.filterNot { it in requested }.chunked(25)) {
+                    if ((amsStyleTrackAlbumShelf(ids,storefront,albums)?.items?.size ?: 0) >= 24) break
+                    requested += batch
+                    when (val read = gateway.linkedAlbumMetadata(batch,storefront)) {
+                        ProviderCallResult.Denied -> return ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return ProviderCallResult.Stale
+                        is ProviderCallResult.Failed -> {
+                            if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return read
+                        }
+                        is ProviderCallResult.Success -> albums +=
+                            (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                    }
+                }
+                return ProviderCallResult.Success(Unit)
+            }
             var cursor: String? = null
             val visited = hashSetOf<String>()
             for (index in 1..4) {
-                if (index > 2 && amsStyleTrackAlbumIds(songs,storefront,tag).size >= 6) break
+                if (index > 2 && !amsStyleNeedsTrackDiscovery(songs,storefront,tag,albums)) break
                 when (val read = gateway.search(AppleMusicWebKind.SONG,tag,storefront,
                     page=index,limit=25,continuation=cursor)) {
                     ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
@@ -635,15 +660,28 @@ internal class AppleMusicWebNativeCatalogSession(
                     is ProviderCallResult.Success -> {
                         val page = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value ?: break
                         songs += page.items
-                        val next = page.nextCursor ?: break
-                        if (!visited.add(next)) break
+                        // Collect the first two pages together, then hydrate
+                        // before deciding whether more discovery is necessary.
+                        val next = page.nextCursor
+                        if (index >= 2 || next == null) when (val result = hydrateNewTrackCandidates()) {
+                            ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                            ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                            is ProviderCallResult.Failed -> return@admitted result
+                            is ProviderCallResult.Success -> Unit
+                        }
+                        if (next == null || !visited.add(next)) break
                         cursor = next
                     }
                 }
             }
-            // A localized query nominates different candidates, never a different
-            // acceptance rule. No extra request after sufficient exact evidence.
-            if (amsStyleTrackAlbumIds(songs,storefront,tag).size < 6) {
+            // Cover first-page candidates even if a second page failed.
+            when (val result = hydrateNewTrackCandidates()) {
+                ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                is ProviderCallResult.Failed -> return@admitted result
+                is ProviderCallResult.Success -> Unit
+            }
+            if (amsStyleNeedsTrackDiscovery(songs,storefront,tag,albums)) {
                 for (query in amsStyleDiscoveryQueries(tag).drop(1).take(1)) {
                     when (val read = gateway.search(AppleMusicWebKind.SONG,query,storefront,limit=25)) {
                         ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
@@ -654,22 +692,14 @@ internal class AppleMusicWebNativeCatalogSession(
                         is ProviderCallResult.Success -> songs += (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value?.items.orEmpty()
                     }
                 }
-            }
-            val ids = amsStyleTrackAlbumIds(songs,storefront,tag)
-            val albums = mutableListOf<AppleMusicWebItem>()
-            // Discovery is bounded by four pages plus one localized query.
-            // Hydrate in API-sized batches; missing rows must not consume display slots.
-            for (batch in ids.chunked(25)) {
-                when (val read = gateway.linkedAlbumMetadata(batch,storefront)) {
+                when (val result = hydrateNewTrackCandidates()) {
                     ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
                     ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
-                    is ProviderCallResult.Failed -> {
-                        if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
-                    }
-                    is ProviderCallResult.Success -> albums += (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                    is ProviderCallResult.Failed -> return@admitted result
+                    is ProviderCallResult.Success -> Unit
                 }
-                if ((amsStyleTrackAlbumShelf(ids,storefront,albums)?.items?.size ?: 0) >= 24) break
             }
+            val ids = amsStyleTrackAlbumIds(songs,storefront,tag)
             // Album-owned exact labels are independent evidence and do not
             // require a specific playlist or that a song search ranks well.
             val direct = mutableListOf<AppleMusicWebItem>()
@@ -719,7 +749,7 @@ internal class AppleMusicWebNativeCatalogSession(
             // Reuse their exact album IDs in at most two additional batches.
             // Do not admit them unless the hydrated album itself has the style.
             if ((admittedShelf()?.items?.size ?: 0) < 6) {
-                val supplemental = amsStyleSupplementalAlbumIds(songs,direct,storefront,ids.toSet())
+                val supplemental = amsStyleSupplementalAlbumIds(songs,direct,storefront,requested + ids)
                 for (batch in supplemental.chunked(25)) {
                     when (val read = gateway.linkedAlbumMetadata(batch,storefront)) {
                         ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied

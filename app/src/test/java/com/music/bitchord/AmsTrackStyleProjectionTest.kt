@@ -6,6 +6,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun rawTrackCandidatesDoNotExhaustDiscoveryBeforeAlbumAdmission() {
+        val songs = (1..8).map { index ->
+            AppleMusicWebItem(index.toString(),AppleMusicWebKind.SONG,"br","Track",
+                albumId=(100+index).toString(),genreNames=listOf("Jazz Fusion"),
+                storeUrl="https://music.apple.com/br/album/album/${100+index}?i=$index")
+        }
+        val albums = (101..108).map { AppleMusicWebItem(it.toString(),AppleMusicWebKind.ALBUM,"br","Album") }
+        assertEquals(8,amsStyleTrackAlbumIds(songs,"br","jazz fusion").size)
+        assertTrue(amsStyleNeedsTrackDiscovery(songs,"br","jazz fusion",emptyList()))
+        assertTrue(amsStyleNeedsTrackDiscovery(songs,"br","jazz fusion",albums.take(5)))
+        assertFalse(amsStyleNeedsTrackDiscovery(songs,"br","jazz fusion",albums.take(6)))
+        assertTrue(amsStyleNeedsTrackDiscovery(songs,"br","jazz fusion",
+            albums.take(6) + albums.first().copy(title="Conflicting identity")))
+        val later = songs + songs.first().copy(albumId="999",
+            storeUrl="https://music.apple.com/br/album/album/999?i=1")
+        assertTrue(amsStyleNeedsTrackDiscovery(later,"br","jazz fusion",albums.take(6)))
+    }
+
     @Test fun editorialStyleGrammarAndCandidateRankingAreStrictAndBounded() {
         assertTrue(amsExactStylePlaylistTitle("Tendências: hard rock","hard rock"))
         assertTrue(amsExactStylePlaylistTitle("Novidades: Hard Rock","hard rock"))

@@ -14,6 +14,7 @@ on:
       - audit/ams-style-candidate-admission-20261127
       - audit/ams-genre-relationships-20261127
       - audit/ams-curator-detail-evidence-20261127
+      - audit/ams-track-discovery-budget-20261127
 permissions:
   contents: read
 concurrency:
