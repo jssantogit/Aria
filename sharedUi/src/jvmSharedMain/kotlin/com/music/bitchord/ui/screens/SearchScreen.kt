@@ -1218,32 +1218,39 @@ private fun LazyListScope.discogsUnifiedSearchRows(
                     "discogs:general:release:${entry.row.releaseId}"
             } },
         ) { entry ->
-            when (entry) {
-                is DiscogsUnifiedSearchEntry.Artist -> NativeSearchResultRow(
-                    row = NativeSearchRowUi(
-                        title = discogsArtistDisplayName(entry.row.name),
-                        subtitle = stringResource(Res.string.canonical_artist_kind)
-                            .substringBefore('·').trim(),
-                        artworkUri = null,
-                        artistPortrait = true,
-                    ),
-                    onClick = { onArtistOpen(entry.row) },
-                )
-                is DiscogsUnifiedSearchEntry.Release -> {
-                    // Discogs' combined "Artist - Work" is split for display
-                    // only, never used to claim an Artist ID or music format.
-                    val display = discogsSearchReleaseDisplay(entry.row.title)
-                    NativeSearchResultRow(
+            Column {
+                when (entry) {
+                    is DiscogsUnifiedSearchEntry.Artist -> NativeSearchResultRow(
                         row = NativeSearchRowUi(
-                            title = display.title,
-                            subtitle = display.artistCredit
-                                ?.let(::discogsArtistDisplayName) ?: "Lançamento",
+                            title = discogsArtistDisplayName(entry.row.name),
+                            subtitle = stringResource(Res.string.canonical_artist_kind)
+                                .substringBefore('·').trim(),
                             artworkUri = null,
-                            artistPortrait = false,
+                            artistPortrait = true,
                         ),
-                        onClick = { onReleaseOpen(entry.row) },
+                        onClick = { onArtistOpen(entry.row) },
                     )
-                }
+                    is DiscogsUnifiedSearchEntry.Release -> {
+                        // Discogs' combined "Artist - Work" is split for display
+                        // only, never used to claim an Artist ID or music format.
+                        val display = discogsSearchReleaseDisplay(entry.row.title)
+                        NativeSearchResultRow(
+                            row = NativeSearchRowUi(
+                                title = display.title,
+                                subtitle = display.artistCredit
+                                    ?.let(::discogsArtistDisplayName) ?: "Lançamento",
+                                artworkUri = null,
+                                artistPortrait = false,
+                            ),
+                            onClick = { onReleaseOpen(entry.row) },
+                        )
+                    }
+            }
+            val sourceId = when (entry) {
+                is DiscogsUnifiedSearchEntry.Artist -> "discogs:artist:${entry.row.artistId}"
+                is DiscogsUnifiedSearchEntry.Release -> "discogs:release:${entry.row.releaseId}"
+            }
+            DiscogsSourceAttribution(sourceId, Modifier.padding(horizontal = PAGE_GUTTER))
             }
         }
         artists == UiState.Loading || releases == UiState.Loading ->
@@ -1281,16 +1288,20 @@ private fun LazyListScope.discogsNativeReleaseRows(
                 items = results.data,
                 key = { "discogs:release:search:${it.releaseId}" },
             ) { release ->
-                val display = discogsSearchReleaseDisplay(release.title)
-                NativeSearchResultRow(
-                    row = NativeSearchRowUi(
-                        title = display.title,
-                        subtitle = display.artistCredit
-                                ?.let(::discogsArtistDisplayName) ?: "Lançamento",
-                        artworkUri = null, artistPortrait = false,
-                    ),
-                    onClick = { onOpen(release) },
-                )
+                Column {
+                    val display = discogsSearchReleaseDisplay(release.title)
+                    NativeSearchResultRow(
+                        row = NativeSearchRowUi(
+                            title = display.title,
+                            subtitle = display.artistCredit
+                                    ?.let(::discogsArtistDisplayName) ?: "Lançamento",
+                            artworkUri = null, artistPortrait = false,
+                        ),
+                        onClick = { onOpen(release) },
+                    )
+                    DiscogsSourceAttribution("discogs:release:${release.releaseId}",
+                        Modifier.padding(horizontal = PAGE_GUTTER))
+                }
             }
             if (hasMore) item(key = "discogs:releases:more") {
                 NativeCatalogSearchLoadMore(
@@ -1330,15 +1341,19 @@ private fun LazyListScope.discogsNativeArtistRows(
                 items = visible,
                 key = { "discogs:artist:search:${it.artistId}" },
             ) { artist ->
-                NativeSearchResultRow(
-                    row = NativeSearchRowUi(
-                        title = discogsArtistDisplayName(artist.name),
-                        subtitle = stringResource(Res.string.canonical_artist_kind)
-                            .substringBefore('·').trim(),
-                        artworkUri = null, artistPortrait = true,
-                    ),
-                    onClick = { onOpen(artist) },
-                )
+                Column {
+                    NativeSearchResultRow(
+                        row = NativeSearchRowUi(
+                            title = discogsArtistDisplayName(artist.name),
+                            subtitle = stringResource(Res.string.canonical_artist_kind)
+                                .substringBefore('·').trim(),
+                            artworkUri = null, artistPortrait = true,
+                        ),
+                        onClick = { onOpen(artist) },
+                    )
+                    DiscogsSourceAttribution("discogs:artist:${artist.artistId}",
+                        Modifier.padding(horizontal = PAGE_GUTTER))
+                }
             }
             if (hasMore) item(key = "discogs:artists:more") {
                 NativeCatalogSearchLoadMore(
