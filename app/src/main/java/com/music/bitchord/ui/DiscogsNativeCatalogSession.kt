@@ -76,6 +76,7 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
     onAttempt: (String) -> Unit = {},
     maximumAttempts: Int = 16,
     onExamined: (String) -> Unit = {},
+    stillNeeded: (String) -> Boolean = { true },
 ) {
     val limit = maximumAttempts.coerceIn(0, 16)
     var attempts = 0
@@ -84,9 +85,11 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
         .distinct()
     for (id in candidates) {
         if (!stillCurrent() || attempts >= limit) return
+        if (!stillNeeded(id)) continue
         onExamined(id)
         if (!eligible(id)) continue
         if (!stillCurrent()) return
+        if (!stillNeeded(id)) continue
         attempts++
         onAttempt(id)
         val proof = try {
@@ -97,7 +100,7 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
             null
         }
         if (!stillCurrent()) return
-        if (proof != null && id == "discogs:release:${proof.discogsReleaseId}") {
+        if (stillNeeded(id) && proof != null && id == "discogs:release:${proof.discogsReleaseId}") {
             onVerified(id, proof)
         }
     }
@@ -287,6 +290,7 @@ internal class DiscogsNativeCatalogSession(
         onAttempt: (String) -> Unit = {},
         maximumAttempts: Int = 16,
         onExamined: (String) -> Unit = {},
+        stillNeeded: (String) -> Boolean = { true },
     ) {
         val report = DiscogsArtworkBatchReport()
         val started = System.nanoTime()
@@ -321,6 +325,7 @@ internal class DiscogsNativeCatalogSession(
                 onAttempt = onAttempt,
                 maximumAttempts = maximumAttempts,
                 onExamined = onExamined,
+                stillNeeded = stillNeeded,
             )
         } finally {
             report.emit(System.nanoTime() - started)
