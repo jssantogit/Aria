@@ -51,4 +51,17 @@ class NativeHomeArtistPortraitTest {
         org.junit.Assert.assertFalse(editorialShelfArtworkLoaded(proof, 123))
     }
 
+    @Test fun discogsAttributionLinksOnlyExactTypedSourceIdentities() {
+        org.junit.Assert.assertEquals("https://www.discogs.com/release/123",
+            discogsAttributionUrlFor("discogs:release:123"))
+        org.junit.Assert.assertEquals("https://www.discogs.com/artist/456",
+            discogsAttributionUrlFor("discogs:artist:456"))
+        for (id in listOf(null, "discogs:master:123", "discogs:release:0",
+            "discogs:release:0123", "discogs:release:123/extra", "discogs:artist:123?x=y",
+            "discogs:release:1234567890123", "itunes:br:album:123", "local:all",
+            "https://example.com/123")) {
+            org.junit.Assert.assertNull(id, discogsAttributionUrlFor(id))
+        }
+    }
+
 }
