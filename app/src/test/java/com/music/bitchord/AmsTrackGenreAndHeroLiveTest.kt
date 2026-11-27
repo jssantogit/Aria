@@ -294,4 +294,55 @@ class AmsTrackGenreAndHeroLiveTest {
         assertTrue("No exact BR album motion verified",verified > 0)
     }
 
+    /** Diagnostic only. Search terms and textual mentions do not admit a style.
+     * Exact US public examples are probes for BR availability, not runtime seeds.
+     * A known negative (It Was Written) mentions an earlier boom-bap record. */
+    @Test fun editorialStyleNotesAvailability(): Unit = runBlocking {
+        val transport = transport()
+        val catalog = AppleMusicWebCatalog(transport)
+        val probes = mapOf(
+            "art pop" to listOf("6773848999","1814969020"),
+            "ambient techno" to listOf("1753966586","1679051624","1614357726"),
+            "boom bap" to listOf("1485466984","505493917","1396290965","211507540","1724856762")
+        )
+        fun noteText(value: JsonElement?): String = when (value) {
+            is JsonObject -> value.values.joinToString(" ") { noteText(it) }
+            is JsonPrimitive -> if (value.isString) value.content else ""
+            else -> ""
+        }
+        for ((tag, fixtures) in probes) {
+            val search = withTimeout(120_000) {
+                catalog.search(AppleMusicWebKind.ALBUM,tag,"br",limit=25)
+            }
+            val ids = (fixtures + search.items.filter { it.kind == AppleMusicWebKind.ALBUM &&
+                it.storefront == "br" }.map { it.id }).distinct()
+            val phrase = Regex(tag.split(" ").joinToString("[-\\\\s]+") { Regex.escape(it) }, RegexOption.IGNORE_CASE)
+            var returned = 0
+            for (batch in ids.chunked(25)) {
+                val raw = withTimeout(120_000) {
+                    transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,"/v1/catalog/br/albums",
+                        mapOf("ids" to batch.joinToString(","),"extend" to "plainEditorialNotes"))
+                }
+                val root = Json.parseToJsonElement(raw).jsonObject
+                assertFalse("Catalog error envelope", "errors" in root)
+                val rows = root["data"]?.jsonArray ?: error("Missing album batch")
+                val seen = hashSetOf<String>()
+                for (entry in rows) {
+                    val row = entry.jsonObject
+                    val id = requireNotNull(row["id"]?.jsonPrimitive?.contentOrNull)
+                    assertTrue(id in batch && seen.add(id))
+                    assertEquals("albums",row["type"]?.jsonPrimitive?.content)
+                    val attr = row["attributes"]?.jsonObject ?: error("Missing attributes")
+                    val notes = noteText(attr["plainEditorialNotes"]) + " " + noteText(attr["editorialNotes"])
+                    val labels = (attr["genreNames"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                    val exact = labels.any { appleMusicWebGenreNameMatches(it,tag) }
+                    println("AMS_STYLE_NOTES|tag=$tag|id=$id|fixture=${id in fixtures}|plain=${attr["plainEditorialNotes"] != null}|editorial=${attr["editorialNotes"] != null}|mention=${phrase.containsMatchIn(notes)}|exactLabel=$exact")
+                    returned++
+                }
+                println("AMS_STYLE_NOTES|tag=$tag|requested=${batch.size}|returned=${rows.size}|missingFixtures=${fixtures.filter { it in batch && it !in seen }.joinToString(",")}")
+            }
+            assertTrue("No BR album rows for $tag",returned > 0)
+        }
+    }
+
 }

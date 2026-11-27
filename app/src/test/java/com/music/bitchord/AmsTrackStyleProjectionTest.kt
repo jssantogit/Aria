@@ -6,6 +6,32 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun playlistPreviewUsesAdmissionBudgetAndPreservesEditorialProvenance() {
+        val identity = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br","Editorial")
+        val tracks = (1..110).map { index ->
+            AppleMusicWebItem(index.toString(),AppleMusicWebKind.SONG,"br","Track $index",
+                albumId=(100+index).toString(),
+                storeUrl="https://music.apple.com/br/album/album/${100+index}?i=$index")
+        }
+        val playlist = AppleMusicWebPlaylist(identity,tracks)
+        val ids = amsStylePlaylistAlbumIds(playlist,"br")
+        assertEquals((101..200).map { it.toString() },ids)
+        assertEquals(4,ids.chunked(25).size)
+        assertEquals("102",amsStylePlaylistAlbumIds(playlist,"br",setOf("apple_music_web:br:album:101")).first())
+        assertTrue(amsStylePlaylistAlbumIds(playlist,"us").isEmpty())
+        val albums = (126..160).map { id ->
+            AppleMusicWebItem(id.toString(),AppleMusicWebKind.ALBUM,"br","Album $id",artistName="Artist",
+                storeUrl="https://music.apple.com/br/album/album/$id")
+        }
+        val conflicting = albums.first().copy(artistName="Different artist")
+        val sparse = albums[1].copy(genreNames=listOf("Jazz"))
+        val shelf = requireNotNull(amsStylePlaylistAlbumShelf(playlist,"br",albums + conflicting + sparse))
+        assertEquals("Álbuns das playlists",shelf.title)
+        assertEquals(24,shelf.items.size)
+        assertEquals("apple_music_web:br:album:127",shelf.items.first().browseId)
+        assertEquals("apple_music_web:br:album:150",shelf.items.last().browseId)
+    }
+
     @Test fun trackDiscoveryPreservesCandidatesBeyondOneMetadataBatch() {
         val tracks = (1..35).map { index ->
             AppleMusicWebItem(index.toString(),AppleMusicWebKind.SONG,"br","Track $index",
