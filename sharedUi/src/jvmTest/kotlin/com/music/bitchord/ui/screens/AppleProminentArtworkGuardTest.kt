@@ -25,6 +25,15 @@ class AppleProminentArtworkGuardTest {
         assertNull(appleProminentArtworkOrNull(null))
     }
 
+    @Test fun sourceOwnedEditorialArtworkIsNotAnItunesPromotion() {
+        val editorial = "https://is1-ssl.mzstatic.com/image/thumb/Features/abc/600x600SC.DN01.jpg"
+        assertNull(appleProminentArtworkOrNull(editorial))
+        assertEquals(editorial,nativeShelfArtworkModel("apple_music_web:br:playlist:pl.123",editorial))
+        assertNull(nativeShelfArtworkModel("itunes:br:album:123",editorial))
+        assertNull(nativeShelfArtworkModel("apple_music_web:br:playlist:pl.123","https://mzstatic.com.example.org/a.jpg"))
+        assertNull(nativeShelfArtworkModel("apple_music_web:br:playlist:pl.123","https://is1-ssl.mzstatic.com/{w}x{h}.jpg"))
+    }
+
     @Test fun unrecognizedAppleSizeCannotPretendToBeVerified() {
         assertNull(appleProminentArtworkOrNull(
             "https://is1-ssl.mzstatic.com/image/thumb/Music/abc/art.jpg"))

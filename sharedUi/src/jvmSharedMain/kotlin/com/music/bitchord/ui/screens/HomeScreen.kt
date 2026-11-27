@@ -131,6 +131,19 @@ fun appleProminentArtworkOrNull(url: String?): String? {
     return url.takeIf { width >= 600 && height >= 600 }
 }
 
+/** AMS publishes its own CDN variant (including editorial crop/quality suffixes).
+ * The iTunes resolution-promotion guard must not erase it. Do not upgrade or
+ * rewrite the URL; only accept the exact HTTPS Apple CDN resource. */
+internal fun nativeShelfArtworkModel(browseId: String?, url: String?): String? {
+    if (browseId?.startsWith("apple_music_web:") != true) return appleProminentArtworkOrNull(url)
+    if (url.isNullOrBlank() || url.length > 3000 || '{' in url || '}' in url) return null
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return null
+    return url.takeIf { uri.scheme.equals("https",ignoreCase=true) && uri.userInfo == null &&
+        (host == "mzstatic.com" || host.endsWith(".mzstatic.com")) &&
+        uri.port in listOf(-1,443) && !uri.path.isNullOrBlank() }
+}
+
 /** Home and other landing pages share one measured large-title baseline. */
 
 /**
@@ -1137,8 +1150,8 @@ private fun HeroCard(
             .contextClick(onLongPress),
     ) {
         val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
-        val isAppleCard = item.browseId?.startsWith("itunes:") == true
-        val prominent = appleProminentArtworkOrNull(item.thumbnailUrl)
+        val isAppleCard = item.browseId?.startsWith("itunes:") == true || item.browseId?.startsWith("apple_music_web:") == true
+        val prominent = nativeShelfArtworkModel(item.browseId,item.thumbnailUrl)
         if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
             hero = true, modifier = Modifier.fillMaxSize(),
         )
@@ -1443,8 +1456,8 @@ internal fun ShelfCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
-                    val isAppleCard = item.browseId?.startsWith("itunes:") == true
-                    val prominent = appleProminentArtworkOrNull(item.thumbnailUrl)
+                    val isAppleCard = item.browseId?.startsWith("itunes:") == true || item.browseId?.startsWith("apple_music_web:") == true
+                    val prominent = nativeShelfArtworkModel(item.browseId,item.thumbnailUrl)
                     if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
                         hero = false, modifier = Modifier.fillMaxSize(),
                     )

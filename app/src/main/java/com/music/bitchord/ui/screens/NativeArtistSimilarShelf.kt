@@ -152,7 +152,8 @@ internal fun NativeArtistSimilarShelf(
         )
         NativeArtistReleaseCard(
             title = artist.name,
-            subtitle = "Artista",
+            subtitle = "",
+            centeredPortraitCaption = true,
             palette = palette,
             onClick = { onOpen(page) },
             onLongPress = nativeArtistPublicShelfHoldAction(page, onLongPress),

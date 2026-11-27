@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -530,6 +531,7 @@ internal fun DetailScreen(
     }
     val canPinCatalogRelease = catalogRatingTarget?.entityType in setOf("ALBUM", "RELEASE_GROUP") &&
         validCatalogMetadataPin(catalogPin)
+    val canPinAmsPlaylist = page.type == BrowseType.PLAYLIST && page.browseId.startsWith("apple_music_web:") && validCatalogMetadataPin(catalogPin)
     // Prefetch one hero and the first visible cards from any metadata
     // provider. The same Coil memory/disk cache serves their eventual native
     // AsyncImage nodes, so this never creates another image pipeline.
@@ -852,7 +854,7 @@ internal fun DetailScreen(
                         onRate = if (catalogRatingTarget != null && !isArtist)
                             ({ editingCatalogRating = true }) else null,
                         isCatalogPinned = catalogPins.any { it.browseId == page.browseId },
-                        onToggleCatalogPin = if (canPinCatalogRelease)
+                        onToggleCatalogPin = if (canPinCatalogRelease || canPinAmsPlaylist)
                             ({ catalogPinRepo.toggle(catalogPin); Unit }) else null,
                         metaOverride = folderCategoryMeta,
                     )
@@ -1163,10 +1165,11 @@ internal fun DetailScreen(
                                 (playlist && onMetadataTrackOpenAlbum != null))
                                 onMetadataTrackHold?.let { hold -> { hold(track) } } else null,
                             onMore = null,
-                            textGap = PAGE_GUTTER,
+                            modifier = if (playlist) Modifier.heightIn(min = 68.dp) else Modifier,
+                            textGap = if (playlist) 14.dp else PAGE_GUTTER,
                             leading = {
                                 if (playlist) NativeDetailTrackArtwork(showPlayingBars=false) {
-                                    Box(Modifier.fillMaxSize()) {
+                                    Box(Modifier.fillMaxSize().clip(publicPlaylistTrackCoverShape())) {
                                         CoverPlaceholder(page.placeholderIcon(), modifier=Modifier.matchParentSize())
                                         AsyncImage(model=track.artworkUri.artworkAt(ROW_ART_PX),
                                             contentDescription=null,contentScale=ContentScale.Crop,
@@ -1580,7 +1583,9 @@ private fun ReleaseHeader(
         },
         if (songs.isNotEmpty()) songs.playtime() else canonicalTime,
     )
-    val meta = if (page.type == BrowseType.ALBUM) nativeAlbumHeaderCaption(sourceAlbumMetadata)
+    val amsPlaylist = page.type == BrowseType.PLAYLIST && page.browseId.startsWith("apple_music_web:")
+    val meta = if (amsPlaylist) listOf("Playlist",credit).filter { it.isNotBlank() }.joinToString(" · ")
+        else if (page.type == BrowseType.ALBUM) nativeAlbumHeaderCaption(sourceAlbumMetadata)
         else metaOverride ?: originalMeta
     // Every row on a release carries the same credit — see [pageCredit] — so
     // the first one speaks for the whole page, the same source the rows'
@@ -1626,7 +1631,7 @@ private fun ReleaseHeader(
     // no provider-specific detail DTO enters the visual composition.
     NativeReleaseHeaderLayout(
         title = page.title,
-        credit = credit,
+        credit = if (amsPlaylist) "" else credit,
         meta = meta,
         inlineAlbumMetadata = page.type == BrowseType.ALBUM,
         palette = palette,
@@ -1660,7 +1665,10 @@ private fun ReleaseHeader(
             }
         },
         actions = {
-            if (page.type == BrowseType.ALBUM ||
+            if (amsPlaylist && onToggleCatalogPin != null) {
+                NativePlaylistHeroActions(canPlay = songs.isNotEmpty(),isPinned = isCatalogPinned,
+                    onTogglePin = onToggleCatalogPin,onPlay = onPlay,onShuffle = onShuffle)
+            } else if (page.type == BrowseType.ALBUM ||
                 songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
                 metadataTracks.isNotEmpty() ||
                 onToggleCatalogPin != null || onRate != null) {
@@ -2136,6 +2144,7 @@ internal fun NativeArtistReleaseCard(
     selected: Boolean = false,
     onToggleSelection: (() -> Unit)? = null,
     artworkShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp),
+    centeredPortraitCaption: Boolean = false,
 ) {
     val shape = artworkShape
     Column(
@@ -2176,6 +2185,8 @@ internal fun NativeArtistReleaseCard(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             color = palette.onBackground,
+            modifier = if (centeredPortraitCaption) Modifier.fillMaxWidth() else Modifier,
+            textAlign = if (centeredPortraitCaption) TextAlign.Center else TextAlign.Start,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -2208,8 +2219,8 @@ private fun SectionCard(
         // Artist identity cards retain the same circular portrait and label
         // as the canonical similar-artist shelf, including its show-all grid.
         // Release cards still show only a validated year.
-        subtitle = if (portrait) stringResource(R.string.artist)
-            else canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
+        subtitle = if (portrait) "" else canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
+        centeredPortraitCaption = portrait,
         palette = palette,
         onClick = onClick,
         modifier = modifier,

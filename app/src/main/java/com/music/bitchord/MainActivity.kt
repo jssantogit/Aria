@@ -5956,7 +5956,8 @@ private fun BitChordApp(
                             val sourceOwnedAppleAlbum = detail == null &&
                                 (if (pageRouteKey.startsWith("discogs:"))
                                     discogsNativeVisual?.page?.type == BrowseType.ALBUM
-                                else appleSharedVisual?.page?.type == BrowseType.ALBUM)
+                                else appleSharedVisual?.page?.type == BrowseType.ALBUM ||
+                                    (pageRouteKey.startsWith("apple_music_web:") && appleSharedVisual?.page?.type == BrowseType.PLAYLIST))
                             val toolbarAlbum = detail ?: if (pageRouteKey.startsWith("discogs:"))
                                 discogsNativeVisual?.page else appleSharedVisual?.page
                             if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
