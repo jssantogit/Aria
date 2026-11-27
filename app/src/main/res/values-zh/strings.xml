@@ -1392,4 +1392,6 @@
     <string name="apple_player_share_song">分享歌曲</string>
     <string name="apple_player_share_lyrics">分享歌词…</string>
     <string name="apple_library_search_in_category">在%1$s中搜索</string>
+    <string name="providers_settings">提供方</string>
+    <string name="providers_settings_subtitle">管理目录、封面、歌词、统计、音频和下载提供方</string>
 </resources>

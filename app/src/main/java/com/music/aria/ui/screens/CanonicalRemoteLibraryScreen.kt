@@ -2081,7 +2081,7 @@ internal fun CanonicalTrackRow(
                 )
             } else {
                 CanonicalUnifiedArtwork(
-                    track, artworkLoader, Modifier.size(if (compactForArtist) 48.dp else 52.dp),
+                    track, artworkLoader, Modifier.size(if (compactForArtist) NATIVE_ARTIST_TRACK_COVER_SIZE else 52.dp),
                 )
             }
         },
@@ -2279,11 +2279,14 @@ internal fun NativeUnifiedLibraryCategoryHeader(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            // Back/action circles now rest at Home's Y, so the category
-            // title must remain below their 40dp visual bounds.
-            .padding(top = topBarContentPadding() + 8.dp +
-                com.music.aria.ui.components.HomeFloatingActionRestOffset,
-                bottom = 12.dp),
+            // The shared top inset already clears the 40dp floating circles.
+            // Do not add their resting offset a second time: it created the
+            // oversized gap visible between the Artists actions and heading.
+            .padding(
+                top = com.music.aria.ui.components.NativePageHeaderMetrics
+                    .categoryTitleTopInset(topBarContentPadding()),
+                bottom = 12.dp,
+            ),
     ) {
         Text(
             text = title,

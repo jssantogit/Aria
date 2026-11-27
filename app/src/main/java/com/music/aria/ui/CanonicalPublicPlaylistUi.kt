@@ -3,7 +3,6 @@ package com.music.aria.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import com.music.aria.ui.screens.CanonicalPublicPlaylistSearchRow
@@ -25,7 +24,7 @@ internal data class CanonicalPublicPlaylistUi(
 @Composable
 internal fun rememberCanonicalPublicPlaylistUi(
     viewModel: MainViewModel,
-    homeSelected: Boolean,
+    @Suppress("UNUSED_PARAMETER") homeSelected: Boolean,
     exploreSelected: Boolean,
     genreTag: String?,
 ): CanonicalPublicPlaylistUi {
@@ -33,24 +32,18 @@ internal fun rememberCanonicalPublicPlaylistUi(
     val status by viewModel.canonicalPublicPlaylistSearchStatus.collectAsStateWithLifecycle()
     val detail by viewModel.canonicalPublicPlaylistDetail.collectAsStateWithLifecycle()
 
-    LaunchedEffect(homeSelected, exploreSelected, genreTag) {
+    // Home no longer promotes unverified user-created playlist searches.
+    // Do not spend ListenBrainz requests on a hidden, uncurated shelf.
+    // Search and contextual genre playlists remain available independently.
+    LaunchedEffect(exploreSelected, genreTag) {
         when {
-            homeSelected -> viewModel.loadCanonicalPublicPlaylists()
             exploreSelected && genreTag == null -> viewModel.loadCanonicalExploreGenreCovers()
             exploreSelected -> viewModel.loadCanonicalPublicPlaylists(genreTag)
         }
     }
 
-    val homeShelf = remember(playlists) {
-        canonicalPublicPlaylistShelf(
-            "Playlists para descobrir", playlists["home"].orEmpty(),
-        )
-    }
-    val homeNotice = if (homeShelf != null) null else when (val current = status["home"]) {
-        is UiState.Error -> current.message
-        is UiState.Success -> "Nenhuma playlist pública de descoberta encontrada."
-        else -> "Procurando playlists públicas..."
-    }
+    val homeShelf: HomeShelf? = null
+    val homeNotice: String? = null
     val genreNotice = genreTag?.let { tag ->
         if (!playlists[tag].isNullOrEmpty()) null else when (val current = status[tag]) {
             is UiState.Error -> current.message

@@ -17,11 +17,12 @@ import java.net.URLDecoder
 object WebDavRepository {
 
     fun isConfigured(): Boolean =
-        WebDavConfig.isConfigured(AppSettings.webdavUrl.value)
+        AppSettings.webdavEnabled.value &&
+            WebDavConfig.isConfigured(AppSettings.webdavUrl.value)
 
     suspend fun getSongs(): List<Song> = withContext(Dispatchers.IO) {
         val url = AppSettings.webdavUrl.value
-        if (!WebDavConfig.isConfigured(url)) return@withContext emptyList()
+        if (!isConfigured()) return@withContext emptyList()
         val listing = WebDavClient.listLibrary(
             baseUrl = url,
             username = AppSettings.webdavUsername.value,

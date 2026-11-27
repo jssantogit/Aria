@@ -56,6 +56,18 @@ import kotlin.math.roundToInt
 /** A missing artist photo is a color-only hero, not a Coil request for null. */
 internal fun hasNativeArtistBackdropStill(url: String?): Boolean = !url.isNullOrBlank()
 
+/**
+ * A source without licensed artwork must not reserve a full-screen blank hero.
+ * Use the same native artist frame and header, only with a compact wash.
+ * This is a content capability, not a provider-specific screen layout.
+ */
+internal fun nativeArtistHeroHeight(
+    hasStill: Boolean,
+    hasCanvas: Boolean,
+    expandedHeight: Dp,
+): Dp = if (hasStill || hasCanvas) expandedHeight else 112.dp
+
+
 @Composable
 internal fun PageBackground(
     palette: ArtworkPalette,

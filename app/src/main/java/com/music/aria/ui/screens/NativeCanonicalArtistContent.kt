@@ -256,7 +256,7 @@ internal fun NativeCanonicalArtistContent(
                         releases = releases,
                         palette = palette,
                         horizontalPadding = PAGE_GUTTER,
-                        itemSpacing = 12.dp,
+                        topPadding = NATIVE_ARTIST_RELEASE_TOP_SPACING,
                         itemKey = { it.id },
                     ) { release ->
                         NativeArtistReleaseCard(
@@ -265,7 +265,8 @@ internal fun NativeCanonicalArtistContent(
                                 nativeReleases.evidence[release.id]?.firstReleaseDate,
                             ).orEmpty(),
                             palette = palette,
-                            modifier = Modifier.width(152.dp),
+                            // Use NativeArtistReleaseCard's standard card width,
+                            // exactly as in the public/catalogue artist composer.
                             onClick = {
                                 if (selectedItems.isNotEmpty()) onToggleSelection(
                                     CanonicalLibrarySelection(

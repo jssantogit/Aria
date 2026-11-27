@@ -119,6 +119,7 @@ private val LocalNativeCompactMenuActionGate =
     compositionLocalOf<NativeCompactMenuActionGate?> { null }
 
 private val LocalNativeCompactHomePlateStyle = compositionLocalOf { false }
+private val LocalNativeCompactRows = compositionLocalOf { false }
 
 /** Shared Android page capture; Dialog/Popup subcompositions inherit the live source. */
 val LocalNeutralOverlayHazeState = compositionLocalOf<HazeState?> { null }
@@ -129,8 +130,8 @@ internal fun nativeNeutralOverlayCanBlur(hazeAvailable: Boolean, reduceBlur: Boo
     hazeAvailable && !reduceBlur
 
 /** Keep the familiar compact button menu unless the creator opts into the held plate. */
-internal fun nativeCompactMenuRowHeightDp(homePlateStyle: Boolean): Int =
-    if (homePlateStyle) 62 else 54
+internal fun nativeCompactMenuRowHeightDp(homePlateStyle: Boolean, compactRows: Boolean = false): Int =
+    if (compactRows) 46 else if (homePlateStyle) 62 else 54
 
 internal fun nativeCompactMenuCornerRadiusDp(homePlateStyle: Boolean): Int =
     if (homePlateStyle) 16 else 18
@@ -189,6 +190,8 @@ fun NativeCompactOverflowMenu(
     maxMenuWidth: Dp = 320.dp,
     /** All overflow menus use the same solid, native catalog-source plate. */
     homePlateStyle: Boolean = true,
+    /** Only two-option toolbar menus opt into the tighter native plate. */
+    compactRows: Boolean = false,
     /** Color from ArtworkPalette.elevated for pages with dynamic cover washes. */
     plateTint: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -267,6 +270,7 @@ fun NativeCompactOverflowMenu(
                         LocalNativeCompactMenuActionsEnabled provides expanded,
                         LocalNativeCompactMenuActionGate provides actionGate,
                         LocalNativeCompactHomePlateStyle provides homePlateStyle,
+                        LocalNativeCompactRows provides compactRows,
                     ) {
                         // Long lists (e.g. saved remote filters) scroll inside
                         // their bounded popup; short menus keep natural height.
@@ -275,7 +279,7 @@ fun NativeCompactOverflowMenu(
                             Modifier.heightIn(max = maxContentHeight)
                                 .verticalScroll(scrollState)
                         Column(
-                            modifier = scrollModifier.padding(vertical = 5.dp),
+                            modifier = scrollModifier.padding(vertical = if (compactRows) 2.dp else 5.dp),
                             content = content,
                         )
                     }
@@ -338,10 +342,13 @@ fun NativeCompactMenuItem(
                 if (!actionEnabled || actionGate?.consumed == true) disabled()
                 if (selected != null) this.selected = selected
             }
-            .heightIn(min = nativeCompactMenuRowHeightDp(LocalNativeCompactHomePlateStyle.current).dp)
+            .heightIn(min = nativeCompactMenuRowHeightDp(
+                LocalNativeCompactHomePlateStyle.current,
+                LocalNativeCompactRows.current,
+            ).dp)
             .padding(
-                horizontal = if (LocalNativeCompactHomePlateStyle.current) 20.dp else 16.dp,
-                vertical = 10.dp,
+                horizontal = if (LocalNativeCompactRows.current) 16.dp else if (LocalNativeCompactHomePlateStyle.current) 20.dp else 16.dp,
+                vertical = if (LocalNativeCompactRows.current) 5.dp else 10.dp,
             ),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -367,7 +374,7 @@ fun NativeCompactMenuItem(
 @Composable
 fun NativeCompactMenuDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp),
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = if (LocalNativeCompactRows.current) 1.dp else 3.dp),
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.outlineVariant,
     )

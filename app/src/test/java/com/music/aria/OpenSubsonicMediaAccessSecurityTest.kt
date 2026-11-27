@@ -1,6 +1,13 @@
 package com.music.aria
 
 import com.music.aria.data.catalog.MediaAssetEntity
+import com.music.aria.data.providers.ProviderCapability
+import com.music.aria.data.providers.ProviderCapabilityPolicy
+import com.music.aria.data.providers.ProviderChoice
+import com.music.aria.data.providers.ProviderDescriptor
+import com.music.aria.data.providers.ProviderKey
+import com.music.aria.data.providers.ProviderPolicyGate
+import com.music.aria.data.providers.ProviderReadiness
 import com.music.aria.data.catalog.provider.opensubsonic.OpenSubsonicAccountDraft
 import com.music.aria.data.catalog.provider.opensubsonic.OpenSubsonicAccountPersistence
 import com.music.aria.data.catalog.provider.opensubsonic.OpenSubsonicAccountRecord
@@ -72,10 +79,18 @@ class OpenSubsonicMediaAccessSecurityTest {
                 secretReplacement = secret,
             ),
         )
+        val permitted = ProviderKey("opensubsonic", "home")
+        val capability = ProviderCapability.AUDIO_PLAYBACK
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(
+                permitted, setOf(capability), ProviderReadiness.READY,
+            )),
+            choices = mapOf(capability to listOf(ProviderChoice(permitted, true, 0))),
+        ))
         val asset = MediaAssetEntity(
             id = "asset-1",
             recordingId = "recording-1",
-            provider = "opensubsonic:home",
+            provider = com.music.aria.data.catalog.provider.opensubsonic.openSubsonicProviderKey(accounts.savedConfig()!!),
             sourceKey = "server-track-1",
             uri = "opensubsonic://asset/home/server-track-1",
             path = null,
@@ -89,7 +104,8 @@ class OpenSubsonicMediaAccessSecurityTest {
             credentials = credentials,
             assets = assets,
             assetStore = assetStore,
-            access = OpenSubsonicMediaAccess(assetStore, accounts) { "abcdef123456" },
+            access = OpenSubsonicMediaAccess(assetStore, accounts,
+                saltFactory = { "abcdef123456" }, gateProvider = { gate }),
         )
     }
 

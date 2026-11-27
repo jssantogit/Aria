@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,12 +53,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,12 +74,14 @@ import com.music.aria.ui.icons.AriaIcons
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import coil3.compose.AsyncImage
+import com.music.aria.ui.components.ResilientAppleCover
 import com.music.aria.data.model.BrowseItem
 import com.music.aria.data.model.BrowseType
 import com.music.aria.data.model.ROW_ART_PX
 import com.music.aria.data.model.SearchFilter
 import com.music.aria.data.model.artworkAt
 import com.music.aria.data.model.SearchResult
+import com.music.aria.data.model.ShelfItem
 import com.music.aria.data.model.Song
 import com.music.aria.data.model.playingRowMatcher
 import com.music.aria.data.model.UiState
@@ -143,6 +150,11 @@ data class CanonicalCatalogSearchRow(
     /** Title of the exact verified Official audio edition on a public artist
      * Recording. Display-only; never grants audio access or creates a ReleaseId. */
     val officialReleaseTitle: String? = null,
+    /** Exact-storefront artwork proof. Never infer this from names. */
+    val appleStoreUrl: String? = null,
+    val appleStoreBadgeUrl: String? = null,
+    /** Positive MusicBrainz release-group tags from the current source response only. */
+    val editorialGenreTags: List<String> = emptyList(),
 )
 
 /**
@@ -169,6 +181,10 @@ data class CanonicalCatalogDetailPage(
     /** Next MusicBrainz browse offset, which must use returned row count. */
     val nextOffset: Int? = null,
     val totalCount: Int? = null,
+    /** Exact editions of the opened ReleaseGroup, separate from track recordings. */
+    val editionRows: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** MusicBrainz groups from one exact artist scope, not title matches. */
+    val artistRelatedRows: List<CanonicalCatalogSearchRow> = emptyList(),
 )
 
 /** A verified public playlist row is metadata, not a playable Song. */
@@ -237,6 +253,8 @@ fun SearchScreen(
     searchingAddons: Boolean = false,
     /** Public MusicBrainz discovery shows metadata-only rows with no play actions. */
     searchingCanonical: Boolean = false,
+    /** Reuses the existing MusicBrainz/Apple row renderers according to source priority. */
+    catalogSearchMusicBrainzVisible: Boolean = false,
     canonicalResults: UiState<List<CanonicalCatalogSearchRow>>? = null,
     canonicalPublicPlaylists: UiState<List<CanonicalPublicPlaylistSearchRow>>? = null,
     onCanonicalPlaylistOpen: (CanonicalPublicPlaylistSearchRow) -> Unit = {},
@@ -278,9 +296,29 @@ fun SearchScreen(
      * about the results, and the switcher would just push them down.
      */
     sourceSwitcher: (@Composable () -> Unit)? = null,
+    /** Apple storefront-native products; never cast their IDs to MusicBrainz. */
+    appleResults: UiState<List<AppleEditorialSearchRow>>? = null,
+    appleArtistResults: UiState<List<AppleEditorialSearchRow>>? = null,
+    appleTrackResults: UiState<List<AppleEditorialTrackSearchRow>>? = null,
+    onAppleOpen: (AppleEditorialSearchRow) -> Unit = {},
+    onAppleTrackOpen: (AppleEditorialTrackSearchRow) -> Unit = {},
+    applePaging: Map<AppleSearchSection, AppleSearchPageStatus> = emptyMap(),
+    onAppleLoadMore: (AppleSearchSection) -> Unit = {},
+    /** Discogs Artist IDs are separate provider-native metadata identities. */
+    discogsArtistResults: UiState<List<DiscogsNativeArtistSearchRow>>? = null,
+    onDiscogsArtistOpen: (DiscogsNativeArtistSearchRow) -> Unit = {},
+    discogsHasMore: Boolean = false,
+    onDiscogsLoadMore: () -> Unit = {},
+    discogsReleaseResults: UiState<List<DiscogsNativeReleaseSearchRow>>? = null,
+    onDiscogsReleaseOpen: (DiscogsNativeReleaseSearchRow) -> Unit = {},
+    discogsReleaseHasMore: Boolean = false,
+    onDiscogsReleaseLoadMore: () -> Unit = {},
     /** Mirrors the actual ViewModel submit state; Local remains live while typing. */
     searchCommitted: Boolean = false,
     appleResultTabs: Boolean = false,
+    /** Provider-neutral genre/subgenre navigation; it is not a fake catalog hit. */
+    categorySearchResults: List<ShelfItem> = emptyList(),
+    onCategoryOpen: (ShelfItem) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -310,6 +348,39 @@ fun SearchScreen(
     // appear as a dropdown beneath the text completions rather than floating
     // after the search has committed.
     val showTypeahead = typeaheadResults.isNotEmpty() && suggesting
+    // Compact General results first, and reveal already fetched Apple products
+    // before spending a separate source-specific paging request.
+    var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
+    var discogsGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
+    val pinnedMixedMore = searchingCanonical && searchCommitted &&
+        filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()
+    val appleMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
+        discogsArtistResults == null && discogsReleaseResults == null
+    val appleArtistRows = (appleArtistResults as? UiState.Success)?.data.orEmpty()
+    val appleTrackRows = (appleTrackResults as? UiState.Success)?.data.orEmpty()
+    val appleAlbumRows = (appleResults as? UiState.Success)?.data.orEmpty()
+    val appleUnshown = appleMixedMore && appleUnifiedSearchEntries(
+        query, appleArtistRows, appleTrackRows, appleAlbumRows,
+    ).size > appleGeneralVisibleRows
+    val appleNext = if (appleMixedMore) appleUnifiedNextPage(
+        query, appleArtistRows, appleTrackRows, appleAlbumRows, applePaging,
+    ) else null
+    val appleRequestLoading = appleMixedMore &&
+        applePaging.values.any { it.loadingMore }
+    val discogsMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
+        (discogsArtistResults != null || discogsReleaseResults != null)
+    val discogsArtistRows = (discogsArtistResults as? UiState.Success)?.data.orEmpty()
+    val discogsReleaseRows = (discogsReleaseResults as? UiState.Success)?.data.orEmpty()
+    val discogsUnshown = discogsMixedMore && discogsUnifiedSearchEntries(
+        query, discogsArtistRows, discogsReleaseRows,
+    ).size > discogsGeneralVisibleRows
+    val discogsNext = if (discogsMixedMore) discogsUnifiedNextPage(
+        query, discogsArtistRows, discogsHasMore, discogsReleaseHasMore,
+    ) else null
+    val pinnedMoreVisible = (pinnedMixedMore && catalogSearchMusicBrainzVisible &&
+        (canonicalSearchHasMore || canonicalSearchLoadingMore)) ||
+        (appleMixedMore && (appleUnshown || appleNext != null || appleRequestLoading)) ||
+        (discogsMixedMore && (discogsUnshown || discogsNext != null))
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {
@@ -361,7 +432,11 @@ fun SearchScreen(
             if ((if (appleResultTabs) searchCommitted else !suggesting) &&
                 !searchingLibrary && !searchingAddons &&
                 (!searchingCanonical || canonicalDetail == null) &&
-                (results != null || (searchingCanonical && canonicalResults != null))
+                (results != null || (searchingCanonical &&
+                    (canonicalResults != null || appleResults != null ||
+                        appleArtistResults != null || appleTrackResults != null ||
+                        discogsArtistResults != null ||
+                        discogsReleaseResults != null)))
             ) {
                 SearchFilterTabs(
                     appleStyle = appleResultTabs,
@@ -376,14 +451,47 @@ fun SearchScreen(
             }
         }
 
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                bottom = contentPadding.calculateBottomPadding() +
+                    (if (pinnedMoreVisible) 60.dp else 0.dp),
+            ),
         ) {
             when {
                 searchingCanonical -> {
-                    if (canonicalSearchEditing(query, searchCommitted, canonicalDetail != null)) {
+                    val editingCatalog = canonicalSearchEditing(
+                        query, searchCommitted, canonicalDetail != null,
+                    )
+                    if (!editingCatalog && filter == SearchFilter.ALL &&
+                        query.isNotBlank() && canonicalDetail == null
+                    ) {
+                        canonicalCategorySearchRows(categorySearchResults, onCategoryOpen)
+                    }
+                    if (editingCatalog) {
+                        // Editing is typeahead, not a results grid. Category
+                        // navigation uses the native magnifying-glass suggestion
+                        // visual and only becomes a category tile after Submit.
+                        if (filter == SearchFilter.ALL) {
+                            items(
+                                categorySearchResults.take(3),
+                                key = { "canonical:genre-suggestion:" + it.browseId },
+                            ) { category ->
+                                SuggestionRow(
+                                    term = category.title,
+                                    isQueryAction = true,
+                                    onFill = null,
+                                    onClick = {
+                                        // Preview is a query suggestion, not category navigation.
+                                        submitCanonicalGenrePreview(category, onSuggestionClick)
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    },
+                                )
+                            }
+                        }
                         // Only locally known text, not invented Apple/server completions:
                         // an explicit action for the typed query plus matching history.
                         val known = canonicalRecentSearchEntries(history)
@@ -450,42 +558,112 @@ fun SearchScreen(
                     if (query.isBlank() &&
                         canonicalResults == null && canonicalDetail == null
                     ) {
-                    // Same recent-search row, clear/remove actions, and persisted
-                    // list as the original Search; never route legacy video IDs
-                    // through a MusicBrainz-only history entry.
-                    val recent = canonicalRecentSearchEntries(history)
-                    if (recent.isEmpty()) {
-                        item {
-                            MessageState(stringResource(Res.string.canonical_search_start))
+                        val recent = canonicalRecentSearchEntries(history)
+                        if (recent.isEmpty()) {
+                            item { MessageState(stringResource(Res.string.canonical_search_start)) }
+                        } else {
+                            recentSearches(
+                                history = recent,
+                                currentSong = currentSong,
+                                isPlaying = isPlaying,
+                                onClick = onHistoryClick,
+                                onRemove = onHistoryRemove,
+                                onClear = onHistoryClear,
+                            )
                         }
+                    } else if (canonicalSearchEditing(query, searchCommitted, canonicalDetail != null)) {
+                        // Native pre-submit suggestions above own the editing state.
+                    } else if (filter == SearchFilter.PLAYLISTS && canonicalDetail == null) {
+                        canonicalPublicPlaylistSearchResults(
+                            canonicalPublicPlaylists, onCanonicalPlaylistOpen,
+                            onCanonicalPlaylistLongPress,
+                        )
+                    } else if (catalogSearchMusicBrainzVisible && canonicalDetail == null) {
+                        canonicalMusicBrainzResults(
+                            query, canonicalResults, canonicalDetail, filter,
+                            onCanonicalOpen, onCanonicalLongPress, onCanonicalBack,
+                            onCanonicalLoadMore, canonicalLoadingMore,
+                            onCanonicalSearchLoadMore, canonicalSearchHasMore,
+                            canonicalSearchLoadingMore,
+                            onCanonicalPlay, onCanonicalAddToQueue,
+                            onCanonicalRecordingInfo, appleResultTabs,
+                            showInlineSearchMore = !pinnedMixedMore,
+                        )
+                    } else if ((discogsArtistResults != null ||
+                        discogsReleaseResults != null) && canonicalDetail == null) {
+                        if (filter == SearchFilter.ALL) {
+                            // One list of source-owned results. Type sections
+                            // exist only in the native search filter tabs.
+                            discogsUnifiedSearchRows(
+                                query, discogsArtistResults, discogsReleaseResults,
+                                onDiscogsArtistOpen, onDiscogsReleaseOpen,
+                                visibleLimit = discogsGeneralVisibleRows,
+                            )
+                        } else if (filter == SearchFilter.ARTISTS) {
+                            discogsNativeArtistRows(
+                                query, discogsArtistResults, onDiscogsArtistOpen,
+                                discogsHasMore, onDiscogsLoadMore,
+                            )
+                        } else if (filter == SearchFilter.ALBUMS) {
+                            discogsNativeReleaseRows(
+                                discogsReleaseResults, onDiscogsReleaseOpen,
+                                discogsReleaseHasMore, onDiscogsReleaseLoadMore,
+                            )
+                        }
+                        if (filter == SearchFilter.SONGS) {
+                            item(key = "discogs:search:no-recording-index") {
+                                MessageState("O Discogs disponibiliza lançamentos e suas listas de faixas, mas não uma busca de músicas reproduzíveis.")
+                            }
+                        }
+                    } else if (filter == SearchFilter.ARTISTS && canonicalDetail == null) {
+                        appleEditorialArtistRows(
+                            appleArtistResults, onAppleOpen,
+                            paging = applePaging[AppleSearchSection.ARTISTS],
+                            onLoadMore = { onAppleLoadMore(AppleSearchSection.ARTISTS) },
+                        )
+                    } else if (filter == SearchFilter.ALBUMS && canonicalDetail == null) {
+                        appleEditorialAlbumRows(
+                            appleResults, onAppleOpen,
+                            paging = applePaging[AppleSearchSection.ALBUMS],
+                            onLoadMore = { onAppleLoadMore(AppleSearchSection.ALBUMS) },
+                        )
+                    } else if (filter == SearchFilter.SONGS && canonicalDetail == null) {
+                        appleEditorialTrackRows(
+                            appleTrackResults, onAppleTrackOpen,
+                            paging = applePaging[AppleSearchSection.TRACKS],
+                            onLoadMore = { onAppleLoadMore(AppleSearchSection.TRACKS) },
+                        )
+                    } else if (filter == SearchFilter.ALL && canonicalDetail == null &&
+                        query.isNotBlank()
+                    ) {
+                        // One mixed and relevancy-led Apple result list, exactly
+                        // the same native row structure as MusicBrainz. Types
+                        // are separated ONLY by the existing filter tabs.
+                        appleUnifiedSearchRows(
+                            query = query,
+                            artists = appleArtistResults,
+                            tracks = appleTrackResults,
+                            albums = appleResults,
+                            onOpen = onAppleOpen,
+                            onTrackOpen = onAppleTrackOpen,
+                            paging = applePaging,
+                            onLoadMore = onAppleLoadMore,
+                            visibleLimit = appleGeneralVisibleRows,
+                            onRevealMore = { appleGeneralVisibleRows += 18 },
+                            showInlineFooter = false,
+                        )
                     } else {
-                        recentSearches(
-                            history = recent,
-                            currentSong = currentSong,
-                            isPlaying = isPlaying,
-                            onClick = onHistoryClick,
-                            onRemove = onHistoryRemove,
-                            onClear = onHistoryClear,
+                        canonicalMusicBrainzResults(
+                            query, canonicalResults, canonicalDetail, filter,
+                            onCanonicalOpen, onCanonicalLongPress, onCanonicalBack,
+                            onCanonicalLoadMore, canonicalLoadingMore,
+                            onCanonicalSearchLoadMore, canonicalSearchHasMore,
+                            canonicalSearchLoadingMore,
+                            onCanonicalPlay, onCanonicalAddToQueue,
+                            onCanonicalRecordingInfo, appleResultTabs,
+                            showInlineSearchMore = !pinnedMixedMore,
                         )
                     }
-                } else if (canonicalSearchEditing(query, searchCommitted, canonicalDetail != null)) {
-                    // The pre-submit surface above owns text suggestions. Do not
-                    // append the generic catalog "start searching" hint beneath them.
-                    // On submit, the existing result renderer takes over.
-                } else if (filter == SearchFilter.PLAYLISTS && canonicalDetail == null) {
-                    canonicalPublicPlaylistSearchResults(
-                        canonicalPublicPlaylists, onCanonicalPlaylistOpen,
-                        onCanonicalPlaylistLongPress,
-                    )
-                } else canonicalMusicBrainzResults(
-                    query, canonicalResults, canonicalDetail, filter, onCanonicalOpen,
-                    onCanonicalLongPress, onCanonicalBack,
-                    onCanonicalLoadMore, canonicalLoadingMore,
-                    onCanonicalSearchLoadMore, canonicalSearchHasMore,
-                    canonicalSearchLoadingMore,
-                    onCanonicalPlay, onCanonicalAddToQueue,
-                    onCanonicalRecordingInfo, appleResultTabs,
-                )
                 }
                 searchingAddons && serverSearchEditing(query, searchCommitted) -> {
                     // Server search is explicit; the backend has no verified
@@ -716,6 +894,53 @@ fun SearchScreen(
                 )
             }
         }
+        // When the last results are visible, put ONE pagination action near
+        // the floating tab bar. On short pages this eliminates the oversized
+        // empty strip beneath the former in-list button. Content receives an
+        // extra footer clearance so neither tracks nor CTA are obscured.
+        val atEnd = listState.layoutInfo.let { layout ->
+            nativeCatalogPaginationAtEnd(
+                lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                totalItems = layout.totalItemsCount,
+            )
+        }
+        if (pinnedMoreVisible && atEnd) {
+            val isApple = appleMixedMore
+            NativeSearchSecondaryAction(
+                label = stringResource(Res.string.canonical_more_results),
+                onClick = {
+                    if (isApple) {
+                        if (appleUnshown) appleGeneralVisibleRows += 18
+                        else appleNext?.let(onAppleLoadMore)
+                    } else if (discogsMixedMore) {
+                        if (discogsUnshown) discogsGeneralVisibleRows += 18
+                        else when (discogsNext) {
+                            DiscogsUnifiedSearchNext.ARTISTS -> onDiscogsLoadMore()
+                            DiscogsUnifiedSearchNext.RELEASES -> onDiscogsReleaseLoadMore()
+                            null -> Unit
+                        }
+                    } else onCanonicalSearchLoadMore()
+                },
+                enabled = when {
+                    isApple -> appleUnshown || appleNext != null
+                    discogsMixedMore -> discogsUnshown || discogsNext != null
+                    else -> !canonicalSearchLoadingMore
+                },
+                loading = when {
+                    isApple -> !appleUnshown && appleNext == null && appleRequestLoading
+                    discogsMixedMore -> false
+                    else -> canonicalSearchLoadingMore
+                },
+                highContrast = true,
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = PAGE_GUTTER, end = PAGE_GUTTER,
+                        bottom = contentPadding.calculateBottomPadding() + 12.dp,
+                    ),
+            )
+        }
+        }
     }
 }
 
@@ -724,6 +949,579 @@ fun SearchScreen(
  * not that the user owns an audio rendition. Keep the UI strictly non-playable
  * until canonical availability resolution is wired for each Recording MBID.
  */
+/**
+ * This Android-facing catalog surface reuses the native 52dp composition, but
+ * the album's browsing action remains its own typed Apple route. Metadata
+ * results are never converted into Song, added to a queue or given overflow
+ * actions that assume a playable MediaAsset.
+ */
+/**
+ * A music track from the Apple catalog remains metadata-only. Opening it may
+ * navigate to its exact Apple collection; no tap or swipe starts playback.
+ */
+/**
+ * The official public Search API lacks remote offset. More here means either
+ * undisplayed Apple results already fetched or another bounded search with
+ * documented attributes. We never claim total result completeness.
+ */
+/** Only submitted category results navigate; typing previews submit text search. */
+fun submitCanonicalGenrePreview(
+    category: ShelfItem,
+    searchFor: (String) -> Unit,
+) {
+    category.title.trim().takeIf(String::isNotEmpty)?.let(searchFor)
+}
+
+/** Genre categories are first-class Search results; never Song or BrowseType.ALBUM. */
+internal fun LazyListScope.canonicalCategorySearchRows(
+    categories: List<ShelfItem>,
+    onOpen: (ShelfItem) -> Unit,
+) {
+    items(categories, key = { "genre-result:" + it.browseId }) { category ->
+        NativeSearchResultRow(
+            row = NativeSearchRowUi(
+                title = category.title,
+                subtitle = category.subtitle,
+                artworkUri = null,
+                artistPortrait = false,
+            ),
+            onClick = { onOpen(category) },
+            genreCategoryArtworkTitle = category.title,
+        )
+    }
+}
+
+/** Only show the floating continuation after real results reach the end. */
+internal fun nativeCatalogPaginationAtEnd(lastVisibleIndex: Int, totalItems: Int): Boolean =
+    totalItems > 0 && lastVisibleIndex >= totalItems - 2
+
+/**
+ * One native search-pagination control for every public catalog provider.
+ * Search changes the fetched source, never its visual component tree.
+ */
+@Composable
+private fun NativeCatalogSearchLoadMore(
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    loading: Boolean = false,
+) {
+    // MusicBrainz, Discogs, and iTunes use the SAME pagination control.
+    // White/black contrast and rounded corners are native BitChord style.
+    NativeSearchSecondaryAction(
+        label = label,
+        onClick = onClick,
+        enabled = enabled,
+        loading = loading,
+        highContrast = true,
+        modifier = modifier.testTag("native-catalog-search-load-more"),
+    )
+}
+
+/**
+ * General iTunes results are not three stacked provider sub-pages. One
+ * native list mixes verified Apple artists, tracks and albums; typed tabs
+ * continue to show the full source-specific result sets independently.
+ */
+private fun LazyListScope.appleUnifiedSearchRows(
+    query: String,
+    artists: UiState<List<AppleEditorialSearchRow>>?,
+    tracks: UiState<List<AppleEditorialTrackSearchRow>>?,
+    albums: UiState<List<AppleEditorialSearchRow>>?,
+    onOpen: (AppleEditorialSearchRow) -> Unit,
+    onTrackOpen: (AppleEditorialTrackSearchRow) -> Unit,
+    paging: Map<AppleSearchSection, AppleSearchPageStatus>,
+    onLoadMore: (AppleSearchSection) -> Unit,
+    visibleLimit: Int,
+    onRevealMore: () -> Unit,
+    showInlineFooter: Boolean = true,
+) {
+    val artistRows = (artists as? UiState.Success)?.data.orEmpty()
+    val trackRows = (tracks as? UiState.Success)?.data.orEmpty()
+    val albumRows = (albums as? UiState.Success)?.data.orEmpty()
+    val unified = appleUnifiedSearchEntries(query, artistRows, trackRows, albumRows)
+    if (unified.isEmpty()) {
+        when {
+            artists is UiState.Loading || tracks is UiState.Loading ||
+                albums is UiState.Loading ->
+                songListSkeleton(keyPrefix = "apple:unified")
+            artists is UiState.Error && tracks is UiState.Error &&
+                albums is UiState.Error ->
+                item(key = "apple:unified:error") {
+                    MessageState(stringResource(Res.string.apple_catalog_unavailable))
+                }
+            else -> item(key = "apple:unified:empty") {
+                MessageState(stringResource(Res.string.canonical_empty_search))
+            }
+        }
+    } else {
+        itemsIndexed(
+            items = unified.take(visibleLimit),
+            key = { _, item ->
+                when (item) {
+                    is AppleUnifiedSearchEntry.Artist ->
+                        "apple:unified:artist:${item.row.browseId}"
+                    is AppleUnifiedSearchEntry.Album ->
+                        "apple:unified:album:${item.row.browseId}"
+                    is AppleUnifiedSearchEntry.Track ->
+                        "apple:unified:track:${item.row.key}"
+                }
+            },
+        ) { _, result ->
+            when (result) {
+                is AppleUnifiedSearchEntry.Artist -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = result.row.title,
+                        subtitle = stringResource(Res.string.canonical_artist_kind)
+                            .substringBefore('·').trim(),
+                        artworkUri = result.row.artworkUri,
+                        artistPortrait = true,
+                    ),
+                    onClick = { onOpen(result.row) },
+                )
+                is AppleUnifiedSearchEntry.Track -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = result.row.title,
+                        subtitle = result.row.artistName,
+                        artworkUri = result.row.artworkUri,
+                        artistPortrait = false,
+                    ),
+                    onClick = if (result.row.albumBrowseId != null)
+                        ({ onTrackOpen(result.row) }) else null,
+                )
+                is AppleUnifiedSearchEntry.Album -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = result.row.title,
+                        subtitle = result.row.artistName,
+                        artworkUri = result.row.artworkUri,
+                        artistPortrait = false,
+                    ),
+                    onClick = { onOpen(result.row) },
+                )
+            }
+        }
+    }
+    val hasUnshown = unified.size > visibleLimit
+    val nextSource = appleUnifiedNextPage(
+        query, artistRows, trackRows, albumRows, paging,
+    )
+    val sourceLoading = paging.values.any { it.loadingMore }
+    if (showInlineFooter && (hasUnshown || nextSource != null || sourceLoading)) {
+        item(key = "apple:unified:more") {
+            NativeCatalogSearchLoadMore(
+                label = stringResource(Res.string.canonical_more_results),
+                onClick = {
+                    if (hasUnshown) onRevealMore()
+                    else nextSource?.let(onLoadMore)
+                },
+                enabled = hasUnshown || nextSource != null,
+                loading = !hasUnshown && nextSource == null && sourceLoading,
+                modifier = Modifier.fillMaxWidth().padding(
+                    start = PAGE_GUTTER, end = PAGE_GUTTER,
+                    top = 12.dp, bottom = 8.dp,
+                ),
+            )
+        }
+    }
+}
+
+private fun LazyListScope.appleSearchPagingFooter(
+    section: AppleSearchSection,
+    state: AppleSearchPageStatus?,
+    onLoadMore: () -> Unit,
+) {
+    if (state == null) return
+    if (state.hasMore || state.retryableError) {
+        item(key = "apple:search:more:${section.name}") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(
+                    horizontal = PAGE_GUTTER, vertical = 8.dp,
+                ),
+            ) {
+                NativeCatalogSearchLoadMore(
+                    label = stringResource(Res.string.canonical_more_results),
+                    onClick = onLoadMore,
+                    enabled = !state.loadingMore,
+                    loading = state.loadingMore,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                // The unified native button already draws its loading
+                // indicator; do not stack a second spinner beneath it.
+                if (state.retryableError) {
+                    Text(
+                        stringResource(Res.string.apple_discovery_failed),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+    if (state.coverageUncertain && !state.hasMore) {
+        item(key = "apple:search:incomplete:${section.name}") {
+            Text(
+                stringResource(Res.string.apple_search_coverage_note),
+                modifier = Modifier.padding(
+                    horizontal = PAGE_GUTTER, vertical = 12.dp,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.appleEditorialTrackRows(
+    results: UiState<List<AppleEditorialTrackSearchRow>>?,
+    onAlbumOpen: (AppleEditorialTrackSearchRow) -> Unit,
+    showHeading: Boolean = false,
+    paging: AppleSearchPageStatus? = null,
+    onLoadMore: () -> Unit = {},
+) {
+    if (showHeading && (results as? UiState.Success)?.data?.isNotEmpty() == true) {
+        item(key = "apple:tracks:heading") {
+            Text(
+                text = stringResource(Res.string.canonical_filter_songs),
+                modifier = Modifier.padding(
+                    start = PAGE_GUTTER, end = PAGE_GUTTER,
+                    top = 16.dp, bottom = 6.dp,
+                ),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+    when (results) {
+        null -> if (!showHeading) item(key = "apple:track:hint") {
+            MessageState(stringResource(Res.string.canonical_search_hint))
+        }
+        UiState.Loading -> songListSkeleton(keyPrefix = "apple:tracks")
+        is UiState.Error -> item(key = "apple:track:error") {
+            MessageState(stringResource(Res.string.apple_catalog_unavailable))
+        }
+        is UiState.Success -> if (results.data.isEmpty()) {
+            if (!showHeading) item(key = "apple:track:empty") {
+                MessageState(stringResource(Res.string.apple_no_tracks))
+            }
+        } else itemsIndexed(
+            items = results.data,
+            key = { _, track -> "apple:track:search:${track.key}" },
+        ) { index, track ->
+            NativeSearchResultRow(
+                row = NativeSearchRowUi(
+                    title = track.title,
+                    subtitle = track.artistName,
+                    artworkUri = track.artworkUri,
+                    artistPortrait = false,
+                ),
+                onClick = if (track.albumBrowseId != null) {
+                    { onAlbumOpen(track) }
+                } else null,
+                onLongPress = null,
+            )
+            if (index < results.data.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+    }
+    appleSearchPagingFooter(
+        AppleSearchSection.TRACKS, paging, onLoadMore,
+    )
+}
+
+
+/**
+ * Uses native Apple/BitChord search row geometry while preserving the exact
+ * Discogs artist ID. No record is ever playable or converted into an MBID.
+ */
+
+/** Exact Discogs Release IDs; complete metadata is resolved when the row opens. */
+
+/** Same single native result list as the other public catalog providers. */
+private fun LazyListScope.discogsUnifiedSearchRows(
+    query: String,
+    artists: UiState<List<DiscogsNativeArtistSearchRow>>?,
+    releases: UiState<List<DiscogsNativeReleaseSearchRow>>?,
+    onArtistOpen: (DiscogsNativeArtistSearchRow) -> Unit,
+    onReleaseOpen: (DiscogsNativeReleaseSearchRow) -> Unit,
+    visibleLimit: Int,
+) {
+    val entries = discogsUnifiedSearchEntries(
+        query, (artists as? UiState.Success)?.data.orEmpty(),
+        (releases as? UiState.Success)?.data.orEmpty(),
+    )
+    when {
+        entries.isNotEmpty() -> items(
+            items = entries.take(visibleLimit),
+            key = { entry -> when (entry) {
+                is DiscogsUnifiedSearchEntry.Artist ->
+                    "discogs:general:artist:${entry.row.artistId}"
+                is DiscogsUnifiedSearchEntry.Release ->
+                    "discogs:general:release:${entry.row.releaseId}"
+            } },
+        ) { entry ->
+            when (entry) {
+                is DiscogsUnifiedSearchEntry.Artist -> NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = discogsArtistDisplayName(entry.row.name),
+                        subtitle = stringResource(Res.string.canonical_artist_kind)
+                            .substringBefore('·').trim(),
+                        artworkUri = null,
+                        artistPortrait = true,
+                    ),
+                    onClick = { onArtistOpen(entry.row) },
+                )
+                is DiscogsUnifiedSearchEntry.Release -> {
+                    // Discogs' combined "Artist - Work" is split for display
+                    // only, never used to claim an Artist ID or music format.
+                    val display = discogsSearchReleaseDisplay(entry.row.title)
+                    NativeSearchResultRow(
+                        row = NativeSearchRowUi(
+                            title = display.title,
+                            subtitle = display.artistCredit
+                                ?.let(::discogsArtistDisplayName) ?: "Lançamento",
+                            artworkUri = null,
+                            artistPortrait = false,
+                        ),
+                        onClick = { onReleaseOpen(entry.row) },
+                    )
+                }
+            }
+        }
+        artists == UiState.Loading || releases == UiState.Loading ->
+            songListSkeleton(keyPrefix = "discogs:general")
+        artists is UiState.Error && releases is UiState.Error ->
+            item(key = "discogs:general:error") {
+                MessageState("Não foi possível carregar os resultados.")
+            }
+        else -> item(key = "discogs:general:empty") {
+            MessageState(stringResource(Res.string.canonical_empty_search))
+        }
+    }
+}
+
+private fun LazyListScope.discogsNativeReleaseRows(
+    results: UiState<List<DiscogsNativeReleaseSearchRow>>?,
+    onOpen: (DiscogsNativeReleaseSearchRow) -> Unit,
+    hasMore: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    when (results) {
+        null -> Unit
+        UiState.Loading -> songListSkeleton(keyPrefix = "discogs:releases")
+        is UiState.Error -> item(key = "discogs:releases:error") {
+            MessageState(
+                if (results.message == "discogs_token_required")
+                    "Conecte seu token em Provedores → Conexões para pesquisar lançamentos."
+                else "Não foi possível carregar os lançamentos.",
+            )
+        }
+        is UiState.Success -> {
+            if (results.data.isEmpty()) item(key = "discogs:releases:empty") {
+                MessageState(stringResource(Res.string.canonical_empty_search))
+            } else items(
+                items = results.data,
+                key = { "discogs:release:search:${it.releaseId}" },
+            ) { release ->
+                val display = discogsSearchReleaseDisplay(release.title)
+                NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = display.title,
+                        subtitle = display.artistCredit
+                                ?.let(::discogsArtistDisplayName) ?: "Lançamento",
+                        artworkUri = null, artistPortrait = false,
+                    ),
+                    onClick = { onOpen(release) },
+                )
+            }
+            if (hasMore) item(key = "discogs:releases:more") {
+                NativeCatalogSearchLoadMore(
+                    label = stringResource(Res.string.canonical_more_results),
+                    onClick = onLoadMore,
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = PAGE_GUTTER, vertical = 12.dp,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.discogsNativeArtistRows(
+    query: String,
+    results: UiState<List<DiscogsNativeArtistSearchRow>>?,
+    onOpen: (DiscogsNativeArtistSearchRow) -> Unit,
+    hasMore: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    when (results) {
+        null -> Unit
+        UiState.Loading -> songListSkeleton(keyPrefix = "discogs:artists")
+        is UiState.Error -> item(key = "discogs:artists:error") {
+            MessageState(
+                if (results.message == "discogs_token_required")
+                    "Conecte seu token em Provedores → Conexões para pesquisar artistas."
+                else "Não foi possível carregar os artistas.",
+            )
+        }
+        is UiState.Success -> {
+            val visible = discogsSearchDistinctArtists(query, results.data)
+            if (visible.isEmpty()) item(key = "discogs:artists:empty") {
+                MessageState(stringResource(Res.string.canonical_empty_search))
+            } else items(
+                items = visible,
+                key = { "discogs:artist:search:${it.artistId}" },
+            ) { artist ->
+                NativeSearchResultRow(
+                    row = NativeSearchRowUi(
+                        title = discogsArtistDisplayName(artist.name),
+                        subtitle = stringResource(Res.string.canonical_artist_kind)
+                            .substringBefore('·').trim(),
+                        artworkUri = null, artistPortrait = true,
+                    ),
+                    onClick = { onOpen(artist) },
+                )
+            }
+            if (hasMore) item(key = "discogs:artists:more") {
+                NativeCatalogSearchLoadMore(
+                    label = stringResource(Res.string.canonical_more_results),
+                    onClick = onLoadMore,
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = PAGE_GUTTER, vertical = 12.dp,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.appleEditorialArtistRows(
+    results: UiState<List<AppleEditorialSearchRow>>?,
+    onOpen: (AppleEditorialSearchRow) -> Unit,
+    showHeading: Boolean = false,
+    paging: AppleSearchPageStatus? = null,
+    onLoadMore: () -> Unit = {},
+) {
+    if (showHeading && (results as? UiState.Success)?.data?.isNotEmpty() == true) {
+        item(key = "apple:artists:heading") {
+            Text(
+                text = stringResource(Res.string.artists),
+                modifier = Modifier.padding(
+                    start = PAGE_GUTTER, end = PAGE_GUTTER,
+                    top = 16.dp, bottom = 6.dp,
+                ),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+    when (results) {
+        null -> if (!showHeading) item(key = "apple:artist:hint") {
+            MessageState(stringResource(Res.string.canonical_search_hint))
+        }
+        UiState.Loading -> songListSkeleton(keyPrefix = "apple:artists")
+        is UiState.Error -> item(key = "apple:artist:error") {
+            MessageState(stringResource(Res.string.apple_catalog_unavailable))
+        }
+        is UiState.Success -> if (results.data.isEmpty()) {
+            if (!showHeading) item(key = "apple:artist:empty") {
+                MessageState(stringResource(Res.string.apple_no_artists))
+            }
+        } else itemsIndexed(
+            items = results.data,
+            key = { _, row -> "apple:artist:search:${row.browseId}" },
+        ) { index, artist ->
+            NativeSearchResultRow(
+                row = NativeSearchRowUi(
+                    title = artist.title,
+                    subtitle = stringResource(Res.string.canonical_artist_kind)
+                        .substringBefore('·').trim(),
+                    artworkUri = artist.artworkUri,
+                    artistPortrait = true,
+                ),
+                onClick = { onOpen(artist) },
+                onLongPress = null,
+            )
+            if (index < results.data.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+    }
+    appleSearchPagingFooter(
+        AppleSearchSection.ARTISTS, paging, onLoadMore,
+    )
+}
+
+/** Apple artists and albums have independently typed browse routes. */
+private fun LazyListScope.appleEditorialAlbumRows(
+    results: UiState<List<AppleEditorialSearchRow>>?,
+    onOpen: (AppleEditorialSearchRow) -> Unit,
+    showHeading: Boolean = false,
+    paging: AppleSearchPageStatus? = null,
+    onLoadMore: () -> Unit = {},
+) {
+    if (showHeading && (results as? UiState.Success)?.data?.isNotEmpty() == true) {
+        item(key = "apple:albums:heading") {
+            Text(
+                text = stringResource(Res.string.albums),
+                modifier = Modifier.padding(
+                    start = PAGE_GUTTER, end = PAGE_GUTTER,
+                    top = 16.dp, bottom = 6.dp,
+                ),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+    when (results) {
+        null -> if (!showHeading) item(key = "apple:album:hint") {
+            MessageState(stringResource(Res.string.canonical_search_hint))
+        }
+        UiState.Loading -> songListSkeleton(keyPrefix = "apple:albums")
+        is UiState.Error -> item(key = "apple:album:error") {
+            MessageState(stringResource(Res.string.apple_catalog_unavailable))
+        }
+        is UiState.Success -> if (results.data.isEmpty()) {
+            if (!showHeading) item(key = "apple:album:empty") {
+                MessageState(stringResource(Res.string.apple_no_albums))
+            }
+        } else itemsIndexed(
+            items = results.data,
+            key = { _, row -> "apple:search:${row.browseId}" },
+        ) { index, album ->
+            NativeSearchResultRow(
+                row = NativeSearchRowUi(
+                    title = album.title,
+                    subtitle = album.artistName,
+                    artworkUri = album.artworkUri,
+                    artistPortrait = false,
+                ),
+                onClick = { onOpen(album) },
+                onLongPress = null,
+            )
+            if (index < results.data.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+    }
+    appleSearchPagingFooter(
+        AppleSearchSection.ALBUMS, paging, onLoadMore,
+    )
+}
+
 private fun LazyListScope.canonicalPublicPlaylistSearchResults(
     results: UiState<List<CanonicalPublicPlaylistSearchRow>>?,
     onOpen: (CanonicalPublicPlaylistSearchRow) -> Unit,
@@ -772,6 +1570,7 @@ private fun LazyListScope.canonicalMusicBrainzResults(
     onAddToQueue: (String) -> Unit,
     onRecordingInfo: (CanonicalCatalogSearchRow) -> Unit,
     appleStyle: Boolean,
+    showInlineSearchMore: Boolean = true,
 ) {
     if (detail != null) {
         item(key = "musicbrainz:navigation") {
@@ -878,6 +1677,7 @@ private fun LazyListScope.canonicalMusicBrainzResults(
                         onClick = onLoadMore,
                         enabled = !loadingMore,
                         loading = loadingMore,
+                        highContrast = true,
                         modifier = Modifier.fillMaxWidth()
                             .padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
                     )
@@ -885,13 +1685,16 @@ private fun LazyListScope.canonicalMusicBrainzResults(
             }
         }
     }
-    if (detail == null && results is UiState.Success && searchHasMore) {
+    if (showInlineSearchMore && detail == null && results is UiState.Success &&
+        searchHasMore
+    ) {
         item(key = "musicbrainz:search:load-more") {
             NativeSearchSecondaryAction(
                 label = stringResource(Res.string.canonical_more_results),
                 onClick = onSearchLoadMore,
                 enabled = !searchLoadingMore,
                 loading = searchLoadingMore,
+                highContrast = true,
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = PAGE_GUTTER, vertical = 12.dp),
             )
@@ -1028,28 +1831,35 @@ fun canonicalRowsForQuery(
     val candidates = canonicalRowsForFilter(rows, filter)
         .distinctBy { it.kind to it.musicBrainzId }
     if (normalized.isBlank()) return candidates
+    fun exactArtistName(name: String): Boolean {
+        fun fold(value: String) = java.text.Normalizer.normalize(value,
+            java.text.Normalizer.Form.NFKD).replace(Regex("\\p{M}+"), "")
+            .lowercase(java.util.Locale.ROOT).replace(Regex("\\s+"), " ").trim().removePrefix("the ")
+        return fold(name) == fold(normalized)
+    }
     val exactArtists = candidates.filter {
-        it.kind == CanonicalSearchKind.ARTIST &&
-            it.title.equals(normalized, ignoreCase = true)
+        it.kind == CanonicalSearchKind.ARTIST && exactArtistName(it.title)
     }
     val identityScoped = if (filter == SearchFilter.ALL && exactArtists.isNotEmpty()) {
-        // The General view highlights the best-ranked exact artist from the
-        // MusicBrainz response. Namesakes remain independently accessible in
-        // the Artists filter; never merge their distinct MBIDs in Room.
+        // Explicit source credits take precedence over names and scoped
+        // search hints. A name alone cannot select one of several homonyms.
         val primaryArtist = exactArtists.first()
         candidates.filter { row ->
-            (row.kind == CanonicalSearchKind.ARTIST &&
-                row.musicBrainzId == primaryArtist.musicBrainzId) ||
-                (row.kind != CanonicalSearchKind.ARTIST &&
-                    (row.artistScopeMbid == primaryArtist.musicBrainzId ||
-                        canonicalCreditsMentionArtist(row.subtitle, normalized)))
+            if (row.kind == CanonicalSearchKind.ARTIST)
+                row.musicBrainzId == primaryArtist.musicBrainzId
+            else when {
+                row.artistCreditMbids != null -> primaryArtist.musicBrainzId in row.artistCreditMbids
+                row.artistScopeMbid != null -> row.artistScopeMbid == primaryArtist.musicBrainzId
+                else -> exactArtists.size == 1 &&
+                    canonicalCreditsMentionArtist(row.subtitle, primaryArtist.title)
+            }
         }
     } else candidates
     return identityScoped.sortedWith(
         compareBy<CanonicalCatalogSearchRow> { row ->
             when {
                 row.kind == CanonicalSearchKind.ARTIST &&
-                    row.title.equals(normalized, ignoreCase = true) -> 0
+                    exactArtistName(row.title) -> 0
                 row.title.equals(normalized, ignoreCase = true) -> 1
                 row.kind == CanonicalSearchKind.ARTIST -> 2
                 row.title.startsWith(normalized, ignoreCase = true) -> 3

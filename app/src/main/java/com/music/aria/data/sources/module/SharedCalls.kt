@@ -1,6 +1,7 @@
 package com.music.aria.data.sources.module
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
@@ -82,13 +83,17 @@ internal class SharedCalls<T>(
 
     suspend fun get(key: String, describe: () -> String, produce: suspend () -> Result<T>): Result<T> {
         val entry = lock.withLock {
-            val live = entries[key]?.takeIf { it.work.isActive || now() - it.startedAtMs < ttlMs }
+            val live = entries[key]?.takeIf { !it.work.isCompleted || now() - it.startedAtMs < ttlMs }
             if (live != null) {
-                log(describe() + if (live.work.isActive) " — ALREADY RUNNING" else " — CACHE HIT")
+                log(describe() + if (!live.work.isCompleted) " — ALREADY RUNNING" else " — CACHE HIT")
                 live
             } else {
                 if (entries.size >= MAX_ENTRIES) prune()
-                Pending(scope.async { produce() }, now()).also { entries[key] = it }
+                // Register before scheduling the detached work. An eager async may
+                // run produce() and signal a concurrent clear() BEFORE the
+                // Pending is inserted, letting obsolete work escape cancellation.
+                Pending(scope.async(start = CoroutineStart.LAZY) { produce() }, now())
+                    .also { entries[key] = it }
             }
         }
         return entry.work.await().also { result ->
@@ -98,8 +103,16 @@ internal class SharedCalls<T>(
         }
     }
 
-    /** Everything held, dropped — the configuration it was all about is gone. */
-    fun clear() = entries.clear()
+    /**
+     * A removed/replaced source no longer owns any permitted in-flight work.
+     * Unlike clearCompleted(), release must cancel the detached producer jobs,
+     * not merely forget their cache keys and let obsolete HTTP continue.
+     */
+    fun clear() {
+        val pending = entries.values.toList()
+        entries.clear()
+        pending.forEach { it.work.cancel() }
+    }
 
     /**
      * Drops answers that have already completed while preserving work still in
@@ -112,7 +125,7 @@ internal class SharedCalls<T>(
      * else.
      */
     fun clearCompleted() {
-        entries.entries.removeIf { !it.value.work.isActive }
+        entries.entries.removeIf { it.value.work.isCompleted }
     }
 
     /** For tests and diagnostics: how many answers are being held. */
@@ -124,10 +137,10 @@ internal class SharedCalls<T>(
         // dropping it here would not cancel it, only hide it from the next
         // caller — who would then start a second copy of work already in
         // flight, which is the one thing this class exists to prevent.
-        entries.entries.removeIf { !it.value.work.isActive && at - it.value.startedAtMs >= ttlMs }
+        entries.entries.removeIf { it.value.work.isCompleted && at - it.value.startedAtMs >= ttlMs }
         if (entries.size >= MAX_ENTRIES) {
             entries.entries
-                .filterNot { it.value.work.isActive }
+                .filterNot { !it.value.work.isCompleted }
                 .minByOrNull { it.value.startedAtMs }
                 ?.let { entries.remove(it.key, it.value) }
         }

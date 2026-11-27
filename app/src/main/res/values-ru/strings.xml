@@ -1454,4 +1454,6 @@
     <string name="apple_player_share_song">Поделиться песней</string>
     <string name="apple_player_share_lyrics">Поделиться текстом…</string>
     <string name="apple_library_search_in_category">Поиск в %1$s</string>
+    <string name="providers_settings">Провайдеры</string>
+    <string name="providers_settings_subtitle">Управление провайдерами каталога, обложек, текстов песен, статистики, аудио и загрузок</string>
 </resources>

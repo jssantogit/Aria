@@ -1,0 +1,299 @@
+package com.music.aria
+
+import com.music.aria.data.catalog.metadata.MusicBrainzClient
+import com.music.aria.data.catalog.metadata.MusicBrainzTransport
+import com.music.aria.data.catalog.metadata.discogs.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+
+class DiscogsEvidenceContractTest {
+    private val releaseMbid = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
+    private val groupMbid = "529f87a1-1081-48a4-8ee1-3c08de229858"
+
+    @Test fun onlyAnExactDiscogsWebReleaseOrMasterLinkIsAccepted() {
+        assertEquals(DiscogsLink(DiscogsKind.RELEASE, 12345L),
+            DiscogsLinkParser.parse("https://www.discogs.com/release/12345-Example-Album"))
+        assertEquals(DiscogsLink(DiscogsKind.MASTER, 42L),
+            DiscogsLinkParser.parse("https://discogs.com/master/42"))
+        // Historical MusicBrainz HTTP resources are parsed as IDs only;
+        // we never fetch the source URL over HTTP.
+        assertEquals(DiscogsLink(DiscogsKind.RELEASE, 12345L),
+            DiscogsLinkParser.parse("http://www.discogs.com/release/12345"))
+        for (unsafe in listOf(
+            "https://discogs.com.evil.test/release/12345",
+            "https://user@discogs.com/release/12345", "https://discogs.com:443/release/12345",
+            "https://discogs.com/release/12345?key=secret", "https://discogs.com/release/0",
+            "https://discogs.com/release/12345/versions", "https://discogs.com/master/abc",
+            "https://api.discogs.com/releases/12345", "file:///release/12345",
+        )) assertNull(unsafe, DiscogsLinkParser.parse(unsafe))
+        assertEquals("https://www.discogs.com/release/12345",
+            DiscogsLink(DiscogsKind.RELEASE, 12345).attributionUrl)
+    }
+
+    @Test fun musicBrainzReleaseRelationIsAnAnchorNotAClaimOfEditionEquivalence() = runBlocking {
+        val repository = DiscogsMusicBrainzLinks(MusicBrainzClient(
+            transport = object : MusicBrainzTransport {
+                override suspend fun get(path: String, parameters: Map<String, String>,
+                    userAgent: String): String {
+                    assertEquals("release/$releaseMbid", path)
+                    assertEquals("url-rels", parameters["inc"])
+                    return """
+                       {"id":"$releaseMbid","relations":[
+                         {"type":"discogs","type-id":"4a78823c-1c53-4176-a5f3-58026c76f2bc",
+                          "url":{"resource":"https://www.discogs.com/release/12345-Example"}},
+                         {"type":"discogs","type-id":"4a78823c-1c53-4176-a5f3-58026c76f2bc",
+                          "ended":true,"url":{"resource":"https://www.discogs.com/release/77777"}},
+                         {"type":"other databases","url":{"resource":"https://www.discogs.com/release/99999"}},
+                         {"type":"discogs","url":{"resource":"https://evil.example/release/2024"}}
+                       ]}
+                    """.trimIndent()
+                }
+            },
+        ))
+        val result = repository.findRelease(releaseMbid)
+        assertEquals(DiscogsRelationResult.Linked(DiscogsLink(DiscogsKind.RELEASE, 12345)),
+            result)
+    }
+
+    @Test fun aMasterIsNotAutomaticallyAReleaseEditionAndConflictingLinksAreAmbiguous() = runBlocking {
+        val client = MusicBrainzClient(transport = object : MusicBrainzTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>,
+                userAgent: String): String =
+                """{"id":"$groupMbid","relations":[
+                    {"type":"discogs","type-id":"99e550f3-5ab4-3110-b5b9-fe01d970b126",
+                     "url":{"resource":"https://www.discogs.com/master/55"}},
+                    {"type":"discogs","type-id":"99e550f3-5ab4-3110-b5b9-fe01d970b126",
+                     "url":{"resource":"https://www.discogs.com/master/56"}}
+                 ]}"""
+        })
+        assertEquals(DiscogsRelationResult.Ambiguous,
+            DiscogsMusicBrainzLinks(client).findReleaseGroup(groupMbid))
+    }
+
+    @Test fun invalidOrContradictoryMusicBrainzRelationsFailClosed() = runBlocking {
+        val client = MusicBrainzClient(transport = object : MusicBrainzTransport {
+            override suspend fun get(path: String, parameters: Map<String, String>,
+                userAgent: String): String =
+                """{"id":"00000000-0000-0000-0000-000000000000",
+                    "relations":[{"type":"discogs","type-id":"4a78823c-1c53-4176-a5f3-58026c76f2bc",
+                    "url":{"resource":"https://www.discogs.com/release/66"}}]}"""
+        })
+        assertEquals(DiscogsRelationResult.InvalidResponse,
+            DiscogsMusicBrainzLinks(client).findRelease(releaseMbid))
+        assertEquals(DiscogsRelationResult.InvalidCanonicalId,
+            DiscogsMusicBrainzLinks(client).findRelease("same-title"))
+    }
+
+    @Test fun parserKeepsEditionMetadataButNeverEmitsRestrictedArtworkOrMediaAsset() {
+        val raw = """
+            {"id":12345,"title":"예쁜 앨범","country":"KR","year":2024,
+             "artists":[{"name":"아티스트"}],
+             "labels":[{"name":"Label A","catno":"A-001"}],
+             "identifiers":[{"type":"Barcode","value":"0 12345 67890 5"}],
+             "formats":[{"name":"CD","descriptions":["Album","Unofficial Release"]}],
+             "tracklist":[{"position":"A1","title":"트랙 一","duration":"3:10"}],
+             "images":[{"uri":"https://images.discogs.com/not-licensed.jpg"}],
+             "community":{"have":100000}}
+        """.trimIndent()
+        val parsed = DiscogsRecordParser.parse(DiscogsLink(DiscogsKind.RELEASE,12345), raw)
+        assertNotNull(parsed)
+        assertEquals("예쁜 앨범", parsed!!.title)
+        assertEquals(listOf("아티스트"), parsed.artistNames)
+        assertEquals(listOf("0 12345 67890 5"), parsed.barcodes)
+        assertEquals(listOf("Label A" to "A-001"), parsed.labels)
+        assertEquals(listOf("A1" to "트랙 一"), parsed.tracklist)
+        assertTrue(parsed.unofficial)
+        assertEquals("https://www.discogs.com/release/12345", parsed.attributionUrl)
+        assertFalse(parsed.toString().contains("images.discogs.com"))
+        assertNull(DiscogsRecordParser.parse(DiscogsLink(DiscogsKind.RELEASE, 12346),raw))
+        assertNull(DiscogsRecordParser.parse(DiscogsLink(DiscogsKind.MASTER,12345),raw))
+    }
+
+    @Test fun nativeTracklistKeepsNestedMovementsCreditsDurationsAndExactPositions() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 777)
+        val raw = """{"id":777,"title":"Box set","artists":[{"id":17,"name":"Main"}],
+            "tracklist":[
+                {"type_":"heading","title":"CD 1"},
+                {"type_":"track","position":"CD1-1","title":"Opening","duration":"3:10"},
+                {"type_":"index","title":"Suite","sub_tracks":[
+                    {"type_":"track","position":"CD1-2.1","title":"Movement A","duration":"1.02"},
+                    {"type_":"track","position":"CD1-2.2","title":"Movement B","duration":"2:03",
+                     "artists":[{"id":18,"name":"Guest"}]}
+                ]},
+                {"type_":"track","position":"2-1","title":"Encore","duration":"1:02:03"},
+                {"type_":"track","position":"Video 1","title":"Interview"},
+                {"type_":"video","position":"DVD1-1","title":"Clip"}
+            ]}"""
+        val record = requireNotNull(DiscogsRecordParser.parse(link, raw))
+        assertEquals(listOf("CD1-1", "2-1", "Video 1"), record.tracklist.map { it.first })
+        val tracks = record.displayTracks
+        assertEquals(listOf("CD1-1", "CD1-2.1", "CD1-2.2", "2-1"), tracks.map { it.position })
+        assertEquals(listOf("Opening", "Movement A", "Movement B", "Encore"), tracks.map { it.title })
+        assertEquals(listOf(null, "Suite", "Suite", null), tracks.map { it.workTitle })
+        assertEquals(listOf(190000L, 62000L, 123000L, 3723000L), tracks.map { it.durationMs })
+        assertEquals("Guest", tracks[2].artistCredit)
+        assertFalse(record.nativeTracklistIncomplete)
+        val native = com.music.aria.ui.discogsReleasePage("Main", record)
+        assertEquals(tracks.map { it.position }, native.tracks.map { it.sourcePosition })
+        assertEquals("Guest", native.tracks[2].credit)
+        assertEquals(2, native.tracks.last().discNumber)
+        assertEquals(1, native.tracks.last().trackNumber)
+        assertEquals(4, native.tracks.size)
+    }
+
+    @Test fun malformedNestedTracklistPreservesVerifiedSiblingsAndReleaseIdentity() {
+        val record = requireNotNull(DiscogsRecordParser.parse(
+            DiscogsLink(DiscogsKind.RELEASE, 777),
+            """{"id":777,"title":"Box set","tracklist":[
+                {"type_":"track","position":"1","title":"Track"},
+                {"type_":"index","title":"Suite","sub_tracks":[42]},
+                {"type_":"track","position":"3","title":"Later Track"}
+            ]}""",
+        ))
+        assertEquals(listOf("1" to "Track", "3" to "Later Track"), record.tracklist)
+        assertTrue(record.nativeTracklistIncomplete)
+        assertEquals(listOf("Track", "Later Track"), record.displayTracks.map { it.title })
+        assertTrue(com.music.aria.ui.discogsReleasePage("Main", record).incomplete)
+    }
+
+    @Test fun providerArtistIdsAreRetainedOnlyWhenEveryCreditHasValidIdentity() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 777)
+        fun payload(artists: String) = """{"id":777,"title":"New release",
+            "artists":[$artists],"labels":[{"name":"Label"}],
+            "formats":[{"name":"CD","descriptions":["EP"]}],
+            "tracklist":[{"position":"1","title":"Song"}]}"""
+        val exact = DiscogsRecordParser.parse(link,
+            payload("""{"id":98765,"name":"Ive (16)"}"""))
+        assertEquals(listOf("Ive (16)"), exact?.artistNames)
+        assertEquals(listOf(98765L), exact?.artistIds)
+        assertEquals(emptyList<Long>(),
+            DiscogsRecordParser.parse(link,
+                payload("""{"name":"Ive (16)"}"""))?.artistIds)
+        assertEquals(emptyList<Long>(),
+            DiscogsRecordParser.parse(link,
+                payload("""{"id":98765,"name":"IVE"},{"name":"Other"}"""))?.artistIds)
+        assertEquals(emptyList<Long>(),
+            DiscogsRecordParser.parse(link,
+                payload("""{"id":0,"name":"IVE"}"""))?.artistIds)
+    }
+
+    @Test fun oversizedAndMalformedInputsCannotCreateEditionFacts() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        assertNull(DiscogsRecordParser.parse(link, "{}"))
+        assertNull(DiscogsRecordParser.parse(link, "{broken"))
+        assertNull(DiscogsRecordParser.parse(link, """{"id":3,"title":"X","tracklist":[1,2]}"""))
+        assertNull(DiscogsRecordParser.parse(link, """{"id":3,"title":"X","images":[1]}""".repeat(50_000)))
+    }
+
+    @Test fun nativeBoxSetAcceptsFlatTracklistsWithinExistingTraversalBudgetOnly() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        fun payload(count: Int) = """{"id":3,"title":"Box set","artists":[{"id":17,"name":"Artist"}],
+            "tracklist":[${(1..count).joinToString(",") { """{"position":"$it","title":"Track $it"}""" }}]}"""
+        val reasons = mutableListOf<DiscogsReleaseParseRejection>()
+        val raw = payload(300)
+        assertNull(DiscogsRecordParser.parse(link, raw, onRejected = { reasons += it }))
+        assertEquals(listOf(DiscogsReleaseParseRejection.TRACKLIST_LIMIT), reasons)
+        reasons.clear()
+        val native = requireNotNull(DiscogsRecordParser.parse(link, raw,
+            nativeCatalog = true, onRejected = { reasons += it }))
+        assertEquals(300, native.displayTracks.size)
+        assertEquals("300", native.displayTracks.last().position)
+        assertFalse(native.nativeTracklistIncomplete)
+        assertTrue(reasons.isEmpty())
+        assertNull(DiscogsRecordParser.parse(link, payload(1025),
+            nativeCatalog = true, onRejected = { reasons += it }))
+        assertEquals(listOf(DiscogsReleaseParseRejection.TRACKLIST_LIMIT), reasons)
+    }
+
+    @Test fun releaseRejectionDiagnosticsAreSpecificAndNeverRetainPayload() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        val cases = listOf(
+            """{"id":4,"title":"Album"}""" to DiscogsReleaseParseRejection.IDENTITY,
+            """{"id":3,"title":"Album","identifiers":false}""" to DiscogsReleaseParseRejection.IDENTIFIERS,
+            """{"id":3,"title":"Album","formats":[{"descriptions":[{}]}]}""" to DiscogsReleaseParseRejection.FORMAT_DESCRIPTIONS,
+            """{"id":3,"title":"Album","tracklist":[{}]}""" to DiscogsReleaseParseRejection.TRACK_TITLE,
+            """{"id":3,"title":"Album","tracklist":[1]}""" to DiscogsReleaseParseRejection.TRACKLIST,
+        )
+        for ((body, expected) in cases) {
+            val reasons = mutableListOf<DiscogsReleaseParseRejection>()
+            assertNull(DiscogsRecordParser.parse(link, body, nativeCatalog = true,
+                onRejected = { reasons += it }))
+            assertEquals(listOf(expected), reasons)
+        }
+    }
+
+    @Test fun largerReleasePayloadKeepsOnlyBoundedVerifiedFields() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        val padding = "z".repeat(DISCOGS_STANDARD_BODY_BYTES + 1)
+        val raw = """{"id":3,"title":"Verified Album","master_id":12,
+            "artists":[{"id":17,"name":"Artist"}],
+            "tracklist":[{"position":"1","title":"Track","duration":"3:10"}],
+            "notes":"$padding","images":[{"uri":"https://restricted.example/art"}]}"""
+        val record = requireNotNull(DiscogsRecordParser.parse(link, raw))
+        assertEquals(12L, record.masterId)
+        assertEquals(listOf(17L), record.artistIds)
+        assertEquals(listOf("1" to "Track"), record.tracklist)
+        assertEquals(190_000L, record.displayTracks.single().durationMs)
+        assertFalse(record.toString().contains(padding.take(100)))
+        assertFalse(record.toString().contains("restricted.example"))
+        assertNull(DiscogsRecordParser.parse(link.copy(id = 4), raw))
+        // Master detail has its own bounded budget. Use a genuine Master
+        // payload to test that budget, rather than a Release-shaped response.
+        val masterLink = DiscogsLink(DiscogsKind.MASTER, 3)
+        val masterPrefix = """{"id":3,"title":"Verified Album","main_release":12,
+            "artists":[{"name":"Artist"}],"genres":["Electronic"],"styles":["House"],
+            "notes":""""
+        val masterSuffix = "\"}"
+        val masterRaw = masterPrefix + padding + masterSuffix
+        val master = requireNotNull(DiscogsRecordParser.parseMaster(masterLink, masterRaw))
+        assertEquals(12L, master.mainReleaseId)
+        assertEquals(listOf("Electronic"), master.genres)
+        assertEquals(listOf("House"), master.styles)
+        assertFalse(master.toString().contains(padding.take(100)))
+        assertNull(DiscogsRecordParser.parseMaster(masterLink.copy(id = 4), masterRaw))
+        val boundary = masterPrefix +
+            "z".repeat(DISCOGS_MASTER_BODY_BYTES - masterPrefix.length - masterSuffix.length) + masterSuffix
+        assertNotNull(DiscogsRecordParser.parseMaster(masterLink, boundary))
+        assertNull(DiscogsRecordParser.parseMaster(masterLink, boundary + " "))
+        assertNull(DiscogsRecordParser.parseMaster(masterLink, masterRaw.dropLast(1)))
+    }
+
+    @Test fun releaseByteAndStructuralLimitsRemainFailClosed() {
+        val link = DiscogsLink(DiscogsKind.RELEASE, 3)
+        val prefix = """{"id":3,"title":"X","notes":""""
+        val suffix = "\"}"
+        val boundary = prefix + "a".repeat(DISCOGS_RELEASE_BODY_BYTES - prefix.length - suffix.length) + suffix
+        assertNotNull(DiscogsRecordParser.parse(link, boundary))
+        assertNull(DiscogsRecordParser.parse(link, boundary + " "))
+        val unicode = prefix + "界".repeat(DISCOGS_RELEASE_BODY_BYTES / 3) + suffix
+        assertTrue(unicode.length < DISCOGS_RELEASE_BODY_BYTES)
+        assertNull(DiscogsRecordParser.parse(link, unicode))
+        val deep = """{"id":3,"title":"X","unknown":""" +
+            "[".repeat(65) + "0" + "]".repeat(65) + "}"
+        assertNull(DiscogsRecordParser.parse(link, deep))
+        val escaped = """{"id":3,"title":"X","notes":"escaped \" quote [ { \\"}"""
+        assertNotNull(DiscogsRecordParser.parse(link, escaped))
+    }
+
+    @Test fun evidenceExpiresAndCannotSupplyPlayOrArtwork() {
+        val observation = DiscogsObservation(
+            canonicalMbid = releaseMbid,
+            kind = DiscogsKind.RELEASE,
+            record = DiscogsRecord(
+                link = DiscogsLink(DiscogsKind.RELEASE, 3), title = "Example",
+                artistNames = listOf("Artist"), country = null, year = 2020,
+                labels = emptyList(), barcodes = emptyList(), formats = emptyList(),
+                tracklist = emptyList(), unofficial = false,
+            ),
+            fetchedAtMillis = 1_000L,
+        )
+        assertTrue(observation.isDisplayableAt(1_000L))
+        assertTrue(observation.isDisplayableAt(1_000L + DiscogsObservation.TTL_MILLIS - 1L))
+        assertFalse(observation.isDisplayableAt(1_000L + DiscogsObservation.TTL_MILLIS))
+        assertFalse(observation.isDisplayableAt(999L))
+        assertFalse(observation.canSupplyAudio())
+        assertFalse(observation.canSupplyArtwork())
+    }
+}

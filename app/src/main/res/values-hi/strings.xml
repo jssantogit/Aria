@@ -1422,4 +1422,6 @@
     <string name="apple_player_share_song">गीत साझा करें</string>
     <string name="apple_player_share_lyrics">बोल साझा करें…</string>
     <string name="apple_library_search_in_category">%1$s में खोजें</string>
+    <string name="providers_settings">प्रदाता</string>
+    <string name="providers_settings_subtitle">कैटलॉग, कवर, गीतों के बोल, आँकड़े, ऑडियो और डाउनलोड प्रदाताओं को प्रबंधित करें</string>
 </resources>

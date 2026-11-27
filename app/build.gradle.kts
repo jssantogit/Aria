@@ -239,6 +239,18 @@ kotlin {
     }
 }
 
+// Robolectric fetches its Android framework JARs at test runtime, outside Gradle's
+// repositories. The default repo1.maven.org endpoint returned HTTP 429 in Android CI
+// while resolving android-all-instrumented for API 34. Use the Maven Central mirror
+// used by Robolectric upstream, without changing the SDK or weakening any tests.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    systemProperty(
+        "robolectric.dependency.repo.url",
+        "https://maven-central.storage-download.googleapis.com/maven2/",
+    )
+}
+
+
 dependencies {
     implementation(project(":shared"))
     implementation(project(":sharedUi"))

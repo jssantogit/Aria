@@ -1,11 +1,17 @@
 package com.music.aria.ui
 
 import com.music.aria.data.catalog.metadata.ListenBrainzArtistTopRecording
+import com.music.aria.data.catalog.metadata.MusicBrainzRecordingHit
+import com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRecording
+import com.music.aria.data.model.UiState
+import com.music.aria.ui.screens.CanonicalCatalogDetailPage
 import com.music.aria.data.catalog.metadata.ListenBrainzSitewideRecording
 import com.music.aria.data.catalog.metadata.ListenBrainzPopularityEvidence
 import com.music.aria.data.catalog.metadata.publicListenBrainzRecordingRanking
 import com.music.aria.data.catalog.metadata.RecordingMetadataEnrichment
 import com.music.aria.data.catalog.metadata.canonicalStreamingTitleIsSafe
+import com.music.aria.data.catalog.metadata.safeAppleArtwork
+import com.music.aria.data.catalog.metadata.appleApprovedBadgeForStoreUrl
 import com.music.aria.ui.screens.CanonicalCatalogSearchRow
 import com.music.aria.ui.screens.CanonicalSearchKind
 import java.util.Locale
@@ -20,6 +26,8 @@ import kotlinx.coroutines.sync.withPermit
 internal data class CanonicalArtistPublicTopState(
     val artistMbid: String? = null,
     val rows: List<CanonicalCatalogSearchRow> = emptyList(),
+    /** Membership evidence only. No popularity or owned-audio claims. */
+    val fallbackRows: List<CanonicalCatalogSearchRow> = emptyList(),
     /** Successful public fetch time, including a verified empty upstream chart. */
     val fetchedAtMs: Long? = null,
     /** True for a limited MusicBrainz candidate sample, not a complete chart. */
@@ -47,6 +55,51 @@ private val PUBLIC_ARTIST_CHART_NON_STUDIO = Regex(
     """(?i)(?:\s[-–—]\s*(?:live|karaoke|demo|rehearsal|fan[- ]?edit|bootleg)(?:\b|$)|\((?:live|karaoke|demo|rehearsal|fan[- ]?edit|bootleg)(?:\W|$))"""
 )
 
+
+/**
+ * A Recording returned by an exact artist-MBID MusicBrainz query is a valid
+ * metadata row even when ListenBrainz has no usable rank (401 or no sample).
+ * No listen counts, playback or artist identity are invented.
+ */
+internal fun canonicalUnrankedArtistRecordingRows(
+    artistMbid: String,
+    hits: List<MusicBrainzRecordingHit>,
+): List<CanonicalCatalogSearchRow> {
+    val artist = artistMbid.lowercase(Locale.ROOT)
+    if (!PUBLIC_ARTIST_MBID.matches(artist)) return emptyList()
+    return hits.asSequence()
+        .filter(::isCuratedMusicBrainzRecording)
+        .filter { PUBLIC_ARTIST_MBID.matches(it.musicBrainzId.lowercase(Locale.ROOT)) }
+        .distinctBy { it.musicBrainzId.lowercase(Locale.ROOT) }
+        .take(8)
+        .map { hit ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = hit.musicBrainzId,
+                kind = CanonicalSearchKind.RECORDING,
+                title = hit.title,
+                subtitle = hit.artistDisplay,
+                artistScopeMbid = artist,
+                hasCatalogedAsset = false,
+            )
+        }
+        .toList()
+}
+
+/** Only the open artist may receive its own unranked fallback rows. */
+internal fun canonicalNativeDetailTracksForPage(
+    browseId: String,
+    artistTop: CanonicalArtistPublicTopState,
+    catalogDetail: UiState<CanonicalCatalogDetailPage>?,
+): List<CanonicalCatalogSearchRow> = when {
+    browseId.startsWith("catalog:ARTIST:") &&
+        artistTop.artistMbid?.equals(
+            browseId.removePrefix("catalog:ARTIST:"), ignoreCase = true,
+        ) == true -> artistTop.fallbackRows
+    browseId.startsWith("catalog:RELEASE:") ||
+        browseId.startsWith("catalog:RELEASE_GROUP:") ->
+        (catalogDetail as? UiState.Success)?.data?.rows.orEmpty()
+    else -> emptyList()
+}
 
 /**
  * When the per-artist popularity endpoint is temporarily unavailable (401),
@@ -152,14 +205,15 @@ internal fun canonicalVerifiedArtistTopRows(
                 ?.takeIf { canonicalStreamingTitleIsSafe(it) &&
                     !PUBLIC_ARTIST_CHART_NON_STUDIO.containsMatchIn(it) }
                 ?: return@mapNotNull null
-            // A ListenBrainz CAA hint may refer to another edition of the
-            // same recording. Prefer our independently proved Official sleeve;
-            // otherwise accept the hint only for the EXACT proved release.
+            // ListenBrainz CAA hints do not certify a storefront edition.
+            // Only our separate Apple UPC + complete tracklist proof can add
+            // promotional artwork, paired with its official product badge.
             val officialEdition = verified.officialAudioReleaseMbid
-            val cover = verified.officialAudioArtworkUri
-                ?: rankedRecording.artworkUri?.takeIf {
-                    it.startsWith("https://coverartarchive.org/release/$officialEdition/")
-                }
+            val store = verified.officialAudioAppleStoreUrl
+            val badge = appleApprovedBadgeForStoreUrl(store)
+            val cover = verified.officialAudioArtworkUri?.takeIf {
+                badge != null && safeAppleArtwork(it) != null
+            }
             CanonicalCatalogSearchRow(
                 musicBrainzId = id,
                 kind = CanonicalSearchKind.RECORDING,
@@ -170,6 +224,8 @@ internal fun canonicalVerifiedArtistTopRows(
                 // Preserve the exact Recording -> Official audio edition
                 // proof for the artist row subtitle; it is NOT a playback ID.
                 coverReleaseMbid = officialEdition,
+                appleStoreUrl = store?.takeIf { cover != null },
+                appleStoreBadgeUrl = badge?.takeIf { cover != null },
                 officialReleaseTitle = verified.officialAudioReleaseTitle,
                 releaseDate = verified.officialAudioReleaseDate,
                 durationMs = verified.durationMs?.takeIf { it > 0L },

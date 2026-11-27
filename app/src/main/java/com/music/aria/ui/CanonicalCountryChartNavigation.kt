@@ -1,0 +1,44 @@
+package com.music.aria.ui
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.music.aria.data.catalog.metadata.AppleChartTerritory
+
+/** Only a country chart navigation key. No fake album/recording identity. */
+internal class CanonicalCountryChartNavigation {
+    var active by mutableStateOf<AppleChartTerritory?>(null)
+        private set
+
+    var albumActive by mutableStateOf(false)
+        private set
+
+    fun open(territory: AppleChartTerritory) {
+        albumActive = false
+        active = territory
+    }
+
+    fun openAlbums(territory: AppleChartTerritory) {
+        albumActive = true
+        active = territory
+    }
+
+    fun close() {
+        active = null
+        albumActive = false
+    }
+}
+
+
+// Keep these navigation effects out of the bytecode-limited AriaApp root.
+@androidx.compose.runtime.Composable
+internal fun rememberCountryChartNavigation(
+    authorized: Boolean,
+    homeSelected: Boolean,
+): CanonicalCountryChartNavigation {
+    val navigation = androidx.compose.runtime.remember { CanonicalCountryChartNavigation() }
+    androidx.compose.runtime.LaunchedEffect(authorized, homeSelected) {
+        if (!authorized || !homeSelected) navigation.close()
+    }
+    return navigation
+}

@@ -1339,4 +1339,6 @@
     <string name="apple_player_share_song">Chia sẻ bài hát</string>
     <string name="apple_player_share_lyrics">Chia sẻ lời bài hát…</string>
     <string name="apple_library_search_in_category">Tìm trong %1$s</string>
+    <string name="providers_settings">Nhà cung cấp</string>
+    <string name="providers_settings_subtitle">Quản lý nhà cung cấp danh mục, ảnh bìa, lời bài hát, thống kê, âm thanh và tải xuống</string>
 </resources>

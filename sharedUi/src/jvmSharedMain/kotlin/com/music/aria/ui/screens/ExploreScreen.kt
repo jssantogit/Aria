@@ -38,6 +38,8 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -83,14 +85,16 @@ fun ExploreScreen(
             val columns = moodColumns(maxWidth)
             LazyColumn(
                 state = listState,
-                // Match the observed Apple genre grid position under the large
-                // heading; this 40dp correction is screenshot-informed, not a
-                // statically verified Apple layout dimension.
+                // This title is level with the Home-resting top actions. Since the
+                // shared inset now clears their full circles, lift only the
+                // ROOT heading; detail categories keep their own Back clearance.
                 contentPadding = PaddingValues(
                     start = contentPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
                     end = contentPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
-                    top = (contentPadding.calculateTopPadding() - if (showTitle) 40.dp else 0.dp)
-                        .coerceAtLeast(0.dp),
+                    top = if (showTitle) rootLandingTitleListTopInset(
+                        contentPadding.calculateTopPadding(),
+                        titleInnerTop = 8.dp,
+                    ) else contentPadding.calculateTopPadding(),
                     bottom = contentPadding.calculateBottomPadding(),
                 ),
                 modifier = Modifier.fillMaxSize(),
@@ -213,6 +217,30 @@ fun MoodGenreSleeve(
     NativeExploreCategorySleeve(item.title, item.thumbnailUrl, tone, modifier, titleStyle)
 }
 
+/** A small version of the existing genre tile for Search's category results. */
+@Composable
+internal fun NativeGenreSearchArtwork(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    val tone = remember(title) { moodToneFor(title, null) }
+    Box(
+        modifier = modifier.background(tone.stripe).testTag("genre-search-artwork"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            // Only the row's title is spoken; the decorative thumbnail
+            // must not announce the same category a second time.
+            modifier = Modifier.padding(5.dp).clearAndSetSemantics {},
+        )
+    }
+}
+
 /** Catalog genres reuse the same native sleeve, not a parallel Search screen. */
 @Composable
 private fun CanonicalGenreSleeve(
@@ -221,7 +249,8 @@ private fun CanonicalGenreSleeve(
 ) {
     val tone = remember(item.title) { moodToneFor(item.title, null) }
     NativeExploreCategorySleeve(
-        item.title, item.thumbnailUrl, tone, modifier, MaterialTheme.typography.titleMedium,
+        item.title, appleProminentArtworkOrNull(item.thumbnailUrl), tone, modifier,
+        MaterialTheme.typography.titleMedium,
     )
 }
 

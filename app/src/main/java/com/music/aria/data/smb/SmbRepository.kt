@@ -18,7 +18,8 @@ import kotlinx.coroutines.withContext
 object SmbRepository {
 
     fun isConfigured(): Boolean =
-        SmbConfig.isConfigured(AppSettings.smbHost.value, AppSettings.smbShare.value)
+        AppSettings.smbEnabled.value &&
+            SmbConfig.isConfigured(AppSettings.smbHost.value, AppSettings.smbShare.value)
 
     suspend fun getSongs(): List<Song> = withContext(Dispatchers.IO) {
         if (!isConfigured()) return@withContext emptyList()
