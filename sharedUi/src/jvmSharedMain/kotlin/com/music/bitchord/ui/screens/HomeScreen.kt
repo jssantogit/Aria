@@ -193,13 +193,17 @@ internal fun discogsAttributionUrlFor(browseId: String?): String? {
 }
 
 @Composable
-internal fun DiscogsSourceAttribution(browseId: String?, modifier: Modifier = Modifier) {
+fun DiscogsSourceAttribution(
+    browseId: String?,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     val url = discogsAttributionUrlFor(browseId) ?: return
     val handler = LocalUriHandler.current
     Text(
         text = "Data provided by Discogs.",
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = color,
         modifier = modifier.clickable { runCatching { handler.openUri(url) } }
             .padding(vertical = 4.dp),
     )
