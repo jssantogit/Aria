@@ -1,0 +1,54 @@
+# Isolated observational job. Never an APK, physical smoke, or parity approval.
+name: IDM · Discogs artwork live observation
+on:
+  push:
+    branches: [fix/idm-post-smoke-shelf-artwork-20261127]
+    paths: [.github/workflows/idm-discogs-artwork-live-observation.yml]
+permissions:
+  contents: read
+concurrency:
+  group: idm-discogs-artwork-live-observation
+  cancel-in-progress: false
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify exact source
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "Observed source: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Observe six bounded releases with production source adapters
+        env:
+          IDM_DISCOGS_ARTWORK_LIVE: '1'
+          IDM_CATALOG_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          IDM_CATALOG_METRICS_DIR: ${{ github.workspace }}/idm-discogs-artwork-live
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.DiscogsEditorialArtworkLiveObservationTest'
+      - name: Summarize aggregate observation
+        run: |
+          test -s idm-discogs-artwork-live/discogs-artwork-live.txt
+          {
+            echo '### Bounded live evidence (not Coil/GPU rendering)'
+            echo '~~~text'
+            cat idm-discogs-artwork-live/discogs-artwork-live.txt
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idm-discogs-artwork-live-${{ github.sha }}
+          path: idm-discogs-artwork-live/discogs-artwork-live.txt
+          if-no-files-found: error
+          retention-days: 7
