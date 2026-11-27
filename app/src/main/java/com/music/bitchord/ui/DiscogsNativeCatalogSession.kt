@@ -72,14 +72,17 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
     stillCurrent: () -> Boolean,
     resolve: suspend (String) -> com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork?,
     onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
-    eligible: (String) -> Boolean = { true },
+    eligible: suspend (String) -> Boolean = { true },
 ) {
-    if (!stillCurrent()) return
+    var attempts = 0
     val candidates = browseIds.asSequence()
         .mapNotNull { discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, it) }
-        .distinct().filter(eligible).take(16).toList()
+        .distinct()
     for (id in candidates) {
+        if (!stillCurrent() || attempts >= 16) return
+        if (!eligible(id)) continue
         if (!stillCurrent()) return
+        attempts++
         val proof = try {
             resolve(id)
         } catch (cancelled: CancellationException) {
@@ -249,9 +252,11 @@ internal class DiscogsNativeCatalogSession(
     ) = resolveDiscogsEditorialArtworkBatch(
         browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
         eligible = { id ->
-            id.substringAfterLast(':').toLongOrNull()?.let {
-                editorialClient.cachedArtworkEvidenceForRelease(it) != null
-            } == true
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                id.substringAfterLast(':').toLongOrNull()?.let {
+                    editorialClient.cachedArtworkEvidenceForRelease(it) != null
+                } == true
+            }
         },
     )
 
