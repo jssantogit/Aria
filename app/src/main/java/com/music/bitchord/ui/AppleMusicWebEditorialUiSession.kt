@@ -192,8 +192,9 @@ internal class AppleMusicWebEditorialUiSession(
             else previous.paging + (tag to paging))
     }
 
-    /** One request per user scroll edge. A failed page leaves the cursor and
-     * visible rows unchanged; refresh or revoked permission cancels it. */
+    /** One request per user scroll edge. Keep failed cursors retryable but
+     * rotate them behind other independent requests; do not block the feed.
+     * Refresh or revoked permission cancels the entire generation. */
     fun loadNext(tag: String?) {
         purgeRevoked()
         val prior = reads[tag] ?: return
@@ -222,26 +223,29 @@ internal class AppleMusicWebEditorialUiSession(
                 else -> null
             }
             if (page == null) {
-                publishPaging(tag,paging.copy(loading=false,failed=true))
+                publishPaging(tag,paging.copy(
+                    pending=(paging.pending.drop(1) + request).distinct(),
+                    loading=false,failed=true,
+                ))
                 return@launch
             }
             val seen = (shown.flatMap { it.items } + paging.additional)
                 .mapNotNull { it.browseId }.toHashSet()
-            val additional = page.shelves.flatMap { it.items }.filter { card ->
-                val route = AppleMusicWebNativeRoute.parse(card.browseId)
-                val song = tag == null && amsSongStorefront(card.browseId) == "br" &&
-                    com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId) != null
-                val collection = route != null && route.kind in setOf(AppleMusicWebKind.ALBUM,
-                    AppleMusicWebKind.PLAYLIST,AppleMusicWebKind.ARTIST) && route.storefront == "br"
-                (collection || song) && card.videoId == null && card.title.isNotBlank() &&
-                    card.browseId?.let(seen::add) == true
-            }
+            val additional = mutableListOf<ShelfItem>()
             val byHeading = paging.additionalByHeading.toMutableMap()
-            val acceptedIds = additional.mapNotNull { it.browseId }.toSet()
             for (shelf in page.shelves) {
-                val named = shelf.items.filter { it.browseId in acceptedIds }
-                if (named.isNotEmpty()) byHeading[shelf.title] =
-                    (byHeading[shelf.title].orEmpty() + named).distinctBy { it.browseId }
+                val accepted = shelf.items.filter { card ->
+                    val route = AppleMusicWebNativeRoute.parse(card.browseId)
+                    val song = tag == null && amsSongStorefront(card.browseId) == "br" &&
+                        com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(card.appleStoreUrl,card.browseId) != null
+                    val collection = route != null && route.kind in setOf(AppleMusicWebKind.ALBUM,
+                        AppleMusicWebKind.PLAYLIST,AppleMusicWebKind.ARTIST) && route.storefront == "br"
+                    (collection || song) && card.videoId == null && card.title.isNotBlank() &&
+                        card.browseId?.let(seen::add) == true
+                }
+                additional += accepted
+                if (accepted.isNotEmpty()) byHeading[shelf.title] =
+                    (byHeading[shelf.title].orEmpty() + accepted).distinctBy { it.browseId }
             }
             publishPaging(tag,paging.copy(
                 pending=(paging.pending.drop(1) + page.pending).distinct(),

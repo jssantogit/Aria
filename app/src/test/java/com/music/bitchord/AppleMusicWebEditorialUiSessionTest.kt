@@ -154,6 +154,65 @@ class AppleMusicWebEditorialUiSessionTest {
         assertEquals(3,calls)
     }
 
+    @Test fun partialRefreshCannotStarveIndependentContinuation(): Unit = runBlocking {
+        val g = gate()
+        val curator = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")
+        val refresh = AmsEditorialRequest.RefreshGenre("heavy metal",curator)
+        val releaseRoom = room.copy(curatorId=curator.id,title="Lançamentos")
+        val other = AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(releaseRoom,"cursor"),
+            curator=curator,tag="heavy metal")
+        val extra = shelf.items.single().copy(browseId="apple_music_web:br:album:11")
+        val calls = mutableListOf<AmsEditorialRequest>()
+        val session = AppleMusicWebEditorialUiSession(this,{ g },
+            { error("unexpected home") },
+            { _,_,_ -> ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                AmsEditorialPage(listOf(shelf),listOf(refresh,other),curator))) },
+            readNext = { request ->
+                calls += request
+                if (request == refresh) ProviderCallResult.Success(AppleMusicWebOutcome.Partial(
+                    AmsEditorialPage(listOf(shelf),listOf(refresh),curator),
+                    AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED))
+                else ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                    AmsEditorialPage(listOf(HomeShelf("Lançamentos",listOf(extra))),curator=curator)))
+            })
+        session.loadGenre("heavy metal"); yield()
+        session.loadNext("heavy metal"); yield()
+        val failed = session.state.value.paging["heavy metal"]!!
+        assertTrue(failed.failed)
+        assertEquals(0,failed.pages)
+        assertEquals(listOf(other,refresh),failed.pending)
+        assertTrue(failed.additional.isEmpty())
+        session.loadNext("heavy metal"); yield()
+        val success = session.state.value.paging["heavy metal"]!!
+        assertEquals(listOf(extra),success.additional)
+        assertEquals(listOf(refresh),success.pending)
+        assertEquals(1,success.pages)
+        assertFalse(success.failed)
+        assertEquals(listOf(refresh,other),calls)
+    }
+
+    @Test fun duplicateContinuationIdCannotPublishRejectedCardUnderAnotherHeading(): Unit = runBlocking {
+        val g = gate()
+        val request = AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(room,"cursor"),
+            homeKind=AppleMusicWebHomeShelf.RECENT_RELEASES)
+        val extra = shelf.items.single().copy(browseId="apple_music_web:br:album:11")
+        val rejected = extra.copy(title="Conflicting copy",videoId="invalid")
+        val session = AppleMusicWebEditorialUiSession(this,{ g },
+            { ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(listOf(shelf),listOf(request)))) },
+            { _,_,_ -> error("unexpected genre") },
+            readNext = {
+                ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(listOf(
+                    HomeShelf("Lançamentos recentes",listOf(extra)),
+                    HomeShelf("Em breve",listOf(rejected))))))
+            })
+        session.loadHome(); yield()
+        session.loadNext(null); yield()
+        val paging = session.state.value.paging[null]!!
+        assertEquals(listOf(extra),paging.additional)
+        assertEquals(mapOf("Lançamentos recentes" to listOf(extra)),paging.additionalByHeading)
+        assertFalse(session.containsCard(null,rejected))
+    }
+
     @Test fun runtimeAdmissionRefreshAndGateReplacement(): Unit = runBlocking {
         var g: ProviderPolicyGate? = null
         var calls = 0
