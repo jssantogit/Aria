@@ -1010,4 +1010,18 @@ class ApplePublicSearchPagerTest {
             assertTrue(pager.snapshot().visible.isEmpty())
             assertTrue(pager.snapshot().coverageUncertain)
         }
+    @Test fun failedInitialArtistStreamCanRetryWithoutLosingItsQueryOrScope() = runBlocking {
+        val fake = Fake(ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE))
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ARTIST, "br", 24, fake)
+        assertTrue(pager.start() is ApplePublicSearchPageLoad.Failure)
+        assertTrue(pager.snapshot().visible.isEmpty())
+        fake.initial = ItunesCatalogResult.Success(listOf(
+            album(77, title = "Artist").copy(type = ItunesCatalogItemType.ARTIST),
+        ))
+        val recovered = pager.loadMore() as ApplePublicSearchPageLoad.Success
+        assertEquals(listOf(77L), recovered.snapshot.visible.map { it.id })
+        assertEquals(2, fake.calls.size)
+        assertTrue(fake.calls.all { it == null })
+    }
+
 }
