@@ -187,7 +187,7 @@ private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Bool
 data class EditorialShelfArtwork(
     val artworkUrl: String,
     val storeUrl: String,
-    val badgeUrl: String,
+    val badgeUrl: Any,
 )
 
 private val LocalEditorialShelfArtwork =
