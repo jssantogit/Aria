@@ -603,8 +603,8 @@ internal class AppleMusicWebNativeCatalogSession(
         if (!editorialCurrent() || !gate.accept(searchTicket)) return ProviderCallResult.Stale
         // Never restore the pre-validation snapshot if all candidates conflicted.
         if (rails.isEmpty() && composition.rejectedIds.isEmpty()) return curated
-        if (rails.isEmpty() && composition.rejectedIds.isNotEmpty())
-            return ProviderCallResult.Success(AppleMusicWebOutcome.Unavailable("Conflicting style album identities"))
+        // Keep exclusion evidence even when no cards survive. A refresh may
+        // need to withdraw those identities from an earlier visible snapshot.
         val merged = page.copy(shelves=rails,rejectedIds=page.rejectedIds + composition.rejectedIds)
         return ProviderCallResult.Success(if (outcome is AppleMusicWebOutcome.Partial)
             AppleMusicWebOutcome.Partial(merged,outcome.reason) else AppleMusicWebOutcome.Complete(merged))

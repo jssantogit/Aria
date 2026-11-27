@@ -154,6 +154,49 @@ class AppleMusicWebEditorialUiSessionTest {
         assertEquals(3,calls)
     }
 
+    @Test fun partialRefreshWithdrawsPreviouslyVisibleConflictingCards(): Unit = runBlocking {
+        val g = gate()
+        val curator = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")
+        val refresh = AmsEditorialRequest.RefreshGenre("heavy metal",curator)
+        val next = AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(
+            room.copy(curatorId=curator.id,title="Lançamentos"),"cursor"),
+            curator=curator,tag="heavy metal")
+        val original = shelf.items.single()
+        val extra = original.copy(browseId="apple_music_web:br:album:12")
+        val safe = original.copy(browseId="apple_music_web:br:album:13")
+        val rejected = setOf(requireNotNull(original.browseId),requireNotNull(extra.browseId))
+        var calls = 0
+        val session = AppleMusicWebEditorialUiSession(this,{ g },
+            { error("unexpected home") },
+            { _,_,_ -> ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                AmsEditorialPage(listOf(shelf.copy(items=listOf(original,safe))),listOf(next,refresh),curator))) },
+            readNext = { request ->
+                calls++
+                if (request == next) ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                    AmsEditorialPage(listOf(HomeShelf("Lançamentos",listOf(extra))),curator=curator)))
+                else ProviderCallResult.Success(AppleMusicWebOutcome.Partial(
+                    AmsEditorialPage(emptyList(),curator=curator,rejectedIds=rejected),
+                    AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED))
+            })
+        session.loadGenre("heavy metal"); yield()
+        session.loadNext("heavy metal"); yield()
+        assertTrue(session.containsCard("heavy metal",original))
+        assertTrue(session.containsCard("heavy metal",extra))
+        session.loadNext("heavy metal"); yield()
+        val state = session.state.value
+        assertEquals(listOf(safe),(state.genres["heavy metal"] as UiState.Success).data.flatMap { it.items })
+        val paging = state.paging["heavy metal"]!!
+        assertEquals(rejected,paging.rejectedIds)
+        assertTrue(paging.additional.isEmpty())
+        assertTrue(paging.additionalByHeading.isEmpty())
+        assertEquals(listOf(refresh),paging.pending)
+        assertTrue(paging.failed)
+        assertFalse(session.containsCard("heavy metal",original))
+        assertFalse(session.containsCard("heavy metal",extra))
+        assertTrue(session.containsCard("heavy metal",safe))
+        assertEquals(2,calls)
+    }
+
     @Test fun rejectedStyleIdentityRemainsExcludedUntilNewGeneration(): Unit = runBlocking {
         val g = gate()
         val curator = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")

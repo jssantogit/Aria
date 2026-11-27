@@ -155,6 +155,7 @@ internal class AppleMusicWebEditorialUiSession(
     fun containsCard(tag: String?, item: com.music.bitchord.data.model.ShelfItem): Boolean {
         val read = reads[tag] ?: return false
         if (read.owner !== gate() || !read.lease.isCurrent()) return false
+        if (item.browseId in _state.value.paging[tag]?.rejectedIds.orEmpty()) return false
         val state = if (tag == null) _state.value.home else _state.value.genres[tag]
         return (state as? UiState.Success)?.data.orEmpty().any { item in it.items } ||
             item in _state.value.paging[tag]?.additional.orEmpty()
@@ -195,6 +196,24 @@ internal class AppleMusicWebEditorialUiSession(
             else previous.paging + (tag to paging))
     }
 
+    /** Withdraw newly contradicted IDs from the whole generation in one
+     * state publication, including held actions and already paged rails. */
+    private fun publishContinuation(tag: String?, shown: List<HomeShelf>, paging: AmsEditorialPaging) {
+        val safeShelves = shown.map { shelf ->
+            shelf.copy(items=shelf.items.filterNot { it.browseId in paging.rejectedIds })
+        }.filter { it.items.isNotEmpty() }
+        val safePaging = paging.copy(
+            additional=paging.additional.filterNot { it.browseId in paging.rejectedIds },
+            additionalByHeading=paging.additionalByHeading.mapValues { (_,items) ->
+                items.filterNot { it.browseId in paging.rejectedIds }
+            }.filterValues { it.isNotEmpty() },
+        )
+        val previous = _state.value
+        val updated = if (tag == null) previous.copy(home=UiState.Success(safeShelves))
+            else previous.copy(genres=previous.genres + (tag to UiState.Success(safeShelves)))
+        _state.value = updated.copy(paging=updated.paging + (tag to safePaging))
+    }
+
     /** One request per user scroll edge. Keep failed cursors retryable but
      * rotate them behind other independent requests; do not block the feed.
      * Refresh or revoked permission cancels the entire generation. */
@@ -219,20 +238,24 @@ internal class AppleMusicWebEditorialUiSession(
                 publishPaging(tag,null)
                 return@launch
             }
-            val page = when (val outcome = (result as? ProviderCallResult.Success)?.value) {
-                is AppleMusicWebOutcome.Complete -> outcome.value
-                // A partial refresh cannot prove the continuation was consumed.
-                is AppleMusicWebOutcome.Partial -> null
-                else -> null
+            val outcome = (result as? ProviderCallResult.Success)?.value
+            val page = (outcome as? AppleMusicWebOutcome.Complete)?.value
+            val observedRejections = when (outcome) {
+                is AppleMusicWebOutcome.Complete -> outcome.value.rejectedIds
+                is AppleMusicWebOutcome.Partial -> outcome.value.rejectedIds
+                else -> emptySet()
             }
+            val rejectedIds = paging.rejectedIds + observedRejections
+            // A partial refresh cannot prove the cursor was consumed, but
+            // its verified identity exclusions still invalidate old cards.
             if (page == null) {
-                publishPaging(tag,paging.copy(
+                publishContinuation(tag,shown,paging.copy(
                     pending=(paging.pending.drop(1) + request).distinct(),
+                    rejectedIds=rejectedIds,
                     loading=false,failed=true,
                 ))
                 return@launch
             }
-            val rejectedIds = paging.rejectedIds + page.rejectedIds
             val seen = (shown.flatMap { it.items } + paging.additional)
                 .mapNotNull { it.browseId }.toHashSet().apply { addAll(rejectedIds) }
             val additional = mutableListOf<ShelfItem>()
@@ -251,7 +274,7 @@ internal class AppleMusicWebEditorialUiSession(
                 if (accepted.isNotEmpty()) byHeading[shelf.title] =
                     (byHeading[shelf.title].orEmpty() + accepted).distinctBy { it.browseId }
             }
-            publishPaging(tag,paging.copy(
+            publishContinuation(tag,shown,paging.copy(
                 pending=(paging.pending.drop(1) + page.pending).distinct(),
                 additional=paging.additional + additional,
                 additionalByHeading=byHeading,
