@@ -130,9 +130,14 @@ fun discogsSearchDistinctReleases(
         // A repeated Release on a later page is not a second identity.
         // Do not silently choose the earlier conflicting title or Master.
         if (observations.any { it.title != first.title }) return@mapNotNull null
-        val master = observations.mapNotNull {
+        val positiveMasters = observations.mapNotNull {
             it.masterId?.takeIf { id -> id in 1..999_999_999_999L }
-        }.distinct().singleOrNull()
+        }.distinct()
+        val master = when (positiveMasters.size) {
+            0 -> first.masterId // Invalid hints still cannot form a grouping.
+            1 -> positiveMasters.single()
+            else -> null
+        }
         first.copy(masterId = master)
     }.mapNotNull { row ->
         discogsSearchReleaseRank(query, row.title)?.let { it to row }
