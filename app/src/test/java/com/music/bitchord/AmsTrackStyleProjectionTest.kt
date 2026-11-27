@@ -6,6 +6,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun trackDiscoveryPreservesCandidatesBeyondOneMetadataBatch() {
+        val tracks = (1..35).map { index ->
+            AppleMusicWebItem(index.toString(),AppleMusicWebKind.SONG,"br","Track $index",
+                albumId=(100+index).toString(),
+                storeUrl="https://music.apple.com/br/album/album/${100+index}?i=$index",
+                genreNames=listOf("Jazz Fusion"))
+        }
+        val ids = amsStyleTrackAlbumIds(tracks,"br","jazz fusion")
+        assertEquals((101..135).map { it.toString() },ids)
+        assertEquals(listOf(25,10),ids.chunked(25).map { it.size })
+    }
+
     @Test fun missingEarlyCandidatesCannotConsumeTheVisibleAlbumBudget() {
         val candidates = (1..35).map { it.toString() }
         val resolved = (12..35).map { index ->

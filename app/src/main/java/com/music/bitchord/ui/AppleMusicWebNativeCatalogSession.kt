@@ -64,7 +64,7 @@ internal fun amsStyleSongAlbumId(song: AppleMusicWebItem, market: String): Strin
 internal fun amsStyleTrackAlbumIds(songs: List<AppleMusicWebItem>, market: String, tag: String): List<String> =
     if (tag !in amsEditorialStyleParents) emptyList() else songs.asSequence()
         .filter { it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
-        .mapNotNull { amsStyleSongAlbumId(it,market) }.distinct().take(24).toList()
+        .mapNotNull { amsStyleSongAlbumId(it,market) }.distinct().toList()
 
 internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: List<AppleMusicWebItem>): HomeShelf? {
     val cards = ids.distinct().mapNotNull { id ->
@@ -551,7 +551,7 @@ internal class AppleMusicWebNativeCatalogSession(
             var cursor: String? = null
             val visited = hashSetOf<String>()
             for (index in 1..4) {
-                if (index > 2 && amsStyleTrackAlbumIds(songs,storefront,tag).size !in 1..5) break
+                if (index > 2 && amsStyleTrackAlbumIds(songs,storefront,tag).size >= 6) break
                 when (val read = gateway.search(AppleMusicWebKind.SONG,tag,storefront,
                     page=index,limit=25,continuation=cursor)) {
                     ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
@@ -585,18 +585,23 @@ internal class AppleMusicWebNativeCatalogSession(
             }
             val ids = amsStyleTrackAlbumIds(songs,storefront,tag)
             val albums = mutableListOf<AppleMusicWebItem>()
-            if (ids.isNotEmpty()) when (val read = gateway.linkedAlbumMetadata(ids,storefront)) {
-                ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
-                ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
-                is ProviderCallResult.Failed -> {
-                    if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+            // Discovery is bounded by four pages plus one localized query.
+            // Hydrate in API-sized batches; missing rows must not consume display slots.
+            for (batch in ids.chunked(25)) {
+                when (val read = gateway.linkedAlbumMetadata(batch,storefront)) {
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    is ProviderCallResult.Failed -> {
+                        if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                    }
+                    is ProviderCallResult.Success -> albums += (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
                 }
-                is ProviderCallResult.Success -> albums += (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                if ((amsStyleTrackAlbumShelf(ids,storefront,albums)?.items?.size ?: 0) >= 24) break
             }
             // Album-owned exact labels are independent evidence and do not
             // require a specific playlist or that a song search ranks well.
             val direct = mutableListOf<AppleMusicWebItem>()
-            if (albums.size < 6) {
+            if ((amsStyleTrackAlbumShelf(ids,storefront,albums)?.items?.size ?: 0) < 6) {
                 var albumCursor: String? = null
                 val albumVisited = hashSetOf<String>()
                 for (index in 1..2) {
@@ -621,7 +626,7 @@ internal class AppleMusicWebNativeCatalogSession(
                     }
                 }
             }
-            if ((albums + direct).distinctBy { it.scopedId }.size < 6) {
+            if ((amsStyleTrackAlbumShelf(ids + direct.map { it.id },storefront,albums + direct)?.items?.size ?: 0) < 6) {
                 for (query in amsStyleDiscoveryQueries(tag).drop(1).take(1)) {
                     when (val read = gateway.search(AppleMusicWebKind.ALBUM,query,storefront,limit=25)) {
                         ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
