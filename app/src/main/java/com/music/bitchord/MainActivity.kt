@@ -6072,7 +6072,8 @@ private fun BitChordApp(
                             // profile off its album pages too.
                             if (!appleSearchRootChrome && !isReleaseDetail &&
                                 !(toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
-                                    visualDetail?.type == BrowseType.ALBUM &&
+                                    (visualDetail?.type == BrowseType.ALBUM ||
+                                        (pageRouteKey.startsWith("apple_music_web:") && visualDetail?.type == BrowseType.PLAYLIST)) &&
                                     appleSharedVisual?.page?.browseId == visualDetail.browseId) &&
                                 !(toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
                                     visualDetail?.type == BrowseType.ARTIST &&

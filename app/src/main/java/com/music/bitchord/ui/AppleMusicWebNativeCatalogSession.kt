@@ -390,7 +390,11 @@ internal class AppleMusicWebNativeCatalogSession(
                                     it.curatorId == curator.id && it.genreId == null
                             }
                             for (room in playlistRooms.take(2)) {
-                                val result = gateway.roomContents(room,AppleMusicWebKind.PLAYLIST,limit=25)
+                                var cursor: String? = null
+                                val visited = hashSetOf<String>()
+                                val budget = if (tag in amsEditorialStyleParents) 3 else 1
+                                for (index in 1..budget) {
+                                val result = gateway.roomContents(room,AppleMusicWebKind.PLAYLIST,limit=25,cursor=cursor)
                                 val page = when (result) {
                                     ProviderCallResult.Denied -> return ProviderCallResult.Denied
                                     ProviderCallResult.Stale -> return ProviderCallResult.Stale
@@ -408,9 +412,16 @@ internal class AppleMusicWebNativeCatalogSession(
                                     }
                                 }
                                 playlistCards += projectAppleMusicWebGenrePlaylistRoom(curator,tag,page)?.items.orEmpty()
-                                if (page.unresolvedReferences == 0) page.nextCursor?.let {
-                                    pending += AmsEditorialRequest.Room(AppleMusicWebRoomContinuation(room,it),
-                                        curator=curator,tag=tag,resourceKind=AppleMusicWebKind.PLAYLIST)
+                                if (page.unresolvedReferences != 0) break
+                                val next = page.nextCursor ?: break
+                                if (!visited.add(next)) {
+                                    playlistIncomplete = true
+                                    break
+                                }
+                                if (index == budget) pending += AmsEditorialRequest.Room(
+                                    AppleMusicWebRoomContinuation(room,next,visited - next),
+                                    curator=curator,tag=tag,resourceKind=AppleMusicWebKind.PLAYLIST)
+                                cursor = next
                                 }
                             }
                             pending += playlistRooms.drop(2).map {
