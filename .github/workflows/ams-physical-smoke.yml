@@ -4,6 +4,7 @@ on:
     branches: [audit/ams-native-visual-parity-20261126]
     paths:
       - '.github/workflows/ams-physical-smoke.yml'
+      - 'docs/ams-physical-smoke-20261126.md'
   workflow_dispatch:
 permissions:
   contents: read
@@ -44,6 +45,7 @@ jobs:
           cp "$APK" ams-smoke/Aria-AMS-Smoke-arm64-v8a.apk
           {
             printf 'source_sha=%s\n' "$GITHUB_SHA"
+            printf 'smoke_round=2; validated_baseline=d873c005\n'
             printf 'package=com.dev.bitchord.ams.smoke\n'
             printf 'build=devDebug; AMS readiness opt-in only; user choices required\n'
             sha256sum ams-smoke/*.apk

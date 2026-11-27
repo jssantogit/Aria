@@ -1,6 +1,6 @@
 # AMS physical Android smoke — isolated candidate
 
-**Status: prepared, not visually approved.** The candidate is the AMS audit branch, which was forked from IDM and still carries old branding in parts of the app. Do not use screenshots as final proof of current MAIN Aria branding; compare MusicBrainz and AMS in this same build to isolate layout differences. Reconcile with latest MAIN/IDM before production approval.
+**Status: second physical smoke candidate, offline and focused live gates approved; not visually approved.** The candidate is the AMS audit branch, which was forked from IDM and still carries old branding in parts of the app. Do not use screenshots as final proof of current MAIN Aria branding; compare MusicBrainz and AMS in this same build to isolate layout differences. Reconcile with latest MAIN/IDM before production approval.
 
 ## Install
 Use the ARM64 APK from the branch-local workflow. It is devDebug, package `com.dev.bitchord.ams.smoke`, launcher label Aria AMS Smoke, separate app data. It will not overwrite normal dev/prod. No source is opted in automatically. In Providers, explicitly enable Apple Music Web for Busca, Discografia and Rankings; put it first in each relevant capability. Keep MusicBrainz available as a comparison; disable unrelated catalog sources if needed to isolate a case. Do not enter personal credentials.
@@ -26,3 +26,22 @@ All ten album charts returned 100 positions using one request in focused live #4
 
 ## First physical run feedback
 Physical run performed on Android 14 Samsung A54. Catalog data working; visual and local-action approval withheld by user. See the six findings in ams-visual-parity-audit-20261126.md. Do not mark the release gate approved until the fixes are re-tested. Debug performance diagnostics have 27 recovered UI stalls (max 1907.7 ms), no last crash, cause unknown.
+
+## Second physical run — post-correction acceptance
+Validated baseline: `d873c005`. [Offline contracts #45924765760](https://github.com/jssantogit/Aria/actions/runs/45924765760) and [focused live #45924765767](https://github.com/jssantogit/Aria/actions/runs/45924765767) passed. The focused live result covers 10/10 daily playlist identities/covers, BR/AU 100 tracks and 100 admissible labels each, BR 100 ranked albums/covers, eight Home rails, five rails each for K-pop and Metal, and a native album with 32 tracks. Home upstream read 6513 ms on CI; not a device frame benchmark.
+
+Install the new ARM64 APK over the first isolated smoke package (keep its data for persistence checks). Verify the following on the same A54, font/display settings and theme where possible. Record PASS/FAIL/NOT RUN, attach screenshots of failed cases and export diagnostics for this new capture. No requirement to replay the complete first live matrix.
+
+| Priority | Physical test | Acceptance |
+|---|---|---|
+| P0 | Album from artist and search | Individual track durations hidden, total duration preserved where verified; native hero and menus. |
+| P0 | Mixed and typed search pagination | Mais resultados appears after rows, no overlap, tap adds results once. |
+| P0 | Home -> official Top 100 BR and another market | Real cover, native playlist detail, ordered tracks, one topbar, Back returns to Home. Repeat with only Rankings enabled; daily playlist must still open. |
+| P0 | Home -> Top 100 albums BR -> album -> Back | Same Library grid, original rank and cover, exact native album, scroll restored; no second topbar. Album detail requires Discografia. |
+| P0 | Long press and overflow on artist, album, playlist and song | Correct captured item, neutral blur, shared actions; fix/rate/share where supported; song/album/playlist add to local playlist. No fabricated play/download. |
+| P0 | Local playlist and Minhas avaliações | Add a song, then a complete album or playlist; exact labels, no duplicates, Sem áudio when unresolved; reopen and edit a song rating; restart to check persistence. |
+| P1 | Home, K-pop and Metal | New actual rails, playlist covers, correct hierarchy and scrolling, no video, no duplicate continuation. |
+| P1 | Provider revocation and navigation | Disable/reorder AMS Rankings while a chart is visible; stale results disappear. Keep existing native Back behavior. |
+| P1 | Responsiveness | Capture fresh diagnostics during Home, scroll, search, genre and detail navigation; compare stall count/max and frame windows with first run (27 stalls, max 1907.7 ms); do not attribute old stalls to AMS without stack evidence. |
+
+The APK is still isolated debug only. MAIN/IDM remain unmodified, and the branch must be reconciled with current MAIN before a production merge. Green automated tests do not certify these physical acceptance cases.
