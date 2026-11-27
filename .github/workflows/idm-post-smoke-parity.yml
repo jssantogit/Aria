@@ -42,6 +42,8 @@ jobs:
             --tests 'com.music.bitchord.ItunesArtworkOnlyCapabilityTest' \
             --tests 'com.music.bitchord.DiscogsVerifiedAppleArtworkTest' \
             --tests 'com.music.bitchord.AppleSharedDetailAdapterTest' \
+            --tests 'com.music.bitchord.AppleNativeDetailNavigationTest' \
+            --tests 'com.music.bitchord.AppleCoverRecoveryTest' \
             --tests 'com.music.bitchord.AppleVerifiedEditionArtworkResolverTest' \
             --tests 'com.music.bitchord.AppleVerifiedGroupCardArtworkResolverTest' \
             --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
