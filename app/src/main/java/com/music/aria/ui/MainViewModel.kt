@@ -4096,42 +4096,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // MusicBrainz verifies membership of tagged recordings. ListenBrainz
             // independently verifies popularity (listeners + listens); no
             // recording is ranked from a search score or from a release date.
-            val chartTicket = gate.open(
-                ProviderCapability.CHART_MOST_PLAYED, BuiltInProviderKeys.LISTENBRAINZ,
-            )
-            if (chartTicket != null) {
-                val tagged = try {
-                    musicBrainzEditorialSearch.searchRecordingsForTag(selected.tag, 40)
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: Exception) { null }
-                if (!gate.accept(ticket) || !gate.accept(chartTicket) ||
-                    !canonicalGenreEpoch.isCurrent(generation)
-                ) return@launch
-                val recordings = (tagged as? MusicBrainzCatalogSearchResult.Success)
-                    ?.page?.items.orEmpty()
-                    .filter(::isCuratedMusicBrainzRecording)
-                    .distinctBy { it.musicBrainzId }
-                    .map { hit ->
-                        CanonicalCatalogSearchRow(
-                            hit.musicBrainzId, CanonicalSearchKind.RECORDING,
-                            hit.title, hit.artistDisplay, artworkUri = null,
-                        )
-                    }
-                val measured = if (recordings.isEmpty()) null else try {
-                    listenBrainzPopularityClient.recordingPopularity(
-                        recordings.map { it.musicBrainzId },
-                    )
-                } catch (cancelled: CancellationException) { throw cancelled }
-                  catch (_: Exception) { ListenBrainzPopularityFetchResult.Unavailable }
-                if (gate.accept(ticket) && gate.accept(chartTicket) &&
-                    canonicalGenreEpoch.isCurrent(generation)
-                ) {
-                    val evidence = (measured as? ListenBrainzPopularityFetchResult.Success)
-                        ?.observations.orEmpty()
-                    _canonicalGenrePopular.value =
-                        CanonicalGenrePopularSnapshot(selected.tag, recordings, evidence)
-                }
-            }
+            loadMusicBrainzGenreRecordings(
+                tag = selected.tag,
+                gate = gate,
+                ticket = ticket,
+                searchRecordings = { genre, limit ->
+                    musicBrainzEditorialSearch.searchRecordingsForTag(genre, limit)
+                },
+                isCurrent = { canonicalGenreEpoch.isCurrent(generation) },
+                fetchPopularity = listenBrainzPopularityClient::recordingPopularity,
+            )?.let { _canonicalGenrePopular.value = it }
             // These MB tag results are editorial search seeds only.
             // The user-facing Explore genre tiles and album shelves are
             // populated from Apple products and their primaryGenreName.
