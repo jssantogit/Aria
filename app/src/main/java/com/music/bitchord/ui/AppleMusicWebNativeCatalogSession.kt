@@ -66,6 +66,30 @@ internal fun amsStyleTrackAlbumIds(songs: List<AppleMusicWebItem>, market: Strin
         .filter { it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
         .mapNotNull { amsStyleSongAlbumId(it,market) }.distinct().toList()
 
+/** Search ranking nominates IDs, but only an exact album-owned label or
+ * an exact linked track can authorize membership of the style shelf. */
+internal fun amsStyleAlbumLabelIds(albums: List<AppleMusicWebItem>, market: String, tag: String): List<String> =
+    if (tag !in amsEditorialStyleParents) emptyList() else albums.asSequence()
+        .filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
+            AppleMusicWebNativeRoute.parse(it.scopedId) != null &&
+            it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
+        .map { it.id }.distinct().toList()
+
+internal fun amsStyleSupplementalAlbumIds(
+    songs: List<AppleMusicWebItem>, albumSearch: List<AppleMusicWebItem>,
+    market: String, alreadyRequested: Set<String>,
+): List<String> {
+    val fromSearch = albumSearch.asSequence().filter { it.kind == AppleMusicWebKind.ALBUM &&
+        it.storefront == market && AppleMusicWebNativeRoute.parse(it.scopedId) != null }.map { it.id }
+    val fromSongs = songs.asSequence().mapNotNull { amsStyleSongAlbumId(it,market) }
+    // Alternate sources so one ranked result list cannot starve the other.
+    val a = fromSearch.distinct().filterNot { it in alreadyRequested }.toList()
+    val b = fromSongs.distinct().filterNot { it in alreadyRequested }.toList()
+    return (0 until maxOf(a.size,b.size)).asSequence()
+        .flatMap { index -> sequenceOf(a.getOrNull(index),b.getOrNull(index)).filterNotNull() }
+        .distinct().take(50).toList()
+}
+
 internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: List<AppleMusicWebItem>): HomeShelf? {
     val cards = ids.distinct().mapNotNull { id ->
         val observations = albums.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
@@ -80,9 +104,11 @@ internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: 
             observations.mapNotNull { it.upc?.takeIf(String::isNotBlank) }.distinct().size > 1)
             return@mapNotNull null
         val route = AppleMusicWebNativeRoute.parse(album.scopedId) ?: return@mapNotNull null
-        ShelfItem(title=album.title,subtitle=album.artistName.orEmpty(),
-            thumbnailUrl=appleMusicWebArtworkUrl(album.artworkUrl),videoId=null,
-            browseId=route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(album))
+        // Reuse available optional fields only after all identity observations agree.
+        ShelfItem(title=album.title,subtitle=observations.firstNotNullOfOrNull {
+                it.artistName?.takeIf(String::isNotBlank) }.orEmpty(),
+            thumbnailUrl=observations.firstNotNullOfOrNull { appleMusicWebArtworkUrl(it.artworkUrl) },videoId=null,
+            browseId=route.browseId,appleStoreUrl=observations.firstNotNullOfOrNull { appleMusicWebVerifiedStoreUrl(it) })
     }
     return cards.take(24).takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }
 }
@@ -603,7 +629,12 @@ internal class AppleMusicWebNativeCatalogSession(
             // Album-owned exact labels are independent evidence and do not
             // require a specific playlist or that a song search ranks well.
             val direct = mutableListOf<AppleMusicWebItem>()
-            if ((amsStyleTrackAlbumShelf(ids,storefront,albums)?.items?.size ?: 0) < 6) {
+            fun admittedShelf(): HomeShelf? {
+                val combined = albums + direct
+                val verifiedIds = ids + amsStyleAlbumLabelIds(combined,storefront,tag)
+                return amsStyleTrackAlbumShelf(verifiedIds,storefront,combined)
+            }
+            if ((admittedShelf()?.items?.size ?: 0) < 6) {
                 var albumCursor: String? = null
                 val albumVisited = hashSetOf<String>()
                 for (index in 1..2) {
@@ -618,9 +649,7 @@ internal class AppleMusicWebNativeCatalogSession(
                         is ProviderCallResult.Success -> {
                             val page = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value ?: break
                             direct += page.items.filter { it.kind == AppleMusicWebKind.ALBUM &&
-                                it.storefront == storefront && it.genreNames.any { label ->
-                                    appleMusicWebGenreNameMatches(label,tag)
-                                } }
+                                it.storefront == storefront }
                             val next = page.nextCursor ?: break
                             if (!albumVisited.add(next)) break
                             albumCursor = next
@@ -628,7 +657,7 @@ internal class AppleMusicWebNativeCatalogSession(
                     }
                 }
             }
-            if ((amsStyleTrackAlbumShelf(ids + direct.map { it.id },storefront,albums + direct)?.items?.size ?: 0) < 6) {
+            if ((admittedShelf()?.items?.size ?: 0) < 6) {
                 for (query in amsStyleDiscoveryQueries(tag).drop(1).take(1)) {
                     when (val read = gateway.search(AppleMusicWebKind.ALBUM,query,storefront,limit=25)) {
                         ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
@@ -638,13 +667,29 @@ internal class AppleMusicWebNativeCatalogSession(
                         }
                         is ProviderCallResult.Success -> direct += (read.value.outcome as? AppleMusicWebOutcome.Complete)
                             ?.value?.items.orEmpty().filter { it.kind == AppleMusicWebKind.ALBUM &&
-                                it.storefront == storefront && it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
+                                it.storefront == storefront }
                     }
                 }
             }
-            val combined = albums + direct
-            val verifiedIds = (ids + direct.map { it.id }).distinct()
-            ProviderCallResult.Success(amsStyleTrackAlbumShelf(verifiedIds,storefront,combined))
+            // Some search rows or linked songs carry only a broad label.
+            // Reuse their exact album IDs in at most two additional batches.
+            // Do not admit them unless the hydrated album itself has the style.
+            if ((admittedShelf()?.items?.size ?: 0) < 6) {
+                val supplemental = amsStyleSupplementalAlbumIds(songs,direct,storefront,ids.toSet())
+                for (batch in supplemental.chunked(25)) {
+                    when (val read = gateway.linkedAlbumMetadata(batch,storefront)) {
+                        ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                        is ProviderCallResult.Failed -> {
+                            if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                        }
+                        is ProviderCallResult.Success -> albums +=
+                            (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                    }
+                    if ((admittedShelf()?.items?.size ?: 0) >= 6) break
+                }
+            }
+            ProviderCallResult.Success(admittedShelf())
         }
 
     private suspend fun curatedGenre(tag: String, storefront: String, refresh: Boolean):

@@ -6,6 +6,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun supplementalCandidatesDoNotTurnSearchRankOrParentLabelsIntoStyleEvidence() {
+        val song = AppleMusicWebItem("1",AppleMusicWebKind.SONG,"br","Track",
+            albumId="21",storeUrl="https://music.apple.com/br/album/album/21?i=1",
+            genreNames=listOf("Jazz"))
+        val broad = AppleMusicWebItem("20",AppleMusicWebKind.ALBUM,"br","Album",genreNames=listOf("Jazz"))
+        val foreign = broad.copy(id="22",storefront="us",genreNames=listOf("Jazz Fusion"))
+        assertTrue(amsStyleTrackAlbumIds(listOf(song),"br","jazz fusion").isEmpty())
+        assertEquals(listOf("20","21"),amsStyleSupplementalAlbumIds(listOf(song),listOf(broad,foreign),"br",emptySet()))
+        assertEquals(listOf("21"),amsStyleSupplementalAlbumIds(listOf(song),listOf(broad),"br",setOf("20")))
+        assertTrue(amsStyleAlbumLabelIds(listOf(broad,foreign),"br","jazz fusion").isEmpty())
+        val hydrated = broad.copy(genreNames=listOf("Jazz Fusion"),artistName="Artist",
+            storeUrl="https://music.apple.com/br/album/album/20")
+        val rows = listOf(broad,foreign,hydrated)
+        val ids = amsStyleAlbumLabelIds(rows,"br","jazz fusion")
+        assertEquals(listOf("20"),ids)
+        val item = requireNotNull(amsStyleTrackAlbumShelf(ids,"br",rows)).items.single()
+        assertEquals("Artist",item.subtitle)
+        assertEquals(hydrated.storeUrl,item.appleStoreUrl)
+        assertNull(amsStyleTrackAlbumShelf(ids,"br",rows + hydrated.copy(title="Conflicting title")))
+    }
+
+    @Test fun supplementalDiscoveryIsFairAndBounded() {
+        val albums = (1..60).map { AppleMusicWebItem(it.toString(),AppleMusicWebKind.ALBUM,"br","Album") }
+        val songs = (1..60).map { index ->
+            AppleMusicWebItem(index.toString(),AppleMusicWebKind.SONG,"br","Track",
+                albumId=(100+index).toString(),storeUrl="https://music.apple.com/br/album/album/${100+index}?i=$index")
+        }
+        val ids = amsStyleSupplementalAlbumIds(songs,albums,"br",emptySet())
+        assertEquals(50,ids.size)
+        assertEquals(listOf("1","101","2","102"),ids.take(4))
+        assertEquals(2,ids.chunked(25).size)
+    }
+
     @Test fun playlistPreviewUsesAdmissionBudgetAndPreservesEditorialProvenance() {
         val identity = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br","Editorial")
         val tracks = (1..110).map { index ->
