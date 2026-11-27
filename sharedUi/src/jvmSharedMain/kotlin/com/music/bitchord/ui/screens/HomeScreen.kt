@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Person
 import com.music.bitchord.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
 import com.music.bitchord.ui.icons.BitChordIcons
@@ -1340,6 +1341,14 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
     }
 }
 
+/** Only typed artist routes choose portrait geometry; labels are not identity. */
+internal fun homeShelfUsesArtistPortrait(browseId: String?): Boolean =
+    browseId?.let { id ->
+        id.matches(Regex("catalog:ARTIST:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")) ||
+            id.matches(Regex("itunes:[a-z]{2}:artist:[1-9][0-9]*")) ||
+            id.matches(Regex("discogs:artist:[1-9][0-9]{0,11}"))
+    } == true
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ShelfCard(
@@ -1354,6 +1363,7 @@ internal fun ShelfCard(
 ) {
     // The legacy source adapter retains custom folder artwork; Home and
     // Explore share the original source-independent title/card composition.
+    val artistPortrait = homeShelfUsesArtistPortrait(item.browseId)
     NativeShelfCard(
         title = item.title,
         subtitle = localizeCardSubtitle(item.subtitle),
@@ -1362,6 +1372,7 @@ internal fun ShelfCard(
         modifier = modifier,
         isPinned = isPinned,
         isCurrent = isCurrent,
+        artistPortrait = artistPortrait,
         artwork = {
         when (item.browseId) {
             "local:downloads" -> {
@@ -1433,6 +1444,25 @@ internal fun ShelfCard(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
+                } else if (artistPortrait) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(CircleShape).thumbnailBorder(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Person, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(44.dp))
+                        appleProminentArtworkOrNull(item.thumbnailUrl)?.let { portrait ->
+                            ResilientAppleCover(
+                                model = portrait.artworkAt(CARD_ART_PX),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 } else Box(
                     modifier = Modifier
