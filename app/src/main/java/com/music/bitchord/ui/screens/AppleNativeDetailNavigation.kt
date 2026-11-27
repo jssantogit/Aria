@@ -119,7 +119,8 @@ internal fun appleNativeRelatedAlbumEntries(
             first.browseId == source.album.browseId ||
             first.title.isBlank() ||
             observations.any {
-                it.artistBrowseId != null && it.artistBrowseId != artistId
+                appleNativeDetailRouteKey(AppleNativeDetailKind.ALBUM, null, it) == null ||
+                    (it.artistBrowseId != null && it.artistBrowseId != artistId)
             }
         ) return@mapNotNull null
         val admitted = appleNativeShelfEntry(first.browseId, observations)
@@ -228,5 +229,7 @@ internal fun appleNativeDetailDisplayAllowed(
         detail.verifiedArtistMbid == null &&
         detail.albumArtistBrowseId == null &&
         detail.albumArtistDisplayName == null &&
+        detail.featuredRelease == null &&
+        detail.notice == null &&
         detail.attribution == null
     )

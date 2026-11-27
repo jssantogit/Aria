@@ -186,4 +186,18 @@ class DiscogsNativeNavigationTest {
         assertTrue(partial.hasMore)
         visible.forEach { id -> assertEquals(1, backing.count { it.browseId == id }) }
     }
+
+    @Test fun activePartialArtistWindowDoesNotConsumeNextScroll() {
+        val page = discogsArtistPage(
+            DiscogsNativeArtistSearchRow(17L, "Artist"),
+            emptyList(), hasMore = true, incomplete = true,
+        )
+        fun canContinue(candidate: com.music.bitchord.ui.DiscogsNativePage?, searching: Boolean = false) =
+            com.music.bitchord.ui.discogsNativeArtistCanContinue(candidate, searching)
+        assertFalse(canContinue(page.copy(loadingMore = true)))
+        assertTrue(canContinue(page))
+        assertFalse(canContinue(page, searching = true))
+        assertFalse(canContinue(page.copy(hasMore = false)))
+        assertFalse(canContinue(null))
+    }
 }

@@ -122,7 +122,13 @@ internal data class DiscogsNativePage(
     val versionMasterId: Long? = null,
     /** Volatile exact Release evidence, only for independent artwork proof. */
     val artworkEvidence: DiscogsRecord? = null,
+    /** A visible partial window is navigable, but cannot start a second pager. */
+    val loadingMore: Boolean = false,
 )
+
+/** The active window must settle before the next deliberate scroll can page. */
+internal fun discogsNativeArtistCanContinue(page: DiscogsNativePage?, searching: Boolean): Boolean =
+    page?.page?.type == BrowseType.ARTIST && page.hasMore && !page.loadingMore && !searching
 
 /** A version link is accepted only from a hydrated, explicitly verified
  * Master-specific carousel. Its source ID cannot be inferred from a title. */
@@ -1140,6 +1146,7 @@ internal class DiscogsNativeCatalogSession(
             return
         }
         val page = artistPage + 1
+        cachedArtistPage?.let { _detail.value = UiState.Success(it.copy(loadingMore = true)) }
         val job = scope.launch(Dispatchers.Main.immediate) {
             val window = try {
                 val known = releases
@@ -1159,7 +1166,7 @@ internal class DiscogsNativeCatalogSession(
                                     current, releases, hasMore = true, incomplete = true,
                                 )
                                 cachedArtistPage = snapshot
-                                _detail.value = UiState.Success(snapshot)
+                                _detail.value = UiState.Success(snapshot.copy(loadingMore = true))
                             }
                         }
                     }

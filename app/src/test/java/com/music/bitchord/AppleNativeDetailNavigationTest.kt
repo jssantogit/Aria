@@ -267,6 +267,17 @@ class AppleNativeDetailNavigationTest {
         assertFalse(appleNativeDetailDisplayAllowed(
             denied, editorialAuthorized = false, searchAuthorized = false,
         ))
+        val featured = appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
+            artist(), listOf(album()), possiblyTruncated = false,
+        ))!!.featuredRelease!!
+        assertFalse(appleNativeDetailDisplayAllowed(
+            denied.copy(featuredRelease = featured),
+            editorialAuthorized = false, searchAuthorized = true,
+        ))
+        assertFalse(appleNativeDetailDisplayAllowed(
+            denied.copy(notice = "Partial source tracklist"),
+            editorialAuthorized = false, searchAuthorized = true,
+        ))
         assertFalse(appleNativeDetailDisplayAllowed(
             appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
                 artist(), listOf(album()), possiblyTruncated = false,

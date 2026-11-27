@@ -28,6 +28,8 @@ import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.DiscogsNativePage
 import com.music.bitchord.ui.DiscogsNativeRoute
 import com.music.bitchord.ui.discogsNativeDetailRouteKey
+import com.music.bitchord.ui.discogsNativeArtistCanContinue
+import com.music.bitchord.ui.discogsNativePageDisplayAllowed
 import com.music.bitchord.ui.MainViewModel
 import com.music.bitchord.ui.AppleCatalogBrowseRoute
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
@@ -72,9 +74,15 @@ internal fun CanonicalProviderDetailHost(
         ProviderCapability.EDITORIAL_DISCOGRAPHY,
         if (isDiscogs) BuiltInProviderKeys.DISCOGS else BuiltInProviderKeys.ITUNES,
     ) else null
+    val detailAuthorized = detailTicket != null && gate?.accept(detailTicket) == true
+    val searchAuthorized = policySnapshot != null && gate?.open(
+        ProviderCapability.CATALOG_SEARCH,
+        if (isDiscogs) BuiltInProviderKeys.DISCOGS else BuiltInProviderKeys.ITUNES,
+    ) != null
     val artistState = appleArtistDetail as? UiState.Success
     val liveApplePage = if (!isDiscogs) appleSharedVisual?.takeIf {
-        it.page.browseId == routeKey
+        it.page.browseId == routeKey &&
+            appleNativeDetailDisplayAllowed(it, detailAuthorized, searchAuthorized)
     } else null
     val previousApplePage = remember(routeKey, gate, detailTicket, appleReadAllowed) {
         mutableStateOf<AppleSharedDetail?>(null)
@@ -87,7 +95,8 @@ internal fun CanonicalProviderDetailHost(
     }
 
     val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
-        it.page.browseId == routeKey
+        it.page.browseId == routeKey &&
+            discogsNativePageDisplayAllowed(it, detailAuthorized, searchAuthorized)
     } else null
     val previousDiscogsPage = remember(routeKey, gate, detailTicket, discogsReadAllowed) {
         mutableStateOf<DiscogsNativePage?>(null)
@@ -162,7 +171,7 @@ internal fun CanonicalProviderDetailHost(
     // One bounded continuation per deliberate scroll to the end. Never
     // eagerly drain the entire Apple catalog merely because a short first
     // page happens to fit the screen; navigation cancels this collector.
-    val appleArtist = if (!isDiscogs && appleReadAllowed) artistState?.data?.takeIf {
+    val appleArtist = if (!isDiscogs && appleReadAllowed && detailAuthorized) artistState?.data?.takeIf {
         it.artist.browseId == routeKey
     } else null
     val canContinueApple = appleArtist?.hasMore == true &&
@@ -181,9 +190,8 @@ internal fun CanonicalProviderDetailHost(
     }
     // Discogs artist pagination uses the exact same native shelf scroll as
     // Apple, rather than a second provider-specific footer navigation.
-    val canContinueDiscogs = isDiscogs &&
-        discogsPage?.page?.type == com.music.bitchord.data.model.BrowseType.ARTIST &&
-        discogsPage?.hasMore == true && !searching
+    val canContinueDiscogs = isDiscogs && detailAuthorized &&
+        discogsNativeArtistCanContinue(discogsPage, searching)
     LaunchedEffect(routeKey, canContinueDiscogs, discogsPage?.page?.sections) {
         if (canContinueDiscogs) {
             snapshotFlow {
@@ -258,7 +266,7 @@ internal fun CanonicalProviderDetailHost(
                     }
             } else {
                 val matched = appleNativeShelfEntryForRoute(
-                    routeKey, item.browseId, appleReadAllowed,
+                    routeKey, item.browseId, appleReadAllowed && detailAuthorized,
                     artistState?.data, (appleAlbumDetail as? UiState.Success)?.data,
                 )
                 if (matched != null) {
