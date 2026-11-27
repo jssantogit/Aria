@@ -66,34 +66,42 @@ internal fun CanonicalProviderDetailHost(
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
+    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val gate = ProviderRuntime.gateOrNull()
+    val detailTicket = if (policySnapshot != null) gate?.open(
+        ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        if (isDiscogs) BuiltInProviderKeys.DISCOGS else BuiltInProviderKeys.ITUNES,
+    ) else null
     val artistState = appleArtistDetail as? UiState.Success
     val liveApplePage = if (!isDiscogs) appleSharedVisual?.takeIf {
         it.page.browseId == routeKey
     } else null
-    val previousApplePage = remember(routeKey) {
+    val previousApplePage = remember(routeKey, gate, detailTicket, appleReadAllowed) {
         mutableStateOf<AppleSharedDetail?>(null)
     }
-    if (liveApplePage != null) previousApplePage.value = liveApplePage
+    if (liveApplePage != null && appleReadAllowed && detailTicket != null)
+        previousApplePage.value = liveApplePage
     val applePage = liveApplePage ?: previousApplePage.value.takeIf {
-        !isDiscogs && appleReadAllowed
+        !isDiscogs && appleReadAllowed && detailTicket != null &&
+            gate?.accept(detailTicket) == true
     }
 
     val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
         it.page.browseId == routeKey
     } else null
-    val previousDiscogsPage = remember(routeKey) {
+    val previousDiscogsPage = remember(routeKey, gate, detailTicket, discogsReadAllowed) {
         mutableStateOf<DiscogsNativePage?>(null)
     }
-    if (liveDiscogsPage != null) previousDiscogsPage.value = liveDiscogsPage
+    if (liveDiscogsPage != null && discogsReadAllowed && detailTicket != null)
+        previousDiscogsPage.value = liveDiscogsPage
     val discogsPage = liveDiscogsPage ?: previousDiscogsPage.value.takeIf {
-        isDiscogs && discogsReadAllowed && discogsRoute != null
+        isDiscogs && discogsReadAllowed && discogsRoute != null &&
+            detailTicket != null && gate?.accept(detailTicket) == true
     }
 
     // The live exact Discogs edition supplies metadata, not artwork authority.
     // Key state by the release and artwork lease so toggling Capas removes the
     // old image immediately and starts a new lookup when re-enabled.
-    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
-    val gate = ProviderRuntime.gateOrNull()
     val artTicket = if (policySnapshot != null && discogsReadAllowed)
         gate?.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
     else null
