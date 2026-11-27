@@ -20,4 +20,21 @@ class NativeHomeArtistPortraitTest {
             assertFalse(route, homeShelfUsesArtistPortrait(route))
         }
     }
+    @Test fun editorialArtworkIsDisplayOnlyAndRequiresExactDiscogsReleaseAndLargeImage() {
+        val id = "discogs:release:123"
+        val proof = EditorialShelfArtwork(
+            "https://is1-ssl.mzstatic.com/image/thumb/example/600x600bb.jpg",
+            "https://music.apple.com/br/album/example/123",
+            "badge",
+        )
+        val map = mapOf(id to proof, "discogs:artist:123" to proof,
+            "itunes:br:album:123" to proof)
+        org.junit.Assert.assertEquals(proof, editorialShelfArtworkFor(id, map))
+        org.junit.Assert.assertNull(editorialShelfArtworkFor("discogs:release:124", map))
+        org.junit.Assert.assertNull(editorialShelfArtworkFor("discogs:artist:123", map))
+        org.junit.Assert.assertNull(editorialShelfArtworkFor("itunes:br:album:123", map))
+        org.junit.Assert.assertNull(editorialShelfArtworkFor(id, mapOf(id to
+            proof.copy(artworkUrl = proof.artworkUrl.replace("600x600", "100x100")))))
+    }
+
 }
