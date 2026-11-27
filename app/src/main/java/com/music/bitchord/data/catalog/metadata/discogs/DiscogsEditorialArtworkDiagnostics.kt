@@ -7,6 +7,8 @@ import com.music.bitchord.diagnostics.Diagnostics
  * Never export source IDs, barcodes, names, credentials, URLs or query text. */
 internal enum class DiscogsArtworkOutcome {
     NO_CURRENT_EVIDENCE,
+    EXPIRED_EVIDENCE,
+    AMBIGUOUS_EVIDENCE,
     INELIGIBLE_EDITION,
     POLICY_DENIED,
     EVIDENCE_CHANGED,
