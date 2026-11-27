@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import com.music.aria.ui.components.ShelfRow
+import com.music.aria.ui.components.ResilientAppleCover
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +47,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,8 +57,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,16 +75,19 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Person
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
 import com.music.aria.ui.icons.AriaIcons
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.music.aria.data.model.CARD_ART_PX
 import com.music.aria.data.model.HEADER_ART_PX
 import com.music.aria.data.model.HomeShelf
 import com.music.aria.data.model.ROW_ART_PX
 import com.music.aria.data.model.ShelfItem
 import com.music.aria.data.model.Song
+import com.music.aria.playback.PlaybackPosition
 import com.music.aria.data.model.UiState
 import java.util.Locale
 import com.music.aria.data.model.artworkAt
@@ -92,6 +101,7 @@ import com.music.aria.ui.components.NativeCompactMenuItem
 import com.music.aria.ui.components.PullToRefresh
 import com.music.aria.ui.components.SHELF_CARD_WIDTH
 import com.music.aria.ui.components.NativeMediaCardMetrics
+import com.music.aria.ui.components.NativePageHeaderMetrics
 import com.music.aria.ui.components.SearchPlayingBars
 import com.music.aria.ui.components.feedMoreSkeleton
 import com.music.aria.ui.components.feedSkeleton
@@ -103,8 +113,29 @@ import com.music.aria.ui.performance.RuntimePerformanceUiContext
 import com.music.aria.ui.player.MeshGradientBackground
 import com.music.aria.ui.player.MeshPalette
 
-/** How far the Listen now heading and feed sit above the shared top inset. */
-private val HOME_TITLE_LIFT = 28.dp
+/**
+ * A 100px Search API thumbnail is fine for a 52dp list row, but never for a
+ * full-bleed editorial hero or album-sized square. The Apple CDN's larger
+ * URL is produced only after Android verified its actual dimensions; do not
+ * upscale the original to hide a pending/failing probe.
+ *
+ * This is presentation only. It does not grant identity to any artwork URL.
+ */
+fun appleProminentArtworkOrNull(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    val uri = try { java.net.URI(url) } catch (_: Exception) { return null }
+    val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return url
+    if (host != "mzstatic.com" && !host.endsWith(".mzstatic.com")) return url
+    val match = Regex(
+        """/(\d{2,4})x(\d{2,4})(?:bb|-[0-9]{2,3})\.(?:jpe?g|png|webp)$""",
+        RegexOption.IGNORE_CASE,
+    ).find(uri.path.orEmpty()) ?: return null
+    val width = match.groupValues[1].toIntOrNull() ?: return null
+    val height = match.groupValues[2].toIntOrNull() ?: return null
+    return url.takeIf { width >= 600 && height >= 600 }
+}
+
+/** Home and other landing pages share one measured large-title baseline. */
 
 /**
  * Home intentionally raises its large heading. Explore genre details have an
@@ -114,8 +145,11 @@ private val HOME_TITLE_LIFT = 28.dp
 internal fun homeTitleTopInset(
     topBarInset: Dp,
     reserveFloatingBackSpace: Boolean,
-): Dp = if (reserveFloatingBackSpace) topBarInset.coerceAtLeast(0.dp)
-else (topBarInset - HOME_TITLE_LIFT).coerceAtLeast(0.dp)
+): Dp = if (reserveFloatingBackSpace) {
+    // Pushed categories share the heading Y of the native Library category:
+    // safe chrome inset + resting action offset + the 8dp Text inner margin.
+    topBarInset.coerceAtLeast(0.dp) + NativePageHeaderMetrics.pushedTitleClearance
+} else rootLandingTitleListTopInset(topBarInset, titleInnerTop = 8.dp)
 
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
@@ -148,6 +182,71 @@ private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Bool
     val byName = firstOrNull { it.videoId != null && it.title == song.title && it.subtitle == song.artist }
         ?: return { false }
     return { it == byName }
+}
+
+/** Volatile display-only proof; callbacks retain the original ShelfItem. */
+data class EditorialShelfArtwork(
+    val artworkUrl: String,
+    val storeUrl: String,
+    val badgeUrl: String,
+)
+
+private val LocalEditorialShelfArtwork =
+    compositionLocalOf<Map<String, EditorialShelfArtwork>> { emptyMap() }
+
+internal fun editorialShelfArtworkFor(
+    browseId: String?,
+    artwork: Map<String, EditorialShelfArtwork>,
+): EditorialShelfArtwork? {
+    if (browseId == null || !browseId.matches(Regex("discogs:release:[1-9][0-9]{0,11}")))
+        return null
+    return artwork[browseId]?.takeIf {
+        appleProminentArtworkOrNull(it.artworkUrl) != null
+    }
+}
+
+@Composable
+private fun EditorialShelfArtworkBadge(proof: EditorialShelfArtwork, modifier: Modifier) {
+    val handler = LocalUriHandler.current
+    AsyncImage(
+        model = proof.badgeUrl,
+        contentDescription = "Abrir produto na Apple",
+        contentScale = ContentScale.Fit,
+        modifier = modifier.width(92.dp).height(28.dp)
+            .clickable { runCatching { handler.openUri(proof.storeUrl) } },
+    )
+}
+
+/** A late Coil success from an older card must never authorize a new badge. */
+internal fun editorialShelfArtworkLoaded(
+    proof: EditorialShelfArtwork,
+    loadedModel: Any?,
+): Boolean = loadedModel is String && (
+    loadedModel == proof.artworkUrl ||
+        loadedModel == com.music.aria.ui.components
+            .appleVerifiedCdnCoverFallbackUrl(proof.artworkUrl)
+    )
+
+/** Keep the official product badge coupled to an actually loaded cover.
+ * If both CDN attempts fail, leave the honest native fallback without a badge.
+ * Load state belongs to this exact card/proof, never the source ShelfItem. */
+@Composable
+private fun EditorialShelfCardFrame(
+    item: ShelfItem,
+    modifier: Modifier,
+    content: @Composable (((AsyncImagePainter.State) -> Unit)?) -> Unit,
+) {
+    val proof = editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)
+    var loaded by remember(item.browseId, proof) { mutableStateOf(false) }
+    Column(modifier) {
+        content(if (proof == null) null else { state ->
+            loaded = state is AsyncImagePainter.State.Success &&
+                editorialShelfArtworkLoaded(proof, state.result.request.data)
+        })
+        if (proof != null && loaded) {
+            EditorialShelfArtworkBadge(proof, Modifier.padding(top = 4.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -188,14 +287,42 @@ fun HomeScreen(
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    /** The live Media3 playhead (including a position restored from a real queue snapshot). */
+    continuePosition: PlaybackPosition? = null,
+    continueDurationMs: Long = 0L,
+    /** Resume the *existing* player; never manufacture a Song or a new queue. */
+    onContinue: ((String) -> Unit)? = null,
     /** Native account access while the floating Home actions are hidden. */
     headerTrailing: (@Composable () -> Unit)? = null,
     /** An honest empty/loading result, not a synthetic playlist card. */
     publicPlaylistNotice: String? = null,
     /** Pushed Explore categories keep the full inset below the floating Back. */
     reserveFloatingBackSpace: Boolean = false,
+    /** Genre/subgenre navigation is a square-card shelf, never the hero. */
+    categoryNavigationShelf: HomeShelf? = null,
+    /** Verified external source attribution, not a fabricated catalog card. */
+    editorialAttribution: Pair<String, String>? = null,
+    /** Verified supplemental Home/genre shelves share native horizontal paging. */
+    onAdditionalGenrePage: (() -> Unit)? = null,
+    editorialArtwork: Map<String, EditorialShelfArtwork> = emptyMap(),
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
+    val sourceUriHandler = LocalUriHandler.current
+    val continueHeading = stringResource(Res.string.shelf_continue_listening)
+    val resumeLabel = stringResource(Res.string.shelf_resume_from)
+    // Read the rapidly changing playhead only in Home's own Compose scope.
+    // Never pass positionMs up through AriaApp: that invalidates every tab.
+    val pausedResumePosition = if (!isPlaying && onContinue != null)
+        continuePosition?.positionMs ?: 0L else 0L
+    val continueShelf = remember(
+        currentSong, isPlaying, pausedResumePosition, continueDurationMs,
+        onContinue != null, continueHeading, resumeLabel,
+    ) {
+        if (onContinue == null) null else canonicalContinueListeningShelf(
+            currentSong, isPlaying, pausedResumePosition, continueDurationMs,
+            heading = continueHeading, resumeLabel = resumeLabel,
+        )
+    }
 
     if (RuntimePerformanceUiContext.enabled) {
         val runtimePerformanceOwner = remember { Any() }
@@ -226,8 +353,8 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // The heading sits higher than the other tabs' first row: pull the
-            // whole feed up by [HOME_TITLE_LIFT] with it.
+            // The three landing-page titles share one visual baseline
+            // while content below them clears the floating top controls.
             contentPadding = if (title != null) {
                 PaddingValues(
                     top = homeTitleTopInset(
@@ -242,7 +369,13 @@ fun HomeScreen(
         ) {
             if (title != null) {
                 item(key = "home-title") {
-                    HomeTitle(title, actions = headerActions, onBack = onBack, trailing = headerTrailing)
+                    HomeTitle(
+                        title = title,
+                        actions = headerActions,
+                        onBack = onBack,
+                        trailing = headerTrailing,
+                        pushedCategory = reserveFloatingBackSpace,
+                    )
                 }
             }
             when (state) {
@@ -256,9 +389,27 @@ fun HomeScreen(
                     } else {
                         feedSkeleton(firstIsHero = leadHero)
                     }
+                    categoryNavigationShelf?.let { categoryShelf ->
+                        item(key = "genre-navigation-loading") {
+                            Shelf(
+                                shelf = categoryShelf,
+                                onItemClick = { onItemClick(it, categoryShelf.title) },
+                            )
+                        }
+                    }
                 }
-                is UiState.Error -> item {
-                    MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+                is UiState.Error -> {
+                    item {
+                        MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+                    }
+                    categoryNavigationShelf?.let { categoryShelf ->
+                        item(key = "genre-navigation-error") {
+                            Shelf(
+                                shelf = categoryShelf,
+                                onItemClick = { onItemClick(it, categoryShelf.title) },
+                            )
+                        }
+                    }
                 }
                 is UiState.Success -> {
                     if (recentlyPlayedLoading) {
@@ -272,15 +423,34 @@ fun HomeScreen(
                     ) state.data.toMutableList().apply {
                         add(minOf(2, size), HomeShelf("Playlists", emptyList()))
                     } else state.data
+                    val visibleShelves = displayShelves.toMutableList().apply {
+                        // Retained paused playback is an actual Media3 playhead,
+                        // not guessed listening history. Keep the editorial hero
+                        // in the first slot, then insert one native square card.
+                        continueShelf?.let { add(if (isEmpty()) 0 else 1, it) }
+                        categoryNavigationShelf?.let {
+                            add(if (isEmpty()) 0 else 1, it)
+                        }
+                    }
                     itemsIndexedShelves(
-                        shelves = displayShelves,
+                        shelves = visibleShelves,
+                        editorialArtwork = editorialArtwork,
                         emptyPlaylistNotice = publicPlaylistNotice,
-                        onItemClick = onItemClick,
-                        onItemLongPress = onItemLongPress,
+                        onItemClick = { item, shelfTitle ->
+                            if (item.browseId == CONTINUE_LISTENING_BROWSE_ID)
+                                onContinue?.invoke(currentSong?.videoId.orEmpty())
+                            else onItemClick(item, shelfTitle)
+                        },
+                        onItemLongPress = onItemLongPress?.let { hold ->
+                            { item: ShelfItem ->
+                                if (item.browseId != CONTINUE_LISTENING_BROWSE_ID) hold(item)
+                            }
+                        },
                         currentSong = currentSong,
                         isPlaying = isPlaying,
-                        firstIsHero = leadHero && !recentlyPlayedLoading,
+                        firstIsHero = leadHero && !recentlyPlayedLoading && displayShelves.isNotEmpty(),
                         recentsViewType = recentsViewType,
+                        onAdditionalGenrePage = onAdditionalGenrePage,
                         onRecentsViewTypeToggle = {
                             AppUi.host.setHomeRecentsViewType(
                                 if (recentsViewType == LibraryViewType.LIST) {
@@ -291,6 +461,22 @@ fun HomeScreen(
                             )
                         },
                     )
+                    if (editorialAttribution != null && state.data.any { shelf ->
+                            shelf.items.any { it.browseId.orEmpty().startsWith("discogs:") }
+                        }) {
+                        item(key = "editorial-source-attribution") {
+                            Text(
+                                text = editorialAttribution.first,
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable {
+                                        sourceUriHandler.openUri(editorialAttribution.second)
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     if (loadingMore) feedMoreSkeleton()
                 }
             }
@@ -331,10 +517,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
     emptyPlaylistNotice: String? = null,
+    onAdditionalGenrePage: (() -> Unit)? = null,
+    editorialArtwork: Map<String, EditorialShelfArtwork> = emptyMap(),
 ) {
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
+            CompositionLocalProvider(LocalEditorialShelfArtwork provides editorialArtwork) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
+            val cardLongPress = if (shelf.items.singleOrNull()?.browseId ==
+                CONTINUE_LISTENING_BROWSE_ID
+            ) null else onItemLongPress
             val presentation = homeShelfPresentation(shelf.title, index, firstIsHero)
             if (shelf.title == "Playlists" && shelf.items.isEmpty() &&
                 emptyPlaylistNotice != null
@@ -354,7 +546,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
+                    onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                     viewType = recentsViewType,
@@ -364,7 +556,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 HeroShelf(
                     shelf = shelf,
                     onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
+                    onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                 )
@@ -372,10 +564,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 Shelf(
                     shelf = shelf,
                     onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
+                    onItemLongPress = cardLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
+                    onRowEndReached = if (
+                        shelf.title == "Mais do gênero" ||
+                        shelf.title == "Mais do catálogo"
+                    ) onAdditionalGenrePage else null,
                 )
+            }
             }
         }
     }
@@ -622,6 +819,17 @@ data class HomeHeaderAction(val label: String, val onClick: () -> Unit)
  * Keep the action menu at the same scroll position as the large heading,
  * not in another floating pill above the feed.
  */
+/**
+ * Genre detail has an independent 40dp floating Back above its in-list
+ * title. The Library's 32dp category gutter is NOT sufficient here:
+ * the K in "K-pop" would sit beneath the overlapping Back touch target.
+ * Reserve that target plus a small optical gap without changing Library.
+ */
+internal fun homePushedGenreTitleLeadingInset(): Dp =
+    // The global 40dp toolbar button lives in the Android host; sharedUi
+    // cannot depend on app-only AppleFloatingControlMetrics.
+    NativePageHeaderMetrics.pushedTitleStartInset + 36.dp
+
 @Composable
 fun HomeTitle(
     title: String,
@@ -629,24 +837,32 @@ fun HomeTitle(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    pushedCategory: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
         modifier = modifier.fillMaxWidth()
-            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+            .padding(
+                start = PAGE_GUTTER + (if (pushedCategory) homePushedGenreTitleLeadingInset() else 0.dp),
+                end = PAGE_GUTTER,
+                top = 8.dp,
+                bottom = 8.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text = title,
             modifier = Modifier.weight(1f).testTag("home-title"),
-            style = MaterialTheme.typography.displayLarge,
+            style = if (pushedCategory) MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            ) else MaterialTheme.typography.displayLarge,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        // A genre page must line up with Home/Explore, not indent the title
-        // by the back button's width. Keep Back reachable at the right.
+        // The pushed genre uses the same native category gutter as Library.
+        // An optional in-feed Back remains supported for legacy callers.
         if (onBack != null) {
             NativeHomeHeaderIconAction(
                 icon = PlaylistEditorIcons.Back,
@@ -922,14 +1138,17 @@ private fun HeroShelf(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(shelf.items) { item ->
-                    HeroCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onLongPress = onItemLongPress?.let { { it(item) } },
-                        modifier = Modifier.width(cardWidth),
-                        isCurrent = isCurrentItem(item),
-                        isPlaying = isCurrentItem(item) && isPlaying,
-                    )
+                    EditorialShelfCardFrame(item, Modifier.width(cardWidth)) { onArtworkState ->
+                        HeroCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = onItemLongPress?.let { { it(item) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            isCurrent = isCurrentItem(item),
+                            isPlaying = isCurrentItem(item) && isPlaying,
+                            onArtworkState = onArtworkState,
+                        )
+                    }
                 }
             }
         }
@@ -974,6 +1193,7 @@ private fun HeroCard(
     modifier: Modifier = Modifier,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    onArtworkState: ((AsyncImagePainter.State) -> Unit)? = null,
 ) {
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
@@ -989,16 +1209,21 @@ private fun HeroCard(
             )
             .contextClick(onLongPress),
     ) {
-        val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
-        if (hasCatalogIdentity) CatalogArtworkFallback(
+        val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true ||
+            item.browseId?.startsWith("discogs:release:") == true
+        val isAppleCard = item.browseId?.startsWith("itunes:") == true
+        val proof = editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)
+        val prominent = appleProminentArtworkOrNull(proof?.artworkUrl ?: item.thumbnailUrl)
+        if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
             hero = true, modifier = Modifier.fillMaxSize(),
         )
-        if (!item.thumbnailUrl.isNullOrBlank() || !hasCatalogIdentity) {
-            AsyncImage(
-                model = item.thumbnailUrl.artworkAt(HEADER_ART_PX),
+        if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
+            ResilientAppleCover(
+                model = if (proof != null) prominent else prominent.artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                onState = onArtworkState,
             )
         }
         if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
@@ -1055,23 +1280,41 @@ internal fun Shelf(
     leadingCard: (@Composable () -> Unit)? = null,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
+    onRowEndReached: (() -> Unit)? = null,
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title, shelf.subtitle)
         val isCurrentItem = shelf.items.playingItemMatcher(currentSong)
+        val rowState = rememberLazyListState()
+        val latestEndCallback by rememberUpdatedState(onRowEndReached)
+        LaunchedEffect(rowState, onRowEndReached != null) {
+            if (onRowEndReached == null) return@LaunchedEffect
+            snapshotFlow {
+                val layout = rowState.layoutInfo
+                rowState.isScrollInProgress && layout.totalItemsCount > 0 &&
+                    (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >=
+                        (layout.totalItemsCount - 3).coerceAtLeast(0)
+            }.distinctUntilChanged().filter { it }.collect {
+                latestEndCallback?.invoke()
+            }
+        }
         ShelfRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             leadingCard?.let { card -> item(key = "leading") { card() } }
             items(shelf.items) { item ->
-                ShelfCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = onItemLongPress?.let { { it(item) } },
-                    isCurrent = isCurrentItem(item),
-                    isPlaying = isCurrentItem(item) && isPlaying,
-                )
+                EditorialShelfCardFrame(item, Modifier.width(SHELF_CARD_WIDTH)) { onArtworkState ->
+                    ShelfCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = onItemLongPress?.let { { it(item) } },
+                        isCurrent = isCurrentItem(item),
+                        isPlaying = isCurrentItem(item) && isPlaying,
+                        onArtworkState = onArtworkState,
+                    )
+                }
             }
         }
     }
@@ -1177,6 +1420,14 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
     }
 }
 
+/** Only typed artist routes choose portrait geometry; labels are not identity. */
+internal fun homeShelfUsesArtistPortrait(browseId: String?): Boolean =
+    browseId?.let { id ->
+        id.matches(Regex("catalog:ARTIST:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")) ||
+            id.matches(Regex("itunes:[a-z]{2}:artist:[1-9][0-9]*")) ||
+            id.matches(Regex("discogs:artist:[1-9][0-9]{0,11}"))
+    } == true
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ShelfCard(
@@ -1188,9 +1439,11 @@ internal fun ShelfCard(
     isPinned: Boolean = false,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    onArtworkState: ((AsyncImagePainter.State) -> Unit)? = null,
 ) {
     // The legacy source adapter retains custom folder artwork; Home and
     // Explore share the original source-independent title/card composition.
+    val artistPortrait = homeShelfUsesArtistPortrait(item.browseId)
     NativeShelfCard(
         title = item.title,
         subtitle = localizeCardSubtitle(item.subtitle),
@@ -1199,6 +1452,7 @@ internal fun ShelfCard(
         modifier = modifier,
         isPinned = isPinned,
         isCurrent = isCurrent,
+        artistPortrait = artistPortrait,
         artwork = {
         when (item.browseId) {
             "local:downloads" -> {
@@ -1271,6 +1525,25 @@ internal fun ShelfCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                } else if (artistPortrait) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(CircleShape).thumbnailBorder(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Person, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(44.dp))
+                        appleProminentArtworkOrNull(item.thumbnailUrl)?.let { portrait ->
+                            ResilientAppleCover(
+                                model = portrait.artworkAt(CARD_ART_PX),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
                 } else Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1279,16 +1552,21 @@ internal fun ShelfCard(
                         .thumbnailBorder(NativeMediaCardMetrics.squareCoverShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
-                    if (hasCatalogIdentity) CatalogArtworkFallback(
+                    val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true ||
+                        item.browseId?.startsWith("discogs:release:") == true
+                    val isAppleCard = item.browseId?.startsWith("itunes:") == true
+                    val proof = editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)
+                    val prominent = appleProminentArtworkOrNull(proof?.artworkUrl ?: item.thumbnailUrl)
+                    if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
                         hero = false, modifier = Modifier.fillMaxSize(),
                     )
-                    if (!item.thumbnailUrl.isNullOrBlank() || !hasCatalogIdentity) {
-                        AsyncImage(
-                            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                    if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
+                        ResilientAppleCover(
+                            model = if (proof != null) prominent else prominent.artworkAt(CARD_ART_PX),
                             contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
+                            onState = onArtworkState,
                         )
                     }
                     if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))

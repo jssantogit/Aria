@@ -3,9 +3,14 @@ package com.music.aria.ui
 import com.music.aria.data.model.HomeShelf
 import com.music.aria.data.catalog.metadata.LISTENBRAINZ_PUBLIC_TTL_MS
 import com.music.aria.data.catalog.metadata.ListenBrainzPopularityEvidence
+import com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit
+import com.music.aria.data.catalog.metadata.MusicBrainzReleaseGroupHit
+import com.music.aria.data.catalog.metadata.isCuratedMusicBrainzRelease
+import com.music.aria.data.catalog.metadata.isCuratedMusicBrainzReleaseGroup
 import com.music.aria.data.catalog.metadata.ListenBrainzSitewideRecording
 import com.music.aria.data.catalog.metadata.publicListenBrainzRecordingRanking
 import com.music.aria.data.catalog.metadata.canonicalStreamingTitleIsSafe
+import com.music.aria.data.catalog.metadata.safeAppleArtwork
 import com.music.aria.data.model.BrowseType
 import com.music.aria.data.model.ShelfItem
 import com.music.aria.data.model.Song
@@ -57,6 +62,147 @@ internal fun canonicalEditorialReleaseType(row: CanonicalCatalogSearchRow): Stri
     ).format
 }
 
+/**
+ * Secondary classifications are explicit ReleaseGroup evidence, NOT title
+ * heuristics. Only Albums qualify; unknown types, Singles and EPs cannot
+ * acquire a new format from a secondary tag. Ambiguous multi-tag groups stay
+ * in the regular Album rail, retaining both secondary labels on their cards.
+ */
+internal enum class CanonicalArtistAlbumShelfKind { ALBUM, LIVE, COMPILATION }
+
+internal fun canonicalArtistAlbumShelfKind(
+    row: CanonicalCatalogSearchRow,
+): CanonicalArtistAlbumShelfKind {
+    val classified = CanonicalEditorialDiscography.classify(
+        row.releaseKind, row.secondaryTypes,
+    )
+    if (row.kind != CanonicalSearchKind.RELEASE_GROUP ||
+        classified.format != "Album"
+    ) return CanonicalArtistAlbumShelfKind.ALBUM
+    val live = "Live" in classified.secondaryTypes
+    val compilation = "Compilation" in classified.secondaryTypes
+    return when {
+        live && !compilation -> CanonicalArtistAlbumShelfKind.LIVE
+        compilation && !live -> CanonicalArtistAlbumShelfKind.COMPILATION
+        else -> CanonicalArtistAlbumShelfKind.ALBUM
+    }
+}
+
+
+/**
+ * A public album work is a ReleaseGroup. A specific Release joins that work
+ * only through its exact, source-provided group MBID, never through title or
+ * artist-name similarity. Unknown or malformed links do not create shelves.
+ */
+internal fun canonicalAlbumGroupMbid(
+    kind: CanonicalSearchKind,
+    openedMbid: String,
+    verifiedEditionGroupMbid: String? = null,
+): String? {
+    val candidate = when (kind) {
+        CanonicalSearchKind.RELEASE_GROUP -> openedMbid
+        CanonicalSearchKind.RELEASE -> verifiedEditionGroupMbid
+        else -> null
+    }?.trim()?.lowercase(java.util.Locale.ROOT)
+    return candidate?.takeIf {
+        Regex("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$").matches(it)
+    }
+}
+
+/** An exact ReleaseGroup relation, not a same-title guess, authorizes edition cards. */
+internal fun canonicalReleaseGroupEditionRows(
+    groupMbid: String,
+    editions: List<MusicBrainzReleaseHit>,
+    displayedReleaseMbid: String?,
+): List<CanonicalCatalogSearchRow> = editions.asSequence()
+    .filter { row ->
+        row.releaseGroupMbid?.equals(groupMbid, ignoreCase = true) == true &&
+            isCuratedMusicBrainzRelease(row) &&
+            !row.musicBrainzId.equals(displayedReleaseMbid, ignoreCase = true)
+    }
+    .distinctBy { it.musicBrainzId.lowercase(java.util.Locale.ROOT) }
+    .take(24)
+    .map { row ->
+        CanonicalCatalogSearchRow(
+            musicBrainzId = row.musicBrainzId,
+            kind = CanonicalSearchKind.RELEASE,
+            title = row.title,
+            subtitle = listOfNotNull(
+                row.artistDisplay?.takeIf(String::isNotBlank),
+                row.country?.takeIf(String::isNotBlank),
+                row.releaseDate?.takeIf(String::isNotBlank),
+            ).joinToString(" · "),
+            releaseDate = row.releaseDate,
+            releaseKind = row.releaseGroupPrimaryType,
+            artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(row.artworkUri),
+        )
+    }
+    .toList()
+
+
+/**
+ * Source-scoped artist browse only: an album title is never artist evidence.
+ * MusicBrainz authorizes the relation, not our UI, Apple or string matching.
+ */
+internal fun canonicalAlbumArtistRelatedRows(
+    artistMbid: String?,
+    openedGroupMbid: String,
+    scopedGroups: List<MusicBrainzReleaseGroupHit>,
+    limit: Int = 12,
+): List<CanonicalCatalogSearchRow> {
+    val artist = artistMbid?.trim()?.lowercase(java.util.Locale.ROOT)
+        ?.takeIf { Regex("^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$").matches(it) }
+        ?: return emptyList()
+    if (limit <= 0) return emptyList()
+    return scopedGroups.asSequence()
+        .filter { !it.musicBrainzId.equals(openedGroupMbid, ignoreCase = true) }
+        .filter(::isCuratedMusicBrainzReleaseGroup)
+        .map { group ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = group.musicBrainzId,
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = group.title,
+                subtitle = group.artistDisplay,
+                artistScopeMbid = artist,
+                releaseKind = group.primaryType,
+                releaseDate = group.firstReleaseDate,
+                secondaryTypes = group.secondaryTypes,
+                artworkUri = canonicalPublicWithoutLegacyArchiveArtwork(group.artworkUri),
+            )
+        }
+        .filter { canonicalEditorialReleaseType(it) != null }
+        .distinctBy { it.musicBrainzId.lowercase(java.util.Locale.ROOT) }
+        .sortedWith(compareByDescending<CanonicalCatalogSearchRow> {
+            it.releaseDate.orEmpty()
+        }.thenBy { it.musicBrainzId })
+        .take(limit.coerceAtMost(24))
+        .toList()
+}
+
+/** Existing DetailScreen shelf, with verified MBIDs and no playable Song. */
+internal fun canonicalAlbumArtistRelatedShelf(
+    rows: List<CanonicalCatalogSearchRow>,
+    verifiedArtistName: String?,
+): HomeShelf? {
+    if (rows.isEmpty()) return null
+    val heading = verifiedArtistName?.trim()?.takeIf {
+        it.isNotEmpty() && it.length <= 80 && '·' !in it &&
+            !it.equals("Various Artists", ignoreCase = true)
+    }?.let { "Mais de $it" } ?: "Mais do artista"
+    return HomeShelf(heading, rows.map { row ->
+        val kind = canonicalEditorialReleaseType(row)
+        val year = row.releaseDate?.take(4)
+            ?.takeIf { it.length == 4 && it.all(Char::isDigit) }
+        ShelfItem(
+            title = row.title,
+            subtitle = listOfNotNull(kind, year).joinToString(" · "),
+            thumbnailUrl = row.artworkUri,
+            videoId = null,
+            browseId = canonicalNativeBrowseId(row),
+        )
+    })
+}
+
 /** Native DetailScreen accepts real browse shelves without synthetic Song.videoId. */
 internal fun canonicalNativeSections(
     parentKind: CanonicalSearchKind,
@@ -105,11 +251,25 @@ internal fun canonicalNativeSections(
         )
     }
     if (parentKind == CanonicalSearchKind.ARTIST) {
+        // MusicBrainz ReleaseGroup secondary types are explicit evidence,
+        // unlike a title containing "live" or "best of". Keep the rails
+        // mutually exclusive, preserving actual Group MBIDs, storefront-safe
+        // artwork and existing album navigation. Mixed Live + Compilation
+        // groups remain in the ordinary album shelf, since neither is the
+        // uniquely supported editorial presentation category.
+        val albumBuckets = eligible.filter { canonicalEditorialReleaseType(it) == "Album" }
+            .groupBy(::canonicalArtistAlbumShelfKind)
         return buildList {
-            val albums = eligible.filter { canonicalEditorialReleaseType(it) == "Album" }
-            val singlesAndEps = eligible.filter { canonicalEditorialReleaseType(it) in setOf("Single", "EP") }
-            if (albums.isNotEmpty()) add(HomeShelf(albumsHeading, cards(albums)))
+            albumBuckets[CanonicalArtistAlbumShelfKind.ALBUM]?.takeIf { it.isNotEmpty() }
+                ?.let { add(HomeShelf(albumsHeading, cards(it))) }
+            val singlesAndEps = eligible.filter {
+                canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+            }
             if (singlesAndEps.isNotEmpty()) add(HomeShelf(singlesHeading, cards(singlesAndEps)))
+            albumBuckets[CanonicalArtistAlbumShelfKind.LIVE]?.takeIf { it.isNotEmpty() }
+                ?.let { add(HomeShelf("Álbuns ao vivo", cards(it))) }
+            albumBuckets[CanonicalArtistAlbumShelfKind.COMPILATION]?.takeIf { it.isNotEmpty() }
+                ?.let { add(HomeShelf("Coletâneas", cards(it))) }
         }
     }
     return if (eligible.isNotEmpty()) listOf(HomeShelf(heading, cards(eligible))) else emptyList()
@@ -143,6 +303,9 @@ internal fun canonicalShouldAcceptVerifiedGroupArtwork(
     old: String?, verified: String?,
 ): Boolean {
     if (verified.isNullOrBlank() || old == verified) return false
+    // An independently verified iTunes source is authoritative. Do not let
+    // a late Room or CAA Front update overwrite the exact Apple edition.
+    if (safeAppleArtwork(old) != null) return false
     return canonicalShouldAcceptArtworkUpdate(old, verified) ||
         !canonicalNeedsCoverRefresh(verified)
 }
@@ -338,21 +501,17 @@ internal fun canonicalCuratedHomeShelves(
     todayIsoDate: String,
     remotePicks: List<CanonicalServerSearchRow> = emptyList(),
 ): List<HomeShelf> = buildList {
-    val datePattern = Regex("^\\d{4}(-\\d{2}(-\\d{2})?)?$")
     val releasedCandidates = metadata.asSequence()
         .filter {
             it.kind == CanonicalSearchKind.RELEASE_GROUP ||
                 it.kind == CanonicalSearchKind.RELEASE
         }
         .filter { row -> canonicalEditorialReleaseType(row) != null }
+        // A partially dated catalogue work remains discoverable. Reject
+        // impossible dates such as February 30 / month 99, and known future
+        // works, rather than lexicographically comparing formatted guesses.
         .filter { row ->
-            val date = row.releaseDate ?: return@filter true
-            val normalized = when {
-                date.length == 4 -> "$date-01-01"
-                date.length == 7 -> "$date-01"
-                else -> date
-            }
-            date.matches(datePattern) && normalized <= todayIsoDate
+            canonicalCatalogReleaseDateNotFuture(row.releaseDate, todayIsoDate)
         }
         .toList()
     // An ineligible/future group must never suppress an already-published
@@ -361,23 +520,64 @@ internal fun canonicalCuratedHomeShelves(
     val candidates = groups.ifEmpty {
         releasedCandidates.filter { it.kind == CanonicalSearchKind.RELEASE }
     }
-    val knownReleases = candidates.asSequence()
-        .sortedWith(
-            compareByDescending<CanonicalCatalogSearchRow> { it.releaseDate.orEmpty() }
-                .thenBy { it.musicBrainzId },
-        )
+    val chronological = compareByDescending<CanonicalCatalogSearchRow> {
+        it.releaseDate.orEmpty()
+    }.thenBy { it.musicBrainzId }
+    val distinctCandidates = candidates.asSequence()
+        .sortedWith(chronological)
         .distinctBy { it.musicBrainzId }
-        .take(24)
-        .mapNotNull { row ->
-            canonicalBrowseCardId(row)?.let { id ->
-                ShelfItem(row.title, row.subtitle.orEmpty(), row.artworkUri, null, id)
-            }
-        }
         .toList()
-    // No cached public releases on a fresh installation? Show genuine saved
-    // albums rather than a wholly empty feed. Never claim the saved copy is new.
-    val releaseItems = if (knownReleases.isNotEmpty()) knownReleases else savedReleases
+    // The local/cached base Home shares the same finite 24-card budget as
+    // worldwide editorial. Selecting the first 24 dates *before* reserving
+    // formats can hide a valid Album behind 30 Singles (or vice versa).
+    // Reserve one verified work per source-typed format, then allocate the
+    // remaining slots chronologically. No type or popularity is inferred.
+    val anchors = listOfNotNull(
+        distinctCandidates.firstOrNull {
+            canonicalEditorialReleaseType(it) == "Album"
+        },
+        distinctCandidates.firstOrNull {
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        },
+    ).distinctBy { it.musicBrainzId }
+    val anchorIds = anchors.map { it.musicBrainzId }.toSet()
+    val knownRows = (anchors + distinctCandidates.asSequence()
+        .filterNot { it.musicBrainzId in anchorIds }
+        .take(24 - anchors.size)
+        .toList()).sortedWith(chronological)
+    fun releaseCard(row: CanonicalCatalogSearchRow): ShelfItem? =
+        canonicalBrowseCardId(row)?.let { id ->
+            ShelfItem(row.title, row.subtitle.orEmpty(), row.artworkUri, null, id)
+        }
+    // A year-old group is a valid catalog entry, not a verified new
+    // release. Only exact dates within 90 days can enter "Lançamentos";
+    // older groups remain discoverable in the native album/single shelves.
+    val featuredRows = knownRows.filter {
+        canonicalHomeReleaseIsRecent(it.releaseDate, todayIsoDate)
+    }.sortedWith(
+        // Prioritize actual known cover art on prominent release plates,
+        // never a title-matched or invented image. Dates remain exact
+        // and within the same freshness window.
+        compareByDescending<CanonicalCatalogSearchRow> {
+            !it.artworkUri.isNullOrBlank()
+        }.thenByDescending { it.releaseDate.orEmpty() }
+            .thenBy { it.musicBrainzId },
+    ).take(8)
+    val featured = featuredRows.mapNotNull(::releaseCard)
+    val releaseItems = if (featured.isNotEmpty()) featured else savedReleases
     if (releaseItems.isNotEmpty()) add(HomeShelf(releasesHeading, releaseItems))
+    val featuredIds = featuredRows.map { it.musicBrainzId }.toSet()
+    val remaining = knownRows.filterNot { it.musicBrainzId in featuredIds }
+    if (remaining.isNotEmpty()) {
+        val albums = remaining.filter {
+            canonicalEditorialReleaseType(it) == "Album"
+        }.mapNotNull(::releaseCard)
+        val singles = remaining.filter {
+            canonicalEditorialReleaseType(it) in setOf("Single", "EP")
+        }.mapNotNull(::releaseCard)
+        if (albums.isNotEmpty()) add(HomeShelf("Álbuns para descobrir", albums))
+        if (singles.isNotEmpty()) add(HomeShelf("Singles e EPs", singles))
+    }
 
     val localCards = localPicks.asSequence()
         .filter(::isPlayableLocalPick)

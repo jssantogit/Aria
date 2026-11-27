@@ -37,6 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Text
 import com.music.aria.ui.components.NativeInlineTextAction
+import com.music.aria.ui.components.NativePageHeaderMetrics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +54,7 @@ import com.music.aria.R
  */
 internal enum class SettingsSection(@StringRes val titleRes: Int, val icon: ImageVector, @StringRes val subtitleRes: Int) {
     ACCOUNT(R.string.account_integrations, Icons.Rounded.Person, R.string.settings_nav_desc_account),
-    SOURCES(R.string.sources, Icons.Rounded.Extension, R.string.settings_nav_desc_sources),
+    SOURCES(R.string.providers_settings, Icons.Rounded.Extension, R.string.settings_nav_desc_sources),
     AUDIO_QUALITY(R.string.audio_quality, Icons.Rounded.GraphicEq, R.string.settings_nav_desc_audio),
     PLAYBACK(R.string.playback, Icons.Rounded.PlaylistPlay, R.string.settings_nav_desc_playback),
     LOCAL_MUSIC(R.string.local_music, Icons.Rounded.LibraryMusic, R.string.settings_nav_desc_local),
@@ -83,16 +85,21 @@ internal data class SettingsSectionGroup(
 
 /** Every accessible group occurs once. No parallel registry of preference state. */
 internal object SettingsNavigation {
+    // Keep legacy enum values for old saved navigation state, but neither the
+    // home screen nor global Settings search exposes these retired destinations.
+    val hiddenSections: Set<SettingsSection> = setOf(
+        SettingsSection.ACCOUNT,
+        SettingsSection.AUDIO_QUALITY,
+        SettingsSection.LOCAL_MUSIC,
+    )
+
     val groups = listOf(
-        SettingsSectionGroup(R.string.settings_nav_group_account, listOf(SettingsSection.ACCOUNT)),
         SettingsSectionGroup(
             R.string.settings_nav_group_music,
             listOf(
                 SettingsSection.SOURCES,
-                SettingsSection.AUDIO_QUALITY,
                 SettingsSection.PLAYBACK,
                 SettingsSection.MISCELLANEOUS,
-                SettingsSection.LOCAL_MUSIC,
             ),
         ),
         SettingsSectionGroup(
@@ -117,7 +124,6 @@ internal object SettingsNavigation {
 @Composable
 internal fun SettingsHome(
     onSelect: (SettingsSection) -> Unit,
-    onListenTogether: (() -> Unit)? = null,
 ) {
     SettingsNavigation.groups.forEach { group ->
         val visible = group.sections
@@ -131,16 +137,6 @@ internal fun SettingsHome(
                         subtitle = stringResource(section.subtitleRes),
                         onClick = { onSelect(section) },
                         testTag = "settings-category-${section.name}",
-                    )
-                }
-                if (group.titleRes == R.string.settings_nav_group_account && onListenTogether != null) {
-                    RowDivider()
-                    SettingsCategoryRow(
-                        icon = Icons.Rounded.Groups,
-                        title = stringResource(R.string.listen_together),
-                        subtitle = stringResource(R.string.listen_together_subtitle),
-                        onClick = onListenTogether,
-                        testTag = "settings-category-LISTEN_TOGETHER",
                     )
                 }
             }
@@ -198,9 +194,17 @@ internal fun SettingsDetailHeader(
     // Rendering another arrow here would duplicate that navigation control.
     Text(
         text = stringResource(section.titleRes),
-        style = MaterialTheme.typography.displayLarge,
+        // The global Back circle occupies the previous title band.
+        // Match Library category headings rather than drawing behind it.
+        style = MaterialTheme.typography.headlineLarge,
+        fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+        modifier = Modifier.padding(
+            start = 32.dp,
+            end = 20.dp,
+            top = NativePageHeaderMetrics.settingsPushedTitleTopPadding,
+            bottom = 14.dp,
+        ).testTag("native-settings-detail-title"),
     )
     if (filteredQuery.isNotBlank()) {
         Row(

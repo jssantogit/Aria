@@ -28,7 +28,6 @@ import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import android.content.Intent
 import android.net.Uri
@@ -48,6 +47,22 @@ import com.music.aria.ui.components.RowMoreButton
 import com.music.aria.ui.components.NativeCompactOverflowMenu
 import com.music.aria.ui.components.NativeCompactMenuItem
 import com.music.aria.ui.theme.ArtworkPalette
+import com.music.aria.data.catalog.metadata.safeAppleArtwork
+import com.music.aria.data.catalog.metadata.appleApprovedBadgeForStoreUrl
+
+/**
+ * Artist-top artwork must be certified by the exact Apple edition resolver,
+ * not discovered through CAA, ListenBrainz image hints or fuzzy titles.
+ */
+internal fun nativePublicTopVerifiedAppleArtwork(
+    row: CanonicalCatalogSearchRow,
+): String? {
+    val approved = appleApprovedBadgeForStoreUrl(row.appleStoreUrl)
+    return row.artworkUri?.takeIf {
+        safeAppleArtwork(it) != null &&
+            approved != null && approved == row.appleStoreBadgeUrl
+    }
+}
 
 /** Only a confirmed Release MBID can supply the front for a recording.
  * A title/artist match would risk showing the wrong edition's cover. */
@@ -145,25 +160,21 @@ internal fun NativeArtistPublicTopSection(
         horizontalPadding = PAGE_GUTTER,
         itemKey = { it.musicBrainzId },
     ) { recording ->
-        NativeDetailTrackRowLayout(
-            // A public Recording MBID is not a playable RecordingId. Unlike
-            // the old metadata-only navigation there is no tap destination.
+        NativeArtistInformationalTrackRow(
+            title = recording.title,
+            subtitle = canonicalArtistPublicTrackReleaseCaption(recording, releaseCaptions),
+            palette = palette,
             onClick = if (onRecordingOpen != null &&
                 (recording.hasCatalogedAsset || recording.hasVerifiedLocalAsset))
                 ({ onRecordingOpen(recording) }) else null,
             onLongPress = onRecordingHold?.let { hold -> { hold(recording) } },
-            onMore = null,
             modifier = Modifier.testTag("artist-top-row-${recording.musicBrainzId}"),
-            horizontalInset = 0.dp,
             leading = {
-                val shape = RoundedCornerShape(8.dp)
-                Box(
-                    Modifier.size(52.dp).clip(shape)
-                        .background(palette.onBackground.copy(alpha = 0.08f)),
-                ) {
+                val shape = RoundedCornerShape(7.dp)
+                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE).clip(shape)
+                    .background(palette.onBackground.copy(alpha = 0.08f))) {
                     CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
-                    (recording.artworkUri?.takeIf(String::isNotBlank)
-                        ?: recoveredCovers[recording.coverReleaseMbid])?.let { art ->
+                    nativePublicTopVerifiedAppleArtwork(recording)?.let { art ->
                         AsyncImage(
                             model = art.artworkAt(ROW_ART_PX),
                             contentDescription = null,
@@ -173,33 +184,6 @@ internal fun NativeArtistPublicTopSection(
                     }
                 }
             },
-            title = {
-                Text(
-                    text = recording.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = palette.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            subtitle = {
-                val caption = canonicalArtistPublicTrackReleaseCaption(
-                    recording, releaseCaptions,
-                )
-                if (!caption.isNullOrBlank()) {
-                    Text(
-                        text = caption,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = palette.onBackgroundVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            },
-            rating = {},
-            showRatingSlot = false,
-            actions = {},
-
         )
     }
 }

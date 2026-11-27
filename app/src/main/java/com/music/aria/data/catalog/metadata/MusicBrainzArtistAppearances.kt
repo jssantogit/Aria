@@ -1,5 +1,7 @@
 package com.music.aria.data.catalog.metadata
 
+import com.music.aria.data.providers.ProviderCapability
+
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -311,7 +313,7 @@ internal class MusicBrainzArtistAppearancesClient(
                             "limit" to "25",
                             "offset" to offset.toString(),
                             "fmt" to "json",
-                        ))
+                        ), capability = ProviderCapability.EDITORIAL_DISCOGRAPHY)
                     }
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled

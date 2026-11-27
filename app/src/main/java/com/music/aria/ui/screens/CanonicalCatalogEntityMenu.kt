@@ -23,10 +23,33 @@ internal data class CanonicalCatalogEntityMenuSpec(
     val musicBrainzUrl: String,
     val ratingLabel: String,
     val playlistKind: CanonicalSearchKind?,
+    val sourceUrl: String? = musicBrainzUrl,
+    val sourceLabel: String = "Ver no MusicBrainz",
 )
 
-internal fun canonicalCatalogEntityMenuSpec(browseId: String?): CanonicalCatalogEntityMenuSpec? {
+internal fun canonicalCatalogEntityMenuSpec(browseId: String?): CanonicalCatalogEntityMenuSpec? =
+    canonicalCatalogEntityMenuSpec(browseId, null)
+
+internal fun canonicalCatalogEntityMenuSpec(
+    browseId: String?, sourceStoreUrl: String?,
+): CanonicalCatalogEntityMenuSpec? {
     val target = browseId?.let(::canonicalCatalogEntityRatingTarget) ?: return null
+    if (target.entityId.startsWith("itunes:") || target.entityId.startsWith("discogs:")) {
+        val isDiscogs = target.entityId.startsWith("discogs:")
+        val artist = target.entityType == "ARTIST"
+        val source = if (isDiscogs)
+            com.music.aria.ui.discogsNativeAttributionUrl(browseId)
+        else verifiedAppleDetailStoreUrl(sourceStoreUrl, browseId)
+        return CanonicalCatalogEntityMenuSpec(
+            browseType = if (artist) BrowseType.ARTIST else BrowseType.ALBUM,
+            ratingTarget = target,
+            musicBrainzUrl = "",
+            ratingLabel = if (artist) "Avaliar artista" else "Avaliar álbum",
+            playlistKind = null,
+            sourceUrl = source,
+            sourceLabel = if (isDiscogs) "Abrir no Discogs" else "Abrir no Apple Music",
+        )
+    }
     val (type, endpoint, label) = when (target.entityType) {
         "ARTIST" -> Triple(BrowseType.ARTIST, "artist", "Avaliar artista")
         "ALBUM" -> Triple(BrowseType.ALBUM, "release", "Avaliar álbum")
@@ -66,8 +89,11 @@ internal fun CanonicalCatalogEntityMenuBody(
     onDismiss: () -> Unit,
     onRate: (CanonicalCatalogEntityMenuSpec) -> Unit,
     onAddVerifiedRecordings: ((CanonicalCatalogEntityMenuSpec) -> Unit)? = null,
+    sourceStoreUrl: String? = null,
 ) {
-    val spec = remember(browseId) { canonicalCatalogEntityMenuSpec(browseId) } ?: return
+    val spec = remember(browseId, sourceStoreUrl) {
+        canonicalCatalogEntityMenuSpec(browseId, sourceStoreUrl)
+    } ?: return
     val context = LocalContext.current
     val repository = remember(context) {
         CatalogMetadataPinRepository.get(context.applicationContext)
@@ -81,7 +107,9 @@ internal fun CanonicalCatalogEntityMenuBody(
             artworkUrl = trustedCatalogMetadataPinArtwork(artworkUrl),
         )
     }
-    val canPin = validCatalogMetadataPin(pin)
+    // Provider-native pin reopening requires a separate verified Library route.
+    // Until that route exists, do not expose an action that cannot round-trip.
+    val canPin = browseId.startsWith("catalog:") && validCatalogMetadataPin(pin)
     val pinned = pinnedItems.any { it.browseId == browseId }
 
     BrowseActionsSheet(
@@ -118,7 +146,7 @@ internal fun CanonicalCatalogEntityMenuBody(
             val text = buildString {
                 append(title)
                 if (subtitle.isNotBlank()) append(" — ").append(subtitle)
-                append("\n").append(spec.musicBrainzUrl)
+                spec.sourceUrl?.let { append("\n").append(it) }
             }
             val share = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -126,12 +154,15 @@ internal fun CanonicalCatalogEntityMenuBody(
             }
             context.startActivity(Intent.createChooser(share, "Compartilhar catálogo"))
         },
-        onViewSource = {
-            onDismiss()
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(spec.musicBrainzUrl)),
-            )
+        onViewSource = spec.sourceUrl?.let { source ->
+            {
+                onDismiss()
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(source)))
+                }
+                Unit
+            }
         },
-        viewSourceLabel = "Ver no MusicBrainz",
+        viewSourceLabel = spec.sourceLabel,
     )
 }

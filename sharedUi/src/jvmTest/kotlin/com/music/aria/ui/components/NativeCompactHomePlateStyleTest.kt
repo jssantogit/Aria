@@ -19,6 +19,13 @@ class NativeCompactHomePlateStyleTest {
         assertEquals(54, nativeCompactMenuRowHeightDp(homePlateStyle = false))
     }
 
+    @Test fun twoActionToolbarMenuUsesCompact46dpRowsWithoutChangingOtherMenus() {
+        assertEquals(46, nativeCompactMenuRowHeightDp(homePlateStyle = false, compactRows = true))
+        assertEquals(46, nativeCompactMenuRowHeightDp(homePlateStyle = true, compactRows = true))
+        assertEquals(54, nativeCompactMenuRowHeightDp(homePlateStyle = false))
+        assertEquals(62, nativeCompactMenuRowHeightDp(homePlateStyle = true))
+    }
+
     @Test fun darkMenuIsLiftedOutOfAnAmoledBlackPageWithoutWhiteBorder() {
         val plate = nativeCompactPlateColor(isDark = true, artworkElevation = null)
         assertEquals(Color(0xFF29292D), plate)

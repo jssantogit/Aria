@@ -38,6 +38,10 @@ class NativeTopBarRouteOwnerTest {
         for (route in listOf(
             "catalog:ARTIST:astro",
             "catalog:RELEASE_GROUP:circles",
+            "itunes:br:artist:17",
+            "itunes:br:album:500",
+            "discogs:artist:17",
+            "discogs:release:500",
             "local:album:circles",
         )) {
             assertEquals(

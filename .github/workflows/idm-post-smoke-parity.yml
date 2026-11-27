@@ -1,0 +1,77 @@
+name: IDM · grouped post-smoke parity contracts
+on:
+  pull_request:
+    branches: [integration/idm-providers-main-20261121]
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+# One current grouped candidate; superseded contract runs are redundant.
+concurrency:
+  group: idm-post-smoke-parity-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+jobs:
+  parity-contracts:
+    if: ${{ github.event.pull_request.head.ref == 'fix/idm-post-smoke-parity-20261126' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate and base
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$EXPECTED_BASE" = 6efa91fb6dd2c2ad2a35897946aaf01e8812851a
+          echo "Validated candidate $EXPECTED_HEAD against $EXPECTED_BASE" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      # Includes metadata-first ordering and first-row/full-section timing hooks.
+      - name: Compile production Android and run grouped contracts
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest \
+            --tests 'com.music.aria.ItunesArtworkOnlyCapabilityTest' \
+            --tests 'com.music.aria.DiscogsVerifiedAppleArtworkTest' \
+            --tests 'com.music.aria.AppleSharedDetailAdapterTest' \
+            --tests 'com.music.aria.AppleVerifiedEditionArtworkResolverTest' \
+            --tests 'com.music.aria.AppleVerifiedGroupCardArtworkResolverTest' \
+            --tests 'com.music.aria.NativeMetadataAlbumPresentationTest' \
+            --tests 'com.music.aria.ui.screens.CanonicalCatalogEntityRatingsTest' \
+            --tests 'com.music.aria.ApplePublicSearchPagerTest' \
+            --tests 'com.music.aria.AppleArtistArtworkPagingTest' \
+            --tests 'com.music.aria.AppleEditorialNativeSearchBridgeTest' \
+            --tests 'com.music.aria.CanonicalCatalogSearchPagingBoundaryTest' \
+            --tests 'com.music.aria.CanonicalArtistPublicTopRowsTest' \
+            --tests 'com.music.aria.ListenBrainzPopularityClientTest' \
+            --tests 'com.music.aria.CanonicalHomeEditorialDispatchTest' \
+            --tests 'com.music.aria.CanonicalGenreEditorialDispatchTest' \
+            --tests 'com.music.aria.DiscogsEditorialTaxonomyTest' \
+            --tests 'com.music.aria.DiscogsGenreEditorialNetworkTest' \
+            --tests 'com.music.aria.DiscogsNativeArtistSearchTest' \
+            --tests 'com.music.aria.DiscogsNativeReleaseSearchTest' \
+            --tests 'com.music.aria.DiscogsNativeCatalogPresentationTest'
+      - name: Shared UI search contracts
+        run: |
+          ./gradlew --no-daemon --build-cache :sharedUi:jvmTest \
+            --tests 'com.music.aria.ui.screens.AppleUnifiedSearchResultsTest' \
+            --tests 'com.music.aria.ui.screens.DiscogsSearchRelevanceTest' \
+            --tests 'com.music.aria.ui.screens.NativeSearchRowTest' \
+            --tests 'com.music.aria.ui.screens.NativeHomeArtistPortraitTest'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: idm-grouped-parity-contracts
+          path: |
+            app/build/test-results/testDevDebugUnitTest/
+            sharedUi/build/test-results/jvmTest/
+          if-no-files-found: warn
+          retention-days: 7

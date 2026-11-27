@@ -11,6 +11,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.ui.draw.clip
+import com.music.aria.ui.components.CoverPlaceholder
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -18,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.style.TextOverflow
+import com.music.aria.ui.components.NativeDetailTrackRowLayout
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -31,7 +39,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.music.aria.ui.components.PAGE_GUTTER
-import com.music.aria.ui.components.topBarContentPadding
 import com.music.aria.ui.components.trackColumnWidth
 import com.music.aria.data.canvas.CanvasArtwork
 import com.music.aria.ui.theme.ArtworkPalette
@@ -41,6 +48,31 @@ import com.music.aria.ui.theme.ArtworkPalette
  * Navidrome are Library contexts; MusicBrainz and future metadata providers
  * are online catalog contexts. A source can have some capabilities absent.
  */
+/** All artist-context tracks, whether playable or not, use one compact cover size. */
+internal val NATIVE_ARTIST_TRACK_COVER_SIZE = 48.dp
+internal val NATIVE_ARTIST_RELEASE_ITEM_SPACING = 14.dp
+internal val NATIVE_ARTIST_RELEASE_TOP_SPACING = 22.dp
+
+/** Exactly one leading track rail is eligible on the shared artist detail. */
+internal enum class NativeArtistTrackOrigin {
+    APPLE_METADATA, VERIFIED_CATALOG, SCOPED_CATALOG, SOURCE_METADATA, OWNED_AUDIO, NONE,
+}
+
+internal fun nativeArtistTrackOrigin(
+    hasAppleMetadata: Boolean,
+    hasVerifiedCatalog: Boolean,
+    hasScopedCatalog: Boolean,
+    hasOwnedAudio: Boolean,
+    hasSourceMetadata: Boolean = false,
+): NativeArtistTrackOrigin = when {
+    hasAppleMetadata -> NativeArtistTrackOrigin.APPLE_METADATA
+    hasVerifiedCatalog -> NativeArtistTrackOrigin.VERIFIED_CATALOG
+    hasScopedCatalog -> NativeArtistTrackOrigin.SCOPED_CATALOG
+    hasSourceMetadata -> NativeArtistTrackOrigin.SOURCE_METADATA
+    hasOwnedAudio -> NativeArtistTrackOrigin.OWNED_AUDIO
+    else -> NativeArtistTrackOrigin.NONE
+}
+
 internal enum class NativeArtistContext { LIBRARY, ONLINE_CATALOG }
 
 /**
@@ -146,7 +178,7 @@ internal fun NativeArtistDetailFrame(
 ) {
     // The top bar floats over the artist photo. The moving text/buttons fade
     // smoothly beneath it instead of meeting a visible clip boundary.
-    val topBarClearancePx = with(LocalDensity.current) { topBarContentPadding().toPx() }
+    val topBarClearancePx = with(LocalDensity.current) { nativeCollectionTopChromeInset().toPx() }
     Box(modifier.fillMaxSize().background(palette.wash)) {
         PageBackground(
             palette = palette,
@@ -216,6 +248,77 @@ internal fun <T> NativeArtistTracksShelf(
     )
 }
 
+/**
+ * All provider-only artist rows share the same native row as Library's
+ * CanonicalTrackRow and the existing DetailScreen. Only data and actions differ.
+ */
+@Composable
+internal fun NativeArtistInformationalTrackRow(
+    title: String,
+    subtitle: String?,
+    palette: ArtworkPalette,
+    leading: @Composable () -> Unit,
+    onClick: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    NativeDetailTrackRowLayout(
+        onClick = onClick,
+        onLongPress = onLongPress,
+        onMore = null,
+        modifier = modifier,
+        horizontalInset = 0.dp,
+        leading = { leading() },
+        title = {
+            Text(title, style = MaterialTheme.typography.titleMedium,
+                color = palette.onBackground, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+        },
+        subtitle = {
+            if (!subtitle.isNullOrBlank()) Text(
+                subtitle, style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+        },
+        rating = {},
+        showRatingSlot = false,
+        actions = {},
+    )
+}
+
+/** Non-ranked, non-playable release track metadata in the same native rail. */
+@Composable
+internal fun NativeArtistSourceMetadataTracksSection(
+    tracks: List<NativeMetadataTrack>,
+    query: String,
+    palette: ArtworkPalette,
+) {
+    val shown = tracks.filter { track ->
+        query.isBlank() || track.title.contains(query, ignoreCase = true) ||
+            track.credit?.contains(query, ignoreCase = true) == true
+    }.take(16)
+    NativeArtistTracksShelf(
+        title = "Faixas",
+        tracks = shown,
+        palette = palette,
+        itemKey = { it.key },
+        supportingText = "Amostra de faixas dos lançamentos verificados, sem ranking.",
+    ) { track ->
+        NativeArtistInformationalTrackRow(
+            title = track.title,
+            subtitle = track.credit,
+            palette = palette,
+            leading = {
+                Box(Modifier.size(NATIVE_ARTIST_TRACK_COVER_SIZE)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(palette.onBackground.copy(alpha = 0.08f))) {
+                    CoverPlaceholder(Icons.Rounded.MusicNote, Modifier.fillMaxSize())
+                }
+            },
+        )
+    }
+}
+
 private const val ARTIST_TRACK_LIMIT = 20
 private const val ARTIST_TRACK_ROWS_PER_COLUMN = 4
 
@@ -274,7 +377,7 @@ internal fun <T> NativeArtistTracksCarousel(
 internal fun <T> NativeArtistReleaseCarousel(
     releases: List<T>,
     horizontalPadding: Dp = PAGE_GUTTER,
-    itemSpacing: Dp = 14.dp,
+    itemSpacing: Dp = NATIVE_ARTIST_RELEASE_ITEM_SPACING,
     itemKey: ((T) -> Any)? = null,
     card: @Composable (T) -> Unit,
 ) {
@@ -301,7 +404,7 @@ internal fun <T> NativeArtistReleaseShelf(
     palette: ArtworkPalette,
     horizontalPadding: Dp = PAGE_GUTTER,
     topPadding: Dp = 0.dp,
-    itemSpacing: Dp = 14.dp,
+    itemSpacing: Dp = NATIVE_ARTIST_RELEASE_ITEM_SPACING,
     onShowAll: (() -> Unit)? = null,
     itemKey: ((T) -> Any)? = null,
     card: @Composable (T) -> Unit,

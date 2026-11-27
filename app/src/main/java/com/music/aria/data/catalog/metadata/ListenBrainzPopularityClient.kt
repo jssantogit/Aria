@@ -1,6 +1,10 @@
 package com.music.aria.data.catalog.metadata
 
 import com.music.aria.BuildConfig
+import com.music.aria.data.providers.BuiltInProviderKeys
+import com.music.aria.data.providers.ProviderCapability
+import com.music.aria.data.providers.ProviderCachedReadAccess
+import com.music.aria.data.providers.RateLimitedProviderTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -47,8 +51,20 @@ internal class KtorListenBrainzPopularityTransport(
             socketTimeoutMillis = 15_000L
         }
     },
+    private val admission: RateLimitedProviderTransport = RateLimitedProviderTransport(),
 ) : ListenBrainzPopularityTransport {
-    override suspend fun recordingPopularity(recordingMbids: List<String>): ListenBrainzPopularityHttpResponse = measureMetadataHttp(
+    private suspend fun <T> authorized(block: suspend () -> T): T =
+        admission.execute(
+            capability = ProviderCapability.CHART_MOST_PLAYED,
+            provider = BuiltInProviderKeys.LISTENBRAINZ,
+            scheduleLimited = { task -> task() },
+            networkCall = block,
+        )
+
+    override suspend fun recordingPopularity(recordingMbids: List<String>): ListenBrainzPopularityHttpResponse =
+        authorized { recordingPopularityUnchecked(recordingMbids) }
+
+    private suspend fun recordingPopularityUnchecked(recordingMbids: List<String>): ListenBrainzPopularityHttpResponse = measureMetadataHttp(
         provider = "listenbrainz",
         endpoint = "recording_popularity",
         status = { http: ListenBrainzPopularityHttpResponse -> http.status },
@@ -68,7 +84,10 @@ internal class KtorListenBrainzPopularityTransport(
         )
     }
 
-    override suspend fun topRecordingsForArtist(artistMbid: String): ListenBrainzPopularityHttpResponse = measureMetadataHttp(
+    override suspend fun topRecordingsForArtist(artistMbid: String): ListenBrainzPopularityHttpResponse =
+        authorized { topRecordingsForArtistUnchecked(artistMbid) }
+
+    private suspend fun topRecordingsForArtistUnchecked(artistMbid: String): ListenBrainzPopularityHttpResponse = measureMetadataHttp(
         provider = "listenbrainz",
         endpoint = "artist_top",
         status = { http: ListenBrainzPopularityHttpResponse -> http.status },
@@ -86,6 +105,10 @@ internal class KtorListenBrainzPopularityTransport(
         )
     }
     override suspend fun sitewideRecordings(
+        range: ListenBrainzSitewideRange, count: Int,
+    ): ListenBrainzPopularityHttpResponse = authorized { sitewideRecordingsUnchecked(range, count) }
+
+    private suspend fun sitewideRecordingsUnchecked(
         range: ListenBrainzSitewideRange, count: Int,
     ): ListenBrainzPopularityHttpResponse = measureMetadataHttp(
         provider = "listenbrainz",
@@ -198,6 +221,7 @@ internal class ListenBrainzPopularityClient(
     private val limiter: ListenBrainzRateLimiter = ListenBrainzRequestBudget.limiter,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val retryDelay: suspend (Long) -> Unit = { delay(it) },
+    private val cacheRead: ProviderCachedReadAccess = ProviderCachedReadAccess(),
 ) {
     private data class CacheValue(
         val evidence: List<ListenBrainzPopularityEvidence>,
@@ -226,6 +250,10 @@ internal class ListenBrainzPopularityClient(
     // while a user reopens or scrolls around the same artist.
     private val unavailableArtistAt = mutableMapOf<String, Long>()
     private val artistUnavailableCooldownMs = 90_000L
+    // A public unauthenticated endpoint rejecting credentials is not an
+    // artist-specific miss. Avoid repeating that request for every artist.
+    // Other public endpoints and already verified chart cache stay independent.
+    private var artistEndpointUnauthorizedAt: Long? = null
 
     /**
      * Negative, undated or already-outdated charts may recover upstream long
@@ -248,6 +276,15 @@ internal class ListenBrainzPopularityClient(
     suspend fun sitewideRecordings(
         range: ListenBrainzSitewideRange = ListenBrainzSitewideRange.WEEK,
         count: Int = 25,
+    ): ListenBrainzSitewideFetchResult =
+        cacheRead.read(ProviderCapability.CHART_MOST_PLAYED,
+            BuiltInProviderKeys.LISTENBRAINZ, ListenBrainzSitewideFetchResult.Unavailable) {
+            sitewideRecordingsUnchecked(range, count)
+        }
+
+    private suspend fun sitewideRecordingsUnchecked(
+        range: ListenBrainzSitewideRange,
+        count: Int,
     ): ListenBrainzSitewideFetchResult {
         if (count !in 1..100) return ListenBrainzSitewideFetchResult.InvalidRequest
         val key = range to count
@@ -309,16 +346,17 @@ internal class ListenBrainzPopularityClient(
         }
     }
 
-    suspend fun topRecordingsForArtist(artistMbid: String): ListenBrainzArtistTopFetchResult {
+    suspend fun topRecordingsForArtist(artistMbid: String): ListenBrainzArtistTopFetchResult =
+        cacheRead.read(ProviderCapability.CHART_MOST_PLAYED,
+            BuiltInProviderKeys.LISTENBRAINZ, ListenBrainzArtistTopFetchResult.Unavailable) {
+            topRecordingsForArtistUnchecked(artistMbid)
+        }
+
+    private suspend fun topRecordingsForArtistUnchecked(artistMbid: String): ListenBrainzArtistTopFetchResult {
         val id = artistMbid.lowercase(Locale.ROOT)
         if (!MBID.matches(id)) return ListenBrainzArtistTopFetchResult.InvalidRequest
         artistFetchMutex.lock()
         try {
-        unavailableArtistAt[id]?.let { at ->
-            if (nowMillis() >= at && nowMillis() - at < artistUnavailableCooldownMs) {
-                return ListenBrainzArtistTopFetchResult.Unavailable
-            }
-        }
         cacheMutex.lock()
         try {
             val saved = artistCache[id]
@@ -331,6 +369,16 @@ internal class ListenBrainzPopularityClient(
             cacheMutex.unlock()
         }
 
+        artistEndpointUnauthorizedAt?.let { at ->
+            val now = nowMillis()
+            if (now >= at && now - at < artistUnavailableCooldownMs)
+                return ListenBrainzArtistTopFetchResult.Unavailable
+        }
+        unavailableArtistAt[id]?.let { at ->
+            if (nowMillis() >= at && nowMillis() - at < artistUnavailableCooldownMs) {
+                return ListenBrainzArtistTopFetchResult.Unavailable
+            }
+        }
         for (attempt in 0..1) {
             val response = try {
                 limiter.run { transport.topRecordingsForArtist(id) }
@@ -341,7 +389,12 @@ internal class ListenBrainzPopularityClient(
                 return ListenBrainzArtistTopFetchResult.Unavailable
             }
             limiter.observeRateLimit(response.rateLimitRemaining, response.rateLimitResetInSeconds)
+            if (response.status == 401) {
+                artistEndpointUnauthorizedAt = nowMillis()
+                return ListenBrainzArtistTopFetchResult.Unavailable
+            }
             if (response.status == 200) {
+                artistEndpointUnauthorizedAt = null
                 val parsed = parseListenBrainzArtistTopRecordings(response.body, id)
                 if (parsed !is ListenBrainzArtistTopParseResult.Success) {
                     return ListenBrainzArtistTopFetchResult.Malformed
@@ -371,7 +424,13 @@ internal class ListenBrainzPopularityClient(
         }
     }
 
-    suspend fun recordingPopularity(ids: List<String>): ListenBrainzPopularityFetchResult {
+    suspend fun recordingPopularity(ids: List<String>): ListenBrainzPopularityFetchResult =
+        cacheRead.read(ProviderCapability.CHART_MOST_PLAYED,
+            BuiltInProviderKeys.LISTENBRAINZ, ListenBrainzPopularityFetchResult.Unavailable) {
+            recordingPopularityUnchecked(ids)
+        }
+
+    private suspend fun recordingPopularityUnchecked(ids: List<String>): ListenBrainzPopularityFetchResult {
         // Conservative batch size. No title or artist-name matching allowed.
         val normalized = ids.map { it.lowercase(Locale.ROOT) }
         if (normalized.isEmpty() || normalized.size > 100 ||

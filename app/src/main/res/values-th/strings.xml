@@ -1405,4 +1405,6 @@
     <string name="apple_player_share_song">แชร์เพลง</string>
     <string name="apple_player_share_lyrics">แชร์เนื้อเพลง…</string>
     <string name="apple_library_search_in_category">ค้นหาใน %1$s</string>
+    <string name="providers_settings">ผู้ให้บริการ</string>
+    <string name="providers_settings_subtitle">จัดการผู้ให้บริการแค็ตตาล็อก ปกอัลบั้ม เนื้อเพลง สถิติ เสียง และการดาวน์โหลด</string>
 </resources>

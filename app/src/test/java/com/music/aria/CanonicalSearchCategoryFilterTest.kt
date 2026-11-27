@@ -131,11 +131,20 @@ class CanonicalSearchCategoryFilterTest {
         val namesake = CanonicalCatalogSearchRow("illit-other", CanonicalSearchKind.ARTIST,
             "Illit", "Unrelated namesake")
         val matchingSong = CanonicalCatalogSearchRow("magnetic", CanonicalSearchKind.RECORDING,
-            "Magnetic", "ILLIT")
+            "Magnetic", "ILLIT", artistCreditMbids = listOf("illit-kpop"))
+        val unproven = CanonicalCatalogSearchRow("unknown", CanonicalSearchKind.RECORDING,
+            "Unknown recording", "ILLIT")
+        val foreign = CanonicalCatalogSearchRow("foreign", CanonicalSearchKind.RECORDING,
+            "Another recording", "ILLIT", artistScopeMbid = "illit-kpop",
+            artistCreditMbids = listOf("illit-other"))
         val general = canonicalRowsForQuery(
-            listOf(primary, namesake, matchingSong), "illit", SearchFilter.ALL,
+            listOf(primary, namesake, matchingSong, unproven, foreign), "illit", SearchFilter.ALL,
         )
         assertEquals(listOf("illit-kpop", "magnetic"), general.map { it.musicBrainzId })
+        val withoutProof = canonicalRowsForQuery(
+            listOf(primary, namesake, unproven, foreign), "illit", SearchFilter.ALL,
+        )
+        assertEquals(listOf("illit-kpop"), withoutProof.map { it.musicBrainzId })
         // Do not delete another artist identity from the explicit artist filter.
         val artists = canonicalRowsForQuery(
             listOf(primary, namesake), "illit", SearchFilter.ARTISTS,

@@ -74,6 +74,7 @@ internal fun NativeDetailSearchField(
     placeholder: String? = null,
     horizontalInset: Dp = HEADER_GUTTER,
     appleLibraryCategoryStyle: Boolean = false,
+    onSubmit: (() -> Unit)? = null,
 ) {
     // Opened by a tap on a button, which is as clear a statement of intent as
     // the keyboard is going to get — so it comes up with the field rather than
@@ -128,8 +129,10 @@ internal fun NativeDetailSearchField(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
-                    // This is an in-memory live filter; submitting must not
-                    // discard the query or trigger a remote search.
+                    // Most native lists filter in memory; only a source that
+                    // explicitly supplied onSubmit can search beyond its
+                    // already loaded result pages, on the same native field.
+                    onSubmit?.invoke()
                     keyboardController?.hide()
                     focusManager.clearFocus()
                 }),

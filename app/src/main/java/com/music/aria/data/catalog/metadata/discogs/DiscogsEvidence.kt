@@ -1,0 +1,431 @@
+package com.music.aria.data.catalog.metadata.discogs
+
+import com.music.aria.data.catalog.metadata.MusicBrainzClient
+import java.net.URI
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
+
+/** Discogs Master is NOT a MusicBrainz ReleaseGroup, and Release is edition-scoped. */
+internal enum class DiscogsKind { RELEASE, MASTER }
+
+internal data class DiscogsLink(val kind: DiscogsKind, val id: Long) {
+    init { require(id in 1..999_999_999_999L) }
+    val attributionUrl: String
+        get() = "https://www.discogs.com/${kind.name.lowercase(Locale.ROOT)}/$id"
+}
+
+/** A web relation is parsed, never passed to an arbitrary HTTP fetcher. */
+internal object DiscogsLinkParser {
+    private val exactPath = Regex("^/(release|master)/([1-9][0-9]{0,11})(?:-[A-Za-z0-9_-]+)?/?$")
+
+    fun parse(raw: String): DiscogsLink? {
+        if (raw.length !in 1..512) return null
+        val uri = try { URI(raw) } catch (_: Exception) { return null }
+        // Accept legacy HTTP *links* stored by MusicBrainz, but NEVER fetch
+        // them. We extract an exact-host numeric ID and call only our fixed
+        // HTTPS api.discogs.com endpoint; attribution is always HTTPS.
+        if (uri.scheme !in setOf("https", "http") ||
+            uri.rawUserInfo != null || uri.port != -1 ||
+            uri.rawQuery != null || uri.rawFragment != null
+        ) return null
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return null
+        if (host != "discogs.com" && host != "www.discogs.com") return null
+        val match = exactPath.matchEntire(uri.rawPath ?: return null) ?: return null
+        val kind = if (match.groupValues[1] == "release") DiscogsKind.RELEASE else DiscogsKind.MASTER
+        val id = match.groupValues[2].toLongOrNull()?.takeIf { it in 1..999_999_999_999L }
+            ?: return null
+        return DiscogsLink(kind, id)
+    }
+}
+
+internal sealed interface DiscogsRelationResult {
+    data class Linked(val link: DiscogsLink) : DiscogsRelationResult
+    data object NoLink : DiscogsRelationResult
+    data object Ambiguous : DiscogsRelationResult
+    data object InvalidCanonicalId : DiscogsRelationResult
+    data object InvalidResponse : DiscogsRelationResult
+    data object Unavailable : DiscogsRelationResult
+}
+
+/** Only the exact MusicBrainz "discogs" URL relationship can anchor an API lookup. */
+internal class DiscogsMusicBrainzLinks(
+    private val musicBrainz: MusicBrainzClient = MusicBrainzClient(),
+) {
+    private val json = Json { ignoreUnknownKeys = true }
+    private val mbid = Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
+
+    suspend fun findRelease(releaseMbid: String): DiscogsRelationResult =
+        find("release", releaseMbid, DiscogsKind.RELEASE,
+            "4a78823c-1c53-4176-a5f3-58026c76f2bc")
+
+    suspend fun findReleaseGroup(groupMbid: String): DiscogsRelationResult =
+        find("release-group", groupMbid, DiscogsKind.MASTER,
+            "99e550f3-5ab4-3110-b5b9-fe01d970b126")
+
+    private suspend fun find(
+        entity: String, id: String, requiredKind: DiscogsKind, relationTypeId: String,
+    ): DiscogsRelationResult {
+        if (!mbid.matches(id)) return DiscogsRelationResult.InvalidCanonicalId
+        val raw = try {
+            musicBrainz.get("$entity/$id", mapOf("fmt" to "json", "inc" to "url-rels"))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return DiscogsRelationResult.Unavailable
+        }
+        return try {
+            val parsed = json.parseToJsonElement(raw) as? JsonObject
+                ?: return DiscogsRelationResult.InvalidResponse
+            if (!parsed.field("id").equals(id, ignoreCase = true))
+                return DiscogsRelationResult.InvalidResponse
+            val relations = parsed["relations"] as? JsonArray
+                ?: return DiscogsRelationResult.InvalidResponse
+            if (relations.size > 250) return DiscogsRelationResult.InvalidResponse
+            val candidates = mutableSetOf<DiscogsLink>()
+            for (element in relations) {
+                val relation = element as? JsonObject ?: return DiscogsRelationResult.InvalidResponse
+                if (!relation.field("type").equals("discogs", ignoreCase = true) ||
+                    relation.field("type-id") != relationTypeId ||
+                    (relation["ended"] as? JsonPrimitive)?.contentOrNull == "true") continue
+                val resource = (relation["url"] as? JsonObject)?.field("resource")
+                    ?: return DiscogsRelationResult.InvalidResponse
+                val link = DiscogsLinkParser.parse(resource)
+                    ?: return DiscogsRelationResult.InvalidResponse
+                if (link.kind != requiredKind) return DiscogsRelationResult.InvalidResponse
+                candidates.add(link)
+            }
+            when (candidates.size) {
+                0 -> DiscogsRelationResult.NoLink
+                1 -> DiscogsRelationResult.Linked(candidates.single())
+                else -> DiscogsRelationResult.Ambiguous
+            }
+        } catch (_: Exception) {
+            DiscogsRelationResult.InvalidResponse
+        }
+    }
+}
+
+private fun JsonObject.field(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+/** Only CC0-style edition fields. Deliberately no images, Marketplace or user fields. */
+/** Native display evidence only. The edition matcher retains its original
+ * physical-track contract; nested movements must not change reconciliation. */
+internal data class DiscogsNativeTrack(
+    val position: String?,
+    val title: String,
+    val workTitle: String? = null,
+    val artistCredit: String? = null,
+    val creditSpecified: Boolean = false,
+    val durationMs: Long? = null,
+)
+
+internal data class DiscogsRecord(
+    val link: DiscogsLink,
+    val title: String,
+    val artistNames: List<String>,
+    val country: String?,
+    val year: Int?,
+    val labels: List<Pair<String, String>>,
+    val barcodes: List<String>,
+    val formats: List<String>,
+    val tracklist: List<Pair<String, String>>,
+    val unofficial: Boolean,
+    /** Discogs Master linkage is source-scoped; never a MusicBrainz ReleaseGroup ID. */
+    val masterId: Long? = null,
+    /** All exact Discogs artist IDs, or empty when the credit identity is incomplete. */
+    val artistIds: List<Long> = emptyList(),
+    /** null only for older/programmatically constructed records. */
+    val nativeTracklist: List<DiscogsNativeTrack>? = null,
+    val nativeTracklistIncomplete: Boolean = false,
+) {
+    val attributionUrl: String get() = link.attributionUrl
+    val displayTracks: List<DiscogsNativeTrack> get() =
+        nativeTracklist ?: tracklist.map { (position, title) ->
+            DiscogsNativeTrack(position.takeIf(String::isNotBlank), title)
+        }
+}
+
+/** A Discogs Master groups versions and must not be converted to an MB Release. */
+internal data class DiscogsMasterRecord(
+    val link: DiscogsLink,
+    val title: String,
+    val artistNames: List<String>,
+    val year: Int?,
+    /** A Discogs release candidate, not a MusicBrainz Release ID. */
+    val mainReleaseId: Long?,
+    val genres: List<String>,
+    val styles: List<String>,
+) {
+    val attributionUrl: String get() = link.attributionUrl
+    fun canSupplyAudio(): Boolean = false
+    fun canSupplyArtwork(): Boolean = false
+}
+
+/** Fixed diagnostics only: no IDs, field values, payloads or exception messages. */
+internal enum class DiscogsReleaseParseRejection {
+    BODY_OR_STRUCTURE, ROOT, IDENTITY, TITLE, ARTISTS, LABELS, IDENTIFIERS,
+    FORMATS, TRACKLIST, TRACKLIST_LIMIT, FORMAT_DESCRIPTIONS, TRACK_TITLE, JSON,
+}
+
+internal object DiscogsRecordParser {
+    private val json = Json { ignoreUnknownKeys = true; isLenient = false }
+    // Reject deeply nested unknown JSON fields before the recursive decoder
+    // allocates a tree. The byte ceiling also applies to injected transports.
+    private fun boundedDetail(raw: String, maxBytes: Int): Boolean {
+        if (raw.length > maxBytes || raw.toByteArray(Charsets.UTF_8).size > maxBytes)
+            return false
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (char in raw) {
+            if (quoted) {
+                if (escaped) escaped = false
+                else if (char == '\\') escaped = true
+                else if (char == '"') quoted = false
+            } else when (char) {
+                '"' -> quoted = true
+                '{', '[' -> if (++depth > 64) return false
+                '}', ']' -> if (--depth < 0) return false
+            }
+        }
+        return depth == 0 && !quoted
+    }
+
+    /** Safely parse group-level context; never import images, release tracks or user data. */
+    fun parseMaster(expected: DiscogsLink, raw: String): DiscogsMasterRecord? {
+        if (expected.kind != DiscogsKind.MASTER || !boundedDetail(raw, DISCOGS_MASTER_BODY_BYTES)) return null
+        return try {
+            val obj = json.parseToJsonElement(raw) as? JsonObject ?: return null
+            if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id) return null
+            val title = obj.clean("title", 240) ?: return null
+            val artists = obj.objects("artists", 32) ?: return null
+            val genres = obj.stringArray("genres", 64) ?: return null
+            val styles = obj.stringArray("styles", 64) ?: return null
+            val release = (obj["main_release"] as? JsonPrimitive)?.longOrNull
+                ?.takeIf { it in 1..999_999_999_999L }
+            DiscogsMasterRecord(
+                link = expected,
+                title = title,
+                artistNames = artists.mapNotNull { it.clean("name", 180) },
+                year = (obj["year"] as? JsonPrimitive)?.intOrNull?.takeIf { it in 1800..2200 },
+                mainReleaseId = release,
+                genres = genres,
+                styles = styles,
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun parse(
+        expected: DiscogsLink, raw: String,
+        nativeCatalog: Boolean = false,
+        onRejected: (DiscogsReleaseParseRejection) -> Unit = {},
+    ): DiscogsRecord? {
+        fun reject(reason: DiscogsReleaseParseRejection): DiscogsRecord? {
+            onRejected(reason)
+            return null
+        }
+        if (expected.kind != DiscogsKind.RELEASE)
+            return reject(DiscogsReleaseParseRejection.IDENTITY)
+        if (!boundedDetail(raw, DISCOGS_RELEASE_BODY_BYTES))
+            return reject(DiscogsReleaseParseRejection.BODY_OR_STRUCTURE)
+        return try {
+            val obj = json.parseToJsonElement(raw) as? JsonObject
+                ?: return reject(DiscogsReleaseParseRejection.ROOT)
+            if ((obj["id"] as? JsonPrimitive)?.longOrNull != expected.id)
+                return reject(DiscogsReleaseParseRejection.IDENTITY)
+            val title = obj.clean("title", 240)
+                ?: return reject(DiscogsReleaseParseRejection.TITLE)
+            val artists = obj.objects("artists", 32)
+                ?: return reject(DiscogsReleaseParseRejection.ARTISTS)
+            val labels = obj.objects("labels", 64)
+                ?: return reject(DiscogsReleaseParseRejection.LABELS)
+            val identifiers = obj.objects("identifiers", 128)
+                ?: return reject(DiscogsReleaseParseRejection.IDENTIFIERS)
+            val formats = obj.objects("formats", 32)
+                ?: return reject(DiscogsReleaseParseRejection.FORMATS)
+            // Native presentation already has a total traversal budget of
+            // 1024 rows. Permit large flat box sets within that same ceiling;
+            // the canonical edition matching path retains its 256-row cap.
+            val trackLimit = if (nativeCatalog) 1024 else 256
+            if (((obj["tracklist"] as? JsonArray)?.size ?: 0) > trackLimit)
+                return reject(DiscogsReleaseParseRejection.TRACKLIST_LIMIT)
+            val tracks = obj.objects("tracklist", trackLimit)
+                ?: return reject(DiscogsReleaseParseRejection.TRACKLIST)
+            val names = artists.mapNotNull { it.clean("name", 180) }
+            // Provider names like "Ive (16)" are not identity evidence.
+            val ids = artists.map { (it["id"] as? JsonPrimitive)?.longOrNull }
+            val artistIds = if (names.size == artists.size &&
+                ids.all { it != null && it in 1..999_999_999_999L }
+            ) ids.filterNotNull() else emptyList()
+            val catalog = labels.mapNotNull { label ->
+                label.clean("name", 180)?.let { name ->
+                    name to (label.clean("catno", 80) ?: "")
+                }
+            }
+            val barcode = identifiers.filter {
+                it.clean("type", 40).equals("Barcode", ignoreCase = true)
+            }.mapNotNull { it.clean("value", 80) }
+            val formatDescriptions = formats.flatMap { format ->
+                val name = format.clean("name", 80)
+                val descriptions = format.stringArray("descriptions", 24)
+                    ?: return reject(DiscogsReleaseParseRejection.FORMAT_DESCRIPTIONS)
+                listOfNotNull(name) + descriptions
+            }
+            // Discogs tracklists may contain disc headings and index markers,
+            // neither of which is a MusicBrainz audio Track. Comparing them as
+            // tracks would reject valid editions or validate wrong track counts.
+            val positions = tracks.filter { track ->
+                track.clean("type_", 32)?.lowercase(Locale.ROOT) in setOf(null, "track")
+            }.map { track ->
+                (track.clean("position", 40) ?: "") to
+                    (track.clean("title", 240)
+                        ?: return reject(DiscogsReleaseParseRejection.TRACK_TITLE))
+            }
+            val nativeTracks = parseNativeTracklist(tracks)
+            DiscogsRecord(
+                link = expected,
+                title = title,
+                nativeTracklist = nativeTracks.tracks,
+                nativeTracklistIncomplete = nativeTracks.incomplete,
+                artistNames = names,
+                artistIds = artistIds,
+                country = obj.clean("country", 80),
+                year = (obj["year"] as? JsonPrimitive)?.intOrNull?.takeIf { it in 1800..2200 },
+                labels = catalog,
+                barcodes = barcode,
+                formats = formatDescriptions,
+                tracklist = positions,
+                unofficial = formatDescriptions.any { desc ->
+                    desc.equals("Unofficial Release", ignoreCase = true) ||
+                        desc.equals("Partially Unofficial", ignoreCase = true)
+                },
+                masterId = (obj["master_id"] as? JsonPrimitive)?.longOrNull
+                    ?.takeIf { it in 1..999_999_999_999L },
+            )
+        } catch (_: Exception) {
+            reject(DiscogsReleaseParseRejection.JSON)
+        }
+    }
+
+    /**
+     * Discogs guidelines 12.2.9, 12.13 and 12.15: subtracks are named
+     * movements, index/heading are not audio rows, Video-prefixed positions
+     * are non-audio extras. Preserve the source order, not inferred numbering.
+     * Keep a separate representation so edition-match evidence is unchanged.
+     */
+    private data class NativeTracklistRead(
+        val tracks: List<DiscogsNativeTrack>,
+        val incomplete: Boolean,
+    )
+
+    private fun parseNativeTracklist(tracks: List<JsonObject>): NativeTracklistRead {
+        val result = mutableListOf<DiscogsNativeTrack>()
+        var visited = 0
+        val videoPosition = Regex("(?i)^video(?:\\s|[-.:]|[0-9]|$)")
+        fun visit(rows: List<JsonObject>, context: String?, depth: Int): Boolean {
+            if (depth > 4) return false
+            var complete = true
+            for (row in rows) {
+                if (++visited > 1024) return false
+                val type = row.clean("type_", 32)?.lowercase(Locale.ROOT)
+                val position = row.clean("position", 40)
+                if (type == "video" || position?.let { videoPosition.containsMatchIn(it) } == true)
+                    continue
+                if (type !in setOf(null, "track", "heading", "index")) continue
+                val children = row.objects("sub_tracks", 256)
+                if (children == null) { complete = false; continue }
+                val title = row.clean("title", 240)
+                if (children.isNotEmpty()) {
+                    val childContext = if (type == "heading") context else
+                        listOfNotNull(context, title).joinToString(" · ").takeIf(String::isNotBlank)
+                    if (!visit(children, childContext, depth + 1)) complete = false
+                    continue
+                }
+                if (type == "heading" || type == "index") continue
+                if (title == null) { complete = false; continue }
+                val artists = row.objects("artists", 32)
+                val names = artists?.mapNotNull { it.clean("name", 180) }
+                val credit = names?.takeIf {
+                    it.isNotEmpty() && it.size == artists?.size
+                }?.joinToString(", ")
+                result += DiscogsNativeTrack(
+                    position = position, title = title, workTitle = context,
+                    artistCredit = credit,
+                    creditSpecified = artists == null || artists.isNotEmpty(),
+                    durationMs = parseNativeDuration(row.clean("duration", 32)),
+                )
+            }
+            return complete
+        }
+        val complete = visit(tracks, null, 0)
+        return NativeTracklistRead(result.toList(), !complete)
+    }
+
+    private fun parseNativeDuration(raw: String?): Long? {
+        val parts = raw?.replace('.', ':')?.split(':') ?: return null
+        if (parts.size !in 2..3 || parts.any { it.isEmpty() || it.any { c -> !c.isDigit() } })
+            return null
+        val numbers = parts.map { it.toLongOrNull() ?: return null }
+        if (numbers.last() !in 0L..59L) return null
+        val seconds = if (numbers.size == 2) {
+            if (numbers[0] !in 0L..999L) return null
+            numbers[0] * 60 + numbers[1]
+        } else {
+            if (numbers[0] !in 0L..99L || numbers[1] !in 0L..59L) return null
+            numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+        }
+        return seconds * 1000
+    }
+
+    private fun JsonObject.objects(key: String, max: Int): List<JsonObject>? {
+        val value = this[key] ?: return emptyList()
+        val array = value as? JsonArray ?: return null
+        if (array.size > max) return null
+        return array.map { it as? JsonObject ?: return null }
+    }
+
+    private fun JsonObject.stringArray(key: String, max: Int): List<String>? {
+        val value = this[key] ?: return emptyList()
+        val array = value as? JsonArray ?: return null
+        if (array.size > max) return null
+        return array.map { item ->
+            val text = (item as? JsonPrimitive)?.contentOrNull ?: return null
+            text.takeIf { it.length <= 80 && it.none(Char::isISOControl) } ?: return null
+        }
+    }
+
+    private fun JsonObject.clean(key: String, max: Int): String? =
+        (this[key] as? JsonPrimitive)?.contentOrNull?.trim()
+            ?.takeIf { it.isNotEmpty() && it.length <= max && it.none(Char::isISOControl) }
+}
+
+/** Current API observations expire: they never mutate MusicBrainz/Room identity facts. */
+internal data class DiscogsObservation(
+    val canonicalMbid: String,
+    val kind: DiscogsKind,
+    val record: DiscogsRecord,
+    val fetchedAtMillis: Long,
+) {
+    companion object {
+        const val TTL_MILLIS = 5 * 60 * 60 * 1000L
+    }
+
+    fun isDisplayableAt(nowMillis: Long): Boolean =
+        kind == DiscogsKind.RELEASE &&
+            record.link.kind == kind &&
+            nowMillis >= fetchedAtMillis &&
+            nowMillis - fetchedAtMillis < TTL_MILLIS
+
+    fun canSupplyAudio(): Boolean = false
+    fun canSupplyArtwork(): Boolean = false
+}

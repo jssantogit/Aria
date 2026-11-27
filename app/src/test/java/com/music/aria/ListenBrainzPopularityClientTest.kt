@@ -11,6 +11,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import com.music.aria.data.providers.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,6 +36,36 @@ class ListenBrainzPopularityClientTest {
             artistCalls += 1
             return artistReplies.removeAt(0)
         }
+    }
+
+    @Test fun chartOptOutSuppressesCachedPopularityAndLeavesListeningSubmissionsIndependent() = runBlocking {
+        val provider = BuiltInProviderKeys.LISTENBRAINZ
+        val descriptor = ProviderDescriptor(provider,
+            setOf(ProviderCapability.CHART_MOST_PLAYED, ProviderCapability.LISTENING_STATISTICS),
+            ProviderReadiness.READY)
+        fun policy(chartsOn: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(descriptor),
+            choices = mapOf(
+                ProviderCapability.CHART_MOST_PLAYED to listOf(ProviderChoice(provider, chartsOn, 0)),
+                ProviderCapability.LISTENING_STATISTICS to listOf(ProviderChoice(provider, true, 0)),
+            ),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        val transport = FakeTransport(mutableListOf(ListenBrainzPopularityHttpResponse(
+            200, """[{"recording_mbid":"$a","total_listen_count":10,"total_user_count":3}]""")))
+        val client = ListenBrainzPopularityClient(
+            transport, ListenBrainzRateLimiter(waitMillis = {}),
+            cacheRead = ProviderCachedReadAccess { gate },
+        )
+        assertTrue(client.recordingPopularity(listOf(a)) is ListenBrainzPopularityFetchResult.Success)
+        gate.replace(policy(false))
+        assertEquals(ListenBrainzPopularityFetchResult.Unavailable,
+            client.recordingPopularity(listOf(a)))
+        assertEquals(1, transport.calls)
+        assertTrue(gate.open(ProviderCapability.LISTENING_STATISTICS, provider) != null)
+        gate.replace(policy(true))
+        assertTrue(client.recordingPopularity(listOf(a)) is ListenBrainzPopularityFetchResult.Success)
+        assertEquals(1, transport.calls)
     }
 
     @Test fun exactMbidsAreFetchedAndCachedWithoutTreatingUnknownAsZero() = runBlocking {
@@ -339,4 +370,36 @@ class ListenBrainzPopularityClientTest {
         assertTrue(client.topRecordingsForArtist(artist) is ListenBrainzArtistTopFetchResult.Success)
         assertEquals(2, transport.artistCalls)
     }
+    @Test fun unauthorizedArtistEndpointBacksOffAcrossArtistsWithoutBlockingRecordingPopularity() = runBlocking {
+        val firstArtist = "b7ffd2af-418f-4be2-bdd1-22f8b48613da"
+        val secondArtist = "541adf5a-48d4-4f7b-a7bb-afd3cea5af27"
+        val thirdArtist = "271b31f8-8ab6-483c-97d9-8f0fabb2d4f4"
+        var now = 10_000L
+        fun chart(artist: String) = ListenBrainzPopularityHttpResponse(200,
+            """[{"recording_mbid":"$a","artist_mbids":["$artist"],
+                "total_listen_count":18,"total_user_count":3}]""")
+        val transport = FakeTransport(
+            mutableListOf(ListenBrainzPopularityHttpResponse(200,
+                """[{"recording_mbid":"$a","total_listen_count":18,"total_user_count":3}]""")),
+            mutableListOf(chart(firstArtist), ListenBrainzPopularityHttpResponse(401, ""),
+                chart(thirdArtist)),
+        )
+        val client = ListenBrainzPopularityClient(transport,
+            ListenBrainzRateLimiter(nowMillis = { now }, waitMillis = { now += it }),
+            nowMillis = { now })
+        assertTrue(client.topRecordingsForArtist(firstArtist) is ListenBrainzArtistTopFetchResult.Success)
+        assertEquals(ListenBrainzArtistTopFetchResult.Unavailable,
+            client.topRecordingsForArtist(secondArtist))
+        assertEquals(ListenBrainzArtistTopFetchResult.Unavailable,
+            client.topRecordingsForArtist(thirdArtist))
+        assertEquals(2, transport.artistCalls)
+        assertTrue((client.topRecordingsForArtist(firstArtist)
+            as ListenBrainzArtistTopFetchResult.Success).fromCache)
+        assertTrue(client.recordingPopularity(listOf(a)) is ListenBrainzPopularityFetchResult.Success)
+        assertEquals(1, transport.calls)
+        now += 91_000L
+        assertTrue(client.topRecordingsForArtist(thirdArtist) is ListenBrainzArtistTopFetchResult.Success)
+        assertEquals(3, transport.artistCalls)
+    }
+
 }
