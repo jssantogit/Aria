@@ -5534,10 +5534,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         appleArtistHeroJob = viewModelScope.launch(Dispatchers.IO) {
+            // Reuse the exact verified store route resolved above. A shelf
+            // row may omit the URL even when the current artist snapshot has it.
             val portrait = AppleArtistArtRepository.artForExactStoreArtist(
-                row.browseId, row.appleStoreUrl,
-            )?.heroUrl ?: return@launch
+                row.browseId, appleArtistUrl,
+            )?.heroUrl?.takeIf(String::isNotBlank) ?: return@launch
             if (activeAppleArtistId != row.browseId ||
+                appleArtistPager !== pager ||
                 _searchSource.value != SearchSource.CANONICAL
             ) return@launch
             activeAppleArtistHeroArt = portrait
