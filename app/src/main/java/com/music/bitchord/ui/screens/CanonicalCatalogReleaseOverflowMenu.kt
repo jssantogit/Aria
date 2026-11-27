@@ -26,8 +26,11 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
     hazeState: dev.chrisbanes.haze.HazeState,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     onSettings: () -> Unit,
+    sourceStoreUrl: String? = null,
 ) {
-    val spec = remember(browseId) { canonicalCatalogEntityMenuSpec(browseId) }
+    val spec = remember(browseId, sourceStoreUrl) {
+        canonicalCatalogEntityMenuSpec(browseId, sourceStoreUrl)
+    }
     var ratingOpen by remember(browseId) { mutableStateOf(false) }
     var playlistOpen by remember(browseId) { mutableStateOf(false) }
     if (playlistOpen && spec?.playlistKind != null) {
@@ -64,6 +67,7 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
                     onDismiss = onDismiss,
                     onRate = { ratingOpen = true },
                     onAddVerifiedRecordings = { playlistOpen = true },
+                    sourceStoreUrl = sourceStoreUrl,
                 )
             }
             com.music.bitchord.FrostedMenuRow(
