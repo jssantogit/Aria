@@ -617,4 +617,24 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals(attempts, calls)
     }
 
+    @Test fun successiveArtworkBatchesDoNotReexamineRejectedCandidatesWithinSameEmission() = runBlocking {
+        val ids = (1..50).map { "discogs:release:$it" }
+        val examined = mutableListOf<String>()
+        val attempted = mutableListOf<String>()
+        do {
+            val before = attempted.size
+            com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+                ids.filterNot { it in examined },
+                stillCurrent = { true },
+                resolve = { null },
+                onVerified = { _, _ -> fail("No proof") },
+                eligible = { it.substringAfterLast(':').toInt() > 20 },
+                onAttempt = { attempted += it },
+                onExamined = { examined += it },
+            )
+        } while (attempted.size != before)
+        assertEquals(ids, examined)
+        assertEquals(ids.drop(20), attempted)
+    }
+
 }
