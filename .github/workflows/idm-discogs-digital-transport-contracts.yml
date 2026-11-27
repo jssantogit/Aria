@@ -1,0 +1,39 @@
+name: IDM · digital edition transport contracts
+on:
+  push:
+    branches: [audit/idm-discogs-digital-transport-20261127]
+    paths: [.github/workflows/idm-discogs-digital-transport-contracts.yml]
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Confirm exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run offline transport and edition contracts
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false \
+            :app:testDevDebugUnitTest \
+            --tests 'com.music.bitchord.DiscogsTransportSafetyTest' \
+            --tests 'com.music.bitchord.DiscogsMasterVersionPreviewTest' \
+            --tests 'com.music.bitchord.DiscogsVerifiedAppleArtworkTest' \
+            --tests 'com.music.bitchord.DiscogsGenreEditorialNetworkTest'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: idm-digital-transport-contracts-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
