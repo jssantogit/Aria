@@ -139,7 +139,7 @@ internal class DiscogsNativeArtistCatalog(
         startPage: Int,
         knownVerified: List<DiscogsNativeArtistRelease>,
         maxPages: Int = 3,
-        onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
+        onProgress: suspend (List<DiscogsNativeArtistRelease>) -> Unit = {},
     ): DiscogsNativeArtistWindow {
         require(maxPages in 1..3)
         val collected = mutableListOf<DiscogsNativeArtistRelease>()
@@ -178,7 +178,7 @@ internal class DiscogsNativeArtistCatalog(
     suspend fun load(
         artistId: Long,
         page: Int = 1,
-        onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
+        onProgress: suspend (List<DiscogsNativeArtistRelease>) -> Unit = {},
     ): DiscogsNativeArtistLoad = loadDistinct(artistId, page, emptyList(), onProgress)
 
     /** The caller supplies only already verified rows from this artist snapshot.
@@ -187,7 +187,7 @@ internal class DiscogsNativeArtistCatalog(
         artistId: Long,
         page: Int,
         knownVerified: List<DiscogsNativeArtistRelease>,
-        onProgress: (List<DiscogsNativeArtistRelease>) -> Unit = {},
+        onProgress: suspend (List<DiscogsNativeArtistRelease>) -> Unit = {},
     ): DiscogsNativeArtistLoad {
         if (artistId !in 1..999_999_999_999L || page !in 1..100)
             return DiscogsNativeArtistLoad.InvalidArtist

@@ -156,4 +156,34 @@ class DiscogsNativeNavigationTest {
         assertNull(discogsNativeAttributionUrl(null))
     }
 
+
+    @Test fun staleReleaseFailureCannotTargetAnotherRoute() {
+        fun matches(route: DiscogsNativeRoute?, id: String?) =
+            com.music.bitchord.ui.discogsNativeDetailRequestMatches(
+                route, id, "discogs:release:500",
+            )
+        assertTrue(matches(DiscogsNativeRoute.RELEASE, "discogs:release:500"))
+        assertFalse(matches(DiscogsNativeRoute.RELEASE, "discogs:release:501"))
+        assertFalse(matches(DiscogsNativeRoute.ARTIST, "discogs:artist:500"))
+        assertFalse(matches(null, null))
+    }
+
+    @Test fun partialArtistCardsHaveTheSameVerifiedBackingAsSettledCards() {
+        val artist = DiscogsNativeArtistSearchRow(17L, "Artist")
+        val first = DiscogsNativeArtistRelease(
+            artistId = 17L, releaseId = 500L, masterId = null,
+            title = "First", year = 2024, formats = listOf("Album"),
+            tracklist = emptyList(),
+        )
+        val second = first.copy(releaseId = 501L, title = "Second")
+        val foreign = first.copy(releaseId = 502L, artistId = 18L)
+        val backing = com.music.bitchord.ui.discogsVerifiedArtistPageReleases(
+            artist, listOf(first, first, second, foreign),
+        )
+        val partial = discogsArtistPage(artist, backing, hasMore = true, incomplete = true)
+        val visible = partial.page.sections.flatMap { it.items }.map { it.browseId }
+        assertEquals(listOf(first.browseId, second.browseId), visible)
+        assertTrue(partial.hasMore)
+        visible.forEach { id -> assertEquals(1, backing.count { it.browseId == id }) }
+    }
 }

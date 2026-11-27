@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1027,18 +1028,21 @@ internal class DiscogsNativeCatalogSession(
             failDetail("Ative a Discografia do Discogs em Provedores.")
             return
         }
-        val job = scope.launch(Dispatchers.IO) {
-            val response = try { editionClient.fetchRelease(selected.releaseId) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            val response = try {
+                withContext(Dispatchers.IO) { editionClient.fetchRelease(selected.releaseId) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (!authorization.isCurrent() || artist != null ||
-                _route.value != DiscogsNativeRoute.RELEASE) return@launch
+                !discogsNativeDetailRequestMatches(
+                    _route.value, _browseId.value, selected.browseId,
+                )) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
             if (record == null || record.link.kind != DiscogsKind.RELEASE ||
                 record.link.id != selected.releaseId ||
                 (expectedMasterId != null &&
-                    (record.masterId != expectedMasterId || record.unofficial)) ||
-                _browseId.value != selected.browseId
+                    (record.masterId != expectedMasterId || record.unofficial))
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
@@ -1048,7 +1052,7 @@ internal class DiscogsNativeCatalogSession(
             val credit = record.artistNames.joinToString(", ")
             val initial = discogsReleasePage(credit, record)
             _detail.value = UiState.Success(initial)
-            val variants = sampleVerifiedVersions(record)
+            val variants = withContext(Dispatchers.IO) { sampleVerifiedVersions(record) }
             if (!authorization.isCurrent() || artist != null ||
                 _route.value != DiscogsNativeRoute.RELEASE ||
                 _browseId.value != selected.browseId
@@ -1065,7 +1069,9 @@ internal class DiscogsNativeCatalogSession(
                 ?.takeIf { !record.unofficial } ?: return@launch
             // Only one bounded, independently verified Discogs Artist page.
             // Do not re-identify a release through a similar artist name.
-            val related = try { artistClient.load(exactArtistId, 1) }
+            val related = try {
+                withContext(Dispatchers.IO) { artistClient.load(exactArtistId, 1) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
             if (!authorization.isCurrent() || artist != null ||
@@ -1134,21 +1140,28 @@ internal class DiscogsNativeCatalogSession(
             return
         }
         val page = artistPage + 1
-        val job = scope.launch(Dispatchers.IO) {
+        val job = scope.launch(Dispatchers.Main.immediate) {
             val window = try {
-                artistClient.loadWindow(current.artistId, page, releases) { verified ->
-                    if (artist == current && authorization.isCurrent() &&
-                        _route.value == DiscogsNativeRoute.ARTIST &&
-                        _browseId.value == current.browseId
-                    ) {
-                        val partial = discogsMergeArtistPageReleases(
-                            releases + verified,
-                        )
-                        val snapshot = discogsArtistPage(
-                            current, partial, hasMore = false, incomplete = true,
-                        )
-                        cachedArtistPage = snapshot
-                        _detail.value = UiState.Success(snapshot)
+                val known = releases
+                withContext(Dispatchers.IO) {
+                    artistClient.loadWindow(current.artistId, page, known) { verified ->
+                        withContext(Dispatchers.Main.immediate) {
+                            if (artist == current && authorization.isCurrent() &&
+                                _route.value == DiscogsNativeRoute.ARTIST &&
+                                _browseId.value == current.browseId
+                            ) {
+                                // Publish the verified rows and their navigation
+                                // backing together. An interrupted window remains
+                                // retryable at the same source page.
+                                releases = discogsVerifiedArtistPageReleases(current, releases + verified)
+                                artistHasMore = true
+                                val snapshot = discogsArtistPage(
+                                    current, releases, hasMore = true, incomplete = true,
+                                )
+                                cachedArtistPage = snapshot
+                                _detail.value = UiState.Success(snapshot)
+                            }
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -1160,7 +1173,7 @@ internal class DiscogsNativeCatalogSession(
                 _browseId.value != current.browseId) return@launch
             when (val response = window.result) {
                 is DiscogsNativeArtistLoad.Success -> {
-                    releases = discogsMergeArtistPageReleases(releases + response.releases)
+                    releases = discogsVerifiedArtistPageReleases(current, releases + response.releases)
                     // Only settled source pages advance; the last interrupted
                     // page stays retryable even after a productive earlier page.
                     artistPage += window.completedPages
@@ -1203,8 +1216,10 @@ internal class DiscogsNativeCatalogSession(
         _detail.value = UiState.Success(discogsNativeLoadingPage(
             selected.browseId, selected.title, parent.name, BrowseType.ALBUM,
         ))
-        val job = scope.launch(Dispatchers.IO) {
-            val response = try { editionClient.fetchRelease(selected.releaseId) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            val response = try {
+                withContext(Dispatchers.IO) { editionClient.fetchRelease(selected.releaseId) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (!authorization.isCurrent() || artist != parent ||
@@ -1220,7 +1235,7 @@ internal class DiscogsNativeCatalogSession(
                 return@launch
             }
             _detail.value = UiState.Success(discogsReleasePage(parent, record, releases))
-            val variants = sampleVerifiedVersions(record)
+            val variants = withContext(Dispatchers.IO) { sampleVerifiedVersions(record) }
             if (!authorization.isCurrent() || artist != parent ||
                 _route.value != DiscogsNativeRoute.RELEASE ||
                 _browseId.value != selected.browseId) return@launch
@@ -1285,24 +1300,27 @@ internal class DiscogsNativeCatalogSession(
         _detail.value = UiState.Success(discogsNativeLoadingPage(
             release.browseId, release.title, parent.name, BrowseType.ALBUM,
         ))
-        val job = scope.launch(Dispatchers.IO) {
-            val response = try { editionClient.fetchRelease(release.releaseId) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            val response = try {
+                withContext(Dispatchers.IO) { editionClient.fetchRelease(release.releaseId) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (!authorization.isCurrent() || artist != parent ||
-                _route.value != DiscogsNativeRoute.RELEASE) return@launch
+                !discogsNativeDetailRequestMatches(
+                    _route.value, _browseId.value, release.browseId,
+                )) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
             if (record == null || record.unofficial ||
                 record.link.kind != DiscogsKind.RELEASE ||
                 record.link.id != release.releaseId ||
-                parent.artistId !in record.artistIds ||
-                _browseId.value != release.browseId
+                parent.artistId !in record.artistIds
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
             }
             _detail.value = UiState.Success(discogsReleasePage(parent, record, releases))
-            val variants = sampleVerifiedVersions(record)
+            val variants = withContext(Dispatchers.IO) { sampleVerifiedVersions(record) }
             if (!authorization.isCurrent() || artist != parent ||
                 _route.value != DiscogsNativeRoute.RELEASE ||
                 _browseId.value != release.browseId) return@launch
@@ -1366,6 +1384,23 @@ internal class DiscogsNativeCatalogSession(
     }
 }
 
+/** A response for a retired album is neither success nor failure of the current album. */
+internal fun discogsNativeDetailRequestMatches(
+    route: DiscogsNativeRoute?,
+    browseId: String?,
+    expectedBrowseId: String,
+): Boolean = discogsNativeDetailRouteKey(route, browseId) == expectedBrowseId &&
+    route == DiscogsNativeRoute.RELEASE
+
+/** The first visible partial page and its tap use the same verified source rows. */
+internal fun discogsVerifiedArtistPageReleases(
+    artist: DiscogsNativeArtistSearchRow,
+    releases: List<DiscogsNativeArtistRelease>,
+): List<DiscogsNativeArtistRelease> = discogsMergeArtistPageReleases(releases.filter {
+    it.artistId == artist.artistId && it.releaseId in 1..999_999_999_999L &&
+        it.title.isNotBlank()
+})
+
 /** Exact Discogs format descriptors, never titles or MusicBrainz types. */
 internal fun discogsArtistPage(
     artist: DiscogsNativeArtistSearchRow,
@@ -1375,10 +1410,7 @@ internal fun discogsArtistPage(
 ): DiscogsNativePage {
     fun has(release: DiscogsNativeArtistRelease, label: String) =
         release.formats.any { it.equals(label, ignoreCase = true) }
-    val verified = discogsMergeArtistPageReleases(releases.filter {
-        it.artistId == artist.artistId && it.releaseId in 1..999_999_999_999L &&
-            it.title.isNotBlank()
-    })
+    val verified = discogsVerifiedArtistPageReleases(artist, releases)
     val buckets = verified.groupBy { release ->
         val album = has(release, "Album")
         val epOrSingle = has(release, "EP") || has(release, "Single")
