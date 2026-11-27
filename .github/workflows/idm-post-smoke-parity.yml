@@ -5,6 +5,10 @@ on:
     paths: [.github/workflows/idm-post-smoke-parity.yml]
 permissions:
   contents: read
+# One current grouped candidate; superseded contract runs are redundant.
+concurrency:
+  group: idm-post-smoke-parity-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   parity-contracts:
     runs-on: ubuntu-latest
