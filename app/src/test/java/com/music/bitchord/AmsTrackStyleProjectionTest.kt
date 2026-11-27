@@ -6,6 +6,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun localizedPostStylesPreserveSpecificity() {
+        assertTrue(appleMusicWebGenreNameMatches("Pós-punk","post-punk"))
+        assertTrue(appleMusicWebGenreNameMatches("Pós-rock","post-rock"))
+        val punk = AppleMusicWebItem("pl.397f9243a6f442eca2399c65402677e1",
+            AppleMusicWebKind.PLAYLIST,"br","Pós-punk: essenciais",
+            artistName="Apple Music: alternativo",playlistType="editorial")
+        val rock = punk.copy(id="pl.95ac5e708e874dbd97ceb435554b25ef",
+            title="Pós-rock: essenciais",artistName="Apple Music: indie")
+        assertTrue(amsVerifiedSearchedStylePlaylist(punk,"post-punk","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(punk.copy(title="Pós-punk: joias ocultas"),"post-punk","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(rock,"post-rock","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(punk,"post-rock","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(rock,"post-punk","br"))
+        assertFalse(amsExactStylePlaylistTitle("Rock: joias ocultas","post-rock"))
+        assertFalse(amsExactStylePlaylistTitle("Drone Metal: essenciais","drone"))
+    }
+
     @Test fun observedEditorialTitlesAllowNarrowQualifiersWithoutParentSubstitution() {
         fun playlist(title: String,credit: String) = AppleMusicWebItem("pl.example123",
             AppleMusicWebKind.PLAYLIST,"br",title,artistName=credit,playlistType="editorial")

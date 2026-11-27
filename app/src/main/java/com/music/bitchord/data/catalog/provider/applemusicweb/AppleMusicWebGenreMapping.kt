@@ -42,6 +42,8 @@ internal fun appleMusicWebGenreNameMatches(name: String, tag: String): Boolean {
         "bluegrass" -> setOf("Bluegrass")
         "alternative rock" -> setOf("Alternative Rock", "Rock alternativo")
         "progressive rock" -> setOf("Progressive Rock", "Rock progressivo")
+        "post-rock" -> setOf("Post-Rock", "Pós-rock")
+        "post-punk" -> setOf("Post-Punk", "Pós-punk")
         "conscious hip hop" -> setOf("Conscious Hip Hop", "Hip-hop consciente")
         "drum and bass" -> setOf("Drum and Bass", "Drum & Bass", "Drum n Bass", "Jungle/Drum’n’bass", "Jungle/Drum'n'bass")
         "contemporary r&b" -> setOf("Contemporary R&B", "R&B contemporâneo")

@@ -1,7 +1,7 @@
 name: AMS · integrated subgenre composition review
 on:
   push:
-    branches: [audit/ams-composition-review-20261127, audit/ams-exact-release-motion-20261127, audit/ams-style-editorial-evidence-20261127]
+    branches: [audit/ams-composition-review-20261127, audit/ams-exact-release-motion-20261127, audit/ams-style-editorial-evidence-20261127, audit/ams-style-localization-20261127]
   workflow_dispatch:
 permissions:
   contents: read

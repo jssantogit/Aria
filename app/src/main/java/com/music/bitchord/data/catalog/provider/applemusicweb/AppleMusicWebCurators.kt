@@ -104,7 +104,8 @@ internal fun amsExactStylePlaylistTitle(title: String,tag: String): Boolean {
         name.removePrefix("essenciais de "), name.removePrefix("essenciais do "),
         name.removePrefix("essenciais da "),name.removeSuffix(" essential"),
         name.removePrefix("o melhor do "),name.removePrefix("o melhor da "),
-        name.removePrefix("o melhor de "),name.removePrefix("best of "))
+        name.removePrefix("o melhor de "),name.removePrefix("best of "),
+        name.removeSuffix(" joias ocultas"), name.removeSuffix(" hidden gems"))
     return labels.any { appleMusicWebGenreNameMatches(it,tag) } ||
         (tag == "heavy metal" && labels.any { it in setOf("metal classico","classic metal") }) ||
         (tag == "thrash metal" && name == "thrash") ||
@@ -215,7 +216,7 @@ internal fun amsStyleDiscoveryQueries(tag: String): List<String> {
         "synthpop" -> "synth pop"
         "alternative rock" -> "rock alternativo"
         "progressive rock" -> "rock progressivo"
-        "post-rock" -> "post rock"
+        "post-rock" -> "pós-rock"
         "trap" -> "trap brasileiro"
         "drill" -> "drill rap"
         "boom bap" -> "boom-bap"
@@ -224,7 +225,7 @@ internal fun amsStyleDiscoveryQueries(tag: String): List<String> {
         "drone" -> "drone ambient"
         "ambient techno" -> "ambient techno music"
         "hardcore punk" -> "punk hardcore"
-        "post-punk" -> "post punk"
+        "post-punk" -> "pós-punk"
         "pop punk" -> "punk pop"
         else -> tag
     }
