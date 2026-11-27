@@ -222,6 +222,8 @@ internal class DiscogsNativeCatalogSession(
         )
     }
 
+    private val editorialArtworkMemo = DiscogsEditorialArtworkMemo()
+
     private val editorialArtworkResolver by lazy {
         com.music.bitchord.data.catalog.metadata.DiscogsAppleArtworkResolver()
     }
@@ -258,6 +260,12 @@ internal class DiscogsNativeCatalogSession(
                 ProviderRuntime.gateOrNull() === artGate && artGate.accept(artTicket)
             fun currentEvidence() = editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
             if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            editorialArtworkMemo.read(evidence)?.let { cached ->
+                if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+                if (!currentEvidence()) return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
+                recordOutcome(DiscogsArtworkOutcome.VERIFIED_REUSED)
+                return@withContext cached
+            }
             // A completed lookup may legitimately return null; distinguish it
             // from cancellation by this local timeout without swallowing outer cancellation.
             var rejection = DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT
@@ -276,8 +284,10 @@ internal class DiscogsNativeCatalogSession(
             val selected = upgraded ?: proof.artworkUrl
             if (com.music.bitchord.ui.screens.appleProminentArtworkOrNull(selected) == null)
                 return@withContext reject(DiscogsArtworkOutcome.NO_PROMINENT_IMAGE)
+            val promoted = proof.copy(artworkUrl = selected)
+            editorialArtworkMemo.remember(evidence, promoted, ::authorized)
             recordOutcome(DiscogsArtworkOutcome.VERIFIED_PROMINENT)
-            proof.copy(artworkUrl = selected)
+            promoted
         }
     }
 
@@ -755,6 +765,10 @@ internal class DiscogsNativeCatalogSession(
 
     /** Removing consent closes even previously painted provider-owned results. */
     fun purgeRevoked() {
+        if (ProviderRuntime.gateOrNull()?.open(
+                ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES,
+            ) == null || editorialLease() == null
+        ) editorialArtworkMemo.clear()
         if (editorialLease() == null) {
             homeEditorialJob?.cancel()
             homePagingJob?.cancel()
