@@ -278,4 +278,28 @@ class AppleSharedDetailAdapterTest {
         assertNull(navigate(foreign.browseId))
         assertNull(navigate(wrongCredit.browseId))
     }
+
+    @Test fun detailTrackRowsRejectDisputedIdsAndExplicitForeignArtistCredit() {
+        val track = com.music.bitchord.ui.screens.AppleEditorialTrackSearchRow(
+            key = "itunes:br:track:123", title = "Song",
+            artistName = artist.title, artworkUri = null, albumBrowseId = null,
+            durationMs = 180000, artistBrowseId = artist.browseId,
+        )
+        val foreign = track.copy(key = "itunes:br:track:124",
+            artistBrowseId = "itunes:br:artist:999")
+        val disputed = track.copy(key = "itunes:br:track:125")
+        val adapted = requireNotNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
+            artist = artist, albums = emptyList(), possiblyTruncated = false,
+            tracks = listOf(track, track, foreign, disputed, disputed.copy(title = "Other")),
+        )))
+        assertEquals(listOf(track), adapted.artistTracks)
+        val row = AppleEditorialTrackRow("itunes:br:track:123", "Song", artist.title, 1, 1)
+        val albumPage = requireNotNull(appleAlbumAsSharedDetail(AppleEditorialAlbumDetailPage(
+            album = album(20, AppleEditorialReleaseCategory.ALBUM),
+            tracks = listOf(row, row.copy(title = "Disputed")),
+            partialTracklist = false,
+        )))
+        assertTrue(albumPage.metadataTracks.isEmpty())
+        assertNotNull(albumPage.notice)
+    }
 }

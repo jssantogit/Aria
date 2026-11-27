@@ -114,7 +114,11 @@ internal fun appleNativeAlbumDetail(
     val header = album.asNativeSearchRow() ?: return null
     val tracks = album.tracks
         .filter { it.type == ItunesCatalogItemType.TRACK &&
-            it.storefront == id.storefront && it.collectionId == id.id }
+            it.storefront == id.storefront && it.collectionId == id.id &&
+            it.id > 0 && it.title.isNotBlank() }
+        .groupBy { it.scopedId }.values.mapNotNull { observations ->
+            observations.distinct().singleOrNull()
+        }
         .sortedWith(compareBy({ it.discNumber ?: Int.MAX_VALUE },
             { it.trackNumber ?: Int.MAX_VALUE }, { it.id }))
         .map {
@@ -133,19 +137,17 @@ internal fun appleNativeAlbumDetail(
             it.verifiedExcludedNonAudioRows > 0
     }?.verifiedExcludedNonAudioRows ?: 0
     val complete = source.state == AppleEditorialReadState.COMPLETE &&
-        album.trackCount != null && album.trackCount == tracks.size + verifiedExcluded &&
+        album.trackCount != null && album.trackCount > 0 &&
+        album.tracks.size == tracks.size &&
+        album.trackCount == tracks.size + verifiedExcluded &&
         tracks.all { (it.discNumber ?: 0) > 0 && (it.trackNumber ?: 0) > 0 } &&
         tracks.map { it.discNumber to it.trackNumber }.distinct().size == tracks.size
     return AppleEditorialAlbumDetailPage(
         album = header,
         tracks = tracks,
         partialTracklist = !complete,
-        appleStoreBadgeUrl = com.music.bitchord.data.catalog.metadata
-            .appleApprovedBadgeForStoreUrl(album.storeUrl),
-        appleStoreUrl = album.storeUrl.takeIf {
-            com.music.bitchord.data.catalog.metadata
-                .appleApprovedBadgeForStoreUrl(it) != null
-        },
+        appleStoreBadgeUrl = header.appleStoreBadgeUrl,
+        appleStoreUrl = header.appleStoreUrl,
     )
 }
 
