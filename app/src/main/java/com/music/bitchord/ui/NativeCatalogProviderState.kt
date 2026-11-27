@@ -104,9 +104,12 @@ internal fun rememberNativeCatalogProviderState(
     val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
     val amsStack by viewModel.appleMusicWebDetailNavigation.stack.collectAsStateWithLifecycle()
-    val gate = ProviderRuntime.gateOrNull()
+    // Preserve IDM's reactive policy observation even when the route's
+    // result flow does not emit after a provider switch.
+    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val gate = ProviderRuntime.gateOrNull().takeIf { policySnapshot != null }
     // The route owns its capability: a daily chart is not an editorial read.
-    val amsReadAllowed = amsStack.isNotEmpty() && amsStack.all { it.lease.isCurrent() }
+    val amsReadAllowed = gate != null && amsStack.isNotEmpty() && amsStack.all { it.lease.isCurrent() }
     LaunchedEffect(amsReadAllowed, amsStack.isNotEmpty()) {
         if (!amsReadAllowed && amsStack.isNotEmpty()) viewModel.appleMusicWebDetailNavigation.purgeRevoked()
     }

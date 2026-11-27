@@ -60,6 +60,32 @@ class AppleMusicWebDetailNavigationTest {
         assertTrue(nav.stack.value.isEmpty())
     }
 
+    @Test fun revokedAncestorCannotBeBypassedByStillAuthorizedChild(): Unit = runBlocking {
+        val chart = ProviderCapability.CHART_MOST_PLAYED
+        fun policy(chartEnabled: Boolean) = ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(key,setOf(capability,chart),ProviderReadiness.READY)),
+            mapOf(capability to listOf(ProviderChoice(key,true,0)),
+                chart to listOf(ProviderChoice(key,chartEnabled,0))),
+        )
+        val owner = ProviderPolicyGate(policy(true))
+        var first = true
+        val nav = AppleMusicWebDetailNavigation(this,{
+            ProviderReadLease.acquire(owner,listOf((if (first) chart else capability) to key))
+        }) { id ->
+            ProviderCallResult.Success(AppleMusicWebOutcome.Complete(
+                if (id == artist) page(id,listOf(card(album))) else page(id)))
+        }
+        assertTrue(nav.openRoot(card(artist))); yield()
+        first = false
+        assertTrue(nav.openRelated(album)); yield()
+        assertEquals(2,nav.stack.value.size)
+        owner.replace(policy(false))
+        assertFalse(nav.stack.value.first().lease.isCurrent())
+        assertTrue(nav.stack.value.last().lease.isCurrent())
+        assertFalse(nav.openRelated(artist))
+        assertTrue(nav.stack.value.isEmpty())
+    }
+
     @Test fun trackAlbumNavigationPreservesSnapshotAndRejectsForeignMembership(): Unit = runBlocking {
         val song = NativeMetadataTrack("apple_music_web:br:song:30","Song","Artist",null,null)
         val parent = page(artist).copy(metadataTracks=listOf(song))

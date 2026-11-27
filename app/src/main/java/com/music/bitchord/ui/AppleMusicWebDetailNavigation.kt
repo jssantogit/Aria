@@ -112,7 +112,14 @@ internal class AppleMusicWebDetailNavigation(
         _stack.value = _stack.value.take(firstRevoked)
     }
 
+    private fun hasRevokedAncestor(): Boolean {
+        if (_stack.value.all { it.lease.isCurrent() }) return false
+        purgeRevoked()
+        return true
+    }
+
     fun openRelated(targetId: String?): Boolean {
+        if (hasRevokedAncestor()) return false
         val current = _stack.value.lastOrNull() ?: return false
         if (!current.lease.isCurrent()) { clear(); return false }
         val page = (current.state as? UiState.Success)?.data ?: return false
@@ -134,6 +141,7 @@ internal class AppleMusicWebDetailNavigation(
     /** Exact current membership and source relationship only; retain the
      * artist/playlist snapshot on Back and suppress stale navigation. */
     fun openTrackAlbum(track: NativeMetadataTrack,onUnavailable: () -> Unit = {}): Boolean {
+        if (hasRevokedAncestor()) return false
         val current = _stack.value.lastOrNull() ?: return false
         val detail = (current.state as? UiState.Success)?.data ?: return false
         if (!current.lease.isCurrent() || track !in detail.metadataTracks ||
@@ -148,6 +156,7 @@ internal class AppleMusicWebDetailNavigation(
                 catch (_: Exception) { null }
             if (generation != epoch || _stack.value.lastOrNull() !== parent ||
                 !parent.lease.isCurrent()) return@launch
+            if (hasRevokedAncestor()) return@launch
             val route = AppleMusicWebNativeRoute.parse(id)?.takeIf {
                 it.kind == AppleMusicWebKind.ALBUM && it.storefront == parent.route.storefront
             }
@@ -176,6 +185,7 @@ internal class AppleMusicWebDetailNavigation(
 
     fun back(): Boolean {
         if (_stack.value.isEmpty()) return false
+        if (hasRevokedAncestor()) return true
         cancelRequest()
         _stack.value = _stack.value.dropLast(1).filter { it.lease.isCurrent() }
         return true
@@ -187,6 +197,7 @@ internal class AppleMusicWebDetailNavigation(
     }
 
     fun loadNextArtist(routeKey: String, view: AppleMusicWebArtistShelf? = null) {
+        if (hasRevokedAncestor()) return
         val current = _stack.value.lastOrNull() ?: return
         val detail = (current.state as? UiState.Success)?.data ?: return
         val paging = detail.amsArtistPaging ?: return
@@ -202,6 +213,7 @@ internal class AppleMusicWebDetailNavigation(
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { null }
             if (generation != epoch || _stack.value.lastOrNull() !== loading) return@launch
+            if (hasRevokedAncestor()) return@launch
             if (!current.lease.isCurrent() || result == ProviderCallResult.Stale ||
                 result == ProviderCallResult.Denied) {
                 _stack.value = _stack.value.dropLast(1).filter { it.lease.isCurrent() }
@@ -242,6 +254,7 @@ internal class AppleMusicWebDetailNavigation(
                 null
             }
             if (generation != epoch || _stack.value.lastOrNull() !== entry) return@launch
+            if (hasRevokedAncestor()) return@launch
             if (!entry.lease.isCurrent() || result == ProviderCallResult.Stale ||
                 result == ProviderCallResult.Denied) {
                 _stack.value = _stack.value.dropLast(1).filter { it.lease.isCurrent() }
