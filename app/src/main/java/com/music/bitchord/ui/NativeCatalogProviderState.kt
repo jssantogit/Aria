@@ -89,7 +89,10 @@ internal fun rememberNativeCatalogProviderState(
     val discogsRoute by viewModel.discogsNativeCatalog.route.collectAsStateWithLifecycle()
     val discogsBrowseId by viewModel.discogsNativeCatalog.browseId.collectAsStateWithLifecycle()
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
-    val gate = ProviderRuntime.gateOrNull()
+    // Collect the policy itself: changing a provider switch must invalidate
+    // the visible detail even when none of the catalog result flows emit.
+    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val gate = ProviderRuntime.gateOrNull().takeIf { policySnapshot != null }
     val discogsReadAllowed = gate?.open(
         ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,
     ) != null
