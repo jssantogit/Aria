@@ -17,6 +17,7 @@ on:
       - audit/ams-track-discovery-budget-20261127
       - audit/ams-style-provenance-20261127
       - audit/ams-style-conflict-quarantine-20261127
+      - audit/ams-style-refresh-quarantine-20261127
 permissions:
   contents: read
 concurrency:
