@@ -1597,6 +1597,12 @@ private fun ReleaseHeader(
     // albums, nested artist albums and normal/smart playlists. This adapter
     // retains legacy artwork, Canvas, user library actions and credit links;
     // no provider-specific detail DTO enters the visual composition.
+    val promotionalArtwork = page.thumbnailUrl.takeIf {
+        sourceArtworkStoreUrl != null && offlinePoster == null && canvas == null
+    }
+    var promotionLoaded by remember(page.browseId, promotionalArtwork, sourceArtworkStoreUrl) {
+        mutableStateOf(false)
+    }
     NativeReleaseHeaderLayout(
         title = page.title,
         credit = credit,
@@ -1618,10 +1624,16 @@ private fun ReleaseHeader(
                 )
             }
             ResilientAppleCover(
-                model = (offlinePoster ?: page.thumbnailUrl).artworkAt(HEADER_ART_PX),
+                model = promotionalArtwork ?: (offlinePoster ?: page.thumbnailUrl).artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                onState = { artFailed = it is AsyncImagePainter.State.Error },
+                onState = { state ->
+                    artFailed = state is AsyncImagePainter.State.Error
+                    promotionLoaded = state is AsyncImagePainter.State.Success &&
+                        com.music.bitchord.ui.components.appleVerifiedAssetLoadMatches(
+                            promotionalArtwork, state.result.request.data,
+                        )
+                },
                 modifier = Modifier.matchParentSize(),
             )
             canvas?.let { clip ->
@@ -1637,8 +1649,8 @@ private fun ReleaseHeader(
             // Apple product, without changing the native release controls.
             val promotionBadge = com.music.bitchord.data.catalog.metadata
                 .appleApprovedBadgeForStoreUrl(sourceArtworkStoreUrl)
-            if (page.thumbnailUrl != null && sourceArtworkStoreUrl != null &&
-                promotionBadge != null
+            if (promotionLoaded && promotionalArtwork != null &&
+                sourceArtworkStoreUrl != null && promotionBadge != null
             ) {
                 val uriHandler = LocalUriHandler.current
                 Spacer(Modifier.height(8.dp))
