@@ -77,6 +77,8 @@ internal data class DiscogsNativePage(
     val albumArtistDisplayName: String? = null,
     /** Source-owned Master context, never an inferred MusicBrainz group. */
     val versionMasterId: Long? = null,
+    /** Volatile exact Release evidence, only for independent artwork proof. */
+    val artworkEvidence: DiscogsRecord? = null,
 )
 
 /** A version link is accepted only from a hydrated, explicitly verified
@@ -128,6 +130,7 @@ internal fun discogsNativePageDisplayAllowed(
         page.albumArtistBrowseId == null &&
         page.albumArtistDisplayName == null &&
         page.versionMasterId == null &&
+        page.artworkEvidence == null &&
         page.page.thumbnailUrl == null
     )
 
@@ -1482,6 +1485,9 @@ internal fun discogsReleasePage(
             name.equals(artistCredit.trim(), ignoreCase = true)
     }?.let(::discogsArtistDisplayName),
     versionMasterId = record.masterId,
+    artworkEvidence = record.takeIf {
+        com.music.bitchord.data.catalog.metadata.discogsDigitalArtworkUpc(it) != null
+    },
     // Even with zero verified cards, an interrupted Master lookup means
     // unknown coverage. The native source footer communicates this without
     // presenting a fabricated Versions carousel.
