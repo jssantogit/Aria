@@ -58,18 +58,18 @@ internal fun rememberDiscogsEditorialArtwork(
         fun current(): Boolean = currentActive && ProviderRuntime.gateOrNull() === gate &&
             gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
         val attempted = mutableSetOf<String>()
-        snapshotFlow { currentIds }.collect { incoming ->
-            // Retain successful proofs only while their exact source item exists.
-            artwork = artwork.filterKeys { it in incoming }
-            attempted.retainAll(incoming.toSet())
+        snapshotFlow { currentIds }.collect {
+            // Proofs and attempts remain bounded within this surface epoch;
+            // the returned projection hides absent IDs without spending a
+            // second request if a subsequent editorial emission restores one.
             // A batch never spends more than sixteen lookups. Continue with
             // later eligible items without waiting for another recomposition;
             // stop on exhaustion, navigation, or the bounded surface budget.
             while (current() && attempted.size < 80) {
                 val before = attempted.size
                 session.resolveEditorialArtworkBatch(
-                    browseIds = currentIds.filterNot { it in attempted }
-                        .take(80 - before),
+                    browseIds = currentIds.filterNot { it in attempted },
+                    maximumAttempts = 80 - before,
                     stillCurrent = { current() },
                     onAttempt = { attempted += it },
                     onVerified = { id, proof ->
