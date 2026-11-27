@@ -783,24 +783,28 @@ private fun mimeTypeOf(url: String): String? {
 /** The phone's decoder behind [CanvasArtworkPlayer] — see [PlayerHost.CanvasVideo]. */
 @Composable
 internal fun AndroidCanvasVideo(spec: CanvasVideoSpec, modifier: Modifier) {
-    AndroidCanvasArtworkPlayer(
-        canvas = spec.canvas,
-        isPlaying = spec.isPlaying,
-        modifier = modifier,
-        contentMode = spec.contentMode,
-        alignPortraitTop = spec.alignPortraitTop,
-        onAspectRatioChanged = spec.onAspectRatioChanged,
-        portraitRevealBounds = spec.portraitRevealBounds,
-        presentationAlpha = spec.presentationAlpha,
-        onRenderedChanged = spec.onRenderedChanged,
-        onFrameCaptured = spec.onFrameCaptured,
-        refreshFrameEveryMs = spec.refreshFrameEveryMs,
-        frameCapturePx = spec.frameCapturePx,
-        onCoverChanged = spec.onCoverChanged,
-        bottomFade = spec.bottomFade,
-        bottomFadeEndPx = spec.bottomFadeEndPx,
-        pausedForTransition = spec.pausedForTransition,
-    )
+    // The decoder, its listener, fallback and TextureView are one lifetime.
+    // A replacement clip must not inherit callbacks or a surface from its predecessor.
+    androidx.compose.runtime.key(spec.canvas) {
+        AndroidCanvasArtworkPlayer(
+            canvas = spec.canvas,
+            isPlaying = spec.isPlaying,
+            modifier = modifier,
+            contentMode = spec.contentMode,
+            alignPortraitTop = spec.alignPortraitTop,
+            onAspectRatioChanged = spec.onAspectRatioChanged,
+            portraitRevealBounds = spec.portraitRevealBounds,
+            presentationAlpha = spec.presentationAlpha,
+            onRenderedChanged = spec.onRenderedChanged,
+            onFrameCaptured = spec.onFrameCaptured,
+            refreshFrameEveryMs = spec.refreshFrameEveryMs,
+            frameCapturePx = spec.frameCapturePx,
+            onCoverChanged = spec.onCoverChanged,
+            bottomFade = spec.bottomFade,
+            bottomFadeEndPx = spec.bottomFadeEndPx,
+            pausedForTransition = spec.pausedForTransition,
+        )
+    }
 }
 
 /**

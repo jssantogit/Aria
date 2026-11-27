@@ -415,15 +415,18 @@ internal class AppleMusicWebNativeCatalogSession(
         ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>> {
         if (tag !in amsEditorialStyleParents) return curatedGenre(tag,storefront,refresh)
         val gate = currentGate() ?: return ProviderCallResult.Denied
+        val editorialTicket = gate.open(editorial,provider) ?: return ProviderCallResult.Denied
         val searchTicket = gate.open(ProviderCapability.CATALOG_SEARCH,provider)
+        fun editorialCurrent() = currentGate() === gate && gate.accept(editorialTicket)
         val curated = curatedGenre(tag,storefront,refresh)
+        if (!editorialCurrent()) return ProviderCallResult.Stale
         if (curated == ProviderCallResult.Denied || curated == ProviderCallResult.Stale ||
             searchTicket == null) return curated
         if (curated is ProviderCallResult.Failed &&
             (curated.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return curated
-        if (currentGate() !== gate || !gate.accept(searchTicket)) return ProviderCallResult.Stale
+        if (!editorialCurrent() || !gate.accept(searchTicket)) return ProviderCallResult.Stale
         val tracks = trackStyleShelf(tag,storefront)
-        if (currentGate() !== gate || !gate.accept(searchTicket) || tracks == ProviderCallResult.Stale)
+        if (!editorialCurrent() || !gate.accept(searchTicket) || tracks == ProviderCallResult.Stale)
             return ProviderCallResult.Stale
         if (tracks is ProviderCallResult.Failed &&
             (tracks.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return tracks
@@ -448,7 +451,7 @@ internal class AppleMusicWebNativeCatalogSession(
             .filter { it.kind == AppleMusicWebKind.ALBUM }.distinct().size
         if (albums < 6) {
             val fallback = searchedStylePlaylists(tag,storefront,rails.flatMap { it.items }.mapNotNull { it.browseId }.toSet())
-            if (currentGate() !== gate || !gate.accept(searchTicket) || fallback == ProviderCallResult.Stale)
+            if (!editorialCurrent() || !gate.accept(searchTicket) || fallback == ProviderCallResult.Stale)
                 return ProviderCallResult.Stale
             if (fallback == ProviderCallResult.Denied) return ProviderCallResult.Denied
             if (fallback is ProviderCallResult.Failed &&
@@ -460,6 +463,7 @@ internal class AppleMusicWebNativeCatalogSession(
                 }
             }
         }
+        if (!editorialCurrent() || !gate.accept(searchTicket)) return ProviderCallResult.Stale
         if (rails.isEmpty()) return curated
         val merged = page.copy(shelves=rails)
         return ProviderCallResult.Success(if (outcome is AppleMusicWebOutcome.Partial)
