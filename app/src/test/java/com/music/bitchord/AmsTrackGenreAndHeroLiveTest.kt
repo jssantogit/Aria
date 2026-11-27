@@ -132,9 +132,22 @@ class AmsTrackGenreAndHeroLiveTest {
         val keys = dictionary?.keys.orEmpty()
         val motion = (dictionary?.get("motionArtistSquare1x1") as? JsonObject)?.get("video") as? JsonPrimitive
         val uri = motion?.contentOrNull?.let { runCatching { java.net.URI(it) }.getOrNull() }
-        val safe = uri?.scheme == "https" && uri.host?.endsWith(".mzstatic.com") == true && uri.userInfo == null
-        println("AMS_HERO|scope=illit_web|motionKeys=${keys.sorted().joinToString(",")}|nativeMotion=$safe")
-        assertTrue("No compatible official artist motion",safe)
+        val url = com.music.bitchord.data.canvas.appleEditorialMotionUrl(motion?.contentOrNull)
+        val fields = (dictionary?.get("motionArtistSquare1x1") as? JsonObject)?.keys.orEmpty()
+        println("AMS_HERO|scope=illit_web|motionKeys=${keys.sorted().joinToString(",")}|clipFields=${fields.sorted().joinToString(",")}|host=${uri?.host}|extension=${uri?.path?.substringAfterLast('.')}|nativeMotion=${url != null}")
+        assertNotNull("No compatible official artist motion",url)
+        val conn = java.net.URI(requireNotNull(url)).toURL().openConnection() as javax.net.ssl.HttpsURLConnection
+        try {
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            assertEquals(200,conn.responseCode)
+            val prefix = conn.inputStream.use { it.readNBytes(128) }
+            val hls = String(prefix,Charsets.UTF_8).trimStart().startsWith("#EXTM3U")
+            val mp4 = prefix.size >= 8 && String(prefix.copyOfRange(4,8),Charsets.US_ASCII) == "ftyp"
+            assertTrue("Invalid official motion response",hls || mp4)
+            println("AMS_HERO|scope=illit_motion_bytes|http=200|hls=$hls|mp4=$mp4")
+        } finally { conn.disconnect() }
     }
 
 }

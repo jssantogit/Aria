@@ -72,3 +72,18 @@ fun isSafeVisualMediaUrl(url: String): Boolean {
     ) return false
     return uri.rawFragment == null && host.contains('.') && uri.port in -1..65535
 }
+
+/** Apple's public motion artwork uses its image CDN or the dedicated iTunes
+ * video CDN. Keep the source reference exact; never accept a generic public
+ * host, an audio stream, a local address or a redirected login page. */
+internal fun appleEditorialMotionUrl(raw: String?): String? {
+    val url = raw?.takeIf { it.length <= 4096 && isSafeVisualMediaUrl(it) } ?: return null
+    val uri = runCatching { URI(url) }.getOrNull() ?: return null
+    val host = uri.host.lowercase(Locale.ROOT)
+    val path = uri.path.orEmpty().lowercase(Locale.ROOT)
+    return url.takeIf {
+        uri.port in setOf(-1,443) &&
+            (host.endsWith(".mzstatic.com") || host == "mvod.itunes.apple.com") &&
+            (path.endsWith(".m3u8") || path.endsWith(".mp4"))
+    }
+}

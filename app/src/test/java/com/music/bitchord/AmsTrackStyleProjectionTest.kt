@@ -6,6 +6,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun artistMotionAllowsOnlyKnownPublicAppleVisualHosts() {
+        val url = "https://mvod.itunes.apple.com/itunes-assets/example/playlist.m3u8"
+        assertEquals(url,com.music.bitchord.data.canvas.appleEditorialMotionUrl(url))
+        val imageCdn = "https://is1-ssl.mzstatic.com/video/example.mp4"
+        assertEquals(imageCdn,com.music.bitchord.data.canvas.appleEditorialMotionUrl(imageCdn))
+        for (bad in listOf("https://example.org/movie.m3u8","https://mvod.itunes.apple.com.evil.org/movie.m3u8",
+            "http://mvod.itunes.apple.com/movie.m3u8","https://mvod.itunes.apple.com/movie.m4a",
+            "https://mvod.itunes.apple.com:8080/movie.m3u8","https://mvod.itunes.apple.com/movie.m3u8#fragment"))
+            assertNull(com.music.bitchord.data.canvas.appleEditorialMotionUrl(bad))
+    }
+
     @Test fun observedPortugueseLabelsAreRecognizedWithoutBroadParentAliases() {
         assertTrue(appleMusicWebGenreNameMatches("Fusão", "jazz fusion"))
         assertTrue(appleMusicWebGenreNameMatches("Bop", "bebop"))

@@ -356,7 +356,7 @@ object AppleArtistArtRepository {
         }
         val clip = header.optJSONObject("videoArtwork")?.optJSONObject("dictionary")
             ?.optJSONObject("motionArtistSquare1x1")
-        val video = clip?.optString("video")?.takeIf { it.startsWith("http") }
+        val video = appleEditorialMotionUrl(clip?.optString("video"))
         // The clip is a different picture from the still, with its own colours
         // — the page has to match whichever one is on screen.
         val colours = clip?.optJSONObject("previewFrame")?.takeIf { video != null } ?: hero

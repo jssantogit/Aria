@@ -592,13 +592,21 @@ internal fun DetailScreen(
     val allowAuxiliaryNameVisuals = nativeArtistAllowsNameBasedAuxiliaryVisuals(
         page.browseId,
     )
-    var appleArt by remember(page.browseId) {
+    val artistArtPolicy = com.music.bitchord.data.providers.ProviderRuntime.state
+        ?.collectAsStateWithLifecycle()?.value
+    val exactAmsArtAllowed = exactAmsArtist && artistArtPolicy != null &&
+        com.music.bitchord.data.providers.ProviderRuntime.gateOrNull()?.open(
+            com.music.bitchord.data.providers.ProviderCapability.ARTIST_ARTWORK,
+            com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_ARTIST_ART,
+        ) != null
+    var loadedAppleArt by remember(page.browseId) {
         mutableStateOf(
             if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals)
                 AppleArtistArtRepository.cached(page.title)
             else null
         )
     }
+    val appleArt = loadedAppleArt.takeUnless { exactAmsArtist && !exactAmsArtAllowed }
     // Secondary provider: handwritten signature from the user's own
     // artist-signature API. Drawn only when Apple has no title logo.
     val signatureEnabled by AppSettings.signatureApiEnabled.collectAsStateWithLifecycle()
@@ -610,11 +618,12 @@ internal fun DetailScreen(
     // nobody, so a title that reads as several artists waits for that swap; any
     // other name starts the moment the page opens.
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
-    LaunchedEffect(page.browseId, page.title, nameSettled, sourceArtistStoreUrl) {
+    LaunchedEffect(page.browseId, page.title, nameSettled, sourceArtistStoreUrl, exactAmsArtAllowed) {
         if (exactAmsArtist)
-            appleArt = AppleArtistArtRepository.artForExactStoreArtist(page.browseId, sourceArtistStoreUrl)
+            loadedAppleArt = if (exactAmsArtAllowed)
+                AppleArtistArtRepository.artForExactStoreArtist(page.browseId, sourceArtistStoreUrl) else null
         else if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals && nameSettled)
-            appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
+            loadedAppleArt = AppleArtistArtRepository.artFor(page.title) ?: loadedAppleArt
     }
     LaunchedEffect(page.browseId, page.title, nameSettled, signatureEnabled, signatureBaseUrl, signatureUpdates) {
         if (!isArtist || !nameSettled || !allowAuxiliaryNameVisuals) {
@@ -1451,7 +1460,7 @@ internal fun DetailScreen(
                         contentPadding = PaddingValues(
                             bottom = contentPadding.calculateBottomPadding(),
                         ),
-                        canvas = canvas,
+                        canvas = canvas.takeUnless { exactAmsArtist && !exactAmsArtAllowed },
                         // Preserve the legacy cover fallback at this adapter
                         // boundary; the shared native frame only sees artwork.
                         heroUrl = appleArt?.heroUrl ?: artistHeroOverride
