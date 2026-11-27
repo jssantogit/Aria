@@ -178,6 +178,14 @@ internal class AppleMusicWebPolicyTransport(
                     params.keys.all { it in setOf("platform", "name", "genre", "l") })
             } else require(params.keys.all { it in setOf("limit", "offset", "l", "sort") })
         }
+        if (capability == ProviderCapability.EDITORIAL_DISCOGRAPHY && path.endsWith("/playlists")) {
+            val ids = params["ids"]?.split(',').orEmpty()
+            require(params.keys == setOf("ids") && ids.size in 1..25 &&
+                ids.distinct().size == ids.size &&
+                ids.all { it.matches(Regex("pl\\.[A-Za-z0-9-]{6,120}")) }) {
+                "Unsupported editorial playlist artwork lookup"
+            }
+        }
         if (capability == ProviderCapability.EDITORIAL_DISCOGRAPHY && path.contains("/playlists/")) {
             require(if (path.endsWith("/tracks")) params.keys.all { it in setOf("offset","limit","l") }
                 else params == mapOf("include" to "tracks")) { "Unsupported editorial playlist operation" }

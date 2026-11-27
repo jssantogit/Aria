@@ -1,7 +1,6 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.catalog.provider.applemusicweb.*
-import com.music.bitchord.data.catalog.metadata.safeAppleArtwork
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.HomeShelf
@@ -21,8 +20,7 @@ private fun AppleMusicWebItem.validRoute(kind: AppleMusicWebKind, market: String
     }
 
 private fun AppleMusicWebItem.cover(size: Int = 600): String? =
-    safeAppleArtwork(artworkUrl?.replace("{w}",size.toString())
-        ?.replace("{h}",size.toString())?.replace("{f}","jpg"))
+    appleMusicWebArtworkUrl(artworkUrl,size)
 
 private fun AppleMusicWebItem.year(): String = releaseDate?.take(10)?.let {
     runCatching { LocalDate.parse(it).year.toString() }.getOrNull()

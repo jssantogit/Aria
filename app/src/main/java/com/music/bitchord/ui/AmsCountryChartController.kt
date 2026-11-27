@@ -29,8 +29,7 @@ internal fun projectAmsCountryChart(territory: AppleChartTerritory, albums: Bool
     val kind = if (albums) AppleMusicWebKind.ALBUM else AppleMusicWebKind.SONG
     if (rows.isEmpty() || rows.size > 100 || rows.distinctBy { it.scopedId }.size != rows.size ||
         rows.any { it.kind != kind || it.storefront != territory.code }) return null
-    fun art(item: AppleMusicWebItem) = safeAppleArtwork(item.artworkUrl?.replace("{w}","100")
-        ?.replace("{h}","100")?.replace("{f}","jpg"))
+    fun art(item: AppleMusicWebItem) = com.music.bitchord.data.catalog.provider.applemusicweb.appleMusicWebArtworkUrl(item.artworkUrl,100)
     if (albums) {
         val projected = rows.mapIndexedNotNull { index,item ->
             val id = item.id.toLongOrNull()?.takeIf { it > 0 } ?: return@mapIndexedNotNull null

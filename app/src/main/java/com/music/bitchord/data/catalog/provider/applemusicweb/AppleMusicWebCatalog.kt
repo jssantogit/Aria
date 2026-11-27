@@ -577,6 +577,40 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         return AppleMusicWebOutcome.Complete(AppleMusicWebCurator(identity, rooms))
     }
 
+    /** Room memberships sometimes omit a playlist's artwork. Only hydrate
+     * exact already-linked public playlist IDs, in one bounded metadata read.
+     * Never replace membership, order, genre evidence or curator attribution. */
+    private suspend fun playlistRoomArtwork(
+        sf: String, items: List<AppleMusicWebItem>,
+    ): List<AppleMusicWebItem> {
+        val missing = items.filter { appleMusicWebArtworkUrl(it.artworkUrl) == null }
+        if (missing.isEmpty()) return items
+        val covers = linkedMapOf<String,String>()
+        for (chunk in missing.chunked(25)) {
+            val ids = chunk.map { resourceId(it.id,AppleMusicWebKind.PLAYLIST) }
+            val body = try {
+                parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                    "/v1/catalog/$sf/playlists",mapOf("ids" to ids.joinToString(","))))
+            } catch (failure: AppleMusicWebHttpException) {
+                if (failure.status in setOf(401,403,429)) throw failure
+                continue
+            }
+            if ("errors" in body || body["data"] !is JsonArray)
+                throw AppleMusicWebProtocolException("Invalid playlist artwork envelope")
+            val seen = hashSetOf<String>()
+            for (raw in body.objects("data")) {
+                val id = raw.str("id")
+                if (id == null || id !in ids || raw.str("type") != "playlists" || !seen.add(id))
+                    throw AppleMusicWebProtocolException("Wrong playlist artwork identity")
+                val artwork = raw.obj("attributes")?.obj("artwork")?.str("url")
+                if (appleMusicWebArtworkUrl(artwork) != null) covers[id] = requireNotNull(artwork)
+            }
+        }
+        return items.map { item ->
+            covers[item.id]?.let { item.copy(artworkUrl=it) } ?: item
+        }
+    }
+
     suspend fun roomContents(
         room: AppleMusicWebRoomRef, kind: AppleMusicWebKind, limit: Int = 25,
         cursor: String? = null,
@@ -622,7 +656,8 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             cursorArgs(next)
             if (next == cursor) throw AppleMusicWebProtocolException("Cyclic room cursor")
         }
-        return AppleMusicWebRoomPage(room, kind, rows, raw.size, excluded, unresolved, next)
+        val projected = if (kind == AppleMusicWebKind.PLAYLIST) playlistRoomArtwork(sf,rows) else rows
+        return AppleMusicWebRoomPage(room, kind, projected, raw.size, excluded, unresolved, next)
     }
 
     private suspend fun detail(

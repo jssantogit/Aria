@@ -36,6 +36,8 @@ internal data class AmsEditorialPaging(
     val loading: Boolean = false,
     val failed: Boolean = false,
     val pages: Int = 0,
+    /** Preserve source rail provenance for song continuations. */
+    val additionalByHeading: Map<String,List<ShelfItem>> = emptyMap(),
 ) {
     val hasMore: Boolean get() = pending.isNotEmpty() && pages < 40
 }
@@ -57,13 +59,21 @@ internal fun amsEditorialContinuationShelf(
 internal fun amsHomeWithTrendingContinuation(
     initial: List<HomeShelf>, paging: AmsEditorialPaging?,
 ): List<HomeShelf> {
-    val extra = paging?.additional.orEmpty().filter { amsSongStorefront(it.browseId) == "br" }
-    if (extra.isEmpty()) return initial
-    val index = initial.indexOfFirst { it.title == "Músicas em alta" }
-    if (index < 0) return initial + HomeShelf("Músicas em alta",extra.distinctBy { it.browseId })
-    return initial.mapIndexed { i,shelf ->
-        if (i == index) shelf.copy(items=(shelf.items + extra).distinctBy { it.browseId }) else shelf
+    val headings = listOf("Músicas em alta","Novas músicas em destaque")
+    val explicit = paging?.additionalByHeading.orEmpty()
+    val extras = headings.associateWith { heading ->
+        explicit[heading].orEmpty().filter { amsSongStorefront(it.browseId) == "br" }
     }
+    var result = initial
+    for ((heading,extra) in extras) {
+        if (extra.isEmpty()) continue
+        val index = result.indexOfFirst { it.title == heading }
+        result = if (index < 0) result + HomeShelf(heading,extra.distinctBy { it.browseId })
+        else result.mapIndexed { i,shelf ->
+            if (i == index) shelf.copy(items=(shelf.items + extra).distinctBy { it.browseId }) else shelf
+        }
+    }
+    return result
 }
 
 internal fun amsGenreWithPlaylistContinuation(
@@ -201,9 +211,18 @@ internal class AppleMusicWebEditorialUiSession(
                 (collection || song) && card.videoId == null && card.title.isNotBlank() &&
                     card.browseId?.let(seen::add) == true
             }
+            val byHeading = paging.additionalByHeading.toMutableMap()
+            val acceptedIds = additional.mapNotNull { it.browseId }.toSet()
+            for (shelf in page.shelves) {
+                val songs = shelf.items.filter { it.browseId in acceptedIds &&
+                    amsSongStorefront(it.browseId) == "br" }
+                if (songs.isNotEmpty()) byHeading[shelf.title] =
+                    (byHeading[shelf.title].orEmpty() + songs).distinctBy { it.browseId }
+            }
             publishPaging(tag,paging.copy(
                 pending=(paging.pending.drop(1) + page.pending).distinct(),
                 additional=paging.additional + additional,
+                additionalByHeading=byHeading,
                 loading=false,failed=false,pages=paging.pages+1,
             ))
         }

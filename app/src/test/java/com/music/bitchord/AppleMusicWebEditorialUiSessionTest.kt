@@ -58,7 +58,7 @@ class AppleMusicWebEditorialUiSessionTest {
         val foreign = ref.copy(curatorId="10")
         assertNull(projectAppleMusicWebHomeRoom(foreign,page.copy(room=foreign),"br",kind))
         val extra = projectAppleMusicWebHomeRoom(ref,page.copy(items=listOf(other)),"br",kind)!!.items
-        val paging = AmsEditorialPaging(additional=extra)
+        val paging = AmsEditorialPaging(additional=extra,additionalByHeading=mapOf("Músicas em alta" to extra))
         val combined = amsHomeWithTrendingContinuation(listOf(shelf),paging).single()
         assertEquals(listOf(song.scopedId,other.scopedId),combined.items.map { it.browseId })
         assertNull(amsEditorialContinuationShelf(listOf(shelf),paging,false))

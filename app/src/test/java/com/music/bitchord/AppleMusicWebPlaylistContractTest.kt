@@ -62,6 +62,44 @@ class AppleMusicWebPlaylistContractTest {
         assertNull(amsEditorialContinuationShelf(listOf(shelf),paging,true))
     }
 
+    @Test fun missingRoomCoversHydrateOnlyExactLinkedPlaylistsInOneRequest(): Unit = runBlocking {
+        val room = AppleMusicWebRoomRef("br",null,"456","Playlists","123")
+        val calls = mutableListOf<String>()
+        val catalog = AppleMusicWebCatalog(AppleMusicWebTransport { cap,path,args ->
+            assertEquals(ProviderCapability.EDITORIAL_DISCOGRAPHY,cap)
+            calls += path
+            if (path.endsWith("/contents")) """{"data":[
+              {"id":"pl.abc123","type":"playlists","attributes":{"name":"Keep original title"}},
+              {"id":"pl.def456","type":"playlists","attributes":{"name":"Already covered","artwork":{"url":"https://is1-ssl.mzstatic.com/image/thumb/x/{w}x{h}{c}.{f}"}}}
+            ]}""" else {
+                assertEquals("/v1/catalog/br/playlists",path)
+                assertEquals(mapOf("ids" to "pl.abc123"),args)
+                """{"data":[{"id":"pl.abc123","type":"playlists","attributes":{"name":"Different localized title","artwork":{"url":"https://is1-ssl.mzstatic.com/image/thumb/y/{w}x{h}{c}.{f}"}}}]}"""
+            }
+        })
+        val result = catalog.roomContents(room,AppleMusicWebKind.PLAYLIST)
+        assertEquals(2,calls.size)
+        assertEquals(listOf("pl.abc123","pl.def456"),result.items.map { it.id })
+        assertEquals("Keep original title",result.items.first().title)
+        assertTrue(result.items.all { appleMusicWebArtworkUrl(it.artworkUrl) != null })
+        assertEquals("https://is1-ssl.mzstatic.com/image/thumb/y/600x600bb.jpg",
+            appleMusicWebArtworkUrl(result.items.first().artworkUrl))
+        assertNull(appleMusicWebArtworkUrl("https://evil.example/{w}x{h}.{f}"))
+        assertNull(appleMusicWebArtworkUrl("https://is1-ssl.mzstatic.com/image/{unknown}.{f}"))
+    }
+
+    @Test fun hydrationRejectsForeignIdentityRatherThanBorrowingArtwork(): Unit = runBlocking {
+        val room = AppleMusicWebRoomRef("br",null,"456","Playlists","123")
+        val catalog = AppleMusicWebCatalog(AppleMusicWebTransport { _,path,_ ->
+            if (path.endsWith("/contents")) """{"data":[{"id":"pl.abc123","type":"playlists","attributes":{"name":"One"}}]}"""
+            else """{"data":[{"id":"pl.foreign","type":"playlists","attributes":{"name":"Other"}}]}"""
+        })
+        try {
+            catalog.roomContents(room,AppleMusicWebKind.PLAYLIST)
+            fail("Foreign cover accepted")
+        } catch (_: AppleMusicWebProtocolException) {}
+    }
+
     @Test fun crossPlaylistCursorIsRejected(): Unit = runBlocking {
         val catalog = AppleMusicWebCatalog(AppleMusicWebTransport { _,_,_ ->
             """{"data":[{"id":"pl.abc123","type":"playlists","attributes":{"name":"Essentials"},

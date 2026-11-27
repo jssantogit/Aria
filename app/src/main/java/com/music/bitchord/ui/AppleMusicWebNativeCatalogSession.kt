@@ -64,8 +64,7 @@ internal fun projectAppleMusicWebGenreLanding(
             appleMusicWebCuratedAlbumEvidence(landing.curator.identity, tag, item, row.room) != row.evidence ||
             !seen.add(route.browseId)) return@mapNotNull null
         ShelfItem(title = item.title, subtitle = item.artistName.orEmpty(),
-            thumbnailUrl = safeAppleArtwork(item.artworkUrl?.replace("{w}", "600")
-                ?.replace("{h}", "600")?.replace("{f}", "jpg")),
+            thumbnailUrl = appleMusicWebArtworkUrl(item.artworkUrl),
             videoId = null, browseId = route.browseId,
             appleStoreUrl = appleMusicWebVerifiedStoreUrl(item))
     }
@@ -84,8 +83,7 @@ internal fun projectAppleMusicWebGenrePlaylistRoom(
         val route = AppleMusicWebNativeRoute.parse(item.scopedId) ?: return@mapNotNull null
         if (route.kind != AppleMusicWebKind.PLAYLIST) return@mapNotNull null
         ShelfItem(title=item.title,subtitle=item.artistName.orEmpty(),
-            thumbnailUrl=safeAppleArtwork(item.artworkUrl?.replace("{w}","600")
-                ?.replace("{h}","600")?.replace("{f}","jpg")),
+            thumbnailUrl=appleMusicWebArtworkUrl(item.artworkUrl),
             videoId=null,browseId=route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(item))
     }
     return cards.takeIf { it.isNotEmpty() }?.let { HomeShelf("Playlists",it) }
@@ -134,7 +132,7 @@ internal fun projectAppleMusicWebHomeRoom(
     excluded: Set<String> = emptySet(),
 ): HomeShelf? {
     if (shelf !in setOf(AppleMusicWebHomeShelf.RECENT_RELEASES,AppleMusicWebHomeShelf.NEW_THIS_WEEK,
-        AppleMusicWebHomeShelf.TRENDING_SONGS) ||
+        AppleMusicWebHomeShelf.TRENDING_SONGS,AppleMusicWebHomeShelf.BEST_NEW_SONGS) ||
         resolveAppleMusicWebHomeRoom(listOf(room), storefront, shelf) != room ||
         page.room != room || page.kind != shelf.kind) return null
     val cards = page.items.filter {
@@ -149,8 +147,7 @@ internal fun projectAppleMusicWebHomeRoom(
             item.scopedId
         } else AppleMusicWebNativeRoute.parse(item.scopedId)?.browseId ?: return@mapNotNull null
         ShelfItem(title = item.title, subtitle = item.artistName.orEmpty(),
-            thumbnailUrl = safeAppleArtwork(item.artworkUrl?.replace("{w}", "600")
-                ?.replace("{h}", "600")?.replace("{f}", "jpg")),
+            thumbnailUrl = appleMusicWebArtworkUrl(item.artworkUrl),
             videoId = null, browseId = id,
             appleStoreUrl = appleMusicWebVerifiedStoreUrl(item))
     }
@@ -158,6 +155,7 @@ internal fun projectAppleMusicWebHomeRoom(
         AppleMusicWebHomeShelf.RECENT_RELEASES -> "Lançamentos recentes"
         AppleMusicWebHomeShelf.NEW_THIS_WEEK -> "Novidades da semana"
         AppleMusicWebHomeShelf.TRENDING_SONGS -> "Músicas em alta"
+        AppleMusicWebHomeShelf.BEST_NEW_SONGS -> "Novas músicas em destaque"
         else -> return null
     }
     return cards.takeIf { it.isNotEmpty() }?.let { HomeShelf(heading, it) }
@@ -379,7 +377,8 @@ internal class AppleMusicWebNativeCatalogSession(
             val seen = hashSetOf<String>()
             var incomplete: AppleMusicWebCompleteness? = null
             for (kind in listOf(AppleMusicWebHomeShelf.RECENT_RELEASES,
-                AppleMusicWebHomeShelf.NEW_THIS_WEEK,AppleMusicWebHomeShelf.TRENDING_SONGS)) {
+                AppleMusicWebHomeShelf.NEW_THIS_WEEK,AppleMusicWebHomeShelf.TRENDING_SONGS,
+                AppleMusicWebHomeShelf.BEST_NEW_SONGS)) {
                 val room = resolveAppleMusicWebHomeRoom(rooms, storefront, kind)
                 if (room == null) {
                     if (kind.kind == AppleMusicWebKind.ALBUM) incomplete = AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED
@@ -456,7 +455,7 @@ internal class AppleMusicWebNativeCatalogSession(
         val valid = if (homeKind != null) curator == null && tag == null &&
             resolveAppleMusicWebHomeRoom(listOf(room),market,homeKind) == room &&
             homeKind in setOf(AppleMusicWebHomeShelf.RECENT_RELEASES,AppleMusicWebHomeShelf.NEW_THIS_WEEK,
-                AppleMusicWebHomeShelf.TRENDING_SONGS) && homeKind.kind == resourceKind
+                AppleMusicWebHomeShelf.TRENDING_SONGS,AppleMusicWebHomeShelf.BEST_NEW_SONGS) && homeKind.kind == resourceKind
         else tag != null && curator != null && appleMusicWebGenreSupported(tag) &&
             appleMusicWebCuratorMatches(curator,market,tag) && room.curatorId == curator.id &&
             room.genreId == null && when (resourceKind) {
@@ -490,8 +489,7 @@ internal class AppleMusicWebNativeCatalogSession(
                             if (route.kind != AppleMusicWebKind.ALBUM || route.storefront != market ||
                                 item.title.isBlank()) return@mapNotNull null
                             ShelfItem(title=item.title,subtitle=item.artistName.orEmpty(),
-                                thumbnailUrl=safeAppleArtwork(item.artworkUrl?.replace("{w}","600")
-                                    ?.replace("{h}","600")?.replace("{f}","jpg")),
+                                thumbnailUrl=appleMusicWebArtworkUrl(item.artworkUrl),
                                 videoId=null,browseId=route.browseId,
                                 appleStoreUrl=appleMusicWebVerifiedStoreUrl(item))
                         }

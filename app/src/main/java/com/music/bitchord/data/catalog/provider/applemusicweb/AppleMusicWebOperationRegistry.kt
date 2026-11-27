@@ -61,13 +61,13 @@ internal object AppleMusicWebOperationRegistry {
                     // Public metadata only, exact linked song identity. No
                     // library, stream, playback or relationship subroutes.
                     "songs" -> parts.size == 5 && id.matches(parts[4])
-                    "playlists" -> parts.size in 5..7 && Regex("pl\\.[A-Za-z0-9-]{6,120}").matches(parts[4]) &&
+                    "playlists" -> parts.size == 4 || (parts.size in 5..7 && Regex("pl\\.[A-Za-z0-9-]{6,120}").matches(parts[4]) &&
                         when (parts.size) {
                             5 -> true
                             6 -> parts[5] == "tracks"
                             7 -> parts[5] == "relationships" && parts[6] == "tracks"
                             else -> false
-                        }
+                        })
                     "albums" -> {
                         if (parts.size < 5 || !id.matches(parts[4])) false
                         else when (parts.size) {
