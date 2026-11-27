@@ -78,6 +78,7 @@ import com.music.bitchord.data.catalog.metadata.ItunesCatalogFailure
 import com.music.bitchord.ui.screens.AppleEditorialAlbumDetailPage
 import com.music.bitchord.ui.screens.AppleEditorialArtistDetailPage
 import com.music.bitchord.ui.screens.appleArtistPagingFailureState
+import com.music.bitchord.ui.screens.appleArtistDetailWithoutExternalPortrait
 import com.music.bitchord.ui.screens.AppleEditorialTrackSearchRow
 import com.music.bitchord.ui.screens.AppleEditorialSearchKind
 import com.music.bitchord.ui.screens.AppleEditorialSearchRow
@@ -1362,6 +1363,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleArtistSearchJob?.cancel()
         appleArtistDetailJob?.cancel()
         appleArtistPagingJob?.cancel()
+        appleArtistHeroJob?.cancel()
+        appleArtistRelationJob?.cancel()
+        appleArtistHeroLease = null
+        activeAppleArtistHeroArt = null
+        activeAppleArtistLinkedMbid = null
+        appleAlbumNativeBaseline = null
         resetAppleArtistArtworkQueue()
         appleArtistPager = null
         appleArtistEditorialLease = null
@@ -4565,6 +4572,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ) != null
                 snapshots.collect {
                     discogsNativeCatalog.purgeRevoked()
+                    // The exact Apple artist portrait is a separate capability.
+                    // Remove its enrichment without dropping the native discography.
+                    if (appleArtistHeroLease?.isCurrent() == false) {
+                        appleArtistHeroJob?.cancel()
+                        appleArtistHeroLease = null
+                        val selected = _appleArtistNavigation.value
+                        activeAppleArtistHeroArt = selected?.artworkUri
+                        _appleEditorialArtistDetail.update { state ->
+                            if (state is UiState.Success && selected != null)
+                                UiState.Success(appleArtistDetailWithoutExternalPortrait(state.data, selected))
+                            else state
+                        }
+                    }
                     // iTunes artist pages survive without MusicBrainz. If
                     // the optional verified crosswalk loses consent, remove
                     // only its MB identity evidence, never Apple releases.
@@ -5183,6 +5203,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var appleSearchArtworkJob: Job? = null
     private var appleArtistPortraitsJob: Job? = null
     private var appleArtistHeroJob: Job? = null
+    private var appleArtistHeroLease: ProviderReadLease? = null
     private var activeAppleArtistHeroArt: String? = null
 
     private fun resetApplePublicSearchPaging() {
@@ -5500,6 +5521,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleArtistPagingJob?.cancel()
         resetAppleArtistArtworkQueue()
         appleArtistHeroJob?.cancel()
+        appleArtistHeroLease = null
         appleArtistRelationJob?.cancel()
         activeAppleArtistLinkedMbid = null
         activeAppleArtistHeroArt = row.artworkUri
@@ -5577,14 +5599,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 job.invokeOnCompletion { unregister(); unregisterEditorial() }
             }
         }
-        appleArtistHeroJob = viewModelScope.launch(Dispatchers.Main.immediate) {
+        val portraitLease = ProviderReadLease.acquire(ProviderRuntime.gateOrNull(), listOf(
+            ProviderCapability.ARTIST_ARTWORK to BuiltInProviderKeys.APPLE_ARTIST_ART,
+        ))
+        appleArtistHeroLease = portraitLease
+        if (portraitLease != null) appleArtistHeroJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             // Reuse the exact verified store route resolved above. A shelf
             // row may omit the URL even when the current artist snapshot has it.
             val portrait = withContext(Dispatchers.IO) {
                 AppleArtistArtRepository.artForExactStoreArtist(row.browseId, appleArtistUrl)
             }?.heroUrl?.takeIf(String::isNotBlank) ?: return@launch
             currentCoroutineContext().ensureActive()
-            if (!currentArtist()) return@launch
+            if (!currentArtist() || !portraitLease.isCurrent() ||
+                appleArtistHeroLease !== portraitLease) return@launch
             activeAppleArtistHeroArt = portrait
             _appleEditorialArtistDetail.update { state ->
                 if (state !is UiState.Success ||
@@ -5595,7 +5622,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }.also { job ->
             val unregister = editorialLease.cancelJobOnRevoke(job)
-            job.invokeOnCompletion { unregister() }
+            val unregisterPortrait = portraitLease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister(); unregisterPortrait() }
         }
         appleArtistDetailJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             val result = try {
@@ -5886,6 +5914,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         activeAppleArtistHeroArt = null
         appleArtistRelationJob?.cancel()
         appleArtistHeroJob?.cancel()
+        appleArtistHeroLease = null
         appleArtistDetailJob?.cancel()
         appleArtistPagingJob?.cancel()
         resetAppleArtistArtworkQueue()

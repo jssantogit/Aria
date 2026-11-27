@@ -243,3 +243,12 @@ internal fun appleNativeDetailDisplayAllowed(
         detail.notice == null &&
         detail.attribution == null
     )
+
+/** Removing optional portrait evidence must keep the native artist catalog. */
+internal fun appleArtistDetailWithoutExternalPortrait(
+    current: AppleEditorialArtistDetailPage,
+    selected: AppleEditorialSearchRow,
+): AppleEditorialArtistDetailPage {
+    if (current.artist.browseId != selected.browseId) return current
+    return current.copy(artist = current.artist.copy(artworkUri = selected.artworkUri))
+}

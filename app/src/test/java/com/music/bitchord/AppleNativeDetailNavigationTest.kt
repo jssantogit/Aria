@@ -329,4 +329,19 @@ class AppleNativeDetailNavigationTest {
             null, current.artist.browseId,
         ))
     }
+
+    @Test fun portraitRevocationRestoresOnlyTheMatchingArtistNativeArtwork() {
+        val selected = artist().copy(artworkUri = "native")
+        val enriched = AppleEditorialArtistDetailPage(
+            artist = selected.copy(artworkUri = "external"),
+            albums = listOf(album()), possiblyTruncated = false, hasMore = true,
+        )
+        val restored = com.music.bitchord.ui.screens.appleArtistDetailWithoutExternalPortrait(
+            enriched, selected,
+        )
+        assertEquals(enriched.copy(artist = selected), restored)
+        assertSame(enriched, com.music.bitchord.ui.screens.appleArtistDetailWithoutExternalPortrait(
+            enriched, artist(99),
+        ))
+    }
 }
