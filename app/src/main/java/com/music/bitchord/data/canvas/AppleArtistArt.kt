@@ -67,7 +67,7 @@ fun AppleArtistArt.keyColors() = ArtworkKeyColors(Color(background), Color(accen
  * Tracking parameters are not sent to the page reader.
  */
 internal fun exactAppleArtistPageUrl(browseId: String, storeUrl: String?): String? {
-    val route = Regex("""itunes:([a-z]{2}):artist:([1-9][0-9]{0,17})""")
+    val route = Regex("""(?:itunes|apple_music_web):([a-z]{2}):artist:([1-9][0-9]{0,17})""")
         .matchEntire(browseId) ?: return null
     if (storeUrl.isNullOrBlank()) return null
     val uri = try { java.net.URI(storeUrl) } catch (_: Exception) { return null }

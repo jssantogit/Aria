@@ -2,6 +2,7 @@ package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -305,15 +306,18 @@ internal fun NativeReleaseHeaderLayout(
     topInset: Dp? = null,
     onCreditClick: (() -> Unit)? = null,
     inlineAlbumMetadata: Boolean = false,
+    immersiveArtwork: Boolean = false,
     actions: @Composable () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
-            .padding(top = topInset ?: nativeCollectionTopChromeInset(), bottom = 18.dp),
+            .padding(top = if (immersiveArtwork) 0.dp else topInset ?: nativeCollectionTopChromeInset(), bottom = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(sleeveSize)
+            if (immersiveArtwork) Modifier.fillMaxWidth().aspectRatio(0.88f)
+                .testTag("native-release-editorial-hero")
+            else Modifier.size(sleeveSize)
                 .shadow(SLEEVE_SHADOW, SLEEVE_SHAPE)
                 .background(palette.elevated)
                 .thumbnailBorder(SLEEVE_SHAPE),

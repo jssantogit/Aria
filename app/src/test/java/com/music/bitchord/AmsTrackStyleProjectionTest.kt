@@ -6,6 +6,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun observedPortugueseLabelsAreRecognizedWithoutBroadParentAliases() {
+        assertTrue(appleMusicWebGenreNameMatches("Fusão", "jazz fusion"))
+        assertTrue(appleMusicWebGenreNameMatches("Bop", "bebop"))
+        assertTrue(appleMusicWebGenreNameMatches("Jungle/Drum'n'bass", "drum and bass"))
+        assertTrue(appleMusicWebGenreNameMatches("Era barroca", "baroque"))
+        assertFalse(appleMusicWebGenreNameMatches("Metal", "death metal"))
+        assertFalse(appleMusicWebGenreNameMatches("Death Metal/Black Metal", "death metal"))
+        assertFalse(appleMusicWebGenreNameMatches("Alternativo", "alternative rock"))
+    }
+
+    @Test fun tallEditorialArtworkKeepsAspectAndRejectsSquareOrForeignArt() {
+        val template = "https://is1-ssl.mzstatic.com/image/thumb/Music/a/{w}x{h}bb.jpg"
+        assertEquals("https://is1-ssl.mzstatic.com/image/thumb/Music/a/800x1600bb.jpg",appleMusicWebTallHeroUrl(template,1000,2000))
+        assertNull(appleMusicWebTallHeroUrl(template,1000,1000))
+        assertNull(appleMusicWebTallHeroUrl(template.replace("is1-ssl.mzstatic.com","example.org"),1000,2000))
+    }
     @Test fun exactTrackEvidenceDoesNotRequireCuratorOrPromoteParent() {
         val track = AppleMusicWebItem("1",AppleMusicWebKind.SONG,"br","Track",
             albumId="20",storeUrl="https://music.apple.com/br/album/title/20?i=1",

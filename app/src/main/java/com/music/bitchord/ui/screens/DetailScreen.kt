@@ -402,6 +402,8 @@ internal fun DetailScreen(
     verifiedAppleArtistMbid: String? = null,
     /** Exact artist photo if the source has an independently proven identity. */
     artistHeroOverride: String? = null,
+    sourceArtistStoreUrl: String? = null,
+    releaseHeroOverride: String? = null,
     /** Source-owned album credit ID, supplied only after provider verification. */
     sourceAlbumArtistBrowseId: String? = null,
     sourceAlbumArtistDisplayName: String? = null,
@@ -582,7 +584,8 @@ internal fun DetailScreen(
     LaunchedEffect(topReleaseId) { topReleaseId?.let { onLoadReleaseLibrary?.invoke(it) } }
     // Apple Music's hero photo and title logo for this artist, found by name.
     // Null until (and unless) it arrives; the YouTube header stands in meanwhile.
-    val exactAppleArtist = isArtist && page.browseId.startsWith("itunes:")
+    val exactAmsArtist = isArtist && page.browseId.startsWith("apple_music_web:")
+    val exactAppleArtist = isArtist && (page.browseId.startsWith("itunes:") || exactAmsArtist)
     // A Discogs Artist ID proves neither an Apple portrait nor a
     // name-matched handwritten signature. Homonyms must not leak visuals
     // from another artist into this source-native catalog page.
@@ -607,8 +610,10 @@ internal fun DetailScreen(
     // nobody, so a title that reads as several artists waits for that swap; any
     // other name starts the moment the page opens.
     val nameSettled = !page.title.looksLikeCredit() || page.songs !is UiState.Loading
-    LaunchedEffect(page.browseId, page.title, nameSettled) {
-        if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals && nameSettled)
+    LaunchedEffect(page.browseId, page.title, nameSettled, sourceArtistStoreUrl) {
+        if (exactAmsArtist)
+            appleArt = AppleArtistArtRepository.artForExactStoreArtist(page.browseId, sourceArtistStoreUrl)
+        else if (isArtist && !exactAppleArtist && allowAuxiliaryNameVisuals && nameSettled)
             appleArt = AppleArtistArtRepository.artFor(page.title) ?: appleArt
     }
     LaunchedEffect(page.browseId, page.title, nameSettled, signatureEnabled, signatureBaseUrl, signatureUpdates) {
@@ -635,7 +640,7 @@ internal fun DetailScreen(
         }
     }
     val palette = rememberArtworkPalette(
-        imageUrl = artistHeroOverride ?: appleArt?.heroUrl ?: page.thumbnailUrl,
+        imageUrl = appleArt?.heroUrl ?: artistHeroOverride ?: releaseHeroOverride ?: page.thumbnailUrl,
         keyColors = appleArt?.keyColors(),
     )
 
@@ -857,6 +862,7 @@ internal fun DetailScreen(
                         onToggleCatalogPin = if (canPinCatalogRelease || canPinAmsPlaylist)
                             ({ catalogPinRepo.toggle(catalogPin); Unit }) else null,
                         metaOverride = folderCategoryMeta,
+                        releaseHeroOverride = releaseHeroOverride,
                     )
                 }
             }
@@ -1448,7 +1454,7 @@ internal fun DetailScreen(
                         canvas = canvas,
                         // Preserve the legacy cover fallback at this adapter
                         // boundary; the shared native frame only sees artwork.
-                        heroUrl = artistHeroOverride ?: appleArt?.heroUrl
+                        heroUrl = appleArt?.heroUrl ?: artistHeroOverride
                             ?: page.thumbnailUrl?.artworkAt(HEADER_ART_PX),
                         content = detailListItems,
                     )
@@ -1560,6 +1566,7 @@ private fun ReleaseHeader(
     isCatalogPinned: Boolean = false,
     onToggleCatalogPin: (() -> Unit)? = null,
     metaOverride: String? = null,
+    releaseHeroOverride: String? = null,
 ) {
     // Do not display a partial sum as if the album's total were complete.
     val allCanonicalDurationsKnown = canonicalTracks.isNotEmpty() &&
@@ -1629,8 +1636,11 @@ private fun ReleaseHeader(
     // albums, nested artist albums and normal/smart playlists. This adapter
     // retains legacy artwork, Canvas, user library actions and credit links;
     // no provider-specific detail DTO enters the visual composition.
+    var editorialFailed by remember(releaseHeroOverride) { mutableStateOf(false) }
+    val editorialHero = releaseHeroOverride.takeUnless { editorialFailed }
     NativeReleaseHeaderLayout(
         title = page.title,
+        immersiveArtwork = editorialHero != null,
         credit = if (amsPlaylist) "" else credit,
         meta = meta,
         inlineAlbumMetadata = page.type == BrowseType.ALBUM,
@@ -1640,6 +1650,14 @@ private fun ReleaseHeader(
         onRate = onRate,
         onCreditClick = onCreditClick,
         artwork = {
+            if (editorialHero != null) {
+                ResilientAppleCover(model = editorialHero, contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    onState = { if (it is AsyncImagePainter.State.Error) editorialFailed = true },
+                    modifier = Modifier.matchParentSize())
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+                    0f to Color.Transparent, 0.60f to Color.Transparent, 1f to palette.background)))
+            } else {
             var artFailed by remember(page.thumbnailUrl) { mutableStateOf(false) }
             if (page.thumbnailUrl == null || artFailed) {
                 CoverPlaceholder(
@@ -1662,6 +1680,7 @@ private fun ReleaseHeader(
                     isPlaying = true,
                     modifier = Modifier.matchParentSize(),
                 )
+            }
             }
         },
         actions = {

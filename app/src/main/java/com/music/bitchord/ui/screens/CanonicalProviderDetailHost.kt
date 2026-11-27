@@ -260,6 +260,8 @@ internal fun CanonicalProviderDetailHost(
         sourceAlbumMetadata = if (isAms) applePage?.sourceAlbumMetadata else null,
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,
+        sourceArtistStoreUrl = applePage?.sourceStoreUrl.takeIf { isAms },
+        releaseHeroOverride = applePage?.releaseHeroUrl.takeIf { isAms },
         songSort = songSort,
         footerContent = { palette ->
             if (isDiscogs) {

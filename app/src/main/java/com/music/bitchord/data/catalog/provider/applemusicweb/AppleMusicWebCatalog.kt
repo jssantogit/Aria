@@ -49,6 +49,7 @@ internal data class AppleMusicWebItem(
     val trackNumber: Int? = null,
     val genreNames: List<String> = emptyList(),
     val albumName: String? = null,
+    val editorialTallHeroUrl: String? = null,
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
@@ -189,8 +190,17 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             ?: throw AppleMusicWebProtocolException("Missing attributes")
         val name = attr.str("name") ?: attr.str("title")
             ?: throw AppleMusicWebProtocolException("Missing title")
+        val editorial = attr.obj("editorialArtwork")
+        val tallHero = if (kind == AppleMusicWebKind.PLAYLIST || kind == AppleMusicWebKind.ALBUM)
+            listOf("superHeroTall", "staticDetailTall").firstNotNullOfOrNull { key ->
+                val art = editorial?.obj(key) ?: return@firstNotNullOfOrNull null
+                appleMusicWebTallHeroUrl(art.str("url"),
+                    (art["width"] as? JsonPrimitive)?.intOrNull ?: 0,
+                    (art["height"] as? JsonPrimitive)?.intOrNull ?: 0)
+            } else null
         return AppleMusicWebItem(
             id = id, kind = kind, storefront = sf, title = name,
+            editorialTallHeroUrl = tallHero,
             artistName = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("curatorName") else attr.str("artistName"), artistId = attr.str("artistId"),
             albumId = attr.str("albumId"),
             albumName = attr.str("albumName"),
@@ -443,7 +453,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val id = resourceId(entry.id, AppleMusicWebKind.PLAYLIST)
         val path = "/v1/catalog/$sf/playlists/$id"
         val body = parse(transport.get(ProviderCapability.CHART_MOST_PLAYED, path,
-            mapOf("include" to "tracks")))
+            mapOf("include" to "tracks", "extend" to "editorialArtwork")))
         if ("errors" in body) throw AppleMusicWebProtocolException("Daily chart error envelope")
         val root = body.objects("data").singleOrNull()
             ?: throw AppleMusicWebProtocolException("Missing chart playlist")
@@ -823,7 +833,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
     suspend fun playlist(id: String, country: String): AppleMusicWebOutcome<AppleMusicWebPlaylist> {
         val sf = storefront(country)
         val playlistId = resourceId(id,AppleMusicWebKind.PLAYLIST)
-        val raw = detail(sf,AppleMusicWebKind.PLAYLIST,playlistId,mapOf("include" to "tracks"))
+        val raw = detail(sf,AppleMusicWebKind.PLAYLIST,playlistId,mapOf("include" to "tracks", "extend" to "editorialArtwork"))
         val identity = convert(raw,sf) ?: throw AppleMusicWebProtocolException("Invalid playlist")
         val path = "/v1/catalog/$sf/playlists/$playlistId"
         var block = raw.obj("relationships")?.obj("tracks")

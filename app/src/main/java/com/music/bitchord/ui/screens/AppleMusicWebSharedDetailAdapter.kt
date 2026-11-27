@@ -174,6 +174,7 @@ internal fun appleMusicWebAsSharedDetail(
                 page=DetailPage(route.browseId,identity.title,identity.artistName.orEmpty(),
                     identity.cover(1024),UiState.Success(emptyList()),BrowseType.PLAYLIST),
                 metadataTracks=source.value.tracks.flatMap { tracks(listOf(it),market) },
+                releaseHeroUrl=identity.editorialTallHeroUrl,
                 notice=if (incomplete) "A lista de músicas desta playlist pode estar incompleta." else null,
                 sourceStoreUrl=appleMusicWebVerifiedStoreUrl(identity),
             )
@@ -216,6 +217,7 @@ internal fun appleMusicWebAsSharedDetail(
                     sections=if (cards.isEmpty()) emptyList() else listOf(HomeShelf("Mais do artista",cards))),
                 metadataTracks=metadataTracks,
                 sourceAlbumMetadata=amsAlbumMetadata(identity,metadataTracks,completeTracks),
+                releaseHeroUrl=identity.editorialTallHeroUrl,
                 albumArtistBrowseId=artist?.scopedId,
                 albumArtistDisplayName=artist?.title,
                 notice=notices.joinToString(" ").takeIf { it.isNotBlank() },
