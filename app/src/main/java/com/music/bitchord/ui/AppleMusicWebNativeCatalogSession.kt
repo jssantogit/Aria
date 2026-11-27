@@ -427,7 +427,8 @@ internal class AppleMusicWebNativeCatalogSession(
             return ProviderCallResult.Stale
         if (tracks is ProviderCallResult.Failed &&
             (tracks.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return tracks
-        val shelf = (tracks as? ProviderCallResult.Success)?.value ?: return curated
+        if (tracks == ProviderCallResult.Denied) return ProviderCallResult.Denied
+        val shelf = (tracks as? ProviderCallResult.Success)?.value
         val outcome = (curated as? ProviderCallResult.Success)?.value
             ?: AppleMusicWebOutcome.Partial(AmsEditorialPage(emptyList()),AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED)
         val page = when (outcome) {
@@ -435,18 +436,99 @@ internal class AppleMusicWebNativeCatalogSession(
             is AppleMusicWebOutcome.Partial -> outcome.value
             is AppleMusicWebOutcome.Unavailable -> AmsEditorialPage(emptyList())
         }
-        val seen = shelf.items.mapNotNull { it.browseId }.toSet()
-        // Keep independently tagged albums in a distinct rail, not recent releases.
+        val seen = shelf?.items.orEmpty().mapNotNull { it.browseId }.toSet()
         val existing = page.shelves.map { rail ->
             if (rail.title == "Álbuns das playlists") rail.copy(items=rail.items.filterNot { it.browseId in seen })
             else rail
         }.filter { it.items.isNotEmpty() }
         val known = existing.flatMap { it.items }.mapNotNull { it.browseId }.toSet()
-        val filtered = shelf.copy(items=shelf.items.filterNot { it.browseId in known })
-        val merged = page.copy(shelves=listOfNotNull(filtered.takeIf { it.items.isNotEmpty() }) + existing)
+        val filtered = shelf?.copy(items=shelf.items.filterNot { it.browseId in known })
+        var rails = listOfNotNull(filtered?.takeIf { it.items.isNotEmpty() }) + existing
+        val albums = rails.flatMap { it.items }.mapNotNull { AppleMusicWebNativeRoute.parse(it.browseId) }
+            .filter { it.kind == AppleMusicWebKind.ALBUM }.distinct().size
+        if (albums < 6) {
+            val fallback = searchedStylePlaylists(tag,storefront,rails.flatMap { it.items }.mapNotNull { it.browseId }.toSet())
+            if (currentGate() !== gate || !gate.accept(searchTicket) || fallback == ProviderCallResult.Stale)
+                return ProviderCallResult.Stale
+            if (fallback == ProviderCallResult.Denied) return ProviderCallResult.Denied
+            if (fallback is ProviderCallResult.Failed &&
+                (fallback.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return fallback
+            for (extra in (fallback as? ProviderCallResult.Success)?.value.orEmpty()) {
+                val index = rails.indexOfFirst { it.title == extra.title }
+                rails = if (index < 0) rails + extra else rails.mapIndexed { i,rail ->
+                    if (i == index) rail.copy(items=(rail.items + extra.items).distinctBy { it.browseId }) else rail
+                }
+            }
+        }
+        if (rails.isEmpty()) return curated
+        val merged = page.copy(shelves=rails)
         return ProviderCallResult.Success(if (outcome is AppleMusicWebOutcome.Partial)
             AppleMusicWebOutcome.Partial(merged,outcome.reason) else AppleMusicWebOutcome.Complete(merged))
     }
+
+    /** Bounded supplemental discovery for underfilled styles. The playlist's
+     * verified editorial membership is not a genre claim for every album. */
+    private suspend fun searchedStylePlaylists(tag: String, market: String, existing: Set<String>):
+        ProviderCallResult<List<HomeShelf>> = admitted(editorial) { gateway ->
+            val candidates = mutableListOf<AppleMusicWebItem>()
+            for (query in amsStyleDiscoveryQueries(tag)) {
+                when (val read = gateway.search(AppleMusicWebKind.PLAYLIST,query,market,limit=25)) {
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    is ProviderCallResult.Failed -> {
+                        if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                        continue
+                    }
+                    is ProviderCallResult.Success -> candidates += (read.value.outcome as? AppleMusicWebOutcome.Complete)
+                        ?.value?.items.orEmpty().filter {
+                            amsVerifiedSearchedStylePlaylist(it,tag,market) &&
+                                appleMusicWebVerifiedStoreUrl(it) != null && it.scopedId !in existing
+                        }
+                }
+                if (candidates.distinctBy { it.id }.size >= 2) break
+            }
+            val playlists = mutableListOf<ShelfItem>()
+            val albums = mutableListOf<ShelfItem>()
+            for (candidate in candidates.distinctBy { it.id }.take(2)) {
+                val record = when (val read = gateway.playlist(candidate.id,market)) {
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    is ProviderCallResult.Failed -> {
+                        if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                        continue
+                    }
+                    is ProviderCallResult.Success -> when(val outcome = read.value.outcome) {
+                        is AppleMusicWebOutcome.Complete -> outcome.value
+                        is AppleMusicWebOutcome.Partial -> outcome.value
+                        else -> continue
+                    }
+                }
+                val identity = record.identity
+                if (identity.id != candidate.id || !amsVerifiedSearchedStylePlaylist(identity,tag,market) ||
+                    appleMusicWebVerifiedStoreUrl(identity) == null) continue
+                playlists += ShelfItem(title=identity.title,subtitle=identity.artistName.orEmpty(),
+                    thumbnailUrl=appleMusicWebArtworkUrl(identity.artworkUrl),videoId=null,
+                    browseId=identity.scopedId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(identity))
+                val ids = record.tracks.mapNotNull { amsStyleSongAlbumId(it,market) }.distinct()
+                    .filter { "apple_music_web:$market:album:$it" !in existing }.take(24)
+                if (ids.isEmpty()) continue
+                when (val read = gateway.linkedAlbumMetadata(ids,market)) {
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    is ProviderCallResult.Failed -> {
+                        if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                    }
+                    is ProviderCallResult.Success -> {
+                        val metadata = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                        albums += amsStylePlaylistAlbumShelf(record,market,metadata)?.items.orEmpty()
+                    }
+                }
+            }
+            ProviderCallResult.Success(listOfNotNull(
+                playlists.distinctBy { it.browseId }.takeIf { it.isNotEmpty() }?.let { HomeShelf("Playlists",it) },
+                albums.distinctBy { it.browseId }.takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns das playlists",it) },
+            ))
+        }
 
     private suspend fun trackStyleShelf(tag: String, storefront: String):
         ProviderCallResult<HomeShelf?> = admitted(editorial) { gateway ->

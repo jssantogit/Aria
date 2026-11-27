@@ -52,6 +52,7 @@ internal data class AppleMusicWebItem(
     val editorialTallHeroUrl: String? = null,
     val editorialMotionUrl: String? = null,
     val editorialMotionFallbackUrl: String? = null,
+    val playlistType: String? = null,
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
@@ -207,6 +208,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             editorialTallHeroUrl = tallHero,
             editorialMotionUrl = motion?.first,
             editorialMotionFallbackUrl = motion?.second,
+            playlistType = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("playlistType") else null,
             artistName = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("curatorName") else attr.str("artistName"), artistId = attr.str("artistId"),
             albumId = attr.str("albumId"),
             albumName = attr.str("albumName"),

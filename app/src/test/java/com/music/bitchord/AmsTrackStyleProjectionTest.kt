@@ -6,6 +6,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun searchedPlaylistRequiresEditorialTypeExactStyleAndAppleCredit() {
+        val playlist = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br",
+            "Post-Punk Essentials",artistName="Apple Music Alternative",playlistType="editorial")
+        assertTrue(amsVerifiedSearchedStylePlaylist(playlist,"post-punk","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist.copy(playlistType="user-shared"),"post-punk","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist.copy(artistName="Apple Music fan"),"post-punk","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist.copy(title="Rock Essentials"),"post-punk","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist.copy(storefront="us"),"post-punk","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(playlist,"hardcore punk","br"))
+    }
+
     @Test fun exactAlbumMotionPrefersMatchingAspectAndRejectsForeignUrls() {
         val square = "https://mvod.itunes.apple.com/example/square.m3u8"
         val tall = "https://mvod.itunes.apple.com/example/tall.m3u8"

@@ -201,3 +201,47 @@ internal fun amsCuratorExtraShelf(room: AppleMusicWebRoomRef): AmsCuratorExtraSh
         else -> null
     }
 }
+
+/** Search terms nominate candidates only. They never authorize a style label. */
+internal fun amsStyleDiscoveryQueries(tag: String): List<String> {
+    val localized = when (tag) {
+        "dance-pop" -> "pop dance"
+        "art pop" -> "art-pop"
+        "synthpop" -> "synth pop"
+        "alternative rock" -> "rock alternativo"
+        "progressive rock" -> "rock progressivo"
+        "post-rock" -> "post rock"
+        "trap" -> "trap brasileiro"
+        "drill" -> "drill rap"
+        "boom bap" -> "boom-bap"
+        "indie folk" -> "folk indie"
+        "dark ambient" -> "dark ambient music"
+        "drone" -> "drone ambient"
+        "ambient techno" -> "ambient techno music"
+        "hardcore punk" -> "punk hardcore"
+        "post-punk" -> "post punk"
+        "pop punk" -> "punk pop"
+        else -> tag
+    }
+    return listOf(tag,localized).distinct()
+}
+
+/** A search hit is not curator membership. Require the public editorial
+ * resource's own type, exact semantic title and Apple credit separately.
+ * Revalidate on detail before taking a single linked album. */
+internal fun amsVerifiedSearchedStylePlaylist(item: AppleMusicWebItem, tag: String, market: String): Boolean {
+    if (item.kind != AppleMusicWebKind.PLAYLIST || item.storefront != market ||
+        item.playlistType != "editorial" || !amsExactStylePlaylistTitle(item.title,tag)) return false
+    val credit = curatorFold(item.artistName.orEmpty())
+    val parent = amsEditorialStyleParents[tag] ?: return false
+    val label = credit.removePrefix("apple music ").removeSuffix(" apple music")
+    return credit == "apple music" || (credit != label &&
+        (appleMusicWebGenreNameMatches(label,parent) ||
+            appleMusicWebGenreNameMatches(label,tag) ||
+            (parent == "rock" && label in setOf("alternative","alternativo")) ||
+            (parent == "pop" && label in setOf("pop","dance")) ||
+            (parent == "rap" && label in setOf("hip hop","hip hop rap")) ||
+            (parent == "ambient" && label in setOf("electronic","eletronica","ambient","ambiente")) ||
+            (parent == "punk" && label in setOf("rock","punk","alternative","alternativo")) ||
+            (parent == "folk" && label in setOf("folk","indie","cantores compositores"))))
+}
