@@ -252,4 +252,30 @@ class AppleSharedDetailAdapterTest {
         assertNull(navigate(wrongCredit.browseId))
         assertNull(navigate(remaining.last().browseId))
     }
+
+    @Test fun artistSectionsFeaturedReleaseAndTapUseSameAdmittedAlbums() {
+        val valid = album(10, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = artist.browseId)
+        val withArtwork = valid.copy(artworkUri = artist.artworkUri)
+        val disputed = album(20, AppleEditorialReleaseCategory.ALBUM)
+        val foreign = album(30, AppleEditorialReleaseCategory.ALBUM)
+            .copy(browseId = "itunes:us:album:30")
+        val wrongCredit = album(40, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = "itunes:br:artist:999")
+        val source = AppleEditorialArtistDetailPage(
+            artist = artist, albums = listOf(valid, withArtwork, disputed,
+                disputed.copy(category = AppleEditorialReleaseCategory.EP), foreign, wrongCredit),
+            possiblyTruncated = false,
+        )
+        val visual = requireNotNull(appleArtistAsSharedDetail(source))
+        assertEquals(listOf(valid.browseId), visual.page.sections.flatMap { it.items }.map { it.browseId })
+        assertEquals(valid.browseId, visual.featuredRelease?.browseId)
+        fun navigate(id: String) = com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+            artist.browseId, id, true, source, null,
+        )
+        assertEquals(withArtwork, navigate(valid.browseId))
+        assertNull(navigate(disputed.browseId))
+        assertNull(navigate(foreign.browseId))
+        assertNull(navigate(wrongCredit.browseId))
+    }
 }

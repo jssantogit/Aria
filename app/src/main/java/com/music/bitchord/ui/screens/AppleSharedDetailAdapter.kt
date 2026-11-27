@@ -64,15 +64,7 @@ internal fun appleArtistAsSharedDetail(
 ): AppleSharedDetail? {
     val route = AppleCatalogBrowseRoute.parse(source.artist.browseId)
         ?.takeIf { it.kind == ItunesCatalogItemType.ARTIST } ?: return null
-    val releases = source.albums.filter { album ->
-        val albumRoute = AppleCatalogBrowseRoute.parse(album.browseId)
-        album.kind == AppleEditorialSearchKind.ALBUM &&
-            albumRoute?.kind == ItunesCatalogItemType.ALBUM &&
-            albumRoute.storefront == route.storefront
-    }.groupBy { it.browseId }.values.mapNotNull { sameId ->
-        sameId.singleOrNull() ?: sameId.firstOrNull()
-            ?.takeIf { first -> sameId.all { it == first } }
-    }
+    val releases = appleNativeArtistAlbumEntries(source)
     // Native Apple Music-style sections. EP and Single are one rail, while
     // "live", "compilation" and "featured on" require independent evidence:
     // names and artwork cannot prove such a relationship or release class.

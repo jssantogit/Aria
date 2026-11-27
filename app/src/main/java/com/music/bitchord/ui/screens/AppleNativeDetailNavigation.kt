@@ -132,6 +132,29 @@ internal fun appleNativeRelatedAlbumEntries(
     }.take(12)
 }
 
+/** Artist sections, recent release and navigation share one admitted catalog. */
+internal fun appleNativeArtistAlbumEntries(
+    source: AppleEditorialArtistDetailPage,
+): List<AppleEditorialSearchRow> {
+    val artistKey = appleNativeDetailRouteKey(
+        AppleNativeDetailKind.ARTIST, source.artist, null,
+    ) ?: return emptyList()
+    val route = AppleCatalogBrowseRoute.parse(artistKey) ?: return emptyList()
+    return source.albums.groupBy { it.browseId }.values.mapNotNull { observations ->
+        val first = observations.first()
+        val albumRoute = AppleCatalogBrowseRoute.parse(first.browseId)
+        if (albumRoute?.storefront != route.storefront ||
+            first.title.isBlank() ||
+            observations.any {
+                appleNativeDetailRouteKey(AppleNativeDetailKind.ALBUM, null, it) == null ||
+                    (it.artistBrowseId != null && it.artistBrowseId != artistKey) ||
+                    it.copy(artworkUri = null) != first.copy(artworkUri = null)
+            }
+        ) return@mapNotNull null
+        appleNativeShelfEntry(first.browseId, observations)
+    }
+}
+
 /** A retained artist and an open album may coexist for Back navigation.
  * Only the visible route may nominate a related item. */
 internal fun appleNativeShelfEntryForRoute(
@@ -143,7 +166,7 @@ internal fun appleNativeShelfEntryForRoute(
 ): AppleEditorialSearchRow? {
     if (!readAllowed) return null
     val candidates = when {
-        artist?.artist?.browseId == routeKey -> artist.albums
+        artist?.artist?.browseId == routeKey -> appleNativeArtistAlbumEntries(artist)
         album?.album?.browseId == routeKey -> appleNativeRelatedAlbumEntries(album)
         else -> emptyList()
     }
