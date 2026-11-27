@@ -1,6 +1,7 @@
 package com.music.bitchord.data.catalog.metadata
 
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsKind
+import com.music.bitchord.data.catalog.metadata.discogs.DiscogsArtworkOutcome
 import com.music.bitchord.data.catalog.metadata.discogs.DiscogsRecord
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
@@ -106,15 +107,30 @@ internal class DiscogsAppleArtworkResolver(
     },
     private val gateProvider: () -> ProviderPolicyGate? = { ProviderRuntime.gateOrNull() },
 ) {
-    suspend fun resolve(record: DiscogsRecord, storefront: String = "br"):
-        DiscogsVerifiedAppleArtwork? {
-        val upc = discogsDigitalArtworkUpc(record) ?: return null
-        if (!Regex("[a-z]{2}").matches(storefront)) return null
-        val gate = gateProvider() ?: return null
+    suspend fun resolve(
+        record: DiscogsRecord,
+        storefront: String = "br",
+        onRejected: (DiscogsArtworkOutcome) -> Unit = {},
+    ): DiscogsVerifiedAppleArtwork? {
+        fun reject(reason: DiscogsArtworkOutcome): DiscogsVerifiedAppleArtwork? {
+            onRejected(reason)
+            return null
+        }
+        val upc = discogsDigitalArtworkUpc(record)
+            ?: return reject(DiscogsArtworkOutcome.INELIGIBLE_EDITION)
+        if (!Regex("[a-z]{2}").matches(storefront))
+            return reject(DiscogsArtworkOutcome.INELIGIBLE_EDITION)
+        val gate = gateProvider() ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
         val ticket = gate.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
-            ?: return null
+            ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
         val result = lookup.lookup(upc, storefront)
-        if (gateProvider() !== gate || !gate.accept(ticket)) return null
+        if (gateProvider() !== gate || !gate.accept(ticket))
+            return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        if (result !is ItunesCatalogResult.Success)
+            return reject(DiscogsArtworkOutcome.LOOKUP_UNAVAILABLE)
+        if (result.possiblyTruncated)
+            return reject(DiscogsArtworkOutcome.INCOMPLETE_APPLE_RESPONSE)
         return discogsVerifiedAppleArtwork(record, upc, result, storefront)
+            ?: reject(DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT)
     }
 }
