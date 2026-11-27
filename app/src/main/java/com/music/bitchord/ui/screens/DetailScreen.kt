@@ -813,37 +813,44 @@ fun DetailScreen(
                 // the artist or release metadata came from.
                 val detailListItems: LazyListScope.() -> Unit = {
             item(key = "header") {
-                if (isArtist) {
-                    ArtistHeader(artistName = page.title, palette = palette, artHeight = artHeight, appleArt = appleArt, signature = signature)
-                } else {
-                    ReleaseHeader(
-                        page = page,
-                        palette = palette,
-                        sleeveSize = sleeveSize,
-                        canvas = canvas,
-                        offlinePoster = offlineAlbumPoster,
-                        songs = songs,
-                        canonicalTracks = canonicalTracks,
-                        metadataTracks = metadataTracks,
-                        sourceAlbumArtistBrowseId = sourceAlbumArtistBrowseId,
-                        sourceAlbumArtistDisplayName = sourceAlbumArtistDisplayName,
-                        onPlay = {
-                            if (songs.isNotEmpty()) onSongClick(songs, 0)
-                            else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
-                                ?.musicBrainzId?.let { onCanonicalTrackPlay?.invoke(it) }
-                        },
-                        onShuffle = { if (songs.isNotEmpty()) onShuffle(songs) },
-                        // A folder's credit says where its tracks live, not who made them.
-                        onArtistClick = onArtistClick.takeIf { folder == null },
-                        onToggleLibrary = onToggleLibrary,
-                        rating = catalogRating,
-                        onRate = if (catalogRatingTarget != null && !isArtist)
-                            ({ editingCatalogRating = true }) else null,
-                        isCatalogPinned = catalogPins.any { it.browseId == page.browseId },
-                        onToggleCatalogPin = if (canPinCatalogRelease)
-                            ({ catalogPinRepo.toggle(catalogPin); Unit }) else null,
-                        metaOverride = folderCategoryMeta,
-                        sourceArtworkStoreUrl = sourceArtworkStoreUrl,
+                Column {
+                    if (isArtist) {
+                        ArtistHeader(artistName = page.title, palette = palette, artHeight = artHeight, appleArt = appleArt, signature = signature)
+                    } else {
+                        ReleaseHeader(
+                            page = page,
+                            palette = palette,
+                            sleeveSize = sleeveSize,
+                            canvas = canvas,
+                            offlinePoster = offlineAlbumPoster,
+                            songs = songs,
+                            canonicalTracks = canonicalTracks,
+                            metadataTracks = metadataTracks,
+                            sourceAlbumArtistBrowseId = sourceAlbumArtistBrowseId,
+                            sourceAlbumArtistDisplayName = sourceAlbumArtistDisplayName,
+                            onPlay = {
+                                if (songs.isNotEmpty()) onSongClick(songs, 0)
+                                else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
+                                    ?.musicBrainzId?.let { onCanonicalTrackPlay?.invoke(it) }
+                            },
+                            onShuffle = { if (songs.isNotEmpty()) onShuffle(songs) },
+                            // A folder's credit says where its tracks live, not who made them.
+                            onArtistClick = onArtistClick.takeIf { folder == null },
+                            onToggleLibrary = onToggleLibrary,
+                            rating = catalogRating,
+                            onRate = if (catalogRatingTarget != null && !isArtist)
+                                ({ editingCatalogRating = true }) else null,
+                            isCatalogPinned = catalogPins.any { it.browseId == page.browseId },
+                            onToggleCatalogPin = if (canPinCatalogRelease)
+                                ({ catalogPinRepo.toggle(catalogPin); Unit }) else null,
+                            metaOverride = folderCategoryMeta,
+                            sourceArtworkStoreUrl = sourceArtworkStoreUrl,
+                        )
+                    }
+                    DiscogsSourceAttribution(
+                        page.browseId,
+                        modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+                        color = palette.onBackgroundVariant,
                     )
                 }
             }
@@ -2184,18 +2191,21 @@ private fun SectionCard(
     onLongPress: (() -> Unit)? = null,
     applePromotion: AppleGroupCardBadge? = null,
 ) {
-    NativeArtistReleaseCard(
-        title = item.title,
-        // A release in an artist's carousel needs its YEAR, not that artist
-        // repeated beneath every cover. Accept only an explicit year metadata
-        // segment; no extraction from titles or inferred scan timestamps.
-        subtitle = canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
-        palette = palette,
-        onClick = onClick,
-        modifier = modifier,
-        onLongPress = onLongPress,
-        artwork = { ArtistCardArtwork(item, applePromotion) },
-    )
+    Column(modifier) {
+        NativeArtistReleaseCard(
+            title = item.title,
+            // A release in an artist's carousel needs its YEAR, not that artist
+            // repeated beneath every cover. Accept only an explicit year metadata
+            // segment; no extraction from titles or inferred scan timestamps.
+            subtitle = canonicalArtistShelfYearFromSubtitle(item.subtitle).orEmpty(),
+            palette = palette,
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            onLongPress = onLongPress,
+            artwork = { ArtistCardArtwork(item, applePromotion) },
+        )
+        DiscogsSourceAttribution(item.browseId, color = palette.onBackgroundVariant)
+    }
 }
 
 /** Only album artwork is rendered, with verified Apple provenance kept internal. */
