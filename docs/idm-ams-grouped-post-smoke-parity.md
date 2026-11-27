@@ -27,3 +27,20 @@ Reference: the Local Library artist, album and playlist experiences. MusicBrainz
 - These are partial implementation changes; no proof yet of cross-provider covers, live relevance, full visual parity, hero render, richer Home/Explore or performance improvement.
 
 Existing tracking: #226–233, #239, #224 and #235. Reuse existing issues; do not close them solely on implementation or CI color.
+
+## Discogs artwork coverage checkpoint (2026-11-27)
+
+Two isolated observations completed successfully, but **neither verified an Apple product**:
+
+| Observation | Verified main releases | Additional hydrated digital candidates | Eligible Apple lookups |
+|---|---:|---:|---:|
+| [Main only](https://github.com/jssantogit/Aria/actions/runs/45998899689) | 6 | 0 | 0 |
+| [Main and bounded siblings](https://github.com/jssantogit/Aria/actions/runs/46034728829) | 6 | 6 | 0 |
+
+The second run completed in 28,769 ms. Five main releases had no explicit digital format and one failed credit validation. Six filtered Master version indices succeeded, two were empty. Four hydrated sibling releases had no barcode and two failed the supported-format check. The deterministic eligibility/preview tests passed. These are small observational samples, not population estimates, and no image render was measured.
+
+Do not enable sibling lookups on the interactive catalog: the extra source requests produced no eligible product in this sample. Keep the exact existing digital-edition bridge and honest fallback; do not assign a sibling's image to a physical release. Preserve the experimental workflow for reproducible investigation only.
+
+The [Discogs API terms](https://support.discogs.com/hc/en-us/articles/360009334593-API-Terms-of-Use) distinguish restricted images from CC0 metadata and require a source-linked notice next to displayed data. Native image use requires its own rights/terms review; do not infer image reuse permission from successful metadata access. The new shared Home/Explore shelf and mixed/typed search presentation links each exact Discogs Release/Artist to its official page. This is a targeted attribution improvement, not a claim of full compliance or physical visual approval. Review detail-related rows separately.
+
+The next acceptance candidate must still exercise the original grouped smoke matrix, especially artwork-only capability independence, actual image rendering, search relevance and native detail parity. Do not spend additional live quota merely repeating an unsuccessful sample.
