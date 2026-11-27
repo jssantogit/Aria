@@ -27,8 +27,11 @@ internal data class CanonicalCatalogEntityMenuSpec(
     val sourceLabel: String = "Ver no MusicBrainz",
 )
 
+internal fun canonicalCatalogEntityMenuSpec(browseId: String?): CanonicalCatalogEntityMenuSpec? =
+    canonicalCatalogEntityMenuSpec(browseId, null)
+
 internal fun canonicalCatalogEntityMenuSpec(
-    browseId: String?, sourceStoreUrl: String? = null,
+    browseId: String?, sourceStoreUrl: String?,
 ): CanonicalCatalogEntityMenuSpec? {
     val target = browseId?.let(::canonicalCatalogEntityRatingTarget) ?: return null
     if (target.entityId.startsWith("itunes:") || target.entityId.startsWith("discogs:")) {
@@ -104,7 +107,9 @@ internal fun CanonicalCatalogEntityMenuBody(
             artworkUrl = trustedCatalogMetadataPinArtwork(artworkUrl),
         )
     }
-    val canPin = validCatalogMetadataPin(pin)
+    // Provider-native pin reopening requires a separate verified Library route.
+    // Until that route exists, do not expose an action that cannot round-trip.
+    val canPin = browseId.startsWith("catalog:") && validCatalogMetadataPin(pin)
     val pinned = pinnedItems.any { it.browseId == browseId }
 
     BrowseActionsSheet(
