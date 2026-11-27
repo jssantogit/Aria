@@ -147,4 +147,17 @@ class DiscogsSearchRelevanceTest {
         assertEquals(2, discogsSearchArtistRank("Beatles", "The Beatles"))
         assertNull(discogsSearchArtistRank("illit", "Ill-It"))
     }
+    @Test fun repeatedReleaseWithContradictoryMasterCannotHideAnIndependentEdition() {
+        val first = DiscogsNativeReleaseSearchRow(20, "Artist - Album", 900)
+        val hidden = DiscogsNativeReleaseSearchRow(21, "Artist - Album", 900)
+        val conflicting = first.copy(masterId = 901)
+        assertEquals(listOf(first), discogsSearchDistinctReleases("album", listOf(first, hidden)))
+        assertEquals(listOf(first.copy(masterId = null), hidden),
+            discogsSearchDistinctReleases("album", listOf(first, hidden, conflicting)))
+        assertEquals(listOf(hidden), discogsSearchDistinctReleases("album",
+            listOf(first, hidden, first.copy(title = "Different - Work"))))
+        assertEquals(listOf(first), discogsSearchDistinctReleases("album",
+            listOf(first.copy(masterId = null), first)))
+    }
+
 }
