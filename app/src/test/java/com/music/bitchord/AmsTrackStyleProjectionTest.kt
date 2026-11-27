@@ -6,6 +6,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun curatorPlaylistDetailRequiresUnchangedIdentityAndStyleEvidence() {
+        val identity = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br",
+            "Jazz Fusion",artistName="Apple Music Jazz",playlistType="editorial",
+            storeUrl="https://music.apple.com/br/playlist/jazz-fusion/pl.example123")
+        val card = com.music.bitchord.data.model.ShelfItem(title=identity.title,subtitle="Apple Music Jazz",
+            thumbnailUrl=null,videoId=null,browseId=identity.scopedId)
+        fun valid(item: AppleMusicWebItem) =
+            amsStyleCuratorPlaylistDetailMatches(item,identity.id,"br","jazz fusion",card)
+        assertTrue(valid(identity))
+        assertFalse(valid(identity.copy(title="Jazz")))
+        assertFalse(valid(identity.copy(artistName="Other curator")))
+        assertFalse(valid(identity.copy(playlistType="user-shared")))
+        assertFalse(valid(identity.copy(storefront="us")))
+        assertFalse(valid(identity.copy(id="pl.other123")))
+        assertFalse(valid(identity.copy(storeUrl=null)))
+        val broad = identity.copy(title="Modern Jazz",genreNames=listOf("Jazz"))
+        val matchingCard = card.copy(title="Modern Jazz")
+        assertFalse(amsStyleCuratorPlaylistDetailMatches(broad,identity.id,"br","jazz fusion",matchingCard))
+        assertTrue(amsStyleCuratorPlaylistDetailMatches(broad.copy(genreNames=listOf("Jazz Fusion")),
+            identity.id,"br","jazz fusion",matchingCard))
+    }
+
     @Test fun conflictingSongLinksCannotAuthorizeEitherAlbumAcrossCompositionSources() {
         val song = AppleMusicWebItem("1",AppleMusicWebKind.SONG,"br","Track",albumId="20",
             storeUrl="https://music.apple.com/br/album/album/20?i=1",genreNames=listOf("Jazz Fusion"))

@@ -144,6 +144,23 @@ internal fun amsStylePlaylistAlbumShelf(
     amsStyleTrackAlbumShelf(amsStylePlaylistAlbumIds(playlist,market),market,albums)
         ?.copy(title="Álbuns das playlists")
 
+/** The room is evidence of membership, but detail may have changed since
+ * the room response. Do not hydrate albums from a replaced or foreign list. */
+internal fun amsStyleCuratorPlaylistDetailMatches(
+    identity: AppleMusicWebItem, candidateId: String, market: String, tag: String,
+    roomCard: ShelfItem?,
+): Boolean {
+    if (identity.kind != AppleMusicWebKind.PLAYLIST || identity.id != candidateId ||
+        identity.storefront != market || identity.playlistType != "editorial" ||
+        appleMusicWebVerifiedStoreUrl(identity) == null || identity.title.isBlank()) return false
+    if (roomCard == null) return amsVerifiedStylePlaylistReference(identity,tag,market)
+    if (roomCard.browseId != identity.scopedId || roomCard.title.trim() != identity.title.trim() ||
+        (roomCard.subtitle.isNotBlank() && roomCard.subtitle.trim() != identity.artistName.orEmpty().trim()))
+        return false
+    return amsExactStylePlaylistTitle(identity.title,tag) ||
+        identity.genreNames.any { appleMusicWebGenreNameMatches(it,tag) }
+}
+
 /** Existing HomeShelf model; no new screen and no fake playable IDs. */
 internal fun projectAppleMusicWebGenreLanding(
     landing: AppleMusicWebCuratorLanding, storefront: String, tag: String,
@@ -772,56 +789,70 @@ internal class AppleMusicWebNativeCatalogSession(
                                     curator=curator,tag=tag,resourceKind=AppleMusicWebKind.PLAYLIST)
                             }
                         }
-                        var stylePlaylist: AppleMusicWebPlaylist? = null
-                        // Resolve one exact style playlist, not an unbounded scan of its parent.
+                        val playlistAlbums = mutableListOf<ShelfItem>()
+                        // Revalidate up to two exact room candidates, only
+                        // trying the second if the first is underfilled.
                         if (tag in amsEditorialStyleParents) {
-                            val first = playlistCards.firstOrNull()
-                            val id = AppleMusicWebNativeRoute.parse(first?.browseId)?.id
-                                ?: amsStylePlaylistReference(tag,market)
-                            if (id != null) when (val result = gateway.playlist(id,market)) {
-                                ProviderCallResult.Denied -> return ProviderCallResult.Denied
-                                ProviderCallResult.Stale -> return ProviderCallResult.Stale
-                                is ProviderCallResult.Failed -> {
-                                    if ((result.cause as? AppleMusicWebHttpException)?.status in listOf(401,403,429)) return result
-                                    playlistIncomplete = true
-                                }
-                                is ProviderCallResult.Success -> {
-                                    val record = when (val outcome = result.value.outcome) {
-                                        is AppleMusicWebOutcome.Complete -> outcome.value
-                                        is AppleMusicWebOutcome.Partial -> { playlistIncomplete = true; outcome.value }
-                                        else -> null
-                                    }
-                                    if (record != null && (first != null || amsVerifiedStylePlaylistReference(record.identity,tag,market))) {
-                                        stylePlaylist = record
-                                        if (first == null) playlistCards += ShelfItem(title=record.identity.title,
-                                            subtitle=record.identity.artistName.orEmpty(),thumbnailUrl=appleMusicWebArtworkUrl(record.identity.artworkUrl),
-                                            videoId=null,browseId=record.identity.scopedId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(record.identity))
-                                    }
-                                }
+                            val cards = playlistCards.groupBy { it.browseId }.values.mapNotNull { group ->
+                                group.first().takeIf { first -> group.all { it == first } }
                             }
-                        }
-                        val playlists = playlistCards.groupBy { it.browseId }.values.mapNotNull { group ->
-                            group.first().takeIf { first -> group.all { it == first } }
-                        }
-                        if (playlists.isNotEmpty()) shelves += HomeShelf("Playlists",playlists)
-                        stylePlaylist?.let { playlist ->
-                            val ids = amsStylePlaylistAlbumIds(playlist,market)
-                            val metadata = mutableListOf<AppleMusicWebItem>()
-                            for (batch in ids.chunked(25)) {
-                                when (val result = gateway.linkedAlbumMetadata(batch,market)) {
+                            val candidates = cards.mapNotNull { card ->
+                                AppleMusicWebNativeRoute.parse(card.browseId)?.id?.let { it to card }
+                            }.take(2).ifEmpty {
+                                listOfNotNull(amsStylePlaylistReference(tag,market)?.let { it to null })
+                            }
+                            val rejected = hashSetOf<String>()
+                            for ((id,card) in candidates) {
+                                val record = when (val result = gateway.playlist(id,market)) {
                                     ProviderCallResult.Denied -> return ProviderCallResult.Denied
                                     ProviderCallResult.Stale -> return ProviderCallResult.Stale
                                     is ProviderCallResult.Failed -> {
                                         if ((result.cause as? AppleMusicWebHttpException)?.status in listOf(401,403,429)) return result
                                         playlistIncomplete = true
+                                        continue
                                     }
-                                    is ProviderCallResult.Success -> metadata +=
-                                        (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                                    is ProviderCallResult.Success -> when (val outcome = result.value.outcome) {
+                                        is AppleMusicWebOutcome.Complete -> outcome.value
+                                        is AppleMusicWebOutcome.Partial -> { playlistIncomplete = true; outcome.value }
+                                        else -> { playlistIncomplete = true; continue }
+                                    }
                                 }
-                                if ((amsStylePlaylistAlbumShelf(playlist,market,metadata)?.items?.size ?: 0) >= 24) break
+                                val identity = record.identity
+                                if (!amsStyleCuratorPlaylistDetailMatches(identity,id,market,tag,card)) {
+                                    playlistIncomplete = true
+                                    rejected += identity.scopedId
+                                    rejected += "apple_music_web:$market:playlist:$id"
+                                    continue
+                                }
+                                if (card == null) playlistCards += ShelfItem(title=identity.title,
+                                    subtitle=identity.artistName.orEmpty(),thumbnailUrl=appleMusicWebArtworkUrl(identity.artworkUrl),
+                                    videoId=null,browseId=identity.scopedId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(identity))
+                                val ids = amsStylePlaylistAlbumIds(record,market,playlistAlbums.mapNotNull { it.browseId }.toSet())
+                                val metadata = mutableListOf<AppleMusicWebItem>()
+                                for (batch in ids.chunked(25)) {
+                                    when (val result = gateway.linkedAlbumMetadata(batch,market)) {
+                                        ProviderCallResult.Denied -> return ProviderCallResult.Denied
+                                        ProviderCallResult.Stale -> return ProviderCallResult.Stale
+                                        is ProviderCallResult.Failed -> {
+                                            if ((result.cause as? AppleMusicWebHttpException)?.status in listOf(401,403,429)) return result
+                                            playlistIncomplete = true
+                                        }
+                                        is ProviderCallResult.Success -> metadata +=
+                                            (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                                    }
+                                    if ((amsStyleTrackAlbumShelf(ids,market,metadata)?.items?.size ?: 0) + playlistAlbums.size >= 24) break
+                                }
+                                playlistAlbums += amsStyleTrackAlbumShelf(ids,market,metadata)?.items.orEmpty()
+                                if (playlistAlbums.size >= 6) break
                             }
-                            amsStylePlaylistAlbumShelf(playlist,market,metadata)?.let { shelves += it }
+                            playlistCards.removeAll { it.browseId in rejected }
                         }
+                        val playlists = playlistCards.groupBy { it.browseId }.values.mapNotNull { group ->
+                            group.first().takeIf { first -> group.all { it == first } }
+                        }
+                        if (playlists.isNotEmpty()) shelves += HomeShelf("Playlists",playlists)
+                        if (playlistAlbums.isNotEmpty()) shelves += HomeShelf("Álbuns das playlists",
+                            playlistAlbums.distinctBy { it.browseId }.take(24))
                         // Keep first paint bounded; remaining rails use native continuation.
                         if (shelves.isNotEmpty()) {
                             val curator = landing.curator.identity
