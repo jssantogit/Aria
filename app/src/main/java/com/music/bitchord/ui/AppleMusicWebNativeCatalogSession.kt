@@ -68,14 +68,23 @@ internal fun amsStyleTrackAlbumIds(songs: List<AppleMusicWebItem>, market: Strin
 
 internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: List<AppleMusicWebItem>): HomeShelf? {
     val cards = ids.distinct().mapNotNull { id ->
-        val album = albums.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
-            it.id == id && it.title.isNotBlank() }.distinct().singleOrNull() ?: return@mapNotNull null
+        val observations = albums.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
+            it.id == id && it.title.isNotBlank() }
+        val album = observations.firstOrNull() ?: return@mapNotNull null
+        // Search and exact metadata batches can legitimately differ in optional
+        // artwork/genre fields. Contradictory identity facts cannot be hidden by
+        // first-wins deduplication.
+        if (observations.map { it.title.trim() }.distinct().size != 1 ||
+            observations.mapNotNull { it.artistName?.trim()?.takeIf(String::isNotEmpty) }.distinct().size > 1 ||
+            observations.mapNotNull { it.artistId?.takeIf(String::isNotBlank) }.distinct().size > 1 ||
+            observations.mapNotNull { it.upc?.takeIf(String::isNotBlank) }.distinct().size > 1)
+            return@mapNotNull null
         val route = AppleMusicWebNativeRoute.parse(album.scopedId) ?: return@mapNotNull null
         ShelfItem(title=album.title,subtitle=album.artistName.orEmpty(),
             thumbnailUrl=appleMusicWebArtworkUrl(album.artworkUrl),videoId=null,
             browseId=route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(album))
     }
-    return cards.takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }
+    return cards.take(24).takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }
 }
 
 internal fun amsStylePlaylistAlbumShelf(
@@ -626,8 +635,8 @@ internal class AppleMusicWebNativeCatalogSession(
                     }
                 }
             }
-            val combined = (albums + direct).distinctBy { it.scopedId }
-            val verifiedIds = (ids + direct.map { it.id }).distinct().take(24)
+            val combined = albums + direct
+            val verifiedIds = (ids + direct.map { it.id }).distinct()
             ProviderCallResult.Success(amsStyleTrackAlbumShelf(verifiedIds,storefront,combined))
         }
 

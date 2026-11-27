@@ -6,6 +6,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun missingEarlyCandidatesCannotConsumeTheVisibleAlbumBudget() {
+        val candidates = (1..35).map { it.toString() }
+        val resolved = (12..35).map { index ->
+            AppleMusicWebItem(index.toString(),AppleMusicWebKind.ALBUM,"br","Album $index",
+                artistName="Artist",storeUrl="https://music.apple.com/br/album/album/$index")
+        }
+        val shelf = requireNotNull(amsStyleTrackAlbumShelf(candidates,"br",resolved))
+        assertEquals(24,shelf.items.size)
+        assertEquals("apple_music_web:br:album:35",shelf.items.last().browseId)
+    }
+
+    @Test fun conflictingAlbumIdentityIsRejectedButOptionalMetadataDifferencesAreAllowed() {
+        val album = AppleMusicWebItem("20",AppleMusicWebKind.ALBUM,"br","Album",artistName="Artist",
+            artistId="55",upc="123456789012",storeUrl="https://music.apple.com/br/album/album/20")
+        val sparse = album.copy(artistId=null,upc=null,genreNames=listOf("Jazz"))
+        assertEquals(1,requireNotNull(amsStyleTrackAlbumShelf(listOf("20"),"br",listOf(album,sparse))).items.size)
+        assertNull(amsStyleTrackAlbumShelf(listOf("20"),"br",listOf(album,album.copy(title="Other release"))))
+        assertNull(amsStyleTrackAlbumShelf(listOf("20"),"br",listOf(album,album.copy(artistId="56"))))
+        assertNull(amsStyleTrackAlbumShelf(listOf("20"),"br",listOf(album,album.copy(upc="987654321098"))))
+    }
+
     @Test fun droneEditorialCandidateNeverAdmitsDroneMetalOrForeignMarket() {
         val candidate = AppleMusicWebItem("pl.0ce234a90e744532b0561dbbb7b21d4f",
             AppleMusicWebKind.PLAYLIST,"br","O melhor do drone",artistName="Apple Music",playlistType="editorial")
