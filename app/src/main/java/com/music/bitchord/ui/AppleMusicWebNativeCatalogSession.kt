@@ -51,25 +51,32 @@ internal fun appleMusicWebGenreSupported(tag: String): Boolean = amsSupportsEdit
 
 /** Only a verified song URL containing the exact song query proves the
  * album link. Do not guess from names, genre labels or track artwork. */
-internal fun amsStyleSongAlbumId(song: AppleMusicWebItem, market: String): String? {
+private fun amsStyleSongUrlAlbumId(song: AppleMusicWebItem, market: String): String? {
     if (song.kind != AppleMusicWebKind.SONG || song.storefront != market) return null
     val uri = appleMusicWebVerifiedStoreUrl(song)?.let { java.net.URI(it) } ?: return null
     val fields = uri.path.trim('/').split('/')
     if (fields.getOrNull(1) != "album") return null
-    return fields.last().takeIf { song.albumId == null || song.albumId == it }
+    return fields.last()
 }
+
+internal fun amsStyleSongAlbumId(song: AppleMusicWebItem, market: String): String? =
+    amsStyleSongUrlAlbumId(song,market)?.takeIf { song.albumId == null || song.albumId == it }
 
 /** Keep observations until the song-to-album linkage is validated. A
  * second response may supply missing fields but cannot contradict identity. */
 internal fun amsStyleVerifiedSongRows(songs: List<AppleMusicWebItem>, market: String): List<AppleMusicWebItem> =
     songs.filter { it.kind == AppleMusicWebKind.SONG && it.storefront == market &&
         amsSongStorefront(it.scopedId) == market }.groupBy { it.scopedId }.values.flatMap { rows ->
-        val valid = rows.mapNotNull { row -> amsStyleSongAlbumId(row,market)?.let { row to it } }
-        val album = valid.map { it.second }.distinct().singleOrNull() ?: return@flatMap emptyList()
+        // Keep URL evidence even when an explicit albumId contradicts it.
+        // Filtering that row out first would silently hide the contradiction.
+        val album = rows.mapNotNull { amsStyleSongUrlAlbumId(it,market) }.distinct()
+            .singleOrNull() ?: return@flatMap emptyList()
         if (rows.any { !it.albumId.isNullOrBlank() && it.albumId != album } ||
-            rows.mapNotNull { it.isrc?.trim()?.takeIf(String::isNotEmpty) }.distinct().size > 1)
+            rows.mapNotNull { it.isrc?.trim()?.takeIf(String::isNotEmpty) }.distinct().size > 1 ||
+            rows.mapNotNull { it.title.trim().takeIf(String::isNotEmpty) }.distinct().size > 1 ||
+            rows.mapNotNull { it.artistName?.trim()?.takeIf(String::isNotEmpty) }.distinct().size > 1)
             return@flatMap emptyList()
-        valid.map { it.first }
+        rows.filter { amsStyleSongAlbumId(it,market) == album }
     }
 
 /** A matching track proves that its containing album has a matching track,
