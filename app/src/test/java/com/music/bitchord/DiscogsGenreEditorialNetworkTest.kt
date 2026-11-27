@@ -576,4 +576,21 @@ class DiscogsGenreEditorialNetworkTest {
         }
     }
 
+    @Test fun shelfArtworkBatchDoesNotSpendCapacityOnIneligibleEditions() = runBlocking {
+        val reads = mutableListOf<String>()
+        val eligibilityChecks = mutableListOf<String>()
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            (1..40).map { "discogs:release:$it" },
+            stillCurrent = { true },
+            resolve = { id -> reads += id; null },
+            onVerified = { _, _ -> fail("No proof returned") },
+            eligible = { id ->
+                eligibilityChecks += id
+                id.substringAfterLast(':').toInt() > 20
+            },
+        )
+        assertEquals((21..36).map { "discogs:release:$it" }, reads)
+        assertEquals((1..36).map { "discogs:release:$it" }, eligibilityChecks)
+    }
+
 }
