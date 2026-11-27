@@ -274,4 +274,25 @@ class AppleNativeDetailNavigationTest {
             editorialAuthorized = false, searchAuthorized = true,
         ))
     }
+    @Test fun relatedReleaseSelectionUsesOnlyAuthorizedCurrentRoute() {
+        val artistRow = artist()
+        val albumRow = album()
+        val other = album(501)
+        val artistPage = AppleEditorialArtistDetailPage(
+            artist = artistRow, albums = listOf(other), possiblyTruncated = false,
+        )
+        val albumPage = AppleEditorialAlbumDetailPage(
+            album = albumRow, tracks = emptyList(), partialTracklist = false,
+            relatedAlbums = listOf(other.copy(title = "Related edition")),
+        )
+        fun pick(route: String, allowed: Boolean = true) =
+            com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+                route, other.browseId, allowed, artistPage, albumPage,
+            )
+        assertEquals(other, pick(artistRow.browseId))
+        assertEquals(albumPage.relatedAlbums.single(), pick(albumRow.browseId))
+        assertNull(pick("itunes:br:album:999"))
+        assertNull(pick(albumRow.browseId, allowed = false))
+    }
+
 }
