@@ -72,10 +72,12 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
     stillCurrent: () -> Boolean,
     resolve: suspend (String) -> com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork?,
     onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+    eligible: (String) -> Boolean = { true },
 ) {
+    if (!stillCurrent()) return
     val candidates = browseIds.asSequence()
         .mapNotNull { discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, it) }
-        .distinct().take(16).toList()
+        .distinct().filter(eligible).take(16).toList()
     for (id in candidates) {
         if (!stillCurrent()) return
         val proof = try {
@@ -246,6 +248,11 @@ internal class DiscogsNativeCatalogSession(
         onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
     ) = resolveDiscogsEditorialArtworkBatch(
         browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
+        eligible = { id ->
+            id.substringAfterLast(':').toLongOrNull()?.let {
+                editorialClient.cachedArtworkEvidenceForRelease(it) != null
+            } == true
+        },
     )
 
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
