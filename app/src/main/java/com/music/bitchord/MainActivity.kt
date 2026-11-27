@@ -4561,6 +4561,12 @@ private fun BitChordApp(
                             contentPadding = listPadding,
                         ) { HomeScreen(
                             state = canonicalHomeState,
+                            editorialArtwork = com.music.bitchord.ui.rememberDiscogsEditorialArtwork(
+                                viewModel.discogsNativeCatalog,
+                                active = selectedTab == TAB_HOME &&
+                                    canonicalHomeEditorialSelection.provider == catalogDiscogs,
+                                surfaceKey = "home", state = canonicalHomeState,
+                            ),
                             listState = homeListState,
                             onItemClick = { item, heading ->
                                 onCanonicalShelfClick(
@@ -4642,6 +4648,12 @@ private fun BitChordApp(
                             )
                         } else HomeScreen(
                             state = canonicalGenreState,
+                            editorialArtwork = com.music.bitchord.ui.rememberDiscogsEditorialArtwork(
+                                viewModel.discogsNativeCatalog,
+                                active = selectedTab == TAB_EXPLORE && genreDiscogsOwnsReleases &&
+                                    activeCanonicalGenre?.tag == visibleGenre.tag,
+                                surfaceKey = "genre:${visibleGenre.tag}", state = canonicalGenreState,
+                            ),
                             listState = genreListState,
                             onItemClick = { item, heading ->
                                 onCanonicalShelfClick(
