@@ -397,6 +397,33 @@ class CanonicalEditorialFeedProjectionTest {
         assertTrue(ids.all { it.startsWith("catalog:RELEASE_GROUP:") })
     }
 
+    @Test fun emptyAmsStyleCanUseAuthorizedMusicBrainzWithoutReidentification() {
+        val ams = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val rows = (1..8).map { index ->
+            CanonicalCatalogSearchRow(
+                musicBrainzId = "%08d-2222-4222-8222-222222222222".format(index),
+                kind = CanonicalSearchKind.RELEASE_GROUP,
+                title = "Verified release $index",subtitle = "Artist $index",
+                releaseDate = "2026-11-01",releaseKind = "Album")
+        }
+        for (tag in listOf("art pop","boom bap","ambient techno","drone")) {
+            fun project(order: List<com.music.bitchord.data.providers.ProviderKey>, resultTag: String = tag) =
+                projectCanonicalGenreState(tag=tag,genrePlaylists=emptyList(),
+                    playlistHeading="Playlists",appleByTag=emptyMap(),
+                    musicBrainzRows=UiState.Success(rows),ordered=order,
+                    releasesHeading="Lançamentos",musicBrainzResultTag=resultTag,
+                    todayIsoDate="2026-11-27",
+                    amsByTag=mapOf(tag to UiState.Success(emptyList())))
+            val fallback = project(listOf(ams,mb)) as UiState.Success
+            val cards = fallback.data.flatMap { it.items }
+            assertTrue(cards.isNotEmpty())
+            assertTrue(cards.all { it.browseId.orEmpty().startsWith("catalog:RELEASE_GROUP:") && it.videoId == null })
+            val blocked = project(listOf(ams))
+            assertTrue(blocked !is UiState.Success || blocked.data.isEmpty())
+            assertEquals(UiState.Loading,project(listOf(ams,mb),"rock"))
+        }
+    }
+
     @Test fun switchingGenreNeverDisplaysPreviousMusicBrainzTagResults() {
         val previousRows = UiState.Success(listOf(CanonicalCatalogSearchRow(
             musicBrainzId = "11111111-1111-4111-8111-111111111111",

@@ -264,5 +264,8 @@ internal fun amsStylePublicPlaylistCandidates(tag: String, market: String): List
         "trap" -> listOf("pl.9b1b842f97254ed6a8bcbcba73f48643")
         "drill" -> listOf("pl.7a9e72bd385a4b6aa46695159978c847")
         "alternative rock" -> listOf("pl.82f8a66b185f4e94a3aa7e6afd2f648b")
+        // Observed in Apple's CH/US public editorial catalog, NOT yet proven in BR.
+        // The BR detail must still certify identity, title, credit and type.
+        "drone" -> listOf("pl.0ce234a90e744532b0561dbbb7b21d4f")
         else -> emptyList()
     }

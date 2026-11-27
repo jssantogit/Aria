@@ -30,6 +30,20 @@ class CanonicalGenreEditorialDispatchTest {
         tag, target, ordered, mbTag, mbRows, appleRows, discogsRows,
     )
 
+    @Test fun missingAmsStyleUsesOnlyExplicitlyOrderedNativeFallback() {
+        val ams = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        for (tag in listOf("art pop","boom bap","ambient techno","drone")) {
+            fun dispatch(order: List<com.music.bitchord.data.providers.ProviderKey>,
+                source: UiState<List<HomeShelf>>) =
+                shouldDispatchCanonicalGenreSource(tag,mb,order,tag,emptyMb,
+                    emptyMap(),emptyMap(),mapOf(tag to source))
+            val miss = UiState.Success(emptyList<HomeShelf>())
+            assertTrue(dispatch(listOf(ams,mb),miss))
+            assertFalse(dispatch(listOf(ams),miss))
+            assertFalse(dispatch(listOf(ams,mb),UiState.Loading))
+        }
+    }
+
     @Test fun discogsAloneIsEligibleWithoutMbOrApple() {
         assertTrue(ready(discogs, listOf(discogs)))
         assertFalse(ready(mb, listOf(discogs)))

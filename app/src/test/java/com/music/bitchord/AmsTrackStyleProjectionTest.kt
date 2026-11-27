@@ -6,6 +6,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun droneEditorialCandidateNeverAdmitsDroneMetalOrForeignMarket() {
+        val candidate = AppleMusicWebItem("pl.0ce234a90e744532b0561dbbb7b21d4f",
+            AppleMusicWebKind.PLAYLIST,"br","O melhor do drone",artistName="Apple Music",playlistType="editorial")
+        assertTrue(amsVerifiedSearchedStylePlaylist(candidate,"drone","br"))
+        assertTrue(amsVerifiedSearchedStylePlaylist(candidate.copy(title="Best of Drone"),"drone","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(candidate.copy(title="Drone Metal: essenciais"),"drone","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(candidate.copy(storefront="ch"),"drone","br"))
+        assertFalse(amsVerifiedSearchedStylePlaylist(candidate.copy(playlistType="user-shared"),"drone","br"))
+        assertTrue(candidate.id in amsStylePublicPlaylistCandidates("drone","br"))
+        assertTrue(amsStylePublicPlaylistCandidates("drone","ch").isEmpty())
+    }
+
     @Test fun localizedPostStylesPreserveSpecificity() {
         assertTrue(appleMusicWebGenreNameMatches("Pós-punk","post-punk"))
         assertTrue(appleMusicWebGenreNameMatches("Pós-rock","post-rock"))
