@@ -4563,7 +4563,7 @@ private fun BitChordApp(
                             state = canonicalHomeState,
                             editorialArtwork = com.music.bitchord.ui.rememberDiscogsEditorialArtwork(
                                 viewModel.discogsNativeCatalog,
-                                active = selectedTab == TAB_HOME &&
+                                active = pageRouteKey == "$TAB_KEY$TAB_HOME" &&
                                     canonicalHomeEditorialSelection.provider == catalogDiscogs,
                                 surfaceKey = "home", state = canonicalHomeState,
                             ),
@@ -4650,7 +4650,8 @@ private fun BitChordApp(
                             state = canonicalGenreState,
                             editorialArtwork = com.music.bitchord.ui.rememberDiscogsEditorialArtwork(
                                 viewModel.discogsNativeCatalog,
-                                active = selectedTab == TAB_EXPLORE && genreDiscogsOwnsReleases &&
+                                active = pageRouteKey == "$TAB_KEY$TAB_EXPLORE" &&
+                                    genreDiscogsOwnsReleases &&
                                     activeCanonicalGenre?.tag == visibleGenre.tag,
                                 surfaceKey = "genre:${visibleGenre.tag}", state = canonicalGenreState,
                             ),
