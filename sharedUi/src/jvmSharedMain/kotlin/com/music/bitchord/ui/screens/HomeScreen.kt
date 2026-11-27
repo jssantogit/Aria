@@ -217,6 +217,16 @@ private fun EditorialShelfArtworkBadge(proof: EditorialShelfArtwork, modifier: M
     )
 }
 
+/** A late Coil success from an older card must never authorize a new badge. */
+internal fun editorialShelfArtworkLoaded(
+    proof: EditorialShelfArtwork,
+    loadedModel: Any?,
+): Boolean = loadedModel is String && (
+    loadedModel == proof.artworkUrl ||
+        loadedModel == com.music.bitchord.ui.components
+            .appleVerifiedCdnCoverFallbackUrl(proof.artworkUrl)
+    )
+
 /** Keep the official product badge coupled to an actually loaded cover.
  * If both CDN attempts fail, leave the honest native fallback without a badge.
  * Load state belongs to this exact card/proof, never the source ShelfItem. */
@@ -230,7 +240,8 @@ private fun EditorialShelfCardFrame(
     var loaded by remember(item.browseId, proof) { mutableStateOf(false) }
     Column(modifier) {
         content(if (proof == null) null else { state ->
-            loaded = state is AsyncImagePainter.State.Success
+            loaded = state is AsyncImagePainter.State.Success &&
+                editorialShelfArtworkLoaded(proof, state.result.request.data)
         })
         if (proof != null && loaded) {
             EditorialShelfArtworkBadge(proof, Modifier.padding(top = 4.dp))
