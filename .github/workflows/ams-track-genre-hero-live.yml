@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [allRegisteredStylesFromSongMetadata, officialEditorialArtworkFields]
+        method: [allRegisteredStylesFromSongMetadata, officialEditorialArtworkFields, officialPlaylistArtworkFields]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

@@ -59,6 +59,25 @@ internal fun amsStyleSongAlbumId(song: AppleMusicWebItem, market: String): Strin
     return fields.last().takeIf { song.albumId == null || song.albumId == it }
 }
 
+/** A matching track proves that its containing album has a matching track,
+ * not that every track on the album belongs to the style. */
+internal fun amsStyleTrackAlbumIds(songs: List<AppleMusicWebItem>, market: String, tag: String): List<String> =
+    if (tag !in amsEditorialStyleParents) emptyList() else songs.asSequence()
+        .filter { it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
+        .mapNotNull { amsStyleSongAlbumId(it,market) }.distinct().take(24).toList()
+
+internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: List<AppleMusicWebItem>): HomeShelf? {
+    val cards = ids.distinct().mapNotNull { id ->
+        val album = albums.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
+            it.id == id && it.title.isNotBlank() }.distinct().singleOrNull() ?: return@mapNotNull null
+        val route = AppleMusicWebNativeRoute.parse(album.scopedId) ?: return@mapNotNull null
+        ShelfItem(title=album.title,subtitle=album.artistName.orEmpty(),
+            thumbnailUrl=appleMusicWebArtworkUrl(album.artworkUrl),videoId=null,
+            browseId=route.browseId,appleStoreUrl=appleMusicWebVerifiedStoreUrl(album))
+    }
+    return cards.takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }
+}
+
 internal fun amsStylePlaylistAlbumShelf(
     playlist: AppleMusicWebPlaylist, market: String, albums: List<AppleMusicWebItem>,
 ): HomeShelf? {
@@ -389,7 +408,78 @@ internal class AppleMusicWebNativeCatalogSession(
             ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete chart"))
         }
 
+    /** Track evidence supplements curators and also works without a curator.
+     * Search permission is independent and optional; never promote a search
+     * keyword, broad parent label or foreign storefront into a style match. */
     suspend fun genre(tag: String, storefront: String, refresh: Boolean = false):
+        ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>> {
+        if (tag !in amsEditorialStyleParents) return curatedGenre(tag,storefront,refresh)
+        val gate = currentGate() ?: return ProviderCallResult.Denied
+        val searchTicket = gate.open(ProviderCapability.CATALOG_SEARCH,provider)
+        val curated = curatedGenre(tag,storefront,refresh)
+        if (curated == ProviderCallResult.Denied || curated == ProviderCallResult.Stale ||
+            curated is ProviderCallResult.Failed || searchTicket == null) return curated
+        if (currentGate() !== gate || !gate.accept(searchTicket)) return ProviderCallResult.Stale
+        val tracks = trackStyleShelf(tag,storefront)
+        if (currentGate() !== gate || !gate.accept(searchTicket) || tracks == ProviderCallResult.Stale)
+            return ProviderCallResult.Stale
+        if (tracks is ProviderCallResult.Failed &&
+            (tracks.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return tracks
+        val shelf = (tracks as? ProviderCallResult.Success)?.value ?: return curated
+        val outcome = (curated as? ProviderCallResult.Success)?.value ?: return curated
+        val page = when (outcome) {
+            is AppleMusicWebOutcome.Complete -> outcome.value
+            is AppleMusicWebOutcome.Partial -> outcome.value
+            is AppleMusicWebOutcome.Unavailable -> AmsEditorialPage(emptyList())
+        }
+        val seen = shelf.items.mapNotNull { it.browseId }.toSet()
+        // Keep independently tagged albums in a distinct rail, not recent releases.
+        val existing = page.shelves.map { rail ->
+            if (rail.title == "Álbuns das playlists") rail.copy(items=rail.items.filterNot { it.browseId in seen })
+            else rail
+        }.filter { it.items.isNotEmpty() }
+        val known = existing.flatMap { it.items }.mapNotNull { it.browseId }.toSet()
+        val filtered = shelf.copy(items=shelf.items.filterNot { it.browseId in known })
+        val merged = page.copy(shelves=listOfNotNull(filtered.takeIf { it.items.isNotEmpty() }) + existing)
+        return ProviderCallResult.Success(if (outcome is AppleMusicWebOutcome.Partial)
+            AppleMusicWebOutcome.Partial(merged,outcome.reason) else AppleMusicWebOutcome.Complete(merged))
+    }
+
+    private suspend fun trackStyleShelf(tag: String, storefront: String):
+        ProviderCallResult<HomeShelf?> = admitted(editorial) { gateway ->
+            val songs = mutableListOf<AppleMusicWebItem>()
+            var cursor: String? = null
+            val visited = hashSetOf<String>()
+            for (index in 1..2) {
+                when (val read = gateway.search(AppleMusicWebKind.SONG,tag,storefront,
+                    page=index,limit=25,continuation=cursor)) {
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    is ProviderCallResult.Failed -> return@admitted read
+                    is ProviderCallResult.Success -> {
+                        val page = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value
+                            ?: break
+                        songs += page.items
+                        val next = page.nextCursor ?: break
+                        if (!visited.add(next)) break
+                        cursor = next
+                    }
+                }
+            }
+            val ids = amsStyleTrackAlbumIds(songs,storefront,tag)
+            if (ids.isEmpty()) return@admitted ProviderCallResult.Success(null)
+            when (val read = gateway.linkedAlbumMetadata(ids,storefront)) {
+                ProviderCallResult.Denied -> ProviderCallResult.Denied
+                ProviderCallResult.Stale -> ProviderCallResult.Stale
+                is ProviderCallResult.Failed -> read
+                is ProviderCallResult.Success -> {
+                    val albums = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+                    ProviderCallResult.Success(amsStyleTrackAlbumShelf(ids,storefront,albums))
+                }
+            }
+        }
+
+    private suspend fun curatedGenre(tag: String, storefront: String, refresh: Boolean):
         ProviderCallResult<AppleMusicWebOutcome<AmsEditorialPage>> =
         admitted(editorial) { gateway ->
             val result = gateway.curatedGenreLanding(tag, storefront, refresh)

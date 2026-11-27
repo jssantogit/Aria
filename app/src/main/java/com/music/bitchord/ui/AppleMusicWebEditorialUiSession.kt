@@ -109,7 +109,10 @@ internal fun amsGenreWithPlaylistContinuation(
 
 internal fun canonicalGenreShowsAmsStylePlaylist(state: UiState<List<HomeShelf>>,tag: String?): Boolean =
     tag != null && tag in amsEditorialStyleParents && (state as? UiState.Success)?.data.orEmpty().any { shelf ->
-        shelf.items.any { AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST }
+        shelf.items.any { card ->
+            val kind = AppleMusicWebNativeRoute.parse(card.browseId)?.kind
+            kind == AppleMusicWebKind.PLAYLIST || (shelf.title == "Álbuns do estilo" && kind == AppleMusicWebKind.ALBUM)
+        }
     }
 
 internal fun canonicalGenreShowsAmsReleases(state: UiState<List<HomeShelf>>): Boolean =
@@ -256,9 +259,14 @@ internal class AppleMusicWebEditorialUiSession(
     private fun load(tag: String?, force: Boolean) {
         purgeRevoked()
         val owner = gate() ?: return
-        val lease = ProviderReadLease.acquire(owner, listOf(
-            ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB,
-        )) ?: return
+        val key = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val requirements = buildList {
+            add(ProviderCapability.EDITORIAL_DISCOGRAPHY to key)
+            if (tag != null && tag in amsEditorialStyleParents &&
+                owner.open(ProviderCapability.CATALOG_SEARCH,key) != null)
+                add(ProviderCapability.CATALOG_SEARCH to key)
+        }
+        val lease = ProviderReadLease.acquire(owner, requirements) ?: return
         val started = now()
         val prior = reads[tag]
         if (!force && prior != null &&

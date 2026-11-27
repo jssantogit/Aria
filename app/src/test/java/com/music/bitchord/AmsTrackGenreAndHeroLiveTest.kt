@@ -43,7 +43,8 @@ class AmsTrackGenreAndHeroLiveTest {
                 withTimeout(120_000) { catalog.linkedAlbumMetadata(batch,"br") }
             }.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == "br" && it.id in ids }
                 .distinctBy { it.id }
-            println("AMS_TRACK_GENRE|tag=$tag|songs=${songs.size}|exact=${exact.size}|links=${ids.size}|albums=${albums.size}")
+            val labels = songs.flatMap { it.genreNames }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(12)
+            println("AMS_TRACK_GENRE|tag=$tag|songs=${songs.size}|exact=${exact.size}|links=${ids.size}|albums=${albums.size}|labels=${labels.joinToString { it.key + ":" + it.value }}")
             if (albums.size < 6) gaps += tag
         }
         println("AMS_TRACK_GENRE|scope=summary|styles=${styles.size}|gaps=${gaps.size}")
@@ -70,13 +71,17 @@ class AmsTrackGenreAndHeroLiveTest {
 
     @Test fun officialEditorialArtworkFields(): Unit = runBlocking {
         val transport = transport()
-        val catalog = AppleMusicWebCatalog(transport)
-        val artist = withTimeout(120_000) { catalog.search(AppleMusicWebKind.ARTIST,"ILLIT","br") }
-            .items.filter { it.title.equals("ILLIT",true) }.distinctBy { it.id }.single()
-        val chart = requireNotNull(resolveAppleMusicWebDailyChart(catalog.dailyChartDirectory(),"br"))
+        // Public BR artist identity verified at music.apple.com/br/artist/illit/1734551937.
+        val artistId = "1734551937"
         inventory(withTimeout(120_000) { transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
-            "/v1/catalog/br/artists/${artist.id}",mapOf("extend" to "editorialArtwork")) },
-            artist.id,"artists","illit")
+            "/v1/catalog/br/artists/$artistId",mapOf("extend" to "editorialArtwork")) },
+            artistId,"artists","illit")
+    }
+
+    @Test fun officialPlaylistArtworkFields(): Unit = runBlocking {
+        val transport = transport()
+        val catalog = AppleMusicWebCatalog(transport)
+        val chart = requireNotNull(resolveAppleMusicWebDailyChart(catalog.dailyChartDirectory(),"br"))
         inventory(withTimeout(120_000) { transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
             "/v1/catalog/br/playlists/${chart.id}",mapOf("include" to "tracks","extend" to "editorialArtwork")) },
             chart.id,"playlists","top100_br")
