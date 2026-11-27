@@ -21,12 +21,20 @@ class AmsTrackStyleProjectionTest {
         val result = amsMergeStyleMetadataShelf(
             com.music.bitchord.data.model.HomeShelf("Álbuns do estilo",listOf(verified,conflict)),
             rows,"br")
-        assertEquals(listOf("Álbuns do estilo","Lançamentos","Álbuns das playlists"),result.map { it.title })
-        assertEquals(listOf(verified,curated,playlist),result.flatMap { it.items })
-        assertEquals(rows,amsMergeStyleMetadataShelf(null,rows,"br"))
+        assertEquals(listOf("Álbuns do estilo","Lançamentos","Álbuns das playlists"),result.shelves.map { it.title })
+        assertEquals(listOf(verified,curated,playlist),result.shelves.flatMap { it.items })
+        assertEquals(setOf(conflict.browseId),result.rejectedIds)
+        assertEquals(setOf(verified.browseId,curated.browseId,playlist.browseId,conflict.browseId),result.excludedIds)
+        assertEquals(rows,amsMergeStyleMetadataShelf(null,rows,"br").shelves)
         val foreign = verified.copy(browseId="apple_music_web:us:album:20")
         assertEquals(rows,amsMergeStyleMetadataShelf(
-            com.music.bitchord.data.model.HomeShelf("Álbuns do estilo",listOf(foreign)),rows,"br"))
+            com.music.bitchord.data.model.HomeShelf("Álbuns do estilo",listOf(foreign)),rows,"br").shelves)
+        val allRejected = amsMergeStyleMetadataShelf(
+            com.music.bitchord.data.model.HomeShelf("Álbuns do estilo",listOf(conflict)),
+            listOf(com.music.bitchord.data.model.HomeShelf("Lançamentos",listOf(conflict.copy(title="Album B")))),"br")
+        assertTrue(allRejected.shelves.isEmpty())
+        assertEquals(setOf(conflict.browseId),allRejected.excludedIds)
+        assertEquals(allRejected.rejectedIds,allRejected.excludedIds)
     }
 
     @Test fun rawTrackCandidatesDoNotExhaustDiscoveryBeforeAlbumAdmission() {

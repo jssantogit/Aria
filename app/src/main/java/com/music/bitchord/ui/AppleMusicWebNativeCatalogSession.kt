@@ -150,25 +150,34 @@ internal fun amsStylePlaylistAlbumShelf(
     amsStyleTrackAlbumShelf(amsStylePlaylistAlbumIds(playlist,market),market,albums)
         ?.copy(title="Álbuns das playlists")
 
+internal data class AmsStyleMetadataMerge(
+    val shelves: List<HomeShelf>,
+    val rejectedIds: Set<String>,
+) {
+    /** Rejected identities remain excluded when another producer runs. */
+    val excludedIds: Set<String> get() = rejectedIds +
+        shelves.flatMap { it.items }.mapNotNull { it.browseId }
+}
+
 /** Preserve the strongest available style evidence. A curated release must
  * not suppress the same album's independently proven metadata membership.
  * Contradictory album identity across sources is not resolved by ordering. */
 internal fun amsMergeStyleMetadataShelf(
     metadata: HomeShelf?, curated: List<HomeShelf>, market: String,
-): List<HomeShelf> {
+): AmsStyleMetadataMerge {
     val candidates = metadata?.items.orEmpty().filter { card ->
         val route = AppleMusicWebNativeRoute.parse(card.browseId)
         route?.kind == AppleMusicWebKind.ALBUM && route.storefront == market &&
             card.videoId == null && card.title.isNotBlank()
     }.groupBy { it.browseId }
     val existing = curated.flatMap { it.items }.groupBy { it.browseId }
-    val conflicted = hashSetOf<String?>()
+    val conflicted = hashSetOf<String>()
     val verified = candidates.values.mapNotNull { rows ->
         val first = rows.first()
         val observations = rows + existing[first.browseId].orEmpty()
         if (observations.map { it.title.trim() }.distinct().size > 1 ||
             observations.mapNotNull { it.subtitle.trim().takeIf(String::isNotEmpty) }.distinct().size > 1) {
-            conflicted += first.browseId
+            first.browseId?.let { conflicted += it }
             return@mapNotNull null
         }
         first.copy(
@@ -183,7 +192,10 @@ internal fun amsMergeStyleMetadataShelf(
     val remainder = curated.map { shelf ->
         shelf.copy(items=shelf.items.filterNot { it.browseId in occupied })
     }.filter { it.items.isNotEmpty() }
-    return listOfNotNull(verified.takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }) + remainder
+    return AmsStyleMetadataMerge(
+        listOfNotNull(verified.takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }) + remainder,
+        conflicted.toSet(),
+    )
 }
 
 /** Prioritize explicit style titles before generic room membership. Keep
@@ -561,17 +573,20 @@ internal class AppleMusicWebNativeCatalogSession(
             is AppleMusicWebOutcome.Partial -> outcome.value
             is AppleMusicWebOutcome.Unavailable -> AmsEditorialPage(emptyList())
         }
-        var rails = amsMergeStyleMetadataShelf(shelf,page.shelves,storefront)
+        val composition = amsMergeStyleMetadataShelf(shelf,page.shelves,storefront)
+        var rails = composition.shelves
         val albums = rails.flatMap { it.items }.mapNotNull { AppleMusicWebNativeRoute.parse(it.browseId) }
             .filter { it.kind == AppleMusicWebKind.ALBUM }.distinct().size
         if (albums < 6) {
-            val fallback = searchedStylePlaylists(tag,storefront,rails.flatMap { it.items }.mapNotNull { it.browseId }.toSet())
+            val fallback = searchedStylePlaylists(tag,storefront,composition.excludedIds)
             if (!editorialCurrent() || !gate.accept(searchTicket) || fallback == ProviderCallResult.Stale)
                 return ProviderCallResult.Stale
             if (fallback == ProviderCallResult.Denied) return ProviderCallResult.Denied
             if (fallback is ProviderCallResult.Failed &&
                 (fallback.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return fallback
-            for (extra in (fallback as? ProviderCallResult.Success)?.value.orEmpty()) {
+            for (observed in (fallback as? ProviderCallResult.Success)?.value.orEmpty()) {
+                val extra = observed.copy(items=observed.items.filterNot { it.browseId in composition.rejectedIds })
+                if (extra.items.isEmpty()) continue
                 val index = rails.indexOfFirst { it.title == extra.title }
                 rails = if (index < 0) rails + extra else rails.mapIndexed { i,rail ->
                     if (i == index) rail.copy(items=(rail.items + extra.items).distinctBy { it.browseId }) else rail
@@ -579,7 +594,10 @@ internal class AppleMusicWebNativeCatalogSession(
             }
         }
         if (!editorialCurrent() || !gate.accept(searchTicket)) return ProviderCallResult.Stale
-        if (rails.isEmpty()) return curated
+        // Never restore the pre-validation snapshot if all candidates conflicted.
+        if (rails.isEmpty() && composition.rejectedIds.isEmpty()) return curated
+        if (rails.isEmpty() && composition.rejectedIds.isNotEmpty())
+            return ProviderCallResult.Success(AppleMusicWebOutcome.Unavailable("Conflicting style album identities"))
         val merged = page.copy(shelves=rails)
         return ProviderCallResult.Success(if (outcome is AppleMusicWebOutcome.Partial)
             AppleMusicWebOutcome.Partial(merged,outcome.reason) else AppleMusicWebOutcome.Complete(merged))
