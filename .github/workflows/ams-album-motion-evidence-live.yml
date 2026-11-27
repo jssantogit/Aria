@@ -1,0 +1,44 @@
+name: AMS · exact album motion evidence
+on:
+  push:
+    branches: [audit/ams-album-motion-evidence-20261127]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AMS_TRACK_HERO_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Exact album extension and aggregate evidence
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsTrackGenreAndHeroLiveTest.exactAlbumMotionFieldInventory'
+      - name: Evidence report
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=list(Path('app/build/test-results/testDevDebugUnitTest').glob('*AmsTrackGenreAndHeroLiveTest.xml'))
+          assert len(files)==1
+          root=ET.parse(files[0]).getroot()
+          assert int(root.attrib['tests'])==1 and int(root.attrib['skipped'])==0
+          for node in root.iter('system-out'):
+              for line in (node.text or '').splitlines():
+                  if line.startswith('AMS_HERO|'): print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-exact-album-motion-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          retention-days: 7

@@ -247,4 +247,51 @@ class AmsTrackGenreAndHeroLiveTest {
         }
     }
 
+    /** Public BR album pages are exact fixtures; identically titled editions
+     * remain separate IDs. Distinguish absent data from an unsupported field
+     * shape or a failed aggregate extension request. */
+    @Test fun exactAlbumMotionFieldInventory(): Unit = runBlocking {
+        val transport = transport()
+        val catalog = AppleMusicWebCatalog(transport)
+        val samples = listOf(
+            Triple("1734500886","SUPER REAL ME - EP","ILLIT"),
+            Triple("1645937249","Midnights","Taylor Swift"),
+            Triple("1645937456","Midnights","Taylor Swift"),
+            Triple("1739659134","HIT ME HARD AND SOFT","Billie Eilish"),
+        )
+        var verified = 0
+        for ((id,title,artist) in samples) {
+            val raw = withTimeout(120_000) {
+                transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                    "/v1/catalog/br/albums/$id",mapOf("extend" to "editorialVideo"))
+            }
+            val resource = Json.parseToJsonElement(raw).jsonObject["data"]?.jsonArray?.singleOrNull()?.jsonObject
+                ?: error("Missing exact album $id")
+            assertEquals(id,resource["id"]?.jsonPrimitive?.content)
+            assertEquals("albums",resource["type"]?.jsonPrimitive?.content)
+            val attr = resource["attributes"]?.jsonObject ?: error("Missing attributes")
+            assertEquals(title,attr["name"]?.jsonPrimitive?.content)
+            assertEquals(artist,attr["artistName"]?.jsonPrimitive?.content)
+            val video = attr["editorialVideo"] as? JsonObject
+            val fields = video?.entries.orEmpty().joinToString(",") { (key,value) ->
+                key + ":" + (value as? JsonObject)?.keys.orEmpty().sorted().joinToString("+")
+            }
+            val direct = appleMusicWebAlbumMotion(video,false)?.first
+            val album = when(val outcome = withTimeout(120_000) { catalog.albumOutcome(id,"br") }) {
+                is AppleMusicWebOutcome.Complete -> outcome.value
+                is AppleMusicWebOutcome.Partial -> outcome.value
+                else -> error("Exact album unavailable $id")
+            }
+            assertEquals(id,album.identity.id)
+            assertEquals("br",album.identity.storefront)
+            val aggregate = album.identity.editorialMotionUrl
+            if (direct != null) assertMotionBytes(direct)
+            if (aggregate != null) assertMotionBytes(aggregate)
+            if (direct != null || aggregate != null) verified++
+            println("AMS_HERO|scope=album_inventory|id=$id|title=$title|fields=$fields|direct=${direct != null}|aggregate=${aggregate != null}|hero=${album.identity.editorialTallHeroUrl != null}")
+        }
+        println("AMS_HERO|scope=album_inventory_summary|verified=$verified|sample=${samples.size}")
+        assertTrue("No exact BR album motion verified",verified > 0)
+    }
+
 }
