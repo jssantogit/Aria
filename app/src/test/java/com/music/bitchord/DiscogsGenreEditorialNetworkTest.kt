@@ -460,4 +460,61 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals(DiscogsEditorialResult.Throttled(15),
             source.discover(DiscogsEditorialQuery("K-Pop", true)))
     }
+    @Test fun shelfArtworkReusesHydratedEditionOnlyWithinCurrentTokenPolicyAndFreshness() = runBlocking {
+        val provider = BuiltInProviderKeys.DISCOGS
+        val caps = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(provider, caps, ProviderReadiness.READY)),
+            choices = caps.associateWith { listOf(ProviderChoice(provider, enabled, 0)) },
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        var token = "A".repeat(32)
+        var now = 10_000L
+        var reads = 0
+        val record = verifiedEdition(77L).copy(
+            barcodes = listOf("8801234567893"),
+            formats = listOf("File", "FLAC", "Album"),
+        )
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { token },
+            admission = RateLimitedProviderTransport { gate },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            clockMs = { now },
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int): DiscogsHttpResponse {
+                    reads++
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":77,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    reads++
+                    return DiscogsLookupResult.FoundMaster(master(id, "K-Pop"))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    reads++
+                    return DiscogsLookupResult.Found(record)
+                }
+            },
+        )
+        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertTrue(source.discover(DiscogsEditorialQuery("K-Pop", true), maxReleases = 1)
+            is DiscogsEditorialResult.Verified)
+        assertEquals(3, reads)
+        assertEquals(record, source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(77L))
+        token = "B".repeat(32)
+        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        token = "A".repeat(32)
+        gate.replace(policy(false))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        gate.replace(policy(true))
+        now += 120_001L
+        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertEquals(3, reads)
+    }
+
 }
