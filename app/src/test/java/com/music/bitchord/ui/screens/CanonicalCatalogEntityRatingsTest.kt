@@ -61,4 +61,20 @@ class CanonicalCatalogEntityRatingsTest {
         }
     }
 
+    @Test fun nativeProviderMenusUseTheirOwnVerifiedSourceAndNeverImportMbRecordings() {
+        val discogs = canonicalCatalogEntityMenuSpec("discogs:release:123")!!
+        assertEquals("https://www.discogs.com/release/123", discogs.sourceUrl)
+        assertEquals("Abrir no Discogs", discogs.sourceLabel)
+        assertNull(discogs.playlistKind)
+        val itunes = canonicalCatalogEntityMenuSpec("itunes:br:album:123")!!
+        assertNull(itunes.sourceUrl)
+        assertNull(itunes.playlistKind)
+        assertEquals("Abrir no Apple Music", itunes.sourceLabel)
+        assertNull(canonicalCatalogEntityMenuSpec("itunes:br:album:123",
+            "https://example.com/album/123")!!.sourceUrl)
+        val mb = canonicalCatalogEntityMenuSpec("catalog:RELEASE:$id")!!
+        assertEquals("https://musicbrainz.org/release/$id", mb.sourceUrl)
+        assertEquals(CanonicalSearchKind.RELEASE, mb.playlistKind)
+    }
+
 }
