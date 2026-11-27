@@ -56,6 +56,8 @@ jobs:
             --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest' \
             --tests 'com.music.bitchord.DiscogsEditorialTaxonomyTest' \
             --tests 'com.music.bitchord.DiscogsGenreEditorialNetworkTest' \
+            --tests 'com.music.bitchord.DiscogsNativeArtistSearchTest' \
+            --tests 'com.music.bitchord.DiscogsNativeReleaseSearchTest' \
             --tests 'com.music.bitchord.DiscogsNativeCatalogPresentationTest'
       - name: Shared UI search contracts
         run: |
