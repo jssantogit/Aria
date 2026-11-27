@@ -32,7 +32,9 @@ jobs:
             --tests 'com.music.bitchord.CanonicalCatalogSearchPagingBoundaryTest' \
             --tests 'com.music.bitchord.CanonicalArtistPublicTopRowsTest' \
             --tests 'com.music.bitchord.CanonicalHomeEditorialDispatchTest' \
-            --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest'
+            --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest' \
+            --tests 'com.music.bitchord.DiscogsEditorialTaxonomyTest' \
+            --tests 'com.music.bitchord.DiscogsNativeCatalogPresentationTest'
       - name: Shared UI search contracts
         run: |
           ./gradlew --no-daemon --build-cache :sharedUi:jvmTest \
