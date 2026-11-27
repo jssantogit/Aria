@@ -303,4 +303,22 @@ class DiscogsNativeCatalogPresentationTest {
         assertTrue((page.page.songs as UiState.Success).data.isEmpty())
         assertEquals("https://www.discogs.com/release/456", page.attributionUrl)
     }
+    @Test fun albumCreditAndRelatedHeadingHideDisambiguationWithoutMergingIdentities() {
+        val selected = DiscogsNativeArtistSearchRow(artist.artistId, "Illit (2)")
+        val record = DiscogsRecord(
+            link = DiscogsLink(DiscogsKind.RELEASE, 456L),
+            title = "Edition", artistNames = listOf(selected.name),
+            artistIds = listOf(selected.artistId), country = "KR", year = 2024,
+            labels = emptyList(), barcodes = emptyList(),
+            formats = listOf("EP"), tracklist = emptyList(), unofficial = false,
+        )
+        val related = listOf(release(601L, "Another work", "EP"))
+        val page = discogsReleasePage(selected, record, related)
+        assertEquals("Illit · 2024", page.page.subtitle)
+        assertEquals("Illit", page.albumArtistDisplayName)
+        assertEquals("discogs:artist:${selected.artistId}", page.albumArtistBrowseId)
+        assertEquals("Mais de Illit", page.page.sections.single().title)
+        assertNull(discogsReleasePage("Illit", record).albumArtistBrowseId)
+    }
+
 }
