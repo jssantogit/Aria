@@ -47,3 +47,40 @@ internal class DiscogsArtworkBatchReport {
         }
     }
 }
+
+/** A snapshot of exact visible release keys, deduplicated within one surface.
+ * Publication is not a Coil load or GPU render and must not be called either. */
+internal fun discogsArtworkCoverageMetadata(
+    home: Boolean,
+    visibleReleaseCount: Int,
+    promotedReleaseCount: Int,
+    attemptedReleaseCount: Int,
+    budgetLimited: Boolean,
+): Map<String, String> = mapOf(
+    "surface" to if (home) "home" else "genre",
+    "distinctVisibleReleases" to visibleReleaseCount.coerceAtLeast(0).toString(),
+    "distinctPromotedReleases" to promotedReleaseCount
+        .coerceIn(0, visibleReleaseCount.coerceAtLeast(0)).toString(),
+    "attemptedInEpoch" to attemptedReleaseCount.coerceIn(0, 80).toString(),
+    "budgetLimited" to budgetLimited.toString(),
+    "scope" to "published_promotions_not_rendered_images",
+)
+
+internal fun recordDiscogsArtworkCoverage(
+    home: Boolean,
+    visibleReleaseCount: Int,
+    promotedReleaseCount: Int,
+    attemptedReleaseCount: Int,
+    budgetLimited: Boolean,
+) {
+    runCatching {
+        Diagnostics.event(
+            category = DiagnosticCategory.CATALOG,
+            name = "discogs_editorial_artwork_coverage_v1",
+            metadata = discogsArtworkCoverageMetadata(
+                home, visibleReleaseCount, promotedReleaseCount,
+                attemptedReleaseCount, budgetLimited,
+            ),
+        )
+    }
+}
