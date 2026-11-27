@@ -143,9 +143,12 @@ internal fun CanonicalProviderDetailHost(
     // One bounded continuation per deliberate scroll to the end. Never
     // eagerly drain the entire Apple catalog merely because a short first
     // page happens to fit the screen; navigation cancels this collector.
-    val appleArtist = if (!isDiscogs) artistState?.data?.takeIf {
+    val appleArtist = if (!isDiscogs && appleReadAllowed) artistState?.data?.takeIf {
         it.artist.browseId == routeKey
     } else null
+    val appleAlbum = if (!isDiscogs && appleReadAllowed)
+        (appleAlbumDetail as? UiState.Success)?.data?.takeIf { it.album.browseId == routeKey }
+    else null
     val canContinueApple = appleArtist?.hasMore == true &&
         appleArtist.loadingMore == false && !searching
     LaunchedEffect(routeKey, canContinueApple, appleArtist?.albums?.size) {
@@ -240,9 +243,7 @@ internal fun CanonicalProviderDetailHost(
             } else {
                 val matched = appleNativeShelfEntry(
                     item.browseId,
-                    artistState?.data?.albums.orEmpty() +
-                        (appleAlbumDetail as? UiState.Success)
-                            ?.data?.relatedAlbums.orEmpty(),
+                    appleArtist?.albums.orEmpty() + appleAlbum?.relatedAlbums.orEmpty(),
                 )
                 if (matched != null) {
                     onActiveShelfChange(null)
@@ -273,7 +274,7 @@ internal fun CanonicalProviderDetailHost(
             } else if (routeKey.startsWith("itunes:") &&
                 routeKey.contains(":artist:")
             ) {
-                artistState?.data?.let { artistPage ->
+                appleArtist?.let { artistPage ->
                     item(key = "apple:source:paging") {
                         AppleArtistCatalogExtras(
                             state = artistPage,
