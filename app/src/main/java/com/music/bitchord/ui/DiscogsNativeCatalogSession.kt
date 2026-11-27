@@ -73,6 +73,7 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
     resolve: suspend (String) -> com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork?,
     onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
     eligible: suspend (String) -> Boolean = { true },
+    onAttempt: (String) -> Unit = {},
 ) {
     var attempts = 0
     val candidates = browseIds.asSequence()
@@ -83,6 +84,7 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
         if (!eligible(id)) continue
         if (!stillCurrent()) return
         attempts++
+        onAttempt(id)
         val proof = try {
             resolve(id)
         } catch (cancelled: CancellationException) {
@@ -217,6 +219,13 @@ internal class DiscogsNativeCatalogSession(
         com.music.bitchord.data.catalog.metadata.DiscogsAppleArtworkResolver()
     }
 
+    private val editorialArtworkDimensions by lazy {
+        com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(
+            persistence = com.music.bitchord.data.catalog.metadata
+                .AndroidAppleArtworkProbePersistence(appContext),
+        )
+    }
+
     /** Optional artwork for a card whose exact release was already verified
      * by this session's editorial adapter. No extra Discogs hydration. */
     internal suspend fun resolveEditorialArtwork(browseId: String):
@@ -232,9 +241,14 @@ internal class DiscogsNativeCatalogSession(
             val proof = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
                 editorialArtworkResolver.resolve(evidence)
             } ?: return@withContext null
-            // A slow Apple request must not extend the source evidence TTL or
-            // publish after the Discogs credential/edition has changed.
-            proof.takeIf {
+            if (!authorization.isCurrent() ||
+                editorialClient.cachedArtworkEvidenceForRelease(releaseId) != evidence
+            ) return@withContext null
+            val upgraded = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                editorialArtworkDimensions.upgrade(proof.artworkUrl, 600)
+            }
+            // Neither the lookup nor the CDN probe extends the evidence TTL.
+            proof.copy(artworkUrl = upgraded ?: proof.artworkUrl).takeIf {
                 authorization.isCurrent() && it.discogsReleaseId == releaseId &&
                     editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
             }
@@ -249,6 +263,7 @@ internal class DiscogsNativeCatalogSession(
         browseIds: List<String>,
         stillCurrent: () -> Boolean,
         onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+        onAttempt: (String) -> Unit = {},
     ) = resolveDiscogsEditorialArtworkBatch(
         browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
         eligible = { id ->
@@ -258,6 +273,7 @@ internal class DiscogsNativeCatalogSession(
                 } == true
             }
         },
+        onAttempt = onAttempt,
     )
 
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
