@@ -123,7 +123,7 @@ internal fun CanonicalProviderDetailHost(
         if (artworkRecord == null || artTicket == null || detailTicket == null)
             return@LaunchedEffect
         fun current() = ProviderRuntime.gateOrNull() === gate &&
-            gate?.accept(artTicket) == true && gate.accept(detailTicket)
+            gate != null && gate.accept(artTicket) && gate.accept(detailTicket)
         coverProof = try {
             withContext(Dispatchers.IO) {
                 val proof = withTimeoutOrNull(12_000L) {
@@ -142,7 +142,7 @@ internal fun CanonicalProviderDetailHost(
     val verifiedCover = coverProof?.takeIf {
         artTicket != null && detailTicket != null &&
             ProviderRuntime.gateOrNull() === gate &&
-            gate?.accept(artTicket) == true && gate.accept(detailTicket) &&
+            gate != null && gate.accept(artTicket) && gate.accept(detailTicket) &&
             artworkRecord?.link?.id == it.discogsReleaseId
     }
     val page = discogsPage?.page?.let {
@@ -165,9 +165,6 @@ internal fun CanonicalProviderDetailHost(
     val appleArtist = if (!isDiscogs && appleReadAllowed) artistState?.data?.takeIf {
         it.artist.browseId == routeKey
     } else null
-    val appleAlbum = if (!isDiscogs && appleReadAllowed)
-        (appleAlbumDetail as? UiState.Success)?.data?.takeIf { it.album.browseId == routeKey }
-    else null
     val canContinueApple = appleArtist?.hasMore == true &&
         appleArtist.loadingMore == false && !searching
     LaunchedEffect(routeKey, canContinueApple, appleArtist?.albums?.size) {
@@ -260,9 +257,9 @@ internal fun CanonicalProviderDetailHost(
                         viewModel.discogsNativeCatalog.openRelease(releaseId)
                     }
             } else {
-                val matched = appleNativeShelfEntry(
-                    item.browseId,
-                    appleArtist?.albums.orEmpty() + appleAlbum?.relatedAlbums.orEmpty(),
+                val matched = appleNativeShelfEntryForRoute(
+                    routeKey, item.browseId, appleReadAllowed,
+                    artistState?.data, (appleAlbumDetail as? UiState.Success)?.data,
                 )
                 if (matched != null) {
                     onActiveShelfChange(null)
