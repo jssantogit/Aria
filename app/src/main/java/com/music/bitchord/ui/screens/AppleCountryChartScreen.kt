@@ -193,3 +193,32 @@ internal fun AppleCountryHomeRoute(
         )
     }
 }
+
+/** Only data adaptation: use the Library's existing grid and the root's native
+ * floating toolbar. No nested toolbar, external-open-only row or fake playlist. */
+@Composable
+internal fun AmsAlbumChartCollectionPage(
+    state: UiState<AppleCountryAlbumChart>,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
+    contentPadding: PaddingValues,
+    onRetry: () -> Unit,
+    onItemClick: (com.music.bitchord.data.model.ShelfItem) -> Unit,
+    onItemLongPress: (com.music.bitchord.data.model.ShelfItem) -> Unit,
+) {
+    val collection = (state as? UiState.Success)?.data?.let { com.music.bitchord.ui.projectAmsAlbumChartCollection(it) }
+    if (collection != null) {
+        LibraryGridPage(shelf=collection.shelf,gridState=gridState,
+            onItemClick=onItemClick,onItemLongPress=onItemLongPress,contentPadding=contentPadding,
+            rankByBrowseId=collection.ranks)
+    } else {
+        Column(Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
+            horizontalAlignment=Alignment.CenterHorizontally) {
+            if (state is UiState.Loading) NativeLoadingSpinner()
+            else {
+                Text((state as? UiState.Error)?.message ?: "Não foi possível verificar este ranking.")
+                Spacer(Modifier.size(14.dp))
+                Button(onClick=onRetry) { Text("Tentar novamente") }
+            }
+        }
+    }
+}

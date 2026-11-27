@@ -475,6 +475,7 @@ fun LibraryGridPage(
     onItemLongPress: (ShelfItem) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    rankByBrowseId: Map<String,Int> = emptyMap(),
     onNewPlaylist: (() -> Unit)? = null,
 ) {
     // Re-read live rather than trusting [shelf] to already be sorted: this page
@@ -486,7 +487,7 @@ fun LibraryGridPage(
     // Pinning wins over the default order, but an explicit sort is a stronger,
     // more deliberate signal than a pin and is left to reorder the whole grid,
     // pinned cards included.
-    val sortedShelf = shelf.pinnedFirst(pinnedPlaylists).sortedForLibrary(librarySort)
+    val sortedShelf = if (rankByBrowseId.isNotEmpty()) shelf else shelf.pinnedFirst(pinnedPlaylists).sortedForLibrary(librarySort)
     BoxWithConstraints(modifier.fillMaxSize()) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
         LazyVerticalGrid(
@@ -509,8 +510,9 @@ fun LibraryGridPage(
                 }
             }
             items(sortedShelf.items, key = { it.browseId ?: it.title }) { item ->
+                val rank = rankByBrowseId[item.browseId]
                 ShelfCard(
-                    item = item,
+                    item = if (rank == null) item else item.copy(title = "$rank. ${item.title}"),
                     onClick = { onItemClick(item) },
                     onLongPress = { onItemLongPress(item) },
                     modifier = Modifier.fillMaxWidth(),

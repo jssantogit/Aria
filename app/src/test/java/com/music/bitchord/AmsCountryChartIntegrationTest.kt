@@ -39,6 +39,20 @@ class AmsCountryChartIntegrationTest {
         assertEquals(album.scopedId,albums.chart.albums.single().albumBrowseId)
     }
 
+    @Test fun albumChartCollectionKeepsRankGapsAndExactCards() {
+        val first = song.copy(kind=AppleMusicWebKind.ALBUM,storeUrl="https://music.apple.com/br/album/album/1")
+        val invalid = first.copy(id="2",storeUrl="https://music.apple.com/us/album/album/2")
+        val third = first.copy(id="3",title="Third",storeUrl="https://music.apple.com/br/album/album/3")
+        val source = (projectAmsCountryChart(territory,true,listOf(first,invalid,third),123L) as AmsCountryChartResult.Albums).chart
+        val collection = projectAmsAlbumChartCollection(source)!!
+        assertEquals(listOf(first.scopedId,third.scopedId),collection.shelf.items.map { it.browseId })
+        assertEquals(listOf(1,3),collection.shelf.items.map { collection.ranks[it.browseId] })
+        assertEquals(listOf("Song","Third"),collection.shelf.items.map { it.title })
+        assertEquals(listOf("Artist","Artist"),collection.shelf.items.map { it.subtitle })
+        assertNull(projectAmsAlbumChartCollection(source.copy(albums=source.albums.reversed())))
+        assertNull(projectAmsAlbumChartCollection(source.copy(albums=listOf(source.albums.first().copy(nativeBrowseId="itunes:br:album:1")))))
+    }
+
     @Test fun providerPriorityAndRouteDoNotAliasItunes() {
         val gate = ProviderPolicyGate(policy(ams,apple))
         assertEquals(ams,preferredAppleChartProvider(gate))

@@ -38,7 +38,7 @@ internal fun projectAmsCountryChart(territory: AppleChartTerritory, albums: Bool
             val url = appleMusicWebVerifiedStoreUrl(item) ?: return@mapIndexedNotNull null
             val credit = item.artistName?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
             if (item.title.isBlank()) return@mapIndexedNotNull null
-            AppleChartAlbum(index+1,id,territory.code,item.title,credit,art(item),url,item.scopedId)
+            AppleChartAlbum(index+1,id,territory.code,item.title,credit,appleMusicWebArtworkUrl(item.artworkUrl,600),url,item.scopedId)
         }
         return projected.takeIf { it.isNotEmpty() }?.let {
             AmsCountryChartResult.Albums(AppleCountryAlbumChart(territory,it,fetchedAt,rows.size))
@@ -70,7 +70,14 @@ internal class AmsCountryChartController(
     private val mutable = MutableStateFlow<Map<AmsCountryChartKey,UiState<AmsCountryChartResult>>>(emptyMap())
     val snapshots = mutable.asStateFlow()
     fun isCurrent(key: AmsCountryChartKey): Boolean =
-        reads[key]?.let { it.owner === gate() && it.lease.isCurrent() } == true
+        preferredAppleChartProvider(gate()) == BuiltInProviderKeys.APPLE_MUSIC_WEB &&
+            reads[key]?.let { it.owner === gate() && it.lease.isCurrent() } == true
+    fun containsAlbum(country: String, card: ShelfItem): Boolean {
+        val key = AmsCountryChartKey(country,true)
+        if (!isCurrent(key)) return false
+        val chart = ((snapshots.value[key] as? UiState.Success)?.data as? AmsCountryChartResult.Albums)?.chart ?: return false
+        return projectAmsAlbumChartCollection(chart)?.shelf?.items?.contains(card) == true
+    }
     fun purgeRevoked() {
         val revoked = reads.keys.filterNot(::isCurrent)
         for (key in revoked) {
@@ -115,6 +122,37 @@ internal class AmsCountryChartController(
         job.invokeOnCompletion { unregister() }
         job.start()
     }
+}
+
+/** A chart is an ordered collection of albums, not an invented playlist/album.
+ * Presentation ranks stay separate from the exact source-owned card metadata. */
+internal data class AmsAlbumChartCollection(
+    val shelf: HomeShelf, val ranks: Map<String,Int>,
+)
+
+internal fun amsAlbumChartHeading(territory: AppleChartTerritory): String =
+    "Top 100 álbuns · ${territory.displayName}"
+
+internal fun projectAmsAlbumChartCollection(chart: AppleCountryAlbumChart): AmsAlbumChartCollection? {
+    val country = chart.territory.code
+    val rows = chart.albums
+    val count = chart.sourceRowCount ?: 100
+    if (knownAppleChartTerritory(country) != chart.territory || count !in 1..100 ||
+        rows.isEmpty() || rows.any { it.position !in 1..count } ||
+        rows.zipWithNext().any { (a,b) -> a.position >= b.position } ||
+        rows.distinctBy { it.albumBrowseId }.size != rows.size) return null
+    val cards = rows.map { row ->
+        val route = AppleMusicWebNativeRoute.parse(row.albumBrowseId) ?: return null
+        if (route.kind != AppleMusicWebKind.ALBUM || route.storefront != country ||
+            row.country != country || route.id != row.albumId.toString() ||
+            row.title.isBlank() || row.artistName.isBlank() ||
+            com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(row.officialUrl,route.browseId) == null)
+            return null
+        ShelfItem(row.title,row.artistName,appleMusicWebArtworkUrl(row.artworkUrl),null,route.browseId,
+            appleStoreUrl=row.officialUrl)
+    }
+    return AmsAlbumChartCollection(HomeShelf(amsAlbumChartHeading(chart.territory),cards),
+        rows.associate { it.albumBrowseId to it.position })
 }
 
 /** Real daily chart playlist identity, sourced from the official chart directory. */

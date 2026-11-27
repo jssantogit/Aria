@@ -1176,6 +1176,12 @@ private fun BitChordApp(
     val chartNavigation = com.music.bitchord.ui.rememberCountryChartNavigation(
         chartAuthorized, selectedTab == TAB_HOME, chartProvider,
     )
+    val amsAlbumChartTerritory = chartNavigation.active?.takeIf {
+        chartNavigation.albumActive && chartProvider == com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB && selectedTab == TAB_HOME
+    }
+    val amsAlbumChartRoute = amsAlbumChartTerritory?.let {
+        com.music.bitchord.ui.canonicalAppleChartRoute(com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB,it.code,true)
+    }
     val canonicalExploreSitewide by viewModel.canonicalExploreSitewide.collectAsStateWithLifecycle()
     // The pushed genre stack lives outside BitChordApp's large Compose method.
     // Each callback reads its latest tab/provider state without rebuilding routes.
@@ -1894,6 +1900,7 @@ private fun BitChordApp(
     LibraryPinsEditorScrollToTop(pinEditorState, libraryListState)
     val historyListState = rememberLazyListState()
     val libraryShowAllGridState = rememberLazyGridState()
+    val amsChartGridState = androidx.compose.runtime.key(amsAlbumChartRoute) { rememberLazyGridState() }
     val searchListState = rememberLazyListState()
     val currentListState = when (selectedTab) {
         TAB_HOME -> homeListState
@@ -2439,6 +2446,7 @@ private fun BitChordApp(
      */
     val amsHoldScope = com.music.bitchord.ui.screens.AmsShelfHoldScope(
         selectedTab, activeCanonicalGenre?.tag, appleNativeRouteKey?.takeIf { it.startsWith("apple_music_web:") },
+        chart = amsAlbumChartRoute,
     )
     val onBrowseLongPress: (ShelfItem) -> Unit = { item ->
         val id = item.browseId
@@ -3600,6 +3608,7 @@ private fun BitChordApp(
             // BackHandler below has to close first, or back would skip past it
             // straight to Library. See [onLibraryItemClick].
             BackHandler(enabled = libraryShowAll != null && detail == null) { libraryShowAll = null }
+            BackHandler(enabled = amsAlbumChartRoute != null && detail == null && appleNativeRouteKey == null && !showSettings && !showReplay && !showSources) { chartNavigation.close() }
             BackHandler(enabled = showAllLocalRecentAdditions && detail == null) { showAllLocalRecentAdditions = false }
             BackHandler(enabled = detailActiveShelf != null) { detailActiveShelf = null }
             BackHandler(enabled = rediscoveryRecordingId != null) { rediscoveryRecordingId = null }
@@ -3721,6 +3730,7 @@ private fun BitChordApp(
                 com.music.bitchord.ui.screens.appleDetailVisibleOnTab(
                     selectedTab, TAB_SEARCH, appleShelfReturnTab,
                 ) && appleNativeRouteKey != null -> appleNativeRouteKey
+                amsAlbumChartRoute != null -> amsAlbumChartRoute
                 rediscoveryRecordingId != null -> "rediscovery:" + rediscoveryRecordingId
                 showCanonicalMyRatings -> "my_ratings"
                 unifiedLibraryCategory != null -> "unified_library"
@@ -4147,6 +4157,18 @@ private fun BitChordApp(
                                 )
                             },
                             onTrackHold = onRecentTrackHold,
+                        )
+                    } else if (key == amsAlbumChartRoute && amsAlbumChartTerritory != null) {
+                        com.music.bitchord.ui.screens.AmsAlbumChartCollectionPage(
+                            state=chartRuntime.albums[amsAlbumChartTerritory.code] ?: UiState.Loading,
+                            gridState=amsChartGridState,contentPadding=listPadding,
+                            onRetry={ viewModel.loadAppleCountryAlbumChart(amsAlbumChartTerritory.code,force=true,provider=chartProvider) },
+                            onItemClick={ item ->
+                                if (viewModel.amsCountryCharts.containsAlbum(amsAlbumChartTerritory.code,item)) {
+                                    if (viewModel.openAppleMusicWebDetail(item)) appleShelfReturnTab=TAB_HOME
+                                    else Toast.makeText(context,"Ative Discografia do Apple Music Web em Provedores.",Toast.LENGTH_SHORT).show()
+                                }
+                            },onItemLongPress=onBrowseLongPress,
                         )
                     } else if (key == "library_show_all") {
                         libraryShowAll?.let { shelf ->
@@ -5559,7 +5581,8 @@ private fun BitChordApp(
                     !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showWearOs && !showEqualizer && !showSmartPlaylistBuilder &&
                     openedPublicPlaylist == null
-                val appleLibraryRoundChrome = appleLibraryLandingChrome ||
+                val amsAlbumChartChrome = amsAlbumChartRoute != null && pageRouteKey == amsAlbumChartRoute
+                val appleLibraryRoundChrome = amsAlbumChartChrome || appleLibraryLandingChrome ||
                     appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
                     appleExploreRootChrome || appleExploreGenreChrome || appleDownloadsChrome
 
@@ -5602,6 +5625,7 @@ private fun BitChordApp(
                         discogsRoute != null ->
                             discogsNativeVisual?.page?.title ?: "Discogs"
 
+                        amsAlbumChartChrome && amsAlbumChartTerritory != null -> com.music.bitchord.ui.amsAlbumChartHeading(amsAlbumChartTerritory)
                         selectedTab == TAB_HOME -> stringResource(R.string.home)
                         else -> tabs[selectedTab].label
                     },
@@ -5620,7 +5644,7 @@ private fun BitChordApp(
                         homeRootVisible = homeRootVisible,
                         homeSettingsOffset = homeSettingsOffset,
                     ),
-                    categoryBackButton = appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
+                    categoryBackButton = amsAlbumChartChrome || appleLibraryCategoryChrome || applePlaylistCategoryChrome ||
                         appleExploreGenreChrome || appleDownloadsChrome,
                     backButtonOffset = nativeTopBarBackOffset(),
                     // The generic top bar scroll flag flips after 24px,
@@ -5634,6 +5658,7 @@ private fun BitChordApp(
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
+                        amsAlbumChartChrome -> true
                         showSettings || showAccountScrobbling || showSources || showListenTogether || showWearOs ||
                             showEqualizer ||
                             showDiscord || showHistory ||
@@ -5729,6 +5754,7 @@ private fun BitChordApp(
                             detailActiveShelf = null
                             viewModel.discogsNativeCatalog.back()
                         })
+                        amsAlbumChartChrome -> ({ chartNavigation.close() })
                         appleExploreGenreChrome -> ({ genreNavigation.back() })
 
                         else -> null
@@ -7398,6 +7424,8 @@ private fun BitChordApp(
                         pageRouteKey == scope.detail && page != null &&
                             (if (track != null) track in page.metadataTracks
                             else card != null && com.music.bitchord.ui.appleMusicWebRelatedTarget(page, card.browseId) == card)
+                    } else if (card != null && scope.chart != null && pageRouteKey == scope.chart && amsAlbumChartTerritory != null) {
+                        viewModel.amsCountryCharts.containsAlbum(amsAlbumChartTerritory.code,card)
                     } else if (card != null && pageRouteKey == "$TAB_KEY$TAB_HOME" && scope.tab == TAB_HOME) {
                         (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { card in it.items } &&
                             (viewModel.appleMusicWebEditorialUi.containsCard(null, card) ||

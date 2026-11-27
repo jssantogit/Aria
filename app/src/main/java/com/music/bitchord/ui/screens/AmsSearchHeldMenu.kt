@@ -164,7 +164,7 @@ internal fun AmsSearchHeldMenu(
 }
 
 /** Context is captured with the lifted card, not reconstructed by title. */
-internal data class AmsShelfHoldScope(val tab: Int, val genre: String?, val detail: String?)
+internal data class AmsShelfHoldScope(val tab: Int, val genre: String?, val detail: String?, val chart: String? = null)
 internal data class AmsShelfHeldTarget(
     val scope: AmsShelfHoldScope,
     val card: com.music.bitchord.data.model.ShelfItem? = null,
