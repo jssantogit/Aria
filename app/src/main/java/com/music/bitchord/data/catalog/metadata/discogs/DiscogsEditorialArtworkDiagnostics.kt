@@ -18,6 +18,7 @@ internal enum class DiscogsArtworkOutcome {
     NO_EXACT_APPLE_PRODUCT,
     NO_PROMINENT_IMAGE,
     VERIFIED_PROMINENT,
+    VERIFIED_REUSED,
     ERROR,
 }
 
