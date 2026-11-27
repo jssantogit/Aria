@@ -83,6 +83,22 @@ class AppleMusicWebCuratorsTest {
         assertFalse(appleMusicWebCuratedPlaylistMatches(parent,"death metal",playlist,room.copy(curatorId="999")))
     }
 
+    @Test fun classicMetalReferenceAndLinkedAlbumMembershipStayScoped() {
+        assertTrue(amsExactStylePlaylistTitle("Metal clássico: essenciais","heavy metal"))
+        assertFalse(amsExactStylePlaylistTitle("Metal clássico","death metal"))
+        val identity=AppleMusicWebItem("pl.cd0d991ea9b74d6298e094799ea94ee7",AppleMusicWebKind.PLAYLIST,"br","Metal clássico",artistName="Apple Music: metal")
+        assertTrue(amsVerifiedStylePlaylistReference(identity,"heavy metal","br"))
+        assertFalse(amsVerifiedStylePlaylistReference(identity.copy(artistName="User"),"heavy metal","br"))
+        val song=AppleMusicWebItem("123",AppleMusicWebKind.SONG,"br","Song",storeUrl="https://music.apple.com/br/album/album/456?i=123")
+        val album=AppleMusicWebItem("456",AppleMusicWebKind.ALBUM,"br","Album")
+        val playlist=AppleMusicWebPlaylist(identity,listOf(song,song.copy(id="999"),song.copy(storefront="us")))
+        assertEquals("456",com.music.bitchord.ui.amsStyleSongAlbumId(song,"br"))
+        assertNull(com.music.bitchord.ui.amsStyleSongAlbumId(song.copy(albumId="789"),"br"))
+        val shelf=com.music.bitchord.ui.amsStylePlaylistAlbumShelf(playlist,"br",listOf(album,album.copy(id="789")))
+        assertEquals("Álbuns das playlists",shelf?.title)
+        assertEquals(listOf(album.scopedId),shelf?.items?.map { it.browseId })
+    }
+
     @Test fun sharedCuratorDoesNotMakeEveryAlbumBelongToBothGenres() {
         val shared = AppleMusicWebCuratorRef("982356287","br","Apple Music: pagode e samba")
         val samba = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A",genreNames=listOf("Samba"))

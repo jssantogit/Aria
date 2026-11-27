@@ -338,6 +338,14 @@ internal class AppleMusicWebEditorialGateway(
             outcome
         }
 
+    suspend fun linkedAlbumMetadata(ids: List<String>, country: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<List<AppleMusicWebItem>>> =
+        guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY,country) { storefront ->
+            val rows = catalog.linkedAlbumMetadata(ids,storefront)
+            validateItems(rows,storefront,setOf(AppleMusicWebKind.ALBUM))
+            AppleMusicWebOutcome.Complete(rows)
+        }
+
     suspend fun album(
         id: String,
         country: String,

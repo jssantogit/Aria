@@ -69,7 +69,8 @@ internal object AppleMusicWebOperationRegistry {
                             else -> false
                         })
                     "albums" -> {
-                        if (parts.size < 5 || !id.matches(parts[4])) false
+                        if (parts.size == 4) true
+                        else if (parts.size < 5 || !id.matches(parts[4])) false
                         else when (parts.size) {
                             5 -> true
                             6 -> parts[5] == "tracks"

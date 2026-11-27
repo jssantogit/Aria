@@ -83,7 +83,7 @@ class AmsStyleArtworkLiveTest {
             val parent=page?.curator?.let { amsVerifiedStyleParent(it,tag) } == true
             assertTrue(items.all { it.videoId==null && AppleMusicWebNativeRoute.parse(it.browseId)?.storefront=="br" })
             println("AMS_STYLE_ART|scope=style|tag=$tag|parent=$parent|albums=$albums|playlists=$playlists|pending=${page?.pending?.size?:0}")
-            if (albums+playlists==0) uncovered+=tag
+            if (albums < 6 || playlists < 1) uncovered+=tag
         }
         assertTrue("Uncovered metal styles: "+uncovered.joinToString(),uncovered.isEmpty())
     }

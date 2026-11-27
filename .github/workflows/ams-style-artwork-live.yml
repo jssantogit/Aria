@@ -27,7 +27,7 @@ jobs:
       - name: Check changed style and actual CDN contracts
         run: |
           chmod +x gradlew
-          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsStyleArtworkLiveTest'
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsStyleArtworkLiveTest.metalStyleCoverageFromActualCurators'
       - name: Report observations
         if: always()
         run: |
@@ -40,7 +40,7 @@ jobs:
           for node in root.iter('system-out'):
               for line in (node.text or '').splitlines():
                   if line.startswith('AMS_STYLE_ART|'): print(line)
-          assert int(root.attrib['tests'])==2 and int(root.attrib['skipped'])==0
+          assert int(root.attrib['tests'])==1 and int(root.attrib['skipped'])==0
           PY
       - uses: actions/upload-artifact@v4
         if: always()

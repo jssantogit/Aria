@@ -103,8 +103,21 @@ internal fun amsExactStylePlaylistTitle(title: String,tag: String): Boolean {
     val labels = listOf(name, name.removeSuffix(" essenciais"), name.removeSuffix(" essentials"),
         name.removePrefix("essenciais de "), name.removePrefix("essenciais do "),
         name.removePrefix("essenciais da "),name.removeSuffix(" essential"))
-    return labels.any { appleMusicWebGenreNameMatches(it,tag) }
+    return labels.any { appleMusicWebGenreNameMatches(it,tag) } ||
+        (tag == "heavy metal" && labels.any { it in setOf("metal classico","classic metal") }) ||
+        (tag == "thrash metal" && name == "thrash")
 }
+
+/** Explicit public Brazilian reference for traditional heavy metal, only a
+ * nomination: runtime detail must prove exact ID, title, market and credit. */
+internal fun amsStylePlaylistReference(tag: String, market: String): String? =
+    if (tag == "heavy metal" && market == "br") "pl.cd0d991ea9b74d6298e094799ea94ee7" else null
+
+internal fun amsVerifiedStylePlaylistReference(item: AppleMusicWebItem, tag: String, market: String): Boolean =
+    item.kind == AppleMusicWebKind.PLAYLIST && item.storefront == market &&
+        amsStylePlaylistReference(tag,market) == item.id &&
+        curatorFold(item.artistName.orEmpty()) in setOf("apple music metal","metal apple music") &&
+        amsExactStylePlaylistTitle(item.title,tag)
 
 internal fun appleMusicWebCuratorMatches(ref: AppleMusicWebCuratorRef, storefront: String, tag: String): Boolean =
     ref.storefront == storefront &&

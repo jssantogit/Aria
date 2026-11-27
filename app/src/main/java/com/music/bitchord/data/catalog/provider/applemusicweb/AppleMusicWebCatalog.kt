@@ -871,6 +871,24 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         return partial?.let { AppleMusicWebOutcome.Partial(result,it) } ?: AppleMusicWebOutcome.Complete(result)
     }
 
+    /** One bounded public metadata batch for already linked albums. */
+    suspend fun linkedAlbumMetadata(ids: List<String>, country: String): List<AppleMusicWebItem> {
+        require(ids.size in 1..25 && ids.distinct().size == ids.size)
+        val sf = storefront(country)
+        ids.forEach { resourceId(it,AppleMusicWebKind.ALBUM) }
+        val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            "/v1/catalog/$sf/albums",mapOf("ids" to ids.joinToString(","))))
+        if ("errors" in body || body["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid linked album metadata envelope")
+        val seen = hashSetOf<String>()
+        return body.objects("data").map { raw ->
+            val id = raw.str("id") ?: throw AppleMusicWebProtocolException("Missing linked album ID")
+            if (id !in ids || raw.str("type") != "albums" || !seen.add(id))
+                throw AppleMusicWebProtocolException("Wrong linked album identity")
+            convert(raw,sf) ?: throw AppleMusicWebProtocolException("Invalid linked album")
+        }
+    }
+
     suspend fun album(id: String, country: String): AppleMusicWebAlbum =
         when (val outcome = albumOutcome(id, country)) {
             is AppleMusicWebOutcome.Complete -> outcome.value
