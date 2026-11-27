@@ -230,60 +230,98 @@ internal class DiscogsNativeCatalogSession(
 
     /** Optional artwork for a card whose exact release was already verified
      * by this session's editorial adapter. No extra Discogs hydration. */
-    internal suspend fun resolveEditorialArtwork(browseId: String):
-        com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+    internal suspend fun resolveEditorialArtwork(
+        browseId: String,
+        recordOutcome: (DiscogsArtworkOutcome) -> Unit = {},
+    ): com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+        fun reject(reason: DiscogsArtworkOutcome): com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+            recordOutcome(reason)
+            return null
+        }
         val exact = discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId)
-            ?: return null
-        val releaseId = exact.substringAfterLast(':').toLongOrNull() ?: return null
-        val authorization = editorialLease() ?: return null
-        val artGate = ProviderRuntime.gateOrNull() ?: return null
+            ?: return reject(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        val releaseId = exact.substringAfterLast(':').toLongOrNull()
+            ?: return reject(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        val authorization = editorialLease() ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        val artGate = ProviderRuntime.gateOrNull() ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
         val artTicket = artGate.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
-            ?: return null
+            ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
-            val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId)
+            val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId, recordOutcome)
                 ?: return@withContext null
-            if (!authorization.isCurrent()) return@withContext null
-            val proof = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
-                editorialArtworkResolver.resolve(evidence)
-            } ?: return@withContext null
-            if (!authorization.isCurrent() || ProviderRuntime.gateOrNull() !== artGate ||
-                !artGate.accept(artTicket) ||
-                editorialClient.cachedArtworkEvidenceForRelease(releaseId) != evidence
-            ) return@withContext null
+            fun authorized() = authorization.isCurrent() &&
+                ProviderRuntime.gateOrNull() === artGate && artGate.accept(artTicket)
+            fun currentEvidence() = editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
+            if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            // A completed lookup may legitimately return null; distinguish it
+            // from cancellation by this local timeout without swallowing outer cancellation.
+            val completed = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                Unit to editorialArtworkResolver.resolve(evidence)
+            } ?: return@withContext reject(DiscogsArtworkOutcome.LOOKUP_TIMEOUT)
+            if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            if (!currentEvidence()) return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
+            val proof = completed.second
+                ?: return@withContext reject(DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT)
             val upgraded = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
                 editorialArtworkDimensions.upgrade(proof.artworkUrl, 600)
             }
-            // Neither the lookup nor the CDN probe extends the evidence TTL.
-            proof.copy(artworkUrl = upgraded ?: proof.artworkUrl).takeIf {
-                authorization.isCurrent() && ProviderRuntime.gateOrNull() === artGate &&
-                    artGate.accept(artTicket) && it.discogsReleaseId == releaseId &&
-                    editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
-            }
+            if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            if (!currentEvidence() || proof.discogsReleaseId != releaseId)
+                return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
+            val selected = upgraded ?: proof.artworkUrl
+            if (com.music.bitchord.ui.screens.appleProminentArtworkOrNull(selected) == null)
+                return@withContext reject(DiscogsArtworkOutcome.NO_PROMINENT_IMAGE)
+            recordOutcome(DiscogsArtworkOutcome.VERIFIED_PROMINENT)
+            proof.copy(artworkUrl = selected)
         }
     }
 
-    /** One bounded, progressive batch for the active editorial surface.
-     * The caller owns the surface/policy epoch and cancels on navigation.
-     * Each result includes the exact Apple product link, not just its image.
-     */
+    /** One bounded progressive batch; the report measures examinations,
+     * not distinct catalog size or actual successful Coil renders. */
     internal suspend fun resolveEditorialArtworkBatch(
         browseIds: List<String>,
         stillCurrent: () -> Boolean,
         onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
         onAttempt: (String) -> Unit = {},
         maximumAttempts: Int = 16,
-    ) = resolveDiscogsEditorialArtworkBatch(
-        browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
-        eligible = { id ->
-            kotlinx.coroutines.withContext(Dispatchers.IO) {
-                id.substringAfterLast(':').toLongOrNull()?.let {
-                    editorialClient.cachedArtworkEvidenceForRelease(it) != null
-                } == true
-            }
-        },
-        onAttempt = onAttempt,
-        maximumAttempts = maximumAttempts,
-    )
+    ) {
+        val report = DiscogsArtworkBatchReport()
+        val started = System.nanoTime()
+        try {
+            resolveDiscogsEditorialArtworkBatch(
+                browseIds, stillCurrent,
+                resolve = { id ->
+                    try {
+                        resolveEditorialArtwork(id, report::record)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        report.record(DiscogsArtworkOutcome.ERROR)
+                        null
+                    }
+                },
+                onVerified = onVerified,
+                eligible = { id ->
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        try {
+                            id.substringAfterLast(':').toLongOrNull()?.let {
+                                editorialClient.cachedArtworkEvidenceForRelease(it, report::record) != null
+                            } == true
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            report.record(DiscogsArtworkOutcome.ERROR)
+                            false
+                        }
+                    }
+                },
+                onAttempt = onAttempt,
+                maximumAttempts = maximumAttempts,
+            )
+        } finally {
+            report.emit(System.nanoTime() - started)
+        }
+    }
 
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val homeEditorial: StateFlow<UiState<List<HomeShelf>>> = _homeEditorial.asStateFlow()
