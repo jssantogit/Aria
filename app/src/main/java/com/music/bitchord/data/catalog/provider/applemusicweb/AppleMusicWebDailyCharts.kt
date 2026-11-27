@@ -3,7 +3,9 @@ package com.music.bitchord.data.catalog.provider.applemusicweb
 import java.text.Normalizer
 import java.util.Locale
 
-internal data class AppleMusicWebDailyChartRef(val id: String, val title: String)
+internal data class AppleMusicWebDailyChartRef(
+    val id: String, val title: String, val artworkUrl: String? = null,
+)
 internal data class AppleMusicWebDailyChart(val region: String, val playlist: AppleMusicWebItem, val songs: List<AppleMusicWebItem>)
 internal data class AppleMusicWebGenreAlbumPage(val items: List<AppleMusicWebItem>, val sourceRows: Int, val nextCursor: String?)
 
@@ -27,6 +29,7 @@ internal fun resolveAppleMusicWebDailyChart(
         "in" -> setOf("India")
         "mx" -> setOf("Mexico")
         "ca" -> setOf("Canada")
+        "au" -> setOf("Australia")
         else -> emptySet()
     }.map(::fold).toSet()
     val prefix = Regex("^Top\\s+100\\s*:\\s*", RegexOption.IGNORE_CASE)

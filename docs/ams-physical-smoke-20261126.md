@@ -22,3 +22,7 @@ Mark actual results PASS/FAIL/NOT RUN and attach screenshots for discrepancies. 
 
 ## Known evidence limits
 All ten album charts returned 100 positions using one request in focused live #45911136642. All ten song charts and other three canonical live groups passed in prior #45909772114; exact historical cause of the prior three album failures was not recorded. Only three genres were covered by that native consumer live test; existing separate 15-genre coverage is distinct. Current production registry remains BLOCKED absent the isolated debug flag and package.
+
+
+## First physical run feedback
+Physical run performed on Android 14 Samsung A54. Catalog data working; visual and local-action approval withheld by user. See the six findings in ams-visual-parity-audit-20261126.md. Do not mark the release gate approved until the fixes are re-tested. Debug performance diagnostics have 27 recovered UI stalls (max 1907.7 ms), no last crash, cause unknown.

@@ -1,0 +1,58 @@
+name: AMS · physical smoke source discovery
+on:
+  push:
+    branches: [audit/ams-native-visual-parity-20261126]
+    paths:
+      - '.github/workflows/ams-physical-smoke-discovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-physical-smoke-discovery-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AMS_SMOKE_DISCOVERY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Audit source rooms, playlist covers and real chart metadata
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsPhysicalSmokeDiscoveryLiveTest'
+      - name: Emit bounded discovery
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import xml.etree.ElementTree as ET
+          files = list(Path('app/build/test-results/testDevDebugUnitTest').glob('*AmsPhysicalSmokeDiscoveryLiveTest.xml'))
+          assert files, 'Missing source discovery report'
+          evidence = []
+          for file in files:
+              root = ET.parse(file).getroot()
+              assert int(root.attrib.get('tests','0')) == 3
+              assert int(root.attrib.get('skipped','0')) == 0
+              for node in root.iter('system-out'):
+                  for line in (node.text or '').splitlines():
+                      if line.startswith('AMS_DISCOVERY|'):
+                          print(line)
+                          evidence.append(line)
+          assert evidence, 'No discovery evidence'
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## AMS source inventory\n\n'+'\n'.join('- '+line for line in evidence)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-physical-discovery-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          retention-days: 7

@@ -425,7 +425,8 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             val id = resourceId(raw.str("id") ?: throw AppleMusicWebProtocolException("Missing ID"), AppleMusicWebKind.PLAYLIST)
             val name = raw.obj("attributes")?.str("name")
                 ?: throw AppleMusicWebProtocolException("Missing daily chart title")
-            AppleMusicWebDailyChartRef(id, name)
+            AppleMusicWebDailyChartRef(id, name,
+                raw.obj("attributes")?.obj("artwork")?.str("url"))
         }
         if (rows.distinctBy { it.id }.size != rows.size)
             throw AppleMusicWebProtocolException("Duplicate daily chart resource")
