@@ -37,4 +37,18 @@ class NativeHomeArtistPortraitTest {
             proof.copy(artworkUrl = proof.artworkUrl.replace("600x600", "100x100")))))
     }
 
+    @Test fun loadedAppleArtworkMustBelongToTheExactPromotedAsset() {
+        val proof = EditorialShelfArtwork(
+            "https://is1-ssl.mzstatic.com/image/thumb/example/600x600bb.jpg",
+            "https://music.apple.com/br/album/example/123", "badge",
+        )
+        org.junit.Assert.assertTrue(editorialShelfArtworkLoaded(proof, proof.artworkUrl))
+        org.junit.Assert.assertTrue(editorialShelfArtworkLoaded(proof,
+            proof.artworkUrl.replace("600x600", "100x100")))
+        org.junit.Assert.assertFalse(editorialShelfArtworkLoaded(proof,
+            proof.artworkUrl.replace("example", "different")))
+        org.junit.Assert.assertFalse(editorialShelfArtworkLoaded(proof, null))
+        org.junit.Assert.assertFalse(editorialShelfArtworkLoaded(proof, 123))
+    }
+
 }

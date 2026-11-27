@@ -426,31 +426,48 @@ internal class DiscogsNativeGenreEditorial(
     /** Reuse only current Master/Release evidence already hydrated for a shelf.
      * No additional Discogs requests, no search by title and no stale/token-
      * mismatched cache reuse. Artwork admission is checked by the resolver. */
-    internal fun cachedArtworkEvidenceForRelease(releaseId: Long): DiscogsRecord? {
-        if (releaseId !in 1..999_999_999_999L || !enabled ||
+    internal fun cachedArtworkEvidenceForRelease(
+        releaseId: Long,
+        onRejected: (DiscogsArtworkOutcome) -> Unit = {},
+    ): DiscogsRecord? {
+        fun reject(reason: DiscogsArtworkOutcome): DiscogsRecord? {
+            onRejected(reason)
+            return null
+        }
+        if (releaseId !in 1..999_999_999_999L)
+            return reject(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        if (!enabled ||
             !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
             !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
-        ) return null
-        val token = tokenProvider()?.trim()?.takeIf(String::isNotBlank) ?: return null
+        ) return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        val token = tokenProvider()?.trim()?.takeIf(String::isNotBlank)
+            ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
         val digest = digestForCache(token)
         val now = clockMs()
-        val evidence = synchronized(verifiedPairs) {
-            verifiedPairs.values.asSequence().filter {
-                now - it.instantMs in 0L..indexTtlMs &&
-                    it.tokenDigest.contentEquals(digest) &&
+        val (current, expired) = synchronized(verifiedPairs) {
+            val matching = verifiedPairs.values.filter {
+                it.tokenDigest.contentEquals(digest) &&
                     it.release.link.kind == DiscogsKind.RELEASE &&
                     it.release.link.id == releaseId &&
                     it.master.mainReleaseId == releaseId &&
                     it.release.masterId == it.master.link.id
-            }.map { it.release }.distinct().toList().singleOrNull()
-        } ?: return null
+            }
+            matching.filter { now - it.instantMs in 0L..indexTtlMs }
+                .map { it.release }.distinct() to
+                matching.any { now - it.instantMs !in 0L..indexTtlMs }
+        }
+        val evidence = current.singleOrNull() ?: return reject(when {
+            current.size > 1 -> DiscogsArtworkOutcome.AMBIGUOUS_EVIDENCE
+            expired -> DiscogsArtworkOutcome.EXPIRED_EVIDENCE
+            else -> DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE
+        })
         if (tokenProvider()?.trim() != token ||
             !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
             !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
-        ) return null
-        return evidence.takeIf {
-            com.music.aria.data.catalog.metadata.discogsDigitalArtworkUpc(it) != null
-        }
+        ) return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        if (com.music.aria.data.catalog.metadata.discogsDigitalArtworkUpc(evidence) == null)
+            return reject(DiscogsArtworkOutcome.INELIGIBLE_EDITION)
+        return evidence
     }
 
     private fun rememberVerifiedPair(

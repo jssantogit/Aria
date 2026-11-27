@@ -500,20 +500,28 @@ class DiscogsGenreEditorialNetworkTest {
                 }
             },
         )
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        val rejected = mutableListOf<DiscogsArtworkOutcome>()
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
         assertTrue(source.discover(DiscogsEditorialQuery("K-Pop", true), maxReleases = 1)
             is DiscogsEditorialResult.Verified)
         assertEquals(3, reads)
-        assertEquals(record, source.cachedArtworkEvidenceForRelease(502L))
-        assertNull(source.cachedArtworkEvidenceForRelease(77L))
+        assertEquals(record, source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertNull(source.cachedArtworkEvidenceForRelease(77L) { rejected += it })
         token = "B".repeat(32)
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
         token = "A".repeat(32)
         gate.replace(policy(false))
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
         gate.replace(policy(true))
         now += 120_001L
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertEquals(listOf(
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.POLICY_DENIED,
+            DiscogsArtworkOutcome.EXPIRED_EVIDENCE,
+        ), rejected)
         assertEquals(3, reads)
     }
 
@@ -607,6 +615,59 @@ class DiscogsGenreEditorialNetworkTest {
         )
         assertEquals((90..92).map { "discogs:release:$it" }, attempts)
         assertEquals(attempts, calls)
+    }
+
+    @Test fun successiveArtworkBatchesDoNotReexamineRejectedCandidatesWithinSameEmission() = runBlocking {
+        val ids = (1..50).map { "discogs:release:$it" }
+        val examined = mutableListOf<String>()
+        val attempted = mutableListOf<String>()
+        do {
+            val before = attempted.size
+            com.music.aria.ui.resolveDiscogsEditorialArtworkBatch(
+                ids.filterNot { it in examined },
+                stillCurrent = { true },
+                resolve = { null },
+                onVerified = { _, _ -> fail("No proof") },
+                eligible = { it.substringAfterLast(':').toInt() > 20 },
+                onAttempt = { attempted += it },
+                onExamined = { examined += it },
+            )
+        } while (attempted.size != before)
+        assertEquals(ids, examined)
+        assertEquals(ids.drop(20), attempted)
+    }
+
+    @Test fun artworkBatchSkipsRemovedCandidatesAndDoesNotPublishObsoleteProof() = runBlocking {
+        val ids = (1..5).map { "discogs:release:$it" }
+        val visible = ids.toMutableSet()
+        visible.remove(ids[0])
+        val reads = mutableListOf<String>()
+        val examined = mutableListOf<String>()
+        val published = mutableListOf<String>()
+        com.music.aria.ui.resolveDiscogsEditorialArtworkBatch(
+            ids, stillCurrent = { true },
+            eligible = { id ->
+                if (id == ids[1]) visible.remove(id)
+                true
+            },
+            resolve = { id ->
+                reads += id
+                if (id == ids[2]) {
+                    visible.remove(id)
+                    visible.remove(ids[3])
+                }
+                com.music.aria.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    id.substringAfterLast(':').toLong(), "itunes:br:album:1",
+                    "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onExamined = { examined += it },
+            stillNeeded = { it in visible },
+            onVerified = { id, _ -> published += id },
+        )
+        assertEquals(listOf(ids[1], ids[2], ids[4]), examined)
+        assertEquals(listOf(ids[2], ids[4]), reads)
+        assertEquals(listOf(ids[4]), published)
     }
 
 }

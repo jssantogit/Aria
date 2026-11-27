@@ -56,6 +56,8 @@ jobs:
             --tests 'com.music.aria.CanonicalGenreEditorialDispatchTest' \
             --tests 'com.music.aria.DiscogsEditorialTaxonomyTest' \
             --tests 'com.music.aria.DiscogsGenreEditorialNetworkTest' \
+            --tests 'com.music.aria.DiscogsNativeArtistSearchTest' \
+            --tests 'com.music.aria.DiscogsNativeReleaseSearchTest' \
             --tests 'com.music.aria.DiscogsNativeCatalogPresentationTest'
       - name: Shared UI search contracts
         run: |

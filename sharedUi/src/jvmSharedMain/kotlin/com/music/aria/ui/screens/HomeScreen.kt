@@ -80,6 +80,7 @@ import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
 import com.music.aria.ui.icons.AriaIcons
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.music.aria.data.model.CARD_ART_PX
 import com.music.aria.data.model.HEADER_ART_PX
 import com.music.aria.data.model.HomeShelf
@@ -214,6 +215,38 @@ private fun EditorialShelfArtworkBadge(proof: EditorialShelfArtwork, modifier: M
         modifier = modifier.width(92.dp).height(28.dp)
             .clickable { runCatching { handler.openUri(proof.storeUrl) } },
     )
+}
+
+/** A late Coil success from an older card must never authorize a new badge. */
+internal fun editorialShelfArtworkLoaded(
+    proof: EditorialShelfArtwork,
+    loadedModel: Any?,
+): Boolean = loadedModel is String && (
+    loadedModel == proof.artworkUrl ||
+        loadedModel == com.music.aria.ui.components
+            .appleVerifiedCdnCoverFallbackUrl(proof.artworkUrl)
+    )
+
+/** Keep the official product badge coupled to an actually loaded cover.
+ * If both CDN attempts fail, leave the honest native fallback without a badge.
+ * Load state belongs to this exact card/proof, never the source ShelfItem. */
+@Composable
+private fun EditorialShelfCardFrame(
+    item: ShelfItem,
+    modifier: Modifier,
+    content: @Composable (((AsyncImagePainter.State) -> Unit)?) -> Unit,
+) {
+    val proof = editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)
+    var loaded by remember(item.browseId, proof) { mutableStateOf(false) }
+    Column(modifier) {
+        content(if (proof == null) null else { state ->
+            loaded = state is AsyncImagePainter.State.Success &&
+                editorialShelfArtworkLoaded(proof, state.result.request.data)
+        })
+        if (proof != null && loaded) {
+            EditorialShelfArtworkBadge(proof, Modifier.padding(top = 4.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1105,7 +1138,7 @@ private fun HeroShelf(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(shelf.items) { item ->
-                    Column(Modifier.width(cardWidth)) {
+                    EditorialShelfCardFrame(item, Modifier.width(cardWidth)) { onArtworkState ->
                         HeroCard(
                             item = item,
                             onClick = { onItemClick(item) },
@@ -1113,10 +1146,8 @@ private fun HeroShelf(
                             modifier = Modifier.fillMaxWidth(),
                             isCurrent = isCurrentItem(item),
                             isPlaying = isCurrentItem(item) && isPlaying,
+                            onArtworkState = onArtworkState,
                         )
-                        editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)?.let {
-                            EditorialShelfArtworkBadge(it, Modifier.padding(top = 4.dp))
-                        }
                     }
                 }
             }
@@ -1162,6 +1193,7 @@ private fun HeroCard(
     modifier: Modifier = Modifier,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    onArtworkState: ((AsyncImagePainter.State) -> Unit)? = null,
 ) {
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
@@ -1191,6 +1223,7 @@ private fun HeroCard(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                onState = onArtworkState,
             )
         }
         if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
@@ -1272,17 +1305,15 @@ internal fun Shelf(
         ) {
             leadingCard?.let { card -> item(key = "leading") { card() } }
             items(shelf.items) { item ->
-                Column(Modifier.width(SHELF_CARD_WIDTH)) {
+                EditorialShelfCardFrame(item, Modifier.width(SHELF_CARD_WIDTH)) { onArtworkState ->
                     ShelfCard(
                         item = item,
                         onClick = { onItemClick(item) },
                         onLongPress = onItemLongPress?.let { { it(item) } },
                         isCurrent = isCurrentItem(item),
                         isPlaying = isCurrentItem(item) && isPlaying,
+                        onArtworkState = onArtworkState,
                     )
-                    editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)?.let {
-                        EditorialShelfArtworkBadge(it, Modifier.padding(top = 4.dp))
-                    }
                 }
             }
         }
@@ -1408,6 +1439,7 @@ internal fun ShelfCard(
     isPinned: Boolean = false,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    onArtworkState: ((AsyncImagePainter.State) -> Unit)? = null,
 ) {
     // The legacy source adapter retains custom folder artwork; Home and
     // Explore share the original source-independent title/card composition.
@@ -1534,6 +1566,7 @@ internal fun ShelfCard(
                             contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
+                            onState = onArtworkState,
                         )
                     }
                     if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))

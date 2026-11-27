@@ -186,4 +186,17 @@ class DiscogsNativeArtistSearchTest {
         assertNull(page.nextPage)
         assertFalse(page.coverageUncertain)
     }
+    @Test fun zeroPageFirstSearchIsEmptyButContradictoryPaginationFails() {
+        val page = DiscogsNativeArtistSearchParsing.page(
+            """{"pagination":{"page":1,"pages":0},"results":[]}""", 1)
+        assertNotNull(page)
+        assertTrue(page?.artists?.isEmpty() == true)
+        assertNull(page?.nextPage)
+        assertFalse(page?.coverageUncertain == true)
+        assertNull(DiscogsNativeArtistSearchParsing.page(
+            """{"pagination":{"page":1,"pages":0},"results":[{"type":"artist","id":1,"title":"A"}]}""", 1))
+        assertNull(DiscogsNativeArtistSearchParsing.page(
+            """{"pagination":{"page":2,"pages":0},"results":[]}""", 2))
+    }
+
 }

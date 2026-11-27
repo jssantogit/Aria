@@ -93,4 +93,110 @@ class DiscogsVerifiedAppleArtworkTest {
         assertEquals(art, resolver.resolve(record)?.artworkUrl)
         assertEquals(2, calls)
     }
+    @Test fun resolverReportsTransportCompletenessAndIdentityFailuresSeparately() = runBlocking {
+        val cap = ProviderCapability.RELEASE_ARTWORK
+        val key = BuiltInProviderKeys.ITUNES
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(key, setOf(cap), ProviderReadiness.READY)),
+            choices = mapOf(cap to listOf(ProviderChoice(key, true, 0))),
+        ))
+        var response: ItunesCatalogResult = result
+        val resolver = DiscogsAppleArtworkResolver(
+            lookup = AppleArtworkUpcSource { _, _ -> response },
+            gateProvider = { gate },
+        )
+        val reasons = mutableListOf<DiscogsArtworkOutcome>()
+        val cases = listOf(
+            ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE) to DiscogsArtworkOutcome.LOOKUP_UNAVAILABLE,
+            result.copy(possiblyTruncated = true) to DiscogsArtworkOutcome.INCOMPLETE_APPLE_RESPONSE,
+            result.copy(items = emptyList()) to DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT,
+        )
+        for ((input, reason) in cases) {
+            response = input
+            assertNull(resolver.resolve(record, onRejected = { reasons += it }))
+            assertEquals(reason, reasons.last())
+        }
+        response = result
+        assertNotNull(resolver.resolve(record, onRejected = { reasons += it }))
+        assertEquals(cases.map { it.second }, reasons)
+    }
+
+    @Test fun artworkBatchReportContainsOnlyBoundedStageCounts() {
+        val report = DiscogsArtworkBatchReport()
+        report.record(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        report.record(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        report.record(DiscogsArtworkOutcome.VERIFIED_PROMINENT)
+        val metadata = report.metadata()
+        assertEquals("candidate_examinations_not_unique_albums", metadata["scope"])
+        assertEquals("2", metadata["no_current_evidence"])
+        assertEquals("1", metadata["verified_prominent"])
+        assertEquals("0", metadata["lookup_timeout"])
+        assertEquals(DiscogsArtworkOutcome.entries.size + 1, metadata.size)
+        assertFalse(metadata.values.any { it.contains(upc) || it.contains(store) })
+    }
+
+    @Test fun coverageNeverCountsMorePromotionsThanVisibleReleasesOrClaimsRendering() {
+        val metadata = discogsArtworkCoverageMetadata(
+            home = false, visibleReleaseCount = 12, promotedReleaseCount = 15,
+            attemptedReleaseCount = 120, budgetLimited = true,
+        )
+        assertEquals("genre", metadata["surface"])
+        assertEquals("12", metadata["distinctVisibleReleases"])
+        assertEquals("12", metadata["distinctPromotedReleases"])
+        assertEquals("80", metadata["attemptedInEpoch"])
+        assertEquals("true", metadata["budgetLimited"])
+        assertEquals("published_promotions_not_rendered_images", metadata["scope"])
+    }
+
+    @Test fun proofMemoRequiresExactCurrentEvidenceAndOriginalAuthorization() {
+        val memo = com.music.aria.ui.DiscogsEditorialArtworkMemo(capacity = 2)
+        val proof = requireNotNull(discogsVerifiedAppleArtwork(record, upc, result, "br"))
+        var authorized = true
+        memo.remember(record, proof) { authorized }
+        assertEquals(proof, memo.read(record.copy()))
+        // Same source ID alone is not sufficient after contradictory metadata.
+        assertNull(memo.read(record.copy(title = "Revised edition")))
+        assertNull(memo.read(record))
+        memo.remember(record, proof) { authorized }
+        authorized = false
+        assertNull(memo.read(record))
+        authorized = true
+        assertNull(memo.read(record))
+        memo.remember(record, proof.copy(discogsReleaseId = 999L)) { true }
+        assertNull(memo.read(record))
+    }
+
+    @Test fun proofMemoIsBoundedAndNeverKeepsDeniedOrClearedEntries() {
+        val memo = com.music.aria.ui.DiscogsEditorialArtworkMemo(capacity = 2)
+        val proof = requireNotNull(discogsVerifiedAppleArtwork(record, upc, result, "br"))
+        fun edition(id: Long) = record.copy(link = DiscogsLink(DiscogsKind.RELEASE, id))
+        fun remember(id: Long) = memo.remember(edition(id), proof.copy(discogsReleaseId = id)) { true }
+        remember(1L)
+        remember(2L)
+        assertNotNull(memo.read(edition(1L)))
+        remember(3L)
+        assertNull(memo.read(edition(2L)))
+        assertNotNull(memo.read(edition(1L)))
+        assertNotNull(memo.read(edition(3L)))
+        memo.remember(edition(4L), proof.copy(discogsReleaseId = 4L)) { false }
+        assertNull(memo.read(edition(4L)))
+        memo.clear()
+        assertNull(memo.read(edition(1L)))
+        assertNull(memo.read(edition(3L)))
+    }
+
+    @Test fun memoReadsDoNotExtendItsIndependentFreshnessWindow() {
+        var now = 100L
+        val memo = com.music.aria.ui.DiscogsEditorialArtworkMemo(clockMs = { now })
+        val proof = requireNotNull(discogsVerifiedAppleArtwork(record, upc, result, "br"))
+        memo.remember(record, proof) { true }
+        now += 60_000L
+        assertEquals(proof, memo.read(record))
+        now += 60_001L
+        assertNull(memo.read(record))
+        val master = record.copy(link = DiscogsLink(DiscogsKind.MASTER, record.link.id))
+        memo.remember(master, proof) { true }
+        assertNull(memo.read(master))
+    }
+
 }
