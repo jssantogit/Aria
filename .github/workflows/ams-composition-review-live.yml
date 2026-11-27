@@ -1,7 +1,7 @@
 name: AMS · integrated subgenre composition review
 on:
   push:
-    branches: [audit/ams-composition-review-20261127, audit/ams-exact-release-motion-20261127, audit/ams-style-editorial-evidence-20261127, audit/ams-style-localization-20261127, audit/ams-final-style-evidence-20261127, audit/ams-style-candidate-admission-20261127, audit/ams-genre-relationships-20261127, audit/ams-curator-detail-evidence-20261127, audit/ams-track-discovery-budget-20261127, audit/ams-style-provenance-20261127]
+    branches: [audit/ams-composition-review-20261127, audit/ams-exact-release-motion-20261127, audit/ams-style-editorial-evidence-20261127, audit/ams-style-localization-20261127, audit/ams-final-style-evidence-20261127, audit/ams-style-candidate-admission-20261127, audit/ams-genre-relationships-20261127, audit/ams-curator-detail-evidence-20261127, audit/ams-track-discovery-budget-20261127, audit/ams-style-provenance-20261127, audit/ams-style-conflict-quarantine-20261127]
   workflow_dispatch:
 permissions:
   contents: read
