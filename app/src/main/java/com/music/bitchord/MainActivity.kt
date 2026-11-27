@@ -6359,7 +6359,41 @@ private fun BitChordApp(
                     },
                 )
             }
+            // Keep the same native entity menu mounted after dismissal so
+            // local rating dialogs survive the overflow closing. Only the
+            // current, admitted detail may supply the source identity.
+            val sharedProviderRoot = when {
+                toolbarOwner != NativeTopBarRouteOwner.CATALOG_DETAIL ||
+                    detail != null -> null
+                discogsReadAllowed && pageRouteKey.startsWith("discogs:") ->
+                    discogsNativeVisual?.page?.takeIf { it.browseId == discogsBrowseId }
+                appleReadAllowed && pageRouteKey.startsWith("itunes:") ->
+                    appleSharedVisual?.page?.takeIf { it.browseId == appleNativeRouteKey }
+                else -> null
+            }
+            sharedProviderRoot?.let { source ->
+                val sourceUrl = when (appleNativeKind) {
+                    AppleNativeDetailKind.ARTIST -> appleArtistNavigation?.appleStoreUrl
+                    AppleNativeDetailKind.ALBUM ->
+                        (appleAlbumDetail as? UiState.Success)?.data?.appleStoreUrl
+                            ?: appleAlbumNavigation?.appleStoreUrl
+                    else -> null
+                }
+                com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
+                    browseId = source.browseId,
+                    title = source.title,
+                    subtitle = source.subtitle.orEmpty(),
+                    cover = source.thumbnailUrl,
+                    expanded = providerDetailOverflowOpen && providerHeldCardRoute == null,
+                    onDismiss = { providerDetailOverflowOpen = false },
+                    hazeState = hazeState,
+                    anchorBounds = catalogAlbumOverflowAnchor,
+                    onSettings = { providerDetailOverflowOpen = false; showSettings = true },
+                    sourceStoreUrl = sourceUrl,
+                )
+            }
             if (providerDetailOverflowOpen &&
+                (sharedProviderRoot == null || providerHeldCardRoute != null) &&
                 (appleSharedVisual != null || discogsNativeVisual != null ||
                     providerHeldCardRoute?.startsWith("discogs:") == true) &&
                 (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL ||
@@ -9880,7 +9914,7 @@ private fun NativeDetailAlbumTopBarActions(
 ) {
     val onlineMetadata = browseId.startsWith("catalog:RELEASE:") ||
         browseId.startsWith("catalog:RELEASE_GROUP:") ||
-        browseId.startsWith("itunes:")
+        browseId.startsWith("itunes:") || browseId.startsWith("discogs:release:")
     val ratingTarget = remember(browseId, isReleaseDetail) {
         if (isReleaseDetail) com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(browseId)
         else null
