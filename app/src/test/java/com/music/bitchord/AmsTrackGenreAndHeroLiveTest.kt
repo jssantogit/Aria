@@ -150,4 +150,67 @@ class AmsTrackGenreAndHeroLiveTest {
         } finally { conn.disconnect() }
     }
 
+    private fun assertMotionBytes(url: String) {
+        assertEquals(url,com.music.bitchord.data.canvas.appleEditorialMotionUrl(url))
+        val conn = java.net.URI(url).toURL().openConnection() as javax.net.ssl.HttpsURLConnection
+        try {
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            assertEquals(200,conn.responseCode)
+            val bytes = conn.inputStream.use { it.readNBytes(128) }
+            val hls = String(bytes,Charsets.UTF_8).trimStart().startsWith("#EXTM3U")
+            val mp4 = bytes.size >= 8 && String(bytes.copyOfRange(4,8),Charsets.US_ASCII) == "ftyp"
+            assertTrue("Invalid editorial motion payload",hls || mp4)
+        } finally { conn.disconnect() }
+    }
+
+    @Test fun exactAlbumMotionFromCatalog(): Unit = runBlocking {
+        val catalog = AppleMusicWebCatalog(transport())
+        val samples = listOf("SUPER REAL ME" to "ILLIT", "HIT ME HARD AND SOFT" to "Billie Eilish",
+            "Midnights" to "Taylor Swift")
+        var verified = 0
+        for ((title,artist) in samples) {
+            val hits = withTimeout(120_000) { catalog.search(AppleMusicWebKind.ALBUM,"$artist $title","br") }
+            val exact = hits.items.filter { it.title.equals(title,true) && it.artistName.equals(artist,true) &&
+                it.storefront == "br" && it.kind == AppleMusicWebKind.ALBUM }.distinctBy { it.id }.singleOrNull()
+            if (exact == null) {
+                println("AMS_HERO|scope=album|title=$title|exactIdentity=false")
+                continue
+            }
+            val album = when(val outcome = withTimeout(120_000) { catalog.albumOutcome(exact.id,"br") }) {
+                is AppleMusicWebOutcome.Complete -> outcome.value
+                is AppleMusicWebOutcome.Partial -> outcome.value
+                else -> continue
+            }
+            assertEquals(exact.scopedId,album.identity.scopedId)
+            val url = album.identity.editorialMotionUrl
+            if (url != null) {
+                assertMotionBytes(url)
+                verified++
+            }
+            println("AMS_HERO|scope=album|title=$title|id=${exact.id}|motion=${url != null}|tall=${album.identity.editorialTallHeroUrl != null}")
+        }
+        assertTrue("No exact album with valid editorial motion in sample",verified > 0)
+    }
+
+    @Test fun playlistMotionFieldInventory(): Unit = runBlocking {
+        val transport = transport()
+        val catalog = AppleMusicWebCatalog(transport)
+        val chart = requireNotNull(resolveAppleMusicWebDailyChart(catalog.dailyChartDirectory(),"br"))
+        val raw = withTimeout(120_000) { transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            "/v1/catalog/br/playlists/${chart.id}",
+            mapOf("include" to "tracks","extend" to "editorialArtwork,editorialVideo")) }
+        val identity = Json.parseToJsonElement(raw).jsonObject["data"]?.jsonArray?.singleOrNull()?.jsonObject
+            ?: error("Missing exact playlist")
+        assertEquals(chart.id,identity["id"]?.jsonPrimitive?.content)
+        assertEquals("playlists",identity["type"]?.jsonPrimitive?.content)
+        val attr = identity["attributes"]?.jsonObject ?: error("Missing attributes")
+        val video = attr["editorialVideo"] as? JsonObject
+        println("AMS_HERO|scope=playlist_motion_api|id=${chart.id}|fields=${video?.keys.orEmpty().sorted().joinToString(",")}")
+        val url = appleMusicWebAlbumMotion(video,true)?.first
+        if (url != null) assertMotionBytes(url)
+        println("AMS_HERO|scope=playlist_motion_api|motion=${url != null}")
+    }
+
 }

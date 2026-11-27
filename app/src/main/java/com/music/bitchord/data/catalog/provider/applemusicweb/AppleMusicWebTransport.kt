@@ -189,7 +189,8 @@ internal class AppleMusicWebPolicyTransport(
         if (capability == ProviderCapability.EDITORIAL_DISCOGRAPHY && path.contains("/playlists/")) {
             require(if (path.endsWith("/tracks")) params.keys.all { it in setOf("offset","limit","l") }
                 else params == mapOf("include" to "tracks") ||
-                    params == mapOf("include" to "tracks", "extend" to "editorialArtwork")) { "Unsupported editorial playlist operation" }
+                    params == mapOf("include" to "tracks", "extend" to "editorialArtwork") ||
+                    params == mapOf("include" to "tracks", "extend" to "editorialArtwork,editorialVideo")) { "Unsupported editorial playlist operation" }
         }
         if (capability == ProviderCapability.CHART_MOST_PLAYED) {
             val valid = when {

@@ -6,6 +6,7 @@ on:
       - audit/ams-native-visual-parity-20261126
       - audit/ams-composition-review-20261127
       - audit/ams-exact-release-motion-20261127
+      - audit/ams-release-media-review-20261127
 permissions:
   contents: read
 concurrency:

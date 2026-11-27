@@ -520,7 +520,7 @@ internal class AppleMusicWebNativeCatalogSession(
                     }
                     is ProviderCallResult.Success -> {
                         val metadata = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
-                        albums += amsStylePlaylistAlbumShelf(record,market,metadata)?.items.orEmpty()
+                        albums += amsStyleTrackAlbumShelf(ids,market,metadata)?.items.orEmpty()
                     }
                 }
             }
@@ -551,6 +551,20 @@ internal class AppleMusicWebNativeCatalogSession(
                         val next = page.nextCursor ?: break
                         if (!visited.add(next)) break
                         cursor = next
+                    }
+                }
+            }
+            // A localized query nominates different candidates, never a different
+            // acceptance rule. No extra request after sufficient exact evidence.
+            if (amsStyleTrackAlbumIds(songs,storefront,tag).size < 6) {
+                for (query in amsStyleDiscoveryQueries(tag).drop(1).take(1)) {
+                    when (val read = gateway.search(AppleMusicWebKind.SONG,query,storefront,limit=25)) {
+                        ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                        is ProviderCallResult.Failed -> {
+                            if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                        }
+                        is ProviderCallResult.Success -> songs += (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value?.items.orEmpty()
                     }
                 }
             }
@@ -589,6 +603,20 @@ internal class AppleMusicWebNativeCatalogSession(
                             if (!albumVisited.add(next)) break
                             albumCursor = next
                         }
+                    }
+                }
+            }
+            if ((albums + direct).distinctBy { it.scopedId }.size < 6) {
+                for (query in amsStyleDiscoveryQueries(tag).drop(1).take(1)) {
+                    when (val read = gateway.search(AppleMusicWebKind.ALBUM,query,storefront,limit=25)) {
+                        ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                        is ProviderCallResult.Failed -> {
+                            if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                        }
+                        is ProviderCallResult.Success -> direct += (read.value.outcome as? AppleMusicWebOutcome.Complete)
+                            ?.value?.items.orEmpty().filter { it.kind == AppleMusicWebKind.ALBUM &&
+                                it.storefront == storefront && it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
                     }
                 }
             }
