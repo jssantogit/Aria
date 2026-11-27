@@ -150,6 +150,42 @@ internal fun amsStylePlaylistAlbumShelf(
     amsStyleTrackAlbumShelf(amsStylePlaylistAlbumIds(playlist,market),market,albums)
         ?.copy(title="Álbuns das playlists")
 
+/** Preserve the strongest available style evidence. A curated release must
+ * not suppress the same album's independently proven metadata membership.
+ * Contradictory album identity across sources is not resolved by ordering. */
+internal fun amsMergeStyleMetadataShelf(
+    metadata: HomeShelf?, curated: List<HomeShelf>, market: String,
+): List<HomeShelf> {
+    val candidates = metadata?.items.orEmpty().filter { card ->
+        val route = AppleMusicWebNativeRoute.parse(card.browseId)
+        route?.kind == AppleMusicWebKind.ALBUM && route.storefront == market &&
+            card.videoId == null && card.title.isNotBlank()
+    }.groupBy { it.browseId }
+    val existing = curated.flatMap { it.items }.groupBy { it.browseId }
+    val conflicted = hashSetOf<String?>()
+    val verified = candidates.values.mapNotNull { rows ->
+        val first = rows.first()
+        val observations = rows + existing[first.browseId].orEmpty()
+        if (observations.map { it.title.trim() }.distinct().size > 1 ||
+            observations.mapNotNull { it.subtitle.trim().takeIf(String::isNotEmpty) }.distinct().size > 1) {
+            conflicted += first.browseId
+            return@mapNotNull null
+        }
+        first.copy(
+            subtitle=observations.firstNotNullOfOrNull { it.subtitle.takeIf(String::isNotBlank) }.orEmpty(),
+            thumbnailUrl=observations.firstNotNullOfOrNull { appleMusicWebArtworkUrl(it.thumbnailUrl) },
+            appleStoreUrl=observations.firstNotNullOfOrNull {
+                com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(it.appleStoreUrl,first.browseId)
+            },
+        )
+    }
+    val occupied = verified.mapTo(hashSetOf()) { it.browseId } + conflicted
+    val remainder = curated.map { shelf ->
+        shelf.copy(items=shelf.items.filterNot { it.browseId in occupied })
+    }.filter { it.items.isNotEmpty() }
+    return listOfNotNull(verified.takeIf { it.isNotEmpty() }?.let { HomeShelf("Álbuns do estilo",it) }) + remainder
+}
+
 /** Prioritize explicit style titles before generic room membership. Keep
  * stable room order within each evidence level and bound detail requests. */
 internal fun amsStyleCuratorPlaylistCandidates(cards: List<ShelfItem>, tag: String): List<ShelfItem> =
@@ -525,14 +561,7 @@ internal class AppleMusicWebNativeCatalogSession(
             is AppleMusicWebOutcome.Partial -> outcome.value
             is AppleMusicWebOutcome.Unavailable -> AmsEditorialPage(emptyList())
         }
-        val seen = shelf?.items.orEmpty().mapNotNull { it.browseId }.toSet()
-        val existing = page.shelves.map { rail ->
-            if (rail.title == "Álbuns das playlists") rail.copy(items=rail.items.filterNot { it.browseId in seen })
-            else rail
-        }.filter { it.items.isNotEmpty() }
-        val known = existing.flatMap { it.items }.mapNotNull { it.browseId }.toSet()
-        val filtered = shelf?.copy(items=shelf.items.filterNot { it.browseId in known })
-        var rails = listOfNotNull(filtered?.takeIf { it.items.isNotEmpty() }) + existing
+        var rails = amsMergeStyleMetadataShelf(shelf,page.shelves,storefront)
         val albums = rails.flatMap { it.items }.mapNotNull { AppleMusicWebNativeRoute.parse(it.browseId) }
             .filter { it.kind == AppleMusicWebKind.ALBUM }.distinct().size
         if (albums < 6) {

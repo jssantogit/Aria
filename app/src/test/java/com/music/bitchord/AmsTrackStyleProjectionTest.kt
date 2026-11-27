@@ -6,6 +6,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun independentMetadataRetainsPriorityOverEditorialDuplicateWithoutInventingIdentity() {
+        fun card(id: String,title: String,credit: String = "Artist") =
+            com.music.bitchord.data.model.ShelfItem(title=title,subtitle=credit,
+                thumbnailUrl=null,videoId=null,browseId="apple_music_web:br:album:$id")
+        val verified = card("20","Album")
+        val curated = card("21","Other album")
+        val playlist = card("22","Playlist album")
+        val conflict = card("23","Album A")
+        val rows = listOf(
+            com.music.bitchord.data.model.HomeShelf("Lançamentos",listOf(verified,curated,conflict.copy(title="Album B"))),
+            com.music.bitchord.data.model.HomeShelf("Álbuns das playlists",listOf(verified,playlist)),
+        )
+        val result = amsMergeStyleMetadataShelf(
+            com.music.bitchord.data.model.HomeShelf("Álbuns do estilo",listOf(verified,conflict)),
+            rows,"br")
+        assertEquals(listOf("Álbuns do estilo","Lançamentos","Álbuns das playlists"),result.map { it.title })
+        assertEquals(listOf(verified,curated,playlist),result.flatMap { it.items })
+        assertEquals(rows,amsMergeStyleMetadataShelf(null,rows,"br"))
+        val foreign = verified.copy(browseId="apple_music_web:us:album:20")
+        assertEquals(rows,amsMergeStyleMetadataShelf(
+            com.music.bitchord.data.model.HomeShelf("Álbuns do estilo",listOf(foreign)),rows,"br"))
+    }
+
     @Test fun rawTrackCandidatesDoNotExhaustDiscoveryBeforeAlbumAdmission() {
         val songs = (1..8).map { index ->
             AppleMusicWebItem(index.toString(),AppleMusicWebKind.SONG,"br","Track",

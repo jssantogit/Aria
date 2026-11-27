@@ -15,6 +15,7 @@ on:
       - audit/ams-genre-relationships-20261127
       - audit/ams-curator-detail-evidence-20261127
       - audit/ams-track-discovery-budget-20261127
+      - audit/ams-style-provenance-20261127
 permissions:
   contents: read
 concurrency:
