@@ -32,11 +32,11 @@ internal class AppleVerifiedEditionArtworkResolver(
         }
     },
     private val upc: AppleArtworkUpcSource = AppleArtworkUpcSource { barcode, country ->
-        ItunesCatalogClient().lookupUpc(barcode, country)
+        ItunesCatalogClient().lookupUpcForArtwork(barcode, country)
     },
     private val linked: AppleArtworkLinkedAlbumSource =
         AppleArtworkLinkedAlbumSource { appleId, country ->
-            ItunesCatalogClient().lookupAlbum(appleId, country)
+            ItunesCatalogClient().lookupAlbumForArtwork(appleId, country)
         },
     private val evidence: AppleAlbumEditionEvidenceSource =
         MusicBrainzBarcodeEditionEvidenceSource(),
