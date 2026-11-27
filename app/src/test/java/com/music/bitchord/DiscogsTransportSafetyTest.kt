@@ -141,4 +141,39 @@ class DiscogsTransportSafetyTest {
             assertEquals(1, server.requestCount)
         }
     }
+    @Test fun filteredVersionPreviewAllowsOnlyFixedReadOnlyEndpoint() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+            val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
+            val allowed = "masters/42/versions?page=1&per_page=8&format=File"
+            assertEquals(200, transport.get(allowed, "BitChord/Test").status)
+            val request = server.takeRequest()
+            assertEquals("/$allowed", request.path)
+            assertNull(request.getHeader("Authorization"))
+            for (path in listOf(
+                allowed.replace("page=1", "page=2"),
+                allowed.replace("per_page=8", "per_page=100"),
+                allowed.replace("format=File", "format=CD"),
+                "$allowed&token=unexpected",
+                "$allowed&sort=year",
+                allowed.replace("File", "File%26token%3Dunexpected"),
+            )) assertTrue(runCatching { transport.get(path, "BitChord/Test") }.isFailure)
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    @Test fun filteredVersionPreviewRetainsStandardBodyBudget() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setChunkedBody(
+                "a".repeat(DISCOGS_STANDARD_BODY_BYTES + 1), 8192))
+            val transport = KtorDiscogsTransport(baseUrl = server.url("/").toString())
+            val response = transport.get(
+                "masters/42/versions?page=1&per_page=8&format=File", "BitChord/Test")
+            assertEquals(413, response.status)
+            assertTrue(response.localBodyLimitExceeded)
+            assertTrue(response.body.isEmpty())
+            assertEquals(1, server.requestCount)
+        }
+    }
+
 }
