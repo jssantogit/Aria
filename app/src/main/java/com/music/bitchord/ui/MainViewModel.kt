@@ -5334,13 +5334,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (result) {
                 is ApplePublicSearchPageLoad.Success ->
                     publishApplePublicSearch(section, result.snapshot, permissionTicket, requestOrder)
-                is ApplePublicSearchPageLoad.Failure -> when (section) {
-                    AppleSearchSection.ARTISTS ->
-                        _appleEditorialArtists.value = UiState.Error("apple_catalog_unavailable")
-                    AppleSearchSection.TRACKS ->
-                        _appleEditorialTracks.value = UiState.Error("apple_catalog_unavailable")
-                    AppleSearchSection.ALBUMS ->
-                        _appleEditorialResults.value = UiState.Error("apple_catalog_unavailable")
+                is ApplePublicSearchPageLoad.Failure -> {
+                    when (section) {
+                        AppleSearchSection.ARTISTS ->
+                            _appleEditorialArtists.value = UiState.Error("apple_catalog_unavailable")
+                        AppleSearchSection.TRACKS ->
+                            _appleEditorialTracks.value = UiState.Error("apple_catalog_unavailable")
+                        AppleSearchSection.ALBUMS ->
+                            _appleEditorialResults.value = UiState.Error("apple_catalog_unavailable")
+                    }
+                    // A failed first typed request must remain recoverable even
+                    // when the other two streams produced useful General rows.
+                    // Retry is user-driven through the existing page admission.
+                    if (result.reason != ItunesCatalogFailure.INVALID_QUERY) {
+                        _appleSearchPaging.update { current ->
+                            current + (section to AppleSearchPageStatus(
+                                hasMore = true, retryableError = true,
+                            ))
+                        }
+                    }
                 }
             }
         }
