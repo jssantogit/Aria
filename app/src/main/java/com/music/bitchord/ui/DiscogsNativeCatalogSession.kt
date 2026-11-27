@@ -363,8 +363,20 @@ internal class DiscogsNativeCatalogSession(
     private var genreEditorialTag: String? = null
     private var homeEditorialExpiryJob: Job? = null
     private var genreEditorialExpiryJob: Job? = null
-    private var homeEditorialExpiryEpoch = 0L
-    private var genreEditorialExpiryEpoch = 0L
+    private val _homeEditorialGeneration = MutableStateFlow(0L)
+    val homeEditorialGeneration: StateFlow<Long> = _homeEditorialGeneration.asStateFlow()
+    private val _genreEditorialGeneration = MutableStateFlow(0L)
+    val genreEditorialGeneration: StateFlow<Long> = _genreEditorialGeneration.asStateFlow()
+
+    // Absolute snapshot identity, not the separate per-pagination epoch.
+    // Even if Loading is conflated and identical IDs reappear, a new
+    // source refresh invalidates the old composition's proof projection.
+    private var homeEditorialExpiryEpoch: Long
+        get() = _homeEditorialGeneration.value
+        set(value) { _homeEditorialGeneration.value = value }
+    private var genreEditorialExpiryEpoch: Long
+        get() = _genreEditorialGeneration.value
+        set(value) { _genreEditorialGeneration.value = value }
 
     // A two-hour reuse window is not an indefinite right to display API
     // Content. Even a Home or Explore page left open overnight purges its
@@ -375,6 +387,7 @@ internal class DiscogsNativeCatalogSession(
         homeEditorialExpiryJob = scope.launch {
             delay(5L * 60L * 60L * 1_000L)
             if (homeEditorialExpiryEpoch == epoch) {
+                ++homeEditorialExpiryEpoch
                 editorialArtworkMemo.clear()
                 homeEditorialJob?.cancel()
                 homePagingJob?.cancel()
@@ -392,6 +405,7 @@ internal class DiscogsNativeCatalogSession(
         genreEditorialExpiryJob = scope.launch {
             delay(5L * 60L * 60L * 1_000L)
             if (genreEditorialExpiryEpoch == epoch) {
+                ++genreEditorialExpiryEpoch
                 editorialArtworkMemo.clear()
                 genreEditorialJob?.cancel()
                 genrePagingJob?.cancel()
