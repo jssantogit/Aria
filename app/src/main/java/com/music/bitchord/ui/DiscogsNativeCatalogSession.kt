@@ -375,6 +375,7 @@ internal class DiscogsNativeCatalogSession(
         homeEditorialExpiryJob = scope.launch {
             delay(5L * 60L * 60L * 1_000L)
             if (homeEditorialExpiryEpoch == epoch) {
+                editorialArtworkMemo.clear()
                 homeEditorialJob?.cancel()
                 homePagingJob?.cancel()
                 ++homePagingEpoch
@@ -391,6 +392,7 @@ internal class DiscogsNativeCatalogSession(
         genreEditorialExpiryJob = scope.launch {
             delay(5L * 60L * 60L * 1_000L)
             if (genreEditorialExpiryEpoch == epoch) {
+                editorialArtworkMemo.clear()
                 genreEditorialJob?.cancel()
                 genrePagingJob?.cancel()
                 ++genrePagingEpoch
