@@ -781,7 +781,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Verified iTunes covers are now the target catalog source, regardless
     // of whether the group already has a CAA sleeve.
     private val canonicalGroupCardArtworkResolver by lazy {
-        com.music.bitchord.data.catalog.metadata.AppleVerifiedGroupCardArtworkResolver()
+        com.music.bitchord.data.catalog.metadata.AppleVerifiedGroupCardArtworkResolver(
+            editions = com.music.bitchord.data.catalog.metadata.AppleGroupCardArtworkSource { release, storefront ->
+                canonicalAppleArtworkResolver.resolve(release, storefront)
+            },
+            artworkGate = { ProviderRuntime.gateOrNull() },
+        )
     }
     // CDN variants are never trusted until a bounded HTTP bounds probe confirms
     // real image dimensions; the original Apple URL is the safe fallback.
@@ -934,7 +939,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Serializes presentation only; network lookups remain concurrent.
     private val canonicalArtworkPresentationMutex = Mutex()
     private val canonicalAppleArtworkResolver by lazy {
-        com.music.bitchord.data.catalog.metadata.AppleVerifiedEditionArtworkResolver()
+        com.music.bitchord.data.catalog.metadata.AppleVerifiedEditionArtworkResolver(
+            artworkGate = { ProviderRuntime.gateOrNull() },
+        )
     }
     private val _canonicalAppleArtworkPromotion = MutableStateFlow<
         Pair<String, com.music.bitchord.data.catalog.metadata.AppleVerifiedEditionArtwork>?
