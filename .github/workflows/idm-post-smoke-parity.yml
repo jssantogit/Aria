@@ -38,7 +38,8 @@ jobs:
           ./gradlew --no-daemon --build-cache :sharedUi:jvmTest \
             --tests 'com.music.bitchord.ui.screens.AppleUnifiedSearchResultsTest' \
             --tests 'com.music.bitchord.ui.screens.DiscogsSearchRelevanceTest' \
-            --tests 'com.music.bitchord.ui.screens.NativeSearchRowTest'
+            --tests 'com.music.bitchord.ui.screens.NativeSearchRowTest' \
+            --tests 'com.music.bitchord.ui.screens.NativeHomeArtistPortraitTest'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
