@@ -17,7 +17,8 @@ import org.junit.Test
 
 /**
  * Optional network observation, never a parity or render gate.
- * Reuses verified source evidence without additional Discogs hydration.
+ * Investigates at most two digital sibling details per verified main release.
+ * Sibling proofs are independent and never promoted to the main card.
  * No IDs, UPCs, names, URLs, payloads or credentials leave the test.
  */
 class DiscogsEditorialArtworkLiveObservationTest {
@@ -34,7 +35,7 @@ class DiscogsEditorialArtworkLiveObservationTest {
         fun write(status: String) {
             File(dir, "discogs-artwork-live.txt").writeText(buildString {
                 appendLine("status=$status")
-                appendLine("scope=bounded_source_sample_exact_apple_product_not_render")
+                appendLine("scope=bounded_main_and_sibling_digital_products_not_render")
                 counts.toSortedMap().forEach { (key, count) -> appendLine("$key=$count") }
             })
         }
@@ -59,12 +60,13 @@ class DiscogsEditorialArtworkLiveObservationTest {
             ),
         ))
         val admission = RateLimitedProviderTransport { gate }
+        val editionClient = DiscogsClient(
+            enabled = true, capability = editorial,
+            admission = admission, tokenProvider = { token },
+        )
         val source = DiscogsNativeGenreEditorial(
             enabled = true, tokenProvider = { token }, admission = admission,
-            editions = DiscogsNativeEditionClient(DiscogsClient(
-                enabled = true, capability = editorial,
-                admission = admission, tokenProvider = { token },
-            )),
+            editions = DiscogsNativeEditionClient(editionClient),
         )
         val client = ItunesCatalogClient(transport = KtorItunesCatalogTransport(
             admission = admission,
@@ -78,15 +80,80 @@ class DiscogsEditorialArtworkLiveObservationTest {
         )
         val masters = mutableSetOf<Long>()
         val releases = mutableSetOf<Long>()
-        val pending = Channel<Long>(capacity = 6)
+        val pending = Channel<DiscogsRecord>(capacity = 6)
         val started = System.nanoTime()
         val completed = withTimeoutOrNull(180_000L) {
             val consumer = launch {
-                for (id in pending) {
-                    val record = source.cachedArtworkEvidenceForRelease(id) {
+                for (main in pending) {
+                    val id = main.link.id
+                    val current = source.cachedMasterReleaseEvidence(id) {
                         bump("queued_" + it.name.lowercase(java.util.Locale.ROOT))
                     } ?: continue
-                    bump("queued_eligible")
+                    if (current != main) {
+                        bump("queued_evidence_changed")
+                        continue
+                    }
+                    val rejection = discogsDigitalArtworkRejection(main)
+                    val record = if (rejection == null) {
+                        bump("queued_eligible")
+                        main
+                    } else {
+                        // Investigate siblings, never attach their artwork or IDs
+                        // to the main release. The index is a nomination only.
+                        val master = main.masterId ?: continue
+                        bump("digital_index_calls")
+                        val page = withTimeoutOrNull(12_000L) {
+                            editionClient.fetchDigitalMasterVersionPreview(master)
+                        }
+                        val ids = when (page) {
+                            is DiscogsMasterVersionPreviewResult.Page -> {
+                                bump("digital_index_success")
+                                if (page.result.hasMore) bump("digital_index_incomplete")
+                                page.result.releaseIds.filter { it != id }
+                            }
+                            is DiscogsMasterVersionPreviewResult.Throttled -> {
+                                bump("digital_index_throttled")
+                                continue
+                            }
+                            else -> {
+                                bump("digital_index_unavailable")
+                                continue
+                            }
+                        }
+                        if (ids.isEmpty()) bump("digital_index_empty")
+                        var selected: DiscogsRecord? = null
+                        for (candidate in ids.take(2)) {
+                            bump("sibling_detail_calls")
+                            val detail = withTimeoutOrNull(12_000L) {
+                                editionClient.fetchRelease(candidate)
+                            }
+                            if (detail is DiscogsLookupResult.Throttled) {
+                                bump("sibling_throttled")
+                                break
+                            }
+                            val sibling = (detail as? DiscogsLookupResult.Found)?.record
+                            if (sibling == null) {
+                                bump("sibling_detail_unavailable")
+                                continue
+                            }
+                            if (sibling.link.kind != DiscogsKind.RELEASE ||
+                                sibling.link.id != candidate || sibling.masterId != master ||
+                                sibling.artistIds != main.artistIds || main.artistIds.isEmpty()
+                            ) {
+                                bump("sibling_identity_rejected")
+                                continue
+                            }
+                            val reason = discogsDigitalArtworkRejection(sibling)
+                            if (reason != null) {
+                                bump("sibling_" + reason.name.lowercase(java.util.Locale.ROOT))
+                                continue
+                            }
+                            bump("sibling_eligible")
+                            selected = sibling
+                            break
+                        }
+                        selected ?: continue
+                    }
                     var reason = DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT
                     val resolved = try {
                         withTimeoutOrNull(12_000L) {
@@ -100,11 +167,12 @@ class DiscogsEditorialArtworkLiveObservationTest {
                     }
                     when {
                         resolved == null -> bump("lookup_timeout")
-                        source.cachedArtworkEvidenceForRelease(id) != record ->
+                        source.cachedMasterReleaseEvidence(id) != main ->
                             bump("lookup_evidence_changed")
                         resolved.second == null -> bump("lookup_" +
                             reason.name.lowercase(java.util.Locale.ROOT))
-                        else -> bump("exact_apple_product_verified")
+                        else -> bump(if (record.link.id == id)
+                            "exact_apple_product_verified" else "sibling_apple_product_verified")
                     }
                 }
             }
@@ -120,12 +188,14 @@ class DiscogsEditorialArtworkLiveObservationTest {
                             val id = candidate.browseId.substringAfterLast(':').toLongOrNull()
                             if (id != null && releases.add(id)) {
                                 bump("distinct_verified_releases")
-                                val evidence = source.cachedArtworkEvidenceForRelease(id) {
+                                val evidence = source.cachedMasterReleaseEvidence(id) {
                                     bump("arrival_" + it.name.lowercase(java.util.Locale.ROOT))
                                 }
                                 if (evidence != null) {
-                                    bump("arrival_eligible")
-                                    pending.send(id)
+                                    val reason = discogsDigitalArtworkRejection(evidence)
+                                    if (reason == null) bump("arrival_eligible")
+                                    else bump("arrival_" + reason.name.lowercase(java.util.Locale.ROOT))
+                                    pending.send(evidence)
                                 }
                             }
                         },
@@ -159,8 +229,11 @@ class DiscogsEditorialArtworkLiveObservationTest {
             .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         assertTrue(releases.size <= 6)
         assertTrue((counts["apple_lookup_calls"] ?: 0) <= releases.size)
-        assertTrue((counts["exact_apple_product_verified"] ?: 0) <=
+        assertTrue((counts["exact_apple_product_verified"] ?: 0) +
+            (counts["sibling_apple_product_verified"] ?: 0) <=
             (counts["apple_lookup_calls"] ?: 0))
+        assertTrue((counts["digital_index_calls"] ?: 0) <= 6)
+        assertTrue((counts["sibling_detail_calls"] ?: 0) <= 12)
         write(if (completed == true) "sample_completed" else "timeout_partial")
     }
 }
