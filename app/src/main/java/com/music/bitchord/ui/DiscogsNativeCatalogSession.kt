@@ -255,13 +255,13 @@ internal class DiscogsNativeCatalogSession(
             if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
             // A completed lookup may legitimately return null; distinguish it
             // from cancellation by this local timeout without swallowing outer cancellation.
+            var rejection = DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT
             val completed = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
-                Unit to editorialArtworkResolver.resolve(evidence)
+                Unit to editorialArtworkResolver.resolve(evidence, onRejected = { rejection = it })
             } ?: return@withContext reject(DiscogsArtworkOutcome.LOOKUP_TIMEOUT)
             if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
             if (!currentEvidence()) return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
-            val proof = completed.second
-                ?: return@withContext reject(DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT)
+            val proof = completed.second ?: return@withContext reject(rejection)
             val upgraded = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
                 editorialArtworkDimensions.upgrade(proof.artworkUrl, 600)
             }
