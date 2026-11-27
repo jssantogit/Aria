@@ -3400,7 +3400,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (result is AppleEditorialLoad.Success) {
                 val permits = Semaphore(2)
-                result.releases.take(12).forEachIndexed { index, album ->
+                result.releases.take(36).forEachIndexed { index, album ->
                     launch {
                         permits.withPermit {
                             val target = appleArtworkTargetPxForShelf(index, 4)
@@ -3857,7 +3857,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (result is AppleEditorialLoad.Success) {
                 val permits = Semaphore(2)
-                result.releases.take(12).forEachIndexed { index, album ->
+                appleSourceGenreCandidates(tag, result.releases).take(24).forEachIndexed { index, album ->
                     launch {
                         permits.withPermit {
                             // Only the first four featured Explore cards use
