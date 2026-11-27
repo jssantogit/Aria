@@ -58,18 +58,29 @@ internal fun rememberDiscogsEditorialArtwork(
         fun current(): Boolean = currentActive && ProviderRuntime.gateOrNull() === gate &&
             gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
         val attempted = mutableSetOf<String>()
+        // Keep the denominator owned by this effect. Navigation can replace
+        // rememberUpdatedState before the old coroutine reaches finally.
+        var lastProjection = emptyList<String>()
+        var lastReported: List<Any>? = null
         fun reportCoverage() {
-            val visible = currentIds
+            val visible = lastProjection
+            if (visible.isEmpty()) return
+            val promoted = visible.count { it in artwork }
+            val limited = attempted.size >= 80 && visible.any { it !in attempted }
+            val signature = listOf(visible.size, promoted, attempted.size, limited)
+            if (signature == lastReported) return
+            lastReported = signature
             com.music.bitchord.data.catalog.metadata.discogs.recordDiscogsArtworkCoverage(
                 home = surfaceKey == "home",
                 visibleReleaseCount = visible.size,
-                promotedReleaseCount = visible.count { it in artwork },
+                promotedReleaseCount = promoted,
                 attemptedReleaseCount = attempted.size,
-                budgetLimited = attempted.size >= 80 && visible.any { it !in attempted },
+                budgetLimited = limited,
             )
         }
         try {
             snapshotFlow { currentIds }.collect { incoming ->
+                lastProjection = incoming
                 // Recheck misses on a later editorial emission (fresh evidence
                 // may have arrived), but never rescan them in every batch of
                 // this same emission.
