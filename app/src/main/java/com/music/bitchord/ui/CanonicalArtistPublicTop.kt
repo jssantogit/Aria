@@ -137,10 +137,10 @@ internal fun canonicalArtistSitewideAllTimeRanking(
 }
 
 /**
- * MusicBrainz recording verification remains sequential and bounded by the
- * existing request limiter. Once a row is independently verified, its cover
- * may load in the background while the next row is checked. Slow CAA lookups
- * must not hold up the titles of subsequent popular recordings.
+ * Publish all independently verified recording metadata before starting
+ * optional cover proof. Cover proof itself uses MusicBrainz edition reads
+ * and would otherwise compete with the next recording for the same limiter.
+ * Titles remain progressively visible during verification.
  *
  * Cover workers are structured children of the artist request. Cancellation
  * propagates to them, and no more than three covers load concurrently.
@@ -151,15 +151,20 @@ internal suspend fun <T> canonicalProcessArtistTopInParallel(
     maxConcurrentCovers: Int = 3,
     verifyAndPublish: suspend (T) -> Boolean,
     enrichCoverAndPublish: suspend (T) -> Unit,
+    onMetadataComplete: () -> Unit = {},
 ) = coroutineScope {
     require(maxConcurrentCovers in 1..8)
-    val slots = Semaphore(maxConcurrentCovers)
+    val artworkCandidates = mutableListOf<T>()
     for (candidate in candidates) {
         currentCoroutineContext().ensureActive()
-        if (verifyAndPublish(candidate)) {
-            launch {
-                slots.withPermit { enrichCoverAndPublish(candidate) }
-            }
+        if (verifyAndPublish(candidate)) artworkCandidates += candidate
+    }
+    currentCoroutineContext().ensureActive()
+    onMetadataComplete()
+    val slots = Semaphore(maxConcurrentCovers)
+    for (candidate in artworkCandidates) {
+        launch {
+            slots.withPermit { enrichCoverAndPublish(candidate) }
         }
     }
 }
