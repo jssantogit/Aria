@@ -58,6 +58,17 @@ internal fun rememberDiscogsEditorialArtwork(
         fun current(): Boolean = currentActive && ProviderRuntime.gateOrNull() === gate &&
             gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
         val attempted = mutableSetOf<String>()
+        fun reportCoverage() {
+            val visible = currentIds
+            com.music.bitchord.data.catalog.metadata.discogs.recordDiscogsArtworkCoverage(
+                home = surfaceKey == "home",
+                visibleReleaseCount = visible.size,
+                promotedReleaseCount = visible.count { it in artwork },
+                attemptedReleaseCount = attempted.size,
+                budgetLimited = attempted.size >= 80 && visible.any { it !in attempted },
+            )
+        }
+        try {
         snapshotFlow { currentIds }.collect { incoming ->
             // Recheck misses on a later editorial emission (fresh evidence
             // may have arrived), but never rescan them in every batch of
@@ -88,6 +99,10 @@ internal fun rememberDiscogsEditorialArtwork(
                 )
                 if (attempted.size == before) break
             }
+            reportCoverage()
+        }
+        } finally {
+            reportCoverage()
         }
     }
     return if (ready && ticket != null && search != null && editorial != null &&
