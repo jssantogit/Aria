@@ -30,6 +30,26 @@ class CanonicalCatalogEntityRatingsTest {
         assertNull(canonicalPublicPlaylistRatingTarget("not-a-mbid"))
     }
 
+    @Test fun amsArtistAlbumPlaylistUseScopedLocalRatingsAndNativeMenuWithoutPlayback() {
+        for ((kind,type) in listOf("artist" to "ARTIST","album" to "ALBUM","playlist" to "PLAYLIST")) {
+            val id = if (kind == "playlist") "pl.abc123" else "123"
+            val route = "apple_music_web:br:$kind:$id"
+            val target = canonicalCatalogEntityRatingTarget(route)!!
+            assertEquals(CanonicalEntityRatingTarget(type,route),target)
+            assertTrue(canPersistCanonicalCatalogRating(target))
+            assertFalse(canPersistCanonicalCatalogRating(target.copy(entityType="RELEASE_GROUP")))
+            assertTrue(validCatalogMetadataPin(CatalogMetadataPin(route,"Test")))
+            val spec = canonicalCatalogEntityMenuSpec(route,"https://music.apple.com/br/$kind/test/$id")!!
+            assertEquals(target,spec.ratingTarget)
+            assertEquals("https://music.apple.com/br/$kind/test/$id",spec.sourceUrl)
+            assertEquals("Abrir no Apple Music",spec.sourceLabel)
+            assertNull(spec.playlistKind) // verified source-member import is a separate storage contract
+            assertNull(canonicalCatalogEntityMenuSpec(route,"https://music.apple.com/us/$kind/test/$id")!!.sourceUrl)
+        }
+        assertNull(canonicalCatalogEntityRatingTarget("apple_music_web:br:artist:0"))
+        assertNull(canonicalCatalogEntityRatingTarget("apple_music_web:br:song:123"))
+    }
+
     @Test fun rejectExternalUrlsNamesAndMalformedIdentities() {
         assertNull(canonicalCatalogEntityRatingTarget("catalog:ARTIST:STAYC"))
         assertNull(canonicalCatalogEntityRatingTarget("catalog:ARTIST: $id"))

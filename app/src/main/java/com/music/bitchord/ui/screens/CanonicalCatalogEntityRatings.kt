@@ -25,6 +25,17 @@ private val CATALOG_ENTITY_MBID = Regex(
 /** Online catalog identity comes from the opened typed route, never a display title.
  * ReleaseGroup and specific Release are different rating targets. */
 internal fun canonicalCatalogEntityRatingTarget(browseId: String): CanonicalEntityRatingTarget? {
+    // Preserve full provider + market + entity identity. Local feedback is
+    // independent of playback and must never alias a MusicBrainz UUID.
+    com.music.bitchord.ui.AppleMusicWebNativeRoute.parse(browseId)?.let { route ->
+        val type = when (route.kind) {
+            com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ARTIST -> "ARTIST"
+            com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM -> "ALBUM"
+            com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST -> "PLAYLIST"
+            else -> return null
+        }
+        return CanonicalEntityRatingTarget(type,route.browseId)
+    }
     val types = listOf(
         "catalog:ARTIST:" to "ARTIST",
         "catalog:RELEASE:" to "ALBUM",
@@ -49,7 +60,9 @@ internal fun canonicalOwnedPlaylistRatingTarget(id: String): CanonicalEntityRati
     }
 
 internal fun canPersistCanonicalCatalogRating(target: CanonicalEntityRatingTarget): Boolean =
-    when (target.entityType) {
+    if (target.entityId.startsWith("apple_music_web:"))
+        canonicalCatalogEntityRatingTarget(target.entityId) == target
+    else when (target.entityType) {
         "ARTIST", "ALBUM", "RELEASE_GROUP" -> CATALOG_ENTITY_MBID.matches(target.entityId)
         "PLAYLIST" -> validLibraryPlaylistPin(LibraryPlaylistPin(target.entityId, "Playlist"))
         else -> false

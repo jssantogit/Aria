@@ -356,19 +356,6 @@ fun SearchScreen(
     var discogsGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
     val pinnedMixedMore = searchingCanonical && searchCommitted &&
         filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()
-    val appleMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
-        discogsArtistResults == null && discogsReleaseResults == null
-    val appleArtistRows = (appleArtistResults as? UiState.Success)?.data.orEmpty()
-    val appleTrackRows = (appleTrackResults as? UiState.Success)?.data.orEmpty()
-    val appleAlbumRows = (appleResults as? UiState.Success)?.data.orEmpty()
-    val appleUnshown = appleMixedMore && appleUnifiedSearchEntries(
-        query, appleArtistRows, appleTrackRows, appleAlbumRows,
-    ).size > appleGeneralVisibleRows
-    val appleNext = if (appleMixedMore) appleUnifiedNextPage(
-        query, appleArtistRows, appleTrackRows, appleAlbumRows, applePaging,
-    ) else null
-    val appleRequestLoading = appleMixedMore &&
-        applePaging.values.any { it.loadingMore }
     val discogsMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
         (discogsArtistResults != null || discogsReleaseResults != null)
     val discogsArtistRows = (discogsArtistResults as? UiState.Success)?.data.orEmpty()
@@ -381,7 +368,6 @@ fun SearchScreen(
     ) else null
     val pinnedMoreVisible = (pinnedMixedMore && catalogSearchMusicBrainzVisible &&
         (canonicalSearchHasMore || canonicalSearchLoadingMore)) ||
-        (appleMixedMore && (appleUnshown || appleNext != null || appleRequestLoading)) ||
         (discogsMixedMore && (discogsUnshown || discogsNext != null))
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
@@ -657,7 +643,8 @@ fun SearchScreen(
                             onLoadMore = onAppleLoadMore,
                             visibleLimit = appleGeneralVisibleRows,
                             onRevealMore = { appleGeneralVisibleRows += 18 },
-                            showInlineFooter = false,
+                            // The native footer is a real list item, never an overlay on results.
+                            showInlineFooter = true,
                         )
                     } else {
                         canonicalMusicBrainzResults(
@@ -912,14 +899,10 @@ fun SearchScreen(
             )
         }
         if (pinnedMoreVisible && atEnd) {
-            val isApple = appleMixedMore
             NativeSearchSecondaryAction(
                 label = stringResource(Res.string.canonical_more_results),
                 onClick = {
-                    if (isApple) {
-                        if (appleUnshown) appleGeneralVisibleRows += 18
-                        else appleNext?.let(onAppleLoadMore)
-                    } else if (discogsMixedMore) {
+                    if (discogsMixedMore) {
                         if (discogsUnshown) discogsGeneralVisibleRows += 18
                         else when (discogsNext) {
                             DiscogsUnifiedSearchNext.ARTISTS -> onDiscogsLoadMore()
@@ -929,12 +912,10 @@ fun SearchScreen(
                     } else onCanonicalSearchLoadMore()
                 },
                 enabled = when {
-                    isApple -> appleUnshown || appleNext != null
                     discogsMixedMore -> discogsUnshown || discogsNext != null
                     else -> !canonicalSearchLoadingMore
                 },
                 loading = when {
-                    isApple -> !appleUnshown && appleNext == null && appleRequestLoading
                     discogsMixedMore -> false
                     else -> canonicalSearchLoadingMore
                 },

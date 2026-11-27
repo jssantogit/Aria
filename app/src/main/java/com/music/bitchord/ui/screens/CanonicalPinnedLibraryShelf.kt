@@ -321,7 +321,8 @@ internal fun catalogMetadataPinNativeTarget(pin: CatalogMetadataPin): BrowseTarg
         subtitle = pin.subtitle,
         thumbnailUrl = pin.artworkUrl,
         type = when {
-            pin.browseId.startsWith("catalog:ARTIST:") -> BrowseType.ARTIST
+            canonicalCatalogEntityRatingTarget(pin.browseId)?.entityType == "ARTIST" -> BrowseType.ARTIST
+            canonicalCatalogEntityRatingTarget(pin.browseId)?.entityType == "PLAYLIST" -> BrowseType.PLAYLIST
             pin.browseId.startsWith("catalog:RECORDING:") -> BrowseType.OTHER
             else -> BrowseType.ALBUM
         },
@@ -553,7 +554,7 @@ internal fun CanonicalPinnedLibraryShelf(
                                         columns = columns,
                                         isArtist = card?.pin?.selection?.type ==
                                             CanonicalLibraryEntityType.ARTIST ||
-                                            catalog?.browseId?.startsWith("catalog:ARTIST:") == true,
+                                            catalog?.let { canonicalCatalogEntityRatingTarget(it.browseId)?.entityType == "ARTIST" } == true,
                                         onClick = {
                                             when {
                                                 card != null && card.accessible -> onOpen(card.pin)
@@ -642,7 +643,7 @@ internal fun CanonicalPinnedLibraryShelf(
                                                 }
                                             }
                                             catalog != null -> {
-                                                val catalogArtist = catalog.browseId.startsWith("catalog:ARTIST:")
+                                                val catalogArtist = canonicalCatalogEntityRatingTarget(catalog.browseId)?.entityType == "ARTIST"
                                                 val image = pinnedCatalogArtworkUrl(catalog, artistPhotos)
                                                 Box(Modifier.fillMaxSize()) {
                                                     com.music.bitchord.ui.components.CoverPlaceholder(
@@ -711,7 +712,11 @@ internal fun CanonicalPinnedLibraryShelf(
         } else canonicalCatalogEntityRatingTarget(pin.browseId)?.let { target ->
             CanonicalCatalogEntityRatingDialog(
                 target = target,
-                title = if (target.entityType == "ARTIST") "Avaliar artista" else "Avaliar álbum",
+                title = when(target.entityType) {
+                    "ARTIST" -> "Avaliar artista"
+                    "PLAYLIST" -> "Avaliar playlist"
+                    else -> "Avaliar álbum"
+                },
                 onDismiss = { ratingCatalogFor = null },
             )
         }

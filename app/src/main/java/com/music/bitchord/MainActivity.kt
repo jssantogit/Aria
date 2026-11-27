@@ -5139,6 +5139,11 @@ private fun BitChordApp(
                                                             artworkUri = pin.artworkUrl,
                                                         )
                                                     }
+                                                } else if (pin.browseId.startsWith("apple_music_web:")) {
+                                                    if (viewModel.openAppleMusicWebDetail(ShelfItem(
+                                                        title=pin.title,subtitle=pin.subtitle,thumbnailUrl=pin.artworkUrl,
+                                                        videoId=null,browseId=pin.browseId,
+                                                    ))) appleShelfReturnTab = selectedTab
                                                 } else viewModel.openDetail(
                                                     browseId = pin.browseId,
                                                     title = target.title,
@@ -6439,7 +6444,29 @@ private fun BitChordApp(
                     },
                 )
             }
+            // AMS uses the same native metadata entity menu as MB. Keep the
+            // host mounted when the menu closes so its rating editor survives.
+            appleSharedVisual?.takeIf {
+                nativeProviderState.amsReadAllowed &&
+                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
+                    it.page.browseId.startsWith("apple_music_web:") &&
+                    it.page.browseId == appleNativeRouteKey
+            }?.let { source ->
+                com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
+                    browseId = source.page.browseId,
+                    title = source.page.title,
+                    subtitle = source.page.subtitle.orEmpty(),
+                    cover = source.page.thumbnailUrl,
+                    sourceStoreUrl = source.sourceStoreUrl,
+                    expanded = providerDetailOverflowOpen && providerHeldCardRoute == null,
+                    onDismiss = { providerDetailOverflowOpen = false },
+                    hazeState = hazeState,
+                    anchorBounds = catalogAlbumOverflowAnchor,
+                    onSettings = { providerDetailOverflowOpen = false; showSettings = true },
+                )
+            }
             if (providerDetailOverflowOpen &&
+                !(providerHeldCardRoute == null && appleNativeRouteKey?.startsWith("apple_music_web:") == true) &&
                 (appleSharedVisual != null || discogsNativeVisual != null ||
                     providerHeldCardRoute?.startsWith("discogs:") == true ||
                     providerHeldCardRoute?.startsWith("apple_music_web:") == true) &&
