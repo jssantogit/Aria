@@ -64,6 +64,34 @@ internal fun discogsNativeDetailRouteKey(
     return "$prefix$id"
 }
 
+
+/** Source-scoped, serial and bounded: duplicates or foreign IDs must not
+ * spend another request. Failures are local to the card; cancellation is not. */
+internal suspend fun resolveDiscogsEditorialArtworkBatch(
+    browseIds: List<String>,
+    stillCurrent: () -> Boolean,
+    resolve: suspend (String) -> com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork?,
+    onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+) {
+    val candidates = browseIds.asSequence()
+        .mapNotNull { discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, it) }
+        .distinct().take(16).toList()
+    for (id in candidates) {
+        if (!stillCurrent()) return
+        val proof = try {
+            resolve(id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        if (!stillCurrent()) return
+        if (proof != null && id == "discogs:release:${proof.discogsReleaseId}") {
+            onVerified(id, proof)
+        }
+    }
+}
+
 internal data class DiscogsNativePage(
     val page: DetailPage,
     val tracks: List<NativeMetadataTrack> = emptyList(),
@@ -196,11 +224,29 @@ internal class DiscogsNativeCatalogSession(
             val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId)
                 ?: return@withContext null
             if (!authorization.isCurrent()) return@withContext null
-            editorialArtworkResolver.resolve(evidence)?.takeIf {
-                authorization.isCurrent() && it.discogsReleaseId == releaseId
+            val proof = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                editorialArtworkResolver.resolve(evidence)
+            } ?: return@withContext null
+            // A slow Apple request must not extend the source evidence TTL or
+            // publish after the Discogs credential/edition has changed.
+            proof.takeIf {
+                authorization.isCurrent() && it.discogsReleaseId == releaseId &&
+                    editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
             }
         }
     }
+
+    /** One bounded, progressive batch for the active editorial surface.
+     * The caller owns the surface/policy epoch and cancels on navigation.
+     * Each result includes the exact Apple product link, not just its image.
+     */
+    internal suspend fun resolveEditorialArtworkBatch(
+        browseIds: List<String>,
+        stillCurrent: () -> Boolean,
+        onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+    ) = resolveDiscogsEditorialArtworkBatch(
+        browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
+    )
 
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val homeEditorial: StateFlow<UiState<List<HomeShelf>>> = _homeEditorial.asStateFlow()
