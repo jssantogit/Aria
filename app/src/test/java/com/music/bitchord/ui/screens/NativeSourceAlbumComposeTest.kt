@@ -3,10 +3,12 @@ package com.music.bitchord.ui.screens
 import android.app.Application
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
@@ -59,13 +61,14 @@ class NativeSourceAlbumComposeTest {
             NativeMetadataTrack("itunes:br:track:2", "Bubble Gum", "Artist", 2, 1),
         ))
         compose.onNodeWithTag("native-album-detail-frame").assertExists()
-        compose.onNodeWithText("How Sweet").assertExists()
-        // The restored native album action row takes real vertical space.
-        // LazyColumn composes the next numbered track only when scrolled;
-        // do not interpret an off-screen row as missing source metadata.
-        compose.onNodeWithTag("native-album-detail-frame").performScrollToIndex(2)
-        compose.onNodeWithText("Bubble Gum").assertExists()
         compose.onNodeWithTag("album-hero-playback-actions").assertDoesNotExist()
+        // Header height varies with source attribution and viewport. Find actual
+        // lazy rows by semantic content rather than assuming visible indices.
+        for (title in listOf("How Sweet", "Bubble Gum")) {
+            compose.onNodeWithTag("native-album-detail-frame")
+                .performScrollToNode(hasText(title))
+            compose.onNodeWithText(title).assertIsDisplayed()
+        }
     }
 
     @Test fun discogsReleaseShowsActualNonPlayableTrackInNativeAlbumFrame() {
@@ -73,7 +76,9 @@ class NativeSourceAlbumComposeTest {
             NativeMetadataTrack("discogs:track:987:0", "Side A", "Artist", null, null),
         ))
         compose.onNodeWithTag("native-album-detail-frame").assertExists()
-        compose.onNodeWithText("Side A").assertExists()
         compose.onNodeWithTag("album-hero-playback-actions").assertDoesNotExist()
+        compose.onNodeWithTag("native-album-detail-frame")
+            .performScrollToNode(hasText("Side A"))
+        compose.onNodeWithText("Side A").assertIsDisplayed()
     }
 }
