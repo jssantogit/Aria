@@ -593,4 +593,20 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals((1..36).map { "discogs:release:$it" }, eligibilityChecks)
     }
 
+    @Test fun shelfArtworkBudgetCountsOnlyActualAttemptsAcrossManyIneligibleCards() = runBlocking {
+        val attempts = mutableListOf<String>()
+        val calls = mutableListOf<String>()
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            (1..100).map { "discogs:release:$it" },
+            stillCurrent = { true },
+            resolve = { id -> calls += id; null },
+            onVerified = { _, _ -> fail("No proof returned") },
+            eligible = { id -> id.substringAfterLast(':').toInt() >= 90 },
+            onAttempt = { attempts += it },
+            maximumAttempts = 3,
+        )
+        assertEquals((90..92).map { "discogs:release:$it" }, attempts)
+        assertEquals(attempts, calls)
+    }
+
 }
