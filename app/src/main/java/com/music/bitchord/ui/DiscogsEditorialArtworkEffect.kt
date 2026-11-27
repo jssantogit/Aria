@@ -30,6 +30,9 @@ internal fun rememberDiscogsEditorialArtwork(
     state: UiState<List<HomeShelf>>,
 ): Map<String, EditorialShelfArtwork> {
     val policy = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val generationFlow = if (surfaceKey == "home") session.homeEditorialGeneration
+        else session.genreEditorialGeneration
+    val generation by generationFlow.collectAsStateWithLifecycle()
     val gate = ProviderRuntime.gateOrNull()
     val ready = active && state is UiState.Success && policy != null
     val ticket = if (ready)
@@ -49,13 +52,16 @@ internal fun rememberDiscogsEditorialArtwork(
     }
     val currentIds by rememberUpdatedState(ids)
     val currentActive by rememberUpdatedState(active)
-    var artwork by remember(session, surfaceKey, gate, ticket, search, editorial, ready) {
+    var artwork by remember(session, surfaceKey, generation, gate, ticket, search, editorial, ready) {
         mutableStateOf<Map<String, EditorialShelfArtwork>>(emptyMap())
     }
-    LaunchedEffect(session, surfaceKey, gate, ticket, search, editorial, ready) {
+    LaunchedEffect(session, surfaceKey, generation, gate, ticket, search, editorial, ready) {
         if (gate == null || ticket == null || search == null || editorial == null)
             return@LaunchedEffect
-        fun current(): Boolean = currentActive && ProviderRuntime.gateOrNull() === gate &&
+        // Capture the value, not the delegated mutable Compose State.
+        val acceptedGeneration = generation
+        fun current(): Boolean = currentActive && generationFlow.value == acceptedGeneration &&
+            ProviderRuntime.gateOrNull() === gate &&
             gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
         val attempted = mutableSetOf<String>()
         // Keep the denominator owned by this effect. Navigation can replace
@@ -117,7 +123,8 @@ internal fun rememberDiscogsEditorialArtwork(
             reportCoverage()
         }
     }
-    return if (ready && ticket != null && search != null && editorial != null &&
+    return if (ready && generationFlow.value == generation &&
+        ticket != null && search != null && editorial != null &&
         gate != null && gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
     ) artwork.filterKeys { it in ids } else emptyMap()
 }
