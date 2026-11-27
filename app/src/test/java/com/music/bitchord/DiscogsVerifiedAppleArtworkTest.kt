@@ -135,4 +135,17 @@ class DiscogsVerifiedAppleArtworkTest {
         assertFalse(metadata.values.any { it.contains(upc) || it.contains(store) })
     }
 
+    @Test fun coverageNeverCountsMorePromotionsThanVisibleReleasesOrClaimsRendering() {
+        val metadata = discogsArtworkCoverageMetadata(
+            home = false, visibleReleaseCount = 12, promotedReleaseCount = 15,
+            attemptedReleaseCount = 120, budgetLimited = true,
+        )
+        assertEquals("genre", metadata["surface"])
+        assertEquals("12", metadata["distinctVisibleReleases"])
+        assertEquals("12", metadata["distinctPromotedReleases"])
+        assertEquals("80", metadata["attemptedInEpoch"])
+        assertEquals("true", metadata["budgetLimited"])
+        assertEquals("published_promotions_not_rendered_images", metadata["scope"])
+    }
+
 }
