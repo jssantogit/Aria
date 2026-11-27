@@ -239,6 +239,53 @@ internal class AppleMusicWebNativeCatalogSession(
         }
     }
 
+    /** Read the official directory once, under charts rather than editorial permission. */
+    suspend fun dailyChartTiles(): ProviderCallResult<List<AmsDailyChartTile>> =
+        admitted(ProviderCapability.CHART_MOST_PLAYED) { gateway ->
+            when (val result = gateway.dailyChartDirectory()) {
+                is ProviderCallResult.Success -> {
+                    val directory = (result.value.outcome as? AppleMusicWebOutcome.Complete)?.value
+                        ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Incomplete chart directory"))
+                    ProviderCallResult.Success(projectAmsDailyChartDirectory(directory))
+                }
+                is ProviderCallResult.Failed -> result
+                ProviderCallResult.Denied -> ProviderCallResult.Denied
+                ProviderCallResult.Stale -> ProviderCallResult.Stale
+            }
+        }
+
+    suspend fun dailyChartSharedDetail(tile: AmsDailyChartTile):
+        ProviderCallResult<AppleMusicWebOutcome<com.music.bitchord.ui.screens.AppleSharedDetail>> =
+        admitted(ProviderCapability.CHART_MOST_PLAYED) { gateway ->
+            val route = AppleMusicWebNativeRoute.parse(tile.card.browseId)
+            if (route == null || route.kind != AppleMusicWebKind.PLAYLIST ||
+                route.storefront != tile.country || route.id != tile.ref.id ||
+                resolveAppleMusicWebDailyChart(listOf(tile.ref),tile.country) != tile.ref)
+                return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid daily chart identity"))
+            when (val result = gateway.dailyChart(tile.country,tile.ref)) {
+                is ProviderCallResult.Success -> {
+                    val source = result.value.outcome
+                    val chart = when (source) {
+                        is AppleMusicWebOutcome.Complete -> source.value
+                        is AppleMusicWebOutcome.Partial -> source.value
+                        is AppleMusicWebOutcome.Unavailable -> return@admitted ProviderCallResult.Success(source)
+                    }
+                    if (chart.region != tile.country || chart.playlist.scopedId != route.browseId)
+                        return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Wrong daily chart identity"))
+                    val partial = source is AppleMusicWebOutcome.Partial
+                    val identity = chart.playlist.copy(artworkUrl=chart.playlist.artworkUrl ?: tile.ref.artworkUrl)
+                    val detail = com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail(
+                        route.browseId,AppleMusicWebNativeDetail.Playlist(AppleMusicWebPlaylist(identity,chart.songs)),partial)
+                        ?: return@admitted ProviderCallResult.Failed(AppleMusicWebProtocolException("Invalid chart detail"))
+                    ProviderCallResult.Success(if (source is AppleMusicWebOutcome.Partial)
+                        AppleMusicWebOutcome.Partial(detail,source.reason) else AppleMusicWebOutcome.Complete(detail))
+                }
+                is ProviderCallResult.Failed -> result
+                ProviderCallResult.Denied -> ProviderCallResult.Denied
+                ProviderCallResult.Stale -> ProviderCallResult.Stale
+            }
+        }
+
     /** Country chart reads never borrow editorial or search permission.
      * Follow only the source cursor; do not re-sort, merge or infer positions. */
     suspend fun countryChart(country: String, albums: Boolean):

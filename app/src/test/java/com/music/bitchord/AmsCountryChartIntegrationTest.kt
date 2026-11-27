@@ -53,6 +53,33 @@ class AmsCountryChartIntegrationTest {
         assertNull(preferredAppleChartProvider(gate))
     }
 
+    @Test fun dailyDirectoryProjectsRealPlaylistInsteadOfSyntheticSongChart() {
+        val ref = AppleMusicWebDailyChartRef("pl.123456","Top 100: Brazil",
+            "https://is1-ssl.mzstatic.com/image/thumb/Music/a/{w}x{h}bb.jpg")
+        val tiles = projectAmsDailyChartDirectory(listOf(ref))
+        assertEquals(1,tiles.size)
+        assertEquals("apple_music_web:br:playlist:pl.123456",tiles.single().card.browseId)
+        assertNotNull(tiles.single().card.thumbnailUrl)
+        val shelf = canonicalAmsChartShelf(tiles)
+        assertEquals(11,shelf.items.size)
+        assertEquals(tiles.single().card,shelf.items.first())
+        assertTrue(shelf.items.drop(1).all { parseCanonicalAppleChartRoute(it.browseId,ams,true) != null })
+        assertTrue(projectAmsDailyChartDirectory(listOf(ref,ref.copy(id="pl.654321"))).isEmpty())
+    }
+
+    @Test fun dailyChartDirectoryDoesNotSurviveCapabilityRevocation(): Unit = runBlocking {
+        val gate = ProviderPolicyGate(policy(ams))
+        val tiles = projectAmsDailyChartDirectory(listOf(AppleMusicWebDailyChartRef("pl.123456","Top 100: Brazil")))
+        val controller = AmsDailyChartDirectoryController(this,{gate},{ ProviderCallResult.Success(tiles) })
+        controller.load(); yield()
+        assertEquals(tiles,controller.tiles.value)
+        assertEquals(tiles.single(),controller.tile(tiles.single().card.browseId))
+        gate.replace(policy())
+        assertNull(controller.tile(tiles.single().card.browseId))
+        controller.purgeRevoked()
+        assertTrue(controller.tiles.value.isEmpty())
+    }
+
     @Test fun chartSessionFollowsUpstreamCursorAndRequiresOwnCapability(): Unit = runBlocking {
         val gate = ProviderPolicyGate(policy(ams))
         val requests = mutableListOf<String?>()

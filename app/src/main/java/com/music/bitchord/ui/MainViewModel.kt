@@ -378,6 +378,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         AmsCountryChartController(viewModelScope,{ ProviderRuntime.gateOrNull() },appleMusicWebNativeCatalog::countryChart)
     }
 
+    internal val amsDailyCharts by lazy {
+        AmsDailyChartDirectoryController(viewModelScope,{ ProviderRuntime.gateOrNull() },
+            appleMusicWebNativeCatalog::dailyChartTiles)
+    }
+
     private val _canonicalTrendingRecordingMbids = MutableStateFlow<List<String>>(emptyList())
     val canonicalTrendingRecordingMbids: StateFlow<List<String>> =
         _canonicalTrendingRecordingMbids.asStateFlow()
@@ -695,7 +700,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             read = appleMusicWebNativeCatalog::sharedDetail)
     }
     internal fun openAppleMusicWebDetail(item: ShelfItem): Boolean {
-        if (!appleMusicWebDetailNavigation.openRoot(item)) return false
+        val chart = amsDailyCharts.tile(item.browseId)
+        val opened = if (chart != null) {
+            val lease = ProviderReadLease.acquire(ProviderRuntime.gateOrNull(),listOf(
+                ProviderCapability.CHART_MOST_PLAYED to BuiltInProviderKeys.APPLE_MUSIC_WEB)) ?: return false
+            appleMusicWebDetailNavigation.openDailyChart(chart,lease,appleMusicWebNativeCatalog::dailyChartSharedDetail)
+        } else appleMusicWebDetailNavigation.openRoot(item)
+        if (!opened) return false
         backAppleEditorialAlbum()
         backAppleEditorialArtist()
         discogsNativeCatalog.backAll()
@@ -4626,6 +4637,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     discogsNativeCatalog.purgeRevoked()
                     appleMusicWebEditorialUi.purgeRevoked()
                     amsCountryCharts.purgeRevoked()
+                    amsDailyCharts.purgeRevoked()
+                    amsDailyCharts.load()
+                    appleMusicWebDetailNavigation.purgeRevoked()
                     // iTunes artist pages survive without MusicBrainz. If
                     // the optional verified crosswalk loses consent, remove
                     // only its MB identity evidence, never Apple releases.

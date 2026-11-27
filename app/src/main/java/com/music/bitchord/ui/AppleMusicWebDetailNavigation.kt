@@ -92,6 +92,26 @@ internal class AppleMusicWebDetailNavigation(
         return true
     }
 
+    /** Daily charts are playlists, but their root owns a chart capability lease. */
+    fun openDailyChart(tile: AmsDailyChartTile, lease: ProviderReadLease,
+        readChart: suspend (AmsDailyChartTile) -> ProviderCallResult<AppleMusicWebOutcome<AppleSharedDetail>>,
+    ): Boolean {
+        val item = tile.card
+        val route = AppleMusicWebNativeRoute.parse(item.browseId) ?: return false
+        if (route.kind != AppleMusicWebKind.PLAYLIST || route.storefront != tile.country ||
+            route.id != tile.ref.id || item.title.isBlank() || item.videoId != null || !lease.isCurrent()) return false
+        clear()
+        load(AppleMusicWebDetailEntry(route,item.title,item.subtitle,item.thumbnailUrl,lease)) { readChart(tile) }
+        return true
+    }
+
+    fun purgeRevoked() {
+        val firstRevoked = _stack.value.indexOfFirst { !it.lease.isCurrent() }
+        if (firstRevoked < 0) return
+        cancelRequest()
+        _stack.value = _stack.value.take(firstRevoked)
+    }
+
     fun openRelated(targetId: String?): Boolean {
         val current = _stack.value.lastOrNull() ?: return false
         if (!current.lease.isCurrent()) { clear(); return false }
@@ -207,13 +227,15 @@ internal class AppleMusicWebDetailNavigation(
             _stack.value = _stack.value.dropLast(1) + current.copy(pagingLoading=false)
     }
 
-    private fun load(entry: AppleMusicWebDetailEntry) {
+    private fun load(entry: AppleMusicWebDetailEntry,
+        reader: suspend (String) -> ProviderCallResult<AppleMusicWebOutcome<AppleSharedDetail>> = read,
+    ) {
         cancelRequest()
         val generation = epoch
         _stack.value = _stack.value + entry
         val job = scope.launch {
             val result = try {
-                read(entry.route.browseId)
+                reader(entry.route.browseId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

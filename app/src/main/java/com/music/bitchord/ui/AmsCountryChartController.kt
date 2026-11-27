@@ -1,6 +1,8 @@
 package com.music.bitchord.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.music.bitchord.data.model.ShelfItem
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.catalog.metadata.*
@@ -115,6 +117,86 @@ internal class AmsCountryChartController(
     }
 }
 
+/** Real daily chart playlist identity, sourced from the official chart directory. */
+internal data class AmsDailyChartTile(
+    val country: String, val ref: AppleMusicWebDailyChartRef, val card: ShelfItem,
+)
+
+internal fun projectAmsDailyChartDirectory(directory: List<AppleMusicWebDailyChartRef>): List<AmsDailyChartTile> =
+    appleChartTerritories.mapNotNull { territory ->
+        val ref = resolveAppleMusicWebDailyChart(directory,territory.code) ?: return@mapNotNull null
+        val route = AppleMusicWebNativeRoute(territory.code,AppleMusicWebKind.PLAYLIST,ref.id)
+        if (AppleMusicWebNativeRoute.parse(route.browseId) != route) return@mapNotNull null
+        AmsDailyChartTile(territory.code,ref,ShelfItem(
+            title = "Top 100 · ${territory.displayName}",subtitle = "Apple Music",
+            thumbnailUrl = appleMusicWebArtworkUrl(ref.artworkUrl),
+            videoId = null,browseId = route.browseId,
+        ))
+    }
+
+internal fun canonicalAmsChartShelf(tiles: List<AmsDailyChartTile>): HomeShelf =
+    HomeShelf("Rankings pelo mundo",appleChartTerritories.flatMap { territory ->
+        listOfNotNull(
+            tiles.singleOrNull { it.country == territory.code }?.card,
+            ShelfItem(title="Top 100 álbuns · ${territory.displayName}",
+                subtitle="Apple Music · Álbuns mais tocados",thumbnailUrl=null,videoId=null,
+                browseId=canonicalAppleChartRoute(BuiltInProviderKeys.APPLE_MUSIC_WEB,territory.code,true)),
+        )
+    })
+
+internal class AmsDailyChartDirectoryController(
+    private val scope: CoroutineScope,
+    private val gate: () -> ProviderPolicyGate?,
+    private val read: suspend () -> ProviderCallResult<List<AmsDailyChartTile>>,
+    private val now: () -> Long = System::currentTimeMillis,
+) {
+    private var owner: ProviderPolicyGate? = null
+    private var lease: ProviderReadLease? = null
+    private var job: Job? = null
+    private var started: Long? = null
+    private val mutable = MutableStateFlow<List<AmsDailyChartTile>>(emptyList())
+    val tiles = mutable.asStateFlow()
+    fun current(): Boolean = owner === gate() && lease?.isCurrent() == true &&
+        preferredAppleChartProvider(gate()) == BuiltInProviderKeys.APPLE_MUSIC_WEB
+    fun tile(browseId: String?): AmsDailyChartTile? =
+        if (!current()) null else mutable.value.singleOrNull { it.card.browseId == browseId }
+    fun purgeRevoked() {
+        if (current()) return
+        job?.cancel()
+        job = null
+        owner = null
+        lease = null
+        started = null
+        mutable.value = emptyList()
+    }
+    fun load() {
+        purgeRevoked()
+        val gateNow = gate() ?: return
+        if (preferredAppleChartProvider(gateNow) != BuiltInProviderKeys.APPLE_MUSIC_WEB) return
+        if (job?.isActive == true || started?.let { now()-it in 0L until 15*60_000L } == true) return
+        val ticket = ProviderReadLease.acquire(gateNow,listOf(
+            ProviderCapability.CHART_MOST_PLAYED to BuiltInProviderKeys.APPLE_MUSIC_WEB)) ?: return
+        owner = gateNow
+        lease = ticket
+        started = now()
+        val task = scope.launch(start=CoroutineStart.LAZY) {
+            val result = try { read() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            if (lease !== ticket) return@launch
+            if (!current() || result == ProviderCallResult.Denied || result == ProviderCallResult.Stale) {
+                purgeRevoked()
+                return@launch
+            }
+            mutable.value = (result as? ProviderCallResult.Success)?.value.orEmpty()
+        }
+        job = task
+        val unregister = ticket.cancelJobOnRevoke(task)
+        task.invokeOnCompletion { unregister() }
+        task.start()
+    }
+}
+
 internal data class CanonicalAppleChartRuntime(
     val provider: ProviderKey?,
     val shelf: HomeShelf?,
@@ -128,7 +210,13 @@ internal fun rememberCanonicalAppleChartRuntime(viewModel: MainViewModel): Canon
     val itunesSongs by viewModel.appleCountryCharts.collectAsStateWithLifecycle()
     val itunesAlbums by viewModel.appleCountryAlbumCharts.collectAsStateWithLifecycle()
     val ams by viewModel.amsCountryCharts.snapshots.collectAsStateWithLifecycle()
-    val shelf = provider?.let { canonicalCountryChartShelf(true,provider=it) }
+    val directory by viewModel.amsDailyCharts.tiles.collectAsStateWithLifecycle()
+    LaunchedEffect(provider,directory) {
+        if (provider == BuiltInProviderKeys.APPLE_MUSIC_WEB) viewModel.amsDailyCharts.load()
+    }
+    val shelf = if (provider == BuiltInProviderKeys.APPLE_MUSIC_WEB)
+        canonicalAmsChartShelf(directory.takeIf { viewModel.amsDailyCharts.current() }.orEmpty())
+    else provider?.let { canonicalCountryChartShelf(true,provider=it) }
     if (provider == BuiltInProviderKeys.ITUNES)
         return CanonicalAppleChartRuntime(provider,shelf,itunesSongs,itunesAlbums)
     if (provider != BuiltInProviderKeys.APPLE_MUSIC_WEB)

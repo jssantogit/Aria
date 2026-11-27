@@ -7398,7 +7398,8 @@ private fun BitChordApp(
                             else card != null && com.music.bitchord.ui.appleMusicWebRelatedTarget(page, card.browseId) == card)
                     } else if (card != null && pageRouteKey == "$TAB_KEY$TAB_HOME" && scope.tab == TAB_HOME) {
                         (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { card in it.items } &&
-                            viewModel.appleMusicWebEditorialUi.containsCard(null, card)
+                            (viewModel.appleMusicWebEditorialUi.containsCard(null, card) ||
+                                viewModel.amsDailyCharts.tile(card.browseId)?.card == card)
                     } else if (card != null && pageRouteKey == "$TAB_KEY$TAB_EXPLORE" && scope.tab == TAB_EXPLORE && scope.genre != null) {
                         (canonicalGenreState as? UiState.Success)?.data.orEmpty().any { card in it.items } &&
                             viewModel.appleMusicWebEditorialUi.containsCard(scope.genre, card)
