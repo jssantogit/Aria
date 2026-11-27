@@ -246,11 +246,8 @@ private fun EditorialShelfArtworkBadge(proof: EditorialShelfArtwork, modifier: M
 internal fun editorialShelfArtworkLoaded(
     proof: EditorialShelfArtwork,
     loadedModel: Any?,
-): Boolean = loadedModel is String && (
-    loadedModel == proof.artworkUrl ||
-        loadedModel == com.music.bitchord.ui.components
-            .appleVerifiedCdnCoverFallbackUrl(proof.artworkUrl)
-    )
+): Boolean = com.music.bitchord.ui.components
+    .appleVerifiedAssetLoadMatches(proof.artworkUrl, loadedModel)
 
 /** Keep the official product badge coupled to an actually loaded cover.
  * If both CDN attempts fail, leave the honest native fallback without a badge.
