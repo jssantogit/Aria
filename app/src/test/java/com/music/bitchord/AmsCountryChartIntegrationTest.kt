@@ -75,9 +75,9 @@ class AmsCountryChartIntegrationTest {
         assertEquals("apple_music_web:br:playlist:pl.123456",tiles.single().card.browseId)
         assertNotNull(tiles.single().card.thumbnailUrl)
         val shelf = canonicalAmsChartShelf(tiles)
-        assertEquals(11,shelf.items.size)
+        assertEquals(1,shelf.items.size)
         assertEquals(tiles.single().card,shelf.items.first())
-        assertTrue(shelf.items.drop(1).all { parseCanonicalAppleChartRoute(it.browseId,ams,true) != null })
+        assertTrue(shelf.items.all { AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST })
         assertTrue(projectAmsDailyChartDirectory(listOf(ref,ref.copy(id="pl.654321"))).isEmpty())
     }
 

@@ -281,11 +281,11 @@ internal fun CanonicalProviderDetailHost(
                     }
                 }
             } else if (applePage != null &&
-                (applePage.notice != null || applePage.attribution != null)
+                ((!isAms && applePage.notice != null) || applePage.attribution != null)
             ) {
                 item(key = "apple:source:notes") {
                     NativeCatalogDetailNotes(
-                        notice = applePage.notice,
+                        notice = applePage.notice.takeUnless { isAms },
                         attribution = applePage.attribution,
                         palette = palette,
                     )

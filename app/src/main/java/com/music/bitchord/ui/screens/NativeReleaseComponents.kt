@@ -229,25 +229,18 @@ internal fun NativePlaylistHeroActions(
     onShuffle: () -> Unit,
 ) {
     Spacer(Modifier.height(18.dp))
-    if (canPlay) {
-        Box(Modifier.fillMaxWidth().testTag("playlist-hero-playback-actions")) {
-            NativeReleaseActionRow(
-                onPlay = onPlay,
-                onShuffle = onShuffle,
-                isLocal = false,
-                compactForAlbum = true,
-                reservePinAction = true,
-                pinTargetLabel = "playlist",
-                isPinnedInLibrary = isPinned,
-                onTogglePin = onTogglePin,
-            )
-        }
-    } else {
-        NativeReleasePinOnlyAction(
-            targetLabel = "playlist",
-            isPinned = isPinned,
+    Box(Modifier.fillMaxWidth().testTag("playlist-hero-playback-actions")) {
+        NativeReleaseActionRow(
+            onPlay = onPlay,
+            onShuffle = onShuffle,
+            isLocal = false,
+            canPlay = canPlay,
+            canShuffle = canPlay,
+            compactForAlbum = true,
+            reservePinAction = true,
+            pinTargetLabel = "playlist",
+            isPinnedInLibrary = isPinned,
             onTogglePin = onTogglePin,
-            tag = "playlist-hero-pin-only",
         )
     }
 }

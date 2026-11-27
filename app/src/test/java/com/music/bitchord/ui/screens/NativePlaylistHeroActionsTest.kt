@@ -3,6 +3,7 @@ package com.music.bitchord.ui.screens
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -18,7 +19,7 @@ import org.robolectric.annotation.ConscryptMode
 
 /**
  * A saved playlist remains pinnable even if it contains no playable assets.
- * A metadata-only collection must never expose fake Play/Shuffle controls.
+ * A metadata-only collection must show disabled Play/Shuffle controls without fake playback.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
@@ -48,7 +49,7 @@ class NativePlaylistHeroActionsTest {
         compose.onNodeWithText("2 faixas · 7min").assertIsDisplayed()
     }
 
-    @Test fun metadataOnlyPlaylistHasPinButNoPlaybackActions() {
+    @Test fun metadataOnlyPlaylistHasPinAndDisabledPlaybackActions() {
         var pins = 0
         var playback = 0
         compose.setContent {
@@ -62,8 +63,9 @@ class NativePlaylistHeroActionsTest {
                 )
             }
         }
-        compose.onNodeWithTag("playlist-hero-pin-only").assertIsDisplayed()
-        compose.onNodeWithTag("playlist-hero-playback-actions").assertDoesNotExist()
+        compose.onNodeWithTag("playlist-hero-pin-only").assertDoesNotExist()
+        compose.onNodeWithTag("playlist-hero-playback-actions").assertIsDisplayed()
+        compose.onNodeWithTag("native-compact-playlist-play-pill").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithContentDescription("Fixar playlist na Biblioteca").performClick()
         compose.runOnIdle {
             assertEquals(1, pins)

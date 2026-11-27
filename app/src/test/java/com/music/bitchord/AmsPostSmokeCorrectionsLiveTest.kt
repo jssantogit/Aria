@@ -43,7 +43,7 @@ class AmsPostSmokeCorrectionsLiveTest {
         val tiles = result(withTimeout(180_000) { native.dailyChartTiles() })
         assertEquals(appleChartTerritories.map { it.code },tiles.map { it.country })
         assertTrue(tiles.all { it.card.thumbnailUrl != null && it.card.videoId == null })
-        assertEquals(20,canonicalAmsChartShelf(tiles).items.size)
+        assertEquals(10,canonicalAmsChartShelf(tiles).items.size)
         println("AMS_POST_SMOKE|scope=directory|countries=${tiles.size}|covers=${tiles.count { it.card.thumbnailUrl != null }}")
         for (market in listOf("br","au")) {
             val tile = tiles.single { it.country == market }

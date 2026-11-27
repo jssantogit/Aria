@@ -61,3 +61,7 @@ Install over the same isolated ARM64 package; retain app data. Repeat any unreso
 | P1 | Diagnostics and navigation | Scroll, reopen and switch capabilities; check stale artwork, blank placeholders, layout and performance; export fresh diagnostics. |
 
 Animated and landscape editorial artwork for playlists, albums, artists and player is a separate enhancement, not a round-three acceptance claim. Keep MAIN and IDM unchanged; production admission remains blocked pending physical approval and reconciliation.
+
+## Third physical smoke feedback — 2026-11-27
+
+User screenshots show editorial covers now rendering, similar artist labels centered, and Heavy Metal populated. Jazz Fusion still empty. Top 100 Brasil uses a square sleeve rather than the official immersive hero; ILLIT shows static artist artwork. User requests: retain only song chart playlists in Home, keep disabled playback and shuffle controls visible for metadata-only playlists, hide technical partial-data notices without losing completeness evidence, and enrich every subgenre from exact track genre labels independently of a specific playlist. Native animated/hero artwork requires evidence of actual source asset fields, validated URLs and lifecycle-aware rendering; not approved yet. Android diagnostic capture reports nine recovered UI stalls (max 1113.4 ms), no last crash, Apple Coil successes 537, errors 0, cancelled 25. Not evidence of animated artwork rendering or root cause.

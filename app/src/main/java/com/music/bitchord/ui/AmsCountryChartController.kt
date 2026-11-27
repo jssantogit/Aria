@@ -173,13 +173,8 @@ internal fun projectAmsDailyChartDirectory(directory: List<AppleMusicWebDailyCha
     }
 
 internal fun canonicalAmsChartShelf(tiles: List<AmsDailyChartTile>): HomeShelf =
-    HomeShelf("Rankings pelo mundo",appleChartTerritories.flatMap { territory ->
-        listOfNotNull(
-            tiles.singleOrNull { it.country == territory.code }?.card,
-            ShelfItem(title="Top 100 álbuns · ${territory.displayName}",
-                subtitle="Apple Music · Álbuns mais tocados",thumbnailUrl=null,videoId=null,
-                browseId=canonicalAppleChartRoute(BuiltInProviderKeys.APPLE_MUSIC_WEB,territory.code,true)),
-        )
+    HomeShelf("Rankings pelo mundo",appleChartTerritories.mapNotNull { territory ->
+        tiles.singleOrNull { it.country == territory.code }?.card
     })
 
 internal class AmsDailyChartDirectoryController(
