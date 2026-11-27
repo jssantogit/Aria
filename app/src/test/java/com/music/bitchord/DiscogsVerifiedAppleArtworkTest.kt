@@ -93,4 +93,46 @@ class DiscogsVerifiedAppleArtworkTest {
         assertEquals(art, resolver.resolve(record)?.artworkUrl)
         assertEquals(2, calls)
     }
+    @Test fun resolverReportsTransportCompletenessAndIdentityFailuresSeparately() = runBlocking {
+        val cap = ProviderCapability.RELEASE_ARTWORK
+        val key = BuiltInProviderKeys.ITUNES
+        val gate = ProviderPolicyGate(ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(key, setOf(cap), ProviderReadiness.READY)),
+            choices = mapOf(cap to listOf(ProviderChoice(key, true, 0))),
+        ))
+        var response: ItunesCatalogResult = result
+        val resolver = DiscogsAppleArtworkResolver(
+            lookup = AppleArtworkUpcSource { _, _ -> response },
+            gateProvider = { gate },
+        )
+        val reasons = mutableListOf<DiscogsArtworkOutcome>()
+        val cases = listOf(
+            ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE) to DiscogsArtworkOutcome.LOOKUP_UNAVAILABLE,
+            result.copy(possiblyTruncated = true) to DiscogsArtworkOutcome.INCOMPLETE_APPLE_RESPONSE,
+            result.copy(items = emptyList()) to DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT,
+        )
+        for ((input, reason) in cases) {
+            response = input
+            assertNull(resolver.resolve(record, onRejected = { reasons += it }))
+            assertEquals(reason, reasons.last())
+        }
+        response = result
+        assertNotNull(resolver.resolve(record, onRejected = { reasons += it }))
+        assertEquals(cases.map { it.second }, reasons)
+    }
+
+    @Test fun artworkBatchReportContainsOnlyBoundedStageCounts() {
+        val report = DiscogsArtworkBatchReport()
+        report.record(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        report.record(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        report.record(DiscogsArtworkOutcome.VERIFIED_PROMINENT)
+        val metadata = report.metadata()
+        assertEquals("candidate_examinations_not_unique_albums", metadata["scope"])
+        assertEquals("2", metadata["no_current_evidence"])
+        assertEquals("1", metadata["verified_prominent"])
+        assertEquals("0", metadata["lookup_timeout"])
+        assertEquals(DiscogsArtworkOutcome.entries.size + 1, metadata.size)
+        assertFalse(metadata.values.any { it.contains(upc) || it.contains(store) })
+    }
+
 }
