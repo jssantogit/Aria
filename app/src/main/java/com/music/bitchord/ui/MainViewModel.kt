@@ -3097,6 +3097,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(artistMbid = id)
         if (id == null) return
         artistPublicTopJob = viewModelScope.launch(Dispatchers.IO) {
+            val startedNanos = System.nanoTime()
+            var firstVerifiedPublished = false
             val popularity = try {
                 listenBrainzPopularityClient.topRecordingsForArtist(id)
             } catch (cancelled: CancellationException) {
@@ -3198,18 +3200,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _detailStack.value.lastOrNull()?.browseId
                         ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
                 ) {
+                    val rows = canonicalArtistTopPlaybackDecoration(
+                        canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
+                    )
                     _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                         artistMbid = id,
-                        rows = canonicalArtistTopPlaybackDecoration(
-                            canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
-                        ),
+                        rows = rows,
                         sampled = sampled,
                     )
+                    if (!firstVerifiedPublished && rows.isNotEmpty()) {
+                        firstVerifiedPublished = true
+                        recordCanonicalLoadTiming("artist_top_first_verified", startedNanos, rows.size)
+                    }
                 }
             }
             canonicalProcessArtistTopInParallel(
                 candidates = ranked,
                 maxConcurrentCovers = 3,
+                onMetadataComplete = {
+                    if (artistPublicTopEpoch.isCurrent(generation) &&
+                        _detailStack.value.lastOrNull()?.browseId
+                            ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                    ) {
+                        recordCanonicalLoadTiming("artist_top_metadata_ready", startedNanos,
+                            canonicalVerifiedArtistTopRows(id, ranked, verified).size)
+                    }
+                },
                 verifyAndPublish = { candidate ->
                     currentCoroutineContext().ensureActive()
                     if (_detailStack.value.lastOrNull()?.browseId
@@ -3304,6 +3320,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val rows = canonicalArtistTopPlaybackDecoration(
                     canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
                 )
+                recordCanonicalLoadTiming("artist_top_complete", startedNanos, rows.size)
                 _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                     artistMbid = id,
                     rows = rows,
