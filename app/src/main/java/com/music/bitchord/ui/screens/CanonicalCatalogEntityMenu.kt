@@ -82,6 +82,9 @@ internal fun CanonicalCatalogEntityMenuBody(
     onDismiss: () -> Unit,
     onRate: (CanonicalCatalogEntityMenuSpec) -> Unit,
     onAddVerifiedRecordings: ((CanonicalCatalogEntityMenuSpec) -> Unit)? = null,
+    onOpen: (() -> Unit)? = null,
+    onOpenLabel: String? = null,
+    isCurrent: () -> Boolean = { true },
 ) {
     val spec = remember(browseId,sourceStoreUrl) {
         canonicalCatalogEntityMenuSpec(browseId,sourceStoreUrl)
@@ -112,26 +115,35 @@ internal fun CanonicalCatalogEntityMenuBody(
             fromCard = false,
         ),
         presentation = presentation,
+        onOpen = onOpen?.let { open -> { if (isCurrent()) open() } },
+        onOpenLabel = onOpenLabel,
         // This identity is a MusicBrainz entity only; never supply onPlay,
         // onShuffle, onPlayNext or onAddToQueue.
         onAddToPlaylist = if (spec.playlistKind != null && onAddVerifiedRecordings != null) {
             {
-                onDismiss()
-                onAddVerifiedRecordings(spec)
+                if (isCurrent()) {
+                    onDismiss()
+                    onAddVerifiedRecordings(spec)
+                }
             }
         } else null,
         onEditRating = {
-            onDismiss()
-            onRate(spec)
+            if (isCurrent()) {
+                onDismiss()
+                onRate(spec)
+            }
         },
         isPinned = pinned,
         onTogglePin = if (canPin) {
             {
-                repository.toggle(pin)
-                onDismiss()
+                if (isCurrent()) {
+                    repository.toggle(pin)
+                    onDismiss()
+                }
             }
         } else null,
-        onShare = {
+        onShare = share@{
+            if (!isCurrent()) return@share
             onDismiss()
             val text = buildString {
                 append(title)
@@ -145,8 +157,10 @@ internal fun CanonicalCatalogEntityMenuBody(
             context.startActivity(Intent.createChooser(share, "Compartilhar catálogo"))
         },
         onViewSource = spec.sourceUrl?.let { source -> {
-            onDismiss()
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(source)))
+            if (isCurrent()) {
+                onDismiss()
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(source)))
+            }
         } },
         viewSourceLabel = spec.sourceLabel,
     )

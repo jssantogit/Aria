@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.Dp
@@ -52,9 +55,41 @@ internal class AmsSearchHeldState {
     fun dismiss() { target = null }
 }
 
-/** The same lifted bitmap, neutral blur and action rows used for MB.
- * AMS has no verified MediaAsset, rating or local pin capability here.
- */
+/** Local entity actions outlive the lifted card and never imply a MediaAsset. */
+private data class AmsHeldRating(val spec: CanonicalCatalogEntityMenuSpec, val artwork: String?)
+
+@Composable
+private fun AmsHeldRatingDialog(rating: AmsHeldRating?, dismiss: () -> Unit) {
+    if (rating != null) CanonicalCatalogEntityRatingDialog(
+        target = rating.spec.ratingTarget, title = rating.spec.ratingLabel,
+        artworkUrl = rating.artwork, onDismiss = dismiss,
+    )
+}
+
+@Composable
+private fun AmsHeldTrackShare(
+    title: String, credit: String, sourceUrl: String?,
+    allowed: () -> Boolean, dismiss: () -> Unit,
+): () -> Unit {
+    val context = LocalContext.current
+    return {
+        if (allowed()) {
+            dismiss()
+            val text = buildString {
+                append(title)
+                if (credit.isNotBlank()) append(" — ").append(credit)
+                sourceUrl?.let { append("\\n").append(it) }
+            }
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            context.startActivity(Intent.createChooser(share, "Compartilhar catálogo"))
+        }
+    }
+}
+
+/** The same lifted bitmap, neutral blur and local entity actions used for MB. */
 @Composable
 internal fun AmsSearchHeldMenu(
     held: AmsSearchHeldState,
@@ -65,6 +100,8 @@ internal fun AmsSearchHeldMenu(
     val session = viewModel.appleMusicWebSearchUi
     val snapshot by session.state.collectAsStateWithLifecycle()
     val uri = LocalUriHandler.current
+    var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
+    AmsHeldRatingDialog(rating) { rating = null }
     fun allowed(target: AmsSearchHeldTarget): Boolean {
         val live = session.state.value
         return live.selected && session.current() && live.sections.values.any { section ->
@@ -89,12 +126,20 @@ internal fun AmsSearchHeldMenu(
         bottomChromeClearance=bottomChromeClearance,hostProvidesBlur=true,
         onDismiss=held::dismiss,onPreviewClick=::open,
     ) { item ->
-        BrowseActionsSheet(
+        if (canonicalCatalogEntityMenuSpec(item.id,item.storeUrl) != null) {
+            CanonicalCatalogEntityMenuBody(
+                browseId=item.id,title=item.title,subtitle=item.credit,artworkUrl=item.art,
+                sourceStoreUrl=item.storeUrl,onDismiss=held::dismiss,
+                onRate={ rating=AmsHeldRating(it,item.art) },
+                onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ allowed(item) },
+            )
+        } else BrowseActionsSheet(
             target=BrowseTarget(browseId=item.id,title=item.title,subtitle=item.credit,
                 thumbnailUrl=item.art,type=item.type,fromCard=false),
             presentation=SongActionsPresentation.Menu,
             onOpenLabel=if (item.track != null) "Abrir álbum" else "Ver detalhes",
             onOpen={ open(item) },
+            onShare=AmsHeldTrackShare(item.title,item.credit,item.storeUrl,{ allowed(item) },held::dismiss),
             onViewSource=item.storeUrl?.let { link ->
                 { if (allowed(item)) { held.dismiss(); runCatching { uri.openUri(link) }; Unit } }
             },
@@ -150,6 +195,8 @@ internal fun AmsShelfHeldMenu(
     val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
     val latestOpen by androidx.compose.runtime.rememberUpdatedState(onOpen)
     val uri = LocalUriHandler.current
+    var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
+    AmsHeldRatingDialog(rating) { rating = null }
     val target = held.target?.takeIf(latestAllowed)
     LaunchedEffect(target,held.target) {
         if (target == null && held.target != null) held.dismiss()
@@ -172,7 +219,14 @@ internal fun AmsShelfHeldMenu(
         val song = com.music.bitchord.ui.amsSongStorefront(id) != null
         val canOpenAlbum = track?.let { amsDetailCanOpenTrackAlbum(item.scope.detail,it) } == true
         val link = appleMusicWebVerifiedRouteUrl(card?.appleStoreUrl ?: track?.sourceStoreUrl,id)
-        BrowseActionsSheet(
+        if (id != null && card != null && canonicalCatalogEntityMenuSpec(id,link) != null) {
+            CanonicalCatalogEntityMenuBody(
+                browseId=id,title=card.title,subtitle=card.subtitle.orEmpty(),artworkUrl=card.thumbnailUrl,
+                sourceStoreUrl=link,onDismiss=held::dismiss,
+                onRate={ rating=AmsHeldRating(it,card.thumbnailUrl) },
+                onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ latestAllowed(item) },
+            )
+        } else BrowseActionsSheet(
             target=BrowseTarget(browseId=id,title=card?.title ?: track?.title.orEmpty(),
                 subtitle=card?.subtitle ?: track?.credit.orEmpty(),
                 thumbnailUrl=card?.thumbnailUrl ?: track?.artworkUri,
@@ -185,6 +239,8 @@ internal fun AmsShelfHeldMenu(
             presentation=SongActionsPresentation.Menu,
             onOpenLabel=if (canOpenAlbum) "Abrir álbum" else "Ver detalhes",
             onOpen=if ((card != null && !song) || canOpenAlbum) ({ open(item) }) else null,
+            onShare=AmsHeldTrackShare(card?.title ?: track?.title.orEmpty(),
+                card?.subtitle ?: track?.credit.orEmpty(),link,{ latestAllowed(item) },held::dismiss),
             onViewSource=link?.let { url ->
                 { if (latestAllowed(item)) { held.dismiss(); runCatching { uri.openUri(url) }; Unit } }
             },
