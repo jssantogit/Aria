@@ -637,4 +637,37 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals(ids.drop(20), attempted)
     }
 
+    @Test fun artworkBatchSkipsRemovedCandidatesAndDoesNotPublishObsoleteProof() = runBlocking {
+        val ids = (1..5).map { "discogs:release:$it" }
+        val visible = ids.toMutableSet()
+        visible.remove(ids[0])
+        val reads = mutableListOf<String>()
+        val examined = mutableListOf<String>()
+        val published = mutableListOf<String>()
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            ids, stillCurrent = { true },
+            eligible = { id ->
+                if (id == ids[1]) visible.remove(id)
+                true
+            },
+            resolve = { id ->
+                reads += id
+                if (id == ids[2]) {
+                    visible.remove(id)
+                    visible.remove(ids[3])
+                }
+                com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    id.substringAfterLast(':').toLong(), "itunes:br:album:1",
+                    "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onExamined = { examined += it },
+            stillNeeded = { it in visible },
+            onVerified = { id, _ -> published += id },
+        )
+        assertEquals(listOf(ids[1], ids[2], ids[4]), examined)
+        assertEquals(listOf(ids[2], ids[4]), reads)
+        assertEquals(listOf(ids[4]), published)
+    }
+
 }
