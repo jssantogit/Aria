@@ -32,7 +32,7 @@ internal fun rememberDiscogsEditorialArtwork(
     val policy = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
     val generationFlow = if (surfaceKey == "home") session.homeEditorialGeneration
         else session.genreEditorialGeneration
-    val generation by generationFlow.collectAsStateWithLifecycle()
+    val generation = generationFlow.collectAsStateWithLifecycle().value
     val gate = ProviderRuntime.gateOrNull()
     val ready = active && state is UiState.Success && policy != null
     val ticket = if (ready)
@@ -58,9 +58,7 @@ internal fun rememberDiscogsEditorialArtwork(
     LaunchedEffect(session, surfaceKey, generation, gate, ticket, search, editorial, ready) {
         if (gate == null || ticket == null || search == null || editorial == null)
             return@LaunchedEffect
-        // Capture the value, not the delegated mutable Compose State.
-        val acceptedGeneration = generation
-        fun current(): Boolean = currentActive && generationFlow.value == acceptedGeneration &&
+        fun current(): Boolean = currentActive && generationFlow.value == generation &&
             ProviderRuntime.gateOrNull() === gate &&
             gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
         val attempted = mutableSetOf<String>()
