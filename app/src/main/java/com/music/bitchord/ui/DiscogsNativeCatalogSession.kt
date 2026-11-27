@@ -438,6 +438,10 @@ internal class DiscogsNativeCatalogSession(
     val detail: StateFlow<UiState<DiscogsNativePage>?> = _detail.asStateFlow()
 
     private var query = ""
+    @Volatile private var searchEpoch = 0L
+    // At most three source pages of twenty typed rows. Keep the raw bounded
+    // observations rather than the deduplicated display representatives.
+    private var releaseSearchObservations = mutableListOf<DiscogsNativeReleaseSearchRow>()
     /** Never let a still-open page display stale Discogs API Content beyond
      * the provider's six-hour maximum. This timer is not extended by paging. */
     private var expirationJob: Job? = null
@@ -808,6 +812,8 @@ internal class DiscogsNativeCatalogSession(
     }
 
     fun clearSearch() {
+        ++searchEpoch
+        releaseSearchObservations = mutableListOf()
         searchJob?.cancel()
         releaseSearchJob?.cancel()
         searchJob = null
@@ -837,6 +843,7 @@ internal class DiscogsNativeCatalogSession(
         if (query.isBlank() || searchJob?.isActive == true) return
         if (searchPage != 0 && !_searchHasMore.value) return
         val subject = query
+        val epoch = searchEpoch
         val firstPage = searchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
@@ -852,7 +859,7 @@ internal class DiscogsNativeCatalogSession(
                 val result = try { searchClient.search(subject, currentPage) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsNativeArtistSearchResult.Unavailable }
-                if (query != subject || !authorization.isCurrent()) return@launch
+                if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
                 when (result) {
                     is DiscogsNativeArtistSearchResult.Success -> {
                         val rows = result.page.artists.asSequence()
@@ -877,13 +884,13 @@ internal class DiscogsNativeCatalogSession(
                         val resolved = if (editorialLease != null) {
                             discogsResolveArtistSearchHomonyms(
                                 query = subject, rows = combined,
-                                stillCurrent = { query == subject && authorization.isCurrent() &&
-                                    editorialLease.isCurrent() },
+                                stillCurrent = { searchEpoch == epoch && query == subject &&
+                                    authorization.isCurrent() && editorialLease.isCurrent() },
                                 searchReleases = { releaseSearchClient.search(subject) },
                                 readRelease = editionClient::fetchRelease,
                             ).rows.takeIf { editorialLease.isCurrent() } ?: combined
                         } else combined
-                        if (query != subject || !authorization.isCurrent()) return@launch
+                        if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
                         val candidates = discogsSearchDistinctArtists(subject, resolved)
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
@@ -926,6 +933,8 @@ internal class DiscogsNativeCatalogSession(
         if (query.isBlank() || releaseSearchJob?.isActive == true) return
         if (releaseSearchPage != 0 && !_releaseSearchHasMore.value) return
         val subject = query
+        val epoch = searchEpoch
+        val observations = releaseSearchObservations
         val firstPage = releaseSearchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
@@ -941,7 +950,7 @@ internal class DiscogsNativeCatalogSession(
                 val result = try { releaseSearchClient.search(subject, currentPage) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsNativeReleaseSearchResult.Unavailable }
-                if (query != subject || !authorization.isCurrent()) return@launch
+                if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
                 when (result) {
                     is DiscogsNativeReleaseSearchResult.Success -> {
                         val rows = result.page.releases.map {
@@ -949,7 +958,8 @@ internal class DiscogsNativeCatalogSession(
                         }
                         val previous =
                             (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
-                        val merged = discogsSearchDistinctReleases(subject, previous + rows)
+                        observations += rows
+                        val merged = discogsSearchDistinctReleases(subject, observations)
                         releaseSearchPage = currentPage
                         _releaseSearchHasMore.value = result.page.nextPage != null
                         if (discogsSearchNeedsNextRelevantPage(
