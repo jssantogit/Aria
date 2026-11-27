@@ -89,4 +89,22 @@ class NativeReleaseRatingLayoutTest {
         }
         compose.onNodeWithTag("native-album-rating").assertDoesNotExist()
     }
+    @Test fun editorialHeroContainsIdentityWhileControlsRemainOutside() {
+        compose.setContent {
+            MaterialTheme {
+                NativeReleaseHeaderLayout(
+                    title = "Top 100: Brasil", credit = "Apple Music", meta = "",
+                    palette = palette, sleeveSize = 96.dp, topInset = 0.dp,
+                    immersiveArtwork = true, artwork = {},
+                    actions = { androidx.compose.material3.Text("Controls") },
+                )
+            }
+        }
+        val hero = compose.onNodeWithTag("native-release-editorial-hero").fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithTag("native-release-title").fetchSemanticsNode().boundsInRoot
+        val controls = compose.onNodeWithText("Controls").fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue(title.top >= hero.top && title.bottom <= hero.bottom)
+        org.junit.Assert.assertTrue(controls.top >= hero.bottom)
+    }
+
 }

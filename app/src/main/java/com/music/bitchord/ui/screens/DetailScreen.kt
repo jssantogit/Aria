@@ -1650,8 +1650,8 @@ private fun ReleaseHeader(
     NativeReleaseHeaderLayout(
         title = page.title,
         immersiveArtwork = editorialHero != null,
-        credit = if (amsPlaylist) "" else credit,
-        meta = meta,
+        credit = if (amsPlaylist && editorialHero == null) "" else credit,
+        meta = if (amsPlaylist && editorialHero != null) "" else meta,
         inlineAlbumMetadata = page.type == BrowseType.ALBUM,
         palette = palette,
         sleeveSize = sleeveSize,

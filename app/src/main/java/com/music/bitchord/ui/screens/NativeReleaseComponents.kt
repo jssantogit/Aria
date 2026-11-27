@@ -309,21 +309,7 @@ internal fun NativeReleaseHeaderLayout(
     immersiveArtwork: Boolean = false,
     actions: @Composable () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-            .padding(top = if (immersiveArtwork) 0.dp else topInset ?: nativeCollectionTopChromeInset(), bottom = 18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            if (immersiveArtwork) Modifier.fillMaxWidth().aspectRatio(0.88f)
-                .testTag("native-release-editorial-hero")
-            else Modifier.size(sleeveSize)
-                .shadow(SLEEVE_SHADOW, SLEEVE_SHAPE)
-                .background(palette.elevated)
-                .thumbnailBorder(SLEEVE_SHAPE),
-            content = artwork,
-        )
-        Spacer(Modifier.height(20.dp))
+    val labels: @Composable () -> Unit = {
         // Ratings are shown by the shared top-right circular toolbar action.
         // Keep album/playlist identity centred and free of inline badges.
         Text(
@@ -409,6 +395,32 @@ internal fun NativeReleaseHeaderLayout(
                     modifier = Modifier.padding(horizontal = HEADER_GUTTER),
                 )
             }
+        }
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .padding(top = if (immersiveArtwork) 0.dp else topInset ?: nativeCollectionTopChromeInset(), bottom = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (immersiveArtwork) {
+            Box(Modifier.fillMaxWidth().aspectRatio(0.88f)
+                .testTag("native-release-editorial-hero")) {
+                artwork()
+                Column(
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) { labels() }
+            }
+        } else {
+            Box(
+                Modifier.size(sleeveSize)
+                    .shadow(SLEEVE_SHADOW, SLEEVE_SHAPE)
+                    .background(palette.elevated)
+                    .thumbnailBorder(SLEEVE_SHAPE),
+                content = artwork,
+            )
+            Spacer(Modifier.height(20.dp))
+            labels()
         }
         actions()
     }

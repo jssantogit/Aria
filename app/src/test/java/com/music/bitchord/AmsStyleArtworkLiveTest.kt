@@ -87,4 +87,25 @@ class AmsStyleArtworkLiveTest {
         }
         assertTrue("Uncovered metal styles: "+uncovered.joinToString(),uncovered.isEmpty())
     }
+    @Test fun everyStylePageHasVerifiedContent(): Unit = runBlocking {
+        val native = session()
+        val shard = System.getenv("AMS_STYLE_SHARD")?.toIntOrNull() ?: 0
+        require(shard in 0..3)
+        val tags = amsEditorialStyleParents.keys.toList().filterIndexed { i,_ -> i % 4 == shard }
+        val gaps = mutableListOf<String>()
+        for (tag in tags) {
+            val page = content(withTimeout(240_000) { native.genre(tag,"br") })
+            val shelves = page?.shelves.orEmpty()
+            val items = shelves.flatMap { it.items }.distinctBy { it.browseId }
+            val albums = items.count { AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.ALBUM }
+            val playlists = items.count { AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST }
+            val exact = shelves.filter { it.title == "Álbuns do estilo" }.sumOf { it.items.size }
+            val curated = shelves.filter { it.title == "Álbuns das playlists" }.sumOf { it.items.size }
+            assertTrue(items.all { it.videoId == null && AppleMusicWebNativeRoute.parse(it.browseId)?.storefront == "br" })
+            println("AMS_STYLE_ART|scope=integrated|shard=$shard|tag=$tag|uniqueAlbums=$albums|playlists=$playlists|metadata=$exact|playlistAlbums=$curated|pending=${page?.pending?.size ?: 0}")
+            if (albums < 6) gaps += tag
+        }
+        assertTrue("Insufficient actual style pages: " + gaps.joinToString(),gaps.isEmpty())
+    }
+
 }

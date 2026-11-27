@@ -418,7 +418,9 @@ internal class AppleMusicWebNativeCatalogSession(
         val searchTicket = gate.open(ProviderCapability.CATALOG_SEARCH,provider)
         val curated = curatedGenre(tag,storefront,refresh)
         if (curated == ProviderCallResult.Denied || curated == ProviderCallResult.Stale ||
-            curated is ProviderCallResult.Failed || searchTicket == null) return curated
+            searchTicket == null) return curated
+        if (curated is ProviderCallResult.Failed &&
+            (curated.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return curated
         if (currentGate() !== gate || !gate.accept(searchTicket)) return ProviderCallResult.Stale
         val tracks = trackStyleShelf(tag,storefront)
         if (currentGate() !== gate || !gate.accept(searchTicket) || tracks == ProviderCallResult.Stale)
@@ -426,7 +428,8 @@ internal class AppleMusicWebNativeCatalogSession(
         if (tracks is ProviderCallResult.Failed &&
             (tracks.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return tracks
         val shelf = (tracks as? ProviderCallResult.Success)?.value ?: return curated
-        val outcome = (curated as? ProviderCallResult.Success)?.value ?: return curated
+        val outcome = (curated as? ProviderCallResult.Success)?.value
+            ?: AppleMusicWebOutcome.Partial(AmsEditorialPage(emptyList()),AppleMusicWebCompleteness.UPSTREAM_INTERRUPTED)
         val page = when (outcome) {
             is AppleMusicWebOutcome.Complete -> outcome.value
             is AppleMusicWebOutcome.Partial -> outcome.value
@@ -450,15 +453,18 @@ internal class AppleMusicWebNativeCatalogSession(
             val songs = mutableListOf<AppleMusicWebItem>()
             var cursor: String? = null
             val visited = hashSetOf<String>()
-            for (index in 1..2) {
+            for (index in 1..4) {
+                if (index > 2 && amsStyleTrackAlbumIds(songs,storefront,tag).size !in 1..5) break
                 when (val read = gateway.search(AppleMusicWebKind.SONG,tag,storefront,
                     page=index,limit=25,continuation=cursor)) {
                     ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
                     ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
-                    is ProviderCallResult.Failed -> return@admitted read
+                    is ProviderCallResult.Failed -> {
+                        if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                        break
+                    }
                     is ProviderCallResult.Success -> {
-                        val page = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value
-                            ?: break
+                        val page = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value ?: break
                         songs += page.items
                         val next = page.nextCursor ?: break
                         if (!visited.add(next)) break
@@ -467,16 +473,46 @@ internal class AppleMusicWebNativeCatalogSession(
                 }
             }
             val ids = amsStyleTrackAlbumIds(songs,storefront,tag)
-            if (ids.isEmpty()) return@admitted ProviderCallResult.Success(null)
-            when (val read = gateway.linkedAlbumMetadata(ids,storefront)) {
-                ProviderCallResult.Denied -> ProviderCallResult.Denied
-                ProviderCallResult.Stale -> ProviderCallResult.Stale
-                is ProviderCallResult.Failed -> read
-                is ProviderCallResult.Success -> {
-                    val albums = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
-                    ProviderCallResult.Success(amsStyleTrackAlbumShelf(ids,storefront,albums))
+            val albums = mutableListOf<AppleMusicWebItem>()
+            if (ids.isNotEmpty()) when (val read = gateway.linkedAlbumMetadata(ids,storefront)) {
+                ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                is ProviderCallResult.Failed -> {
+                    if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                }
+                is ProviderCallResult.Success -> albums += (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
+            }
+            // Album-owned exact labels are independent evidence and do not
+            // require a specific playlist or that a song search ranks well.
+            val direct = mutableListOf<AppleMusicWebItem>()
+            if (albums.size < 6) {
+                var albumCursor: String? = null
+                val albumVisited = hashSetOf<String>()
+                for (index in 1..2) {
+                    when (val read = gateway.search(AppleMusicWebKind.ALBUM,tag,storefront,
+                        page=index,limit=25,continuation=albumCursor)) {
+                        ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                        ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                        is ProviderCallResult.Failed -> {
+                            if ((read.cause as? AppleMusicWebHttpException)?.status in setOf(401,403,429)) return@admitted read
+                            break
+                        }
+                        is ProviderCallResult.Success -> {
+                            val page = (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value ?: break
+                            direct += page.items.filter { it.kind == AppleMusicWebKind.ALBUM &&
+                                it.storefront == storefront && it.genreNames.any { label ->
+                                    appleMusicWebGenreNameMatches(label,tag)
+                                } }
+                            val next = page.nextCursor ?: break
+                            if (!albumVisited.add(next)) break
+                            albumCursor = next
+                        }
+                    }
                 }
             }
+            val combined = (albums + direct).distinctBy { it.scopedId }
+            val verifiedIds = (ids + direct.map { it.id }).distinct().take(24)
+            ProviderCallResult.Success(amsStyleTrackAlbumShelf(verifiedIds,storefront,combined))
         }
 
     private suspend fun curatedGenre(tag: String, storefront: String, refresh: Boolean):
