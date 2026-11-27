@@ -96,6 +96,42 @@ internal fun appleNativeShelfEntry(
     } ?: first
 }
 
+/**
+ * One admission contract for the visible related-release rail and its tap.
+ * Conflicting observations of the same collection cannot create a dead card.
+ * Missing optional artwork may be complemented without changing identity.
+ */
+internal fun appleNativeRelatedAlbumEntries(
+    source: AppleEditorialAlbumDetailPage,
+): List<AppleEditorialSearchRow> {
+    val route = AppleCatalogBrowseRoute.parse(source.album.browseId)
+        ?.takeIf { it.kind == ItunesCatalogItemType.ALBUM } ?: return emptyList()
+    val artist = AppleCatalogBrowseRoute.parse(source.album.artistBrowseId)
+        ?.takeIf {
+            it.kind == ItunesCatalogItemType.ARTIST && it.storefront == route.storefront
+        } ?: return emptyList()
+    val artistId = "itunes:${artist.storefront}:artist:${artist.id}"
+    return source.relatedAlbums.groupBy { it.browseId }.values.mapNotNull { observations ->
+        val first = observations.first()
+        val candidateRoute = AppleCatalogBrowseRoute.parse(first.browseId)
+        if (candidateRoute?.kind != ItunesCatalogItemType.ALBUM ||
+            candidateRoute.storefront != route.storefront ||
+            first.browseId == source.album.browseId ||
+            first.title.isBlank() ||
+            observations.any {
+                it.artistBrowseId != null && it.artistBrowseId != artistId
+            }
+        ) return@mapNotNull null
+        val admitted = appleNativeShelfEntry(first.browseId, observations)
+            ?: return@mapNotNull null
+        // Choose a row with independently proven credit even if a duplicate
+        // without that optional field had more attractive artwork.
+        val credited = observations.filter { it.artistBrowseId == artistId }
+        if (admitted.artistBrowseId == artistId) admitted
+        else appleNativeShelfEntry(first.browseId, credited)
+    }.take(12)
+}
+
 /** A retained artist and an open album may coexist for Back navigation.
  * Only the visible route may nominate a related item. */
 internal fun appleNativeShelfEntryForRoute(
@@ -108,7 +144,7 @@ internal fun appleNativeShelfEntryForRoute(
     if (!readAllowed) return null
     val candidates = when {
         artist?.artist?.browseId == routeKey -> artist.albums
-        album?.album?.browseId == routeKey -> album.relatedAlbums
+        album?.album?.browseId == routeKey -> appleNativeRelatedAlbumEntries(album)
         else -> emptyList()
     }
     return appleNativeShelfEntry(browseId, candidates)

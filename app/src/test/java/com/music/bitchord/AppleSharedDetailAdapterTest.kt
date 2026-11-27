@@ -221,4 +221,35 @@ class AppleSharedDetailAdapterTest {
             artist = artist, albums = listOf(wrong), possiblyTruncated = false)))
         assertTrue(result.page.sections.isEmpty())
     }
+
+    @Test fun relatedAlbumRailAndNavigationRejectConflictsAndShareVisibleLimit() {
+        val credit = artist.browseId
+        val selected = album(20, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val good = album(21, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val conflict = album(22, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val wrongCredit = album(23, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val remaining = (24L..36L).map {
+            album(it, AppleEditorialReleaseCategory.ALBUM).copy(artistBrowseId = credit)
+        }
+        val source = AppleEditorialAlbumDetailPage(
+            album = selected, tracks = emptyList(), partialTracklist = false,
+            relatedAlbums = listOf(good, good, conflict, conflict.copy(title = "Contradiction"),
+                wrongCredit, wrongCredit.copy(artistBrowseId = "itunes:br:artist:999")) + remaining,
+        )
+        val visible = requireNotNull(appleAlbumAsSharedDetail(source))
+            .page.sections.single().items.map { it.browseId }
+        val expected = (listOf(good) + remaining).take(12).map { it.browseId }
+        assertEquals(expected, visible)
+        fun navigate(id: String?) = com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+            selected.browseId, id, true, null, source,
+        )
+        visible.forEach { assertEquals(it, navigate(it)?.browseId) }
+        assertNull(navigate(conflict.browseId))
+        assertNull(navigate(wrongCredit.browseId))
+        assertNull(navigate(remaining.last().browseId))
+    }
 }

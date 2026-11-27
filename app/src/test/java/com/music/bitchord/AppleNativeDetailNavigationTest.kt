@@ -276,8 +276,8 @@ class AppleNativeDetailNavigationTest {
     }
     @Test fun relatedReleaseSelectionUsesOnlyAuthorizedCurrentRoute() {
         val artistRow = artist()
-        val albumRow = album()
-        val other = album(501)
+        val albumRow = album().copy(artistBrowseId = artistRow.browseId)
+        val other = album(501).copy(artistBrowseId = artistRow.browseId)
         val artistPage = AppleEditorialArtistDetailPage(
             artist = artistRow, albums = listOf(other), possiblyTruncated = false,
         )

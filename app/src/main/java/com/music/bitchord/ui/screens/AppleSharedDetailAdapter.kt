@@ -151,20 +151,8 @@ internal fun appleAlbumAsSharedDetail(
             it.kind == ItunesCatalogItemType.ARTIST &&
                 it.storefront == route.storefront
         }
-    val otherReleases = source.relatedAlbums.asSequence()
-        .filter { candidate ->
-            val candidateRoute = AppleCatalogBrowseRoute.parse(candidate.browseId)
-            candidate.kind == AppleEditorialSearchKind.ALBUM &&
-                candidateRoute?.kind == ItunesCatalogItemType.ALBUM &&
-                candidateRoute.storefront == route.storefront &&
-                candidate.browseId != source.album.browseId &&
-                candidate.title.isNotBlank() &&
-                sourceArtistRoute != null &&
-                candidate.artistBrowseId ==
-                    "itunes:${sourceArtistRoute.storefront}:artist:${sourceArtistRoute.id}"
-        }
-        .distinctBy { it.browseId }
-        .take(12)
+    val otherReleases = appleNativeRelatedAlbumEntries(source)
+        .asSequence()
         .map { candidate ->
             ShelfItem(
                 title = candidate.title,
