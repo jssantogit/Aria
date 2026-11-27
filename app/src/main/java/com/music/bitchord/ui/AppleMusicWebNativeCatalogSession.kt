@@ -47,7 +47,7 @@ internal fun amsSongStorefront(key: String?): String? =
     key?.let { Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$").matchEntire(it) }
         ?.groupValues?.get(1)
 
-internal fun appleMusicWebGenreSupported(tag: String): Boolean = tag in amsEditorialGenreCorpus
+internal fun appleMusicWebGenreSupported(tag: String): Boolean = amsSupportsEditorialTag(tag)
 
 /** Existing HomeShelf model; no new screen and no fake playable IDs. */
 internal fun projectAppleMusicWebGenreLanding(
@@ -374,15 +374,16 @@ internal class AppleMusicWebNativeCatalogSession(
                         val requests = landing.continuations.map<AppleMusicWebRoomContinuation,AmsEditorialRequest> {
                             AmsEditorialRequest.Room(it, curator = landing.curator.identity, tag = tag)
                         }.ifEmpty {
-                            if (landing.bounded && !refresh && shelves.isNotEmpty())
+                            if (landing.bounded && !refresh && (shelves.isNotEmpty() || tag in amsEditorialStyleParents))
                                 listOf(AmsEditorialRequest.RefreshGenre(tag,landing.curator.identity))
                             else emptyList()
                         }
                         val pending = requests.toMutableList()
                         val playlistCards = mutableListOf<ShelfItem>()
                         var playlistIncomplete = false
-                        // Do not let playlist-only results claim ownership of the genre's releases.
-                        if (shelves.isNotEmpty()) {
+                        // A style can have an exact official playlist but no album-level tag.
+                        // Never promote playlist tracks to fabricated style release evidence.
+                        if (shelves.isNotEmpty() || tag in amsEditorialStyleParents) {
                             val curator = landing.curator.identity
                             val playlistRooms = landing.curator.rooms.filter {
                                 isAppleMusicWebCuratorPlaylistRoom(it) && it.storefront == market &&

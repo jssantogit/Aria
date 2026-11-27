@@ -128,7 +128,7 @@ internal class AppleMusicWebEditorialGateway(
     suspend fun curatedGenreLanding(tag: String, country: String, refresh: Boolean = false):
         ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebCuratorLanding>> =
         guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, country) { storefront ->
-            require(tag in amsEditorialGenreCorpus) { "Unknown AMS genre" }
+            require(amsSupportsEditorialTag(tag)) { "Unknown AMS genre" }
             if (!refresh) landingCache?.read(storefront, tag)?.let {
                 return@guarded AppleMusicWebOutcome.Complete(it)
             }
@@ -159,7 +159,8 @@ internal class AppleMusicWebEditorialGateway(
                 }
             }
             val publicId = appleMusicWebPublicCuratorReference(storefront, tag)
-            val id = nominated?.id ?: publicId
+            val parentId = amsEditorialStyleParents[tag]?.let { appleMusicWebPublicCuratorReference(storefront,it) }
+            val id = nominated?.id ?: publicId ?: parentId
                 ?: return@guarded AppleMusicWebOutcome.Unavailable("No verified curator nomination")
             val provenance = if (nominated != null) "search" else "public_reference"
             val curator = (catalog.appleCurator(id, storefront) as? AppleMusicWebOutcome.Complete)?.value

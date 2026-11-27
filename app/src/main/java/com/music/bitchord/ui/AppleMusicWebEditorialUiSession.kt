@@ -107,6 +107,11 @@ internal fun amsGenreWithPlaylistContinuation(
     return result
 }
 
+internal fun canonicalGenreShowsAmsStylePlaylist(state: UiState<List<HomeShelf>>,tag: String?): Boolean =
+    tag in amsEditorialStyleParents && (state as? UiState.Success)?.data.orEmpty().any { shelf ->
+        shelf.items.any { AppleMusicWebNativeRoute.parse(it.browseId)?.kind == AppleMusicWebKind.PLAYLIST }
+    }
+
 internal fun canonicalGenreShowsAmsReleases(state: UiState<List<HomeShelf>>): Boolean =
     (state as? UiState.Success)?.data.orEmpty().any { shelf ->
         shelf.title == "Lançamentos" && shelf.items.any {

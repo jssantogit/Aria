@@ -1688,7 +1688,9 @@ private fun BitChordApp(
         .canonicalGenreShowsDiscogsReleases(canonicalGenreState)
     val genreAppleOwnsReleases = com.music.bitchord.ui
         .canonicalGenreShowsAppleReleases(canonicalGenreState)
-    val genreAmsOwnsReleases = com.music.bitchord.ui.canonicalGenreShowsAmsReleases(canonicalGenreState)
+    val genreAmsOwnsReleases = com.music.bitchord.ui.canonicalGenreShowsAmsReleases(canonicalGenreState) ||
+        (!genreMbOwnsReleases && !genreDiscogsOwnsReleases && !genreAppleOwnsReleases &&
+            com.music.bitchord.ui.canonicalGenreShowsAmsStylePlaylist(canonicalGenreState,activeCanonicalGenre?.tag))
     val amsGenrePaging = activeGenrePagingTag?.let { catalogRuntime.amsEditorial.paging[it] }
     val appleGenreAvailable = activeGenrePagingTag?.let { tag ->
         (appleGenreReleases[tag] as? UiState.Success)?.data?.size
@@ -10088,7 +10090,7 @@ private fun NativeDetailAlbumTopBarActions(
     }
     if (searching) return
     if (ratingTarget != null) {
-        CanonicalToolbarRatingAction(ratingTarget, "álbum", thumbnailUrl)
+        CanonicalToolbarRatingAction(ratingTarget, if (browseId.contains(":playlist:")) "playlist" else "álbum", thumbnailUrl)
     }
     Box(Modifier.onGloballyPositioned { coords ->
         onSortAnchor(nativeMenuAnchorBounds(coords))

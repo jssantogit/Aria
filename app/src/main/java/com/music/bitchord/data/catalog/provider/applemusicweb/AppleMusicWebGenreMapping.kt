@@ -40,7 +40,16 @@ internal fun appleMusicWebGenreNameMatches(name: String, tag: String): Boolean {
         "trance" -> setOf("Trance")
         "smooth jazz" -> setOf("Smooth Jazz")
         "bluegrass" -> setOf("Bluegrass")
-        else -> emptySet()
+        "alternative rock" -> setOf("Alternative Rock", "Rock alternativo")
+        "progressive rock" -> setOf("Progressive Rock", "Rock progressivo")
+        "conscious hip hop" -> setOf("Conscious Hip Hop", "Hip-hop consciente")
+        "drum and bass" -> setOf("Drum and Bass", "Drum & Bass", "Drum n Bass")
+        "contemporary r&b" -> setOf("Contemporary R&B", "R&B contemporâneo")
+        "alternative r&b" -> setOf("Alternative R&B", "R&B alternativo")
+        "baroque" -> setOf("Baroque", "Barroco")
+        "chamber music" -> setOf("Chamber Music", "Música de câmara")
+        "opera" -> setOf("Opera", "Ópera")
+        else -> if (tag in amsEditorialStyleParents) setOf(tag) else emptySet()
     }.map(::fold).toSet()
     return fold(name) in aliases
 }

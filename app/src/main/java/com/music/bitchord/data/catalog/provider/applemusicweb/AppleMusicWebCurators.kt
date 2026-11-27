@@ -85,14 +85,32 @@ internal fun appleMusicWebCuratorIsSharedForTag(ref: AppleMusicWebCuratorRef, ta
             else -> false
         }
     }
-    return matches(ref.title) || ref.shortName?.let(::matches) == true
+    return matches(ref.title) || ref.shortName?.let(::matches) == true || amsVerifiedStyleParent(ref,tag)
+}
+
+/** Exact public parent anchor only. Every child item still needs child evidence. */
+internal fun amsVerifiedStyleParent(ref: AppleMusicWebCuratorRef, tag: String): Boolean {
+    val parent = amsEditorialStyleParents[tag] ?: return false
+    return appleMusicWebPublicCuratorReference(ref.storefront,parent) == ref.id &&
+        resolveAppleMusicWebGenreCurator(listOf(ref),ref.storefront,parent) == ref
+}
+
+/** Official curator playlist room plus a precisely named style playlist is
+ * source evidence for the PLAYLIST, never for every album/artist in it. */
+internal fun amsExactStylePlaylistTitle(title: String,tag: String): Boolean {
+    if (tag !in amsEditorialStyleParents) return false
+    val name = curatorFold(title)
+    val labels = listOf(name, name.removeSuffix(" essenciais"), name.removeSuffix(" essentials"),
+        name.removePrefix("essenciais de "), name.removePrefix("essenciais do "),
+        name.removePrefix("essenciais da "),name.removeSuffix(" essential"))
+    return labels.any { appleMusicWebGenreNameMatches(it,tag) }
 }
 
 internal fun appleMusicWebCuratorMatches(ref: AppleMusicWebCuratorRef, storefront: String, tag: String): Boolean =
     ref.storefront == storefront &&
         (resolveAppleMusicWebGenreCurator(listOf(ref), storefront, tag) != null ||
             (appleMusicWebPublicCuratorReference(storefront, tag) == ref.id &&
-                appleMusicWebCuratorIsSharedForTag(ref, tag)))
+                appleMusicWebCuratorIsSharedForTag(ref, tag)) || amsVerifiedStyleParent(ref,tag))
 
 @kotlinx.serialization.Serializable
 internal enum class AppleMusicWebCuratedAlbumEvidence {
@@ -142,7 +160,8 @@ internal fun appleMusicWebCuratedPlaylistMatches(
     room.storefront == ref.storefront && room.genreId == null &&
     isAppleMusicWebCuratorPlaylistRoom(room) &&
     (!appleMusicWebCuratorIsSharedForTag(ref,tag) ||
-        item.genreNames.any { appleMusicWebGenreNameMatches(it,tag) })
+        item.genreNames.any { appleMusicWebGenreNameMatches(it,tag) } ||
+        (amsVerifiedStyleParent(ref,tag) && amsExactStylePlaylistTitle(item.title,tag)))
 
 /** Native genre-curator album shelves only; never fill from unrelated playlists. */
 internal fun isAppleMusicWebCuratorReleaseRoom(room: AppleMusicWebRoomRef): Boolean =

@@ -66,6 +66,23 @@ class AppleMusicWebCuratorsTest {
         assertTrue("eletrônica" in appleMusicWebCuratorQueries("electronic"))
     }
 
+    @Test fun parentCuratorRequiresExactStyleEvidenceAndDoesNotInventAlbums() {
+        val parent = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")
+        val album = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A",genreNames=listOf("Metal"))
+        val room = AppleMusicWebRoomRef("br",null,"123","Playlists",parent.id)
+        assertTrue(amsSupportsEditorialTag("death metal"))
+        assertNull(resolveAppleMusicWebGenreCurator(listOf(parent),"br","death metal"))
+        assertTrue(amsVerifiedStyleParent(parent,"death metal"))
+        assertFalse(amsVerifiedStyleParent(parent.copy(id="999"),"death metal"))
+        assertFalse(appleMusicWebCuratedAlbumMatches(parent,"death metal",album))
+        assertTrue(appleMusicWebCuratedAlbumMatches(parent,"death metal",album.copy(genreNames=listOf("Death Metal"))))
+        val playlist = AppleMusicWebItem("pl.123",AppleMusicWebKind.PLAYLIST,"br","Death Metal Essentials")
+        assertTrue(appleMusicWebCuratedPlaylistMatches(parent,"death metal",playlist,room))
+        assertFalse(appleMusicWebCuratedPlaylistMatches(parent,"thrash metal",playlist,room))
+        assertFalse(appleMusicWebCuratedPlaylistMatches(parent,"death metal",playlist.copy(title="Best of Metal"),room))
+        assertFalse(appleMusicWebCuratedPlaylistMatches(parent,"death metal",playlist,room.copy(curatorId="999")))
+    }
+
     @Test fun sharedCuratorDoesNotMakeEveryAlbumBelongToBothGenres() {
         val shared = AppleMusicWebCuratorRef("982356287","br","Apple Music: pagode e samba")
         val samba = AppleMusicWebItem("1",AppleMusicWebKind.ALBUM,"br","A",genreNames=listOf("Samba"))

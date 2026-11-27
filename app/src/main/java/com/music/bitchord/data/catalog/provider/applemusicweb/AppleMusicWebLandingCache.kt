@@ -30,7 +30,7 @@ internal class RoomAppleMusicWebLandingCache(
     private val maxPayload = 1_000_000
     private val json = Json { ignoreUnknownKeys = false }
     private fun scope(storefront: String, tag: String) =
-        storefront.matches(Regex("[a-z]{2}")) && tag in amsEditorialGenreCorpus
+        storefront.matches(Regex("[a-z]{2}")) && amsSupportsEditorialTag(tag)
 
     // Store only known public URL shapes, never userinfo, queries, fragments
     // or signed playback locations. Artwork templates may contain braces.
