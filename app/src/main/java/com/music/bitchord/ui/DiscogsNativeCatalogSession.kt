@@ -74,13 +74,15 @@ internal suspend fun resolveDiscogsEditorialArtworkBatch(
     onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
     eligible: suspend (String) -> Boolean = { true },
     onAttempt: (String) -> Unit = {},
+    maximumAttempts: Int = 16,
 ) {
+    val limit = maximumAttempts.coerceIn(0, 16)
     var attempts = 0
     val candidates = browseIds.asSequence()
         .mapNotNull { discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, it) }
         .distinct()
     for (id in candidates) {
-        if (!stillCurrent() || attempts >= 16) return
+        if (!stillCurrent() || attempts >= limit) return
         if (!eligible(id)) continue
         if (!stillCurrent()) return
         attempts++
@@ -269,6 +271,7 @@ internal class DiscogsNativeCatalogSession(
         stillCurrent: () -> Boolean,
         onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
         onAttempt: (String) -> Unit = {},
+        maximumAttempts: Int = 16,
     ) = resolveDiscogsEditorialArtworkBatch(
         browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
         eligible = { id ->
@@ -279,6 +282,7 @@ internal class DiscogsNativeCatalogSession(
             }
         },
         onAttempt = onAttempt,
+        maximumAttempts = maximumAttempts,
     )
 
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
