@@ -9,6 +9,8 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.providers.*
 import com.music.bitchord.data.catalog.metadata.safeAppleArtwork
 import com.music.bitchord.ui.screens.appleMusicWebVerifiedStoreUrl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Native AMS identity, never an iTunes ID or a MediaAsset. */
 internal data class AppleMusicWebNativeRoute(
@@ -229,7 +231,13 @@ internal class AppleMusicWebNativeCatalogSession(
         read: suspend (AppleMusicWebEditorialGateway) -> ProviderCallResult<T>,
     ): ProviderCallResult<T> {
         val gate = currentGate() ?: return ProviderCallResult.Denied
-        val result = ProviderQueryExecutor(gate).execute(capability, provider) { read(gateway(gate)) }
+        // The ViewModel callers publish UI state on Main, but the web bundle
+        // can be several MB and catalog parsing/projection is synchronous.
+        // Keep the entire admitted read, including gateway creation, off Main.
+        val result = withContext(Dispatchers.IO) {
+            if (currentGate() !== gate) ProviderCallResult.Stale
+            else ProviderQueryExecutor(gate).execute(capability, provider) { read(gateway(gate)) }
+        }
         if (currentGate() !== gate) return ProviderCallResult.Stale
         return when (result) {
             is ProviderCallResult.Success -> result.value

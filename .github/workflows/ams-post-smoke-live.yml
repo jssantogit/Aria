@@ -1,0 +1,52 @@
+name: AMS · post-smoke focused live contracts
+on:
+  push:
+    branches: [audit/ams-native-visual-parity-20261126]
+    paths:
+      - '.github/workflows/ams-post-smoke-live.yml'
+      - 'app/src/test/java/com/music/bitchord/AmsPostSmokeCorrectionsLiveTest.kt'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ams-post-smoke-live-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AMS_POST_SMOKE_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify changed source-owned projections
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsPostSmokeCorrectionsLiveTest'
+      - name: Report focused evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import os
+          files=list(Path('app/build/test-results/testDevDebugUnitTest').glob('*AmsPostSmokeCorrectionsLiveTest.xml'))
+          assert len(files)==1, 'Missing focused live report'
+          root=ET.parse(files[0]).getroot()
+          observations=[line for node in root.iter('system-out') for line in (node.text or '').splitlines() if line.startswith('AMS_POST_SMOKE|')]
+          print('\n'.join(observations))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Focused AMS live evidence\n\n'+'\n'.join('- '+line for line in observations)+'\n')
+          assert int(root.attrib['tests'])==3 and int(root.attrib['skipped'])==0
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-post-smoke-live-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          retention-days: 7
