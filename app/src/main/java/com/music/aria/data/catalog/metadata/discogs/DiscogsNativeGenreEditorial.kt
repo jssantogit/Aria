@@ -423,6 +423,36 @@ internal class DiscogsNativeGenreEditorial(
             } else pair
         }
 
+    /** Reuse only current Master/Release evidence already hydrated for a shelf.
+     * No additional Discogs requests, no search by title and no stale/token-
+     * mismatched cache reuse. Artwork admission is checked by the resolver. */
+    internal fun cachedArtworkEvidenceForRelease(releaseId: Long): DiscogsRecord? {
+        if (releaseId !in 1..999_999_999_999L || !enabled ||
+            !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
+            !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
+        ) return null
+        val token = tokenProvider()?.trim()?.takeIf(String::isNotBlank) ?: return null
+        val digest = digestForCache(token)
+        val now = clockMs()
+        val evidence = synchronized(verifiedPairs) {
+            verifiedPairs.values.asSequence().filter {
+                now - it.instantMs in 0L..indexTtlMs &&
+                    it.tokenDigest.contentEquals(digest) &&
+                    it.release.link.kind == DiscogsKind.RELEASE &&
+                    it.release.link.id == releaseId &&
+                    it.master.mainReleaseId == releaseId &&
+                    it.release.masterId == it.master.link.id
+            }.map { it.release }.distinct().toList().singleOrNull()
+        } ?: return null
+        if (tokenProvider()?.trim() != token ||
+            !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
+            !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
+        ) return null
+        return evidence.takeIf {
+            com.music.aria.data.catalog.metadata.discogsDigitalArtworkUpc(it) != null
+        }
+    }
+
     private fun rememberVerifiedPair(
         masterId: Long, master: DiscogsMasterRecord,
         release: DiscogsRecord, tokenDigest: ByteArray,

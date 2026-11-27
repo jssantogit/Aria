@@ -352,35 +352,14 @@ fun SearchScreen(
     // before spending a separate source-specific paging request.
     var appleGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
     var discogsGeneralVisibleRows by remember(query) { mutableIntStateOf(18) }
-    val pinnedMixedMore = searchingCanonical && searchCommitted &&
-        filter == SearchFilter.ALL && canonicalDetail == null && query.isNotBlank()
-    val appleMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
-        discogsArtistResults == null && discogsReleaseResults == null
-    val appleArtistRows = (appleArtistResults as? UiState.Success)?.data.orEmpty()
-    val appleTrackRows = (appleTrackResults as? UiState.Success)?.data.orEmpty()
-    val appleAlbumRows = (appleResults as? UiState.Success)?.data.orEmpty()
-    val appleUnshown = appleMixedMore && appleUnifiedSearchEntries(
-        query, appleArtistRows, appleTrackRows, appleAlbumRows,
-    ).size > appleGeneralVisibleRows
-    val appleNext = if (appleMixedMore) appleUnifiedNextPage(
-        query, appleArtistRows, appleTrackRows, appleAlbumRows, applePaging,
-    ) else null
-    val appleRequestLoading = appleMixedMore &&
-        applePaging.values.any { it.loadingMore }
-    val discogsMixedMore = pinnedMixedMore && !catalogSearchMusicBrainzVisible &&
-        (discogsArtistResults != null || discogsReleaseResults != null)
     val discogsArtistRows = (discogsArtistResults as? UiState.Success)?.data.orEmpty()
     val discogsReleaseRows = (discogsReleaseResults as? UiState.Success)?.data.orEmpty()
-    val discogsUnshown = discogsMixedMore && discogsUnifiedSearchEntries(
+    val discogsUnshown = discogsUnifiedSearchEntries(
         query, discogsArtistRows, discogsReleaseRows,
     ).size > discogsGeneralVisibleRows
-    val discogsNext = if (discogsMixedMore) discogsUnifiedNextPage(
+    val discogsNext = discogsUnifiedNextPage(
         query, discogsArtistRows, discogsHasMore, discogsReleaseHasMore,
-    ) else null
-    val pinnedMoreVisible = (pinnedMixedMore && catalogSearchMusicBrainzVisible &&
-        (canonicalSearchHasMore || canonicalSearchLoadingMore)) ||
-        (appleMixedMore && (appleUnshown || appleNext != null || appleRequestLoading)) ||
-        (discogsMixedMore && (discogsUnshown || discogsNext != null))
+    )
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {
@@ -456,8 +435,7 @@ fun SearchScreen(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                bottom = contentPadding.calculateBottomPadding() +
-                    (if (pinnedMoreVisible) 60.dp else 0.dp),
+                bottom = contentPadding.calculateBottomPadding(),
             ),
         ) {
             when {
@@ -587,7 +565,7 @@ fun SearchScreen(
                             canonicalSearchLoadingMore,
                             onCanonicalPlay, onCanonicalAddToQueue,
                             onCanonicalRecordingInfo, appleResultTabs,
-                            showInlineSearchMore = !pinnedMixedMore,
+                            showInlineSearchMore = true,
                         )
                     } else if ((discogsArtistResults != null ||
                         discogsReleaseResults != null) && canonicalDetail == null) {
@@ -599,6 +577,27 @@ fun SearchScreen(
                                 onDiscogsArtistOpen, onDiscogsReleaseOpen,
                                 visibleLimit = discogsGeneralVisibleRows,
                             )
+                            if (discogsUnshown || discogsNext != null) {
+                                item(key = "discogs:general:more") {
+                                    NativeCatalogSearchLoadMore(
+                                        label = stringResource(Res.string.canonical_more_results),
+                                        onClick = {
+                                            if (discogsUnshown) discogsGeneralVisibleRows += 18
+                                            else when (discogsNext) {
+                                                DiscogsUnifiedSearchNext.ARTISTS -> onDiscogsLoadMore()
+                                                DiscogsUnifiedSearchNext.RELEASES -> onDiscogsReleaseLoadMore()
+                                                null -> Unit
+                                            }
+                                        },
+                                        enabled = true,
+                                        loading = false,
+                                        modifier = Modifier.fillMaxWidth().padding(
+                                            start = PAGE_GUTTER, end = PAGE_GUTTER,
+                                            top = 12.dp, bottom = 8.dp,
+                                        ),
+                                    )
+                                }
+                            }
                         } else if (filter == SearchFilter.ARTISTS) {
                             discogsNativeArtistRows(
                                 query, discogsArtistResults, onDiscogsArtistOpen,
@@ -650,7 +649,7 @@ fun SearchScreen(
                             onLoadMore = onAppleLoadMore,
                             visibleLimit = appleGeneralVisibleRows,
                             onRevealMore = { appleGeneralVisibleRows += 18 },
-                            showInlineFooter = false,
+                            showInlineFooter = true,
                         )
                     } else {
                         canonicalMusicBrainzResults(
@@ -661,7 +660,7 @@ fun SearchScreen(
                             canonicalSearchLoadingMore,
                             onCanonicalPlay, onCanonicalAddToQueue,
                             onCanonicalRecordingInfo, appleResultTabs,
-                            showInlineSearchMore = !pinnedMixedMore,
+                            showInlineSearchMore = true,
                         )
                     }
                 }
@@ -893,52 +892,6 @@ fun SearchScreen(
                     onSongSwipe = onSongSwipe,
                 )
             }
-        }
-        // When the last results are visible, put ONE pagination action near
-        // the floating tab bar. On short pages this eliminates the oversized
-        // empty strip beneath the former in-list button. Content receives an
-        // extra footer clearance so neither tracks nor CTA are obscured.
-        val atEnd = listState.layoutInfo.let { layout ->
-            nativeCatalogPaginationAtEnd(
-                lastVisibleIndex = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
-                totalItems = layout.totalItemsCount,
-            )
-        }
-        if (pinnedMoreVisible && atEnd) {
-            val isApple = appleMixedMore
-            NativeSearchSecondaryAction(
-                label = stringResource(Res.string.canonical_more_results),
-                onClick = {
-                    if (isApple) {
-                        if (appleUnshown) appleGeneralVisibleRows += 18
-                        else appleNext?.let(onAppleLoadMore)
-                    } else if (discogsMixedMore) {
-                        if (discogsUnshown) discogsGeneralVisibleRows += 18
-                        else when (discogsNext) {
-                            DiscogsUnifiedSearchNext.ARTISTS -> onDiscogsLoadMore()
-                            DiscogsUnifiedSearchNext.RELEASES -> onDiscogsReleaseLoadMore()
-                            null -> Unit
-                        }
-                    } else onCanonicalSearchLoadMore()
-                },
-                enabled = when {
-                    isApple -> appleUnshown || appleNext != null
-                    discogsMixedMore -> discogsUnshown || discogsNext != null
-                    else -> !canonicalSearchLoadingMore
-                },
-                loading = when {
-                    isApple -> !appleUnshown && appleNext == null && appleRequestLoading
-                    discogsMixedMore -> false
-                    else -> canonicalSearchLoadingMore
-                },
-                highContrast = true,
-                modifier = Modifier.align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = PAGE_GUTTER, end = PAGE_GUTTER,
-                        bottom = contentPadding.calculateBottomPadding() + 12.dp,
-                    ),
-            )
         }
         }
     }

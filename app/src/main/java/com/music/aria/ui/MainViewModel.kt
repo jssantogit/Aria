@@ -771,7 +771,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Verified iTunes covers are now the target catalog source, regardless
     // of whether the group already has a CAA sleeve.
     private val canonicalGroupCardArtworkResolver by lazy {
-        com.music.aria.data.catalog.metadata.AppleVerifiedGroupCardArtworkResolver()
+        com.music.aria.data.catalog.metadata.AppleVerifiedGroupCardArtworkResolver(
+            editions = com.music.aria.data.catalog.metadata.AppleGroupCardArtworkSource { release, storefront ->
+                canonicalAppleArtworkResolver.resolve(release, storefront)
+            },
+            artworkGate = { ProviderRuntime.gateOrNull() },
+        )
     }
     // CDN variants are never trusted until a bounded HTTP bounds probe confirms
     // real image dimensions; the original Apple URL is the safe fallback.
@@ -924,7 +929,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Serializes presentation only; network lookups remain concurrent.
     private val canonicalArtworkPresentationMutex = Mutex()
     private val canonicalAppleArtworkResolver by lazy {
-        com.music.aria.data.catalog.metadata.AppleVerifiedEditionArtworkResolver()
+        com.music.aria.data.catalog.metadata.AppleVerifiedEditionArtworkResolver(
+            artworkGate = { ProviderRuntime.gateOrNull() },
+        )
     }
     private val _canonicalAppleArtworkPromotion = MutableStateFlow<
         Pair<String, com.music.aria.data.catalog.metadata.AppleVerifiedEditionArtwork>?
@@ -3036,6 +3043,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(artistMbid = id)
         if (id == null) return
         artistPublicTopJob = viewModelScope.launch(Dispatchers.IO) {
+            val startedNanos = System.nanoTime()
+            var firstVerifiedPublished = false
             val popularity = try {
                 listenBrainzPopularityClient.topRecordingsForArtist(id)
             } catch (cancelled: CancellationException) {
@@ -3137,18 +3146,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _detailStack.value.lastOrNull()?.browseId
                         ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
                 ) {
+                    val rows = canonicalArtistTopPlaybackDecoration(
+                        canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
+                    )
                     _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                         artistMbid = id,
-                        rows = canonicalArtistTopPlaybackDecoration(
-                            canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
-                        ),
+                        rows = rows,
                         sampled = sampled,
                     )
+                    if (!firstVerifiedPublished && rows.isNotEmpty()) {
+                        firstVerifiedPublished = true
+                        recordCanonicalLoadTiming("artist_top_first_verified", startedNanos, rows.size)
+                    }
                 }
             }
             canonicalProcessArtistTopInParallel(
                 candidates = ranked,
                 maxConcurrentCovers = 3,
+                onMetadataComplete = {
+                    if (artistPublicTopEpoch.isCurrent(generation) &&
+                        _detailStack.value.lastOrNull()?.browseId
+                            ?.equals("catalog:ARTIST:$id", ignoreCase = true) == true
+                    ) {
+                        recordCanonicalLoadTiming("artist_top_metadata_ready", startedNanos,
+                            canonicalVerifiedArtistTopRows(id, ranked, verified).size)
+                    }
+                },
                 verifyAndPublish = { candidate ->
                     currentCoroutineContext().ensureActive()
                     if (_detailStack.value.lastOrNull()?.browseId
@@ -3243,6 +3266,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val rows = canonicalArtistTopPlaybackDecoration(
                     canonicalVerifiedArtistTopRows(id, ranked, verified), playableMbids,
                 )
+                recordCanonicalLoadTiming("artist_top_complete", startedNanos, rows.size)
                 _canonicalArtistPublicTop.value = CanonicalArtistPublicTopState(
                     artistMbid = id,
                     rows = rows,
@@ -3346,7 +3370,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (result is AppleEditorialLoad.Success) {
                 val permits = Semaphore(2)
-                result.releases.take(12).forEachIndexed { index, album ->
+                result.releases.take(36).forEachIndexed { index, album ->
                     launch {
                         permits.withPermit {
                             val target = appleArtworkTargetPxForShelf(index, 4)
@@ -3803,7 +3827,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (result is AppleEditorialLoad.Success) {
                 val permits = Semaphore(2)
-                result.releases.take(12).forEachIndexed { index, album ->
+                appleSourceGenreCandidates(tag, result.releases).take(24).forEachIndexed { index, album ->
                     launch {
                         permits.withPermit {
                             // Only the first four featured Explore cards use
@@ -5277,13 +5301,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (result) {
                 is ApplePublicSearchPageLoad.Success ->
                     publishApplePublicSearch(section, result.snapshot, permissionTicket, requestOrder)
-                is ApplePublicSearchPageLoad.Failure -> when (section) {
-                    AppleSearchSection.ARTISTS ->
-                        _appleEditorialArtists.value = UiState.Error("apple_catalog_unavailable")
-                    AppleSearchSection.TRACKS ->
-                        _appleEditorialTracks.value = UiState.Error("apple_catalog_unavailable")
-                    AppleSearchSection.ALBUMS ->
-                        _appleEditorialResults.value = UiState.Error("apple_catalog_unavailable")
+                is ApplePublicSearchPageLoad.Failure -> {
+                    when (section) {
+                        AppleSearchSection.ARTISTS ->
+                            _appleEditorialArtists.value = UiState.Error("apple_catalog_unavailable")
+                        AppleSearchSection.TRACKS ->
+                            _appleEditorialTracks.value = UiState.Error("apple_catalog_unavailable")
+                        AppleSearchSection.ALBUMS ->
+                            _appleEditorialResults.value = UiState.Error("apple_catalog_unavailable")
+                    }
+                    // A failed first typed request must remain recoverable even
+                    // when the other two streams produced useful General rows.
+                    // Retry is user-driven through the existing page admission.
+                    if (result.reason != ItunesCatalogFailure.INVALID_QUERY) {
+                        _appleSearchPaging.update { current ->
+                            current + (section to AppleSearchPageStatus(
+                                hasMore = true, retryableError = true,
+                            ))
+                        }
+                    }
                 }
             }
         }
@@ -5477,10 +5513,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         appleArtistHeroJob = viewModelScope.launch(Dispatchers.IO) {
+            // Reuse the exact verified store route resolved above. A shelf
+            // row may omit the URL even when the current artist snapshot has it.
             val portrait = AppleArtistArtRepository.artForExactStoreArtist(
-                row.browseId, row.appleStoreUrl,
-            )?.heroUrl ?: return@launch
+                row.browseId, appleArtistUrl,
+            )?.heroUrl?.takeIf(String::isNotBlank) ?: return@launch
             if (activeAppleArtistId != row.browseId ||
+                appleArtistPager !== pager ||
                 _searchSource.value != SearchSource.CANONICAL
             ) return@launch
             activeAppleArtistHeroArt = portrait

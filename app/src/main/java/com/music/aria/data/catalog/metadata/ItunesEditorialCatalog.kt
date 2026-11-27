@@ -132,7 +132,7 @@ internal object ItunesEditorialCatalog {
         return if (base.equals(release.title.trim(), ignoreCase = true)) explicit else header
     }
 
-    private fun hasExactAudioMembership(release: ItunesEditorialRelease): Boolean =
+    internal fun hasExactAudioMembership(release: ItunesEditorialRelease): Boolean =
         hasVerifiedAudioSubset(release) && release.tracks.size == release.trackCount
 
     private fun hasVerifiedAudioSubset(release: ItunesEditorialRelease): Boolean {

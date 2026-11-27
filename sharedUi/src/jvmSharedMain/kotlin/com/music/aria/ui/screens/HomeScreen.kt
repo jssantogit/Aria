@@ -47,6 +47,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +75,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Person
 import com.music.aria.ui.icons.PlaylistEditorIcons
 import androidx.compose.material.icons.rounded.Storage
 import com.music.aria.ui.icons.AriaIcons
@@ -180,6 +183,39 @@ private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Bool
     return { it == byName }
 }
 
+/** Volatile display-only proof; callbacks retain the original ShelfItem. */
+data class EditorialShelfArtwork(
+    val artworkUrl: String,
+    val storeUrl: String,
+    val badgeUrl: String,
+)
+
+private val LocalEditorialShelfArtwork =
+    compositionLocalOf<Map<String, EditorialShelfArtwork>> { emptyMap() }
+
+internal fun editorialShelfArtworkFor(
+    browseId: String?,
+    artwork: Map<String, EditorialShelfArtwork>,
+): EditorialShelfArtwork? {
+    if (browseId == null || !browseId.matches(Regex("discogs:release:[1-9][0-9]{0,11}")))
+        return null
+    return artwork[browseId]?.takeIf {
+        appleProminentArtworkOrNull(it.artworkUrl) != null
+    }
+}
+
+@Composable
+private fun EditorialShelfArtworkBadge(proof: EditorialShelfArtwork, modifier: Modifier) {
+    val handler = LocalUriHandler.current
+    AsyncImage(
+        model = proof.badgeUrl,
+        contentDescription = "Abrir produto na Apple",
+        contentScale = ContentScale.Fit,
+        modifier = modifier.width(92.dp).height(28.dp)
+            .clickable { runCatching { handler.openUri(proof.storeUrl) } },
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -235,6 +271,7 @@ fun HomeScreen(
     editorialAttribution: Pair<String, String>? = null,
     /** Verified supplemental Home/genre shelves share native horizontal paging. */
     onAdditionalGenrePage: (() -> Unit)? = null,
+    editorialArtwork: Map<String, EditorialShelfArtwork> = emptyMap(),
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
     val sourceUriHandler = LocalUriHandler.current
@@ -364,6 +401,7 @@ fun HomeScreen(
                     }
                     itemsIndexedShelves(
                         shelves = visibleShelves,
+                        editorialArtwork = editorialArtwork,
                         emptyPlaylistNotice = publicPlaylistNotice,
                         onItemClick = { item, shelfTitle ->
                             if (item.browseId == CONTINUE_LISTENING_BROWSE_ID)
@@ -447,9 +485,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     onRecentsViewTypeToggle: () -> Unit,
     emptyPlaylistNotice: String? = null,
     onAdditionalGenrePage: (() -> Unit)? = null,
+    editorialArtwork: Map<String, EditorialShelfArtwork> = emptyMap(),
 ) {
     shelves.forEachIndexed { index, shelf ->
         item(key = shelf.title + index) {
+            CompositionLocalProvider(LocalEditorialShelfArtwork provides editorialArtwork) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
             val cardLongPress = if (shelf.items.singleOrNull()?.browseId ==
                 CONTINUE_LISTENING_BROWSE_ID
@@ -499,6 +539,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                         shelf.title == "Mais do catálogo"
                     ) onAdditionalGenrePage else null,
                 )
+            }
             }
         }
     }
@@ -1064,14 +1105,19 @@ private fun HeroShelf(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(shelf.items) { item ->
-                    HeroCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onLongPress = onItemLongPress?.let { { it(item) } },
-                        modifier = Modifier.width(cardWidth),
-                        isCurrent = isCurrentItem(item),
-                        isPlaying = isCurrentItem(item) && isPlaying,
-                    )
+                    Column(Modifier.width(cardWidth)) {
+                        HeroCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = onItemLongPress?.let { { it(item) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            isCurrent = isCurrentItem(item),
+                            isPlaying = isCurrentItem(item) && isPlaying,
+                        )
+                        editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)?.let {
+                            EditorialShelfArtworkBadge(it, Modifier.padding(top = 4.dp))
+                        }
+                    }
                 }
             }
         }
@@ -1131,15 +1177,17 @@ private fun HeroCard(
             )
             .contextClick(onLongPress),
     ) {
-        val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
+        val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true ||
+            item.browseId?.startsWith("discogs:release:") == true
         val isAppleCard = item.browseId?.startsWith("itunes:") == true
-        val prominent = appleProminentArtworkOrNull(item.thumbnailUrl)
+        val proof = editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)
+        val prominent = appleProminentArtworkOrNull(proof?.artworkUrl ?: item.thumbnailUrl)
         if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
             hero = true, modifier = Modifier.fillMaxSize(),
         )
         if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
             ResilientAppleCover(
-                model = prominent.artworkAt(HEADER_ART_PX),
+                model = if (proof != null) prominent else prominent.artworkAt(HEADER_ART_PX),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1224,13 +1272,18 @@ internal fun Shelf(
         ) {
             leadingCard?.let { card -> item(key = "leading") { card() } }
             items(shelf.items) { item ->
-                ShelfCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = onItemLongPress?.let { { it(item) } },
-                    isCurrent = isCurrentItem(item),
-                    isPlaying = isCurrentItem(item) && isPlaying,
-                )
+                Column(Modifier.width(SHELF_CARD_WIDTH)) {
+                    ShelfCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = onItemLongPress?.let { { it(item) } },
+                        isCurrent = isCurrentItem(item),
+                        isPlaying = isCurrentItem(item) && isPlaying,
+                    )
+                    editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)?.let {
+                        EditorialShelfArtworkBadge(it, Modifier.padding(top = 4.dp))
+                    }
+                }
             }
         }
     }
@@ -1336,6 +1389,14 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
     }
 }
 
+/** Only typed artist routes choose portrait geometry; labels are not identity. */
+internal fun homeShelfUsesArtistPortrait(browseId: String?): Boolean =
+    browseId?.let { id ->
+        id.matches(Regex("catalog:ARTIST:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")) ||
+            id.matches(Regex("itunes:[a-z]{2}:artist:[1-9][0-9]*")) ||
+            id.matches(Regex("discogs:artist:[1-9][0-9]{0,11}"))
+    } == true
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ShelfCard(
@@ -1350,6 +1411,7 @@ internal fun ShelfCard(
 ) {
     // The legacy source adapter retains custom folder artwork; Home and
     // Explore share the original source-independent title/card composition.
+    val artistPortrait = homeShelfUsesArtistPortrait(item.browseId)
     NativeShelfCard(
         title = item.title,
         subtitle = localizeCardSubtitle(item.subtitle),
@@ -1358,6 +1420,7 @@ internal fun ShelfCard(
         modifier = modifier,
         isPinned = isPinned,
         isCurrent = isCurrent,
+        artistPortrait = artistPortrait,
         artwork = {
         when (item.browseId) {
             "local:downloads" -> {
@@ -1430,6 +1493,25 @@ internal fun ShelfCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                } else if (artistPortrait) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(CircleShape).thumbnailBorder(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Person, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(44.dp))
+                        appleProminentArtworkOrNull(item.thumbnailUrl)?.let { portrait ->
+                            ResilientAppleCover(
+                                model = portrait.artworkAt(CARD_ART_PX),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
                 } else Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1438,15 +1520,17 @@ internal fun ShelfCard(
                         .thumbnailBorder(NativeMediaCardMetrics.squareCoverShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true
+                    val hasCatalogIdentity = item.browseId?.startsWith("catalog:") == true ||
+                        item.browseId?.startsWith("discogs:release:") == true
                     val isAppleCard = item.browseId?.startsWith("itunes:") == true
-                    val prominent = appleProminentArtworkOrNull(item.thumbnailUrl)
+                    val proof = editorialShelfArtworkFor(item.browseId, LocalEditorialShelfArtwork.current)
+                    val prominent = appleProminentArtworkOrNull(proof?.artworkUrl ?: item.thumbnailUrl)
                     if (hasCatalogIdentity || (isAppleCard && prominent == null)) CatalogArtworkFallback(
                         hero = false, modifier = Modifier.fillMaxSize(),
                     )
                     if (prominent != null || !(hasCatalogIdentity || isAppleCard)) {
                         ResilientAppleCover(
-                            model = prominent.artworkAt(CARD_ART_PX),
+                            model = if (proof != null) prominent else prominent.artworkAt(CARD_ART_PX),
                             contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),

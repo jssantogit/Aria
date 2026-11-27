@@ -2,6 +2,9 @@ package com.music.aria.data.catalog.metadata
 
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import com.music.aria.data.providers.ProviderPolicyGate
+import com.music.aria.data.providers.ProviderCapability
+import com.music.aria.data.providers.BuiltInProviderKeys
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -32,15 +35,16 @@ internal class AppleVerifiedEditionArtworkResolver(
         }
     },
     private val upc: AppleArtworkUpcSource = AppleArtworkUpcSource { barcode, country ->
-        ItunesCatalogClient().lookupUpc(barcode, country)
+        ItunesCatalogClient().lookupUpcForArtwork(barcode, country)
     },
     private val linked: AppleArtworkLinkedAlbumSource =
         AppleArtworkLinkedAlbumSource { appleId, country ->
-            ItunesCatalogClient().lookupAlbum(appleId, country)
+            ItunesCatalogClient().lookupAlbumForArtwork(appleId, country)
         },
     private val evidence: AppleAlbumEditionEvidenceSource =
         MusicBrainzBarcodeEditionEvidenceSource(),
     private val clockMs: () -> Long = System::currentTimeMillis,
+    private val artworkGate: (() -> ProviderPolicyGate?)? = null,
 ) {
     private data class Cached(val value: AppleVerifiedEditionArtwork?, val expiresAtMs: Long)
     private val cache = linkedMapOf<String, Cached>()
@@ -56,15 +60,21 @@ internal class AppleVerifiedEditionArtworkResolver(
         val id = releaseMbid.lowercase(Locale.ROOT)
         if (!mbid.matches(id) || !Regex("^[a-z]{2}$").matches(storefront))
             return null
-        val key = "$storefront|$id"
+        val gate = artworkGate?.invoke()
+        val ticket = gate?.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+        if (artworkGate != null && ticket == null) return null
+        fun current(): Boolean = artworkGate == null ||
+            (gate != null && ticket != null && artworkGate.invoke() === gate && gate.accept(ticket))
+        val key = "$storefront|$id" + "|artwork:" + (ticket?.revision ?: 0L) + ":" + System.identityHashCode(gate)
         val stripe = (key.hashCode() and Int.MAX_VALUE) % editionLocks.size
         return editionLocks[stripe].withLock {
+            if (!current()) return@withLock null
             val now = clockMs()
             // Lock only the short mutable map access, NEVER the network. An
             // edition's stripe covers its entire remote lookup.
             synchronized(cache) {
                 cache[key]?.takeIf { it.expiresAtMs > now }
-            }?.let { return@withLock it.value }
+            }?.let { return@withLock it.value.takeIf { current() } }
             val result = try {
                 resolveUncached(id, storefront)
             } catch (cancelled: CancellationException) {
@@ -72,6 +82,7 @@ internal class AppleVerifiedEditionArtworkResolver(
             } catch (_: Exception) {
                 null
             }
+            if (!current()) return@withLock null
             synchronized(cache) {
                 if (cache.size >= 48 && !cache.containsKey(key))
                     cache.remove(cache.keys.first())

@@ -413,6 +413,8 @@ fun DetailScreen(
     onArtistReleaseSearch: ((String) -> Unit)? = null,
     /** Same Apple discography pager from the native "Ver tudo" grid. */
     onArtistReleaseLoadMore: (() -> Unit)? = null,
+    /** Exact product link accompanying a verified external promotional cover. */
+    sourceArtworkStoreUrl: String? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
@@ -514,7 +516,8 @@ fun DetailScreen(
             artworkUrl = trustedCatalogMetadataPinArtwork(page.thumbnailUrl),
         )
     }
-    val canPinCatalogRelease = catalogRatingTarget?.entityType in setOf("ALBUM", "RELEASE_GROUP") &&
+    val canPinCatalogRelease = page.browseId.startsWith("catalog:") &&
+        catalogRatingTarget?.entityType in setOf("ALBUM", "RELEASE_GROUP") &&
         validCatalogMetadataPin(catalogPin)
     // Prefetch one hero and the first visible cards from any metadata
     // provider. The same Coil memory/disk cache serves their eventual native
@@ -840,6 +843,7 @@ fun DetailScreen(
                         onToggleCatalogPin = if (canPinCatalogRelease)
                             ({ catalogPinRepo.toggle(catalogPin); Unit }) else null,
                         metaOverride = folderCategoryMeta,
+                        sourceArtworkStoreUrl = sourceArtworkStoreUrl,
                     )
                 }
             }
@@ -1519,6 +1523,7 @@ private fun ReleaseHeader(
     isCatalogPinned: Boolean = false,
     onToggleCatalogPin: (() -> Unit)? = null,
     metaOverride: String? = null,
+    sourceArtworkStoreUrl: String? = null,
 ) {
     // Do not display a partial sum as if the album's total were complete.
     val allCanonicalDurationsKnown = canonicalTracks.isNotEmpty() &&
@@ -1621,6 +1626,23 @@ private fun ReleaseHeader(
             }
         },
         actions = {
+            // Cross-provider promotional artwork is paired with the exact
+            // Apple product, without changing the native release controls.
+            val promotionBadge = com.music.aria.data.catalog.metadata
+                .appleApprovedBadgeForStoreUrl(sourceArtworkStoreUrl)
+            if (page.thumbnailUrl != null && sourceArtworkStoreUrl != null &&
+                promotionBadge != null
+            ) {
+                val uriHandler = LocalUriHandler.current
+                Spacer(Modifier.height(8.dp))
+                AsyncImage(
+                    model = promotionBadge,
+                    contentDescription = "Abrir no Apple Music",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.width(112.dp).height(32.dp)
+                        .clickable { runCatching { uriHandler.openUri(sourceArtworkStoreUrl) } },
+                )
+            }
             if (page.type == BrowseType.ALBUM ||
                 songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
                 metadataTracks.isNotEmpty() ||

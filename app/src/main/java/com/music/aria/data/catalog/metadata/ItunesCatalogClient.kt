@@ -183,8 +183,19 @@ internal class KtorItunesCatalogTransport(
         capability: ProviderCapability,
     ): String {
         require(path == "search" || path == "lookup")
+        // Artwork proof may read only the exact album-ID or UPC lookup
+        // required to certify an edition. It never authorizes a search,
+        // artist discography, arbitrary collection relation or playback.
         require(capability == ProviderCapability.CATALOG_SEARCH ||
-            capability == ProviderCapability.EDITORIAL_DISCOGRAPHY)
+            capability == ProviderCapability.EDITORIAL_DISCOGRAPHY ||
+            (capability == ProviderCapability.RELEASE_ARTWORK &&
+                path == "lookup" && parameters["entity"] == "song" &&
+                parameters["limit"] == "200" &&
+                parameters["country"]?.matches(Regex("[a-z]{2}")) == true &&
+                ((parameters.keys == setOf("id", "country", "entity", "limit") &&
+                    parameters["id"]?.toLongOrNull()?.let { it > 0L } == true) ||
+                 (parameters.keys == setOf("upc", "country", "entity", "limit") &&
+                    parameters["upc"]?.matches(Regex("[0-9]{8,14}")) == true))))
         return admission.execute(
             capability = capability,
             provider = BuiltInProviderKeys.ITUNES,
@@ -312,6 +323,19 @@ internal class ItunesCatalogClient(
     suspend fun lookupAlbum(
         collectionId: Long,
         country: String = "br",
+    ): ItunesCatalogResult = lookupAlbumWithCapability(
+        collectionId, country, ProviderCapability.EDITORIAL_DISCOGRAPHY,
+    )
+
+    /** Internal exact edition evidence only; never a catalog browsing route. */
+    suspend fun lookupAlbumForArtwork(
+        collectionId: Long, country: String = "br",
+    ): ItunesCatalogResult = lookupAlbumWithCapability(
+        collectionId, country, ProviderCapability.RELEASE_ARTWORK,
+    )
+
+    private suspend fun lookupAlbumWithCapability(
+        collectionId: Long, country: String, capability: ProviderCapability,
     ): ItunesCatalogResult {
         val storefront = normalizedStorefront(country)
         if (collectionId <= 0L || storefront == null) {
@@ -320,7 +344,7 @@ internal class ItunesCatalogClient(
         return request("lookup", linkedMapOf(
             "id" to collectionId.toString(), "country" to storefront,
             "entity" to "song", "limit" to "200",
-        ), storefront, collectionId = collectionId)
+        ), storefront, collectionId = collectionId, capability = capability)
     }
 
     /**
@@ -394,14 +418,23 @@ internal class ItunesCatalogClient(
     }
 
     /** UPC is only a candidate identity signal; never silently claim an MBID. */
-    suspend fun lookupUpc(upc: String, country: String = "br"): ItunesCatalogResult {
+    suspend fun lookupUpc(upc: String, country: String = "br"): ItunesCatalogResult =
+        lookupUpcWithCapability(upc, country, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+
+    /** Internal UPC evidence for artwork; no change to catalog permissions. */
+    suspend fun lookupUpcForArtwork(upc: String, country: String = "br"): ItunesCatalogResult =
+        lookupUpcWithCapability(upc, country, ProviderCapability.RELEASE_ARTWORK)
+
+    private suspend fun lookupUpcWithCapability(
+        upc: String, country: String, capability: ProviderCapability,
+    ): ItunesCatalogResult {
         val storefront = normalizedStorefront(country)
         if (storefront == null || !Regex("[0-9]{8,14}").matches(upc)) {
             return ItunesCatalogResult.Failure(ItunesCatalogFailure.INVALID_QUERY)
         }
         return request("lookup", linkedMapOf(
             "upc" to upc, "country" to storefront, "entity" to "song", "limit" to "200",
-        ), storefront)
+        ), storefront, capability = capability)
     }
 
     private suspend fun request(

@@ -63,12 +63,8 @@ internal fun NativeMetadataAlbumTrackPosition(
     )
 }
 
-private fun nativeMetadataDurationLabel(durationMs: Long?): String? {
-    val seconds = durationMs?.takeIf { it >= 0L }?.div(1000L) ?: return null
-    return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
-}
-
-/** Display only verified source credit, movement, duration and disc information. */
+/** The shared album row does not display per-track duration.
+ * Keep durationMs as source metadata for album totals and other consumers. */
 internal fun nativeMetadataAlbumTrackSubtitle(
     track: NativeMetadataTrack,
     albumCredit: String,
@@ -76,5 +72,4 @@ internal fun nativeMetadataAlbumTrackSubtitle(
     nativeAlbumTrackSecondaryLine(track.credit.orEmpty(), albumCredit),
     track.discNumber?.takeIf { it > 1 }?.let { "Disco $it" },
     track.workTitle?.takeIf(String::isNotBlank),
-    nativeMetadataDurationLabel(track.durationMs),
 ).joinToString(" · ").takeIf(String::isNotBlank)

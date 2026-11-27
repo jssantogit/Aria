@@ -767,6 +767,27 @@ internal class ApplePublicSearchPager(
                 initialized = true
                 capped = result.possiblyTruncated
                 merge(result)
+                // A productive prefix-only response is not proof that the
+                // exact artist is absent. Try the official artist field once
+                // before publishing, even if the default response is uncapped.
+                if (entity == ItunesCatalogEntity.ARTIST && rows.isNotEmpty() &&
+                    rows.values.none { (applePublicSearchMatchRank(query, it) ?: 99) <= 1 }
+                ) {
+                    when (val precise = source.search(
+                        query, entity, country, ItunesCatalogSearchAttribute.ARTIST_TERM,
+                    )) {
+                        is ItunesCatalogResult.Success -> {
+                            nextAttribute = 1
+                            capped = capped || precise.possiblyTruncated
+                            merge(precise)
+                        }
+                        is ItunesCatalogResult.Failure -> {
+                            // Preserve the useful prefix results and offer the
+                            // same bounded field probe on explicit continuation.
+                            capped = true
+                        }
+                    }
+                }
                 if (entity == ItunesCatalogEntity.ARTIST &&
                     rows.values.any { (applePublicSearchMatchRank(query, it) ?: 99) <= 1 }
                 ) {

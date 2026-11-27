@@ -382,4 +382,31 @@ class CanonicalArtistPublicTopRowsTest {
         assertEquals(listOf(second, first), visible.map { it.musicBrainzId })
     }
 
+    @Test fun optionalCoverProofStartsOnlyAfterAllRankedRecordingChecks() = runBlocking {
+        val checked = mutableListOf<Int>()
+        val covers = mutableListOf<Int>()
+        var metadataComplete = false
+        canonicalProcessArtistTopInParallel(
+            candidates = listOf(1, 2, 3),
+            maxConcurrentCovers = 2,
+            verifyAndPublish = { candidate ->
+                assertTrue(covers.isEmpty())
+                checked += candidate
+                candidate != 2
+            },
+            enrichCoverAndPublish = { candidate ->
+                assertTrue(metadataComplete)
+                assertEquals(listOf(1, 2, 3), checked)
+                covers += candidate
+            },
+            onMetadataComplete = {
+                assertTrue(covers.isEmpty())
+                metadataComplete = true
+            },
+        )
+        assertTrue(metadataComplete)
+        assertEquals(setOf(1, 3), covers.toSet())
+        assertEquals(2, covers.size)
+    }
+
 }

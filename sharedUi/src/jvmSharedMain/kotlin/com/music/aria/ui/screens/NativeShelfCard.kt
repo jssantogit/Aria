@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +54,7 @@ internal fun NativeShelfCard(
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
     isPinned: Boolean = false,
     isCurrent: Boolean = false,
+    artistPortrait: Boolean = false,
     artwork: @Composable () -> Unit,
 ) {
     val pressSource = remember { MutableInteractionSource() }
@@ -75,7 +77,8 @@ internal fun NativeShelfCard(
             .contextClick(heldAction),
     ) {
         // Full card remains clickable, but feedback paints only the clipped cover.
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(NativeMediaCardMetrics.squareCoverShape)) {
+        val shape = if (artistPortrait) CircleShape else NativeMediaCardMetrics.squareCoverShape
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(shape)) {
             artwork()
             if (nativeShelfPressInkVisible(pressed, heldActionOpen)) {
                 Box(Modifier.matchParentSize()

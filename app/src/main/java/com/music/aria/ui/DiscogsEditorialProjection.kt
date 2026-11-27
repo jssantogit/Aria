@@ -193,22 +193,20 @@ internal fun discogsEditorialShelves(
     val artistShelf = artists.takeIf { it.isNotEmpty() }?.let {
         HomeShelf(if (home) "Artistas para descobrir" else "Artistas", it)
     }
-    return if (home) listOfNotNull(
-        make("Para descobrir", unique.take(2), 2),
-        make("Álbuns", unique.filter { kind(it) == 1 }, 12),
-        make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
-        make("Mais para explorar", unique.drop(2), 12),
-        artistShelf,
-    ) else listOfNotNull(
-        // Discogs Master/Search only establishes a release YEAR here, not
-        // a calendar day inside a recent window. A genre's first verified
-        // sample is discovery, never a fabricated "new release" chart.
-        make("Para descobrir", unique.take(2), 2),
-        make("Álbuns", unique.filter { kind(it) == 1 }, 12),
-        make("Singles e EPs", unique.filter { kind(it) == 2 }, 12),
-        // Do not invent a second discovery rail from the only verified
-        // release. The album classification shelf remains visible above.
-        make("Mais para explorar", unique.drop(2), 12),
+    // Keep the discovery hero even on a genuinely sparse landing, but
+    // reserve the "more" rail for works not already represented above.
+    // An extra section repeating the same Master IDs is not extra coverage.
+    val discovery = unique.take(2)
+    val albums = unique.filter { kind(it) == 1 }.take(12)
+    val singles = unique.filter { kind(it) == 2 }.take(12)
+    val shown = (discovery + albums + singles).map { it.masterId }.toSet()
+    val more = unique.filterNot { it.masterId in shown }
+    return listOfNotNull(
+        // Year-only Discogs evidence does not prove a recent release date.
+        make("Para descobrir", discovery, 2),
+        make("Álbuns", albums, 12),
+        make("Singles e EPs", singles, 12),
+        make("Mais para explorar", more, 12),
         artistShelf,
     )
 }

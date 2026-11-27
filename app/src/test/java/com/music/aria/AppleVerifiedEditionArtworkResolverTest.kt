@@ -1,6 +1,7 @@
 package com.music.aria
 
 import com.music.aria.data.catalog.metadata.*
+import com.music.aria.data.providers.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -267,4 +268,61 @@ class AppleVerifiedEditionArtworkResolverTest {
             )
             assertNull(resolver.resolve(id, "br"))
         }
+    @Test fun coverCacheNeverReusesAnAnswerAcrossArtworkRevocation() = runBlocking {
+        val cap = ProviderCapability.RELEASE_ARTWORK
+        val key = BuiltInProviderKeys.ITUNES
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(key, setOf(cap), ProviderReadiness.READY)),
+            choices = mapOf(cap to listOf(ProviderChoice(key, enabled, 0))),
+        )
+        val gate = ProviderPolicyGate(policy(false))
+        var reads = 0
+        val resolver = AppleVerifiedEditionArtworkResolver(
+            edition = AppleArtworkEditionSource {
+                reads++
+                mb().copy(barcode = null, linkedAppleAlbumIds = listOf(101L))
+            },
+            linked = AppleArtworkLinkedAlbumSource { _, _ -> response() },
+            artworkGate = { gate },
+        )
+        assertNull(resolver.resolve(id))
+        assertEquals(0, reads)
+        gate.replace(policy(true))
+        assertEquals(art, resolver.resolve(id)?.artworkUrl)
+        assertEquals(art, resolver.resolve(id)?.artworkUrl)
+        assertEquals(1, reads)
+        gate.replace(policy(false))
+        assertNull(resolver.resolve(id))
+        assertEquals(1, reads)
+        gate.replace(policy(true))
+        assertEquals(art, resolver.resolve(id)?.artworkUrl)
+        assertEquals(2, reads)
+    }
+
+    @Test fun artworkRevokedDuringEditionProofCannotPublishOrPoisonNextEpoch() = runBlocking {
+        val cap = ProviderCapability.RELEASE_ARTWORK
+        val key = BuiltInProviderKeys.ITUNES
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(key, setOf(cap), ProviderReadiness.READY)),
+            choices = mapOf(cap to listOf(ProviderChoice(key, enabled, 0))),
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        var calls = 0
+        val resolver = AppleVerifiedEditionArtworkResolver(
+            edition = AppleArtworkEditionSource {
+                mb().copy(barcode = null, linkedAppleAlbumIds = listOf(101L))
+            },
+            linked = AppleArtworkLinkedAlbumSource { _, _ ->
+                calls++
+                if (calls == 1) gate.replace(policy(false))
+                response()
+            },
+            artworkGate = { gate },
+        )
+        assertNull(resolver.resolve(id))
+        gate.replace(policy(true))
+        assertEquals(art, resolver.resolve(id)?.artworkUrl)
+        assertEquals(2, calls)
+    }
+
 }

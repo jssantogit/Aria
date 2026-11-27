@@ -11,6 +11,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.aria.data.catalog.metadata.DiscogsAppleArtworkResolver
+import com.music.aria.data.catalog.metadata.DiscogsVerifiedAppleArtwork
+import com.music.aria.data.providers.BuiltInProviderKeys
+import com.music.aria.data.providers.ProviderCapability
+import com.music.aria.data.providers.ProviderRuntime
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.platform.LocalUriHandler
 import com.music.aria.data.model.HomeShelf
 import com.music.aria.data.model.UiState
@@ -79,7 +89,38 @@ internal fun CanonicalProviderDetailHost(
         isDiscogs && discogsReadAllowed && discogsRoute != null
     }
 
-    val page = discogsPage?.page ?: applePage?.page
+    // The live exact Discogs edition supplies metadata, not artwork authority.
+    // Key state by the release and artwork lease so toggling Capas removes the
+    // old image immediately and starts a new lookup when re-enabled.
+    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val gate = ProviderRuntime.gateOrNull()
+    val artTicket = if (policySnapshot != null && discogsReadAllowed)
+        gate?.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+    else null
+    val artworkRecord = liveDiscogsPage?.artworkEvidence?.takeIf {
+        discogsReadAllowed && routeKey == "discogs:release:${it.link.id}"
+    }
+    val artworkResolver = remember { DiscogsAppleArtworkResolver() }
+    var coverProof by remember(routeKey, artworkRecord, gate, artTicket) {
+        mutableStateOf<DiscogsVerifiedAppleArtwork?>(null)
+    }
+    LaunchedEffect(routeKey, artworkRecord, gate, artTicket) {
+        if (artworkRecord == null || artTicket == null) return@LaunchedEffect
+        coverProof = try {
+            withContext(Dispatchers.IO) {
+                withTimeoutOrNull(12_000L) { artworkResolver.resolve(artworkRecord) }
+            }?.takeIf { gate?.accept(artTicket) == true &&
+                it.discogsReleaseId == artworkRecord.link.id }
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: Exception) { null }
+    }
+    val verifiedCover = coverProof?.takeIf {
+        artTicket != null && gate?.accept(artTicket) == true &&
+            artworkRecord?.link?.id == it.discogsReleaseId
+    }
+    val page = discogsPage?.page?.let {
+        if (verifiedCover != null) it.copy(thumbnailUrl = verifiedCover.artworkUrl) else it
+    } ?: applePage?.page
     if (page == null) {
         MessageState(
             if ((if (isDiscogs) discogsDetail
@@ -211,6 +252,7 @@ internal fun CanonicalProviderDetailHost(
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,
+        sourceArtworkStoreUrl = verifiedCover?.storeUrl,
         songSort = songSort,
         footerContent = { palette ->
             if (isDiscogs) {

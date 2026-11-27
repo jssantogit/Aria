@@ -64,6 +64,43 @@ internal fun discogsNativeDetailRouteKey(
     return "$prefix$id"
 }
 
+
+/** Source-scoped, serial and bounded: duplicates or foreign IDs must not
+ * spend another request. Failures are local to the card; cancellation is not. */
+internal suspend fun resolveDiscogsEditorialArtworkBatch(
+    browseIds: List<String>,
+    stillCurrent: () -> Boolean,
+    resolve: suspend (String) -> com.music.aria.data.catalog.metadata.DiscogsVerifiedAppleArtwork?,
+    onVerified: (String, com.music.aria.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+    eligible: suspend (String) -> Boolean = { true },
+    onAttempt: (String) -> Unit = {},
+    maximumAttempts: Int = 16,
+) {
+    val limit = maximumAttempts.coerceIn(0, 16)
+    var attempts = 0
+    val candidates = browseIds.asSequence()
+        .mapNotNull { discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, it) }
+        .distinct()
+    for (id in candidates) {
+        if (!stillCurrent() || attempts >= limit) return
+        if (!eligible(id)) continue
+        if (!stillCurrent()) return
+        attempts++
+        onAttempt(id)
+        val proof = try {
+            resolve(id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        if (!stillCurrent()) return
+        if (proof != null && id == "discogs:release:${proof.discogsReleaseId}") {
+            onVerified(id, proof)
+        }
+    }
+}
+
 internal data class DiscogsNativePage(
     val page: DetailPage,
     val tracks: List<NativeMetadataTrack> = emptyList(),
@@ -77,6 +114,8 @@ internal data class DiscogsNativePage(
     val albumArtistDisplayName: String? = null,
     /** Source-owned Master context, never an inferred MusicBrainz group. */
     val versionMasterId: Long? = null,
+    /** Volatile exact Release evidence, only for independent artwork proof. */
+    val artworkEvidence: DiscogsRecord? = null,
 )
 
 /** A version link is accepted only from a hydrated, explicitly verified
@@ -128,6 +167,7 @@ internal fun discogsNativePageDisplayAllowed(
         page.albumArtistBrowseId == null &&
         page.albumArtistDisplayName == null &&
         page.versionMasterId == null &&
+        page.artworkEvidence == null &&
         page.page.thumbnailUrl == null
     )
 
@@ -176,6 +216,74 @@ internal class DiscogsNativeCatalogSession(
             editions = editions,
         )
     }
+
+    private val editorialArtworkResolver by lazy {
+        com.music.aria.data.catalog.metadata.DiscogsAppleArtworkResolver()
+    }
+
+    private val editorialArtworkDimensions by lazy {
+        com.music.aria.data.catalog.metadata.AppleHighResolutionArtwork(
+            persistence = com.music.aria.data.catalog.metadata
+                .AndroidAppleArtworkProbePersistence(appContext),
+        )
+    }
+
+    /** Optional artwork for a card whose exact release was already verified
+     * by this session's editorial adapter. No extra Discogs hydration. */
+    internal suspend fun resolveEditorialArtwork(browseId: String):
+        com.music.aria.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+        val exact = discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId)
+            ?: return null
+        val releaseId = exact.substringAfterLast(':').toLongOrNull() ?: return null
+        val authorization = editorialLease() ?: return null
+        val artGate = ProviderRuntime.gateOrNull() ?: return null
+        val artTicket = artGate.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+            ?: return null
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId)
+                ?: return@withContext null
+            if (!authorization.isCurrent()) return@withContext null
+            val proof = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                editorialArtworkResolver.resolve(evidence)
+            } ?: return@withContext null
+            if (!authorization.isCurrent() || ProviderRuntime.gateOrNull() !== artGate ||
+                !artGate.accept(artTicket) ||
+                editorialClient.cachedArtworkEvidenceForRelease(releaseId) != evidence
+            ) return@withContext null
+            val upgraded = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                editorialArtworkDimensions.upgrade(proof.artworkUrl, 600)
+            }
+            // Neither the lookup nor the CDN probe extends the evidence TTL.
+            proof.copy(artworkUrl = upgraded ?: proof.artworkUrl).takeIf {
+                authorization.isCurrent() && ProviderRuntime.gateOrNull() === artGate &&
+                    artGate.accept(artTicket) && it.discogsReleaseId == releaseId &&
+                    editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
+            }
+        }
+    }
+
+    /** One bounded, progressive batch for the active editorial surface.
+     * The caller owns the surface/policy epoch and cancels on navigation.
+     * Each result includes the exact Apple product link, not just its image.
+     */
+    internal suspend fun resolveEditorialArtworkBatch(
+        browseIds: List<String>,
+        stillCurrent: () -> Boolean,
+        onVerified: (String, com.music.aria.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+        onAttempt: (String) -> Unit = {},
+        maximumAttempts: Int = 16,
+    ) = resolveDiscogsEditorialArtworkBatch(
+        browseIds, stillCurrent, ::resolveEditorialArtwork, onVerified,
+        eligible = { id ->
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                id.substringAfterLast(':').toLongOrNull()?.let {
+                    editorialClient.cachedArtworkEvidenceForRelease(it) != null
+                } == true
+            }
+        },
+        onAttempt = onAttempt,
+        maximumAttempts = maximumAttempts,
+    )
 
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val homeEditorial: StateFlow<UiState<List<HomeShelf>>> = _homeEditorial.asStateFlow()
@@ -1289,7 +1397,7 @@ internal fun discogsAlbumArtistRelatedShelf(
             )
         }
     if (safe.isEmpty()) return null
-    val heading = artistName.takeIf { it.length <= 80 &&
+    val heading = discogsArtistDisplayName(artistName).takeIf { it.isNotBlank() && it.length <= 80 &&
         !it.equals("Various Artists", ignoreCase = true)
     }?.let { "Mais de $it" } ?: "Mais do artista"
     return HomeShelf(heading, safe)
@@ -1438,7 +1546,7 @@ internal fun discogsReleasePage(
         browseId = "discogs:release:${record.link.id}",
         title = record.title,
         subtitle = listOfNotNull(
-            artistCredit.takeIf(String::isNotBlank),
+            discogsArtistDisplayName(artistCredit).takeIf(String::isNotBlank),
             record.year?.toString(),
             "Edição não oficial".takeIf { record.unofficial },
         ).joinToString(" · "),
@@ -1459,8 +1567,9 @@ internal fun discogsReleasePage(
         NativeMetadataTrack(
             key = "discogs:track:${record.link.id}:$index",
             title = track.title,
-            credit = track.artistCredit ?: if (!track.creditSpecified &&
-                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null,
+            credit = (track.artistCredit ?: if (!track.creditSpecified &&
+                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null)
+                ?.let(::discogsArtistDisplayName),
             discNumber = discAndTrack?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 },
             trackNumber = (discAndTrack?.groupValues?.get(2) ?: position)
                 ?.toIntOrNull()?.takeIf { it > 0 },
@@ -1479,8 +1588,11 @@ internal fun discogsReleasePage(
     albumArtistDisplayName = record.artistNames.singleOrNull()?.takeIf { name ->
         record.artistIds.singleOrNull()?.let { it in 1..999_999_999_999L } == true &&
             name.equals(artistCredit.trim(), ignoreCase = true)
-    },
+    }?.let(::discogsArtistDisplayName),
     versionMasterId = record.masterId,
+    artworkEvidence = record.takeIf {
+        com.music.aria.data.catalog.metadata.discogsDigitalArtworkUpc(it) != null
+    },
     // Even with zero verified cards, an interrupted Master lookup means
     // unknown coverage. The native source footer communicates this without
     // presenting a fabricated Versions carousel.
