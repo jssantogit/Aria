@@ -500,20 +500,28 @@ class DiscogsGenreEditorialNetworkTest {
                 }
             },
         )
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        val rejected = mutableListOf<DiscogsArtworkOutcome>()
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
         assertTrue(source.discover(DiscogsEditorialQuery("K-Pop", true), maxReleases = 1)
             is DiscogsEditorialResult.Verified)
         assertEquals(3, reads)
-        assertEquals(record, source.cachedArtworkEvidenceForRelease(502L))
-        assertNull(source.cachedArtworkEvidenceForRelease(77L))
+        assertEquals(record, source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertNull(source.cachedArtworkEvidenceForRelease(77L) { rejected += it })
         token = "B".repeat(32)
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
         token = "A".repeat(32)
         gate.replace(policy(false))
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
         gate.replace(policy(true))
         now += 120_001L
-        assertNull(source.cachedArtworkEvidenceForRelease(502L))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertEquals(listOf(
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.POLICY_DENIED,
+            DiscogsArtworkOutcome.EXPIRED_EVIDENCE,
+        ), rejected)
         assertEquals(3, reads)
     }
 
