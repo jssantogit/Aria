@@ -35,6 +35,7 @@ jobs:
             --tests 'com.music.bitchord.AppleEditorialNativeSearchBridgeTest' \
             --tests 'com.music.bitchord.CanonicalCatalogSearchPagingBoundaryTest' \
             --tests 'com.music.bitchord.CanonicalArtistPublicTopRowsTest' \
+            --tests 'com.music.bitchord.ListenBrainzPopularityClientTest' \
             --tests 'com.music.bitchord.CanonicalHomeEditorialDispatchTest' \
             --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest' \
             --tests 'com.music.bitchord.DiscogsEditorialTaxonomyTest' \
