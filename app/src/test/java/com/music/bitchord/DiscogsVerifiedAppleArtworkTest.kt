@@ -185,4 +185,18 @@ class DiscogsVerifiedAppleArtworkTest {
         assertNull(memo.read(edition(3L)))
     }
 
+    @Test fun memoReadsDoNotExtendItsIndependentFreshnessWindow() {
+        var now = 100L
+        val memo = com.music.bitchord.ui.DiscogsEditorialArtworkMemo(clockMs = { now })
+        val proof = requireNotNull(discogsVerifiedAppleArtwork(record, upc, result, "br"))
+        memo.remember(record, proof) { true }
+        now += 60_000L
+        assertEquals(proof, memo.read(record))
+        now += 60_001L
+        assertNull(memo.read(record))
+        val master = record.copy(link = DiscogsLink(DiscogsKind.MASTER, record.link.id))
+        memo.remember(master, proof) { true }
+        assertNull(memo.read(master))
+    }
+
 }
