@@ -20,6 +20,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      # Includes metadata-first ordering and first-row/full-section timing hooks.
       - name: Compile production Android and run grouped contracts
         run: |
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
