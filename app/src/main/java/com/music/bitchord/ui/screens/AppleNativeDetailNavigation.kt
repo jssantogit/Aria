@@ -96,6 +96,24 @@ internal fun appleNativeShelfEntry(
     } ?: first
 }
 
+/** A retained artist and an open album may coexist for Back navigation.
+ * Only the visible route may nominate a related item. */
+internal fun appleNativeShelfEntryForRoute(
+    routeKey: String,
+    browseId: String?,
+    readAllowed: Boolean,
+    artist: AppleEditorialArtistDetailPage?,
+    album: AppleEditorialAlbumDetailPage?,
+): AppleEditorialSearchRow? {
+    if (!readAllowed) return null
+    val candidates = when {
+        artist?.artist?.browseId == routeKey -> artist.albums
+        album?.album?.browseId == routeKey -> album.relatedAlbums
+        else -> emptyList()
+    }
+    return appleNativeShelfEntry(browseId, candidates)
+}
+
 /**
  * Tapping a source result paints the SAME native DetailScreen immediately.
  * Network failure stays within its native artist/album shell; no extra page.
