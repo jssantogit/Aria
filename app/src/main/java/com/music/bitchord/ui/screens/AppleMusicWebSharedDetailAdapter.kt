@@ -218,6 +218,12 @@ internal fun appleMusicWebAsSharedDetail(
                 metadataTracks=metadataTracks,
                 sourceAlbumMetadata=amsAlbumMetadata(identity,metadataTracks,completeTracks),
                 releaseHeroUrl=identity.editorialTallHeroUrl,
+                releaseMotion=identity.editorialMotionUrl?.let { url ->
+                    com.music.bitchord.data.canvas.CanvasArtwork(url=url,
+                        fallbackUrl=identity.editorialMotionFallbackUrl,title=identity.title,
+                        artist=identity.artistName,album=identity.title,
+                        surface=com.music.bitchord.data.canvas.CanvasSurface.ALBUM)
+                },
                 albumArtistBrowseId=artist?.scopedId,
                 albumArtistDisplayName=artist?.title,
                 notice=notices.joinToString(" ").takeIf { it.isNotBlank() },

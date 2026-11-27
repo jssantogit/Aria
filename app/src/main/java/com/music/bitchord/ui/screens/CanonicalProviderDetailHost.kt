@@ -262,6 +262,7 @@ internal fun CanonicalProviderDetailHost(
         artistHeroOverride = applePage?.artistHeroUrl,
         sourceArtistStoreUrl = applePage?.sourceStoreUrl.takeIf { isAms },
         releaseHeroOverride = applePage?.releaseHeroUrl.takeIf { isAms },
+        releaseMotionOverride = applePage?.releaseMotion.takeIf { isAms },
         songSort = songSort,
         footerContent = { palette ->
             if (isDiscogs) {

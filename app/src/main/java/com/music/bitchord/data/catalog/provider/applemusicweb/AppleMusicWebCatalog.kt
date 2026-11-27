@@ -50,6 +50,8 @@ internal data class AppleMusicWebItem(
     val genreNames: List<String> = emptyList(),
     val albumName: String? = null,
     val editorialTallHeroUrl: String? = null,
+    val editorialMotionUrl: String? = null,
+    val editorialMotionFallbackUrl: String? = null,
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
@@ -198,9 +200,13 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
                     (art["width"] as? JsonPrimitive)?.intOrNull ?: 0,
                     (art["height"] as? JsonPrimitive)?.intOrNull ?: 0)
             } else null
+        val motion = if (kind == AppleMusicWebKind.ALBUM)
+            appleMusicWebAlbumMotion(attr.obj("editorialVideo"),tallHero != null) else null
         return AppleMusicWebItem(
             id = id, kind = kind, storefront = sf, title = name,
             editorialTallHeroUrl = tallHero,
+            editorialMotionUrl = motion?.first,
+            editorialMotionFallbackUrl = motion?.second,
             artistName = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("curatorName") else attr.str("artistName"), artistId = attr.str("artistId"),
             albumId = attr.str("albumId"),
             albumName = attr.str("albumName"),
@@ -917,7 +923,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val albumId = resourceId(id, AppleMusicWebKind.ALBUM)
         val raw = detail(sf, AppleMusicWebKind.ALBUM, albumId, mapOf(
             "include" to "tracks,artists,genres,record-labels",
-            "extend" to "editorialArtwork,plainEditorialNotes",
+            "extend" to "editorialArtwork,plainEditorialNotes,editorialVideo",
         ))
         val identity = convert(raw, sf) ?: throw AppleMusicWebProtocolException("Invalid album")
         val rel = raw.obj("relationships")

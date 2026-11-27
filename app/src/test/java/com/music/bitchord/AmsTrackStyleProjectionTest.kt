@@ -6,6 +6,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun exactAlbumMotionPrefersMatchingAspectAndRejectsForeignUrls() {
+        val square = "https://mvod.itunes.apple.com/example/square.m3u8"
+        val tall = "https://mvod.itunes.apple.com/example/tall.m3u8"
+        val data = kotlinx.serialization.json.buildJsonObject {
+            put("motionDetailSquare",kotlinx.serialization.json.buildJsonObject {
+                put("video",kotlinx.serialization.json.JsonPrimitive(square))
+            })
+            put("motionDetailTall",kotlinx.serialization.json.buildJsonObject {
+                put("video",kotlinx.serialization.json.JsonPrimitive(tall))
+            })
+            put("motionDetailRaw",kotlinx.serialization.json.buildJsonObject {
+                put("url",kotlinx.serialization.json.JsonPrimitive("https://example.org/wrong.m3u8"))
+            })
+        }
+        assertEquals(square to tall,appleMusicWebAlbumMotion(data,false))
+        assertEquals(tall to square,appleMusicWebAlbumMotion(data,true))
+        assertNull(appleMusicWebAlbumMotion(null,false))
+    }
+
     @Test fun artistMotionAllowsOnlyKnownPublicAppleVisualHosts() {
         val url = "https://mvod.itunes.apple.com/itunes-assets/example/playlist.m3u8"
         assertEquals(url,com.music.bitchord.data.canvas.appleEditorialMotionUrl(url))

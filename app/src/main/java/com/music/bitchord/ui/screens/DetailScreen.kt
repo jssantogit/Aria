@@ -404,6 +404,7 @@ internal fun DetailScreen(
     artistHeroOverride: String? = null,
     sourceArtistStoreUrl: String? = null,
     releaseHeroOverride: String? = null,
+    releaseMotionOverride: CanvasArtwork? = null,
     /** Source-owned album credit ID, supplied only after provider verification. */
     sourceAlbumArtistBrowseId: String? = null,
     sourceAlbumArtistDisplayName: String? = null,
@@ -757,11 +758,15 @@ internal fun DetailScreen(
     // which case the tracks themselves know who it is.
     val credit = page.headerLines(songs.size).first.ifBlank { songs.firstOrNull()?.artist.orEmpty() }
     var canvas by remember(page.browseId) { mutableStateOf<CanvasArtwork?>(null) }
-    LaunchedEffect(page.browseId, page.title, credit, canvasEnabled, prioritizeSpotifyCanvas) {
+    LaunchedEffect(page.browseId, page.title, credit, canvasEnabled, prioritizeSpotifyCanvas, releaseMotionOverride) {
         // An artist's clip is set below, by the lookup that finds it.
         if (isArtist) return@LaunchedEffect
         if (!canvasEnabled || page.type != BrowseType.ALBUM) {
             canvas = null
+            return@LaunchedEffect
+        }
+        if (page.browseId.startsWith("apple_music_web:")) {
+            canvas = releaseMotionOverride
             return@LaunchedEffect
         }
         // As on the player: the credit fills in once the tracks load, so this
@@ -1664,6 +1669,7 @@ private fun ReleaseHeader(
                     contentScale = ContentScale.Crop,
                     onState = { if (it is AsyncImagePainter.State.Error) editorialFailed = true },
                     modifier = Modifier.matchParentSize())
+                canvas?.let { clip -> CanvasArtworkPlayer(canvas=clip,isPlaying=true,modifier=Modifier.matchParentSize()) }
                 Box(Modifier.matchParentSize().background(Brush.verticalGradient(
                     0f to Color.Transparent, 0.60f to Color.Transparent, 1f to palette.background)))
             } else {

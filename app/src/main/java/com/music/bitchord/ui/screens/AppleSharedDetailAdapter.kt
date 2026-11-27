@@ -62,6 +62,7 @@ internal data class AppleSharedDetail(
     val sourceAlbumMetadata: CanonicalAlbumFooterMetadata? = null,
     val amsArtistPaging: AmsArtistPaging? = null,
     val releaseHeroUrl: String? = null,
+    val releaseMotion: com.music.bitchord.data.canvas.CanvasArtwork? = null,
 )
 
 internal fun appleArtistAsSharedDetail(
