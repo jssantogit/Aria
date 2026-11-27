@@ -8,16 +8,16 @@ import com.music.aria.ui.screens.CanonicalCatalogSearchRow
 import com.music.aria.ui.screens.CanonicalSearchKind
 
 /** Presentation is selected by the policy; a shelf never changes owner/ID. */
-internal data class CatalogEditorialSelection(
+internal data class CatalogEditorialSelection<out Row>(
     val provider: ProviderKey?,
-    val state: UiState<List<HomeShelf>>,
+    val state: UiState<List<Row>>,
 )
 
 /** No backend is mandatory; a loading primary cannot be bypassed by stale secondary data. */
-internal fun selectCatalogEditorial(
+internal fun <Row> selectCatalogEditorial(
     ordered: List<ProviderKey>,
-    byProvider: Map<ProviderKey, UiState<List<HomeShelf>>>,
-): CatalogEditorialSelection {
+    byProvider: Map<ProviderKey, UiState<List<Row>>>,
+): CatalogEditorialSelection<Row> {
     var lastError: String? = null
     for (provider in ordered) {
         when (val result = byProvider[provider] ?: continue) {

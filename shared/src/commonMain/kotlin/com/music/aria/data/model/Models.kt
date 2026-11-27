@@ -464,6 +464,10 @@ data class AccountChannel(
     val key: String get() = pageId ?: dataSyncId ?: name
 }
 
+sealed interface HomeShelfRow
+
+data class ModuleShelfRow(val moduleId: String, val shelf: HomeShelf) : HomeShelfRow
+
 data class HomeShelf(
     val title: String,
     val items: List<ShelfItem>,
@@ -471,7 +475,12 @@ data class HomeShelf(
     val subtitle: String = "",
     val moreBrowseId: String? = null,
     val moreParams: String? = null,
-)
+) : HomeShelfRow
+
+fun HomeShelfRow.asHomeShelf(): HomeShelf = when (this) {
+    is HomeShelf -> this
+    is ModuleShelfRow -> shelf
+}
 
 /**
  * These shelves minus any that mostly repeat one already on the page, or one earlier in this

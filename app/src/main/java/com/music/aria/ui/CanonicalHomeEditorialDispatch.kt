@@ -2,7 +2,9 @@ package com.music.aria.ui
 
 import com.music.aria.data.catalog.metadata.ItunesEditorialRelease
 import com.music.aria.data.model.HomeShelf
+import com.music.aria.data.model.HomeShelfRow
 import com.music.aria.data.model.UiState
+import com.music.aria.data.model.asHomeShelf
 import com.music.aria.data.providers.BuiltInProviderKeys
 import com.music.aria.data.providers.ProviderKey
 
@@ -35,6 +37,16 @@ internal fun shouldStartAppleHomeEditorial(
         }
     }
 }
+
+internal fun shouldStartAppleHomeEditorialRows(
+    ordered: List<ProviderKey>,
+    mbLoading: Boolean,
+    visibleHomeShelves: List<HomeShelfRow>,
+    releasesHeading: String,
+    discogsState: UiState<List<HomeShelf>> = UiState.Loading,
+): Boolean = shouldStartAppleHomeEditorial(
+    ordered, mbLoading, visibleHomeShelves.map { it.asHomeShelf() }, releasesHeading, discogsState,
+)
 
 /** MB may be a third-choice fallback: an Apple miss does not bypass a
  * still-pending Discogs request in the middle of the user's order. */

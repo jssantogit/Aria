@@ -50,7 +50,7 @@ internal fun rememberCanonicalHomeCommunityShelves(
 @Composable
 internal fun rememberCanonicalHomeDisplayShelves(
     local: List<HomeShelf>,
-    selected: CatalogEditorialSelection,
+    selected: CatalogEditorialSelection<HomeShelf>,
     playlists: HomeShelf?,
     territories: HomeShelf?,
     community: HomeShelf?,

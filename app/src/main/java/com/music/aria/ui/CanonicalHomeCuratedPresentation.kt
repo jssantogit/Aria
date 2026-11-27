@@ -71,7 +71,7 @@ internal fun rememberCanonicalHomeEditorialSelection(
     singlesHeading: String = "Singles e EPs",
     moreHeading: String = "Mais",
     discogsEditorial: UiState<List<HomeShelf>> = UiState.Loading,
-): CatalogEditorialSelection = remember(
+): CatalogEditorialSelection<HomeShelf> = remember(
     base, apple, priority, worldwideLoading, releasesHeading, discoveryHeading, date,
     musicBrainzRows, picksHeading, albumsHeading, singlesHeading, moreHeading,
     discogsEditorial,

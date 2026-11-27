@@ -2,12 +2,16 @@ package com.music.aria
 
 import com.music.aria.data.catalog.metadata.ListenBrainzPublicPlaylist
 import com.music.aria.data.model.HomeShelf
+import com.music.aria.data.model.ModuleShelfRow
 import com.music.aria.data.model.ShelfItem
 import com.music.aria.data.model.UiState
+import com.music.aria.data.model.asHomeShelf
 import com.music.aria.data.providers.BuiltInProviderKeys
 import com.music.aria.ui.CatalogEditorialSelection
+import com.music.aria.ui.canonicalCuratedHomeRows
 import com.music.aria.ui.projectCanonicalHomeDisplay
 import com.music.aria.ui.projectCanonicalHomeEditorial
+import com.music.aria.ui.projectCanonicalHomeEditorialRows
 import com.music.aria.ui.projectCanonicalHomeState
 import com.music.aria.ui.projectCanonicalGenreState
 import com.music.aria.ui.screens.CanonicalCatalogSearchRow
@@ -20,9 +24,116 @@ class CanonicalEditorialFeedProjectionTest {
     private val apple = BuiltInProviderKeys.ITUNES
     private val mb = BuiltInProviderKeys.MUSICBRAINZ
 
+    @Test fun launchesAreMarkedAtEmissionRegardlessOfLabel() {
+        val today = "2026-11-27"
+        val heading = "Álbuns para descobrir"
+        val boundary = musicBrainzRelease(1, "2026-08-29")
+        val outside = musicBrainzRelease(2, "2026-08-28")
+        val imprecise = musicBrainzRelease(3, "2026-11")
+        val saved = ShelfItem("Download", "Artista", null, null, "downloads:album:42")
+        fun compose(releases: List<CanonicalCatalogSearchRow>) = canonicalCuratedHomeRows(
+            savedReleases = listOf(saved),
+            metadata = releases,
+            localPicks = emptyList(),
+            trendingRecordingMbids = emptyList(),
+            releasesHeading = heading,
+            picksHeading = "Escolhas",
+            trendingHeading = "Em alta",
+            todayIsoDate = today,
+        )
+
+        val emitted = compose(listOf(outside, imprecise, boundary))
+        val launches = ModuleShelfRow("home:editorial:launches", HomeShelf(heading, listOf(
+            ShelfItem(boundary.title, "Artista", null, null,
+                "catalog:RELEASE_GROUP:61000000-0000-4000-8000-000000000001"),
+        )))
+        assertEquals(listOf(launches), emitted.filterIsInstance<ModuleShelfRow>())
+        val discovery = emitted.filterIsInstance<HomeShelf>().single { it.title == heading }
+        assertEquals(listOf(
+            "catalog:RELEASE_GROUP:61000000-0000-4000-8000-000000000003",
+            "catalog:RELEASE_GROUP:61000000-0000-4000-8000-000000000002",
+        ), discovery.items.map { it.browseId })
+
+        val offline = compose(listOf(outside))
+        assertEquals(HomeShelf(heading, listOf(saved)), offline.first())
+        assertTrue(offline.none { it is ModuleShelfRow })
+
+        val sparse = projectCanonicalHomeEditorialRows(
+            canonicalHomeShelves = emitted,
+            appleHomeReleases = UiState.Success(emptyList()),
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = heading,
+            discoveryHeading = heading,
+            todayIsoDate = today,
+        )
+        val sparseRows = (sparse.state as UiState.Success).data
+        assertEquals(listOf(launches), sparseRows.filterIsInstance<ModuleShelfRow>())
+        assertEquals(listOf(discovery), sparseRows.filterIsInstance<HomeShelf>())
+    }
+
+    @Test fun fullMusicBrainzFeedKeepsPersonalAndDiscoveryHomonymsOutsideLaunches() {
+        val today = "2026-11-27"
+        val heading = "Para descobrir"
+        val boundary = musicBrainzRelease(1, "2026-08-29")
+        val archive = (2..6).map { musicBrainzRelease(it, "2026-08-28") }
+        val base = canonicalCuratedHomeRows(
+            savedReleases = emptyList(),
+            metadata = archive + boundary,
+            localPicks = emptyList(),
+            trendingRecordingMbids = emptyList(),
+            releasesHeading = heading,
+            picksHeading = "Escolhas",
+            trendingHeading = "Em alta",
+            todayIsoDate = today,
+        )
+        val personal = HomeShelf(heading, listOf(
+            ShelfItem("Minha faixa", "Artista", null, null, "local:track:1"),
+        ))
+        val selected = projectCanonicalHomeEditorialRows(
+            canonicalHomeShelves = listOf(personal) + base,
+            appleHomeReleases = UiState.Success(emptyList()),
+            catalogEditorialOrder = listOf(mb),
+            canonicalWorldwideLoading = false,
+            releasesHeading = heading,
+            discoveryHeading = heading,
+            todayIsoDate = today,
+            musicBrainzRows = archive + boundary,
+        )
+        val editorial = (selected.state as UiState.Success).data
+        assertEquals(listOf("catalog:RELEASE_GROUP:61000000-0000-4000-8000-000000000001"),
+            editorial.filterIsInstance<ModuleShelfRow>().flatMap { row ->
+                row.shelf.items.map { it.browseId }
+            })
+        assertEquals(listOf("home:editorial:launches"),
+            editorial.filterIsInstance<ModuleShelfRow>().map { it.moduleId })
+        assertTrue(editorial.filterIsInstance<HomeShelf>().any { it.title == heading })
+
+        val archivedPage = musicBrainzRelease(7, "2026-04-01")
+        val displayed = projectCanonicalHomeDisplay(
+            canonicalHomeShelves = listOf(personal) + base.map { it.asHomeShelf() },
+            selection = selected,
+            publicPlaylistShelf = null,
+            musicBrainzPaging = CanonicalHomePageSnapshot(todayIsoDate = today, rows = listOf(archivedPage)),
+        )
+        assertTrue(personal in displayed)
+        assertEquals("Mais do catálogo", displayed.last().title)
+        assertEquals(listOf("catalog:RELEASE_GROUP:61000000-0000-4000-8000-000000000007"),
+            displayed.last().items.map { it.browseId })
+    }
+
+    private fun musicBrainzRelease(index: Int, date: String) = CanonicalCatalogSearchRow(
+        musicBrainzId = "61000000-0000-4000-8000-${index.toString().padStart(12, '0')}",
+        kind = CanonicalSearchKind.RELEASE_GROUP,
+        title = "Álbum $index",
+        subtitle = "Artista",
+        releaseDate = date,
+        releaseKind = "Album",
+    )
+
     @Test
     fun homeIncludesOnlyVerifiedOptionalCommunityAndPersonalShelves() {
-        val empty = CatalogEditorialSelection(
+        val empty = CatalogEditorialSelection<HomeShelf>(
             state = UiState.Success(emptyList()),
             provider = null,
         )
@@ -125,7 +236,7 @@ class CanonicalEditorialFeedProjectionTest {
         val personal = HomeShelf("Recent", listOf(
             ShelfItem("Owned", "Artist", null, null, "local:track:1"),
         ))
-        val chosen = CatalogEditorialSelection(mb, UiState.Loading)
+        val chosen = CatalogEditorialSelection<HomeShelf>(mb, UiState.Loading)
         val result = projectCanonicalHomeDisplay(listOf(personal), chosen, null)
         // Loading editorial content does not block verified local assets.
         // A category-navigation rail is neither foreign-provider content nor audio.

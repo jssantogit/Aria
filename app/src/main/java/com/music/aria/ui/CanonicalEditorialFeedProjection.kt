@@ -4,7 +4,9 @@ import com.music.aria.data.catalog.metadata.AppleExploreGenrePolicy
 import com.music.aria.data.catalog.metadata.ItunesEditorialRelease
 import com.music.aria.data.catalog.metadata.ListenBrainzPublicPlaylist
 import com.music.aria.data.model.HomeShelf
+import com.music.aria.data.model.HomeShelfRow
 import com.music.aria.data.model.UiState
+import com.music.aria.data.model.asHomeShelf
 import com.music.aria.data.providers.BuiltInProviderKeys
 import com.music.aria.data.providers.ProviderKey
 import com.music.aria.ui.screens.CanonicalCatalogSearchRow
@@ -30,7 +32,7 @@ internal fun projectCanonicalHomeEditorial(
     singlesHeading: String = "Singles e EPs",
     moreHeading: String = "Mais",
     discogsEditorial: UiState<List<HomeShelf>> = UiState.Loading,
-): CatalogEditorialSelection {
+): CatalogEditorialSelection<HomeShelf> {
     val mb = BuiltInProviderKeys.MUSICBRAINZ
     val apple = BuiltInProviderKeys.ITUNES
     val discogs = BuiltInProviderKeys.DISCOGS
@@ -119,6 +121,37 @@ internal fun projectCanonicalHomeEditorial(
     )
 }
 
+/** Semantic Home boundary; the legacy projection still emits only unmarked shelves. */
+internal fun projectCanonicalHomeEditorialRows(
+    canonicalHomeShelves: List<HomeShelfRow>,
+    appleHomeReleases: UiState<List<ItunesEditorialRelease>>,
+    catalogEditorialOrder: List<ProviderKey>,
+    canonicalWorldwideLoading: Boolean,
+    releasesHeading: String,
+    discoveryHeading: String,
+    todayIsoDate: String,
+    musicBrainzRows: List<CanonicalCatalogSearchRow> = emptyList(),
+    picksHeading: String = "Escolha a dedo",
+    albumsHeading: String = "Álbuns",
+    singlesHeading: String = "Singles e EPs",
+    moreHeading: String = "Mais",
+    discogsEditorial: UiState<List<HomeShelf>> = UiState.Loading,
+): CatalogEditorialSelection<HomeShelfRow> = projectCanonicalHomeEditorial(
+    canonicalHomeShelves = canonicalHomeShelves.map { it.asHomeShelf() },
+    appleHomeReleases = appleHomeReleases,
+    catalogEditorialOrder = catalogEditorialOrder,
+    canonicalWorldwideLoading = canonicalWorldwideLoading,
+    releasesHeading = releasesHeading,
+    discoveryHeading = discoveryHeading,
+    todayIsoDate = todayIsoDate,
+    musicBrainzRows = musicBrainzRows,
+    picksHeading = picksHeading,
+    albumsHeading = albumsHeading,
+    singlesHeading = singlesHeading,
+    moreHeading = moreHeading,
+    discogsEditorial = discogsEditorial,
+)
+
 /**
  * When a cold/permission-limited installation has little verified editorial
  * content, keep Home usable with actual navigation destinations from Explore.
@@ -149,7 +182,7 @@ internal fun canonicalHomeGenreDiscoveryShelf(): HomeShelf = HomeShelf(
  */
 internal fun projectCanonicalHomeDisplay(
     canonicalHomeShelves: List<HomeShelf>,
-    selection: CatalogEditorialSelection,
+    selection: CatalogEditorialSelection<HomeShelfRow>,
     @Suppress("UNUSED_PARAMETER") publicPlaylistShelf: HomeShelf?,
     countryChartShelf: HomeShelf? = null,
     communityShelf: HomeShelf? = null,
@@ -161,7 +194,7 @@ internal fun projectCanonicalHomeDisplay(
     discogsPaging: DiscogsHomePageSnapshot = DiscogsHomePageSnapshot(),
 ): List<HomeShelf> {
     val editorial = listOfNotNull(countryChartShelf?.takeIf { it.items.isNotEmpty() }) +
-        (selection.state as? UiState.Success)?.data.orEmpty() +
+        (selection.state as? UiState.Success)?.data.orEmpty().map { it.asHomeShelf() } +
         listOfNotNull(communityShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(personalRecommendationShelf?.takeIf { it.items.isNotEmpty() }) +
         listOfNotNull(chartArtistsShelf?.takeIf { it.items.isNotEmpty() })
@@ -190,7 +223,7 @@ internal fun projectCanonicalHomeDisplay(
 
 internal fun projectCanonicalHomeState(
     displayed: List<HomeShelf>,
-    selected: CatalogEditorialSelection,
+    selected: CatalogEditorialSelection<HomeShelfRow>,
 ): UiState<List<HomeShelf>> = when {
     displayed.isNotEmpty() -> UiState.Success(displayed)
     selected.state is UiState.Loading -> UiState.Loading

@@ -1,6 +1,7 @@
 package com.music.aria.ui
 
 import com.music.aria.data.model.HomeShelf
+import com.music.aria.data.model.HomeShelfRow
 import com.music.aria.data.catalog.metadata.LISTENBRAINZ_PUBLIC_TTL_MS
 import com.music.aria.data.catalog.metadata.ListenBrainzPopularityEvidence
 import com.music.aria.data.catalog.metadata.MusicBrainzReleaseHit
@@ -622,6 +623,31 @@ internal fun canonicalCuratedHomeShelves(
     val chart = (localTrending + catalogTrending).distinctBy { it.browseId }.take(16)
     if (chart.isNotEmpty()) add(HomeShelf(trendingHeading, chart))
 }
+
+/** Semantic Home boundary; the legacy producer still emits only unmarked shelves. */
+internal fun canonicalCuratedHomeRows(
+    savedReleases: List<ShelfItem>,
+    metadata: List<CanonicalCatalogSearchRow>,
+    localPicks: List<Song>,
+    trendingRecordingMbids: List<String>,
+    trendingLocalPicks: List<Song> = emptyList(),
+    releasesHeading: String,
+    picksHeading: String,
+    trendingHeading: String,
+    todayIsoDate: String,
+    remotePicks: List<CanonicalServerSearchRow> = emptyList(),
+): List<HomeShelfRow> = canonicalCuratedHomeShelves(
+    savedReleases = savedReleases,
+    metadata = metadata,
+    localPicks = localPicks,
+    trendingRecordingMbids = trendingRecordingMbids,
+    trendingLocalPicks = trendingLocalPicks,
+    releasesHeading = releasesHeading,
+    picksHeading = picksHeading,
+    trendingHeading = trendingHeading,
+    todayIsoDate = todayIsoDate,
+    remotePicks = remotePicks,
+)
 
 /**
  * Explore is discovery-first, not a second copy of the user's Home.
