@@ -345,4 +345,81 @@ class AmsTrackGenreAndHeroLiveTest {
         }
     }
 
+    /** Compare materialized genre relationships against the album's own labels.
+     * The fixed examples are diagnostic controls, never production candidates.
+     * Search ranking, bare relationship IDs and parent labels are not evidence. */
+    @Test fun structuredStyleRelationshipInventory(): Unit = runBlocking {
+        val transport = transport()
+        val catalog = AppleMusicWebCatalog(transport)
+        val probes = linkedMapOf(
+            "art pop" to listOf("6773848999","1814969020"),
+            "ambient techno" to listOf("1753966586","1679051624","1614357726"),
+            "boom bap" to listOf("1485466984","505493917","1396290965","211507540","1724856762"),
+            "jazz fusion" to emptyList<String>()
+        )
+        val nativeGenres = withTimeout(120_000) { catalog.genres("br") }
+        assertTrue(nativeGenres.isNotEmpty())
+        val nativeById = nativeGenres.associateBy { it.id }
+        for ((tag, fixtures) in probes) {
+            val search = withTimeout(120_000) {
+                catalog.search(AppleMusicWebKind.ALBUM,tag,"br",limit=25)
+            }
+            val ids = (fixtures + search.items.filter { it.kind == AppleMusicWebKind.ALBUM &&
+                it.storefront == "br" }.map { it.id }).distinct().take(25)
+            assertTrue(ids.isNotEmpty())
+            val raw = withTimeout(120_000) {
+                transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,"/v1/catalog/br/albums",
+                    mapOf("ids" to ids.joinToString(","),"include" to "genres"))
+            }
+            val root = Json.parseToJsonElement(raw).jsonObject
+            assertFalse("Catalog error envelope", "errors" in root)
+            val rows = root["data"]?.jsonArray ?: error("Missing album batch")
+            assertTrue("No rows for $tag",rows.isNotEmpty())
+            val seen = hashSetOf<String>()
+            var exactAttributes = 0
+            var exactRelationships = 0
+            var additional = 0
+            var unresolved = 0
+            for (entry in rows) {
+                val row = entry.jsonObject
+                val id = requireNotNull(row["id"]?.jsonPrimitive?.contentOrNull)
+                assertTrue(id in ids && seen.add(id))
+                assertEquals("albums",row["type"]?.jsonPrimitive?.content)
+                val attr = row["attributes"]?.jsonObject ?: error("Missing attributes")
+                val labels = (attr["genreNames"] as? JsonArray).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                val block = ((row["relationships"] as? JsonObject)?.get("genres") as? JsonObject)
+                val links = (block?.get("data") as? JsonArray).orEmpty()
+                val names = mutableListOf<String>()
+                val linkedIds = hashSetOf<String>()
+                for (link in links) {
+                    val genre = link.jsonObject
+                    val genreId = requireNotNull(genre["id"]?.jsonPrimitive?.contentOrNull)
+                    assertTrue(genreId.matches(Regex("[0-9]{1,12}")) && linkedIds.add(genreId))
+                    assertEquals("genres",genre["type"]?.jsonPrimitive?.content)
+                    val name = (genre["attributes"] as? JsonObject)?.get("name")
+                        ?.let { (it as? JsonPrimitive)?.contentOrNull }
+                    if (name == null) unresolved++
+                    else names += name
+                }
+                val attrExact = labels.any { appleMusicWebGenreNameMatches(it,tag) }
+                val relExact = names.any { appleMusicWebGenreNameMatches(it,tag) }
+                if (attrExact) exactAttributes++
+                if (relExact) exactRelationships++
+                if (relExact && !attrExact) additional++
+                val taxonomyExact = linkedIds.any { genreId ->
+                    nativeById[genreId]?.let { appleMusicWebGenreNameMatches(it.title,tag) } == true
+                }
+                println("AMS_STYLE_REL|tag=$tag|id=$id|fixture=${id in fixtures}|labels=${labels.joinToString(",")}|linked=${linkedIds.size}|materialized=${names.joinToString(",")}|attrExact=$attrExact|relExact=$relExact|taxonomyExact=$taxonomyExact")
+            }
+            println("AMS_STYLE_REL|tag=$tag|scope=batch|requested=${ids.size}|returned=${rows.size}|attrExact=$exactAttributes|relExact=$exactRelationships|additional=$additional|unresolved=$unresolved")
+            // Compare exact detail on a bounded subset including the controls.
+            for (id in (fixtures + ids.take(3)).distinct().filter { it in seen }.take(6)) {
+                val detail = withTimeout(120_000) { catalog.albumGenres(id,"br") }
+                assertTrue(detail.all { it.storefront == "br" })
+                println("AMS_STYLE_REL|tag=$tag|scope=detail|id=$id|names=${detail.joinToString(",") { it.title }}|exact=${detail.any { appleMusicWebGenreNameMatches(it.title,tag) }}")
+            }
+        }
+    }
+
 }
