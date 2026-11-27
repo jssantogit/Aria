@@ -1289,7 +1289,7 @@ internal fun discogsAlbumArtistRelatedShelf(
             )
         }
     if (safe.isEmpty()) return null
-    val heading = artistName.takeIf { it.length <= 80 &&
+    val heading = discogsArtistDisplayName(artistName).takeIf { it.isNotBlank() && it.length <= 80 &&
         !it.equals("Various Artists", ignoreCase = true)
     }?.let { "Mais de $it" } ?: "Mais do artista"
     return HomeShelf(heading, safe)
@@ -1438,7 +1438,7 @@ internal fun discogsReleasePage(
         browseId = "discogs:release:${record.link.id}",
         title = record.title,
         subtitle = listOfNotNull(
-            artistCredit.takeIf(String::isNotBlank),
+            discogsArtistDisplayName(artistCredit).takeIf(String::isNotBlank),
             record.year?.toString(),
             "Edição não oficial".takeIf { record.unofficial },
         ).joinToString(" · "),
@@ -1459,8 +1459,9 @@ internal fun discogsReleasePage(
         NativeMetadataTrack(
             key = "discogs:track:${record.link.id}:$index",
             title = track.title,
-            credit = track.artistCredit ?: if (!track.creditSpecified &&
-                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null,
+            credit = (track.artistCredit ?: if (!track.creditSpecified &&
+                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null)
+                ?.let(::discogsArtistDisplayName),
             discNumber = discAndTrack?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 },
             trackNumber = (discAndTrack?.groupValues?.get(2) ?: position)
                 ?.toIntOrNull()?.takeIf { it > 0 },
@@ -1479,7 +1480,7 @@ internal fun discogsReleasePage(
     albumArtistDisplayName = record.artistNames.singleOrNull()?.takeIf { name ->
         record.artistIds.singleOrNull()?.let { it in 1..999_999_999_999L } == true &&
             name.equals(artistCredit.trim(), ignoreCase = true)
-    },
+    }?.let(::discogsArtistDisplayName),
     versionMasterId = record.masterId,
     // Even with zero verified cards, an interrupted Master lookup means
     // unknown coverage. The native source footer communicates this without
