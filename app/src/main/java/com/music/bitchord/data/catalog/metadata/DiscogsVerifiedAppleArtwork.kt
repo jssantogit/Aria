@@ -28,34 +28,51 @@ private fun artworkAlbumTitle(value: String): String =
 
 /** Restrict the first bridge to explicit digital, flat, numbered audio editions.
  * Unknown formats, physical packaging and mixed-media editions fail closed. */
-internal fun discogsDigitalArtworkUpc(record: DiscogsRecord): String? {
+internal enum class DiscogsDigitalArtworkRejection {
+    INVALID_IDENTITY, UNOFFICIAL, INCOMPLETE_TRACKLIST, CREDIT, TITLE_OR_YEAR,
+    NO_DIGITAL_FORMAT, MIXED_OR_UNSUPPORTED_FORMAT, TRACK_NUMBER_OR_TITLE,
+    TRACK_STRUCTURE, MISSING_BARCODE, AMBIGUOUS_BARCODE, INVALID_BARCODE,
+}
+
+/** Stable aggregate reasons, never field values or provider payloads. */
+internal fun discogsDigitalArtworkRejection(record: DiscogsRecord): DiscogsDigitalArtworkRejection? {
     if (record.link.kind != DiscogsKind.RELEASE ||
-        record.link.id !in 1..999_999_999_999L ||
-        record.unofficial || record.nativeTracklistIncomplete ||
-        record.artistIds.size != 1 || record.artistIds.single() <= 0L ||
-        record.artistNames.size != 1 || record.artistNames.single().isBlank() ||
-        record.title.isBlank() || record.year == null
-    ) return null
+        record.link.id !in 1..999_999_999_999L
+    ) return DiscogsDigitalArtworkRejection.INVALID_IDENTITY
+    if (record.unofficial) return DiscogsDigitalArtworkRejection.UNOFFICIAL
+    if (record.nativeTracklistIncomplete) return DiscogsDigitalArtworkRejection.INCOMPLETE_TRACKLIST
+    if (record.artistIds.size != 1 || record.artistIds.single() <= 0L ||
+        record.artistNames.size != 1 || record.artistNames.single().isBlank()
+    ) return DiscogsDigitalArtworkRejection.CREDIT
+    if (record.title.isBlank() || record.year == null)
+        return DiscogsDigitalArtworkRejection.TITLE_OR_YEAR
     val formats = record.formats.map(::artworkFold).toSet()
     val digital = setOf("file", "digital", "digital media", "download")
     val allowed = digital + setOf("album", "ep", "single", "flac", "mp3",
         "aac", "wav", "alac", "aiff", "lossless", "stereo")
-    if (formats.intersect(digital).isEmpty() || !allowed.containsAll(formats))
-        return null
+    if (formats.intersect(digital).isEmpty()) return DiscogsDigitalArtworkRejection.NO_DIGITAL_FORMAT
+    if (!allowed.containsAll(formats)) return DiscogsDigitalArtworkRejection.MIXED_OR_UNSUPPORTED_FORMAT
     val tracks = record.tracklist
     if (tracks.size !in 1..199 ||
         tracks.withIndex().any { (index, track) ->
             track.first.trim().toIntOrNull() != index + 1 || track.second.isBlank()
-        } ||
-        record.displayTracks.map { artworkFold(it.title) } != tracks.map { artworkFold(it.second) } ||
+        }
+    ) return DiscogsDigitalArtworkRejection.TRACK_NUMBER_OR_TITLE
+    if (record.displayTracks.map { artworkFold(it.title) } != tracks.map { artworkFold(it.second) } ||
         record.displayTracks.any { it.workTitle != null }
-    ) return null
-    // Do not silently pick one of multiple asserted barcodes.
-    val barcode = record.barcodes.map { it.replace(Regex("\\s+"), "") }.distinct()
-        .singleOrNull() ?: return null
-    if (!Regex("[0-9]{8,14}").matches(barcode)) return null
-    return barcode
+    ) return DiscogsDigitalArtworkRejection.TRACK_STRUCTURE
+    val barcodes = record.barcodes.map { it.replace(Regex("\\s+"), "") }.distinct()
+    if (barcodes.isEmpty()) return DiscogsDigitalArtworkRejection.MISSING_BARCODE
+    if (barcodes.size != 1) return DiscogsDigitalArtworkRejection.AMBIGUOUS_BARCODE
+    if (!Regex("[0-9]{8,14}").matches(barcodes.single()))
+        return DiscogsDigitalArtworkRejection.INVALID_BARCODE
+    return null
 }
+
+internal fun discogsDigitalArtworkUpc(record: DiscogsRecord): String? =
+    if (discogsDigitalArtworkRejection(record) == null)
+        record.barcodes.map { it.replace(Regex("\\s+"), "") }.distinct().single()
+    else null
 
 /** Only consume the result of lookup?upc=<barcode>&entity=song in this storefront.
  * An exact source title/credit, release year and ordered audio tracklist must
