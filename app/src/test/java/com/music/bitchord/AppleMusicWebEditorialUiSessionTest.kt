@@ -154,6 +154,39 @@ class AppleMusicWebEditorialUiSessionTest {
         assertEquals(3,calls)
     }
 
+    @Test fun rejectedStyleIdentityRemainsExcludedUntilNewGeneration(): Unit = runBlocking {
+        val g = gate()
+        val curator = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")
+        val request = AmsEditorialRequest.Room(
+            AppleMusicWebRoomContinuation(room.copy(curatorId=curator.id,title="Lançamentos"),"cursor"),
+            curator=curator,tag="heavy metal")
+        val rejected = shelf.items.single().copy(browseId="apple_music_web:br:album:11")
+        val extra = shelf.items.single().copy(browseId="apple_music_web:br:album:12")
+        val rejectedId = requireNotNull(rejected.browseId)
+        var loads = 0
+        val session = AppleMusicWebEditorialUiSession(this,{ g },
+            { error("unexpected home") },
+            { _,_,_ ->
+                loads++
+                ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(
+                    listOf(shelf),listOf(request),curator,
+                    rejectedIds=if (loads == 1) setOf(rejectedId) else emptySet())))
+            },
+            readNext = {
+                ProviderCallResult.Success(AppleMusicWebOutcome.Complete(AmsEditorialPage(
+                    listOf(HomeShelf("Lançamentos",listOf(rejected,extra))),curator=curator)))
+            })
+        session.loadGenre("heavy metal"); yield()
+        session.loadNext("heavy metal"); yield()
+        assertEquals(setOf(rejectedId),session.state.value.paging["heavy metal"]!!.rejectedIds)
+        assertEquals(listOf(extra),session.state.value.paging["heavy metal"]!!.additional)
+        assertFalse(session.containsCard("heavy metal",rejected))
+        session.loadGenre("heavy metal",force=true); yield()
+        session.loadNext("heavy metal"); yield()
+        assertEquals(listOf(rejected,extra),session.state.value.paging["heavy metal"]!!.additional)
+        assertTrue(session.containsCard("heavy metal",rejected))
+    }
+
     @Test fun partialRefreshCannotStarveIndependentContinuation(): Unit = runBlocking {
         val g = gate()
         val curator = AppleMusicWebCuratorRef("976439543","br","Apple Music Metal")

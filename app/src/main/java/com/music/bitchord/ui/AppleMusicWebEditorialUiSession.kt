@@ -28,6 +28,8 @@ internal data class AmsEditorialPage(
     val shelves: List<HomeShelf>,
     val pending: List<AmsEditorialRequest> = emptyList(),
     val curator: AppleMusicWebCuratorRef? = null,
+    /** Generation-scoped exclusions; never persist across a fresh load. */
+    val rejectedIds: Set<String> = emptySet(),
 )
 
 internal data class AmsEditorialPaging(
@@ -38,6 +40,7 @@ internal data class AmsEditorialPaging(
     val pages: Int = 0,
     /** Preserve source rail provenance for song continuations. */
     val additionalByHeading: Map<String,List<ShelfItem>> = emptyMap(),
+    val rejectedIds: Set<String> = emptySet(),
 ) {
     val hasMore: Boolean get() = pending.isNotEmpty() && pages < 40
 }
@@ -229,8 +232,9 @@ internal class AppleMusicWebEditorialUiSession(
                 ))
                 return@launch
             }
+            val rejectedIds = paging.rejectedIds + page.rejectedIds
             val seen = (shown.flatMap { it.items } + paging.additional)
-                .mapNotNull { it.browseId }.toHashSet()
+                .mapNotNull { it.browseId }.toHashSet().apply { addAll(rejectedIds) }
             val additional = mutableListOf<ShelfItem>()
             val byHeading = paging.additionalByHeading.toMutableMap()
             for (shelf in page.shelves) {
@@ -251,6 +255,7 @@ internal class AppleMusicWebEditorialUiSession(
                 pending=(paging.pending.drop(1) + page.pending).distinct(),
                 additional=paging.additional + additional,
                 additionalByHeading=byHeading,
+                rejectedIds=rejectedIds,
                 loading=false,failed=false,pages=paging.pages+1,
             ))
         }
@@ -298,7 +303,7 @@ internal class AppleMusicWebEditorialUiSession(
             }
             publish(tag, if (page == null) UiState.Error("Catálogo editorial indisponível.")
                 else UiState.Success(page.shelves))
-            publishPaging(tag,page?.let { AmsEditorialPaging(pending=it.pending) })
+            publishPaging(tag,page?.let { AmsEditorialPaging(pending=it.pending,rejectedIds=it.rejectedIds) })
         }
         reads[tag] = Read(owner, lease, started, job)
         val unregister = lease.cancelJobOnRevoke(job)

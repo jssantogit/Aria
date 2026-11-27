@@ -598,7 +598,7 @@ internal class AppleMusicWebNativeCatalogSession(
         if (rails.isEmpty() && composition.rejectedIds.isEmpty()) return curated
         if (rails.isEmpty() && composition.rejectedIds.isNotEmpty())
             return ProviderCallResult.Success(AppleMusicWebOutcome.Unavailable("Conflicting style album identities"))
-        val merged = page.copy(shelves=rails)
+        val merged = page.copy(shelves=rails,rejectedIds=page.rejectedIds + composition.rejectedIds)
         return ProviderCallResult.Success(if (outcome is AppleMusicWebOutcome.Partial)
             AppleMusicWebOutcome.Partial(merged,outcome.reason) else AppleMusicWebOutcome.Complete(merged))
     }
