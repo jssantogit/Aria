@@ -517,4 +517,63 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals(3, reads)
     }
 
+    @Test fun shelfArtworkBatchBoundsRequestsAndOnlyPublishesExactProof() = runBlocking {
+        val reads = mutableListOf<String>()
+        val published = mutableListOf<String>()
+        val ids = listOf("discogs:artist:4", "itunes:br:album:4", "discogs:release:01",
+            "discogs:release:1", "discogs:release:1") +
+            (2..22).map { "discogs:release:$it" }
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            ids, stillCurrent = { true },
+            resolve = { id ->
+                reads += id
+                val releaseId = id.substringAfterLast(':').toLong()
+                if (releaseId == 2L) error("individual lookup failed")
+                com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    if (releaseId == 3L) 99L else releaseId,
+                    "itunes:br:album:1", "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onVerified = { id, _ -> published += id },
+        )
+        assertEquals((1..16).map { "discogs:release:$it" }, reads)
+        assertEquals((1..16).filter { it != 2 && it != 3 }.map { "discogs:release:$it" }, published)
+    }
+
+    @Test fun shelfArtworkBatchDropsLateProofAndStopsWhenSurfaceChanges() = runBlocking {
+        var current = true
+        var reads = 0
+        var published = 0
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            listOf("discogs:release:1", "discogs:release:2"), stillCurrent = { current },
+            resolve = {
+                reads++
+                current = false
+                com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    1L, "itunes:br:album:1", "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onVerified = { _, _ -> published++ },
+        )
+        assertEquals(1, reads)
+        assertEquals(0, published)
+    }
+
+    @Test fun shelfArtworkBatchPropagatesCancellation() = runBlocking {
+        var reads = 0
+        try {
+            com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+                listOf("discogs:release:1", "discogs:release:2"), stillCurrent = { true },
+                resolve = {
+                    reads++
+                    throw kotlinx.coroutines.CancellationException("surface closed")
+                },
+                onVerified = { _, _ -> fail("Cancelled lookup cannot publish") },
+            )
+            fail("Cancellation was swallowed")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            assertEquals(1, reads)
+        }
+    }
+
 }
