@@ -69,38 +69,39 @@ internal fun rememberDiscogsEditorialArtwork(
             )
         }
         try {
-        snapshotFlow { currentIds }.collect { incoming ->
-            // Recheck misses on a later editorial emission (fresh evidence
-            // may have arrived), but never rescan them in every batch of
-            // this same emission.
-            val examined = mutableSetOf<String>()
-            // Proofs and attempts remain bounded within this surface epoch;
-            // the returned projection hides absent IDs without spending a
-            // second request if a subsequent editorial emission restores one.
-            // A batch never spends more than sixteen lookups. Continue with
-            // later eligible items without waiting for another recomposition;
-            // stop on exhaustion, navigation, or the bounded surface budget.
-            while (current() && attempted.size < 80) {
-                val before = attempted.size
-                session.resolveEditorialArtworkBatch(
-                    browseIds = incoming.filterNot { it in attempted || it in examined },
-                    onExamined = { examined += it },
-                    maximumAttempts = 80 - before,
-                    stillCurrent = { current() },
-                    onAttempt = { attempted += it },
-                    onVerified = { id, proof ->
-                        val badge = appleApprovedBadgeForStoreUrl(proof.storeUrl)
-                        if (id in currentIds && current() && badge != null &&
-                            appleProminentArtworkOrNull(proof.artworkUrl) != null
-                        ) artwork = artwork + (id to EditorialShelfArtwork(
-                            proof.artworkUrl, proof.storeUrl, badge,
-                        ))
-                    },
-                )
-                if (attempted.size == before) break
+            snapshotFlow { currentIds }.collect { incoming ->
+                // Recheck misses on a later editorial emission (fresh evidence
+                // may have arrived), but never rescan them in every batch of
+                // this same emission.
+                val examined = mutableSetOf<String>()
+                // Proofs and attempts remain bounded within this surface epoch;
+                // the returned projection hides absent IDs without spending a
+                // second request if a subsequent editorial emission restores one.
+                // A batch never spends more than sixteen lookups. Continue with
+                // later eligible items without waiting for another recomposition;
+                // stop on exhaustion, navigation, or the bounded surface budget.
+                while (current() && attempted.size < 80) {
+                    val before = attempted.size
+                    session.resolveEditorialArtworkBatch(
+                        browseIds = incoming.filterNot { it in attempted || it in examined },
+                        onExamined = { examined += it },
+                        maximumAttempts = 80 - before,
+                        stillCurrent = { current() },
+                        stillNeeded = { it in currentIds },
+                        onAttempt = { attempted += it },
+                        onVerified = { id, proof ->
+                            val badge = appleApprovedBadgeForStoreUrl(proof.storeUrl)
+                            if (id in currentIds && current() && badge != null &&
+                                appleProminentArtworkOrNull(proof.artworkUrl) != null
+                            ) artwork = artwork + (id to EditorialShelfArtwork(
+                                proof.artworkUrl, proof.storeUrl, badge,
+                            ))
+                        },
+                    )
+                    if (attempted.size == before) break
+                }
+                reportCoverage()
             }
-            reportCoverage()
-        }
         } finally {
             reportCoverage()
         }
