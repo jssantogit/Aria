@@ -199,4 +199,25 @@ class DiscogsVerifiedAppleArtworkTest {
         assertNull(memo.read(master))
     }
 
+    @Test fun rejectionBreakdownPreservesOriginalAdmissionBoundary() {
+        val cases = listOf(
+            record.copy(formats = listOf("CD", "EP")) to DiscogsDigitalArtworkRejection.NO_DIGITAL_FORMAT,
+            record.copy(formats = listOf("File", "Vinyl")) to DiscogsDigitalArtworkRejection.MIXED_OR_UNSUPPORTED_FORMAT,
+            record.copy(barcodes = emptyList()) to DiscogsDigitalArtworkRejection.MISSING_BARCODE,
+            record.copy(barcodes = listOf(upc, "123456789012")) to DiscogsDigitalArtworkRejection.AMBIGUOUS_BARCODE,
+            record.copy(barcodes = listOf("unknown")) to DiscogsDigitalArtworkRejection.INVALID_BARCODE,
+            record.copy(tracklist = listOf("A1" to "First")) to DiscogsDigitalArtworkRejection.TRACK_NUMBER_OR_TITLE,
+            record.copy(artistIds = emptyList()) to DiscogsDigitalArtworkRejection.CREDIT,
+            record.copy(year = null) to DiscogsDigitalArtworkRejection.TITLE_OR_YEAR,
+            record.copy(unofficial = true) to DiscogsDigitalArtworkRejection.UNOFFICIAL,
+            record.copy(nativeTracklistIncomplete = true) to DiscogsDigitalArtworkRejection.INCOMPLETE_TRACKLIST,
+        )
+        for ((edition, expected) in cases) {
+            assertEquals(expected, discogsDigitalArtworkRejection(edition))
+            assertNull(discogsDigitalArtworkUpc(edition))
+        }
+        assertNull(discogsDigitalArtworkRejection(record))
+        assertEquals(upc, discogsDigitalArtworkUpc(record))
+    }
+
 }
