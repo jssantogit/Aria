@@ -422,4 +422,88 @@ class AmsTrackGenreAndHeroLiveTest {
         }
     }
 
+    /** Diagnostic: an album's explicit track relationship may expose a
+     * narrower genre than the album or the search preview. Never infer
+     * membership from the search term, title or a broad parent label. */
+    @Test fun albumTrackStyleEvidenceInventory(): Unit = runBlocking {
+        val transport = transport()
+        val catalog = AppleMusicWebCatalog(transport)
+        val probes = linkedMapOf(
+            "art pop" to listOf("6773848999","1814969020"),
+            "ambient techno" to listOf("1753966586","1679051624","1614357726"),
+            "boom bap" to listOf("1485466984","505493917","1396290965","211507540","1724856762"),
+            "jazz fusion" to emptyList<String>()
+        )
+        for ((tag, controls) in probes) {
+            val albums = withTimeout(120_000) {
+                catalog.search(AppleMusicWebKind.ALBUM,tag,"br",limit=25)
+            }.items
+            val songs = withTimeout(120_000) {
+                catalog.search(AppleMusicWebKind.SONG,tag,"br",limit=25)
+            }.items
+            val ids = (controls + com.music.bitchord.ui.amsStyleSupplementalAlbumIds(
+                songs,albums,"br",emptySet())).distinct().take(25)
+            assertTrue(ids.isNotEmpty())
+            val searchEvidence = com.music.bitchord.ui.amsStyleTrackAlbumIds(songs,"br",tag).toSet()
+            var returned = 0
+            var linked = 0
+            var extra = 0
+            var exact = 0
+            var unresolved = 0
+            for (batch in ids.chunked(10)) {
+                val body = withTimeout(120_000) {
+                    transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,"/v1/catalog/br/albums",
+                        mapOf("ids" to batch.joinToString(","),"include" to "tracks"))
+                }
+                val root = Json.parseToJsonElement(body).jsonObject
+                assertFalse("Catalog error envelope", "errors" in root)
+                val rows = root["data"]?.jsonArray ?: error("Missing album batch")
+                val seen = hashSetOf<String>()
+                for (entry in rows) {
+                    val row = entry.jsonObject
+                    val id = requireNotNull(row["id"]?.jsonPrimitive?.contentOrNull)
+                    assertTrue(id in batch && seen.add(id))
+                    assertEquals("albums",row["type"]?.jsonPrimitive?.content)
+                    val attr = row["attributes"]?.jsonObject ?: error("Missing album attributes")
+                    val albumLabels = (attr["genreNames"] as? JsonArray).orEmpty()
+                        .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                    val albumExact = albumLabels.any { appleMusicWebGenreNameMatches(it,tag) }
+                    val tracks = (row["relationships"] as? JsonObject)?.get("tracks") as? JsonObject
+                    val trackRows = (tracks?.get("data") as? JsonArray).orEmpty()
+                    if (trackRows.isNotEmpty()) linked++
+                    var matches = 0
+                    var contradictory = 0
+                    val trackIds = hashSetOf<String>()
+                    for (trackEntry in trackRows) {
+                        val track = trackEntry.jsonObject
+                        val trackId = requireNotNull(track["id"]?.jsonPrimitive?.contentOrNull)
+                        if (track["type"]?.jsonPrimitive?.contentOrNull != "songs") continue
+                        assertTrue(trackId.matches(Regex("[1-9][0-9]{0,11}")) && trackIds.add(trackId))
+                        val fields = track["attributes"] as? JsonObject
+                        if (fields == null) { unresolved++; continue }
+                        val labels = (fields["genreNames"] as? JsonArray).orEmpty()
+                            .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                        val song = AppleMusicWebItem(trackId,AppleMusicWebKind.SONG,"br",
+                            fields["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                            albumId=fields["albumId"]?.jsonPrimitive?.contentOrNull,
+                            storeUrl=fields["url"]?.jsonPrimitive?.contentOrNull,
+                            genreNames=labels)
+                        val urlAlbum = amsStyleSongAlbumId(song,"br")
+                        if ((song.albumId != null && song.albumId != id) ||
+                            (urlAlbum != null && urlAlbum != id)) { contradictory++; continue }
+                        if (labels.any { appleMusicWebGenreNameMatches(it,tag) }) matches++
+                    }
+                    if (matches > 0 && contradictory == 0) {
+                        exact++
+                        if (!albumExact && id !in searchEvidence) extra++
+                    }
+                    returned++
+                    println("AMS_ALBUM_TRACK_STYLE|tag=$tag|id=$id|control=${id in controls}|albumExact=$albumExact|searchExact=${id in searchEvidence}|tracks=${trackRows.size}|exactTracks=$matches|conflicts=$contradictory|hasNext=${tracks?.get("next") != null}")
+                }
+            }
+            assertTrue("No BR album rows for $tag",returned > 0)
+            println("AMS_ALBUM_TRACK_STYLE|tag=$tag|scope=summary|requested=${ids.size}|returned=$returned|withTracks=$linked|exact=$exact|additional=$extra|unresolved=$unresolved")
+        }
+    }
+
 }
