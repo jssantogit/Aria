@@ -430,6 +430,20 @@ internal class DiscogsNativeGenreEditorial(
         releaseId: Long,
         onRejected: (DiscogsArtworkOutcome) -> Unit = {},
     ): DiscogsRecord? {
+        val evidence = cachedMasterReleaseEvidence(releaseId, onRejected) ?: return null
+        if (com.music.bitchord.data.catalog.metadata.discogsDigitalArtworkUpc(evidence) == null) {
+            onRejected(DiscogsArtworkOutcome.INELIGIBLE_EDITION)
+            return null
+        }
+        return evidence
+    }
+
+    /** Source-only observation of the current verified main release.
+     * No claim of digital eligibility or permission to publish Apple art. */
+    internal fun cachedMasterReleaseEvidence(
+        releaseId: Long,
+        onRejected: (DiscogsArtworkOutcome) -> Unit = {},
+    ): DiscogsRecord? {
         fun reject(reason: DiscogsArtworkOutcome): DiscogsRecord? {
             onRejected(reason)
             return null
@@ -465,8 +479,6 @@ internal class DiscogsNativeGenreEditorial(
             !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
             !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
         ) return reject(DiscogsArtworkOutcome.POLICY_DENIED)
-        if (com.music.bitchord.data.catalog.metadata.discogsDigitalArtworkUpc(evidence) == null)
-            return reject(DiscogsArtworkOutcome.INELIGIBLE_EDITION)
         return evidence
     }
 
