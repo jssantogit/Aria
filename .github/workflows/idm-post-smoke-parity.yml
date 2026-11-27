@@ -52,6 +52,7 @@ jobs:
             --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
             --tests 'com.music.bitchord.AppleArtistArtworkPagingTest' \
             --tests 'com.music.bitchord.AppleEditorialNativeSearchBridgeTest' \
+            --tests 'com.music.bitchord.AppleEditionDetailEvidenceResetTest' \
             --tests 'com.music.bitchord.CanonicalCatalogSearchPagingBoundaryTest' \
             --tests 'com.music.bitchord.CanonicalArtistPublicTopRowsTest' \
             --tests 'com.music.bitchord.ListenBrainzPopularityClientTest' \

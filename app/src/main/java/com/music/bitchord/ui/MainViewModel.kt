@@ -5913,24 +5913,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _appleAlbumNavigation.value = row
         appleAlbumNativeBaseline = null
         _appleEditorialDetail.value = UiState.Loading
-        if (ProviderRuntime.gateOrNull()?.open(
-                ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.ITUNES,
-            ) == null
-        ) {
+        val gate = ProviderRuntime.gateOrNull()
+        val lease = ProviderReadLease.acquire(gate, listOf(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES,
+        ))
+        if (lease == null) {
             _appleEditorialDetail.value = UiState.Error("itunes_discography_disabled")
             return
         }
-        appleEditorialDetailJob = viewModelScope.launch(Dispatchers.IO) {
+        appleEditorialDetailJob = viewModelScope.launch(Dispatchers.Main.immediate) {
+            fun currentAlbum() = lease.isCurrent() && activeAppleAlbumId == row.browseId &&
+                _searchSource.value == SearchSource.CANONICAL
             val response = try {
-                appleEditorialRepository.albumDetail(route.id, route.storefront)
+                withContext(Dispatchers.IO) {
+                    appleEditorialRepository.albumDetail(route.id, route.storefront)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
-            if (activeAppleAlbumId != row.browseId ||
-                _searchSource.value != SearchSource.CANONICAL
-            ) return@launch
+            currentCoroutineContext().ensureActive()
+            if (!currentAlbum()) return@launch
             _appleEditorialDetail.value = when (response) {
                 is AppleEditorialLoad.Success -> {
                     val detail = appleNativeAlbumDetail(response, row.browseId)
@@ -5947,11 +5951,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (initialAlbum != null && appleNativeAlbumMayProbeLargeCover(initialAlbum)) {
                 launch {
                     val originalUrl = initialAlbum.album.artworkUri
-                    val upgraded = appleHighResolutionArtwork.upgrade(originalUrl, 1024)
-                    if (upgraded != null && upgraded != originalUrl &&
-                        activeAppleAlbumId == row.browseId &&
-                        _searchSource.value == SearchSource.CANONICAL
-                    ) {
+                    val upgraded = withContext(Dispatchers.IO) {
+                        appleHighResolutionArtwork.upgrade(originalUrl, 1024)
+                    }
+                    currentCoroutineContext().ensureActive()
+                    if (upgraded != null && upgraded != originalUrl && currentAlbum()) {
                         _appleEditorialDetail.update { state ->
                             if (state !is UiState.Success ||
                                 state.data.album.browseId != row.browseId ||
@@ -5976,18 +5980,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val artistId = selected?.artistId?.takeIf { it > 0L }
                 if (artistId != null) launch {
                     val discography = try {
-                        appleEditorialRepository.artistDiscography(
-                            artistId, route.storefront, limit = 40,
-                        )
+                        withContext(Dispatchers.IO) {
+                            appleEditorialRepository.artistDiscography(
+                                artistId, route.storefront, limit = 40,
+                            )
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
                         AppleEditorialLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
                     }
-                    if (discography is AppleEditorialLoad.Success &&
-                        activeAppleAlbumId == row.browseId &&
-                        _searchSource.value == SearchSource.CANONICAL
-                    ) {
+                    currentCoroutineContext().ensureActive()
+                    if (discography is AppleEditorialLoad.Success && currentAlbum()) {
                         // Keep the bounded source observations intact until the
                         // shared rail admission rejects conflicts and applies its limit.
                         val siblings = appleNativeSearchRows(discography)
@@ -6013,41 +6017,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         it.appleCollectionId == route.id
                 }
                 if (album != null) {
+                    val mbLease = ProviderReadLease.acquire(gate, listOf(
+                        ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.MUSICBRAINZ,
+                    ))
+                    val discogsLease = ProviderReadLease.acquire(gate, listOf(
+                        ProviderCapability.EDITION_METADATA to BuiltInProviderKeys.DISCOGS,
+                    ))
                     val evidence = try {
-                        com.music.bitchord.data.catalog.metadata
-                            .AppleAlbumEditionReconciliationService().resolve(album)
+                        if (mbLease == null) null else withContext(Dispatchers.IO) {
+                            com.music.bitchord.data.catalog.metadata
+                                .AppleAlbumEditionReconciliationService().resolve(album)
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
                         null
                     }
-                    if (evidence != null && activeAppleAlbumId == row.browseId &&
-                        _searchSource.value == SearchSource.CANONICAL
+                    currentCoroutineContext().ensureActive()
+                    if (evidence != null && currentAlbum() && mbLease?.isCurrent() == true &&
+                        (evidence.discogsEdition == null || discogsLease?.isCurrent() == true)
                     ) {
                         val refined = appleNativeReconciledAlbumDetail(
                             response, row.browseId, evidence,
                         )
-                        val current = (_appleEditorialDetail.value as? UiState.Success)?.data
-                        if (refined != null && current != null &&
-                            refined.album.browseId == current.album.browseId
-                        ) {
-                            // Reconciliation is metadata-only. An already
-                            // dimension-probed Apple hero must not regress to
-                            // the Search API's original 100px thumbnail.
-                            val preserved = refined.copy(
-                                album = refined.album.copy(
-                                    artworkUri = current.album.artworkUri,
-                                ),
-                                // Discogs reconciliation and Apple related
-                                // discography are independent async streams.
-                                relatedAlbums = current.relatedAlbums,
+                        if (refined != null) _appleEditorialDetail.update { state ->
+                            if (state !is UiState.Success || !currentAlbum() ||
+                                mbLease.isCurrent() != true ||
+                                (evidence.discogsEdition != null && discogsLease?.isCurrent() != true)
+                            ) state else UiState.Success(
+                                appleEditionDetailWithExternalEvidence(state.data, refined),
                             )
-                            if (preserved != current)
-                                _appleEditorialDetail.value = UiState.Success(preserved)
                         }
                     }
                 }
             }
+        }.also { job ->
+            val unregister = lease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
     }
 
