@@ -180,6 +180,28 @@ internal class DiscogsNativeCatalogSession(
         )
     }
 
+    private val editorialArtworkResolver by lazy {
+        com.music.bitchord.data.catalog.metadata.DiscogsAppleArtworkResolver()
+    }
+
+    /** Optional artwork for a card whose exact release was already verified
+     * by this session's editorial adapter. No extra Discogs hydration. */
+    internal suspend fun resolveEditorialArtwork(browseId: String):
+        com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+        val exact = discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId)
+            ?: return null
+        val releaseId = exact.substringAfterLast(':').toLongOrNull() ?: return null
+        val authorization = editorialLease() ?: return null
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId)
+                ?: return@withContext null
+            if (!authorization.isCurrent()) return@withContext null
+            editorialArtworkResolver.resolve(evidence)?.takeIf {
+                authorization.isCurrent() && it.discogsReleaseId == releaseId
+            }
+        }
+    }
+
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val homeEditorial: StateFlow<UiState<List<HomeShelf>>> = _homeEditorial.asStateFlow()
     private val _genreEditorial =
