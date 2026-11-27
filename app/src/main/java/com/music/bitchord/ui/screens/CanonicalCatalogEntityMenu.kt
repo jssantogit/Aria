@@ -85,6 +85,7 @@ internal fun CanonicalCatalogEntityMenuBody(
     onOpen: (() -> Unit)? = null,
     onOpenLabel: String? = null,
     isCurrent: () -> Boolean = { true },
+    onAddAmsCollection: (() -> Unit)? = null,
 ) {
     val spec = remember(browseId,sourceStoreUrl) {
         canonicalCatalogEntityMenuSpec(browseId,sourceStoreUrl)
@@ -119,7 +120,10 @@ internal fun CanonicalCatalogEntityMenuBody(
         onOpenLabel = onOpenLabel,
         // This identity is a MusicBrainz entity only; never supply onPlay,
         // onShuffle, onPlayNext or onAddToQueue.
-        onAddToPlaylist = if (spec.playlistKind != null && onAddVerifiedRecordings != null) {
+        onAddToPlaylist = if (onAddAmsCollection != null && spec.ratingTarget.entityId.startsWith("apple_music_web:") &&
+            spec.browseType in setOf(BrowseType.ALBUM,BrowseType.PLAYLIST)) {
+            { if (isCurrent()) { onDismiss(); onAddAmsCollection() } }
+        } else if (spec.playlistKind != null && onAddVerifiedRecordings != null) {
             {
                 if (isCurrent()) {
                     onDismiss()

@@ -78,7 +78,7 @@ private fun AmsHeldTrackShare(
             val text = buildString {
                 append(title)
                 if (credit.isNotBlank()) append(" — ").append(credit)
-                sourceUrl?.let { append("\\n").append(it) }
+                sourceUrl?.let { append("\n").append(it) }
             }
             val share = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -102,6 +102,17 @@ internal fun AmsSearchHeldMenu(
     val uri = LocalUriHandler.current
     var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
     AmsHeldRatingDialog(rating) { rating = null }
+    var recordingRating by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
+    var recordingPlaylist by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
+    var collection by remember { mutableStateOf<AmsSearchHeldTarget?>(null) }
+    recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null },it) }
+    recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null } }
+    collection?.let { selected ->
+        CanonicalSearchMetadataPlaylistPicker(
+            CatalogSearchPlaylistTarget(null,selected.id,selected.title,selected.credit),
+            onDismiss={ collection=null },loadSourceLabels={ viewModel.loadAmsCollectionLabels(selected.id) },
+        )
+    }
     fun allowed(target: AmsSearchHeldTarget): Boolean {
         val live = session.state.value
         return live.selected && session.current() && live.sections.values.any { section ->
@@ -126,12 +137,14 @@ internal fun AmsSearchHeldMenu(
         bottomChromeClearance=bottomChromeClearance,hostProvidesBlur=true,
         onDismiss=held::dismiss,onPreviewClick=::open,
     ) { item ->
+        val recording = amsLocalRecordingLabel(item.id,item.title,item.credit)
         if (canonicalCatalogEntityMenuSpec(item.id,item.storeUrl) != null) {
             CanonicalCatalogEntityMenuBody(
                 browseId=item.id,title=item.title,subtitle=item.credit,artworkUrl=item.art,
                 sourceStoreUrl=item.storeUrl,onDismiss=held::dismiss,
                 onRate={ rating=AmsHeldRating(it,item.art) },
                 onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ allowed(item) },
+                onAddAmsCollection={ collection=item },
             )
         } else BrowseActionsSheet(
             target=BrowseTarget(browseId=item.id,title=item.title,subtitle=item.credit,
@@ -139,6 +152,8 @@ internal fun AmsSearchHeldMenu(
             presentation=SongActionsPresentation.Menu,
             onOpenLabel=if (item.track != null) "Abrir álbum" else "Ver detalhes",
             onOpen={ open(item) },
+            onEditRating=recording?.let { { if (allowed(item)) { held.dismiss(); recordingRating=it } } },
+            onAddToPlaylist=recording?.let { { if (allowed(item)) { held.dismiss(); recordingPlaylist=it } } },
             onShare=AmsHeldTrackShare(item.title,item.credit,item.storeUrl,{ allowed(item) },held::dismiss),
             onViewSource=item.storeUrl?.let { link ->
                 { if (allowed(item)) { held.dismiss(); runCatching { uri.openUri(link) }; Unit } }
@@ -173,9 +188,7 @@ internal class AmsShelfHeldState {
         target = AmsShelfHeldTarget(scope,card=card)
     }
     fun holdTrack(track: NativeMetadataTrack, scope: AmsShelfHoldScope) {
-        if (scope.detail == null || com.music.bitchord.ui.amsSongStorefront(track.key) == null ||
-            (!amsDetailCanOpenTrackAlbum(scope.detail,track) &&
-                appleMusicWebVerifiedRouteUrl(track.sourceStoreUrl,track.key) == null)) return
+        if (scope.detail == null || com.music.bitchord.ui.amsSongStorefront(track.key) == null) return
         origin = LongPressOrigin.consume()
         if (origin == null) return
         target = AmsShelfHeldTarget(scope,track=track)
@@ -191,12 +204,24 @@ internal fun AmsShelfHeldMenu(
     onOpen: (AmsShelfHeldTarget) -> Unit,
     hazeState: HazeState,
     bottomChromeClearance: Dp,
+    loadCollection: (suspend (String) -> List<CatalogMetadataRecordingLabel>?)? = null,
 ) {
     val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
     val latestOpen by androidx.compose.runtime.rememberUpdatedState(onOpen)
     val uri = LocalUriHandler.current
     var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
     AmsHeldRatingDialog(rating) { rating = null }
+    var recordingRating by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
+    var recordingPlaylist by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
+    var collection by remember { mutableStateOf<com.music.bitchord.data.model.ShelfItem?>(null) }
+    recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null },it) }
+    recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null } }
+    collection?.let { selected ->
+        CanonicalSearchMetadataPlaylistPicker(
+            CatalogSearchPlaylistTarget(null,selected.browseId.orEmpty(),selected.title,selected.subtitle),
+            onDismiss={ collection=null },loadSourceLabels={ loadCollection?.invoke(selected.browseId.orEmpty()) },
+        )
+    }
     val target = held.target?.takeIf(latestAllowed)
     LaunchedEffect(target,held.target) {
         if (target == null && held.target != null) held.dismiss()
@@ -219,12 +244,14 @@ internal fun AmsShelfHeldMenu(
         val song = com.music.bitchord.ui.amsSongStorefront(id) != null
         val canOpenAlbum = track?.let { amsDetailCanOpenTrackAlbum(item.scope.detail,it) } == true
         val link = appleMusicWebVerifiedRouteUrl(card?.appleStoreUrl ?: track?.sourceStoreUrl,id)
+        val recording = amsLocalRecordingLabel(id,card?.title ?: track?.title.orEmpty(),card?.subtitle ?: track?.credit.orEmpty())
         if (id != null && card != null && canonicalCatalogEntityMenuSpec(id,link) != null) {
             CanonicalCatalogEntityMenuBody(
                 browseId=id,title=card.title,subtitle=card.subtitle.orEmpty(),artworkUrl=card.thumbnailUrl,
                 sourceStoreUrl=link,onDismiss=held::dismiss,
                 onRate={ rating=AmsHeldRating(it,card.thumbnailUrl) },
                 onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ latestAllowed(item) },
+                onAddAmsCollection=loadCollection?.let { { collection=card } },
             )
         } else BrowseActionsSheet(
             target=BrowseTarget(browseId=id,title=card?.title ?: track?.title.orEmpty(),
@@ -239,6 +266,8 @@ internal fun AmsShelfHeldMenu(
             presentation=SongActionsPresentation.Menu,
             onOpenLabel=if (canOpenAlbum) "Abrir álbum" else "Ver detalhes",
             onOpen=if ((card != null && !song) || canOpenAlbum) ({ open(item) }) else null,
+            onEditRating=recording?.let { { if (latestAllowed(item)) { held.dismiss(); recordingRating=it } } },
+            onAddToPlaylist=recording?.let { { if (latestAllowed(item)) { held.dismiss(); recordingPlaylist=it } } },
             onShare=AmsHeldTrackShare(card?.title ?: track?.title.orEmpty(),
                 card?.subtitle ?: track?.credit.orEmpty(),link,{ latestAllowed(item) },held::dismiss),
             onViewSource=link?.let { url ->

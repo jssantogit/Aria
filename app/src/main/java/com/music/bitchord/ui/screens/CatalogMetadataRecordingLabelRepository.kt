@@ -17,7 +17,7 @@ internal data class CatalogMetadataRecordingLabel(
 )
 
 internal fun validCatalogMetadataRecordingLabel(value: CatalogMetadataRecordingLabel): Boolean =
-    isVerifiedCatalogRecordingId(value.recordingId) &&
+    isLocalMetadataRecordingId(value.recordingId) &&
         value.title.isNotBlank() && value.title.length <= 240 &&
         value.artist.isNotBlank() && value.artist.length <= 240 &&
         (value.title + value.artist).none { it.isISOControl() }

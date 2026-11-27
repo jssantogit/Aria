@@ -105,11 +105,10 @@ internal fun rememberNativeCatalogProviderState(
     val discogsDetail by viewModel.discogsNativeCatalog.detail.collectAsStateWithLifecycle()
     val amsStack by viewModel.appleMusicWebDetailNavigation.stack.collectAsStateWithLifecycle()
     val gate = ProviderRuntime.gateOrNull()
-    val amsReadAllowed = gate?.open(
-        ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.APPLE_MUSIC_WEB,
-    ) != null && amsStack.lastOrNull()?.lease?.isCurrent() == true
+    // The route owns its capability: a daily chart is not an editorial read.
+    val amsReadAllowed = amsStack.isNotEmpty() && amsStack.all { it.lease.isCurrent() }
     LaunchedEffect(amsReadAllowed, amsStack.isNotEmpty()) {
-        if (!amsReadAllowed && amsStack.isNotEmpty()) viewModel.appleMusicWebDetailNavigation.clear()
+        if (!amsReadAllowed && amsStack.isNotEmpty()) viewModel.appleMusicWebDetailNavigation.purgeRevoked()
     }
     val discogsReadAllowed = gate?.open(
         ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS,

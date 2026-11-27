@@ -699,6 +699,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             resolveSongAlbum = appleMusicWebNativeCatalog::songAlbumRoute,
             read = appleMusicWebNativeCatalog::sharedDetail)
     }
+    internal suspend fun loadAmsCollectionLabels(browseId: String): List<com.music.bitchord.ui.screens.CatalogMetadataRecordingLabel>? {
+        val chart = amsDailyCharts.tile(browseId)
+        val result = if (chart != null) appleMusicWebNativeCatalog.dailyChartSharedDetail(chart)
+            else appleMusicWebNativeCatalog.sharedDetail(browseId)
+        val detail = ((result as? ProviderCallResult.Success)?.value as?
+            com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebOutcome.Complete)?.value
+            ?: return null
+        if (detail.page.browseId != browseId) return null
+        return com.music.bitchord.ui.screens.amsCollectionRecordingLabels(browseId,detail.metadataTracks,detail.notice == null)
+    }
+
     internal fun openAppleMusicWebDetail(item: ShelfItem): Boolean {
         val chart = amsDailyCharts.tile(item.browseId)
         val opened = if (chart != null) {

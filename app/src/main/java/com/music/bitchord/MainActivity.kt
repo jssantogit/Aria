@@ -6458,6 +6458,7 @@ private fun BitChordApp(
                     subtitle = source.page.subtitle.orEmpty(),
                     cover = source.page.thumbnailUrl,
                     sourceStoreUrl = source.sourceStoreUrl,
+                    loadAmsLabels = { viewModel.loadAmsCollectionLabels(source.page.browseId) },
                     expanded = providerDetailOverflowOpen && providerHeldCardRoute == null,
                     onDismiss = { providerDetailOverflowOpen = false },
                     hazeState = hazeState,
@@ -7385,6 +7386,7 @@ private fun BitChordApp(
                 heldChromeClearance)
             com.music.bitchord.ui.screens.AmsShelfHeldMenu(
                 held = amsShelfHeld,
+                loadCollection = viewModel::loadAmsCollectionLabels,
                 allowed = { target ->
                     val scope = target.scope
                     val card = target.card

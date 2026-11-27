@@ -74,6 +74,7 @@ private sealed interface MetadataCollectionLoad {
 internal fun CanonicalSearchMetadataPlaylistPicker(
     target: CatalogSearchPlaylistTarget,
     onDismiss: () -> Unit,
+    loadSourceLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)? = null,
 ) {
     val app = LocalContext.current.applicationContext
     val repository = remember(app) {
@@ -113,7 +114,12 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
         key1 = target, key2 = editionId,
     ) {
         value = try {
-            when (target.kind) {
+            if (loadSourceLabels != null) {
+                val labels = loadSourceLabels()
+                if (labels.isNullOrEmpty() || labels.size > 500 || labels.any { !validCatalogMetadataRecordingLabel(it) })
+                    MetadataCollectionLoad.Error("A lista desta coleção ainda não foi verificada integralmente.")
+                else MetadataCollectionLoad.Ready(labels)
+            } else when (target.kind) {
                 CanonicalSearchKind.RECORDING -> {
                     val row = CatalogMetadataRecordingLabel(
                         target.id, target.title.trim(), target.artist.trim(),

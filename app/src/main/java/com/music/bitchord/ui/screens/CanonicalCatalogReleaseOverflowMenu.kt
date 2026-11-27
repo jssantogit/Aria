@@ -27,13 +27,19 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     sourceStoreUrl: String? = null,
     onSettings: () -> Unit,
+    loadAmsLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)? = null,
 ) {
     val spec = remember(browseId,sourceStoreUrl) {
         canonicalCatalogEntityMenuSpec(browseId,sourceStoreUrl)
     }
     var ratingOpen by remember(browseId) { mutableStateOf(false) }
     var playlistOpen by remember(browseId) { mutableStateOf(false) }
-    if (playlistOpen && spec?.playlistKind != null) {
+    if (playlistOpen && loadAmsLabels != null) {
+        CanonicalSearchMetadataPlaylistPicker(
+            target=CatalogSearchPlaylistTarget(null,browseId,title,subtitle),
+            onDismiss={ playlistOpen=false },loadSourceLabels=loadAmsLabels,
+        )
+    } else if (playlistOpen && spec?.playlistKind != null) {
         CanonicalSearchMetadataPlaylistPicker(
             target = CatalogSearchPlaylistTarget(
                 kind = spec.playlistKind,
@@ -68,6 +74,7 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
                     onDismiss = onDismiss,
                     onRate = { ratingOpen = true },
                     onAddVerifiedRecordings = { playlistOpen = true },
+                    onAddAmsCollection = loadAmsLabels?.let { { playlistOpen=true } },
                 )
             }
             com.music.bitchord.FrostedMenuRow(

@@ -21,8 +21,11 @@ import kotlinx.coroutines.withContext
 internal fun CanonicalMetadataRecordingRatingDialog(
     recordingId: String,
     onDismiss: () -> Unit,
+    sourceLabel: CatalogMetadataRecordingLabel? = null,
 ) {
-    if (!isVerifiedCatalogRecordingId(recordingId)) return
+    if (!isLocalMetadataRecordingId(recordingId) ||
+        (com.music.bitchord.ui.amsSongStorefront(recordingId) != null &&
+            (sourceLabel?.recordingId != recordingId || !validCatalogMetadataRecordingLabel(sourceLabel)))) return
     val context = LocalContext.current.applicationContext
     val dao = remember(context) { ListeningEventDatabase.get(context).recordingRatingDao() }
     val current by remember(dao, recordingId) { dao.observeCurrent(recordingId) }
@@ -42,9 +45,12 @@ internal fun CanonicalMetadataRecordingRatingDialog(
                 denied = false
                 scope.launch {
                     val ok = try {
-                        if (!isVerifiedCatalogRecordingId(recordingId) ||
+                        if (!isLocalMetadataRecordingId(recordingId) ||
                             (value != 0.0 && !isValidCanonicalEntityRating(value))) false
                         else withContext(Dispatchers.IO) {
+                            if (value != 0.0 && sourceLabel != null &&
+                                !CatalogMetadataRecordingLabelRepository.get(context).rememberLabel(sourceLabel))
+                                return@withContext false
                             val now = System.currentTimeMillis()
                             if (value == 0.0) dao.clearRating(recordingId, now)
                             else dao.setRating(recordingId, value, now)
