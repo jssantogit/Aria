@@ -1,0 +1,29 @@
+name: IDM · smoke artwork-only contracts
+on:
+  push:
+    branches: [fix/idm-smoke-artwork-20261126]
+permissions:
+  contents: read
+jobs:
+  artwork-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify independent artwork capability and exact edition proof
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest --tests 'com.music.bitchord.ItunesArtworkOnlyCapabilityTest' --tests 'com.music.bitchord.AppleVerifiedEditionArtworkResolverTest' --tests 'com.music.bitchord.AppleVerifiedGroupCardArtworkResolverTest' --tests 'com.music.bitchord.CanonicalArtistPublicTopRowsTest'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: idm-artwork-contract-reports
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
