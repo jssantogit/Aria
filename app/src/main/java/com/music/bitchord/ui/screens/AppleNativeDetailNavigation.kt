@@ -156,6 +156,16 @@ internal fun appleNativeArtistAlbumEntries(
     }
 }
 
+/** A failed page may not replace concurrently enriched artwork, tracks or relations. */
+internal fun appleArtistPagingFailureState(
+    current: UiState<AppleEditorialArtistDetailPage>?,
+    expectedBrowseId: String,
+): UiState<AppleEditorialArtistDetailPage>? {
+    val latest = (current as? UiState.Success)?.data ?: return current
+    if (latest.artist.browseId != expectedBrowseId) return current
+    return UiState.Success(latest.copy(loadingMore = false, pageError = true))
+}
+
 /** A retained artist and an open album may coexist for Back navigation.
  * Only the visible route may nominate a related item. */
 internal fun appleNativeShelfEntryForRoute(

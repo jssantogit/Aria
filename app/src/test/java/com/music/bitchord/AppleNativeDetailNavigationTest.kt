@@ -306,4 +306,27 @@ class AppleNativeDetailNavigationTest {
         assertNull(pick(albumRow.browseId, allowed = false))
     }
 
+
+    @Test fun pagingFailurePreservesLatestArtistEnrichmentAndIgnoresRetiredRoute() {
+        val current = AppleEditorialArtistDetailPage(
+            artist = artist(),
+            albums = listOf(album().copy(artworkUri =
+                "https://is1-ssl.mzstatic.com/image/thumb/Music/abc/600x600bb.jpg")),
+            possiblyTruncated = false,
+            loadingMore = true,
+            hasMore = true,
+            verifiedMusicBrainzArtistMbid = "11111111-1111-1111-1111-111111111111",
+        )
+        val state = UiState.Success(current)
+        val failed = com.music.bitchord.ui.screens.appleArtistPagingFailureState(
+            state, current.artist.browseId,
+        )
+        assertEquals(UiState.Success(current.copy(loadingMore = false, pageError = true)), failed)
+        assertSame(state, com.music.bitchord.ui.screens.appleArtistPagingFailureState(
+            state, "itunes:br:artist:999",
+        ))
+        assertNull(com.music.bitchord.ui.screens.appleArtistPagingFailureState(
+            null, current.artist.browseId,
+        ))
+    }
 }

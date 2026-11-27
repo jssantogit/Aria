@@ -77,6 +77,7 @@ import com.music.bitchord.data.catalog.metadata.AppleEditorialReadState
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogFailure
 import com.music.bitchord.ui.screens.AppleEditorialAlbumDetailPage
 import com.music.bitchord.ui.screens.AppleEditorialArtistDetailPage
+import com.music.bitchord.ui.screens.appleArtistPagingFailureState
 import com.music.bitchord.ui.screens.AppleEditorialTrackSearchRow
 import com.music.bitchord.ui.screens.AppleEditorialSearchKind
 import com.music.bitchord.ui.screens.AppleEditorialSearchRow
@@ -5551,8 +5552,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) { null }
+                currentCoroutineContext().ensureActive()
                 if (relatedMbid != null && relationLease.isCurrent() &&
                     activeAppleArtistId == row.browseId &&
+                    appleArtistPager === pager &&
                     _searchSource.value == SearchSource.CANONICAL
                 ) {
                     activeAppleArtistLinkedMbid = relatedMbid
@@ -5786,12 +5789,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (activeAppleArtistId != browseId || appleArtistPager !== pager)
                 return@launch
-            _appleEditorialArtistDetail.value = when (result) {
+            currentCoroutineContext().ensureActive()
+            _appleEditorialArtistDetail.update { state ->
+                if (activeAppleArtistId != browseId || appleArtistPager !== pager)
+                    return@update state
+                when (result) {
                 is AppleArtistPageLoad.Success -> buildAppleArtistPage(
                     pager, browseId, artistName, noNew = false
                 )?.let { UiState.Success(it) } ?: UiState.Error("apple_catalog_unavailable")
                 is AppleArtistPageLoad.Failure, AppleArtistPageLoad.InvalidQuery ->
-                    UiState.Success(detail.copy(loadingMore = false, pageError = true))
+                    appleArtistPagingFailureState(state, browseId)
+                }
             }
             if (result is AppleArtistPageLoad.Success) {
                 val updated = (_appleEditorialArtistDetail.value as? UiState.Success)?.data
@@ -5823,12 +5831,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (activeAppleArtistId != browseId || appleArtistPager !== pager)
                 return@launch
-            _appleEditorialArtistDetail.value = when (result) {
+            currentCoroutineContext().ensureActive()
+            _appleEditorialArtistDetail.update { state ->
+                if (activeAppleArtistId != browseId || appleArtistPager !== pager)
+                    return@update state
+                when (result) {
                 is AppleArtistPageLoad.Success -> buildAppleArtistPage(
                     pager, browseId, artistName, noNew = result.added == 0,
                 )?.let { UiState.Success(it) } ?: UiState.Error("apple_catalog_unavailable")
                 is AppleArtistPageLoad.Failure, AppleArtistPageLoad.InvalidQuery ->
-                    UiState.Success(detail.copy(loadingMore = false, pageError = true))
+                    appleArtistPagingFailureState(state, browseId)
+                }
             }
             if (result is AppleArtistPageLoad.Success) {
                 val updated = (_appleEditorialArtistDetail.value as? UiState.Success)?.data
@@ -5975,14 +5988,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         activeAppleAlbumId == row.browseId &&
                         _searchSource.value == SearchSource.CANONICAL
                     ) {
-                        val siblings = appleNativeSearchRows(
-                            discography.copy(releases = discography.releases.filter {
-                                it.artistId == artistId &&
-                                    it.storefront == route.storefront &&
-                                    it.appleCollectionId != route.id &&
-                                    it.appleCollectionId > 0L
-                            }),
-                        ).distinctBy { it.browseId }.take(12)
+                        // Keep the bounded source observations intact until the
+                        // shared rail admission rejects conflicts and applies its limit.
+                        val siblings = appleNativeSearchRows(discography)
                         _appleEditorialDetail.update { state ->
                             if (state !is UiState.Success ||
                                 state.data.album.browseId != row.browseId
