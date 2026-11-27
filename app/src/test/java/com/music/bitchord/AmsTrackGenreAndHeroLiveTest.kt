@@ -86,4 +86,55 @@ class AmsTrackGenreAndHeroLiveTest {
             "/v1/catalog/br/playlists/${chart.id}",mapOf("include" to "tracks","extend" to "editorialArtwork")) },
             chart.id,"playlists","top100_br")
     }
+    @Test fun nativeChartHeroReturnsActualImage(): Unit = runBlocking {
+        val catalog = AppleMusicWebCatalog(transport())
+        val ref = requireNotNull(resolveAppleMusicWebDailyChart(catalog.dailyChartDirectory(),"br"))
+        val chart = (withTimeout(120_000) { catalog.dailyChart("br",ref) } as AppleMusicWebOutcome.Complete).value
+        val url = requireNotNull(chart.playlist.editorialTallHeroUrl)
+        val uri = java.net.URI(url)
+        assertTrue(uri.scheme == "https" && uri.host.endsWith(".mzstatic.com"))
+        val conn = uri.toURL().openConnection() as javax.net.ssl.HttpsURLConnection
+        try {
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            assertEquals(200,conn.responseCode)
+            assertTrue(conn.contentType.orEmpty().startsWith("image/"))
+            val bytes = conn.inputStream.use { it.readNBytes(12) }
+            assertTrue(bytes.size >= 12 && (bytes[0].toInt() and 255) == 255 && (bytes[1].toInt() and 255) == 216)
+            println("AMS_HERO|scope=native_top100_br|http=200|jpeg=true")
+        } finally { conn.disconnect() }
+    }
+
+    @Test fun artistWebMotionEvidence(): Unit = runBlocking {
+        assumeTrue(System.getenv("AMS_TRACK_HERO_LIVE") == "1")
+        val response = withTimeout(60_000) {
+            KtorAppleMusicWebExchange().get(AppleMusicWebHost.MUSIC,
+                "/br/artist/illit/1734551937",emptyMap(),
+                mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+                8_000_000)
+        }
+        assertEquals(200,response.status)
+        val html = response.body
+        val marker = html.indexOf("id=\"serialized-server-data\"")
+        assertTrue("Missing artist hydration",marker >= 0)
+        val start = html.indexOf('>',marker) + 1
+        val end = html.indexOf("</script>",start)
+        assertTrue(start > 0 && end > start)
+        val payload = Json.parseToJsonElement(html.substring(start,end))
+        fun header(value: JsonElement): JsonObject? = when(value) {
+            is JsonObject -> if ("artistLogo" in value) value else value.values.firstNotNullOfOrNull(::header)
+            is JsonArray -> value.firstNotNullOfOrNull(::header)
+            else -> null
+        }
+        val artist = requireNotNull(header(payload))
+        val dictionary = (artist["videoArtwork"] as? JsonObject)?.get("dictionary") as? JsonObject
+        val keys = dictionary?.keys.orEmpty()
+        val motion = (dictionary?.get("motionArtistSquare1x1") as? JsonObject)?.get("video") as? JsonPrimitive
+        val uri = motion?.contentOrNull?.let { runCatching { java.net.URI(it) }.getOrNull() }
+        val safe = uri?.scheme == "https" && uri.host?.endsWith(".mzstatic.com") == true && uri.userInfo == null
+        println("AMS_HERO|scope=illit_web|motionKeys=${keys.sorted().joinToString(",")}|nativeMotion=$safe")
+        assertTrue("No compatible official artist motion",safe)
+    }
+
 }

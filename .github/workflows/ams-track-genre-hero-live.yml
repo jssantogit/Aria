@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [allRegisteredStylesFromSongMetadata, officialEditorialArtworkFields, officialPlaylistArtworkFields]
+        method: [allRegisteredStylesFromSongMetadata, officialEditorialArtworkFields, officialPlaylistArtworkFields, nativeChartHeroReturnsActualImage, artistWebMotionEvidence]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

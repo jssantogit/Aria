@@ -113,7 +113,7 @@ class AppleArtistArtCapabilityTest {
     @Test fun disabledArtistArtCannotExposePreviouslyPersistedExactStorefrontPortrait() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         AppleArtistArtRepository.init(context)
-        val browseId = "itunes:br:artist:945612341"
+        val browseId = "apple_music_web:br:artist:945612341"
         val url = "https://music.apple.com/br/artist/test-artist/945612341"
         val prefs = context.getSharedPreferences(
             "visual_artist_metadata_v1", Context.MODE_PRIVATE,
