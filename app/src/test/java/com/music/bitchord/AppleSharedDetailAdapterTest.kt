@@ -95,7 +95,7 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
-    @Test fun albumTrackDurationIsPreservedWithoutInventingMissingValues() {
+    @Test fun albumTrackDurationIsPreservedButNotRenderedInSharedRows() {
         val selected = album(20, AppleEditorialReleaseCategory.EP)
         val page = AppleEditorialAlbumDetailPage(
             album = selected,
@@ -107,8 +107,9 @@ class AppleSharedDetailAdapterTest {
         )
         val adapted = requireNotNull(appleAlbumAsSharedDetail(page))
         assertEquals(listOf(183000L, null), adapted.metadataTracks.map { it.durationMs })
-        assertEquals("3:03", com.music.bitchord.ui.screens.nativeMetadataAlbumTrackSubtitle(
-            adapted.metadataTracks.first(), "NewJeans"))
+        adapted.metadataTracks.forEach { track ->
+            assertNull(com.music.bitchord.ui.screens.nativeMetadataAlbumTrackSubtitle(track, "NewJeans"))
+        }
     }
 
     @Test fun albumArtistCreditUsesOnlyExactMatchingStorefrontArtistId() {
