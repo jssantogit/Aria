@@ -109,21 +109,40 @@ internal fun CanonicalProviderDetailHost(
         discogsReadAllowed && routeKey == "discogs:release:${it.link.id}"
     }
     val artworkResolver = remember { DiscogsAppleArtworkResolver() }
-    var coverProof by remember(routeKey, artworkRecord, gate, artTicket) {
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val artworkDimensions = remember(appContext) {
+        com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(
+            persistence = com.music.bitchord.data.catalog.metadata
+                .AndroidAppleArtworkProbePersistence(appContext),
+        )
+    }
+    var coverProof by remember(routeKey, artworkRecord, gate, artTicket, detailTicket) {
         mutableStateOf<DiscogsVerifiedAppleArtwork?>(null)
     }
-    LaunchedEffect(routeKey, artworkRecord, gate, artTicket) {
-        if (artworkRecord == null || artTicket == null) return@LaunchedEffect
+    LaunchedEffect(routeKey, artworkRecord, gate, artTicket, detailTicket) {
+        if (artworkRecord == null || artTicket == null || detailTicket == null)
+            return@LaunchedEffect
+        fun current() = ProviderRuntime.gateOrNull() === gate &&
+            gate?.accept(artTicket) == true && gate.accept(detailTicket)
         coverProof = try {
             withContext(Dispatchers.IO) {
-                withTimeoutOrNull(12_000L) { artworkResolver.resolve(artworkRecord) }
-            }?.takeIf { gate?.accept(artTicket) == true &&
-                it.discogsReleaseId == artworkRecord.link.id }
+                val proof = withTimeoutOrNull(12_000L) {
+                    artworkResolver.resolve(artworkRecord)
+                }?.takeIf { current() && it.discogsReleaseId == artworkRecord.link.id }
+                    ?: return@withContext null
+                val upgraded = withTimeoutOrNull(12_000L) {
+                    artworkDimensions.upgrade(proof.artworkUrl, 1024)
+                }
+                if (!current()) return@withContext null
+                proof.copy(artworkUrl = upgraded ?: proof.artworkUrl)
+            }?.takeIf { current() }
         } catch (cancelled: CancellationException) { throw cancelled }
           catch (_: Exception) { null }
     }
     val verifiedCover = coverProof?.takeIf {
-        artTicket != null && gate?.accept(artTicket) == true &&
+        artTicket != null && detailTicket != null &&
+            ProviderRuntime.gateOrNull() === gate &&
+            gate?.accept(artTicket) == true && gate.accept(detailTicket) &&
             artworkRecord?.link?.id == it.discogsReleaseId
     }
     val page = discogsPage?.page?.let {
