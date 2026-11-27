@@ -290,7 +290,9 @@ class AppleSharedDetailAdapterTest {
         val disputed = track.copy(key = "itunes:br:track:125")
         val adapted = requireNotNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
             artist = artist, albums = emptyList(), possiblyTruncated = false,
-            tracks = listOf(track, track, foreign, disputed, disputed.copy(title = "Other")),
+            tracks = listOf(track, track, foreign, disputed, disputed.copy(title = "Other"),
+                track.copy(key = "itunes:br:track:126"),
+                foreign.copy(key = "itunes:br:track:126")),
         )))
         assertEquals(listOf(track), adapted.artistTracks)
         val row = AppleEditorialTrackRow("itunes:br:track:123", "Song", artist.title, 1, 1)

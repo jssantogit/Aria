@@ -125,10 +125,11 @@ internal fun appleArtistAsSharedDetail(
             val trackRoute = AppleCatalogBrowseRoute.parse(track.key)
             trackRoute?.kind == ItunesCatalogItemType.TRACK &&
                 trackRoute.storefront == route.storefront &&
-                track.artistName.isNotBlank() && track.title.isNotBlank() &&
-                (track.artistBrowseId == null || track.artistBrowseId == source.artist.browseId)
+                track.artistName.isNotBlank() && track.title.isNotBlank()
         }.groupBy { it.key }.values.mapNotNull { observations ->
-            observations.distinct().singleOrNull()
+            if (observations.any {
+                it.artistBrowseId != null && it.artistBrowseId != source.artist.browseId
+            }) null else observations.distinct().singleOrNull()
         }.take(16),
     )
 }

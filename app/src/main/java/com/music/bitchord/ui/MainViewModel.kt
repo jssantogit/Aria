@@ -696,6 +696,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var appleArtistArtworkQueueArtistId: String? = null
     private val appleArtistArtworkQueued = mutableSetOf<String>()
     private var appleArtistPager: AppleArtistDiscographyPager? = null
+    private var appleArtistEditorialLease: ProviderReadLease? = null
     private var activeAppleArtistId: String? = null
     private val _appleArtistNavigation = MutableStateFlow<AppleEditorialSearchRow?>(null)
     val appleArtistNavigation = _appleArtistNavigation.asStateFlow()
@@ -1363,6 +1364,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleArtistPagingJob?.cancel()
         resetAppleArtistArtworkQueue()
         appleArtistPager = null
+        appleArtistEditorialLease = null
         appleTrackSearchJob?.cancel()
         resetApplePublicSearchPaging()
         _appleEditorialTracks.value = null
@@ -5529,13 +5531,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _appleEditorialArtistDetail.value = UiState.Loading
         // Search permission does not implicitly grant public discography.
         // Show the native artist page with a useful error instead of a dead tap.
-        if (ProviderRuntime.gateOrNull()?.open(
-                ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.ITUNES,
-            ) == null
-        ) {
+        val editorialLease = ProviderReadLease.acquire(ProviderRuntime.gateOrNull(), listOf(
+            ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.ITUNES,
+        ))
+        appleArtistEditorialLease = editorialLease
+        if (editorialLease == null) {
             _appleEditorialArtistDetail.value = UiState.Error("itunes_discography_disabled")
             return
         }
+        fun currentArtist() = appleArtistEditorialLease === editorialLease &&
+            editorialLease.isCurrent() && activeAppleArtistId == row.browseId &&
+            appleArtistPager === pager && _searchSource.value == SearchSource.CANONICAL
         // Bridge optional artist relation shelves only when the user enabled
         // MusicBrainz identity and the official URL resolves unambiguously.
         // The lookup runs in parallel, never blocks the first Apple paint.
@@ -5544,20 +5550,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             listOf(ProviderCapability.IDENTITY to BuiltInProviderKeys.MUSICBRAINZ),
         )
         if (appleArtistUrl != null && relationLease != null) {
-            appleArtistRelationJob = viewModelScope.launch(Dispatchers.IO) {
+            appleArtistRelationJob = viewModelScope.launch(Dispatchers.Main.immediate) {
                 val relatedMbid = try {
-                    com.music.bitchord.data.catalog.metadata
-                        .MusicBrainzAppleArtistUrlResolver().resolve(
-                            route.id, route.storefront, appleArtistUrl,
-                        )
+                    withContext(Dispatchers.IO) {
+                        com.music.bitchord.data.catalog.metadata
+                            .MusicBrainzAppleArtistUrlResolver().resolve(
+                                route.id, route.storefront, appleArtistUrl,
+                            )
+                    }
                 } catch (cancelled: CancellationException) { throw cancelled }
                   catch (_: Exception) { null }
                 currentCoroutineContext().ensureActive()
-                if (relatedMbid != null && relationLease.isCurrent() &&
-                    activeAppleArtistId == row.browseId &&
-                    appleArtistPager === pager &&
-                    _searchSource.value == SearchSource.CANONICAL
-                ) {
+                if (relatedMbid != null && relationLease.isCurrent() && currentArtist()) {
                     activeAppleArtistLinkedMbid = relatedMbid
                     _appleEditorialArtistDetail.update { state ->
                         if (state !is UiState.Success ||
@@ -5569,19 +5573,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }.also { job ->
                 val unregister = relationLease.cancelJobOnRevoke(job)
-                job.invokeOnCompletion { unregister() }
+                val unregisterEditorial = editorialLease.cancelJobOnRevoke(job)
+                job.invokeOnCompletion { unregister(); unregisterEditorial() }
             }
         }
-        appleArtistHeroJob = viewModelScope.launch(Dispatchers.IO) {
+        appleArtistHeroJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             // Reuse the exact verified store route resolved above. A shelf
             // row may omit the URL even when the current artist snapshot has it.
-            val portrait = AppleArtistArtRepository.artForExactStoreArtist(
-                row.browseId, appleArtistUrl,
-            )?.heroUrl?.takeIf(String::isNotBlank) ?: return@launch
-            if (activeAppleArtistId != row.browseId ||
-                appleArtistPager !== pager ||
-                _searchSource.value != SearchSource.CANONICAL
-            ) return@launch
+            val portrait = withContext(Dispatchers.IO) {
+                AppleArtistArtRepository.artForExactStoreArtist(row.browseId, appleArtistUrl)
+            }?.heroUrl?.takeIf(String::isNotBlank) ?: return@launch
+            currentCoroutineContext().ensureActive()
+            if (!currentArtist()) return@launch
             activeAppleArtistHeroArt = portrait
             _appleEditorialArtistDetail.update { state ->
                 if (state !is UiState.Success ||
@@ -5590,19 +5593,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     artist = state.data.artist.copy(artworkUri = portrait),
                 ))
             }
+        }.also { job ->
+            val unregister = editorialLease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
-        appleArtistDetailJob = viewModelScope.launch(Dispatchers.IO) {
+        appleArtistDetailJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             val result = try {
-                pager.start()
+                withContext(Dispatchers.IO) { pager.start() }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 AppleArtistPageLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
-            if (activeAppleArtistId != row.browseId ||
-                appleArtistPager !== pager ||
-                _searchSource.value != SearchSource.CANONICAL
-            ) return@launch
+            currentCoroutineContext().ensureActive()
+            if (!currentArtist()) return@launch
             _appleEditorialArtistDetail.value = when (result) {
                 is AppleArtistPageLoad.Success -> {
                     val detail = buildAppleArtistPage(pager, row.browseId, row.title)
@@ -5622,22 +5626,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // popularity ranking, and never map its IDs to playable Songs.
             if (displayed?.artist?.browseId == row.browseId) {
                 val sourceTracks = try {
-                    appleEditorialRepository.artistTracks(
-                        route.id, route.storefront, limit = 40,
-                    )
+                    withContext(Dispatchers.IO) {
+                        appleEditorialRepository.artistTracks(
+                            route.id, route.storefront, limit = 40,
+                        )
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     AppleEditorialTrackLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
                 }
-                if (sourceTracks is AppleEditorialTrackLoad.Success &&
-                    activeAppleArtistId == row.browseId &&
-                    appleArtistPager === pager &&
-                    _searchSource.value == SearchSource.CANONICAL
-                ) {
+                currentCoroutineContext().ensureActive()
+                if (sourceTracks is AppleEditorialTrackLoad.Success && currentArtist()) {
+                    // Preserve observations until the adapter rejects disputed IDs.
                     val actual = appleNativeTrackSearchRows(sourceTracks)
-                        .distinctBy { it.key }
-                        .take(16)
                     _appleEditorialArtistDetail.update { state ->
                         if (state !is UiState.Success ||
                             state.data.artist.browseId != row.browseId
@@ -5645,6 +5647,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+        }.also { job ->
+            val unregister = editorialLease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
     }
 
@@ -5669,7 +5674,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         candidates: List<AppleEditorialSearchRow>,
         featuredCount: Int = 0,
     ) {
-        if (candidates.isEmpty()) return
+        val editorialLease = appleArtistEditorialLease ?: return
+        if (candidates.isEmpty() || !editorialLease.isCurrent()) return
         synchronized(appleArtistArtworkQueueLock) {
             if (appleArtistArtworkQueueArtistId != artistBrowseId ||
                 appleArtistArtworkJob?.isActive != true
@@ -5680,25 +5686,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 appleArtistArtworkQueueArtistId = artistBrowseId
                 val queue = Channel<Pair<Int, AppleEditorialSearchRow>>(Channel.UNLIMITED)
                 appleArtistArtworkQueue = queue
-                appleArtistArtworkJob = viewModelScope.launch(Dispatchers.IO) {
+                appleArtistArtworkJob = viewModelScope.launch(Dispatchers.Main.immediate) {
                     coroutineScope {
                         repeat(2) {
                             launch {
                                 for ((targetPx, album) in queue) {
                                     currentCoroutineContext().ensureActive()
                                     if (activeAppleArtistId != artistBrowseId ||
+                                        appleArtistEditorialLease !== editorialLease ||
+                                        !editorialLease.isCurrent() ||
                                         _searchSource.value != SearchSource.CANONICAL
                                     ) continue
                                     val upgraded = try {
-                                        appleHighResolutionArtwork.upgrade(
-                                            album.artworkUri,
-                                            targetPx,
-                                        )
+                                        withContext(Dispatchers.IO) {
+                                            appleHighResolutionArtwork.upgrade(album.artworkUri, targetPx)
+                                        }
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (_: Exception) { null }
+                                    currentCoroutineContext().ensureActive()
                                     if (upgraded == null || upgraded == album.artworkUri ||
-                                        activeAppleArtistId != artistBrowseId
+                                        activeAppleArtistId != artistBrowseId ||
+                                        appleArtistEditorialLease !== editorialLease ||
+                                        !editorialLease.isCurrent()
                                     ) continue
                                     _appleEditorialArtistDetail.update { state ->
                                         if (state !is UiState.Success ||
@@ -5714,6 +5724,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                     }
+                }.also { job ->
+                    val unregister = editorialLease.cancelJobOnRevoke(job)
+                    job.invokeOnCompletion { unregister() }
                 }
             }
             val queue = appleArtistArtworkQueue ?: return
@@ -5772,6 +5785,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Load local pages first, then bounded public iTunes discovery probes. */
     fun loadMoreAppleEditorialArtist() {
         val pager = appleArtistPager ?: return
+        val editorialLease = appleArtistEditorialLease?.takeIf { it.isCurrent() } ?: return
         val detail = (_appleEditorialArtistDetail.value as? UiState.Success)?.data ?: return
         if (!detail.hasMore || detail.loadingMore || appleArtistPagingJob?.isActive == true)
             return
@@ -5779,19 +5793,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val artistName = detail.artist.title
         _appleEditorialArtistDetail.value = UiState.Success(detail.copy(
             loadingMore = true, pageError = false, noAdditionalResults = false))
-        appleArtistPagingJob = viewModelScope.launch(Dispatchers.IO) {
+        appleArtistPagingJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             val result = try {
-                pager.loadMore()
+                withContext(Dispatchers.IO) { pager.loadMore() }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 AppleArtistPageLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
-            if (activeAppleArtistId != browseId || appleArtistPager !== pager)
+            if (activeAppleArtistId != browseId || appleArtistPager !== pager ||
+                appleArtistEditorialLease !== editorialLease || !editorialLease.isCurrent())
                 return@launch
             currentCoroutineContext().ensureActive()
             _appleEditorialArtistDetail.update { state ->
-                if (activeAppleArtistId != browseId || appleArtistPager !== pager)
+                if (activeAppleArtistId != browseId || appleArtistPager !== pager ||
+                appleArtistEditorialLease !== editorialLease || !editorialLease.isCurrent())
                     return@update state
                 when (result) {
                 is AppleArtistPageLoad.Success -> buildAppleArtistPage(
@@ -5809,31 +5825,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             detail.albums.none { it.browseId == added.browseId }
                         })
             }
+        }.also { job ->
+            val unregister = editorialLease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
     }
 
     /** Search an album title within the same Apple artist, even past the cap. */
     fun searchMoreAppleEditorialArtist(title: String) {
         val pager = appleArtistPager ?: return
+        val editorialLease = appleArtistEditorialLease?.takeIf { it.isCurrent() } ?: return
         val detail = (_appleEditorialArtistDetail.value as? UiState.Success)?.data ?: return
         if (detail.loadingMore || appleArtistPagingJob?.isActive == true) return
         val browseId = detail.artist.browseId
         val artistName = detail.artist.title
         _appleEditorialArtistDetail.value = UiState.Success(detail.copy(
             loadingMore = true, pageError = false, noAdditionalResults = false))
-        appleArtistPagingJob = viewModelScope.launch(Dispatchers.IO) {
+        appleArtistPagingJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             val result = try {
-                pager.searchMore(title)
+                withContext(Dispatchers.IO) { pager.searchMore(title) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 AppleArtistPageLoad.Failure(ItunesCatalogFailure.UNAVAILABLE)
             }
-            if (activeAppleArtistId != browseId || appleArtistPager !== pager)
+            if (activeAppleArtistId != browseId || appleArtistPager !== pager ||
+                appleArtistEditorialLease !== editorialLease || !editorialLease.isCurrent())
                 return@launch
             currentCoroutineContext().ensureActive()
             _appleEditorialArtistDetail.update { state ->
-                if (activeAppleArtistId != browseId || appleArtistPager !== pager)
+                if (activeAppleArtistId != browseId || appleArtistPager !== pager ||
+                appleArtistEditorialLease !== editorialLease || !editorialLease.isCurrent())
                     return@update state
                 when (result) {
                 is AppleArtistPageLoad.Success -> buildAppleArtistPage(
@@ -5851,6 +5873,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             detail.albums.none { it.browseId == added.browseId }
                         })
             }
+        }.also { job ->
+            val unregister = editorialLease.cancelJobOnRevoke(job)
+            job.invokeOnCompletion { unregister() }
         }
     }
 
@@ -5865,6 +5890,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appleArtistPagingJob?.cancel()
         resetAppleArtistArtworkQueue()
         appleArtistPager = null
+        appleArtistEditorialLease = null
         _appleEditorialArtistDetail.value = null
     }
 
