@@ -201,7 +201,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
                     (art["width"] as? JsonPrimitive)?.intOrNull ?: 0,
                     (art["height"] as? JsonPrimitive)?.intOrNull ?: 0)
             } else null
-        val motion = if (kind == AppleMusicWebKind.ALBUM)
+        val motion = if (kind == AppleMusicWebKind.ALBUM || kind == AppleMusicWebKind.PLAYLIST)
             appleMusicWebAlbumMotion(attr.obj("editorialVideo"),tallHero != null) else null
         return AppleMusicWebItem(
             id = id, kind = kind, storefront = sf, title = name,
@@ -461,7 +461,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
         val id = resourceId(entry.id, AppleMusicWebKind.PLAYLIST)
         val path = "/v1/catalog/$sf/playlists/$id"
         val body = parse(transport.get(ProviderCapability.CHART_MOST_PLAYED, path,
-            mapOf("include" to "tracks", "extend" to "editorialArtwork")))
+            mapOf("include" to "tracks", "extend" to "editorialArtwork,editorialVideo")))
         if ("errors" in body) throw AppleMusicWebProtocolException("Daily chart error envelope")
         val root = body.objects("data").singleOrNull()
             ?: throw AppleMusicWebProtocolException("Missing chart playlist")
@@ -841,7 +841,7 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
     suspend fun playlist(id: String, country: String): AppleMusicWebOutcome<AppleMusicWebPlaylist> {
         val sf = storefront(country)
         val playlistId = resourceId(id,AppleMusicWebKind.PLAYLIST)
-        val raw = detail(sf,AppleMusicWebKind.PLAYLIST,playlistId,mapOf("include" to "tracks", "extend" to "editorialArtwork"))
+        val raw = detail(sf,AppleMusicWebKind.PLAYLIST,playlistId,mapOf("include" to "tracks", "extend" to "editorialArtwork,editorialVideo"))
         val identity = convert(raw,sf) ?: throw AppleMusicWebProtocolException("Invalid playlist")
         val path = "/v1/catalog/$sf/playlists/$playlistId"
         var block = raw.obj("relationships")?.obj("tracks")

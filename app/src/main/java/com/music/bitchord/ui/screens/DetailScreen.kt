@@ -761,12 +761,18 @@ internal fun DetailScreen(
     LaunchedEffect(page.browseId, page.title, credit, canvasEnabled, prioritizeSpotifyCanvas, releaseMotionOverride) {
         // An artist's clip is set below, by the lookup that finds it.
         if (isArtist) return@LaunchedEffect
-        if (!canvasEnabled || page.type != BrowseType.ALBUM) {
+        if (!canvasEnabled) {
             canvas = null
             return@LaunchedEffect
         }
         if (page.browseId.startsWith("apple_music_web:")) {
-            canvas = releaseMotionOverride
+            canvas = releaseMotionOverride.takeIf {
+                page.type == BrowseType.ALBUM || page.type == BrowseType.PLAYLIST
+            }
+            return@LaunchedEffect
+        }
+        if (page.type != BrowseType.ALBUM) {
+            canvas = null
             return@LaunchedEffect
         }
         // As on the player: the credit fills in once the tracks load, so this

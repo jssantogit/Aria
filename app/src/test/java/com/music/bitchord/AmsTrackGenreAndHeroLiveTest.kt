@@ -213,4 +213,38 @@ class AmsTrackGenreAndHeroLiveTest {
         println("AMS_HERO|scope=playlist_motion_api|motion=${url != null}")
     }
 
+    @Test fun nativeChartMotionReachesSharedDetail(): Unit = runBlocking {
+        val catalog = AppleMusicWebCatalog(transport())
+        val ref = requireNotNull(resolveAppleMusicWebDailyChart(catalog.dailyChartDirectory(),"br"))
+        val chart = (withTimeout(120_000) { catalog.dailyChart("br",ref) } as AppleMusicWebOutcome.Complete).value
+        val identity = chart.playlist
+        val detail = requireNotNull(com.music.bitchord.ui.screens.appleMusicWebAsSharedDetail(
+            identity.scopedId,com.music.bitchord.ui.AppleMusicWebNativeDetail.Playlist(
+                AppleMusicWebPlaylist(identity,chart.songs))))
+        val url = requireNotNull(detail.releaseMotion?.url)
+        assertMotionBytes(url)
+        assertNotNull(detail.releaseHeroUrl)
+        println("AMS_HERO|scope=chart_native_motion|id=${identity.id}|hero=true|motion=true")
+    }
+
+    @Test fun remainingStyleTaxonomyAndEditorialInventory(): Unit = runBlocking {
+        val catalog = AppleMusicWebCatalog(transport())
+        val tags = listOf("alternative rock","trap","ambient techno","drill","art pop",
+            "progressive rock","boom bap","dark ambient","post-punk","post-rock","drone")
+        val genres = withTimeout(120_000) { catalog.genres("br") }
+        assertTrue(genres.isNotEmpty())
+        for (tag in tags) {
+            val exact = genres.filter { appleMusicWebGenreNameMatches(it.title,tag) }
+            println("AMS_STYLE_DISCOVERY|tag=$tag|native=${exact.joinToString { it.id + ":" + it.title }}")
+            for (query in amsStyleDiscoveryQueries(tag)) {
+                val page = withTimeout(120_000) { catalog.search(AppleMusicWebKind.PLAYLIST,query,"br",limit=50) }
+                val rows = page.items.filter { it.playlistType == "editorial" && it.storefront == "br" }
+                println("AMS_STYLE_DISCOVERY|tag=$tag|query=$query|editorial=${rows.size}")
+                for (row in rows.take(20)) {
+                    println("AMS_STYLE_DISCOVERY|tag=$tag|id=${row.id}|title=${row.title}|credit=${row.artistName}|accepted=${amsVerifiedSearchedStylePlaylist(row,tag,"br")}")
+                }
+            }
+        }
+    }
+
 }

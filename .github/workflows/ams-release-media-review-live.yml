@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [exactAlbumMotionFromCatalog, playlistMotionFieldInventory]
+        method: [nativeChartMotionReachesSharedDetail, remainingStyleTaxonomyAndEditorialInventory]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -38,7 +38,7 @@ jobs:
           assert int(root.attrib['tests'])==1 and int(root.attrib['skipped'])==0
           for node in root.iter('system-out'):
               for line in (node.text or '').splitlines():
-                  if line.startswith('AMS_HERO|'): print(line)
+                  if line.startswith(('AMS_HERO|','AMS_STYLE_DISCOVERY|')): print(line)
           PY
       - uses: actions/upload-artifact@v4
         if: always()

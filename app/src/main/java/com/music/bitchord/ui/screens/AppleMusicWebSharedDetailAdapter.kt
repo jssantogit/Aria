@@ -175,6 +175,13 @@ internal fun appleMusicWebAsSharedDetail(
                     identity.cover(1024),UiState.Success(emptyList()),BrowseType.PLAYLIST),
                 metadataTracks=source.value.tracks.flatMap { tracks(listOf(it),market) },
                 releaseHeroUrl=identity.editorialTallHeroUrl,
+                // Use the existing collection-header motion preference and
+                // renderer; no separate playback session for playlist audio.
+                releaseMotion=identity.editorialMotionUrl?.let { url ->
+                    com.music.bitchord.data.canvas.CanvasArtwork(url=url,
+                        fallbackUrl=identity.editorialMotionFallbackUrl,title=identity.title,
+                        surface=com.music.bitchord.data.canvas.CanvasSurface.ALBUM)
+                },
                 notice=if (incomplete) "A lista de músicas desta playlist pode estar incompleta." else null,
                 sourceStoreUrl=appleMusicWebVerifiedStoreUrl(identity),
             )

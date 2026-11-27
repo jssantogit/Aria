@@ -43,6 +43,18 @@ class AppleMusicWebSharedDetailAdapterTest {
         assertNull(appleMusicWebAsSharedDetail(album.scopedId,wrong)?.albumArtistBrowseId)
     }
 
+    @Test fun exactPlaylistMotionUsesNativeHeaderWithoutCreatingPlayback() {
+        val url = "https://mvod.itunes.apple.com/example/playlist.m3u8"
+        val playlist = AppleMusicWebItem("pl.abc123",AppleMusicWebKind.PLAYLIST,"br","Top 100",
+            editorialMotionUrl=url,editorialTallHeroUrl="https://is1-ssl.mzstatic.com/image/hero.jpg")
+        val source = AppleMusicWebNativeDetail.Playlist(AppleMusicWebPlaylist(playlist,listOf(song)))
+        val detail = requireNotNull(appleMusicWebAsSharedDetail(playlist.scopedId,source))
+        assertEquals(url,detail.releaseMotion?.url)
+        assertEquals(playlist.editorialTallHeroUrl,detail.releaseHeroUrl)
+        assertTrue((detail.page.songs as UiState.Success).data.isEmpty())
+        assertNull(appleMusicWebAsSharedDetail("apple_music_web:us:playlist:pl.abc123",source))
+    }
+
     @Test fun playlistsAreNativeOrderedAndNeverPlayable() {
         val playlist = AppleMusicWebItem("pl.abc123",AppleMusicWebKind.PLAYLIST,"br","Essentials",
             artistName="Apple Music",storeUrl="https://music.apple.com/br/playlist/essentials/pl.abc123")

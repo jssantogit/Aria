@@ -202,7 +202,8 @@ internal class AppleMusicWebPolicyTransport(
                         params.keys.all { it in setOf("types", "chart", "genre", "limit", "offset", "l") }
                 path.endsWith("/tracks") -> params.keys.all { it in setOf("offset", "limit", "l") }
                 else -> params == mapOf("include" to "tracks") ||
-                    params == mapOf("include" to "tracks", "extend" to "editorialArtwork")
+                    params == mapOf("include" to "tracks", "extend" to "editorialArtwork") ||
+                    params == mapOf("include" to "tracks", "extend" to "editorialArtwork,editorialVideo")
             }
             require(valid) { "Unsupported Apple chart operation" }
         }
