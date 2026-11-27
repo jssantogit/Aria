@@ -58,7 +58,11 @@ internal fun rememberDiscogsEditorialArtwork(
         fun current(): Boolean = currentActive && ProviderRuntime.gateOrNull() === gate &&
             gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
         val attempted = mutableSetOf<String>()
-        snapshotFlow { currentIds }.collect {
+        snapshotFlow { currentIds }.collect { incoming ->
+            // Recheck misses on a later editorial emission (fresh evidence
+            // may have arrived), but never rescan them in every batch of
+            // this same emission.
+            val examined = mutableSetOf<String>()
             // Proofs and attempts remain bounded within this surface epoch;
             // the returned projection hides absent IDs without spending a
             // second request if a subsequent editorial emission restores one.
@@ -68,7 +72,8 @@ internal fun rememberDiscogsEditorialArtwork(
             while (current() && attempted.size < 80) {
                 val before = attempted.size
                 session.resolveEditorialArtworkBatch(
-                    browseIds = currentIds.filterNot { it in attempted },
+                    browseIds = incoming.filterNot { it in attempted || it in examined },
+                    onExamined = { examined += it },
                     maximumAttempts = 80 - before,
                     stillCurrent = { current() },
                     onAttempt = { attempted += it },
