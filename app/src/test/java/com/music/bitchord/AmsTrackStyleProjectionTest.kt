@@ -6,6 +6,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsTrackStyleProjectionTest {
+    @Test fun conflictingSongLinksCannotAuthorizeEitherAlbumAcrossCompositionSources() {
+        val song = AppleMusicWebItem("1",AppleMusicWebKind.SONG,"br","Track",albumId="20",
+            storeUrl="https://music.apple.com/br/album/album/20?i=1",genreNames=listOf("Jazz Fusion"))
+        val other = song.copy(albumId="21",storeUrl="https://music.apple.com/br/album/album/21?i=1",
+            genreNames=listOf("Jazz"))
+        val sparse = song.copy(albumId=null,genreNames=emptyList())
+        val playlist = AppleMusicWebItem("pl.example123",AppleMusicWebKind.PLAYLIST,"br","Editorial")
+        assertTrue(amsStyleTrackAlbumIds(listOf(song,other),"br","jazz fusion").isEmpty())
+        assertTrue(amsStyleSupplementalAlbumIds(listOf(song,other),emptyList(),"br",emptySet()).isEmpty())
+        assertTrue(amsStylePlaylistAlbumIds(AppleMusicWebPlaylist(playlist,listOf(song,other)),"br").isEmpty())
+        assertEquals(listOf("20"),amsStyleTrackAlbumIds(listOf(song,sparse),"br","jazz fusion"))
+        assertTrue(amsStyleTrackAlbumIds(listOf(song.copy(isrc="A"),song.copy(isrc="B")),"br","jazz fusion").isEmpty())
+    }
+
     @Test fun supplementalCandidatesDoNotTurnSearchRankOrParentLabelsIntoStyleEvidence() {
         val song = AppleMusicWebItem("1",AppleMusicWebKind.SONG,"br","Track",
             albumId="21",storeUrl="https://music.apple.com/br/album/album/21?i=1",
@@ -207,7 +221,8 @@ class AmsTrackStyleProjectionTest {
             genreNames=listOf("Jazz"))
         val foreign = track.copy(storefront="us")
         val wrongLink = track.copy(albumId="99")
-        assertEquals(listOf("20"),amsStyleTrackAlbumIds(listOf(track,parent,foreign,wrongLink,track),"br","jazz fusion"))
+        assertEquals(listOf("20"),amsStyleTrackAlbumIds(listOf(track,parent,foreign,track),"br","jazz fusion"))
+        assertTrue(amsStyleTrackAlbumIds(listOf(track,wrongLink),"br","jazz fusion").isEmpty())
         assertTrue(amsStyleTrackAlbumIds(listOf(track),"br","metal").isEmpty())
         val album = AppleMusicWebItem("20",AppleMusicWebKind.ALBUM,"br","Album",artistName="Artist",
             storeUrl="https://music.apple.com/br/album/title/20")

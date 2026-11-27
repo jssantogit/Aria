@@ -59,10 +59,23 @@ internal fun amsStyleSongAlbumId(song: AppleMusicWebItem, market: String): Strin
     return fields.last().takeIf { song.albumId == null || song.albumId == it }
 }
 
+/** Keep observations until the song-to-album linkage is validated. A
+ * second response may supply missing fields but cannot contradict identity. */
+internal fun amsStyleVerifiedSongRows(songs: List<AppleMusicWebItem>, market: String): List<AppleMusicWebItem> =
+    songs.filter { it.kind == AppleMusicWebKind.SONG && it.storefront == market &&
+        amsSongStorefront(it.scopedId) == market }.groupBy { it.scopedId }.values.flatMap { rows ->
+        val valid = rows.mapNotNull { row -> amsStyleSongAlbumId(row,market)?.let { row to it } }
+        val album = valid.map { it.second }.distinct().singleOrNull() ?: return@flatMap emptyList()
+        if (rows.any { !it.albumId.isNullOrBlank() && it.albumId != album } ||
+            rows.mapNotNull { it.isrc?.trim()?.takeIf(String::isNotEmpty) }.distinct().size > 1)
+            return@flatMap emptyList()
+        valid.map { it.first }
+    }
+
 /** A matching track proves that its containing album has a matching track,
  * not that every track on the album belongs to the style. */
 internal fun amsStyleTrackAlbumIds(songs: List<AppleMusicWebItem>, market: String, tag: String): List<String> =
-    if (tag !in amsEditorialStyleParents) emptyList() else songs.asSequence()
+    if (tag !in amsEditorialStyleParents) emptyList() else amsStyleVerifiedSongRows(songs,market).asSequence()
         .filter { it.genreNames.any { label -> appleMusicWebGenreNameMatches(label,tag) } }
         .mapNotNull { amsStyleSongAlbumId(it,market) }.distinct().toList()
 
@@ -81,7 +94,7 @@ internal fun amsStyleSupplementalAlbumIds(
 ): List<String> {
     val fromSearch = albumSearch.asSequence().filter { it.kind == AppleMusicWebKind.ALBUM &&
         it.storefront == market && AppleMusicWebNativeRoute.parse(it.scopedId) != null }.map { it.id }
-    val fromSongs = songs.asSequence().mapNotNull { amsStyleSongAlbumId(it,market) }
+    val fromSongs = amsStyleVerifiedSongRows(songs,market).asSequence().mapNotNull { amsStyleSongAlbumId(it,market) }
     // Alternate sources so one ranked result list cannot starve the other.
     val a = fromSearch.distinct().filterNot { it in alreadyRequested }.toList()
     val b = fromSongs.distinct().filterNot { it in alreadyRequested }.toList()
@@ -121,7 +134,7 @@ internal fun amsStylePlaylistAlbumIds(
 ): List<String> {
     if (playlist.identity.kind != AppleMusicWebKind.PLAYLIST || playlist.identity.storefront != market)
         return emptyList()
-    return playlist.tracks.asSequence().mapNotNull { amsStyleSongAlbumId(it,market) }.distinct()
+    return amsStyleVerifiedSongRows(playlist.tracks,market).asSequence().mapNotNull { amsStyleSongAlbumId(it,market) }.distinct()
         .filter { "apple_music_web:$market:album:$it" !in existing }.take(100).toList()
 }
 

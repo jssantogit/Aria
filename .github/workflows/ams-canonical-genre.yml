@@ -12,6 +12,7 @@ on:
       - audit/ams-media-lifecycle-20261127
       - audit/ams-final-style-evidence-20261127
       - audit/ams-style-candidate-admission-20261127
+      - audit/ams-genre-relationships-20261127
 permissions:
   contents: read
 concurrency:
