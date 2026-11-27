@@ -234,6 +234,9 @@ internal class DiscogsNativeCatalogSession(
             ?: return null
         val releaseId = exact.substringAfterLast(':').toLongOrNull() ?: return null
         val authorization = editorialLease() ?: return null
+        val artGate = ProviderRuntime.gateOrNull() ?: return null
+        val artTicket = artGate.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+            ?: return null
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
             val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId)
                 ?: return@withContext null
@@ -241,7 +244,8 @@ internal class DiscogsNativeCatalogSession(
             val proof = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
                 editorialArtworkResolver.resolve(evidence)
             } ?: return@withContext null
-            if (!authorization.isCurrent() ||
+            if (!authorization.isCurrent() || ProviderRuntime.gateOrNull() !== artGate ||
+                !artGate.accept(artTicket) ||
                 editorialClient.cachedArtworkEvidenceForRelease(releaseId) != evidence
             ) return@withContext null
             val upgraded = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
@@ -249,7 +253,8 @@ internal class DiscogsNativeCatalogSession(
             }
             // Neither the lookup nor the CDN probe extends the evidence TTL.
             proof.copy(artworkUrl = upgraded ?: proof.artworkUrl).takeIf {
-                authorization.isCurrent() && it.discogsReleaseId == releaseId &&
+                authorization.isCurrent() && ProviderRuntime.gateOrNull() === artGate &&
+                    artGate.accept(artTicket) && it.discogsReleaseId == releaseId &&
                     editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
             }
         }
