@@ -122,4 +122,17 @@ class DiscogsNativeReleaseSearchTest {
         assertFalse(result.browseId.startsWith("catalog:"))
         assertFalse(result.browseId.startsWith("itunes:"))
     }
+    @Test fun zeroPageFirstSearchIsEmptyButContradictoryPaginationFails() {
+        val page = DiscogsNativeReleaseSearchParsing.page(
+            """{"pagination":{"page":1,"pages":0},"results":[]}""", 1)
+        assertNotNull(page)
+        assertTrue(page?.releases?.isEmpty() == true)
+        assertNull(page?.nextPage)
+        assertFalse(page?.coverageUncertain == true)
+        assertNull(DiscogsNativeReleaseSearchParsing.page(
+            """{"pagination":{"page":1,"pages":0},"results":[{"type":"release","id":1,"title":"A"}]}""", 1))
+        assertNull(DiscogsNativeReleaseSearchParsing.page(
+            """{"pagination":{"page":2,"pages":0},"results":[]}""", 2))
+    }
+
 }
