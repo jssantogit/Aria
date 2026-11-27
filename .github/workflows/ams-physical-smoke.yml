@@ -45,7 +45,7 @@ jobs:
           cp "$APK" ams-smoke/Aria-AMS-Smoke-arm64-v8a.apk
           {
             printf 'source_sha=%s\n' "$GITHUB_SHA"
-            printf 'smoke_round=2; validated_baseline=d873c005\n'
+            printf 'smoke_round=3; validated_baseline=e1a79a0b\n'
             printf 'package=com.dev.bitchord.ams.smoke\n'
             printf 'build=devDebug; AMS readiness opt-in only; user choices required\n'
             sha256sum ams-smoke/*.apk

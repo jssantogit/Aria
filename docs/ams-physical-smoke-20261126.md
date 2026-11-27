@@ -45,3 +45,19 @@ Install the new ARM64 APK over the first isolated smoke package (keep its data f
 | P1 | Responsiveness | Capture fresh diagnostics during Home, scroll, search, genre and detail navigation; compare stall count/max and frame windows with first run (27 stalls, max 1907.7 ms); do not attribute old stalls to AMS without stack evidence. |
 
 The APK is still isolated debug only. MAIN/IDM remain unmodified, and the branch must be reconciled with current MAIN before a production merge. Green automated tests do not certify these physical acceptance cases.
+
+## Third physical run — artwork, shared playlists and styles
+
+Validated application baseline: `e1a79a0b`. [Offline #45931808461](https://github.com/jssantogit/Aria/actions/runs/45931808461) and [focused live #45931808387](https://github.com/jssantogit/Aria/actions/runs/45931808387) passed. The live report recorded 24 album entries per style (Death, Heavy, Thrash, Black, Doom Metal), with 1/1/2/1/1 playlists respectively. These are coverage counts, not proof of unique or individually relevant albums across styles. Seven editorial artwork CDN samples passed the prior live check. Neither check proves Android rendering.
+
+Install over the same isolated ARM64 package; retain app data. Repeat any unresolved P0 from round two.
+
+| Priority | Physical test | Acceptance |
+|---|---|---|
+| P0 | Home and Explore editorial shelves | Artwork visible on cards before opening detail, including Top 100 Brasil, city charts, touring and curated playlists; no blank card when detail has verified artwork. |
+| P0 | Local playlist ko vs Top 100 Brasil | Shared native playlist structure, hero, toolbar, spacing, rows and context-appropriate actions; no parallel catalog layout. |
+| P0 | Metal -> five styles | Each style renders the relevant albums and editorial playlists; inspect representative titles for relevance, no unrelated fallback or duplicate entries, Back restores parent. |
+| P1 | Artist -> similar artists | Circular artwork with centered artist name only; no redundant artist subtitle. |
+| P1 | Diagnostics and navigation | Scroll, reopen and switch capabilities; check stale artwork, blank placeholders, layout and performance; export fresh diagnostics. |
+
+Animated and landscape editorial artwork for playlists, albums, artists and player is a separate enhancement, not a round-three acceptance claim. Keep MAIN and IDM unchanged; production admission remains blocked pending physical approval and reconciliation.
