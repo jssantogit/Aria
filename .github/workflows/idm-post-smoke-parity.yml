@@ -1,20 +1,33 @@
 name: IDM · grouped post-smoke parity contracts
 on:
-  push:
-    branches: [fix/idm-post-smoke-parity-20261126]
-    paths: [.github/workflows/idm-post-smoke-parity.yml]
+  pull_request:
+    branches: [integration/idm-providers-main-20261121]
+    types: [opened, synchronize, reopened]
 permissions:
   contents: read
 # One current grouped candidate; superseded contract runs are redundant.
 concurrency:
-  group: idm-post-smoke-parity-${{ github.ref }}
+  group: idm-post-smoke-parity-${{ github.event.pull_request.head.ref }}
   cancel-in-progress: true
 jobs:
   parity-contracts:
+    if: ${{ github.event.pull_request.head.ref == 'fix/idm-post-smoke-parity-20261126' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate and base
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$EXPECTED_BASE" = 6efa91fb6dd2c2ad2a35897946aaf01e8812851a
+          echo "Validated candidate $EXPECTED_HEAD against $EXPECTED_BASE" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
