@@ -62,24 +62,30 @@ internal fun rememberDiscogsEditorialArtwork(
             // Retain successful proofs only while their exact source item exists.
             artwork = artwork.filterKeys { it in incoming }
             attempted.retainAll(incoming.toSet())
-            val before = attempted.size
-            if (!current() || before >= 80) return@collect
-            session.resolveEditorialArtworkBatch(
-                browseIds = incoming.filterNot { it in attempted },
-                stillCurrent = { current() && attempted.size < 80 },
-                onAttempt = { attempted += it },
-                onVerified = { id, proof ->
-                    val badge = appleApprovedBadgeForStoreUrl(proof.storeUrl)
-                    if (id in currentIds && current() && badge != null &&
-                        appleProminentArtworkOrNull(proof.artworkUrl) != null
-                    ) artwork = artwork + (id to EditorialShelfArtwork(
-                        proof.artworkUrl, proof.storeUrl, badge,
-                    ))
-                },
-            )
+            // A batch never spends more than sixteen lookups. Continue with
+            // later eligible items without waiting for another recomposition;
+            // stop on exhaustion, navigation, or the bounded surface budget.
+            while (current() && attempted.size < 80) {
+                val before = attempted.size
+                session.resolveEditorialArtworkBatch(
+                    browseIds = currentIds.filterNot { it in attempted }
+                        .take(80 - before),
+                    stillCurrent = { current() },
+                    onAttempt = { attempted += it },
+                    onVerified = { id, proof ->
+                        val badge = appleApprovedBadgeForStoreUrl(proof.storeUrl)
+                        if (id in currentIds && current() && badge != null &&
+                            appleProminentArtworkOrNull(proof.artworkUrl) != null
+                        ) artwork = artwork + (id to EditorialShelfArtwork(
+                            proof.artworkUrl, proof.storeUrl, badge,
+                        ))
+                    },
+                )
+                if (attempted.size == before) break
+            }
         }
     }
     return if (ready && ticket != null && search != null && editorial != null &&
-        gate?.accept(ticket) == true && gate.accept(search) && gate.accept(editorial)
+        gate != null && gate.accept(ticket) && gate.accept(search) && gate.accept(editorial)
     ) artwork.filterKeys { it in ids } else emptyMap()
 }
