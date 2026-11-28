@@ -16,6 +16,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebArtistShelf
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.UiState
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.DiscogsNativePage
 import com.music.bitchord.ui.DiscogsNativeRoute
@@ -61,26 +64,37 @@ internal fun CanonicalProviderDetailHost(
     val isDiscogs = routeKey.startsWith("discogs:")
     val isAms = routeKey.startsWith("apple_music_web:")
     val artistState = appleArtistDetail as? UiState.Success
+    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val gate = ProviderRuntime.gateOrNull()
+    // AMS has its own per-route lease, including chart-only roots.
+    val detailTicket = if (!isAms && policySnapshot != null) gate?.open(
+        ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        if (isDiscogs) BuiltInProviderKeys.DISCOGS else BuiltInProviderKeys.ITUNES,
+    ) else null
     val liveApplePage = if (!isDiscogs && (!isAms || appleReadAllowed)) appleSharedVisual?.takeIf {
         it.page.browseId == routeKey
     } else null
-    val previousApplePage = remember(routeKey) {
+    val previousApplePage = remember(routeKey, gate, detailTicket, appleReadAllowed) {
         mutableStateOf<AppleSharedDetail?>(null)
     }
-    if (liveApplePage != null) previousApplePage.value = liveApplePage
+    if (!isAms && liveApplePage != null && appleReadAllowed && detailTicket != null)
+        previousApplePage.value = liveApplePage
     val applePage = liveApplePage ?: previousApplePage.value.takeIf {
-        !isDiscogs && !isAms && appleReadAllowed
+        !isDiscogs && !isAms && appleReadAllowed && detailTicket != null &&
+            gate?.accept(detailTicket) == true
     }
 
     val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
         it.page.browseId == routeKey
     } else null
-    val previousDiscogsPage = remember(routeKey) {
+    val previousDiscogsPage = remember(routeKey, gate, detailTicket, discogsReadAllowed) {
         mutableStateOf<DiscogsNativePage?>(null)
     }
-    if (liveDiscogsPage != null) previousDiscogsPage.value = liveDiscogsPage
+    if (liveDiscogsPage != null && discogsReadAllowed && detailTicket != null)
+        previousDiscogsPage.value = liveDiscogsPage
     val discogsPage = liveDiscogsPage ?: previousDiscogsPage.value.takeIf {
-        isDiscogs && discogsReadAllowed && discogsRoute != null
+        isDiscogs && discogsReadAllowed && discogsRoute != null &&
+            detailTicket != null && gate?.accept(detailTicket) == true
     }
 
     val page = discogsPage?.page ?: applePage?.page
@@ -98,7 +112,7 @@ internal fun CanonicalProviderDetailHost(
     // One bounded continuation per deliberate scroll to the end. Never
     // eagerly drain the entire Apple catalog merely because a short first
     // page happens to fit the screen; navigation cancels this collector.
-    val appleArtist = if (!isDiscogs && !isAms) artistState?.data?.takeIf {
+    val appleArtist = if (!isDiscogs && !isAms && appleReadAllowed) artistState?.data?.takeIf {
         it.artist.browseId == routeKey
     } else null
     val canContinueApple = appleArtist?.hasMore == true &&
@@ -227,11 +241,9 @@ internal fun CanonicalProviderDetailHost(
                     onActiveShelfChange(null)
                 }
             } else {
-                val matched = appleNativeShelfEntry(
-                    item.browseId,
-                    artistState?.data?.albums.orEmpty() +
-                        (appleAlbumDetail as? UiState.Success)
-                            ?.data?.relatedAlbums.orEmpty(),
+                val matched = appleNativeShelfEntryForRoute(
+                    routeKey, item.browseId, appleReadAllowed,
+                    artistState?.data, (appleAlbumDetail as? UiState.Success)?.data,
                 )
                 if (matched != null) {
                     onActiveShelfChange(null)
