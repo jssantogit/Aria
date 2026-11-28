@@ -337,10 +337,18 @@ class DiscogsGenreEditorialNetworkTest {
                 }
             },
         )
-        val result = source.discover(DiscogsEditorialQuery("K-Pop", true))
-        assertTrue(result is DiscogsEditorialResult.Verified)
-        assertEquals(listOf("discogs:release:502"),
-            (result as DiscogsEditorialResult.Verified).releases.map { it.browseId })
+        val checkpoints = mutableListOf<DiscogsEditorialCursor>()
+        val result = source.discoverDistinct(
+            DiscogsEditorialQuery("K-Pop", true), 4, emptySet(),
+            onCheckpoint = { checkpoints += it },
+        ) as DiscogsEditorialResult.Verified
+        assertEquals(listOf("discogs:release:502"), result.releases.map { it.browseId })
+        assertEquals(DiscogsEditorialResult.Throttled(20L), result.interruption)
+        val cursor = checkpoints.single()
+        assertEquals(1, cursor.page)
+        assertEquals(1, cursor.candidatePosition)
+        assertNotNull(cursor.pageSignature)
+        assertTrue(cursor.landingCheckpoint)
         assertEquals(listOf("genre:1", "master:77", "release:502",
             "master:78"), visited)
     }
