@@ -1362,7 +1362,7 @@ private fun BitChordApp(
     // iTunes owns exact storefront IDs, so it uses the same native ⋯ launcher
     // but never inherits MusicBrainz ratings or legacy queue commands.
     var providerDetailOverflowOpen by remember(activeDetailSortId) { mutableStateOf(false) }
-    var providerHeldCardRoute by remember(activeDetailSortId) { mutableStateOf<String?>(null) }
+    var providerHeldCard by remember(activeDetailSortId, selectedTab, activeCanonicalGenre?.tag) { mutableStateOf<ShelfItem?>(null) }
     // A device folder's equivalents — its sort and whether it is a grid —
     // kept apart for Downloads and shared by every other folder, as they
     // always were. Up here because both the page and the top bar's menu read
@@ -2456,9 +2456,9 @@ private fun BitChordApp(
         if (id?.startsWith("apple_music_web:") == true) {
             // Same lifted-card menu as native catalog search; no legacy media actions.
             amsShelfHeld.hold(item, amsHoldScope)
-        } else if (id?.startsWith("discogs:") == true) {
+        } else if (id?.startsWith("discogs:") == true || id?.startsWith("itunes:") == true) {
             // Source-only metadata never enters the legacy collection actions.
-            providerHeldCardRoute = id
+            providerHeldCard = item
             providerDetailOverflowOpen = true
         } else if (id != null) {
             openBrowseMenu(
@@ -4363,7 +4363,7 @@ private fun BitChordApp(
                                 val selected = item.browseId
                                 if (selected?.startsWith("itunes:") == true ||
                                     selected?.startsWith("discogs:") == true) {
-                                    providerHeldCardRoute = selected
+                                    providerHeldCard = item
                                     providerDetailOverflowOpen = true
                                 } else onBrowseLongPress(item)
                             },
@@ -5993,7 +5993,7 @@ private fun BitChordApp(
                                     ),
                                     onOpenCatalogOverflow = {
                                         if (sourceOwnedAppleAlbum) {
-                                            providerHeldCardRoute = null
+                                            providerHeldCard = null
                                             providerDetailOverflowOpen = true
                                         } else catalogAlbumOverflowOpen = true
                                     },
@@ -6004,7 +6004,7 @@ private fun BitChordApp(
                                     },
                                     onAlbumActions = {
                                         if (sourceOwnedAppleAlbum) {
-                                            providerHeldCardRoute = null
+                                            providerHeldCard = null
                                             providerDetailOverflowOpen = true
                                         } else browseActions = BrowseTarget(
                                             browseId = toolbarAlbum.browseId,
@@ -6046,7 +6046,7 @@ private fun BitChordApp(
                                         onClick = {
                                             browseMenuOrigin = null
                                             if (appleArtist) {
-                                                providerHeldCardRoute = null
+                                                providerHeldCard = null
                                                 providerDetailOverflowOpen = true
                                             } else browseActions = BrowseTarget(
                                                 browseId = currentArtist.browseId,
@@ -6499,66 +6499,41 @@ private fun BitChordApp(
                     cover = source.thumbnailUrl,
                     sourceStoreUrl = sourceUrl,
                     loadAmsLabels = if (ams) ({ viewModel.loadAmsCollectionLabels(source.browseId) }) else null,
-                    expanded = providerDetailOverflowOpen && providerHeldCardRoute == null,
+                    expanded = providerDetailOverflowOpen && providerHeldCard == null,
                     onDismiss = { providerDetailOverflowOpen = false },
                     hazeState = hazeState,
                     anchorBounds = catalogAlbumOverflowAnchor,
                     onSettings = { providerDetailOverflowOpen = false; showSettings = true },
                 )
             }
-            // A rejected root must never fall back to a retained provider page.
-            // The source-only panel is exclusively for an admitted held card.
+            // Keep the exact held-card snapshot mounted after the menu closes
+            // so its rating dialog can survive dismissal. Revocation removes
+            // the whole host, not just the frosted panel.
             val heldProviderRoute = com.music.bitchord.ui.providerHeldOverflowRoute(
-                providerHeldCardRoute, appleReadAllowed, discogsReadAllowed,
+                providerHeldCard?.browseId, appleReadAllowed, discogsReadAllowed,
             )
-            LaunchedEffect(providerHeldCardRoute, heldProviderRoute) {
-                if (providerHeldCardRoute != null && heldProviderRoute == null) {
+            LaunchedEffect(providerHeldCard, heldProviderRoute) {
+                if (providerHeldCard != null && heldProviderRoute == null) {
                     providerDetailOverflowOpen = false
-                    providerHeldCardRoute = null
+                    providerHeldCard = null
                 }
             }
-            if (providerDetailOverflowOpen && heldProviderRoute != null) {
-                val exactSourceUrl = if (heldProviderRoute.startsWith("itunes:")) {
-                    val candidates = (appleArtistDetail as? UiState.Success)
-                        ?.data?.albums.orEmpty() +
-                        (appleAlbumDetail as? UiState.Success)
-                            ?.data?.relatedAlbums.orEmpty()
-                    candidates.firstOrNull { it.browseId == heldProviderRoute }?.appleStoreUrl
-                } else null
-                val discogsSourceLink =
-                    com.music.bitchord.ui.discogsNativeAttributionUrl(heldProviderRoute)
-                val productLink = discogsSourceLink ?:
-                    com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl(exactSourceUrl,heldProviderRoute)
-                FrostedMenuPanel(
+            providerHeldCard?.takeIf { heldProviderRoute != null }?.let { card ->
+                com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
+                    browseId = requireNotNull(heldProviderRoute),
+                    title = card.title,
+                    subtitle = card.subtitle.orEmpty(),
+                    cover = card.thumbnailUrl,
+                    sourceStoreUrl = card.appleStoreUrl,
+                    expanded = providerDetailOverflowOpen,
+                    onDismiss = { providerDetailOverflowOpen = false },
                     hazeState = hazeState,
-                    anchorBounds = null,
-                    menuWidth = FROSTED_SETTINGS_MENU_WIDTH,
-                    onDismiss = {
+                    onSettings = {
                         providerDetailOverflowOpen = false
-                        providerHeldCardRoute = null
-                    },
-                ) {
-                    if (productLink != null) {
-                        FrostedMenuRow(
-                            label = if (discogsSourceLink != null) "Abrir no Discogs"
-                                else "Abrir no Apple Music",
-                            checked = false,
-                            onClick = {
-                                providerDetailOverflowOpen = false
-                                providerHeldCardRoute = null
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW,
-                                        Uri.parse(productLink)))
-                                }
-                            },
-                        )
-                    }
-                    FrostedSettingsAction {
-                        providerDetailOverflowOpen = false
-                        providerHeldCardRoute = null
+                        providerHeldCard = null
                         showSettings = true
-                    }
-                }
+                    },
+                )
             }
             openedPublicPlaylist?.takeIf {
                 toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST

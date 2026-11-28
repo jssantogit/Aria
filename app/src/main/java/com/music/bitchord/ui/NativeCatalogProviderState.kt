@@ -161,6 +161,7 @@ internal fun providerOverflowPage(
 internal fun providerHeldOverflowRoute(
     heldRoute: String?, appleAllowed: Boolean, discogsAllowed: Boolean,
 ): String? = heldRoute?.takeIf {
-    (it.startsWith("itunes:") && appleAllowed) ||
-        (it.startsWith("discogs:") && discogsAllowed)
+    ((it.startsWith("itunes:") && appleAllowed) ||
+        (it.startsWith("discogs:") && discogsAllowed)) &&
+        com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(it)?.entityId == it
 }

@@ -97,6 +97,9 @@ class NativeTopBarRouteOwnerTest {
         assertEquals(null, held("itunes:br:album:123", apple = false))
         assertEquals("discogs:release:123", held("discogs:release:123", apple = false))
         assertEquals(null, held("discogs:release:123", discogs = false))
+        assertEquals(null, held("itunes:br:album:invalid"))
+        assertEquals(null, held("discogs:release:0"))
+        assertEquals(null, held("discogs:artist:123:extra"))
     }
 
     @Test fun recentAdditionsDoesNotShareToolbarWithRememberedPlaylist() {
