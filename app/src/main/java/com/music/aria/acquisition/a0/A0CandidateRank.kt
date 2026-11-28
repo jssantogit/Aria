@@ -398,8 +398,17 @@ internal object A0CandidateRank {
         val requestedWords=tokens(searchPhrase.orEmpty()).toSet()
         // A live/remix/acoustic recording is a mismatch only if that version
         // was NOT explicitly requested. Do not penalize a title called "Live".
-        val immediateFolderWords=parentSegments.lastOrNull()
-            ?.let { tokens(it).toSet() }.orEmpty()
+        val immediateFolderTokens=parentSegments.lastOrNull()?.let(::tokens).orEmpty()
+        // A version word inside an EXACT canonical album title is not a
+        // version declaration by the peer (e.g. GO LIVE). Never excuse a
+        // filename version marker or any additional folder descriptor.
+        // Require full ordered equality, not token inclusion or a prefix.
+        val exactCanonicalAlbumFolder=exactAlbumWords.isNotEmpty() &&
+            (immediateFolderTokens==exactAlbumWords ||
+                (artistSequence.isNotEmpty() &&
+                    immediateFolderTokens==artistSequence+exactAlbumWords))
+        val immediateFolderWords=if(exactCanonicalAlbumFolder)
+            emptySet() else immediateFolderTokens.toSet()
         // A title-only filename can live inside an explicitly alternate
         // version album: "Magnetic (Live)/Magnetic.mp3". Inspect ONLY the
         // immediate folder to avoid a distant "Live Archive" ancestor

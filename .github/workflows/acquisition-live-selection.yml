@@ -20,6 +20,8 @@ on:
       - 'scripts/acquisition_live_install.sh'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoCandidateSelectionPolicy.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoDiscoveryCoordinator.kt'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0CandidateRank.kt'
+      - 'app/src/test/java/com/music/aria/acquisition/a0/A0CandidateRankEditionAliasTest.kt'
       - 'app/src/androidTest/java/com/music/aria/acquisition/live/SoulseekLiveSelectionTest.kt'
 permissions:
   contents: read
@@ -43,6 +45,8 @@ jobs:
           printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleDevDebug :app:assembleDevDebugAndroidTest
+      - name: Verify ranking regression contracts
+        run: ./gradlew --no-daemon :app:testDevDebugUnitTest --tests 'com.music.aria.acquisition.a0.A0CandidateRank*Test' --tests 'com.music.aria.acquisition.a0.A0AutoCandidateSelectionPolicyTest'
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
