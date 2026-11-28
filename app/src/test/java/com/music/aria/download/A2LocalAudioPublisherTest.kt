@@ -158,4 +158,74 @@ class A2LocalAudioPublisherTest {
             fail("Collision must fail")
         }catch(_:IOException){}
     }
+    @Test fun realAdtsAacHeaderMayPublishAsAacButNeverAsM4a() {
+        val bytes=ByteArray(128).also { out ->
+            // MPEG-4 AAC-LC, 44.1 kHz, stereo, ADTS frame length 128.
+            byteArrayOf(0xff.toByte(),0xf1.toByte(),0x50,0x80.toByte(),
+                0x10,0x1f,0xfc.toByte()).copyInto(out)
+        }
+        val factory=RecordingFactory()
+        val saved=A2LocalAudioPublisher.publish(
+            file(bytes),"Sample.aac",bytes.size.toLong(),sha(bytes),factory)
+        assertEquals("audio/aac",saved.mimeType)
+        assertTrue(factory.sink.published)
+        val otherFactory=RecordingFactory()
+        try {
+            A2LocalAudioPublisher.publish(
+                file(bytes),"Sample.m4a",bytes.size.toLong(),sha(bytes),otherFactory)
+            fail("ADTS is not an ISO-BMFF M4A container")
+        } catch(_:IOException) {}
+        assertEquals(0,otherFactory.opened)
+    }
+
+    @Test fun largeStagedFilePassesSizeGateButCancellationPreventsPublication() {
+        val large=temp.newFile("large-hires-stage.flac")
+        java.io.RandomAccessFile(large,"rw").use { it.setLength(96L*1024L*1024L) }
+        val factory=RecordingFactory()
+        try {
+            A2LocalAudioPublisher.publish(large,"large-hires.flac",large.length(),
+                "0".repeat(64),factory,isCancelled={true})
+            fail("Cancelled publication must not reserve MediaStore")
+        } catch (e:IOException) {
+            assertTrue(e.message.orEmpty().contains("cancelled"))
+        }
+        assertEquals(0,factory.opened)
+    }
+
+    private fun ogg(opus:Boolean)=ByteArray(128).also { bytes ->
+        "OggS".toByteArray().copyInto(bytes,0)
+        bytes[5]=2
+        bytes[26]=1
+        if(opus) {
+            bytes[27]=19
+            "OpusHead".toByteArray().copyInto(bytes,28)
+            bytes[36]=1;bytes[37]=2
+        }else {
+            bytes[27]=30;bytes[28]=1
+            "vorbis".toByteArray().copyInto(bytes,29)
+            bytes[39]=2
+            bytes[40]=0x80.toByte();bytes[41]=0xbb.toByte()
+        }
+    }
+
+    @Test fun onlyMatchingOggCodecAndExtensionMayPublish() {
+        for((opus,name,mime) in listOf(
+            Triple(true,"Test.opus","audio/opus"),
+            Triple(false,"Test.ogg","audio/ogg"))) {
+            val bytes=ogg(opus)
+            val sink=RecordingFactory()
+            val published=A2LocalAudioPublisher.publish(
+                file(bytes),name,bytes.size.toLong(),sha(bytes),sink)
+            assertEquals(mime,published.mimeType)
+            assertTrue(sink.sink.published)
+            val other=RecordingFactory()
+            try {
+                A2LocalAudioPublisher.publish(file(bytes),
+                    if(opus)"Test.ogg" else "Test.opus",
+                    bytes.size.toLong(),sha(bytes),other)
+                fail("Ogg codec and extension mismatch")
+            }catch(_:IOException){}
+            assertEquals(0,other.opened)
+        }
+    }
 }
