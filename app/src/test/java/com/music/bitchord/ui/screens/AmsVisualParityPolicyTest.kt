@@ -5,6 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsVisualParityPolicyTest {
+    @Test fun releaseGeometryDependsOnVerifiedSourceNotDecoderState() {
+        assertTrue(amsReleaseUsesImmersiveLayout("https://is1-ssl.mzstatic.com/hero.jpg"))
+        assertFalse(amsReleaseUsesImmersiveLayout(null))
+        assertFalse(amsReleaseUsesImmersiveLayout(""))
+        val page = com.music.bitchord.data.model.DetailPage(
+            "apple_music_web:br:album:10","Album","Artist",null,
+            com.music.bitchord.data.model.UiState.Loading,
+            com.music.bitchord.data.model.BrowseType.ALBUM)
+        assertTrue(amsReleaseAwaitingHeader(page))
+        assertFalse(amsReleaseAwaitingHeader(page.copy(songs=com.music.bitchord.data.model.UiState.Success(emptyList()))))
+        assertFalse(amsReleaseAwaitingHeader(page.copy(browseId="itunes:br:album:10")))
+    }
+
     @Test fun sourceNativeArtistDoesNotUseNameBasedPortraitOrSignature() {
         assertFalse(nativeArtistAllowsNameBasedAuxiliaryVisuals("apple_music_web:br:artist:10"))
         assertFalse(nativeArtistAllowsNameBasedAuxiliaryVisuals("discogs:artist:10"))

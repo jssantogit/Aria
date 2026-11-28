@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +66,7 @@ internal fun CanonicalProviderDetailHost(
     isPlaying: Boolean = false,
     onPlayMetadataSongs: ((List<Song>, Int) -> Unit)? = null,
     onShuffleMetadataSongs: ((List<Song>) -> Unit)? = null,
+    detailMotionVisible: Boolean = true,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
     val isAms = routeKey.startsWith("apple_music_web:")
@@ -113,6 +115,13 @@ internal fun CanonicalProviderDetailHost(
         return
     }
 
+    if (amsReleaseAwaitingHeader(page)) {
+        androidx.compose.foundation.layout.Box(
+            modifier=androidx.compose.ui.Modifier.fillMaxSize(),
+            contentAlignment=androidx.compose.ui.Alignment.Center,
+        ) { NativeLoadingSpinner() }
+        return
+    }
     val uriHandler = LocalUriHandler.current
     // One bounded continuation per deliberate scroll to the end. Never
     // eagerly drain the entire Apple catalog merely because a short first
@@ -291,6 +300,7 @@ internal fun CanonicalProviderDetailHost(
         sourceArtistStoreUrl = applePage?.sourceStoreUrl.takeIf { isAms },
         releaseHeroOverride = applePage?.releaseHeroUrl.takeIf { isAms },
         releaseMotionOverride = applePage?.releaseMotion.takeIf { isAms },
+        detailMotionVisible = !isAms || detailMotionVisible,
         songSort = songSort,
         footerContent = { palette ->
             if (isDiscogs) {

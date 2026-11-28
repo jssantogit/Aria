@@ -409,6 +409,8 @@ internal fun DetailScreen(
     sourceArtistStoreUrl: String? = null,
     releaseHeroOverride: String? = null,
     releaseMotionOverride: CanvasArtwork? = null,
+    /** Do not run a covered detail's video decoder under the expanded player. */
+    detailMotionVisible: Boolean = true,
     /** Source-owned album credit ID, supplied only after provider verification. */
     sourceAlbumArtistBrowseId: String? = null,
     sourceAlbumArtistDisplayName: String? = null,
@@ -872,7 +874,7 @@ internal fun DetailScreen(
                         page = page,
                         palette = palette,
                         sleeveSize = sleeveSize,
-                        canvas = canvas,
+                        canvas = canvas.takeIf { detailMotionVisible },
                         offlinePoster = offlineAlbumPoster,
                         songs = songs,
                         canonicalTracks = canonicalTracks,
@@ -1498,7 +1500,8 @@ internal fun DetailScreen(
                         contentPadding = PaddingValues(
                             bottom = contentPadding.calculateBottomPadding(),
                         ),
-                        canvas = canvas.takeUnless { exactAmsArtist && !exactAmsArtAllowed },
+                        canvas = canvas.takeIf { detailMotionVisible }
+                            .takeUnless { exactAmsArtist && !exactAmsArtAllowed },
                         // Preserve the legacy cover fallback at this adapter
                         // boundary; the shared native frame only sees artwork.
                         heroUrl = appleArt?.heroUrl ?: artistHeroOverride
@@ -1684,13 +1687,14 @@ private fun ReleaseHeader(
     // albums, nested artist albums and normal/smart playlists. This adapter
     // retains legacy artwork, Canvas, user library actions and credit links;
     // no provider-specific detail DTO enters the visual composition.
-    var editorialFailed by remember(releaseHeroOverride) { mutableStateOf(false) }
+    val immersive = amsReleaseUsesImmersiveLayout(releaseHeroOverride)
+    var editorialFailed by remember(page.browseId, releaseHeroOverride) { mutableStateOf(false) }
     val editorialHero = releaseHeroOverride.takeUnless { editorialFailed }
     NativeReleaseHeaderLayout(
         title = page.title,
-        immersiveArtwork = editorialHero != null,
-        credit = if (amsPlaylist && editorialHero == null) "" else credit,
-        meta = if (amsPlaylist && editorialHero != null) "" else meta,
+        immersiveArtwork = immersive,
+        credit = if (amsPlaylist && !immersive) "" else credit,
+        meta = if (amsPlaylist && immersive) "" else meta,
         inlineAlbumMetadata = page.type == BrowseType.ALBUM,
         palette = palette,
         sleeveSize = sleeveSize,
@@ -1698,11 +1702,21 @@ private fun ReleaseHeader(
         onRate = onRate,
         onCreditClick = onCreditClick,
         artwork = {
-            if (editorialHero != null) {
-                ResilientAppleCover(model = editorialHero, contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    onState = { if (it is AsyncImagePainter.State.Error) editorialFailed = true },
-                    modifier = Modifier.matchParentSize())
+            if (immersive) {
+                // The image/decoder may load, fail or be recreated while scrolling.
+                // Keep the same hero slot; show the exact release cover underneath.
+                CoverPlaceholder(icon=page.placeholderIcon(),base=palette.elevated,
+                    tint=palette.onBackgroundVariant,modifier=Modifier.matchParentSize())
+                ResilientAppleCover(
+                    model=(offlinePoster ?: page.thumbnailUrl).artworkAt(HEADER_ART_PX),
+                    contentDescription=null,contentScale=ContentScale.Crop,
+                    modifier=Modifier.matchParentSize())
+                if (editorialHero != null) {
+                    ResilientAppleCover(model = editorialHero, contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        onState = { if (it is AsyncImagePainter.State.Error) editorialFailed = true },
+                        modifier = Modifier.matchParentSize())
+                }
                 canvas?.let { clip -> CanvasArtworkPlayer(canvas=clip,isPlaying=true,modifier=Modifier.matchParentSize()) }
                 Box(Modifier.matchParentSize().background(Brush.verticalGradient(
                     0f to Color.Transparent, 0.60f to Color.Transparent, 1f to palette.background)))
@@ -2457,3 +2471,12 @@ private fun List<Song>.playtime(): String? {
         else -> stringResource(R.string.hours_minutes_short, (minutes / 60).toInt(), (minutes % 60).toInt())
     }
 }
+
+/** Only source-proven hero geometry, not image load/decoder readiness. */
+internal fun amsReleaseUsesImmersiveLayout(sourceHero: String?): Boolean =
+    !sourceHero.isNullOrBlank()
+
+/** Do not render provisional square geometry before the exact AMS release arrives. */
+internal fun amsReleaseAwaitingHeader(page: DetailPage): Boolean =
+    page.browseId.startsWith("apple_music_web:") &&
+        page.type in setOf(BrowseType.ALBUM,BrowseType.PLAYLIST) && page.songs is UiState.Loading

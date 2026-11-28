@@ -4423,6 +4423,7 @@ private fun BitChordApp(
                             viewModel = viewModel,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
+                            detailMotionVisible = !showNowPlaying,
                             onPlayMetadataSongs = { songs,index ->
                                 if (!CastController.state.value.casting && !ListenTogether.state.value.inParty)
                                     playFrom(songs,index,QueueSource(appleSharedVisual?.page?.title.orEmpty(),PlaybackSourceType.BROWSE,key))
