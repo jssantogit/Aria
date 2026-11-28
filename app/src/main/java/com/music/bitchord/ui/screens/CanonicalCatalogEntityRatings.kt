@@ -36,6 +36,27 @@ internal fun canonicalCatalogEntityRatingTarget(browseId: String): CanonicalEnti
         }
         return CanonicalEntityRatingTarget(type,route.browseId)
     }
+    // Source-owned local feedback is not a MusicBrainz crosswalk. The full
+    // storefront/type/ID remains the durable identity, including namesakes.
+    com.music.bitchord.ui.AppleCatalogBrowseRoute.parse(browseId)?.let { route ->
+        val type = when (route.kind) {
+            com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ARTIST -> "ARTIST"
+            com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType.ALBUM -> "ALBUM"
+            else -> return null
+        }
+        val kind = if (type == "ARTIST") "artist" else "album"
+        val exact = "itunes:${route.storefront}:$kind:${route.id}"
+        if (browseId != exact) return null
+        return CanonicalEntityRatingTarget(type, exact)
+    }
+    for ((route, type) in listOf(
+        com.music.bitchord.ui.DiscogsNativeRoute.ARTIST to "ARTIST",
+        com.music.bitchord.ui.DiscogsNativeRoute.RELEASE to "ALBUM",
+    )) {
+        val exact = com.music.bitchord.ui.discogsNativeDetailRouteKey(route, browseId)
+        if (exact != null && exact == browseId)
+            return CanonicalEntityRatingTarget(type, exact)
+    }
     val types = listOf(
         "catalog:ARTIST:" to "ARTIST",
         "catalog:RELEASE:" to "ALBUM",
@@ -60,7 +81,8 @@ internal fun canonicalOwnedPlaylistRatingTarget(id: String): CanonicalEntityRati
     }
 
 internal fun canPersistCanonicalCatalogRating(target: CanonicalEntityRatingTarget): Boolean =
-    if (target.entityId.startsWith("apple_music_web:"))
+    if (target.entityId.startsWith("apple_music_web:") ||
+        target.entityId.startsWith("itunes:") || target.entityId.startsWith("discogs:"))
         canonicalCatalogEntityRatingTarget(target.entityId) == target
     else when (target.entityType) {
         "ARTIST", "ALBUM", "RELEASE_GROUP" -> CATALOG_ENTITY_MBID.matches(target.entityId)

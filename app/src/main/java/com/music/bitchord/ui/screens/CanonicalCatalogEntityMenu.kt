@@ -42,6 +42,22 @@ internal fun canonicalCatalogEntityMenuSpec(
             sourceUrl=appleMusicWebVerifiedRouteUrl(sourceStoreUrl,browseId),
             sourceLabel="Abrir no Apple Music")
     }
+    if (target.entityId.startsWith("itunes:") || target.entityId.startsWith("discogs:")) {
+        val isDiscogs = target.entityId.startsWith("discogs:")
+        val artist = target.entityType == "ARTIST"
+        val source = if (isDiscogs)
+            com.music.bitchord.ui.discogsNativeAttributionUrl(browseId)
+        else verifiedAppleDetailStoreUrl(sourceStoreUrl, browseId)
+        return CanonicalCatalogEntityMenuSpec(
+            browseType = if (artist) BrowseType.ARTIST else BrowseType.ALBUM,
+            ratingTarget = target,
+            musicBrainzUrl = "",
+            ratingLabel = if (artist) "Avaliar artista" else "Avaliar álbum",
+            playlistKind = null,
+            sourceUrl = source,
+            sourceLabel = if (isDiscogs) "Abrir no Discogs" else "Abrir no Apple Music",
+        )
+    }
     val (type, endpoint, label) = when (target.entityType) {
         "ARTIST" -> Triple(BrowseType.ARTIST, "artist", "Avaliar artista")
         "ALBUM" -> Triple(BrowseType.ALBUM, "release", "Avaliar álbum")
@@ -103,7 +119,9 @@ internal fun CanonicalCatalogEntityMenuBody(
             artworkUrl = trustedCatalogMetadataPinArtwork(artworkUrl),
         )
     }
-    val canPin = validCatalogMetadataPin(pin)
+    // Only expose pinning for sources with a verified Library reopen route.
+    val canPin = (browseId.startsWith("catalog:") || browseId.startsWith("apple_music_web:")) &&
+        validCatalogMetadataPin(pin)
     val pinned = pinnedItems.any { it.browseId == browseId }
 
     BrowseActionsSheet(
