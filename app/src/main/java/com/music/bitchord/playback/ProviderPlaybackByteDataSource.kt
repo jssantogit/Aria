@@ -23,11 +23,15 @@ import java.io.IOException
 internal class ProviderPlaybackByteLease(
     private val gate: ProviderPolicyGate,
     private val ticket: ProviderRequestTicket,
+    private val additionalTickets: List<ProviderRequestTicket> = emptyList(),
 ) {
     /** Non-secret instance identity for tagging temporary provider-owned cache. */
     val providerKey: ProviderKey get() = ticket.key
-    fun allowed(): Boolean = gate.accept(ticket)
-    fun onRevoke(callback: () -> Unit): () -> Unit = gate.onRevoke(ticket, callback)
+    fun allowed(): Boolean = gate.accept(ticket) && additionalTickets.all(gate::accept)
+    fun onRevoke(callback: () -> Unit): () -> Unit {
+        val unregister = (listOf(ticket) + additionalTickets).map { gate.onRevoke(it, callback) }
+        return { unregister.forEach { it() } }
+    }
 }
 
 /**

@@ -23,6 +23,7 @@ internal class SourceScopedMediaSourceFactory(
     private val createSourceFactory: () -> MediaSource.Factory,
     private val preflightSource: (suspend (MediaItem) -> PreparedSourceMediaSelection)? = null,
     private val createPreparedFactory: ((PreparedSourceMediaSelection) -> MediaSource.Factory)? = null,
+    private val createPreviewSource: (suspend (MediaItem) -> MediaSource)? = null,
 ) : MediaSource.Factory {
     private var loadErrorPolicy: LoadErrorHandlingPolicy? = null
     private var drmProvider: DrmSessionManagerProvider? = null
@@ -31,6 +32,14 @@ internal class SourceScopedMediaSourceFactory(
 
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {
         val uri = mediaItem.localConfiguration?.uri
+        if (AmsPreviewRoute.owns(uri?.toString())) {
+            // Preview bytes never enter the default cache or source ladder.
+            return DeferredResolvedSourceMediaSource(mediaItem) {
+                val build = createPreviewSource
+                    ?: throw java.io.IOException("Preview transport unavailable")
+                build(mediaItem)
+            }
+        }
         val isSource = uri?.scheme.equals("bitchord", ignoreCase = true) &&
             uri?.authority == "source"
         if (isSource && preflightSource != null) {

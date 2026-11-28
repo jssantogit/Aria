@@ -1628,6 +1628,10 @@ class PlaybackService : MediaLibraryService() {
                     DsdExtractorsFactory(),
                 )
             }
+        val amsPreviewResolver = AmsPreviewResolver()
+        // Isolated progressive sample transport; no persistent audio cache,
+        // catalog authorization headers, or fallback into a full-stream ladder.
+        val amsPreviewHttp = okhttp3.OkHttpClient.Builder().followSslRedirects(false).build()
         mediaSourceFactory = SourceScopedMediaSourceFactory(
             defaultFactory = DefaultMediaSourceFactory(
                 AudioCache.playbackFactory(defaultDataSourceFactory),
@@ -1654,6 +1658,20 @@ class PlaybackService : MediaLibraryService() {
                 }
             },
             createPreparedFactory = buildSourceTransport,
+            createPreviewSource = { item ->
+                val route = AmsPreviewRoute.decode(item.localConfiguration?.uri?.toString())
+                    ?: throw java.io.IOException("Invalid preview media route")
+                if (item.mediaId != route.scopedId || !item.toSong().isAudioPreview)
+                    throw java.io.IOException("Preview media identity mismatch")
+                val selected = withTimeout(RESOLVE_TIMEOUT_MS) { amsPreviewResolver.resolve(route) }
+                val child = item.buildUpon().setUri(selected.url)
+                    .setMimeType(MimeTypes.AUDIO_MP4).setCustomCacheKey(null).build()
+                DefaultMediaSourceFactory(
+                    ProviderPlaybackByteDataSource.Factory(amsPreviewHttp, STREAM_CHUNK_BYTES,
+                        fallbackLease = { selected.lease }, requireLease = true),
+                    DsdExtractorsFactory(),
+                ).setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy()).createMediaSource(child)
+            },
         ).setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())
         // The watch, when it is the speaker, reads tracks through this same chain.
         WearBridge.attachStreams(AudioCache.playbackFactory(defaultDataSourceFactory))
