@@ -9,6 +9,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class A0SmokeTraceTest {
+    @Test fun queueBackpressureTimeBucketsRemainAnonymousAndSumToWorkerDrops() {
+        val points=mutableListOf<StructuredTracePoint>()
+        val trace=A0SmokeTrace.start(StructuredTracer(
+            sink=StructuredTraceSink { points.add(it) }
+        ))
+        val windows=A0PeerQueueRejectionTimeline.Summary(4,3,5)
+        trace.peerSearchBackpressure(12,workerQueueDropped=12,rejectionTimeline=windows)
+        trace.finish(TraceOutcome.SUCCEEDED)
+        val attrs=points.single {it.stage=="peer_search_backpressure"}.attributes
+        assertEquals("4",attrs["workerDroppedBefore6"])
+        assertEquals("3",attrs["workerDropped6To12"])
+        assertEquals("5",attrs["workerDroppedAfter12"])
+        assertEquals("12",attrs["workerQueueDropped"])
+        assertFalse(attrs.keys.any {it.contains("username",ignoreCase=true) ||
+            it.contains("path",ignoreCase=true) || it.contains("token",ignoreCase=true)})
+    }
+
     @Test fun tracesAreCorrelatedWithBoundedTypedStagesAndDuration() {
         val points = mutableListOf<StructuredTracePoint>()
         var now = 1_000_000L
@@ -55,6 +72,7 @@ class A0SmokeTraceTest {
         assertTrue(points.isNotEmpty())
         val allowedKeys = setOf(
             "environment", "mode", "elapsedMs", "reasonCode", "ignoredServerFrames",
+            "rejectedServerOffers", "receivedServerOffers", "indirectReadTimeouts", "indirectConnectFailures", "indirectReplyFailures", "indirectAttempts", "indirectConnected", "indirectPierceSent", "indirectRepliesAccepted",
         )
         val reasons = A0SmokeTrace.Reason.values().map { it.name.lowercase() }.toSet()
         points.forEach { point ->
@@ -67,7 +85,8 @@ class A0SmokeTraceTest {
                     "environment" -> assertEquals("devdebug", value)
                     "mode" -> assertTrue(value in setOf("read_only", "manual_observed_one_file"))
                     "reasonCode" -> assertTrue(value in reasons)
-                    "elapsedMs", "ignoredServerFrames" ->
+                    "elapsedMs", "ignoredServerFrames",
+                    "rejectedServerOffers", "receivedServerOffers", "indirectReadTimeouts", "indirectConnectFailures", "indirectReplyFailures", "indirectAttempts", "indirectConnected", "indirectPierceSent", "indirectRepliesAccepted" ->
                         assertTrue("Numeric metric must be nonnegative and bounded",
                             value.toLongOrNull()?.let { it in 0..1_000_000_000_000L } == true)
                 }
