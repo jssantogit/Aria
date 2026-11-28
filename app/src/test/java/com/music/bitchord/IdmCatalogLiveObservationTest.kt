@@ -3452,6 +3452,57 @@ class IdmCatalogLiveObservationTest {
         assertEquals("Incomplete AMS editorial cells in " + scope, 0, failed)
     }
 
+    /** Fixed public repro queries from physical smoke; no credentials or raw payloads. */
+    @Test fun live_ams_smoke4_mixed_search(): Unit = runBlocking {
+        assumeTrue(System.getenv("AMS_SMOKE4_SEARCH_LIVE") == "1")
+        val source = BuiltInProviderKeys.APPLE_MUSIC_WEB
+        val gate = gateFor(source,setOf(ProviderCapability.CATALOG_SEARCH))
+        val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
+            admission=RateLimitedProviderTransport { gate }))
+        val reader = CatalogSearchAdapterReader(gate,listOf(
+            AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(catalog,gate))))
+        for (query in listOf("say my name","IVE")) {
+            val pages = CatalogSearchKind.entries.associateWith { kind ->
+                val result = withTimeoutOrNull(60_000L) {
+                    reader.read(source,CatalogSearchRequest(kind,query,"br",limit=24))
+                }
+                val page = (result as? ProviderCallResult.Success)?.value
+                    ?: error("Search did not complete: $query / $kind")
+                assertFalse(page.partial)
+                println("AMS_SMOKE4_SEARCH|query=$query|kind=$kind|sourceCount=${page.items.size}|more=${page.hasMore}")
+                page.items.take(10).forEachIndexed { index,row ->
+                    println("AMS_SMOKE4_ROW|query=$query|kind=$kind|rank=${index+1}|title=${row.title.take(150)}|credit=${row.subtitle.orEmpty().take(150)}")
+                }
+                page
+            }
+            val artists=pages.getValue(CatalogSearchKind.ARTIST).items.mapNotNull(::amsSearchRow)
+            val albums=pages.getValue(CatalogSearchKind.ALBUM).items.mapNotNull(::amsSearchRow)
+            val tracks=pages.getValue(CatalogSearchKind.TRACK).items.mapNotNull(::amsSearchTrack)
+            val mixed=com.music.bitchord.ui.screens.appleUnifiedSearchEntries(query,artists,tracks,albums)
+            val categories=canonicalExploreGenreSearchHits(query)
+            val keys = mixed.map { row ->
+                when(row) {
+                    is com.music.bitchord.ui.screens.AppleUnifiedSearchEntry.Artist -> row.row.browseId
+                    is com.music.bitchord.ui.screens.AppleUnifiedSearchEntry.Album -> row.row.browseId
+                    is com.music.bitchord.ui.screens.AppleUnifiedSearchEntry.Track -> row.row.key
+                }
+            }
+            println("AMS_SMOKE4_MIXED|query=$query|artists=${artists.size}|albums=${albums.size}|tracks=${tracks.size}|visible=${mixed.size}|categories=${categories.size}")
+            mixed.take(18).forEachIndexed { index,row ->
+                val label=when(row) {
+                    is com.music.bitchord.ui.screens.AppleUnifiedSearchEntry.Artist -> "ARTIST|${row.row.title}"
+                    is com.music.bitchord.ui.screens.AppleUnifiedSearchEntry.Album -> "ALBUM|${row.row.title}|${row.row.artistName}"
+                    is com.music.bitchord.ui.screens.AppleUnifiedSearchEntry.Track -> "TRACK|${row.row.title}|${row.row.artistName}"
+                }
+                println("AMS_SMOKE4_VISIBLE|query=$query|rank=${index+1}|${label.take(320)}")
+            }
+            assertEquals(keys.distinct().size,keys.size)
+            assertTrue("Unexpected categories for $query",categories.isEmpty())
+            assertTrue("No exact artist for $query",artists.any { it.title.equals(query,ignoreCase=true) })
+            assertTrue("Mixed first page still too sparse for $query",mixed.size >= 4)
+        }
+    }
+
     @Test fun live_ams_search_parity_matrix() = runBlocking {
         assumeTrue("Enable only via the dedicated AMS search workflow",
             System.getenv("AMS_SEARCH_LIVE") == "1")

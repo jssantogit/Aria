@@ -1,0 +1,53 @@
+name: AMS · Smoke 4 focused live search
+on:
+  push:
+    branches: [audit/ams-smoke4-focused-search-live-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AMS_SMOKE4_SEARCH_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reproduce both mixed search queries on Android adapter
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.IdmCatalogLiveObservationTest.live_ams_smoke4_mixed_search'
+      - name: Emit actual source counts and displayed rows
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          files=list(Path("app/build/test-results/testDevDebugUnitTest").glob("*IdmCatalogLiveObservationTest.xml"))
+          assert files, "Missing focused live report"
+          evidence=[]
+          for file in files:
+              root=ET.parse(file).getroot()
+              assert int(root.attrib.get("tests","0"))==1
+              assert int(root.attrib.get("skipped","0"))==0
+              for node in root.iter("system-out"):
+                  evidence += [line for line in (node.text or "").splitlines() if line.startswith("AMS_SMOKE4_")]
+          assert evidence, "Missing source evidence"
+          for line in evidence:
+              print(line)
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+              out.write("## Fixed public query evidence\n\n```\n"+"\n".join(evidence)+"\n```\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-smoke4-search-${{ github.sha }}
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7
