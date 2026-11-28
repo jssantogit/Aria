@@ -23,6 +23,22 @@ class CanonicalLocalAdapterTest {
     }
 
     @Test
+    fun previewCannotBecomeLocalAssetEvenWithPhysicalOrLogicalUri() {
+        val local = localRow(youtubeVideoId = null).toLegacySong()
+        val id = "apple_music_web:br:song:123"
+        val preview = local.copy(videoId=id,isAudioPreview=true)
+        assertNull(CanonicalLocalLibrary.candidateFromLegacySong(preview))
+        assertNull(CanonicalLocalLibrary.candidateFromLegacySong(preview.copy(
+            localUri="file:///storage/emulated/0/Music/sample.m4a")))
+        assertNull(CanonicalLocalLibrary.candidateFromLegacySong(local.copy(
+            localUri="bitchord://preview/br/123")))
+        // A real short local track is not classified by duration or by a
+        // provider identity. Local metadata enrichment remains independent.
+        val full = local.copy(videoId=id,durationText="0:30")
+        assertEquals(local.localUri,CanonicalLocalLibrary.candidateFromLegacySong(full)?.uri)
+    }
+
+    @Test
     fun knownYouTubeIdentityIsCompatibilityAliasNotCanonicalId() {
         val row = localRow(youtubeVideoId = "yt-video-123")
 

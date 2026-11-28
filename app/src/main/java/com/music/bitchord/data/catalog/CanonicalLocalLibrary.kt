@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import androidx.room.withTransaction
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.playback.AmsPreviewRoute
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.diagnostics.DiagnosticCategory
 import com.music.bitchord.diagnostics.Diagnostics
@@ -212,7 +213,11 @@ internal object CanonicalLocalLibrary {
         }
 
     internal fun candidateFromLegacySong(song: Song): LocalMediaCandidate? {
+        // A sample must never acquire a persistent local MediaAsset identity,
+        // even if a malformed caller supplies a physical path or a logical URI.
+        if (song.isAudioPreview) return null
         val uri = song.localUri?.takeIf(String::isNotBlank) ?: return null
+        if (AmsPreviewRoute.owns(uri)) return null
         return LocalMediaCandidate(
             sourceKey = uri,
             title = song.title,
