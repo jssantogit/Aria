@@ -38,8 +38,8 @@ set -e
 printf 'case\tsearch\tdecision\treason\tobserved\teligible\trank_rejected\tpreflight_rejected\talbum_rejected\tquality_rejected\ttruncated\telapsed_ms\trank_detail\tpreflight_detail\talbum_detail\tquality_detail\tartist_credit_gaps\tmissing_title\tmissing_artist\ttie_resolution\ttie_groups\n' > acquisition-live-report.tsv
 awk -F= '/^INSTRUMENTATION_STATUS: aria_live=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t,:-]+$/ && split($2,a,"\t")==21) print $2}' "$raw" >> acquisition-live-report.tsv
 cat acquisition-live-report.tsv
-printf 'case\tinitial_kind\tfallback_1_kind\tfallback_2_kind\ttickets\tbudget_skipped\tinitial_replies\tfallback_1_replies\tfallback_2_replies\tinitial_files\tfallback_1_files\tfallback_2_files\treachability\tdirect_accepted\tindirect_offers\tindirect_connected\traw_responses\tshadow_title_filtered\tadmitted\tunsupported_format\ttruncated_slots\n' > acquisition-live-search.tsv
-awk -F= '/^INSTRUMENTATION_STATUS: aria_search=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t-]+$/ && split($2,a,"\t")==21) print $2}' "$raw" >> acquisition-live-search.tsv
+printf 'case\tinitial_kind\tfallback_1_kind\tfallback_2_kind\ttickets\tbudget_skipped\tinitial_replies\tfallback_1_replies\tfallback_2_replies\tinitial_files\tfallback_1_files\tfallback_2_files\treachability\tdirect_accepted\tindirect_offers\tindirect_connected\traw_responses\tshadow_title_filtered\tadmitted\tunsupported_format\ttruncated_slots\tconnect_failed\tinit_failed\treply_failed\treply_timeout\treply_eof\treply_rejected\n' > acquisition-live-search.tsv
+awk -F= '/^INSTRUMENTATION_STATUS: aria_search=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t,:-]+$/ && split($2,a,"\t")==27) print $2}' "$raw" >> acquisition-live-search.tsv
 cat acquisition-live-search.tsv
 # Only the structured candidate payload is exported; never raw logcat.
 python3 - "$raw" "$names" <<'PY'

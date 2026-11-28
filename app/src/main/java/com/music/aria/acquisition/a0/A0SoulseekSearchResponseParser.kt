@@ -26,6 +26,10 @@ internal object A0SoulseekSearchResponseParser {
     private const val MAX_FIELD_BYTES = 2_048
     private const val SEARCH_RESPONSE_CODE = 9
 
+    enum class FailureKind { FRAME_HEADER, COMPRESSED_PAYLOAD, UNSOLICITED_TICKET,
+        PEER_MISMATCH, MALFORMED_FIELDS }
+    class RejectedReply(val kind:FailureKind):IOException("Rejected peer search response: ${kind.name}")
+
     fun parse(frame: ByteArray, expectedToken: Int): A0SoulseekSearchResponse =
         parse(frame,setOf(expectedToken))
 
@@ -34,10 +38,10 @@ internal object A0SoulseekSearchResponseParser {
         require(expectedTokens.isNotEmpty() && expectedTokens.all { it>0 }) {
             "Positive registered search tokens are required"
         }
-        if (frame.size < 10 || frame.size > MAX_WIRE_BYTES) fail()
+        if (frame.size < 10 || frame.size > MAX_WIRE_BYTES) fail(FailureKind.FRAME_HEADER)
         val header = Fields(frame)
         val declaredLength = header.int32()
-        if (declaredLength != frame.size - 4 || header.int32() != SEARCH_RESPONSE_CODE) fail()
+        if (declaredLength != frame.size - 4 || header.int32() != SEARCH_RESPONSE_CODE) fail(FailureKind.FRAME_HEADER)
 
         val raw = try {
             InflaterInputStream(ByteArrayInputStream(frame, 8, frame.size - 8)).use { zipped ->
@@ -53,14 +57,14 @@ internal object A0SoulseekSearchResponseParser {
                 output.toByteArray()
             }
         } catch (_: IOException) {
-            throw IOException("Invalid compressed peer search response")
+            throw RejectedReply(FailureKind.COMPRESSED_PAYLOAD)
         }
 
         val fields = Fields(raw)
         val username = fields.string()
         if (username.isBlank()) fail()
         val token = fields.int32()
-        if (token !in expectedTokens) fail()
+        if (token !in expectedTokens) fail(FailureKind.UNSOLICITED_TICKET)
 
         var totalFiles = 0
         fun files(): List<A0SoulseekSearchFile> {
@@ -106,7 +110,7 @@ internal object A0SoulseekSearchResponseParser {
         )
     }
 
-    private fun fail(): Nothing = throw IOException("Malformed or unsolicited peer search response")
+    private fun fail(kind:FailureKind=FailureKind.MALFORMED_FIELDS): Nothing = throw RejectedReply(kind)
 
     private class Fields(private val data: ByteArray) {
         private var position = 0

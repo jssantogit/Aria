@@ -46,6 +46,8 @@ internal class A0FreshAutoSearchTransport(
         val reachability:String,val directAccepted:Int,val indirectOffers:Int,
         val indirectConnected:Int,val rawResponses:Int,val shadowTitleFiltered:Int,
         val admitted:Int,val unsupportedFormat:Int,val truncatedSlots:Int,
+        val connectFailed:Int,val initFailed:Int,val replyFailed:Int,
+        val replyTimeout:Int,val replyEof:Int,val replyRejected:String,
     )
     private val app=context.applicationContext
     private val closed=AtomicBoolean(false)
@@ -183,6 +185,9 @@ internal class A0FreshAutoSearchTransport(
             val indirectConnectOther=AtomicInteger()
             val indirectInitFailed=AtomicInteger()
             val indirectReplyFailed=AtomicInteger()
+            val replyTimeout=AtomicInteger()
+            val replyEof=AtomicInteger()
+            val replyRejected=ConcurrentHashMap<A0SoulseekSearchResponseParser.FailureKind,AtomicInteger>()
             handoff=A0ObservedCandidateHandoff(
                 connection,checkNotNull(session).username,token,
                 searchPhrase=entry.query,saveFormatsOnly=true,
@@ -345,8 +350,15 @@ internal class A0FreshAutoSearchTransport(
                                             }
                                             A0IndirectPeerFailureStage.Phase.INIT ->
                                                 indirectInitFailed.incrementAndGet()
-                                            A0IndirectPeerFailureStage.Phase.RESPONSE ->
+                                            A0IndirectPeerFailureStage.Phase.RESPONSE -> {
                                                 indirectReplyFailed.incrementAndGet()
+                                                when(error) {
+                                                    is SocketTimeoutException -> replyTimeout.incrementAndGet()
+                                                    is java.io.EOFException -> replyEof.incrementAndGet()
+                                                    is A0SoulseekSearchResponseParser.RejectedReply ->
+                                                        replyRejected.computeIfAbsent(error.kind) { AtomicInteger() }.incrementAndGet()
+                                                }
+                                            }
                                         }
                                         // Ignore one peer; retain validated replies.
                                     }finally {
@@ -526,7 +538,10 @@ internal class A0FreshAutoSearchTransport(
                     filesByTicket[0],filesByTicket[1],filesByTicket[2],
                     reachability.name,directAccepted.get(),indirectOffers.get(),
                     indirectConnected.get(),counts.responses,counts.shadowTitleFiltered,
-                    counts.validBeforeLimit,counts.unsupportedFormat,snapshot.truncatedSlots.size))
+                    counts.validBeforeLimit,counts.unsupportedFormat,snapshot.truncatedSlots.size,
+                    indirectConnectFailed.get(),indirectInitFailed.get(),indirectReplyFailed.get(),
+                    replyTimeout.get(),replyEof.get(),replyRejected.entries.sortedBy { it.key.name }
+                        .joinToString(",") { "${it.key.name}:${it.value.get()}" }.ifEmpty { "NONE" }))
             }catch(_:Exception){}
             Log.d("BitChord","soulseek_auto_search replies=${snapshot.choices.size}" +
                 " scope=$traceScope slot=$slotIndex" +

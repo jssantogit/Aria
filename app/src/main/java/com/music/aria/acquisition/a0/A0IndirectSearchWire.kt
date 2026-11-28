@@ -82,10 +82,12 @@ internal object A0IndirectSearchWire {
     ): A0OneShotPublicSearchWire.Observation {
         require(expectedSearchToken > 0 && expectedPeerUsername.isNotBlank())
         val length = le32(input)
-        if (length !in 6..1_048_572) invalid()
+        if (length !in 6..1_048_572) throw A0SoulseekSearchResponseParser.RejectedReply(
+            A0SoulseekSearchResponseParser.FailureKind.FRAME_HEADER)
         val frame = le32Bytes(length) + exact(input, length)
         val reply = A0SoulseekSearchResponseParser.parse(frame, acceptedSearchTokens)
-        if (reply.peerUsername != expectedPeerUsername) invalid()
+        if (reply.peerUsername != expectedPeerUsername) throw A0SoulseekSearchResponseParser.RejectedReply(
+            A0SoulseekSearchResponseParser.FailureKind.PEER_MISMATCH)
         onValidatedParsedReply?.invoke(reply)
         onValidatedReply?.invoke(frame, expectedPeerUsername)
         val count = if (reply.hasFreeUploadSlot) reply.files.count { file ->

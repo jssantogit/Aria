@@ -255,9 +255,10 @@ class SoulseekLiveSelectionTest {
                         a.fallbackTwoReplies,a.initialFiles,a.fallbackOneFiles,a.fallbackTwoFiles,
                         a.reachability,a.directAccepted,a.indirectOffers,a.indirectConnected,
                         a.rawResponses,a.shadowTitleFiltered,a.admitted,a.unsupportedFormat,
-                        a.truncatedSlots)
+                        a.truncatedSlots,a.connectFailed,a.initFailed,a.replyFailed,
+                        a.replyTimeout,a.replyEof,a.replyRejected)
                 } ?: listOf(target.id,"NOT_COMPLETED","NONE","NONE",0,0,0,0,0,0,0,0,
-                    "UNKNOWN",0,0,0,0,0,0,0,0)
+                    "UNKNOWN",0,0,0,0,0,0,0,0,0,0,0,0,0,"NONE")
                 instrument.sendStatus(0,Bundle().apply {
                     putString("aria_search",discoveryRow.joinToString("\t"))
                 })
@@ -271,7 +272,13 @@ class SoulseekLiveSelectionTest {
                             val leaf=candidate.claim.filename.substringAfterLast('/').substringAfterLast('\\')
                             val safe=A0CandidateRank.safeDisplayName(leaf)
                                 .filterNot { it.isISOControl() }.take(240)
-                            put("filename",safe)
+                            // Peer filenames are untrusted. Suppress suspicious
+                            // account/URL/address-like strings in public artifacts.
+                            val sensitive=Regex(
+                                "@|https?[:/]|www[.]|(?:[0-9]{1,3}[.]){3}[0-9]{1,3}|[0-9]{9,}|(?:token|password|api[_ -]?key)[=:]",
+                                RegexOption.IGNORE_CASE)
+                            put("filename",if(sensitive.containsMatchIn(safe))
+                                "[REDACTED]" else safe)
                         }
                         put("selected",candidate===winner)
                         put("stage",audit?.stage?:"NOT_EVALUATED")

@@ -23,6 +23,8 @@ on:
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoDiscoveryCoordinator.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0CandidateRank.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0FreshAutoSearchTransport.kt'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0SoulseekSearchResponseParser.kt'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0IndirectSearchWire.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0SearchRecoveryPlan.kt'
       - 'app/src/test/java/com/music/aria/acquisition/a0/A0SearchRecoveryPlanTest.kt'
       - 'app/src/test/java/com/music/aria/acquisition/a0/A0CandidateRankEditionAliasTest.kt'
@@ -50,7 +52,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleDevDebug :app:assembleDevDebugAndroidTest
       - name: Verify ranking regression contracts
-        run: ./gradlew --no-daemon :app:testDevDebugUnitTest --tests 'com.music.aria.acquisition.a0.A0CandidateRank*Test' --tests 'com.music.aria.acquisition.a0.A0AutoCandidateSelectionPolicyTest' --tests 'com.music.aria.acquisition.a0.A0SearchRecoveryPlanTest'
+        run: ./gradlew --no-daemon :app:testDevDebugUnitTest --tests 'com.music.aria.acquisition.a0.A0CandidateRank*Test' --tests 'com.music.aria.acquisition.a0.A0AutoCandidateSelectionPolicyTest' --tests 'com.music.aria.acquisition.a0.A0SearchRecoveryPlanTest' --tests 'com.music.aria.acquisition.a0.A0SoulseekSearchResponseParserTest' --tests 'com.music.aria.acquisition.a0.A0IndirectSearchWireTest'
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -63,8 +65,8 @@ jobs:
           # All network sessions remain exclusive to the dedicated account.
           ARIA_LIVE_CASES: ${{ github.event_name == 'push' && '' || inputs.cases }}
           ARIA_LIVE_CORPUS: ${{ github.event_name == 'push' && 'pending123' || inputs.corpus }}
-          # Public repository: explicit opt-in for peer-advertised basenames.
-          ARIA_LIVE_NAMES: ${{ vars.SOULSEEK_LIVE_EXPORT_FILENAMES == 'true' && 'true' || 'false' }}
+          # Requested calibration audit: sanitized basenames only; explicit false disables.
+          ARIA_LIVE_NAMES: ${{ vars.SOULSEEK_LIVE_EXPORT_FILENAMES != 'false' && 'true' || 'false' }}
           SLSK_USER: ${{ secrets.SOULSEEK_CI_USERNAME || secrets.SOULSEEK_USERNAME || secrets.SOULSEEK_USER }}
           SLSK_PASS: ${{ secrets.SOULSEEK_CI_PASSWORD || secrets.SOULSEEK_PASSWORD || secrets.SOULSEEK_PASS }}
         with:
