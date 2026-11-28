@@ -7,6 +7,11 @@ if [[ -z "${SLSK_USER:-}" || -z "${SLSK_PASS:-}" ]]; then
   echo 'Soulseek CI credentials missing (configure the workflow secret aliases).'
   exit 1
 fi
+cases="${ARIA_LIVE_CASES:-}"
+if [[ -n "$cases" && ! "$cases" =~ ^[a-z0-9_]+(,[a-z0-9_]+)*$ ]]; then
+  echo 'Invalid corpus case IDs.'
+  exit 1
+fi
 source scripts/acquisition_live_install.sh
 aria_install_live_apks
 raw="$(mktemp)"
@@ -23,13 +28,22 @@ unset SLSK_USER SLSK_PASS
 # Do not expose raw instrumentation output or logcat. Only typed counters
 # from the focused test are retained and published.
 set +e
-adb shell am instrument -w -r -e class com.music.aria.acquisition.live.SoulseekLiveSelectionTest com.dev.aria.test/androidx.test.runner.AndroidJUnitRunner >"$raw" 2>&1
+adb shell am instrument -w -r -e aria_live_cases "${cases:-all}" -e class com.music.aria.acquisition.live.SoulseekLiveSelectionTest com.dev.aria.test/androidx.test.runner.AndroidJUnitRunner >"$raw" 2>&1
 rc=$?
 set -e
-printf 'case\tsearch\tdecision\treason\tobserved\teligible\trank_rejected\tpreflight_rejected\talbum_rejected\tquality_rejected\ttruncated\telapsed_ms\n' > acquisition-live-report.tsv
-awk -F= '/^INSTRUMENTATION_STATUS: aria_live=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t-]+$/ && split($2,a,"\t")==12) print $2}' "$raw" >> acquisition-live-report.tsv
+printf 'case\tsearch\tdecision\treason\tobserved\teligible\trank_rejected\tpreflight_rejected\talbum_rejected\tquality_rejected\ttruncated\telapsed_ms\trank_detail\tpreflight_detail\talbum_detail\tquality_detail\tartist_credit_gaps\tmissing_title\tmissing_artist\ttie_resolution\ttie_groups\n' > acquisition-live-report.tsv
+awk -F= '/^INSTRUMENTATION_STATUS: aria_live=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t,:-]+$/ && split($2,a,"\t")==21) print $2}' "$raw" >> acquisition-live-report.tsv
 cat acquisition-live-report.tsv
-if [[ "$rc" != 0 ]] || ! grep -q 'OK (1 test)' "$raw" || [[ "$(wc -l < acquisition-live-report.tsv)" != 31 ]]; then
+# Check identity set, not merely row count. Duplicate/missing rows fail closed.
+if [[ "$rc" != 0 ]] || ! grep -q 'OK (1 test)' "$raw" || ! python3 - "$cases" <<'PY'
+import csv, sys
+with open("acquisition-live-report.tsv", newline="") as f:
+    ids = [row["case"] for row in csv.DictReader(f, delimiter="\t")]
+requested = sys.argv[1].split(",") if sys.argv[1] else None
+assert len(ids) == len(set(ids)), "Duplicate report rows"
+assert (set(ids) == set(requested) if requested else len(ids) == 30), "Incomplete corpus"
+PY
+then
   echo 'Live calibration incomplete or failed; inspect aggregate report only.'
   exit 1
 fi

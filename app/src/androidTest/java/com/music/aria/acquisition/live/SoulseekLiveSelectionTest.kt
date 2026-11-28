@@ -87,7 +87,15 @@ class SoulseekLiveSelectionTest {
                 preset=A0CanonicalAcquisitionIntent.QualityPreset.LOSSLESS,strict=true)
             var completed=0
             var observations=0
-            for(target in targets) {
+            val requested=InstrumentationRegistry.getArguments().getString("aria_live_cases").orEmpty()
+            val ids=requested.takeUnless { it=="all" }.orEmpty().split(',').filter { it.isNotBlank() }
+            require(ids.distinct().size==ids.size && ids.all { id -> targets.any { it.id==id } })
+            val cases=if(ids.isEmpty())targets else targets.filter { it.id in ids }
+            fun <E:Enum<E>> counts(values:Map<E,Int>?):String =
+                values.orEmpty().entries.sortedBy { it.key.name }
+                    .joinToString(",") { "${it.key.name}:${it.value.coerceIn(0,512)}" }
+                    .ifEmpty { "NONE" }
+            for(target in cases) {
                 val entry=SoulseekBatchPlan.Entry("ci-"+target.id,target.query,target.album,target.seconds)
                 val entries=listOf(entry)
                 val transport=A0FreshAutoSearchTransport(context,generation,profile)
@@ -147,13 +155,22 @@ class SoulseekLiveSelectionTest {
                     selected?.examined?:0,selected?.eligible?:0,
                     selected?.funnel?.rankRejected?:0,selected?.funnel?.preflightRejected?:0,
                     selected?.funnel?.albumRejected?:0,selected?.funnel?.qualityRejected?:0,
-                    if(truncated)1 else 0,SystemClock.elapsedRealtime()-start).joinToString("\t")
+                    if(truncated)1 else 0,SystemClock.elapsedRealtime()-start,
+                    counts(selected?.rejectionDetails?.rank),
+                    counts(selected?.rejectionDetails?.preflight),
+                    counts(selected?.rejectionDetails?.album),
+                    counts(selected?.rejectionDetails?.quality),
+                    counts(selected?.rejectionDetails?.artistCreditGaps),
+                    selected?.rejectionDetails?.missingTitleTerms?:0,
+                    selected?.rejectionDetails?.missingArtistCredit?:0,
+                    selected?.tieResolution?.name?:"NONE",
+                    selected?.tieGroups?:0).joinToString("\t")
                 instrument.sendStatus(0,Bundle().apply { putString("aria_live",row) })
                 completed++
                 if(search=="FOUND" || search=="SCREENED_OUT")observations++
                 if(search=="STOP")break // no automatic reconnect on account/protocol failure
             }
-            assertTrue("Live corpus stopped early",completed==targets.size)
+            assertTrue("Live corpus stopped early",completed==cases.size)
             assertTrue("No real peer observations",observations>0)
             // Success means telemetry collected, NOT proof of selection accuracy.
         } finally { vault.forget() }
