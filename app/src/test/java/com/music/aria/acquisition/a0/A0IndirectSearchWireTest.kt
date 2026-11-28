@@ -113,6 +113,58 @@ class A0IndirectSearchWireTest {
         assertEquals(0,observed)
     }
 
+    @Test fun parsedCallbackReceivesValidatedIndirectReplyOnlyOnce() {
+        var observed=0
+        val answer=A0IndirectSearchWire.readIndirectReply(
+            ByteArrayInputStream(searchReply("peer",72,"Ringingsound.wav")),
+            72,"peer",onValidatedParsedReply={ parsed ->
+                observed++
+                assertEquals("peer",parsed.peerUsername)
+                assertEquals(72,parsed.token)
+                assertEquals(1,parsed.files.size)
+            })
+        assertEquals(1,observed)
+        assertEquals(1,answer.untrustedResultCount)
+        observed=0
+        reject {
+            A0IndirectSearchWire.readIndirectReply(
+                ByteArrayInputStream(searchReply("other",72,"Ringingsound.wav")),
+                72,"peer",onValidatedParsedReply={ observed++ })
+        }
+        assertEquals(0,observed)
+    }
+
+    @Test fun indirectReplyFromSecondaryTicketNeedsExplicitRegistration() {
+        val payload=searchReply("peer",73,"Music\\\\Boy In Luv.flac")
+        reject { A0IndirectSearchWire.readIndirectReply(
+            ByteArrayInputStream(payload),72,"peer") }
+        assertEquals(1,A0IndirectSearchWire.readIndirectReply(
+            ByteArrayInputStream(payload),72,"peer",
+            acceptedSearchTokens=setOf(72,73)).untrustedResultCount)
+        reject { A0IndirectSearchWire.readIndirectReply(
+            ByteArrayInputStream(payload),72,"peer",
+            acceptedSearchTokens=setOf(72,74)) }
+    }
+    @Test fun legacyConnectToPeerWithoutExtendedFieldsRemainsDiscoverable() {
+        // Older Soulseek clients advertise only the original five fields.
+        val legacy = frame(18,
+            field("peer") + field("P") + byteArrayOf(4,4,8,8) +
+                le(4815) + le(31415))
+        val event = requireNotNull(
+            A0IndirectSearchWire.readServerEvent(ByteArrayInputStream(legacy))
+        )
+        assertEquals("peer", event.username)
+        assertEquals("8.8.4.4", event.address.hostAddress)
+        assertEquals(4815, event.port)
+        assertEquals(31415, event.token)
+        // Partial optional tail must still fail closed.
+        reject { A0IndirectSearchWire.readServerEvent(
+            ByteArrayInputStream(frame(18,
+                field("peer") + field("P") + byteArrayOf(4,4,8,8) +
+                    le(4815) + le(31415) + byteArrayOf(1,2)))
+        ) }
+    }
+
     private fun offer(
         username:String="peer", type:String="P", ip:ByteArray=byteArrayOf(4,4,8,8),
         port:Int=4815, token:Int=31415, obfuscation:Int=0,
