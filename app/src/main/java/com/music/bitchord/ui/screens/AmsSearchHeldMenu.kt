@@ -293,7 +293,9 @@ internal fun AmsShelfHeldMenu(
         val canOpenAlbum = track?.let { amsDetailCanOpenTrackAlbum(item.scope.detail,it) } == true
         val link = appleMusicWebVerifiedRouteUrl(card?.appleStoreUrl ?: track?.sourceStoreUrl,id)
         val recording = amsLocalRecordingLabel(id,card?.title ?: track?.title.orEmpty(),card?.subtitle ?: track?.credit.orEmpty())
-        val preview = track?.let { amsHeldPreviewSong(it,item.scope.detail) }.takeIf { previewAllowed }
+        val preview = (track?.let { amsHeldPreviewSong(it,item.scope.detail) }
+            ?: card?.takeIf { item.scope.detail == null && item.scope.chart == null }
+                ?.let(::amsShelfPreviewSong)).takeIf { previewAllowed }
         fun action(callback: ((com.music.bitchord.data.model.Song) -> Unit)?): (() -> Unit)? =
             if (callback == null || preview == null) null else ({
                 if (latestAllowed(item) && amsPreviewPlaybackAllowed(com.music.bitchord.data.providers.ProviderRuntime.gateOrNull())) {

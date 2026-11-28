@@ -427,6 +427,8 @@ data class ShelfItem(
     /** Exact storefront provenance, attached ONLY by a trusted Apple adapter. */
     val appleStoreUrl: String? = null,
     val appleStoreBadgeUrl: String? = null,
+    /** Source-observed sample availability, not permission or a full asset. */
+    val hasAudioPreview: Boolean = false,
 )
 
 /** The signed-in Google account, as YouTube Music reports it. */

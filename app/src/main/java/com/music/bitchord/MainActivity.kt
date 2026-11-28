@@ -2726,7 +2726,15 @@ private fun BitChordApp(
         }
         if (item.browseId?.startsWith("apple_music_web:") == true) {
             if (com.music.bitchord.ui.amsSongStorefront(item.browseId) != null) {
-                if (selectedTab == TAB_HOME && viewModel.appleMusicWebEditorialUi.containsCard(null,item)) {
+                if (selectedTab == TAB_HOME && viewModel.appleMusicWebEditorialUi.containsCard(null,item) &&
+                    (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { item in it.items }) {
+                    val preview = com.music.bitchord.ui.screens.amsShelfPreviewSong(item)
+                    if (preview != null &&
+                        com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()) &&
+                        !CastController.state.value.casting && !ListenTogether.state.value.inParty) {
+                        playFrom(listOf(preview),0,QueueSource(shelfTitle,tabOrigin))
+                        return@click
+                    }
                     com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(item.appleStoreUrl,item.browseId)?.let { url ->
                         runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(url))) }
                     }
@@ -7416,7 +7424,12 @@ private fun BitChordApp(
             com.music.bitchord.ui.screens.AmsShelfHeldMenu(
                 held = amsShelfHeld,
                 loadCollection = viewModel::loadAmsCollectionLabels,
-                onPreviewPlay = { song -> playFrom(listOf(song),0,QueueSource(appleSharedVisual?.page?.title.orEmpty(),PlaybackSourceType.BROWSE,pageRouteKey)) },
+                onPreviewPlay = { song ->
+                    val source = if (amsHoldScope.detail == null)
+                        QueueSource(context.getString(R.string.home),PlaybackSourceType.HOME)
+                    else QueueSource(appleSharedVisual?.page?.title.orEmpty(),PlaybackSourceType.BROWSE,pageRouteKey)
+                    playFrom(listOf(song),0,source)
+                },
                 onPreviewNext = playNext, onPreviewQueue = addToQueue,
                 allowed = { target ->
                     val scope = target.scope

@@ -46,6 +46,7 @@ on:
       - audit/ams-preview-detail-callback-fix-20261128
       - audit/ams-retire-legacy-quality-calls-20261128
       - audit/ams-preview-transport-marker-20261128
+      - audit/ams-home-preview-actions-20261128
 permissions:
   contents: read
 concurrency:

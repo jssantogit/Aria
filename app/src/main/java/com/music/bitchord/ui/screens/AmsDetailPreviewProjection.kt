@@ -3,6 +3,7 @@ package com.music.bitchord.ui.screens
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.isUnresolvedSpotify
 import com.music.bitchord.data.providers.*
 import com.music.bitchord.playback.AmsPreviewRoute
@@ -58,4 +59,13 @@ internal fun amsHeldPreviewSong(track: NativeMetadataTrack, parent: String?): So
         thumbnailUrl=track.artworkUri,albumId=page.browseId.takeIf {
             page.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM
         },isAudioPreview=true)
+}
+
+/** Editorial card membership is revalidated by the caller before use. */
+internal fun amsShelfPreviewSong(card: ShelfItem): Song? {
+    val route = AmsPreviewRoute.fromScopedId(card.browseId) ?: return null
+    if (!card.hasAudioPreview || card.videoId != null || card.title.isBlank() ||
+        appleMusicWebVerifiedRouteUrl(card.appleStoreUrl, route.scopedId) == null) return null
+    return Song(videoId=route.scopedId,title=card.title,artist=card.subtitle,
+        thumbnailUrl=card.thumbnailUrl,isAudioPreview=true)
 }

@@ -366,7 +366,9 @@ internal fun projectAppleMusicWebHomeRoom(
         ShelfItem(title = item.title, subtitle = item.artistName.orEmpty(),
             thumbnailUrl = appleMusicWebArtworkUrl(item.artworkUrl),
             videoId = null, browseId = id,
-            appleStoreUrl = appleMusicWebVerifiedStoreUrl(item))
+            appleStoreUrl = appleMusicWebVerifiedStoreUrl(item),
+            hasAudioPreview = item.kind == AppleMusicWebKind.SONG &&
+                appleMusicWebAudioPreviewUrl(item.previewUrl) != null)
     }
     val heading = when (shelf) {
         AppleMusicWebHomeShelf.RECENT_RELEASES -> "Lançamentos recentes"

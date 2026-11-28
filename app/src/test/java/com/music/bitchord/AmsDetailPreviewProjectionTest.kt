@@ -23,6 +23,19 @@ class AmsDetailPreviewProjectionTest {
         assertNull(amsSearchPreviewSong(row.copy(key="itunes:br:song:123")))
     }
 
+    @Test fun shelfPreviewRequiresSourceEvidenceAndExactSongIdentity() {
+        val card = ShelfItem("Track","Artist",null,null,"apple_music_web:br:song:123",
+            appleStoreUrl="https://music.apple.com/br/song/track/123",hasAudioPreview=true)
+        val preview = requireNotNull(amsShelfPreviewSong(card))
+        assertTrue(preview.isAudioPreview)
+        assertEquals(card.browseId,preview.videoId)
+        assertNull(amsShelfPreviewSong(card.copy(hasAudioPreview=false)))
+        assertNull(amsShelfPreviewSong(card.copy(videoId="legacy")))
+        assertNull(amsShelfPreviewSong(card.copy(browseId="apple_music_web:us:song:123")))
+        assertNull(amsShelfPreviewSong(card.copy(browseId="apple_music_web:br:album:123")))
+        assertNull(amsShelfPreviewSong(card.copy(appleStoreUrl=null)))
+    }
+
     @Test fun preservesUnavailableRowsAndRepeatedMembersInPlayableProjection() {
         val page = DetailPage("apple_music_web:br:playlist:pl.123456","Playlist","",
             null,UiState.Success(emptyList()),BrowseType.PLAYLIST)
