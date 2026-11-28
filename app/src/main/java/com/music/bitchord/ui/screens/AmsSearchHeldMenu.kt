@@ -101,6 +101,7 @@ internal fun AmsSearchHeldMenu(
     hazeState: HazeState,
     bottomChromeClearance: Dp,
     searchRouteActive: Boolean,
+    onCollectionPlayback: AmsCardCollectionPlayback? = null,
     onPreviewPlay: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
     onPreviewNext: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
     onPreviewQueue: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
@@ -175,6 +176,10 @@ internal fun AmsSearchHeldMenu(
                 onRate={ pendingTarget=item; rating=AmsHeldRating(it,item.art) },
                 onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ allowed(item) },
                 onAddAmsCollection={ pendingTarget=item; collection=item },
+                onAmsPlay=amsCardCollectionAction(item.id,item.title,AmsCollectionPlaybackAction.PLAY,previewAllowed,onCollectionPlayback) { allowed(item) },
+                onAmsShuffle=amsCardCollectionAction(item.id,item.title,AmsCollectionPlaybackAction.SHUFFLE,previewAllowed,onCollectionPlayback) { allowed(item) },
+                onAmsPlayNext=amsCardCollectionAction(item.id,item.title,AmsCollectionPlaybackAction.NEXT,previewAllowed,onCollectionPlayback) { allowed(item) },
+                onAmsAddToQueue=amsCardCollectionAction(item.id,item.title,AmsCollectionPlaybackAction.QUEUE,previewAllowed,onCollectionPlayback) { allowed(item) },
             )
         } else BrowseActionsSheet(
             target=BrowseTarget(browseId=item.id,title=item.title,subtitle=item.credit,
@@ -236,6 +241,7 @@ internal fun AmsShelfHeldMenu(
     hazeState: HazeState,
     bottomChromeClearance: Dp,
     loadCollection: (suspend (String) -> List<CatalogMetadataRecordingLabel>?)? = null,
+    onCollectionPlayback: AmsCardCollectionPlayback? = null,
     onPreviewPlay: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
     onPreviewNext: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
     onPreviewQueue: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
@@ -309,6 +315,10 @@ internal fun AmsShelfHeldMenu(
                 onRate={ pendingTarget=item; rating=AmsHeldRating(it,card.thumbnailUrl) },
                 onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ latestAllowed(item) },
                 onAddAmsCollection=loadCollection?.let { { pendingTarget=item; collection=card } },
+                onAmsPlay=amsCardCollectionAction(id,card.title,AmsCollectionPlaybackAction.PLAY,previewAllowed,onCollectionPlayback) { latestAllowed(item) },
+                onAmsShuffle=amsCardCollectionAction(id,card.title,AmsCollectionPlaybackAction.SHUFFLE,previewAllowed,onCollectionPlayback) { latestAllowed(item) },
+                onAmsPlayNext=amsCardCollectionAction(id,card.title,AmsCollectionPlaybackAction.NEXT,previewAllowed,onCollectionPlayback) { latestAllowed(item) },
+                onAmsAddToQueue=amsCardCollectionAction(id,card.title,AmsCollectionPlaybackAction.QUEUE,previewAllowed,onCollectionPlayback) { latestAllowed(item) },
             )
         } else BrowseActionsSheet(
             target=BrowseTarget(browseId=id,title=card?.title ?: track?.title.orEmpty(),

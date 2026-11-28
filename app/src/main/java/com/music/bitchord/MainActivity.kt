@@ -1129,6 +1129,7 @@ private fun BitChordApp(
     val searchFieldFocus = remember { FocusRequester() }
     // Invalidates an in-flight radio lookup when a later play request wins.
     var playRequestGeneration by remember { mutableIntStateOf(0) }
+    var amsCardActionGeneration by remember { mutableIntStateOf(0) }
     // Starting radio from the item already playing must not replace that media
     // item just to add UI metadata. This temporary label covers that seed; all
     // following radio items carry radioName in their MediaItem extras.
@@ -2411,6 +2412,37 @@ private fun BitChordApp(
     }
     val addSongsToQueue: (List<Song>) -> Unit = { songs -> queueSongs(songs, false) }
     val playSongsNext: (List<Song>) -> Unit = { songs -> queueSongs(songs, true) }
+
+    fun runAmsCardCollectionAction(id: String, title: String,
+        action: com.music.bitchord.ui.screens.AmsCollectionPlaybackAction, isCurrent: () -> Boolean) {
+        fun permitted() = isCurrent() && !CastController.state.value.casting &&
+            !ListenTogether.state.value.inParty &&
+            com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull())
+        if (!permitted()) return
+        val request = ++amsCardActionGeneration
+        val playbackGeneration = playRequestGeneration
+        scope.launch {
+            if (!permitted()) return@launch
+            val songs = viewModel.loadAmsCollectionPreviews(id)
+            if (request != amsCardActionGeneration || playbackGeneration != playRequestGeneration ||
+                !permitted() || refusedByHost()) return@launch
+            if (songs.isEmpty()) {
+                Toast.makeText(context,context.getString(R.string.no_tracks_here),Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val source = QueueSource(title,PlaybackSourceType.BROWSE,id)
+            val stamped = songs.map { it.copy(playbackSource=title,playbackSourceType=PlaybackSourceType.BROWSE,playbackSourceId=id) }
+            when (action) {
+                com.music.bitchord.ui.screens.AmsCollectionPlaybackAction.PLAY -> playFrom(stamped,0,source)
+                com.music.bitchord.ui.screens.AmsCollectionPlaybackAction.SHUFFLE -> {
+                    QueueShuffle.enableForNextQueue()
+                    playFrom(stamped,stamped.indices.random(),source)
+                }
+                com.music.bitchord.ui.screens.AmsCollectionPlaybackAction.NEXT -> playSongsNext(stamped)
+                com.music.bitchord.ui.screens.AmsCollectionPlaybackAction.QUEUE -> addSongsToQueue(stamped)
+            }
+        }
+    }
 
     // ---- Links from outside the app ----
 
@@ -7404,6 +7436,7 @@ private fun BitChordApp(
             CanonicalSearchContextOverlays()
             com.music.bitchord.ui.screens.AmsSearchHeldMenu(amsSearchHeld, viewModel, hazeState,
                 heldChromeClearance, searchRouteActive = pageRouteKey == "$TAB_KEY$TAB_SEARCH",
+                onCollectionPlayback = ::runAmsCardCollectionAction,
                 onPreviewPlay = { song -> playFrom(listOf(song),0,QueueSource(searchLabel,PlaybackSourceType.SEARCH)) },
                 onPreviewNext = playNext, onPreviewQueue = addToQueue)
             com.music.bitchord.ui.screens.ProviderShelfHeldMenu(
@@ -7451,6 +7484,7 @@ private fun BitChordApp(
             com.music.bitchord.ui.screens.AmsShelfHeldMenu(
                 held = amsShelfHeld,
                 loadCollection = viewModel::loadAmsCollectionLabels,
+                onCollectionPlayback = ::runAmsCardCollectionAction,
                 onPreviewPlay = { song ->
                     val source = if (amsHoldScope.detail == null)
                         QueueSource(context.getString(R.string.home),PlaybackSourceType.HOME)

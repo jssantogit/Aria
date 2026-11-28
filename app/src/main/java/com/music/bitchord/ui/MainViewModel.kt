@@ -700,6 +700,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             resolveSongAlbum = appleMusicWebNativeCatalog::songAlbumRoute,
             read = appleMusicWebNativeCatalog::sharedDetail)
     }
+    /** Read the exact unopened collection without changing navigation.
+     * Only a complete, current listing is admitted to a whole-collection action. */
+    internal suspend fun loadAmsCollectionPreviews(browseId: String): List<Song> {
+        val route = AppleMusicWebNativeRoute.parse(browseId) ?: return emptyList()
+        if (route.kind !in setOf(
+                com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM,
+                com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST)) return emptyList()
+        val owner = ProviderRuntime.gateOrNull() ?: return emptyList()
+        val lease = ProviderReadLease.acquire(owner,listOf(
+            ProviderCapability.AUDIO_PLAYBACK to BuiltInProviderKeys.APPLE_MUSIC_WEB,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB,
+        )) ?: return emptyList()
+        val job = currentCoroutineContext()[Job] ?: return emptyList()
+        val unregister = lease.cancelJobOnRevoke(job)
+        try {
+            if (!lease.isCurrent() || ProviderRuntime.gateOrNull() !== owner) return emptyList()
+            val result = appleMusicWebNativeCatalog.sharedDetail(browseId)
+            currentCoroutineContext().ensureActive()
+            if (!lease.isCurrent() || ProviderRuntime.gateOrNull() !== owner) return emptyList()
+            val detail = ((result as? ProviderCallResult.Success)?.value as?
+                com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebOutcome.Complete)?.value
+                ?: return emptyList()
+            if (detail.notice != null) return emptyList()
+            return com.music.bitchord.ui.screens.amsCollectionPreviewSongs(browseId,detail.page,detail.metadataTracks)
+        } finally { unregister() }
+    }
+
     internal suspend fun loadAmsCollectionLabels(browseId: String): List<com.music.bitchord.ui.screens.CatalogMetadataRecordingLabel>? {
         val current = appleMusicWebDetailNavigation.stack.value.lastOrNull()
         val snapshot = current?.takeIf { it.route.browseId == browseId && it.lease.isCurrent() }?.visible()

@@ -36,6 +36,30 @@ class AmsDetailPreviewProjectionTest {
         assertNull(amsShelfPreviewSong(card.copy(appleStoreUrl=null)))
     }
 
+    @Test fun unopenedCollectionActionRechecksCurrentTargetAndRejectsOtherEntities() {
+        var calls = 0
+        var current = true
+        val callback: AmsCardCollectionPlayback = { id,title,action,allowed ->
+            assertEquals("apple_music_web:br:album:123",id)
+            assertEquals("Album",title)
+            assertEquals(AmsCollectionPlaybackAction.NEXT,action)
+            assertTrue(allowed())
+            calls++
+        }
+        val action = requireNotNull(amsCardCollectionAction("apple_music_web:br:album:123","Album",
+            AmsCollectionPlaybackAction.NEXT,true,callback) { current })
+        action()
+        current = false
+        action()
+        assertEquals(1,calls)
+        assertNull(amsCardCollectionAction("apple_music_web:br:artist:123","Artist",
+            AmsCollectionPlaybackAction.PLAY,true,callback) { true })
+        assertNull(amsCardCollectionAction("itunes:br:album:123","Album",
+            AmsCollectionPlaybackAction.PLAY,true,callback) { true })
+        assertNull(amsCardCollectionAction("apple_music_web:br:album:123","Album",
+            AmsCollectionPlaybackAction.PLAY,false,callback) { true })
+    }
+
     @Test fun collectionActionsRequireExactAlbumOrPlaylistAndKeepOccurrences() {
         val id = "apple_music_web:br:playlist:pl.123456"
         val page = DetailPage(id,"Playlist","",null,UiState.Success(emptyList()),BrowseType.PLAYLIST)

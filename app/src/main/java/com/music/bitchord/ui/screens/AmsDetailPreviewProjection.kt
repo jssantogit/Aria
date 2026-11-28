@@ -79,3 +79,15 @@ internal fun amsCollectionPreviewSongs(expectedId: String, page: DetailPage, tra
         (route.kind != com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST || page.type != BrowseType.PLAYLIST)) return emptyList()
     return amsDetailPreviewSongs(page,tracks).values.toList()
 }
+
+internal enum class AmsCollectionPlaybackAction { PLAY, SHUFFLE, NEXT, QUEUE }
+internal typealias AmsCardCollectionPlayback = (String, String, AmsCollectionPlaybackAction, () -> Boolean) -> Unit
+
+internal fun amsCardCollectionAction(id: String?, title: String, action: AmsCollectionPlaybackAction,
+    enabled: Boolean, callback: AmsCardCollectionPlayback?, isCurrent: () -> Boolean): (() -> Unit)? {
+    val route = AppleMusicWebNativeRoute.parse(id) ?: return null
+    if (!enabled || callback == null || route.kind !in setOf(
+            com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM,
+            com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST)) return null
+    return { if (isCurrent()) callback(route.browseId,title,action,isCurrent) }
+}
