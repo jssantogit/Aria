@@ -149,15 +149,17 @@ internal suspend fun scanDiscogsGenreLanding(
     val checkpoints = mutableMapOf<Int, DiscogsEditorialCursor>()
     var failure: DiscogsEditorialResult? = null
     var attempted = 0
+    val acquisition = DiscogsLandingBudget()
     for ((index, query) in queries.withIndex()) {
         if (!stillCurrent()) return null
-        if (verified.size >= 6) break
+        if (verified.size >= 6 || !acquisition.canStart(queries.size - index - 1)) break
         val budget = discogsMultiStylePageBudget(verified.size, queries.size - index - 1)
         attempted++
         val result = try {
             scanner.discoverDistinct(
                 query, maxReleases = budget, knownMasterIds = verified.keys.toSet(),
                 onCheckpoint = { checkpoints[index] = it },
+                landingBudget = acquisition, laterPredicates = queries.size - index - 1,
                 onVerified = { candidate ->
                     if (stillCurrent() && verified.putIfAbsent(candidate.masterId, candidate) == null)
                         onProgress(verified.values.toList())
@@ -169,10 +171,10 @@ internal suspend fun scanDiscogsGenreLanding(
         when (result) {
             is DiscogsEditorialResult.Verified -> {
                 result.releases.forEach { verified.putIfAbsent(it.masterId, it) }
-                // Early partial responses intentionally lack a signed checkpoint.
-                // Do not start more predicates immediately after that interruption.
-                if (index !in checkpoints) {
-                    failure = DiscogsEditorialResult.Unavailable
+                // A signed checkpoint now survives an interruption. Do not
+                // infer success from its presence or start another predicate.
+                if (result.interruption != null || index !in checkpoints) {
+                    failure = result.interruption ?: DiscogsEditorialResult.Unavailable
                     break
                 }
             }

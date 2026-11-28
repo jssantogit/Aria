@@ -64,15 +64,9 @@ internal fun appleArtistAsSharedDetail(
 ): AppleSharedDetail? {
     val route = AppleCatalogBrowseRoute.parse(source.artist.browseId)
         ?.takeIf { it.kind == ItunesCatalogItemType.ARTIST } ?: return null
-    val releases = source.albums.filter { album ->
-        val albumRoute = AppleCatalogBrowseRoute.parse(album.browseId)
-        album.kind == AppleEditorialSearchKind.ALBUM &&
-            albumRoute?.kind == ItunesCatalogItemType.ALBUM &&
-            albumRoute.storefront == route.storefront
-    }.groupBy { it.browseId }.values.mapNotNull { sameId ->
-        sameId.singleOrNull() ?: sameId.firstOrNull()
-            ?.takeIf { first -> sameId.all { it == first } }
-    }
+    if (appleNativeDetailRouteKey(AppleNativeDetailKind.ARTIST, source.artist, null) == null)
+        return null
+    val releases = appleNativeArtistAlbumEntries(source)
     // Native Apple Music-style sections. EP and Single are one rail, while
     // "live", "compilation" and "featured on" require independent evidence:
     // names and artwork cannot prove such a relationship or release class.
@@ -132,7 +126,11 @@ internal fun appleArtistAsSharedDetail(
             trackRoute?.kind == ItunesCatalogItemType.TRACK &&
                 trackRoute.storefront == route.storefront &&
                 track.artistName.isNotBlank() && track.title.isNotBlank()
-        }.distinctBy { it.key }.take(16),
+        }.groupBy { it.key }.values.mapNotNull { observations ->
+            if (observations.any {
+                it.artistBrowseId != null && it.artistBrowseId != source.artist.browseId
+            }) null else observations.distinct().singleOrNull()
+        }.take(16),
     )
 }
 
@@ -141,6 +139,8 @@ internal fun appleAlbumAsSharedDetail(
 ): AppleSharedDetail? {
     val route = AppleCatalogBrowseRoute.parse(source.album.browseId)
         ?.takeIf { it.kind == ItunesCatalogItemType.ALBUM } ?: return null
+    if (appleNativeDetailRouteKey(AppleNativeDetailKind.ALBUM, null, source.album) == null)
+        return null
     val year = source.album.releaseDate?.take(4)?.takeIf {
         it.length == 4 && it.all(Char::isDigit)
     }
@@ -151,20 +151,15 @@ internal fun appleAlbumAsSharedDetail(
             it.kind == ItunesCatalogItemType.ARTIST &&
                 it.storefront == route.storefront
         }
-    val otherReleases = source.relatedAlbums.asSequence()
-        .filter { candidate ->
-            val candidateRoute = AppleCatalogBrowseRoute.parse(candidate.browseId)
-            candidate.kind == AppleEditorialSearchKind.ALBUM &&
-                candidateRoute?.kind == ItunesCatalogItemType.ALBUM &&
-                candidateRoute.storefront == route.storefront &&
-                candidate.browseId != source.album.browseId &&
-                candidate.title.isNotBlank() &&
-                sourceArtistRoute != null &&
-                candidate.artistBrowseId ==
-                    "itunes:${sourceArtistRoute.storefront}:artist:${sourceArtistRoute.id}"
-        }
-        .distinctBy { it.browseId }
-        .take(12)
+    val admittedTracks = source.tracks.filter { track ->
+        val trackRoute = AppleCatalogBrowseRoute.parse(track.key)
+        trackRoute?.kind == ItunesCatalogItemType.TRACK &&
+            trackRoute.storefront == route.storefront && track.title.isNotBlank()
+    }.groupBy { it.key }.values.mapNotNull { observations ->
+        observations.distinct().singleOrNull()
+    }
+    val otherReleases = appleNativeRelatedAlbumEntries(source)
+        .asSequence()
         .map { candidate ->
             ShelfItem(
                 title = candidate.title,
@@ -192,11 +187,7 @@ internal fun appleAlbumAsSharedDetail(
                 HomeShelf("Mais de ${source.album.artistName}", otherReleases),
             ) else emptyList(),
         ),
-        metadataTracks = source.tracks.filter { track ->
-            val trackRoute = AppleCatalogBrowseRoute.parse(track.key)
-            trackRoute?.kind == ItunesCatalogItemType.TRACK &&
-                trackRoute.storefront == route.storefront
-        }.map { track ->
+        metadataTracks = admittedTracks.map { track ->
             NativeMetadataTrack(
                 key = track.key,
                 title = track.title,
@@ -206,7 +197,7 @@ internal fun appleAlbumAsSharedDetail(
                 durationMs = track.durationMs?.takeIf { it >= 0L },
             )
         },
-        notice = if (source.partialTracklist)
+        notice = if (source.partialTracklist || admittedTracks.size != source.tracks.size)
             "A lista de faixas deste lançamento pode estar incompleta." else null,
         attribution = source.discogsAttributionText?.let {
             NativeDetailAttribution(it, source.discogsAttributionUrl,

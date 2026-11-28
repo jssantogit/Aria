@@ -94,4 +94,29 @@ class DiscogsMasterVersionPreviewTest {
             listOf(edition(503, master = 91), edition(504, unofficial = true))))
     }
 
+    @Test fun digitalPreviewUsesFixedFileFilterAndAcceptsConsistentEmptyIndex() = runBlocking {
+        val paths = mutableListOf<String>()
+        val empty = """
+            {"pagination":{"page":1,"pages":0,"per_page":8,"items":0},"versions":[]}
+        """.trimIndent()
+        val client = DiscogsClient(
+            enabled = true,
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsTransport {
+                override suspend fun get(path: String, userAgent: String): DiscogsHttpResponse {
+                    paths += path
+                    return DiscogsHttpResponse(200, empty)
+                }
+            },
+        )
+        assertEquals(DiscogsMasterVersionPreviewResult.Page(
+            DiscogsMasterVersionPreviewPage(emptyList(), false)),
+            client.fetchDigitalMasterVersionPreview(90))
+        assertEquals(listOf("masters/90/versions?page=1&per_page=8&format=File"), paths)
+        assertNull(discogsMasterVersionPreviewPage(empty.replace(
+            "\"versions\":[]", "\"versions\":[{\"id\":500}]")))
+        assertNull(discogsMasterVersionPreviewPage(empty.replace(
+            "\"items\":0", "\"items\":1")))
+    }
+
 }

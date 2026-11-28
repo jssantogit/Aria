@@ -11,6 +11,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.data.catalog.metadata.DiscogsAppleArtworkResolver
+import com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.ProviderRuntime
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.platform.LocalUriHandler
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.UiState
@@ -18,6 +28,8 @@ import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.DiscogsNativePage
 import com.music.bitchord.ui.DiscogsNativeRoute
 import com.music.bitchord.ui.discogsNativeDetailRouteKey
+import com.music.bitchord.ui.discogsNativeArtistCanContinue
+import com.music.bitchord.ui.discogsNativePageDisplayAllowed
 import com.music.bitchord.ui.MainViewModel
 import com.music.bitchord.ui.AppleCatalogBrowseRoute
 import com.music.bitchord.data.catalog.metadata.ItunesCatalogItemType
@@ -56,30 +68,95 @@ internal fun CanonicalProviderDetailHost(
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
+    val policySnapshot = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val gate = ProviderRuntime.gateOrNull()
+    val detailTicket = if (policySnapshot != null) gate?.open(
+        ProviderCapability.EDITORIAL_DISCOGRAPHY,
+        if (isDiscogs) BuiltInProviderKeys.DISCOGS else BuiltInProviderKeys.ITUNES,
+    ) else null
+    val detailAuthorized = detailTicket != null && gate?.accept(detailTicket) == true
+    val searchAuthorized = policySnapshot != null && gate?.open(
+        ProviderCapability.CATALOG_SEARCH,
+        if (isDiscogs) BuiltInProviderKeys.DISCOGS else BuiltInProviderKeys.ITUNES,
+    ) != null
     val artistState = appleArtistDetail as? UiState.Success
     val liveApplePage = if (!isDiscogs) appleSharedVisual?.takeIf {
-        it.page.browseId == routeKey
+        it.page.browseId == routeKey &&
+            appleNativeDetailDisplayAllowed(it, detailAuthorized, searchAuthorized)
     } else null
-    val previousApplePage = remember(routeKey) {
+    val previousApplePage = remember(routeKey, gate, detailTicket, appleReadAllowed) {
         mutableStateOf<AppleSharedDetail?>(null)
     }
-    if (liveApplePage != null) previousApplePage.value = liveApplePage
+    if (liveApplePage != null && appleReadAllowed && detailTicket != null)
+        previousApplePage.value = liveApplePage
     val applePage = liveApplePage ?: previousApplePage.value.takeIf {
-        !isDiscogs && appleReadAllowed
+        !isDiscogs && appleReadAllowed && detailTicket != null &&
+            gate?.accept(detailTicket) == true
     }
 
     val liveDiscogsPage = if (isDiscogs) discogsNativeVisual?.takeIf {
-        it.page.browseId == routeKey
+        it.page.browseId == routeKey &&
+            discogsNativePageDisplayAllowed(it, detailAuthorized, searchAuthorized)
     } else null
-    val previousDiscogsPage = remember(routeKey) {
+    val previousDiscogsPage = remember(routeKey, gate, detailTicket, discogsReadAllowed) {
         mutableStateOf<DiscogsNativePage?>(null)
     }
-    if (liveDiscogsPage != null) previousDiscogsPage.value = liveDiscogsPage
+    if (liveDiscogsPage != null && discogsReadAllowed && detailTicket != null)
+        previousDiscogsPage.value = liveDiscogsPage
     val discogsPage = liveDiscogsPage ?: previousDiscogsPage.value.takeIf {
-        isDiscogs && discogsReadAllowed && discogsRoute != null
+        isDiscogs && discogsReadAllowed && discogsRoute != null &&
+            detailTicket != null && gate?.accept(detailTicket) == true
     }
 
-    val page = discogsPage?.page ?: applePage?.page
+    // The live exact Discogs edition supplies metadata, not artwork authority.
+    // Key state by the release and artwork lease so toggling Capas removes the
+    // old image immediately and starts a new lookup when re-enabled.
+    val artTicket = if (policySnapshot != null && discogsReadAllowed)
+        gate?.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+    else null
+    val artworkRecord = liveDiscogsPage?.artworkEvidence?.takeIf {
+        discogsReadAllowed && routeKey == "discogs:release:${it.link.id}"
+    }
+    val artworkResolver = remember { DiscogsAppleArtworkResolver() }
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val artworkDimensions = remember(appContext) {
+        com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(
+            persistence = com.music.bitchord.data.catalog.metadata
+                .AndroidAppleArtworkProbePersistence(appContext),
+        )
+    }
+    var coverProof by remember(routeKey, artworkRecord, gate, artTicket, detailTicket) {
+        mutableStateOf<DiscogsVerifiedAppleArtwork?>(null)
+    }
+    LaunchedEffect(routeKey, artworkRecord, gate, artTicket, detailTicket) {
+        if (artworkRecord == null || artTicket == null || detailTicket == null)
+            return@LaunchedEffect
+        fun current() = ProviderRuntime.gateOrNull() === gate &&
+            gate != null && gate.accept(artTicket) && gate.accept(detailTicket)
+        coverProof = try {
+            withContext(Dispatchers.IO) {
+                val proof = withTimeoutOrNull(12_000L) {
+                    artworkResolver.resolve(artworkRecord)
+                }?.takeIf { current() && it.discogsReleaseId == artworkRecord.link.id }
+                    ?: return@withContext null
+                val upgraded = withTimeoutOrNull(12_000L) {
+                    artworkDimensions.upgrade(proof.artworkUrl, 1024)
+                }
+                if (!current()) return@withContext null
+                proof.copy(artworkUrl = upgraded ?: proof.artworkUrl)
+            }?.takeIf { current() }
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: Exception) { null }
+    }
+    val verifiedCover = coverProof?.takeIf {
+        artTicket != null && detailTicket != null &&
+            ProviderRuntime.gateOrNull() === gate &&
+            gate != null && gate.accept(artTicket) && gate.accept(detailTicket) &&
+            artworkRecord?.link?.id == it.discogsReleaseId
+    }
+    val page = discogsPage?.page?.let {
+        if (verifiedCover != null) it.copy(thumbnailUrl = verifiedCover.artworkUrl) else it
+    } ?: applePage?.page
     if (page == null) {
         MessageState(
             if ((if (isDiscogs) discogsDetail
@@ -94,7 +171,7 @@ internal fun CanonicalProviderDetailHost(
     // One bounded continuation per deliberate scroll to the end. Never
     // eagerly drain the entire Apple catalog merely because a short first
     // page happens to fit the screen; navigation cancels this collector.
-    val appleArtist = if (!isDiscogs) artistState?.data?.takeIf {
+    val appleArtist = if (!isDiscogs && appleReadAllowed && detailAuthorized) artistState?.data?.takeIf {
         it.artist.browseId == routeKey
     } else null
     val canContinueApple = appleArtist?.hasMore == true &&
@@ -113,9 +190,8 @@ internal fun CanonicalProviderDetailHost(
     }
     // Discogs artist pagination uses the exact same native shelf scroll as
     // Apple, rather than a second provider-specific footer navigation.
-    val canContinueDiscogs = isDiscogs &&
-        discogsPage?.page?.type == com.music.bitchord.data.model.BrowseType.ARTIST &&
-        discogsPage?.hasMore == true && !searching
+    val canContinueDiscogs = isDiscogs && detailAuthorized &&
+        discogsNativeArtistCanContinue(discogsPage, searching)
     LaunchedEffect(routeKey, canContinueDiscogs, discogsPage?.page?.sections) {
         if (canContinueDiscogs) {
             snapshotFlow {
@@ -189,11 +265,9 @@ internal fun CanonicalProviderDetailHost(
                         viewModel.discogsNativeCatalog.openRelease(releaseId)
                     }
             } else {
-                val matched = appleNativeShelfEntry(
-                    item.browseId,
-                    artistState?.data?.albums.orEmpty() +
-                        (appleAlbumDetail as? UiState.Success)
-                            ?.data?.relatedAlbums.orEmpty(),
+                val matched = appleNativeShelfEntryForRoute(
+                    routeKey, item.browseId, appleReadAllowed && detailAuthorized,
+                    artistState?.data, (appleAlbumDetail as? UiState.Success)?.data,
                 )
                 if (matched != null) {
                     onActiveShelfChange(null)
@@ -211,6 +285,7 @@ internal fun CanonicalProviderDetailHost(
         appleArtistTracks = applePage?.artistTracks.orEmpty(),
         verifiedAppleArtistMbid = applePage?.verifiedArtistMbid,
         artistHeroOverride = applePage?.artistHeroUrl,
+        sourceArtworkStoreUrl = verifiedCover?.storeUrl,
         songSort = songSort,
         footerContent = { palette ->
             if (isDiscogs) {
@@ -223,7 +298,7 @@ internal fun CanonicalProviderDetailHost(
             } else if (routeKey.startsWith("itunes:") &&
                 routeKey.contains(":artist:")
             ) {
-                artistState?.data?.let { artistPage ->
+                appleArtist?.let { artistPage ->
                     item(key = "apple:source:paging") {
                         AppleArtistCatalogExtras(
                             state = artistPage,

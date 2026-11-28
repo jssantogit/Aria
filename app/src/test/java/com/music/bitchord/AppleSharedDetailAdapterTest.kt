@@ -95,7 +95,7 @@ class AppleSharedDetailAdapterTest {
         assertFalse(adapted.page.browseId.startsWith("catalog:"))
     }
 
-    @Test fun albumTrackDurationIsPreservedWithoutInventingMissingValues() {
+    @Test fun albumTrackDurationIsPreservedInMetadataButNotShownInNativeRows() {
         val selected = album(20, AppleEditorialReleaseCategory.EP)
         val page = AppleEditorialAlbumDetailPage(
             album = selected,
@@ -107,8 +107,11 @@ class AppleSharedDetailAdapterTest {
         )
         val adapted = requireNotNull(appleAlbumAsSharedDetail(page))
         assertEquals(listOf(183000L, null), adapted.metadataTracks.map { it.durationMs })
-        assertEquals("3:03", com.music.bitchord.ui.screens.nativeMetadataAlbumTrackSubtitle(
-            adapted.metadataTracks.first(), "NewJeans"))
+        // The Local Library contract hides individual durations, not the
+        // original metadata (including unknown values) used by other consumers.
+        assertTrue(adapted.metadataTracks.all {
+            com.music.bitchord.ui.screens.nativeMetadataAlbumTrackSubtitle(it, "NewJeans") == null
+        })
     }
 
     @Test fun albumArtistCreditUsesOnlyExactMatchingStorefrontArtistId() {
@@ -217,5 +220,88 @@ class AppleSharedDetailAdapterTest {
         val result = requireNotNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
             artist = artist, albums = listOf(wrong), possiblyTruncated = false)))
         assertTrue(result.page.sections.isEmpty())
+    }
+
+    @Test fun relatedAlbumRailAndNavigationRejectConflictsAndShareVisibleLimit() {
+        val credit = artist.browseId
+        val selected = album(20, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val good = album(21, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val conflict = album(22, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val wrongCredit = album(23, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = credit)
+        val remaining = (24L..36L).map {
+            album(it, AppleEditorialReleaseCategory.ALBUM).copy(artistBrowseId = credit)
+        }
+        val source = AppleEditorialAlbumDetailPage(
+            album = selected, tracks = emptyList(), partialTracklist = false,
+            relatedAlbums = listOf(good, good, conflict, conflict.copy(title = "Contradiction"),
+                wrongCredit, wrongCredit.copy(artistBrowseId = "itunes:br:artist:999")) + remaining,
+        )
+        val visible = requireNotNull(appleAlbumAsSharedDetail(source))
+            .page.sections.single().items.map { it.browseId }
+        val expected = (listOf(good) + remaining).take(12).map { it.browseId }
+        assertEquals(expected, visible)
+        fun navigate(id: String?) = com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+            selected.browseId, id, true, null, source,
+        )
+        visible.forEach { assertEquals(it, navigate(it)?.browseId) }
+        assertNull(navigate(conflict.browseId))
+        assertNull(navigate(wrongCredit.browseId))
+        assertNull(navigate(remaining.last().browseId))
+    }
+
+    @Test fun artistSectionsFeaturedReleaseAndTapUseSameAdmittedAlbums() {
+        val valid = album(10, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = artist.browseId)
+        val withArtwork = valid.copy(artworkUri = artist.artworkUri)
+        val disputed = album(20, AppleEditorialReleaseCategory.ALBUM)
+        val foreign = album(30, AppleEditorialReleaseCategory.ALBUM)
+            .copy(browseId = "itunes:us:album:30")
+        val wrongCredit = album(40, AppleEditorialReleaseCategory.ALBUM)
+            .copy(artistBrowseId = "itunes:br:artist:999")
+        val source = AppleEditorialArtistDetailPage(
+            artist = artist, albums = listOf(valid, withArtwork, disputed,
+                disputed.copy(category = AppleEditorialReleaseCategory.EP), foreign, wrongCredit),
+            possiblyTruncated = false,
+        )
+        val visual = requireNotNull(appleArtistAsSharedDetail(source))
+        assertEquals(listOf(valid.browseId), visual.page.sections.flatMap { it.items }.map { it.browseId })
+        assertEquals(valid.browseId, visual.featuredRelease?.browseId)
+        fun navigate(id: String) = com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+            artist.browseId, id, true, source, null,
+        )
+        assertEquals(withArtwork, navigate(valid.browseId))
+        assertNull(navigate(disputed.browseId))
+        assertNull(navigate(foreign.browseId))
+        assertNull(navigate(wrongCredit.browseId))
+    }
+
+    @Test fun detailTrackRowsRejectDisputedIdsAndExplicitForeignArtistCredit() {
+        val track = com.music.bitchord.ui.screens.AppleEditorialTrackSearchRow(
+            key = "itunes:br:track:123", title = "Song",
+            artistName = artist.title, artworkUri = null, albumBrowseId = null,
+            durationMs = 180000, artistBrowseId = artist.browseId,
+        )
+        val foreign = track.copy(key = "itunes:br:track:124",
+            artistBrowseId = "itunes:br:artist:999")
+        val disputed = track.copy(key = "itunes:br:track:125")
+        val adapted = requireNotNull(appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
+            artist = artist, albums = emptyList(), possiblyTruncated = false,
+            tracks = listOf(track, track, foreign, disputed, disputed.copy(title = "Other"),
+                track.copy(key = "itunes:br:track:126"),
+                foreign.copy(key = "itunes:br:track:126")),
+        )))
+        assertEquals(listOf(track), adapted.artistTracks)
+        val row = AppleEditorialTrackRow("itunes:br:track:123", "Song", artist.title, 1, 1)
+        val albumPage = requireNotNull(appleAlbumAsSharedDetail(AppleEditorialAlbumDetailPage(
+            album = album(20, AppleEditorialReleaseCategory.ALBUM),
+            tracks = listOf(row, row.copy(title = "Disputed")),
+            partialTracklist = false,
+        )))
+        assertTrue(albumPage.metadataTracks.isEmpty())
+        assertNotNull(albumPage.notice)
     }
 }

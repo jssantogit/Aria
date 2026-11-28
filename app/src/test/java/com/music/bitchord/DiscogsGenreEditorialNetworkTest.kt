@@ -337,10 +337,18 @@ class DiscogsGenreEditorialNetworkTest {
                 }
             },
         )
-        val result = source.discover(DiscogsEditorialQuery("K-Pop", true))
-        assertTrue(result is DiscogsEditorialResult.Verified)
-        assertEquals(listOf("discogs:release:502"),
-            (result as DiscogsEditorialResult.Verified).releases.map { it.browseId })
+        val checkpoints = mutableListOf<DiscogsEditorialCursor>()
+        val result = source.discoverDistinct(
+            DiscogsEditorialQuery("K-Pop", true), 4, emptySet(),
+            onCheckpoint = { checkpoints += it },
+        ) as DiscogsEditorialResult.Verified
+        assertEquals(listOf("discogs:release:502"), result.releases.map { it.browseId })
+        assertEquals(DiscogsEditorialResult.Throttled(20L), result.interruption)
+        val cursor = checkpoints.single()
+        assertEquals(1, cursor.page)
+        assertEquals(1, cursor.candidatePosition)
+        assertNotNull(cursor.pageSignature)
+        assertTrue(cursor.landingCheckpoint)
         assertEquals(listOf("genre:1", "master:77", "release:502",
             "master:78"), visited)
     }
@@ -460,4 +468,214 @@ class DiscogsGenreEditorialNetworkTest {
         assertEquals(DiscogsEditorialResult.Throttled(15),
             source.discover(DiscogsEditorialQuery("K-Pop", true)))
     }
+    @Test fun shelfArtworkReusesHydratedEditionOnlyWithinCurrentTokenPolicyAndFreshness() = runBlocking {
+        val provider = BuiltInProviderKeys.DISCOGS
+        val caps = setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        fun policy(enabled: Boolean) = ProviderCapabilityPolicy(
+            descriptors = listOf(ProviderDescriptor(provider, caps, ProviderReadiness.READY)),
+            choices = caps.associateWith { listOf(ProviderChoice(provider, enabled, 0)) },
+        )
+        val gate = ProviderPolicyGate(policy(true))
+        var token = "A".repeat(32)
+        var now = 10_000L
+        var reads = 0
+        val record = verifiedEdition(77L).copy(
+            barcodes = listOf("8801234567893"),
+            formats = listOf("File", "FLAC", "Album"),
+        )
+        val source = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { token },
+            admission = RateLimitedProviderTransport { gate },
+            limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            clockMs = { now },
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int): DiscogsHttpResponse {
+                    reads++
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},
+                            "results":[{"id":77,"type":"master"}]}""")
+                }
+            },
+            editions = object : DiscogsNativeEditionReader {
+                override suspend fun master(id: Long): DiscogsLookupResult {
+                    reads++
+                    return DiscogsLookupResult.FoundMaster(master(id, "K-Pop"))
+                }
+                override suspend fun release(id: Long): DiscogsLookupResult {
+                    reads++
+                    return DiscogsLookupResult.Found(record)
+                }
+            },
+        )
+        val rejected = mutableListOf<DiscogsArtworkOutcome>()
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertTrue(source.discover(DiscogsEditorialQuery("K-Pop", true), maxReleases = 1)
+            is DiscogsEditorialResult.Verified)
+        assertEquals(3, reads)
+        assertEquals(record, source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertNull(source.cachedArtworkEvidenceForRelease(77L) { rejected += it })
+        token = "B".repeat(32)
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        token = "A".repeat(32)
+        gate.replace(policy(false))
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        gate.replace(policy(true))
+        now += 120_001L
+        assertNull(source.cachedArtworkEvidenceForRelease(502L) { rejected += it })
+        assertEquals(listOf(
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE,
+            DiscogsArtworkOutcome.POLICY_DENIED,
+            DiscogsArtworkOutcome.EXPIRED_EVIDENCE,
+        ), rejected)
+        assertEquals(3, reads)
+    }
+
+    @Test fun shelfArtworkBatchBoundsRequestsAndOnlyPublishesExactProof() = runBlocking {
+        val reads = mutableListOf<String>()
+        val published = mutableListOf<String>()
+        val ids = listOf("discogs:artist:4", "itunes:br:album:4", "discogs:release:01",
+            "discogs:release:1", "discogs:release:1") +
+            (2..22).map { "discogs:release:$it" }
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            ids, stillCurrent = { true },
+            resolve = { id ->
+                reads += id
+                val releaseId = id.substringAfterLast(':').toLong()
+                if (releaseId == 2L) error("individual lookup failed")
+                com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    if (releaseId == 3L) 99L else releaseId,
+                    "itunes:br:album:1", "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onVerified = { id, _ -> published += id },
+        )
+        assertEquals((1..16).map { "discogs:release:$it" }, reads)
+        assertEquals((1..16).filter { it != 2 && it != 3 }.map { "discogs:release:$it" }, published)
+    }
+
+    @Test fun shelfArtworkBatchDropsLateProofAndStopsWhenSurfaceChanges() = runBlocking {
+        var current = true
+        var reads = 0
+        var published = 0
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            listOf("discogs:release:1", "discogs:release:2"), stillCurrent = { current },
+            resolve = {
+                reads++
+                current = false
+                com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    1L, "itunes:br:album:1", "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onVerified = { _, _ -> published++ },
+        )
+        assertEquals(1, reads)
+        assertEquals(0, published)
+    }
+
+    @Test fun shelfArtworkBatchPropagatesCancellation() = runBlocking {
+        var reads = 0
+        try {
+            com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+                listOf("discogs:release:1", "discogs:release:2"), stillCurrent = { true },
+                resolve = {
+                    reads++
+                    throw kotlinx.coroutines.CancellationException("surface closed")
+                },
+                onVerified = { _, _ -> fail("Cancelled lookup cannot publish") },
+            )
+            fail("Cancellation was swallowed")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            assertEquals(1, reads)
+        }
+    }
+
+    @Test fun shelfArtworkBatchDoesNotSpendCapacityOnIneligibleEditions() = runBlocking {
+        val reads = mutableListOf<String>()
+        val eligibilityChecks = mutableListOf<String>()
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            (1..40).map { "discogs:release:$it" },
+            stillCurrent = { true },
+            resolve = { id -> reads += id; null },
+            onVerified = { _, _ -> fail("No proof returned") },
+            eligible = { id ->
+                eligibilityChecks += id
+                id.substringAfterLast(':').toInt() > 20
+            },
+        )
+        assertEquals((21..36).map { "discogs:release:$it" }, reads)
+        assertEquals((1..36).map { "discogs:release:$it" }, eligibilityChecks)
+    }
+
+    @Test fun shelfArtworkBudgetCountsOnlyActualAttemptsAcrossManyIneligibleCards() = runBlocking {
+        val attempts = mutableListOf<String>()
+        val calls = mutableListOf<String>()
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            (1..100).map { "discogs:release:$it" },
+            stillCurrent = { true },
+            resolve = { id -> calls += id; null },
+            onVerified = { _, _ -> fail("No proof returned") },
+            eligible = { id -> id.substringAfterLast(':').toInt() >= 90 },
+            onAttempt = { attempts += it },
+            maximumAttempts = 3,
+        )
+        assertEquals((90..92).map { "discogs:release:$it" }, attempts)
+        assertEquals(attempts, calls)
+    }
+
+    @Test fun successiveArtworkBatchesDoNotReexamineRejectedCandidatesWithinSameEmission() = runBlocking {
+        val ids = (1..50).map { "discogs:release:$it" }
+        val examined = mutableListOf<String>()
+        val attempted = mutableListOf<String>()
+        do {
+            val before = attempted.size
+            com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+                ids.filterNot { it in examined },
+                stillCurrent = { true },
+                resolve = { null },
+                onVerified = { _, _ -> fail("No proof") },
+                eligible = { it.substringAfterLast(':').toInt() > 20 },
+                onAttempt = { attempted += it },
+                onExamined = { examined += it },
+            )
+        } while (attempted.size != before)
+        assertEquals(ids, examined)
+        assertEquals(ids.drop(20), attempted)
+    }
+
+    @Test fun artworkBatchSkipsRemovedCandidatesAndDoesNotPublishObsoleteProof() = runBlocking {
+        val ids = (1..5).map { "discogs:release:$it" }
+        val visible = ids.toMutableSet()
+        visible.remove(ids[0])
+        val reads = mutableListOf<String>()
+        val examined = mutableListOf<String>()
+        val published = mutableListOf<String>()
+        com.music.bitchord.ui.resolveDiscogsEditorialArtworkBatch(
+            ids, stillCurrent = { true },
+            eligible = { id ->
+                if (id == ids[1]) visible.remove(id)
+                true
+            },
+            resolve = { id ->
+                reads += id
+                if (id == ids[2]) {
+                    visible.remove(id)
+                    visible.remove(ids[3])
+                }
+                com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork(
+                    id.substringAfterLast(':').toLong(), "itunes:br:album:1",
+                    "https://example.test/art", "https://example.test/product",
+                )
+            },
+            onExamined = { examined += it },
+            stillNeeded = { it in visible },
+            onVerified = { id, _ -> published += id },
+        )
+        assertEquals(listOf(ids[1], ids[2], ids[4]), examined)
+        assertEquals(listOf(ids[2], ids[4]), reads)
+        assertEquals(listOf(ids[4]), published)
+    }
+
 }

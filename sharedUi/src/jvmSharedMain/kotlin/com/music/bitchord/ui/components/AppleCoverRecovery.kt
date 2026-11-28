@@ -39,6 +39,12 @@ fun appleVerifiedCdnCoverFallbackUrl(artworkUrl: String?): String? {
     return artworkUrl.removeSuffix(suffix.value) + originalSize
 }
 
+/** A load of another asset (or another previous route) cannot authorize a
+ * promotion. The only alternative is the exact same asset's 100px recovery. */
+fun appleVerifiedAssetLoadMatches(verifiedUrl: String?, loadedModel: Any?): Boolean =
+    !verifiedUrl.isNullOrBlank() && loadedModel is String &&
+        (loadedModel == verifiedUrl || loadedModel == appleVerifiedCdnCoverFallbackUrl(verifiedUrl))
+
 /**
  * Small, source-safe Coil recovery for public Apple covers. On a full-image
  * failure, retry the asset's iTunes 100px URL exactly once. A secondary

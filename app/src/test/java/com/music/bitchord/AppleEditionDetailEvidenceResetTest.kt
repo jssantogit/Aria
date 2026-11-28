@@ -61,4 +61,26 @@ class AppleEditionDetailEvidenceResetTest {
         assertEquals(AppleEditorialReleaseCategory.UNCLASSIFIED, reset.album.category)
         assertNull(reset.discogsAttributionUrl)
     }
+
+    @Test fun newEvidencePreservesConcurrentNativeCoverAndRelatedReleases() {
+        val baseline = native()
+        val current = baseline.copy(
+            album = baseline.album.copy(artworkUri = "https://is1-ssl.mzstatic.com/verified-1024.jpg"),
+            relatedAlbums = listOf(native("itunes:br:album:502").album),
+        )
+        val refined = baseline.copy(
+            album = baseline.album.copy(category = AppleEditorialReleaseCategory.EP),
+            discogsAttributionUrl = "https://www.discogs.com/release/45",
+            discogsAttributionText = "Discogs",
+        )
+        val result = com.music.bitchord.ui.appleEditionDetailWithExternalEvidence(current, refined)
+        assertEquals(current.relatedAlbums, result.relatedAlbums)
+        assertEquals(current.album.artworkUri, result.album.artworkUri)
+        assertEquals(current.tracks, result.tracks)
+        assertEquals(refined.album.category, result.album.category)
+        assertEquals(refined.discogsAttributionUrl, result.discogsAttributionUrl)
+        assertEquals(current, com.music.bitchord.ui.appleEditionDetailWithExternalEvidence(
+            current, native("itunes:br:album:999"),
+        ))
+    }
 }

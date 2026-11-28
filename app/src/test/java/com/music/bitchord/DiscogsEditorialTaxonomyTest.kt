@@ -217,4 +217,21 @@ class DiscogsEditorialTaxonomyTest {
         assertNull(artistShelf.items.single().videoId)
     }
 
+    @Test fun moreShelfNeverRepeatsTheAlreadyVisibleDiscoveryOrTypedWorks() {
+        val input = (1L..18L).map { id ->
+            DiscogsEditorialCandidate(
+                id, 100L + id, "Work $id", "Artist $id", 2024,
+                if (id <= 14) listOf("Album") else listOf("CD"),
+            )
+        }
+        for (home in listOf(true, false)) {
+            val shelves = discogsEditorialShelves(input, home)
+            val visible = shelves.filter { it.title != "Mais para explorar" }
+                .flatMap { it.items }.mapNotNull { it.browseId }.toSet()
+            val more = shelves.single { it.title == "Mais para explorar" }.items
+            assertTrue(more.none { it.browseId in visible })
+            assertEquals(18, shelves.flatMap { it.items }.mapNotNull { it.browseId }.distinct().size)
+        }
+    }
+
 }

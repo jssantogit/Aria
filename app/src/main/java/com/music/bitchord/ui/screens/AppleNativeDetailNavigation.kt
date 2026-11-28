@@ -97,6 +97,94 @@ internal fun appleNativeShelfEntry(
 }
 
 /**
+ * One admission contract for the visible related-release rail and its tap.
+ * Conflicting observations of the same collection cannot create a dead card.
+ * Missing optional artwork may be complemented without changing identity.
+ */
+internal fun appleNativeRelatedAlbumEntries(
+    source: AppleEditorialAlbumDetailPage,
+): List<AppleEditorialSearchRow> {
+    val route = AppleCatalogBrowseRoute.parse(source.album.browseId)
+        ?.takeIf { it.kind == ItunesCatalogItemType.ALBUM } ?: return emptyList()
+    val artist = AppleCatalogBrowseRoute.parse(source.album.artistBrowseId)
+        ?.takeIf {
+            it.kind == ItunesCatalogItemType.ARTIST && it.storefront == route.storefront
+        } ?: return emptyList()
+    val artistId = "itunes:${artist.storefront}:artist:${artist.id}"
+    return source.relatedAlbums.groupBy { it.browseId }.values.mapNotNull { observations ->
+        val first = observations.first()
+        val candidateRoute = AppleCatalogBrowseRoute.parse(first.browseId)
+        if (candidateRoute?.kind != ItunesCatalogItemType.ALBUM ||
+            candidateRoute.storefront != route.storefront ||
+            first.browseId == source.album.browseId ||
+            first.title.isBlank() ||
+            observations.any {
+                appleNativeDetailRouteKey(AppleNativeDetailKind.ALBUM, null, it) == null ||
+                    (it.artistBrowseId != null && it.artistBrowseId != artistId)
+            }
+        ) return@mapNotNull null
+        val admitted = appleNativeShelfEntry(first.browseId, observations)
+            ?: return@mapNotNull null
+        // Choose a row with independently proven credit even if a duplicate
+        // without that optional field had more attractive artwork.
+        val credited = observations.filter { it.artistBrowseId == artistId }
+        if (admitted.artistBrowseId == artistId) admitted
+        else appleNativeShelfEntry(first.browseId, credited)
+    }.take(12)
+}
+
+/** Artist sections, recent release and navigation share one admitted catalog. */
+internal fun appleNativeArtistAlbumEntries(
+    source: AppleEditorialArtistDetailPage,
+): List<AppleEditorialSearchRow> {
+    val artistKey = appleNativeDetailRouteKey(
+        AppleNativeDetailKind.ARTIST, source.artist, null,
+    ) ?: return emptyList()
+    val route = AppleCatalogBrowseRoute.parse(artistKey) ?: return emptyList()
+    return source.albums.groupBy { it.browseId }.values.mapNotNull { observations ->
+        val first = observations.first()
+        val albumRoute = AppleCatalogBrowseRoute.parse(first.browseId)
+        if (albumRoute?.storefront != route.storefront ||
+            first.title.isBlank() ||
+            observations.any {
+                appleNativeDetailRouteKey(AppleNativeDetailKind.ALBUM, null, it) == null ||
+                    (it.artistBrowseId != null && it.artistBrowseId != artistKey) ||
+                    it.copy(artworkUri = null) != first.copy(artworkUri = null)
+            }
+        ) return@mapNotNull null
+        appleNativeShelfEntry(first.browseId, observations)
+    }
+}
+
+/** A failed page may not replace concurrently enriched artwork, tracks or relations. */
+internal fun appleArtistPagingFailureState(
+    current: UiState<AppleEditorialArtistDetailPage>?,
+    expectedBrowseId: String,
+): UiState<AppleEditorialArtistDetailPage>? {
+    val latest = (current as? UiState.Success)?.data ?: return current
+    if (latest.artist.browseId != expectedBrowseId) return current
+    return UiState.Success(latest.copy(loadingMore = false, pageError = true))
+}
+
+/** A retained artist and an open album may coexist for Back navigation.
+ * Only the visible route may nominate a related item. */
+internal fun appleNativeShelfEntryForRoute(
+    routeKey: String,
+    browseId: String?,
+    readAllowed: Boolean,
+    artist: AppleEditorialArtistDetailPage?,
+    album: AppleEditorialAlbumDetailPage?,
+): AppleEditorialSearchRow? {
+    if (!readAllowed) return null
+    val candidates = when {
+        artist?.artist?.browseId == routeKey -> appleNativeArtistAlbumEntries(artist)
+        album?.album?.browseId == routeKey -> appleNativeRelatedAlbumEntries(album)
+        else -> emptyList()
+    }
+    return appleNativeShelfEntry(browseId, candidates)
+}
+
+/**
  * Tapping a source result paints the SAME native DetailScreen immediately.
  * Network failure stays within its native artist/album shell; no extra page.
  */
@@ -151,5 +239,16 @@ internal fun appleNativeDetailDisplayAllowed(
         detail.verifiedArtistMbid == null &&
         detail.albumArtistBrowseId == null &&
         detail.albumArtistDisplayName == null &&
+        detail.featuredRelease == null &&
+        detail.notice == null &&
         detail.attribution == null
     )
+
+/** Removing optional portrait evidence must keep the native artist catalog. */
+internal fun appleArtistDetailWithoutExternalPortrait(
+    current: AppleEditorialArtistDetailPage,
+    selected: AppleEditorialSearchRow,
+): AppleEditorialArtistDetailPage {
+    if (current.artist.browseId != selected.browseId) return current
+    return current.copy(artist = current.artist.copy(artworkUri = selected.artworkUri))
+}

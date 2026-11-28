@@ -63,6 +63,10 @@ internal object DiscogsNativeReleaseSearchParsing {
         val page = (paging["page"] as? JsonPrimitive)?.intOrNull
         val pages = (paging["pages"] as? JsonPrimitive)?.intOrNull
         val rows = root["results"] as? JsonArray ?: return null
+        // A zero-page first response is a valid empty search, never an API error.
+        // A populated zero-page response or a zero-page continuation is invalid.
+        if (page == 1 && requestedPage == 1 && pages == 0 && rows.isEmpty())
+            return DiscogsNativeReleaseSearchPage(emptyList(), null, false)
         if (page != requestedPage || pages == null ||
             pages !in requestedPage..10_000 || rows.size > 20) return null
         val releases = rows.mapNotNull { rawRow ->

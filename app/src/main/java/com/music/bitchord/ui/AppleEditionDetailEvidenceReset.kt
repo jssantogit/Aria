@@ -30,3 +30,18 @@ internal fun appleEditionDetailWithoutExternalEvidence(
         appleStoreBadgeUrl = trusted?.appleStoreBadgeUrl ?: current.appleStoreBadgeUrl,
     )
 }
+
+/** External proof changes only edition classification and attribution.
+ * A concurrent source-owned cover/sibling update must survive. */
+internal fun appleEditionDetailWithExternalEvidence(
+    current: AppleEditorialAlbumDetailPage,
+    refined: AppleEditorialAlbumDetailPage,
+): AppleEditorialAlbumDetailPage {
+    if (current.album.browseId != refined.album.browseId) return current
+    return current.copy(
+        album = current.album.copy(category = refined.album.category),
+        discogsAttributionText = refined.discogsAttributionText,
+        discogsAttributionUrl = refined.discogsAttributionUrl,
+        discogsNonAffiliationNotice = refined.discogsNonAffiliationNotice,
+    )
+}

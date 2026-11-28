@@ -47,11 +47,19 @@ private fun discogsCoreArtistName(value: String): String =
  * The Discogs result order is the bounded fallback: a suffix (or lack of one)
  * does not establish popularity or the identity of a particular artist.
  */
+/** Keep all typed source observations until exact artist ID conflicts are settled. */
+fun discogsSearchVerifiedArtistObservations(
+    artists: List<DiscogsNativeArtistSearchRow>,
+): List<DiscogsNativeArtistSearchRow> =
+    artists.groupBy { it.artistId }.values.mapNotNull { observations ->
+        observations.distinct().singleOrNull()
+    }
+
 fun discogsSearchDistinctArtists(
     query: String,
     artists: List<DiscogsNativeArtistSearchRow>,
 ): List<DiscogsNativeArtistSearchRow> =
-    artists.asSequence()
+    discogsSearchVerifiedArtistObservations(artists).asSequence()
         .filter { discogsSearchArtistRank(query, it.name) != null }
         .distinctBy { discogsSearchFold(discogsArtistDisplayName(it.name)) }
         .toList()
@@ -115,20 +123,56 @@ fun discogsSearchReleaseRank(query: String, combinedTitle: String): Int? {
 }
 
 /**
+ * An explicit package suffix is a display-ranking hint, not a claim about
+ * format or identity. Ordinary titles (including words like "Live") are
+ * left alone; explicit edition queries retain their normal text relevance.
+ */
+private val discogsPackageSuffix = Regex(
+    """\s*[\(\[]\s*(?:weverse|photobook|photocard|jewel\s*case|digipack|platform|poca|nemo|kit\s+album)(?:\s+(?:version|ver\.?|edition|package))?\s*[\)\]]$""",
+    RegexOption.IGNORE_CASE,
+)
+
+private fun discogsPackageRank(query: String, combinedTitle: String): Int {
+    val title = discogsSearchReleaseDisplay(combinedTitle).title
+    val suffix = discogsPackageSuffix.find(title) ?: return 0
+    val q = discogsSearchFold(query)
+    val packageWords = discogsSearchFold(suffix.value)
+        .split(Regex("""[^\p{L}\p{N}]+"""))
+        .filter { it.isNotBlank() && it !in setOf("version", "ver", "edition", "package") }
+    val queryWords = q.split(Regex("""[^\p{L}\p{N}]+""")).toSet()
+    return if (packageWords.any { it in queryWords }) 0 else 1
+}
+
+/**
  * Search displays one representative Release per explicit positive Master ID.
  * Missing/conflicting Master evidence keeps the exact Release identity;
  * equal text alone is never evidence of an edition relationship.
- * Keep source order for equal relevance, including earlier loaded pages.
+ * Prefer unqualified titles over explicitly labelled packages at equal
+ * textual relevance; retain source order for the remaining ties.
  * Detail and edition selection still use the original Release ID.
  */
 fun discogsSearchDistinctReleases(
     query: String,
     releases: List<DiscogsNativeReleaseSearchRow>,
 ): List<DiscogsNativeReleaseSearchRow> =
-    releases.mapNotNull { row ->
+    releases.groupBy { it.releaseId }.values.mapNotNull { observations ->
+        val first = observations.first()
+        // A repeated Release on a later page is not a second identity.
+        // Do not silently choose the earlier conflicting title or Master.
+        if (observations.any { it.title != first.title }) return@mapNotNull null
+        val positiveMasters = observations.mapNotNull {
+            it.masterId?.takeIf { id -> id in 1..999_999_999_999L }
+        }.distinct()
+        val master = when (positiveMasters.size) {
+            0 -> first.masterId // Invalid hints still cannot form a grouping.
+            1 -> positiveMasters.single()
+            else -> null
+        }
+        first.copy(masterId = master)
+    }.mapNotNull { row ->
         discogsSearchReleaseRank(query, row.title)?.let { it to row }
-    }.distinctBy { it.second.releaseId }
-        .sortedBy { it.first }
+    }.sortedWith(compareBy<Pair<Int, DiscogsNativeReleaseSearchRow>> { it.first }
+        .thenBy { discogsPackageRank(query, it.second.title) })
         .distinctBy { (_, row) ->
             row.masterId?.takeIf { it in 1..999_999_999_999L }
                 ?.let { "master:$it" } ?: "release:${row.releaseId}"
@@ -193,4 +237,16 @@ fun discogsUnifiedNextPage(
         (discogsSearchArtistRank(query, it.name) ?: 99) <= 2
     }) return DiscogsUnifiedSearchNext.ARTISTS
     return null
+}
+
+/** Local expansion does not wait for a network continuation on another tab. */
+fun discogsUnifiedContinuationLoading(
+    hasUnshownRows: Boolean,
+    next: DiscogsUnifiedSearchNext?,
+    artistLoading: Boolean,
+    releaseLoading: Boolean,
+): Boolean = !hasUnshownRows && when (next) {
+    DiscogsUnifiedSearchNext.ARTISTS -> artistLoading
+    DiscogsUnifiedSearchNext.RELEASES -> releaseLoading
+    null -> false
 }

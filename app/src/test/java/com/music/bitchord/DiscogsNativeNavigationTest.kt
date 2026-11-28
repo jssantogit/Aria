@@ -156,4 +156,92 @@ class DiscogsNativeNavigationTest {
         assertNull(discogsNativeAttributionUrl(null))
     }
 
+
+    @Test fun staleReleaseFailureCannotTargetAnotherRoute() {
+        fun matches(route: DiscogsNativeRoute?, id: String?) =
+            com.music.bitchord.ui.discogsNativeDetailRequestMatches(
+                route, id, "discogs:release:500",
+            )
+        assertTrue(matches(DiscogsNativeRoute.RELEASE, "discogs:release:500"))
+        assertFalse(matches(DiscogsNativeRoute.RELEASE, "discogs:release:501"))
+        assertFalse(matches(DiscogsNativeRoute.ARTIST, "discogs:artist:500"))
+        assertFalse(matches(null, null))
+    }
+
+    @Test fun partialArtistCardsHaveTheSameVerifiedBackingAsSettledCards() {
+        val artist = DiscogsNativeArtistSearchRow(17L, "Artist")
+        val first = DiscogsNativeArtistRelease(
+            artistId = 17L, releaseId = 500L, masterId = null,
+            title = "First", year = 2024, formats = listOf("Album"),
+            tracklist = emptyList(),
+        )
+        val second = first.copy(releaseId = 501L, title = "Second")
+        val foreign = first.copy(releaseId = 502L, artistId = 18L)
+        val backing = com.music.bitchord.ui.discogsVerifiedArtistPageReleases(
+            artist, listOf(first, first, second, foreign),
+        )
+        val partial = discogsArtistPage(artist, backing, hasMore = true, incomplete = true)
+        val visible = partial.page.sections.flatMap { it.items }.map { it.browseId }
+        assertEquals(listOf(first.browseId, second.browseId), visible)
+        assertTrue(partial.hasMore)
+        visible.forEach { id -> assertEquals(1, backing.count { it.browseId == id }) }
+    }
+
+    @Test fun activePartialArtistWindowDoesNotConsumeNextScroll() {
+        val page = discogsArtistPage(
+            DiscogsNativeArtistSearchRow(17L, "Artist"),
+            emptyList(), hasMore = true, incomplete = true,
+        )
+        fun canContinue(candidate: com.music.bitchord.ui.DiscogsNativePage?, searching: Boolean = false) =
+            com.music.bitchord.ui.discogsNativeArtistCanContinue(candidate, searching)
+        assertFalse(canContinue(page.copy(loadingMore = true)))
+        assertTrue(canContinue(page))
+        assertFalse(canContinue(page, searching = true))
+        assertFalse(canContinue(page.copy(hasMore = false)))
+        assertFalse(canContinue(null))
+    }
+
+    @Test fun releaseNavigationRequiresCurrentVisibleCardAndRechecksDirectArtistCredit() {
+        val row = DiscogsNativeArtistSearchRow(17L, "Artist")
+        val release = DiscogsNativeArtistRelease(
+            artistId = 17L, releaseId = 500L, masterId = null,
+            title = "Edition", year = 2024, formats = listOf("Album"), tracklist = emptyList(),
+        )
+        val visible = discogsArtistPage(row, listOf(release), false, false)
+        assertTrue(com.music.bitchord.ui.discogsVisibleReleaseSelection(visible, release.browseId))
+        assertFalse(com.music.bitchord.ui.discogsVisibleReleaseSelection(visible, "discogs:release:501"))
+        val record = com.music.bitchord.data.catalog.metadata.discogs.DiscogsRecord(
+            link = com.music.bitchord.data.catalog.metadata.discogs.DiscogsLink(
+                com.music.bitchord.data.catalog.metadata.discogs.DiscogsKind.RELEASE, 500L),
+            title = "Edition", artistNames = listOf("Artist"), country = "Brazil", year = 2024,
+            labels = emptyList(), barcodes = emptyList(), formats = listOf("Album"),
+            tracklist = emptyList(), unofficial = false, masterId = 90L, artistIds = listOf(17L),
+        )
+        assertTrue(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 500L, expectedArtistId = 17L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 500L, expectedArtistId = 18L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record.copy(unofficial = true),
+            500L, expectedArtistId = 17L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 500L, expectedMasterId = 91L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 501L))
+        assertTrue(com.music.bitchord.ui.discogsDirectReleaseMatches(record.copy(unofficial = true), 500L))
+    }
+
+    @Test fun retainedDirectReleaseHistoryNeverRestartsTheSnapshotLifetime() {
+        fun reset(history: Boolean, search: Boolean) =
+            com.music.bitchord.ui.discogsMayResetSnapshotExpiry(history, search)
+        assertFalse(reset(true, false))
+        assertFalse(reset(true, true))
+        assertFalse(reset(false, true))
+        assertTrue(reset(false, false))
+    }
+
+    @Test fun emptySettledSearchPageCanRetryFailedContinuation() {
+        fun retry(page: Int, state: UiState<*>?) =
+            com.music.bitchord.ui.discogsSearchCanRetrySettledPage(page, state)
+        assertTrue(retry(1, UiState.Success(emptyList<String>())))
+        assertTrue(retry(2, UiState.Success(listOf("existing"))))
+        assertFalse(retry(0, UiState.Loading))
+        assertFalse(retry(1, UiState.Error("disabled")))
+        assertFalse(retry(3, UiState.Success(emptyList<String>())))
+    }
 }

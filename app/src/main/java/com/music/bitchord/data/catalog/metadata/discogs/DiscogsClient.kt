@@ -68,7 +68,7 @@ internal class KtorDiscogsTransport(
 ) : DiscogsTransport {
     // Query parameters are a single hardcoded constant, never provider input.
     private val allowedPath = Regex(
-        """^(?:releases|masters)/[1-9][0-9]{0,11}$|^masters/[1-9][0-9]{0,11}/versions\?page=1&per_page=8$""",
+        """^(?:releases|masters)/[1-9][0-9]{0,11}$|^masters/[1-9][0-9]{0,11}/versions\?page=1&per_page=8(?:&format=File)?$""",
     )
 
     override val supportsTokenAuthorization: Boolean get() = true
@@ -476,7 +476,17 @@ internal class DiscogsClient(
      * physical versions: reveal only a bounded, explicitly non-exhaustive
      * first page and re-verify each candidate Release before painting it.
      */
-    suspend fun fetchMasterVersionPreview(id: Long): DiscogsMasterVersionPreviewResult {
+    suspend fun fetchMasterVersionPreview(id: Long): DiscogsMasterVersionPreviewResult =
+        fetchMasterVersionPreview(id, digitalOnly = false)
+
+    /** Filtered index is only a candidate nomination; hydrate each Release
+     * and verify its exact Master and digital format before any Apple lookup. */
+    suspend fun fetchDigitalMasterVersionPreview(id: Long): DiscogsMasterVersionPreviewResult =
+        fetchMasterVersionPreview(id, digitalOnly = true)
+
+    private suspend fun fetchMasterVersionPreview(
+        id: Long, digitalOnly: Boolean,
+    ): DiscogsMasterVersionPreviewResult {
         if (!enabled) return DiscogsMasterVersionPreviewResult.Disabled
         if (id !in 1..999_999_999_999L)
             return DiscogsMasterVersionPreviewResult.Malformed
@@ -490,7 +500,9 @@ internal class DiscogsClient(
                     limiter.runHttpLimited(authenticated = authenticated) { block() }
                 },
                 networkCall = {
-                    sourceGet("masters/$id/versions?page=1&per_page=8", token)
+                    val path = "masters/$id/versions?page=1&per_page=8" +
+                        if (digitalOnly) "&format=File" else ""
+                    sourceGet(path, token)
                 },
             )
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -585,10 +597,12 @@ internal fun discogsMasterVersionPreviewPage(
     val pages = (paging["pages"] as? JsonPrimitive)?.intOrNull
     val perPage = (paging["per_page"] as? JsonPrimitive)?.intOrNull
     val items = (paging["items"] as? JsonPrimitive)?.intOrNull
-    if (page != 1 || perPage != 8 || pages == null || pages !in 1..100_000 ||
+    if (page != 1 || perPage != 8 || pages == null || pages !in 0..100_000 ||
         items == null || items !in 0..10_000_000
     ) return null
     val rows = root["versions"] as? JsonArray ?: return null
+    if (pages == 0) return if (items == 0 && rows.isEmpty())
+        DiscogsMasterVersionPreviewPage(emptyList(), false) else null
     if (rows.size > 8 || rows.size > items ||
         pages == 1 && rows.size != items || items > 0 && rows.isEmpty()
     ) return null

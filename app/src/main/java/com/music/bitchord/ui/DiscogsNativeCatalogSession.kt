@@ -15,6 +15,7 @@ import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.discogsSearchArtistRank
 import com.music.bitchord.ui.screens.discogsSearchDistinctArtists
+import com.music.bitchord.ui.screens.discogsSearchVerifiedArtistObservations
 import com.music.bitchord.ui.screens.discogsArtistDisplayName
 import com.music.bitchord.ui.screens.discogsSearchDistinctReleases
 import com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage
@@ -25,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,6 +66,48 @@ internal fun discogsNativeDetailRouteKey(
     return "$prefix$id"
 }
 
+
+/** Source-scoped, serial and bounded: duplicates or foreign IDs must not
+ * spend another request. Failures are local to the card; cancellation is not. */
+internal suspend fun resolveDiscogsEditorialArtworkBatch(
+    browseIds: List<String>,
+    stillCurrent: () -> Boolean,
+    resolve: suspend (String) -> com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork?,
+    onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+    eligible: suspend (String) -> Boolean = { true },
+    onAttempt: (String) -> Unit = {},
+    maximumAttempts: Int = 16,
+    onExamined: (String) -> Unit = {},
+    stillNeeded: (String) -> Boolean = { true },
+) {
+    val limit = maximumAttempts.coerceIn(0, 16)
+    var attempts = 0
+    val candidates = browseIds.asSequence()
+        .mapNotNull { discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, it) }
+        .distinct()
+    for (id in candidates) {
+        if (!stillCurrent() || attempts >= limit) return
+        if (!stillNeeded(id)) continue
+        onExamined(id)
+        if (!eligible(id)) continue
+        if (!stillCurrent()) return
+        if (!stillNeeded(id)) continue
+        attempts++
+        onAttempt(id)
+        val proof = try {
+            resolve(id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        if (!stillCurrent()) return
+        if (stillNeeded(id) && proof != null && id == "discogs:release:${proof.discogsReleaseId}") {
+            onVerified(id, proof)
+        }
+    }
+}
+
 internal data class DiscogsNativePage(
     val page: DetailPage,
     val tracks: List<NativeMetadataTrack> = emptyList(),
@@ -77,7 +121,15 @@ internal data class DiscogsNativePage(
     val albumArtistDisplayName: String? = null,
     /** Source-owned Master context, never an inferred MusicBrainz group. */
     val versionMasterId: Long? = null,
+    /** Volatile exact Release evidence, only for independent artwork proof. */
+    val artworkEvidence: DiscogsRecord? = null,
+    /** A visible partial window is navigable, but cannot start a second pager. */
+    val loadingMore: Boolean = false,
 )
+
+/** The active window must settle before the next deliberate scroll can page. */
+internal fun discogsNativeArtistCanContinue(page: DiscogsNativePage?, searching: Boolean): Boolean =
+    page?.page?.type == BrowseType.ARTIST && page.hasMore && !page.loadingMore && !searching
 
 /** A version link is accepted only from a hydrated, explicitly verified
  * Master-specific carousel. Its source ID cannot be inferred from a title. */
@@ -128,6 +180,7 @@ internal fun discogsNativePageDisplayAllowed(
         page.albumArtistBrowseId == null &&
         page.albumArtistDisplayName == null &&
         page.versionMasterId == null &&
+        page.artworkEvidence == null &&
         page.page.thumbnailUrl == null
     )
 
@@ -177,6 +230,126 @@ internal class DiscogsNativeCatalogSession(
         )
     }
 
+    private val editorialArtworkMemo = DiscogsEditorialArtworkMemo()
+
+    private val editorialArtworkResolver by lazy {
+        com.music.bitchord.data.catalog.metadata.DiscogsAppleArtworkResolver()
+    }
+
+    private val editorialArtworkDimensions by lazy {
+        com.music.bitchord.data.catalog.metadata.AppleHighResolutionArtwork(
+            persistence = com.music.bitchord.data.catalog.metadata
+                .AndroidAppleArtworkProbePersistence(appContext),
+        )
+    }
+
+    /** Optional artwork for a card whose exact release was already verified
+     * by this session's editorial adapter. No extra Discogs hydration. */
+    internal suspend fun resolveEditorialArtwork(
+        browseId: String,
+        recordOutcome: (DiscogsArtworkOutcome) -> Unit = {},
+    ): com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+        fun reject(reason: DiscogsArtworkOutcome): com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork? {
+            recordOutcome(reason)
+            return null
+        }
+        val exact = discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId)
+            ?: return reject(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        val releaseId = exact.substringAfterLast(':').toLongOrNull()
+            ?: return reject(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        val authorization = editorialLease() ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        val artGate = ProviderRuntime.gateOrNull() ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        val artTicket = artGate.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+            ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val evidence = editorialClient.cachedArtworkEvidenceForRelease(releaseId, recordOutcome)
+                ?: return@withContext null
+            fun authorized() = authorization.isCurrent() &&
+                ProviderRuntime.gateOrNull() === artGate && artGate.accept(artTicket)
+            fun currentEvidence() = editorialClient.cachedArtworkEvidenceForRelease(releaseId) == evidence
+            if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            editorialArtworkMemo.read(evidence)?.let { cached ->
+                if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+                if (!currentEvidence()) return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
+                recordOutcome(DiscogsArtworkOutcome.VERIFIED_REUSED)
+                return@withContext cached
+            }
+            // A completed lookup may legitimately return null; distinguish it
+            // from cancellation by this local timeout without swallowing outer cancellation.
+            var rejection = DiscogsArtworkOutcome.NO_EXACT_APPLE_PRODUCT
+            val completed = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                Unit to editorialArtworkResolver.resolve(evidence, onRejected = { rejection = it })
+            } ?: return@withContext reject(DiscogsArtworkOutcome.LOOKUP_TIMEOUT)
+            if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            if (!currentEvidence()) return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
+            val proof = completed.second ?: return@withContext reject(rejection)
+            val upgraded = kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                editorialArtworkDimensions.upgrade(proof.artworkUrl, 600)
+            }
+            if (!authorized()) return@withContext reject(DiscogsArtworkOutcome.POLICY_DENIED)
+            if (!currentEvidence() || proof.discogsReleaseId != releaseId)
+                return@withContext reject(DiscogsArtworkOutcome.EVIDENCE_CHANGED)
+            val selected = upgraded ?: proof.artworkUrl
+            if (com.music.bitchord.ui.screens.appleProminentArtworkOrNull(selected) == null)
+                return@withContext reject(DiscogsArtworkOutcome.NO_PROMINENT_IMAGE)
+            val promoted = proof.copy(artworkUrl = selected)
+            editorialArtworkMemo.remember(evidence, promoted, ::authorized)
+            recordOutcome(DiscogsArtworkOutcome.VERIFIED_PROMINENT)
+            promoted
+        }
+    }
+
+    /** One bounded progressive batch; the report measures examinations,
+     * not distinct catalog size or actual successful Coil renders. */
+    internal suspend fun resolveEditorialArtworkBatch(
+        browseIds: List<String>,
+        stillCurrent: () -> Boolean,
+        onVerified: (String, com.music.bitchord.data.catalog.metadata.DiscogsVerifiedAppleArtwork) -> Unit,
+        onAttempt: (String) -> Unit = {},
+        maximumAttempts: Int = 16,
+        onExamined: (String) -> Unit = {},
+        stillNeeded: (String) -> Boolean = { true },
+    ) {
+        val report = DiscogsArtworkBatchReport()
+        val started = System.nanoTime()
+        try {
+            resolveDiscogsEditorialArtworkBatch(
+                browseIds, stillCurrent,
+                resolve = { id ->
+                    try {
+                        resolveEditorialArtwork(id, report::record)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        report.record(DiscogsArtworkOutcome.ERROR)
+                        null
+                    }
+                },
+                onVerified = onVerified,
+                eligible = { id ->
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        try {
+                            id.substringAfterLast(':').toLongOrNull()?.let {
+                                editorialClient.cachedArtworkEvidenceForRelease(it, report::record) != null
+                            } == true
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            report.record(DiscogsArtworkOutcome.ERROR)
+                            false
+                        }
+                    }
+                },
+                onAttempt = onAttempt,
+                maximumAttempts = maximumAttempts,
+                onExamined = onExamined,
+                stillNeeded = stillNeeded,
+            )
+        } finally {
+            report.emit(System.nanoTime() - started)
+        }
+    }
+
     private val _homeEditorial = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val homeEditorial: StateFlow<UiState<List<HomeShelf>>> = _homeEditorial.asStateFlow()
     private val _genreEditorial =
@@ -198,8 +371,20 @@ internal class DiscogsNativeCatalogSession(
     private var genreEditorialTag: String? = null
     private var homeEditorialExpiryJob: Job? = null
     private var genreEditorialExpiryJob: Job? = null
-    private var homeEditorialExpiryEpoch = 0L
-    private var genreEditorialExpiryEpoch = 0L
+    private val _homeEditorialGeneration = MutableStateFlow(0L)
+    val homeEditorialGeneration: StateFlow<Long> = _homeEditorialGeneration.asStateFlow()
+    private val _genreEditorialGeneration = MutableStateFlow(0L)
+    val genreEditorialGeneration: StateFlow<Long> = _genreEditorialGeneration.asStateFlow()
+
+    // Absolute snapshot identity, not the separate per-pagination epoch.
+    // Even if Loading is conflated and identical IDs reappear, a new
+    // source refresh invalidates the old composition's proof projection.
+    private var homeEditorialExpiryEpoch: Long
+        get() = _homeEditorialGeneration.value
+        set(value) { _homeEditorialGeneration.value = value }
+    private var genreEditorialExpiryEpoch: Long
+        get() = _genreEditorialGeneration.value
+        set(value) { _genreEditorialGeneration.value = value }
 
     // A two-hour reuse window is not an indefinite right to display API
     // Content. Even a Home or Explore page left open overnight purges its
@@ -210,6 +395,8 @@ internal class DiscogsNativeCatalogSession(
         homeEditorialExpiryJob = scope.launch {
             delay(5L * 60L * 60L * 1_000L)
             if (homeEditorialExpiryEpoch == epoch) {
+                ++homeEditorialExpiryEpoch
+                editorialArtworkMemo.clear()
                 homeEditorialJob?.cancel()
                 homePagingJob?.cancel()
                 ++homePagingEpoch
@@ -226,6 +413,8 @@ internal class DiscogsNativeCatalogSession(
         genreEditorialExpiryJob = scope.launch {
             delay(5L * 60L * 60L * 1_000L)
             if (genreEditorialExpiryEpoch == epoch) {
+                ++genreEditorialExpiryEpoch
+                editorialArtworkMemo.clear()
                 genreEditorialJob?.cancel()
                 genrePagingJob?.cancel()
                 ++genrePagingEpoch
@@ -246,6 +435,10 @@ internal class DiscogsNativeCatalogSession(
     val releaseSearchHasMore: StateFlow<Boolean> = _releaseSearchHasMore.asStateFlow()
     private val _searchHasMore = MutableStateFlow(false)
     val searchHasMore: StateFlow<Boolean> = _searchHasMore.asStateFlow()
+    private val _searchLoadingMore = MutableStateFlow(false)
+    val searchLoadingMore: StateFlow<Boolean> = _searchLoadingMore.asStateFlow()
+    private val _releaseSearchLoadingMore = MutableStateFlow(false)
+    val releaseSearchLoadingMore: StateFlow<Boolean> = _releaseSearchLoadingMore.asStateFlow()
     private val _route = MutableStateFlow<DiscogsNativeRoute?>(null)
     val route: StateFlow<DiscogsNativeRoute?> = _route.asStateFlow()
     // The root navigator uses the same exact browseId route key as a
@@ -257,6 +450,11 @@ internal class DiscogsNativeCatalogSession(
     val detail: StateFlow<UiState<DiscogsNativePage>?> = _detail.asStateFlow()
 
     private var query = ""
+    @Volatile private var searchEpoch = 0L
+    // At most three source pages of twenty typed rows. Keep the raw bounded
+    // observations rather than the deduplicated display representatives.
+    private var artistSearchObservations = mutableListOf<DiscogsNativeArtistSearchRow>()
+    private var releaseSearchObservations = mutableListOf<DiscogsNativeReleaseSearchRow>()
     /** Never let a still-open page display stale Discogs API Content beyond
      * the provider's six-hour maximum. This timer is not extended by paging. */
     private var expirationJob: Job? = null
@@ -351,12 +549,14 @@ internal class DiscogsNativeCatalogSession(
             val verified = mutableListOf<DiscogsEditorialCandidate>()
             var failure: String? = null
             val landingCursors = mutableMapOf<DiscogsEditorialQuery, DiscogsEditorialCursor>()
+            val acquisition = com.music.bitchord.data.catalog.metadata.discogs.DiscogsLandingBudget()
             // Diverse verified catalog slices instead of only Pop and Rock.
             // Publish incrementally and stop at the bounded Home target; no
             // implied chart order, genre-wide completeness or fabricated art.
             for ((index, tag) in discogsHomeDiscoveryTags.withIndex()) {
                 val distinctMasters = verified.distinctBy { it.masterId }.size
-                if (distinctMasters >= 10) break
+                val later = discogsHomeDiscoveryTags.size - index - 1
+                if (distinctMasters >= 10 || !acquisition.canStart(later)) break
                 val request = discogsEditorialQueriesForTag(tag).firstOrNull() ?: continue
                 // Reserve one verified slot for each later genre, so success
                 // in Pop/Rock cannot prevent K-pop, Metal, R&B and Folk
@@ -372,6 +572,7 @@ internal class DiscogsNativeCatalogSession(
                         request, maxReleases = budget,
                         knownMasterIds = verified.map { it.masterId }.toSet(),
                         onCheckpoint = { landingCursors[request] = it },
+                        landingBudget = acquisition, laterPredicates = later,
                         onVerified = { candidate ->
                             if (lease.isCurrent() && homePagingEpoch == editorialEpoch &&
                                 candidate.masterId !in verified.map { it.masterId } &&
@@ -390,12 +591,18 @@ internal class DiscogsNativeCatalogSession(
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsEditorialResult.Unavailable }
                 if (!lease.isCurrent() || homePagingEpoch != editorialEpoch) return@launch
-                when (result) {
-                    is DiscogsEditorialResult.Verified -> {
-                        verified += result.releases
-                        val shelves = discogsEditorialShelves(verified, home = true)
-                        if (shelves.isNotEmpty()) _homeEditorial.value = UiState.Success(shelves)
-                    }
+                if (result is DiscogsEditorialResult.Verified) {
+                    verified += result.releases
+                    val shelves = discogsEditorialShelves(verified, home = true)
+                    if (shelves.isNotEmpty()) _homeEditorial.value = UiState.Success(shelves)
+                }
+                // A partially successful landing still has a terminal reason.
+                // Preserve the cards, but do not enter another predicate after
+                // a throttle or authorization failure.
+                val interruption = if (result is DiscogsEditorialResult.Verified)
+                    result.interruption else result
+                when (interruption) {
+                    null -> Unit
                     DiscogsEditorialResult.Unauthorized -> {
                         failure = "Configure o token do Discogs em Conexões."
                         break
@@ -600,6 +807,10 @@ internal class DiscogsNativeCatalogSession(
 
     /** Removing consent closes even previously painted provider-owned results. */
     fun purgeRevoked() {
+        if (ProviderRuntime.gateOrNull()?.open(
+                ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES,
+            ) == null || editorialLease() == null
+        ) editorialArtworkMemo.clear()
         if (editorialLease() == null) {
             homeEditorialJob?.cancel()
             homePagingJob?.cancel()
@@ -623,6 +834,9 @@ internal class DiscogsNativeCatalogSession(
     }
 
     fun clearSearch() {
+        ++searchEpoch
+        artistSearchObservations = mutableListOf()
+        releaseSearchObservations = mutableListOf()
         searchJob?.cancel()
         releaseSearchJob?.cancel()
         searchJob = null
@@ -632,6 +846,8 @@ internal class DiscogsNativeCatalogSession(
         releaseSearchPage = 0
         _searchHasMore.value = false
         _releaseSearchHasMore.value = false
+        _searchLoadingMore.value = false
+        _releaseSearchLoadingMore.value = false
         _artists.value = null
         _releasesSearch.value = null
     }
@@ -652,6 +868,8 @@ internal class DiscogsNativeCatalogSession(
         if (query.isBlank() || searchJob?.isActive == true) return
         if (searchPage != 0 && !_searchHasMore.value) return
         val subject = query
+        val epoch = searchEpoch
+        val observations = artistSearchObservations
         val firstPage = searchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
@@ -661,18 +879,19 @@ internal class DiscogsNativeCatalogSession(
             )
             return
         }
-        val job = scope.launch(Dispatchers.IO) {
+        _searchLoadingMore.value = true
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            try {
             var currentPage = firstPage
             while (true) {
-                val result = try { searchClient.search(subject, currentPage) }
+                val result = try { withContext(Dispatchers.IO) { searchClient.search(subject, currentPage) } }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsNativeArtistSearchResult.Unavailable }
-                if (query != subject || !authorization.isCurrent()) return@launch
+                if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
                 when (result) {
                     is DiscogsNativeArtistSearchResult.Success -> {
                         val rows = result.page.artists.asSequence()
                             .map { DiscogsNativeArtistSearchRow(it.artistId, it.name) }
-                            .filter { discogsSearchArtistRank(subject, it.name) != null }
                             .toList()
                         val previous = (_artists.value as? UiState.Success)?.data.orEmpty()
                         searchPage = currentPage
@@ -683,22 +902,32 @@ internal class DiscogsNativeCatalogSession(
                         // while a click retains the selected exact source ID.
                         // We never claim that two Discogs IDs are the same
                         // identity outside this search presentation.
-                        val combined = (previous + rows).distinctBy { it.artistId }
+                        observations += rows
+                        val combined = discogsSearchVerifiedArtistObservations(observations)
+                            .filter { discogsSearchArtistRank(subject, it.name) != null }
                         // Do not reorder already published artist cards on continuation.
                         // Corroborate homonyms only on the first landing and only
                         // while both source capabilities remain authorized.
                         val editorialLease = if (currentPage == 1 && previous.isEmpty())
                             lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) else null
                         val resolved = if (editorialLease != null) {
-                            discogsResolveArtistSearchHomonyms(
-                                query = subject, rows = combined,
-                                stillCurrent = { query == subject && authorization.isCurrent() &&
-                                    editorialLease.isCurrent() },
-                                searchReleases = { releaseSearchClient.search(subject) },
-                                readRelease = editionClient::fetchRelease,
-                            ).rows.takeIf { editorialLease.isCurrent() } ?: combined
+                            withContext(Dispatchers.IO) {
+                                discogsResolveArtistSearchHomonyms(
+                                    query = subject, rows = combined,
+                                    stillCurrent = { searchEpoch == epoch && query == subject &&
+                                        authorization.isCurrent() && editorialLease.isCurrent() },
+                                    searchReleases = { releaseSearchClient.search(subject) },
+                                    readRelease = editionClient::fetchRelease,
+                                ).rows
+                            }.takeIf { editorialLease.isCurrent() } ?: combined
                         } else combined
-                        if (query != subject || !authorization.isCurrent()) return@launch
+                        if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
+                        // Preserve first-page evidence ordering without throwing
+                        // away hidden homonyms or conflicting later observations.
+                        if (currentPage == 1) {
+                            val ordering = resolved.mapIndexed { index, row -> row.artistId to index }.toMap()
+                            observations.sortBy { ordering[it.artistId] ?: Int.MAX_VALUE }
+                        }
                         val candidates = discogsSearchDistinctArtists(subject, resolved)
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2
@@ -714,22 +943,35 @@ internal class DiscogsNativeCatalogSession(
                                 fresh, result.page.nextPage,
                             )
                         ) {
+                            // Even a valid empty page is a settled snapshot.
+                            // Keep its retry affordance if the next read fails.
+                            _artists.value = UiState.Success(projected)
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
                         _artists.value = UiState.Success(projected)
                     }
-                    DiscogsNativeArtistSearchResult.AuthenticationRequired ->
+                    DiscogsNativeArtistSearchResult.AuthenticationRequired -> {
+                        _searchHasMore.value = false
                         _artists.value = UiState.Error("discogs_token_required")
-                    DiscogsNativeArtistSearchResult.Disabled ->
+                    }
+                    DiscogsNativeArtistSearchResult.Disabled -> {
+                        _searchHasMore.value = false
                         _artists.value = UiState.Error("discogs_search_disabled")
+                    }
                     else -> {
-                        if (currentPage > 1 && _artists.value is UiState.Success)
+                        if (discogsSearchCanRetrySettledPage(searchPage, _artists.value)) {
                             _searchHasMore.value = true
-                        else _artists.value = UiState.Error("discogs_catalog_unavailable")
+                        } else {
+                            _searchHasMore.value = false
+                            _artists.value = UiState.Error("discogs_catalog_unavailable")
+                        }
                     }
                 }
                 break
+            }
+            } finally {
+                if (searchEpoch == epoch) _searchLoadingMore.value = false
             }
         }
         searchJob = job
@@ -741,6 +983,8 @@ internal class DiscogsNativeCatalogSession(
         if (query.isBlank() || releaseSearchJob?.isActive == true) return
         if (releaseSearchPage != 0 && !_releaseSearchHasMore.value) return
         val subject = query
+        val epoch = searchEpoch
+        val observations = releaseSearchObservations
         val firstPage = releaseSearchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
@@ -750,13 +994,15 @@ internal class DiscogsNativeCatalogSession(
             )
             return
         }
-        val job = scope.launch(Dispatchers.IO) {
+        _releaseSearchLoadingMore.value = true
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            try {
             var currentPage = firstPage
             while (true) {
-                val result = try { releaseSearchClient.search(subject, currentPage) }
+                val result = try { withContext(Dispatchers.IO) { releaseSearchClient.search(subject, currentPage) } }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsNativeReleaseSearchResult.Unavailable }
-                if (query != subject || !authorization.isCurrent()) return@launch
+                if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
                 when (result) {
                     is DiscogsNativeReleaseSearchResult.Success -> {
                         val rows = result.page.releases.map {
@@ -764,7 +1010,8 @@ internal class DiscogsNativeCatalogSession(
                         }
                         val previous =
                             (_releasesSearch.value as? UiState.Success)?.data.orEmpty()
-                        val merged = discogsSearchDistinctReleases(subject, previous + rows)
+                        observations += rows
+                        val merged = discogsSearchDistinctReleases(subject, observations)
                         releaseSearchPage = currentPage
                         _releaseSearchHasMore.value = result.page.nextPage != null
                         if (discogsSearchNeedsNextRelevantPage(
@@ -773,24 +1020,33 @@ internal class DiscogsNativeCatalogSession(
                         ) {
                             // Publish a better-ranked representative even when this
                             // page contributes no new Master/Release identity.
-                            if (merged != previous) _releasesSearch.value = UiState.Success(merged)
+                            _releasesSearch.value = UiState.Success(merged)
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
                         _releasesSearch.value = UiState.Success(merged)
                     }
-                    DiscogsNativeReleaseSearchResult.AuthenticationRequired ->
+                    DiscogsNativeReleaseSearchResult.AuthenticationRequired -> {
+                        _releaseSearchHasMore.value = false
                         _releasesSearch.value = UiState.Error("discogs_token_required")
-                    DiscogsNativeReleaseSearchResult.Disabled ->
+                    }
+                    DiscogsNativeReleaseSearchResult.Disabled -> {
+                        _releaseSearchHasMore.value = false
                         _releasesSearch.value = UiState.Error("discogs_search_disabled")
+                    }
                     else -> {
-                        if (currentPage > 1 && _releasesSearch.value is UiState.Success)
+                        if (discogsSearchCanRetrySettledPage(releaseSearchPage, _releasesSearch.value)) {
                             _releaseSearchHasMore.value = true
-                        else _releasesSearch.value =
-                            UiState.Error("discogs_catalog_unavailable")
+                        } else {
+                            _releaseSearchHasMore.value = false
+                            _releasesSearch.value = UiState.Error("discogs_catalog_unavailable")
+                        }
                     }
                 }
                 break
+            }
+            } finally {
+                if (searchEpoch == epoch) _releaseSearchLoadingMore.value = false
             }
         }
         releaseSearchJob = job
@@ -810,6 +1066,7 @@ internal class DiscogsNativeCatalogSession(
         selected: DiscogsNativeReleaseSearchRow,
         retainDirectParent: Boolean = false,
         expectedMasterId: Long? = null,
+        expectedArtistId: Long? = null,
     ) {
         if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
         val previous = if (retainDirectParent && artist == null &&
@@ -819,7 +1076,9 @@ internal class DiscogsNativeCatalogSession(
         } else null
         val history = if (previous != null)
             (directReleaseHistory + previous).takeLast(8) else emptyList()
-        backAll()
+        // Retained parent pages share the original absolute expiry deadline,
+        // even when the first album was opened from Home rather than Search.
+        clearDetail(retainingHistory = history.isNotEmpty())
         ensureDetailSnapshotExpiry()
         directReleaseHistory = history
         _browseId.value = selected.browseId
@@ -832,18 +1091,20 @@ internal class DiscogsNativeCatalogSession(
             failDetail("Ative a Discografia do Discogs em Provedores.")
             return
         }
-        val job = scope.launch(Dispatchers.IO) {
-            val response = try { editionClient.fetchRelease(selected.releaseId) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            val response = try {
+                withContext(Dispatchers.IO) { editionClient.fetchRelease(selected.releaseId) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (!authorization.isCurrent() || artist != null ||
-                _route.value != DiscogsNativeRoute.RELEASE) return@launch
+                !discogsNativeDetailRequestMatches(
+                    _route.value, _browseId.value, selected.browseId,
+                )) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
-            if (record == null || record.link.kind != DiscogsKind.RELEASE ||
-                record.link.id != selected.releaseId ||
-                (expectedMasterId != null &&
-                    (record.masterId != expectedMasterId || record.unofficial)) ||
-                _browseId.value != selected.browseId
+            if (record == null || !discogsDirectReleaseMatches(
+                    record, selected.releaseId, expectedMasterId, expectedArtistId,
+                )
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
@@ -853,7 +1114,7 @@ internal class DiscogsNativeCatalogSession(
             val credit = record.artistNames.joinToString(", ")
             val initial = discogsReleasePage(credit, record)
             _detail.value = UiState.Success(initial)
-            val variants = sampleVerifiedVersions(record)
+            val variants = withContext(Dispatchers.IO) { sampleVerifiedVersions(record) }
             if (!authorization.isCurrent() || artist != null ||
                 _route.value != DiscogsNativeRoute.RELEASE ||
                 _browseId.value != selected.browseId
@@ -870,7 +1131,9 @@ internal class DiscogsNativeCatalogSession(
                 ?.takeIf { !record.unofficial } ?: return@launch
             // Only one bounded, independently verified Discogs Artist page.
             // Do not re-identify a release through a similar artist name.
-            val related = try { artistClient.load(exactArtistId, 1) }
+            val related = try {
+                withContext(Dispatchers.IO) { artistClient.load(exactArtistId, 1) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsNativeArtistLoad.Unavailable }
             if (!authorization.isCurrent() || artist != null ||
@@ -939,21 +1202,29 @@ internal class DiscogsNativeCatalogSession(
             return
         }
         val page = artistPage + 1
-        val job = scope.launch(Dispatchers.IO) {
+        cachedArtistPage?.let { _detail.value = UiState.Success(it.copy(loadingMore = true)) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
             val window = try {
-                artistClient.loadWindow(current.artistId, page, releases) { verified ->
-                    if (artist == current && authorization.isCurrent() &&
-                        _route.value == DiscogsNativeRoute.ARTIST &&
-                        _browseId.value == current.browseId
-                    ) {
-                        val partial = discogsMergeArtistPageReleases(
-                            releases + verified,
-                        )
-                        val snapshot = discogsArtistPage(
-                            current, partial, hasMore = false, incomplete = true,
-                        )
-                        cachedArtistPage = snapshot
-                        _detail.value = UiState.Success(snapshot)
+                val known = releases
+                withContext(Dispatchers.IO) {
+                    artistClient.loadWindow(current.artistId, page, known) { verified ->
+                        withContext(Dispatchers.Main.immediate) {
+                            if (artist == current && authorization.isCurrent() &&
+                                _route.value == DiscogsNativeRoute.ARTIST &&
+                                _browseId.value == current.browseId
+                            ) {
+                                // Publish the verified rows and their navigation
+                                // backing together. An interrupted window remains
+                                // retryable at the same source page.
+                                releases = discogsVerifiedArtistPageReleases(current, releases + verified)
+                                artistHasMore = true
+                                val snapshot = discogsArtistPage(
+                                    current, releases, hasMore = true, incomplete = true,
+                                )
+                                cachedArtistPage = snapshot
+                                _detail.value = UiState.Success(snapshot.copy(loadingMore = true))
+                            }
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -965,7 +1236,7 @@ internal class DiscogsNativeCatalogSession(
                 _browseId.value != current.browseId) return@launch
             when (val response = window.result) {
                 is DiscogsNativeArtistLoad.Success -> {
-                    releases = discogsMergeArtistPageReleases(releases + response.releases)
+                    releases = discogsVerifiedArtistPageReleases(current, releases + response.releases)
                     // Only settled source pages advance; the last interrupted
                     // page stays retryable even after a productive earlier page.
                     artistPage += window.completedPages
@@ -982,9 +1253,11 @@ internal class DiscogsNativeCatalogSession(
                     if (cachedArtistPage == null) {
                         failDetail("Não foi possível carregar este artista Discogs.")
                     } else {
-                        _detail.value = UiState.Success(cachedArtistPage!!.copy(
-                            incomplete = true,
-                        ))
+                        val retryable = cachedArtistPage!!.copy(
+                            incomplete = true, loadingMore = false,
+                        )
+                        cachedArtistPage = retryable
+                        _detail.value = UiState.Success(retryable)
                     }
                 }
             }
@@ -1008,8 +1281,10 @@ internal class DiscogsNativeCatalogSession(
         _detail.value = UiState.Success(discogsNativeLoadingPage(
             selected.browseId, selected.title, parent.name, BrowseType.ALBUM,
         ))
-        val job = scope.launch(Dispatchers.IO) {
-            val response = try { editionClient.fetchRelease(selected.releaseId) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            val response = try {
+                withContext(Dispatchers.IO) { editionClient.fetchRelease(selected.releaseId) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (!authorization.isCurrent() || artist != parent ||
@@ -1025,7 +1300,7 @@ internal class DiscogsNativeCatalogSession(
                 return@launch
             }
             _detail.value = UiState.Success(discogsReleasePage(parent, record, releases))
-            val variants = sampleVerifiedVersions(record)
+            val variants = withContext(Dispatchers.IO) { sampleVerifiedVersions(record) }
             if (!authorization.isCurrent() || artist != parent ||
                 _route.value != DiscogsNativeRoute.RELEASE ||
                 _browseId.value != selected.browseId) return@launch
@@ -1042,9 +1317,10 @@ internal class DiscogsNativeCatalogSession(
 
     fun openRelease(browseId: String) {
         val parent = artist
-        val current = (_detail.value as? UiState.Success)?.data
-            ?.takeIf { _route.value == DiscogsNativeRoute.RELEASE &&
-                it.page.browseId == _browseId.value }
+        val visiblePage = (_detail.value as? UiState.Success)?.data
+            ?.takeIf { it.page.browseId == _browseId.value } ?: return
+        if (!discogsVisibleReleaseSelection(visiblePage, browseId)) return
+        val current = visiblePage.takeIf { _route.value == DiscogsNativeRoute.RELEASE }
         val verifiedVersion = current?.let {
             discogsVerifiedVersionSelection(it, browseId)
         }
@@ -1073,9 +1349,13 @@ internal class DiscogsNativeCatalogSession(
             val exact = discogsNativeDetailRouteKey(
                 DiscogsNativeRoute.RELEASE, browseId,
             )?.removePrefix("discogs:release:")?.toLongOrNull() ?: return
+            val expectedArtistId = discogsNativeDetailRouteKey(
+                DiscogsNativeRoute.ARTIST, live.albumArtistBrowseId,
+            )?.substringAfterLast(':')?.toLongOrNull() ?: return
             openReleaseFromSearch(
                 DiscogsNativeReleaseSearchRow(exact, related.title),
                 retainDirectParent = true,
+                expectedArtistId = expectedArtistId,
             )
             return
         }
@@ -1090,24 +1370,27 @@ internal class DiscogsNativeCatalogSession(
         _detail.value = UiState.Success(discogsNativeLoadingPage(
             release.browseId, release.title, parent.name, BrowseType.ALBUM,
         ))
-        val job = scope.launch(Dispatchers.IO) {
-            val response = try { editionClient.fetchRelease(release.releaseId) }
+        val job = scope.launch(Dispatchers.Main.immediate) {
+            val response = try {
+                withContext(Dispatchers.IO) { editionClient.fetchRelease(release.releaseId) }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DiscogsLookupResult.Unavailable }
             if (!authorization.isCurrent() || artist != parent ||
-                _route.value != DiscogsNativeRoute.RELEASE) return@launch
+                !discogsNativeDetailRequestMatches(
+                    _route.value, _browseId.value, release.browseId,
+                )) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
             if (record == null || record.unofficial ||
                 record.link.kind != DiscogsKind.RELEASE ||
                 record.link.id != release.releaseId ||
-                parent.artistId !in record.artistIds ||
-                _browseId.value != release.browseId
+                parent.artistId !in record.artistIds
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
             }
             _detail.value = UiState.Success(discogsReleasePage(parent, record, releases))
-            val variants = sampleVerifiedVersions(record)
+            val variants = withContext(Dispatchers.IO) { sampleVerifiedVersions(record) }
             if (!authorization.isCurrent() || artist != parent ||
                 _route.value != DiscogsNativeRoute.RELEASE ||
                 _browseId.value != release.browseId) return@launch
@@ -1149,7 +1432,9 @@ internal class DiscogsNativeCatalogSession(
         } else backAll()
     }
 
-    fun backAll() {
+    fun backAll() = clearDetail(retainingHistory = false)
+
+    private fun clearDetail(retainingHistory: Boolean) {
         detailJob?.cancel()
         detailJob = null
         _route.value = null
@@ -1163,13 +1448,57 @@ internal class DiscogsNativeCatalogSession(
         artistHasMore = false
         artistIncomplete = false
         cachedArtistPage = null
-        if (_artists.value == null && _releasesSearch.value == null) {
+        if (discogsMayResetSnapshotExpiry(
+                retainingHistory, _artists.value != null || _releasesSearch.value != null,
+            )) {
             expirationJob?.cancel()
             expirationJob = null
             expirationEpoch++
         }
     }
 }
+
+/** A successful empty page is still a settled, retryable search snapshot. */
+internal fun discogsSearchCanRetrySettledPage(settledPage: Int, state: UiState<*>?): Boolean =
+    settledPage in 1..2 && state is UiState.Success
+
+/** Retained search results or Back-stack metadata must never extend their TTL. */
+internal fun discogsMayResetSnapshotExpiry(retainingHistory: Boolean, retainingSearch: Boolean): Boolean =
+    !retainingHistory && !retainingSearch
+
+/** Only a release actually visible in the current source page may be opened. */
+internal fun discogsVisibleReleaseSelection(page: DiscogsNativePage, browseId: String): Boolean =
+    discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId) != null &&
+        page.page.browseId != browseId &&
+        page.page.sections.flatMap { it.items }.count { it.browseId == browseId } == 1
+
+/** Search may show unofficial releases; verified related/version rails may not. */
+internal fun discogsDirectReleaseMatches(
+    record: DiscogsRecord,
+    expectedReleaseId: Long,
+    expectedMasterId: Long? = null,
+    expectedArtistId: Long? = null,
+): Boolean = record.link.kind == DiscogsKind.RELEASE &&
+    record.link.id == expectedReleaseId &&
+    (expectedMasterId == null || (!record.unofficial && record.masterId == expectedMasterId)) &&
+    (expectedArtistId == null || (!record.unofficial && expectedArtistId in record.artistIds))
+
+/** A response for a retired album is neither success nor failure of the current album. */
+internal fun discogsNativeDetailRequestMatches(
+    route: DiscogsNativeRoute?,
+    browseId: String?,
+    expectedBrowseId: String,
+): Boolean = discogsNativeDetailRouteKey(route, browseId) == expectedBrowseId &&
+    route == DiscogsNativeRoute.RELEASE
+
+/** The first visible partial page and its tap use the same verified source rows. */
+internal fun discogsVerifiedArtistPageReleases(
+    artist: DiscogsNativeArtistSearchRow,
+    releases: List<DiscogsNativeArtistRelease>,
+): List<DiscogsNativeArtistRelease> = discogsMergeArtistPageReleases(releases.filter {
+    it.artistId == artist.artistId && it.releaseId in 1..999_999_999_999L &&
+        it.title.isNotBlank()
+})
 
 /** Exact Discogs format descriptors, never titles or MusicBrainz types. */
 internal fun discogsArtistPage(
@@ -1180,10 +1509,7 @@ internal fun discogsArtistPage(
 ): DiscogsNativePage {
     fun has(release: DiscogsNativeArtistRelease, label: String) =
         release.formats.any { it.equals(label, ignoreCase = true) }
-    val verified = discogsMergeArtistPageReleases(releases.filter {
-        it.artistId == artist.artistId && it.releaseId in 1..999_999_999_999L &&
-            it.title.isNotBlank()
-    })
+    val verified = discogsVerifiedArtistPageReleases(artist, releases)
     val buckets = verified.groupBy { release ->
         val album = has(release, "Album")
         val epOrSingle = has(release, "EP") || has(release, "Single")
@@ -1289,7 +1615,7 @@ internal fun discogsAlbumArtistRelatedShelf(
             )
         }
     if (safe.isEmpty()) return null
-    val heading = artistName.takeIf { it.length <= 80 &&
+    val heading = discogsArtistDisplayName(artistName).takeIf { it.isNotBlank() && it.length <= 80 &&
         !it.equals("Various Artists", ignoreCase = true)
     }?.let { "Mais de $it" } ?: "Mais do artista"
     return HomeShelf(heading, safe)
@@ -1438,7 +1764,7 @@ internal fun discogsReleasePage(
         browseId = "discogs:release:${record.link.id}",
         title = record.title,
         subtitle = listOfNotNull(
-            artistCredit.takeIf(String::isNotBlank),
+            discogsArtistDisplayName(artistCredit).takeIf(String::isNotBlank),
             record.year?.toString(),
             "Edição não oficial".takeIf { record.unofficial },
         ).joinToString(" · "),
@@ -1459,8 +1785,9 @@ internal fun discogsReleasePage(
         NativeMetadataTrack(
             key = "discogs:track:${record.link.id}:$index",
             title = track.title,
-            credit = track.artistCredit ?: if (!track.creditSpecified &&
-                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null,
+            credit = (track.artistCredit ?: if (!track.creditSpecified &&
+                record.artistNames.size == 1) artistCredit.takeIf(String::isNotBlank) else null)
+                ?.let(::discogsArtistDisplayName),
             discNumber = discAndTrack?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 },
             trackNumber = (discAndTrack?.groupValues?.get(2) ?: position)
                 ?.toIntOrNull()?.takeIf { it > 0 },
@@ -1479,8 +1806,11 @@ internal fun discogsReleasePage(
     albumArtistDisplayName = record.artistNames.singleOrNull()?.takeIf { name ->
         record.artistIds.singleOrNull()?.let { it in 1..999_999_999_999L } == true &&
             name.equals(artistCredit.trim(), ignoreCase = true)
-    },
+    }?.let(::discogsArtistDisplayName),
     versionMasterId = record.masterId,
+    artworkEvidence = record.takeIf {
+        com.music.bitchord.data.catalog.metadata.discogsDigitalArtworkUpc(it) != null
+    },
     // Even with zero verified cards, an interrupted Master lookup means
     // unknown coverage. The native source footer communicates this without
     // presenting a fabricated Versions carousel.

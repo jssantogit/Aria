@@ -267,11 +267,81 @@ class AppleNativeDetailNavigationTest {
         assertFalse(appleNativeDetailDisplayAllowed(
             denied, editorialAuthorized = false, searchAuthorized = false,
         ))
+        val featured = appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
+            artist(), listOf(album()), possiblyTruncated = false,
+        ))!!.featuredRelease!!
+        assertFalse(appleNativeDetailDisplayAllowed(
+            denied.copy(featuredRelease = featured),
+            editorialAuthorized = false, searchAuthorized = true,
+        ))
+        assertFalse(appleNativeDetailDisplayAllowed(
+            denied.copy(notice = "Partial source tracklist"),
+            editorialAuthorized = false, searchAuthorized = true,
+        ))
         assertFalse(appleNativeDetailDisplayAllowed(
             appleArtistAsSharedDetail(AppleEditorialArtistDetailPage(
                 artist(), listOf(album()), possiblyTruncated = false,
             ))!!,
             editorialAuthorized = false, searchAuthorized = true,
+        ))
+    }
+    @Test fun relatedReleaseSelectionUsesOnlyAuthorizedCurrentRoute() {
+        val artistRow = artist()
+        val albumRow = album().copy(artistBrowseId = artistRow.browseId)
+        val other = album(501).copy(artistBrowseId = artistRow.browseId)
+        val artistPage = AppleEditorialArtistDetailPage(
+            artist = artistRow, albums = listOf(other), possiblyTruncated = false,
+        )
+        val albumPage = AppleEditorialAlbumDetailPage(
+            album = albumRow, tracks = emptyList(), partialTracklist = false,
+            relatedAlbums = listOf(other.copy(title = "Related edition")),
+        )
+        fun pick(route: String, allowed: Boolean = true) =
+            com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+                route, other.browseId, allowed, artistPage, albumPage,
+            )
+        assertEquals(other, pick(artistRow.browseId))
+        assertEquals(albumPage.relatedAlbums.single(), pick(albumRow.browseId))
+        assertNull(pick("itunes:br:album:999"))
+        assertNull(pick(albumRow.browseId, allowed = false))
+    }
+
+
+    @Test fun pagingFailurePreservesLatestArtistEnrichmentAndIgnoresRetiredRoute() {
+        val current = AppleEditorialArtistDetailPage(
+            artist = artist(),
+            albums = listOf(album().copy(artworkUri =
+                "https://is1-ssl.mzstatic.com/image/thumb/Music/abc/600x600bb.jpg")),
+            possiblyTruncated = false,
+            loadingMore = true,
+            hasMore = true,
+            verifiedMusicBrainzArtistMbid = "11111111-1111-1111-1111-111111111111",
+        )
+        val state = UiState.Success(current)
+        val failed = com.music.bitchord.ui.screens.appleArtistPagingFailureState(
+            state, current.artist.browseId,
+        )
+        assertEquals(UiState.Success(current.copy(loadingMore = false, pageError = true)), failed)
+        assertSame(state, com.music.bitchord.ui.screens.appleArtistPagingFailureState(
+            state, "itunes:br:artist:999",
+        ))
+        assertNull(com.music.bitchord.ui.screens.appleArtistPagingFailureState(
+            null, current.artist.browseId,
+        ))
+    }
+
+    @Test fun portraitRevocationRestoresOnlyTheMatchingArtistNativeArtwork() {
+        val selected = artist().copy(artworkUri = "native")
+        val enriched = AppleEditorialArtistDetailPage(
+            artist = selected.copy(artworkUri = "external"),
+            albums = listOf(album()), possiblyTruncated = false, hasMore = true,
+        )
+        val restored = com.music.bitchord.ui.screens.appleArtistDetailWithoutExternalPortrait(
+            enriched, selected,
+        )
+        assertEquals(enriched.copy(artist = selected), restored)
+        assertSame(enriched, com.music.bitchord.ui.screens.appleArtistDetailWithoutExternalPortrait(
+            enriched, artist(99),
         ))
     }
 }

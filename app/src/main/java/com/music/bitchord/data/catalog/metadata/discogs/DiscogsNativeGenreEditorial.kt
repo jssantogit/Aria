@@ -97,8 +97,45 @@ internal sealed interface DiscogsGranularRead {
     ) : DiscogsGranularRead
 }
 
+/** Shared logical acquisition budget for one sequential landing, not an HTTP
+ * quota. A position may hydrate at most one Master and one main Release;
+ * transport retries and the process-wide rate limiter remain independent. */
+internal class DiscogsLandingBudget(
+    private val maxPositions: Int = 36,
+    private val maxIndexReads: Int = 18,
+) {
+    init { require(maxPositions > 0 && maxIndexReads > 0) }
+    var consumedPositions: Int = 0
+        private set
+    var indexReads: Int = 0
+        private set
+
+    fun canStart(laterPredicates: Int = 0): Boolean =
+        consumedPositions < maxPositions - laterPredicates.coerceAtLeast(0) &&
+            indexReads < maxIndexReads - laterPredicates.coerceAtLeast(0)
+
+    fun takeIndex(laterPredicates: Int): Boolean {
+        if (!canStart(laterPredicates)) return false
+        indexReads++
+        return true
+    }
+
+    fun takePosition(laterPredicates: Int): Boolean {
+        if (consumedPositions >= maxPositions - laterPredicates.coerceAtLeast(0))
+            return false
+        consumedPositions++
+        return true
+    }
+}
+
 internal sealed interface DiscogsEditorialResult {
-    data class Verified(val releases: List<DiscogsEditorialCandidate>) : DiscogsEditorialResult
+    data class Verified(
+        val releases: List<DiscogsEditorialCandidate>,
+        /** A partial landing is not a successful, uninterrupted scan. */
+        val interruption: DiscogsEditorialResult? = null,
+        /** Landing budget ended, not source exhaustion or transport failure. */
+        val budgetLimited: Boolean = false,
+    ) : DiscogsEditorialResult
     data object Unauthorized : DiscogsEditorialResult
     data object Disabled : DiscogsEditorialResult
     data object Unavailable : DiscogsEditorialResult
@@ -423,6 +460,65 @@ internal class DiscogsNativeGenreEditorial(
             } else pair
         }
 
+    /** Reuse only current Master/Release evidence already hydrated for a shelf.
+     * No additional Discogs requests, no search by title and no stale/token-
+     * mismatched cache reuse. Artwork admission is checked by the resolver. */
+    internal fun cachedArtworkEvidenceForRelease(
+        releaseId: Long,
+        onRejected: (DiscogsArtworkOutcome) -> Unit = {},
+    ): DiscogsRecord? {
+        val evidence = cachedMasterReleaseEvidence(releaseId, onRejected) ?: return null
+        if (com.music.bitchord.data.catalog.metadata.discogsDigitalArtworkUpc(evidence) == null) {
+            onRejected(DiscogsArtworkOutcome.INELIGIBLE_EDITION)
+            return null
+        }
+        return evidence
+    }
+
+    /** Source-only observation of the current verified main release.
+     * No claim of digital eligibility or permission to publish Apple art. */
+    internal fun cachedMasterReleaseEvidence(
+        releaseId: Long,
+        onRejected: (DiscogsArtworkOutcome) -> Unit = {},
+    ): DiscogsRecord? {
+        fun reject(reason: DiscogsArtworkOutcome): DiscogsRecord? {
+            onRejected(reason)
+            return null
+        }
+        if (releaseId !in 1..999_999_999_999L)
+            return reject(DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE)
+        if (!enabled ||
+            !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
+            !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
+        ) return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        val token = tokenProvider()?.trim()?.takeIf(String::isNotBlank)
+            ?: return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        val digest = digestForCache(token)
+        val now = clockMs()
+        val (current, expired) = synchronized(verifiedPairs) {
+            val matching = verifiedPairs.values.filter {
+                it.tokenDigest.contentEquals(digest) &&
+                    it.release.link.kind == DiscogsKind.RELEASE &&
+                    it.release.link.id == releaseId &&
+                    it.master.mainReleaseId == releaseId &&
+                    it.release.masterId == it.master.link.id
+            }
+            matching.filter { now - it.instantMs in 0L..indexTtlMs }
+                .map { it.release }.distinct() to
+                matching.any { now - it.instantMs !in 0L..indexTtlMs }
+        }
+        val evidence = current.singleOrNull() ?: return reject(when {
+            current.size > 1 -> DiscogsArtworkOutcome.AMBIGUOUS_EVIDENCE
+            expired -> DiscogsArtworkOutcome.EXPIRED_EVIDENCE
+            else -> DiscogsArtworkOutcome.NO_CURRENT_EVIDENCE
+        })
+        if (tokenProvider()?.trim() != token ||
+            !admission.permitted(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.DISCOGS) ||
+            !admission.permitted(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.DISCOGS)
+        ) return reject(DiscogsArtworkOutcome.POLICY_DENIED)
+        return evidence
+    }
+
     private fun rememberVerifiedPair(
         masterId: Long, master: DiscogsMasterRecord,
         release: DiscogsRecord, tokenDigest: ByteArray,
@@ -645,6 +741,8 @@ internal class DiscogsNativeGenreEditorial(
         /** Called only for a safely settled prefix of the landing scan. */
         onCheckpoint: (DiscogsEditorialCursor) -> Unit = {},
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
+        landingBudget: DiscogsLandingBudget? = null,
+        laterPredicates: Int = 0,
     ): DiscogsEditorialResult {
         if (!query.isValid() || maxReleases !in 1..6)
             return DiscogsEditorialResult.InvalidQuery
@@ -664,6 +762,22 @@ internal class DiscogsNativeGenreEditorial(
         val unresolvedMasterIds = HashSet<Long>()
         var firstUnresolved: DiscogsEditorialCursor? = null
         var checkpoint: DiscogsEditorialCursor? = null
+        fun interrupted(reason: DiscogsEditorialResult): DiscogsEditorialResult {
+            (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
+            return if (verified.isEmpty()) reason else DiscogsEditorialResult.Verified(
+                verified.distinctBy { it.masterId }, interruption = reason,
+            )
+        }
+        fun limited(): DiscogsEditorialResult.Verified {
+            (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
+            return DiscogsEditorialResult.Verified(
+                verified.distinctBy { it.masterId },
+                interruption = DiscogsEditorialResult.Unavailable.takeIf {
+                    unresolvedMasterIds.isNotEmpty()
+                },
+                budgetLimited = true,
+            )
+        }
         // Fill the caller's bounded sample with verified releases, not just
         // the first non-empty index page. Check all 12 advertised candidates
         // within each source page: an arbitrary first-five cut hides valid
@@ -671,6 +785,7 @@ internal class DiscogsNativeGenreEditorial(
         // once maxReleases is met; every hydration remains rate-limited and
         // only the existing two index pages may be requested.
         for (pageNumber in 1..2) {
+            if (landingBudget?.takeIndex(laterPredicates) == false) return limited()
             // Initial Home/genre discovery may reuse a recent, source-verified
             // index page from another canonical view. Permissions and the
             // credential are validated above on every entry, while partial
@@ -679,14 +794,17 @@ internal class DiscogsNativeGenreEditorial(
                 query, pageNumber, token, tokenDigest, forceFresh = false,
             )) {
                 is IndexRead.Ready -> read.page
-                is IndexRead.Failed -> return if (verified.isNotEmpty())
-                    DiscogsEditorialResult.Verified(verified) else read.reason
+                is IndexRead.Failed -> return interrupted(read.reason)
             }
             val signature = 31 * index.masterIds.hashCode() +
                 if (index.hasNext) 1 else 0
             var nextPosition = 0
             for ((position, masterId) in index.masterIds.withIndex()) {
                 if (verified.size >= maxReleases) break
+                if (landingBudget?.takePosition(laterPredicates) == false) {
+                    checkpoint = DiscogsEditorialCursor(pageNumber, position, signature, true)
+                    return limited()
+                }
                 nextPosition = position + 1
                 // The earliest unresolved position stays retryable even if
                 // later rows fill the sample. Replaying verified IDs is safe.
@@ -709,15 +827,17 @@ internal class DiscogsNativeGenreEditorial(
                 } else try { editions.master(masterId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
-                if (masterResult is DiscogsLookupResult.Throttled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Throttled(masterResult.retryAfterSeconds)
-                if (masterResult is DiscogsLookupResult.Unauthorized)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Unauthorized
-                if (masterResult is DiscogsLookupResult.Disabled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Disabled
+                val masterResultInterruption = when (masterResult) {
+                    is DiscogsLookupResult.Throttled ->
+                        DiscogsEditorialResult.Throttled(masterResult.retryAfterSeconds)
+                    DiscogsLookupResult.Unauthorized -> DiscogsEditorialResult.Unauthorized
+                    DiscogsLookupResult.Disabled -> DiscogsEditorialResult.Disabled
+                    else -> null
+                }
+                if (masterResultInterruption != null) {
+                    markUnresolved()
+                    return interrupted(masterResultInterruption)
+                }
                 if (masterResult is DiscogsLookupResult.Unavailable ||
                     masterResult is DiscogsLookupResult.Malformed
                 ) {
@@ -739,15 +859,17 @@ internal class DiscogsNativeGenreEditorial(
                 val releaseResult = try { editions.release(releaseId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
-                if (releaseResult is DiscogsLookupResult.Throttled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Throttled(releaseResult.retryAfterSeconds)
-                if (releaseResult is DiscogsLookupResult.Unauthorized)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Unauthorized
-                if (releaseResult is DiscogsLookupResult.Disabled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Disabled
+                val releaseResultInterruption = when (releaseResult) {
+                    is DiscogsLookupResult.Throttled ->
+                        DiscogsEditorialResult.Throttled(releaseResult.retryAfterSeconds)
+                    DiscogsLookupResult.Unauthorized -> DiscogsEditorialResult.Unauthorized
+                    DiscogsLookupResult.Disabled -> DiscogsEditorialResult.Disabled
+                    else -> null
+                }
+                if (releaseResultInterruption != null) {
+                    markUnresolved()
+                    return interrupted(releaseResultInterruption)
+                }
                 if (releaseResult is DiscogsLookupResult.Unavailable ||
                     releaseResult is DiscogsLookupResult.Malformed
                 ) {
@@ -776,6 +898,11 @@ internal class DiscogsNativeGenreEditorial(
         (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
         return if (verified.isEmpty() && unresolvedMasterIds.isNotEmpty())
             DiscogsEditorialResult.Unavailable
-        else DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
+        else DiscogsEditorialResult.Verified(
+            verified.distinctBy { it.masterId },
+            interruption = DiscogsEditorialResult.Unavailable.takeIf {
+                unresolvedMasterIds.isNotEmpty()
+            },
+        )
     }
 }

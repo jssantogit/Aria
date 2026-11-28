@@ -292,4 +292,24 @@ class AppleEditorialNativeSearchBridgeTest {
         assertNotNull(appleNativeAlbumDetail(load, "itunes:us:album:101"))
         assertNull(appleNativeAlbumDetail(load, "catalog:RELEASE_GROUP:101"))
     }
+
+    @Test fun albumHeaderCannotAdvertiseAnotherAppleProduct() {
+        val source = AppleEditorialLoad.Success(listOf(edition().copy(
+            storeUrl = "https://music.apple.com/br/album/other/999",
+        )), AppleEditorialReadState.COMPLETE)
+        val detail = appleNativeAlbumDetail(source, "itunes:br:album:101")!!
+        assertNull(detail.appleStoreUrl)
+        assertNull(detail.appleStoreBadgeUrl)
+    }
+
+    @Test fun disputedTrackIdentityCannotCreateACompleteAlbum() {
+        val first = track(1, 101, 1, "First", "br")
+        val disputed = first.copy(trackNumber = 2, title = "Disputed")
+        val source = AppleEditorialLoad.Success(listOf(edition().copy(
+            tracks = listOf(first, disputed), trackCount = 2,
+        )), AppleEditorialReadState.COMPLETE)
+        val detail = appleNativeAlbumDetail(source, "itunes:br:album:101")!!
+        assertTrue(detail.tracks.isEmpty())
+        assertTrue(detail.partialTracklist)
+    }
 }

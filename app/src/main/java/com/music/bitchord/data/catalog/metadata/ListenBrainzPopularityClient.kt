@@ -250,6 +250,10 @@ internal class ListenBrainzPopularityClient(
     // while a user reopens or scrolls around the same artist.
     private val unavailableArtistAt = mutableMapOf<String, Long>()
     private val artistUnavailableCooldownMs = 90_000L
+    // A public unauthenticated endpoint rejecting credentials is not an
+    // artist-specific miss. Avoid repeating that request for every artist.
+    // Other public endpoints and already verified chart cache stay independent.
+    private var artistEndpointUnauthorizedAt: Long? = null
 
     /**
      * Negative, undated or already-outdated charts may recover upstream long
@@ -353,11 +357,6 @@ internal class ListenBrainzPopularityClient(
         if (!MBID.matches(id)) return ListenBrainzArtistTopFetchResult.InvalidRequest
         artistFetchMutex.lock()
         try {
-        unavailableArtistAt[id]?.let { at ->
-            if (nowMillis() >= at && nowMillis() - at < artistUnavailableCooldownMs) {
-                return ListenBrainzArtistTopFetchResult.Unavailable
-            }
-        }
         cacheMutex.lock()
         try {
             val saved = artistCache[id]
@@ -370,6 +369,16 @@ internal class ListenBrainzPopularityClient(
             cacheMutex.unlock()
         }
 
+        artistEndpointUnauthorizedAt?.let { at ->
+            val now = nowMillis()
+            if (now >= at && now - at < artistUnavailableCooldownMs)
+                return ListenBrainzArtistTopFetchResult.Unavailable
+        }
+        unavailableArtistAt[id]?.let { at ->
+            if (nowMillis() >= at && nowMillis() - at < artistUnavailableCooldownMs) {
+                return ListenBrainzArtistTopFetchResult.Unavailable
+            }
+        }
         for (attempt in 0..1) {
             val response = try {
                 limiter.run { transport.topRecordingsForArtist(id) }
@@ -380,7 +389,12 @@ internal class ListenBrainzPopularityClient(
                 return ListenBrainzArtistTopFetchResult.Unavailable
             }
             limiter.observeRateLimit(response.rateLimitRemaining, response.rateLimitResetInSeconds)
+            if (response.status == 401) {
+                artistEndpointUnauthorizedAt = nowMillis()
+                return ListenBrainzArtistTopFetchResult.Unavailable
+            }
             if (response.status == 200) {
+                artistEndpointUnauthorizedAt = null
                 val parsed = parseListenBrainzArtistTopRecordings(response.body, id)
                 if (parsed !is ListenBrainzArtistTopParseResult.Success) {
                     return ListenBrainzArtistTopFetchResult.Malformed

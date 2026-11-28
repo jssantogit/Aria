@@ -1010,4 +1010,48 @@ class ApplePublicSearchPagerTest {
             assertTrue(pager.snapshot().visible.isEmpty())
             assertTrue(pager.snapshot().coverageUncertain)
         }
+    @Test fun failedInitialArtistStreamCanRetryWithoutLosingItsQueryOrScope() = runBlocking {
+        val fake = Fake(ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE))
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ARTIST, "br", 24, fake)
+        assertTrue(pager.start() is ApplePublicSearchPageLoad.Failure)
+        assertTrue(pager.snapshot().visible.isEmpty())
+        fake.initial = ItunesCatalogResult.Success(listOf(
+            album(77, title = "Artist").copy(type = ItunesCatalogItemType.ARTIST),
+        ))
+        val recovered = pager.loadMore() as ApplePublicSearchPageLoad.Success
+        assertEquals(listOf(77L), recovered.snapshot.visible.map { it.id })
+        assertEquals(2, fake.calls.size)
+        assertTrue(fake.calls.all { it == null })
+    }
+
+    @Test fun uncappedPrefixArtistLandingRecoversExactArtistBeforePublication() = runBlocking {
+        val prefix = album(1, title = "Artist Collective").copy(type = ItunesCatalogItemType.ARTIST)
+        val exact = album(2, title = "Artist").copy(type = ItunesCatalogItemType.ARTIST)
+        val foreign = exact.copy(id = 3, storefront = "us")
+        val fake = Fake(ItunesCatalogResult.Success(listOf(prefix)), mutableMapOf(
+            ItunesCatalogSearchAttribute.ARTIST_TERM to ItunesCatalogResult.Success(listOf(exact, foreign)),
+        ))
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ARTIST, "br", source = fake)
+        val landing = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(2L), landing.visible.map { it.id })
+        assertFalse(landing.hasMore)
+        assertEquals(listOf(null, ItunesCatalogSearchAttribute.ARTIST_TERM), fake.calls)
+    }
+
+    @Test fun failedExactArtistProbePreservesPrefixAndAllowsRetry() = runBlocking {
+        val prefix = album(1, title = "Artist Collective").copy(type = ItunesCatalogItemType.ARTIST)
+        val exact = album(2, title = "Artist").copy(type = ItunesCatalogItemType.ARTIST)
+        val fake = Fake(ItunesCatalogResult.Success(listOf(prefix)), mutableMapOf(
+            ItunesCatalogSearchAttribute.ARTIST_TERM to ItunesCatalogResult.Failure(ItunesCatalogFailure.UNAVAILABLE),
+        ))
+        val pager = ApplePublicSearchPager("Artist", ItunesCatalogEntity.ARTIST, "br", source = fake)
+        val first = (pager.start() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L), first.visible.map { it.id })
+        assertTrue(first.hasMore)
+        fake.extras[ItunesCatalogSearchAttribute.ARTIST_TERM] = ItunesCatalogResult.Success(listOf(exact))
+        val next = (pager.loadMore() as ApplePublicSearchPageLoad.Success).snapshot
+        assertEquals(listOf(1L, 2L), next.visible.map { it.id })
+        assertEquals(3, fake.calls.size)
+    }
+
 }

@@ -1,6 +1,9 @@
 package com.music.bitchord.data.catalog.metadata
 
 import kotlinx.coroutines.CancellationException
+import com.music.bitchord.data.providers.ProviderPolicyGate
+import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.BuiltInProviderKeys
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -75,6 +78,7 @@ internal class AppleVerifiedGroupCardArtworkResolver(
         }
     },
     private val clockMs: () -> Long = System::currentTimeMillis,
+    private val artworkGate: (() -> ProviderPolicyGate?)? = null,
 ) {
     private data class Cached(
         val proof: AppleVerifiedEditionArtwork?,
@@ -92,13 +96,19 @@ internal class AppleVerifiedGroupCardArtworkResolver(
                 .matches(groupMbid) ||
             !Regex("^[a-z]{2}$").matches(storefront)
         ) return null
-        val key = "${groupMbid.lowercase()}:${storefront}:${groupTitle?.trim()?.lowercase().orEmpty()}"
+        val gate = artworkGate?.invoke()
+        val ticket = gate?.open(ProviderCapability.RELEASE_ARTWORK, BuiltInProviderKeys.ITUNES)
+        if (artworkGate != null && ticket == null) return null
+        fun current(): Boolean = artworkGate == null ||
+            (gate != null && ticket != null && artworkGate.invoke() === gate && gate.accept(ticket))
+        val key = "${groupMbid.lowercase()}:${storefront}:${groupTitle?.trim()?.lowercase().orEmpty()}" + "|artwork:" + (ticket?.revision ?: 0L) + ":" + System.identityHashCode(gate)
         val stripe = (key.hashCode() and Int.MAX_VALUE) % locks.size
         return locks[stripe].withLock {
+            if (!current()) return@withLock null
             val now = clockMs()
             synchronized(cache) {
                 cache[key]?.takeIf { it.expiresAtMs > now }
-            }?.let { return@withLock it.proof }
+            }?.let { return@withLock it.proof.takeIf { current() } }
             val page = try {
                 when (val result = groups.browse(groupMbid)) {
                     is MusicBrainzCatalogGraphResult.Success -> result.value
@@ -118,6 +128,7 @@ internal class AppleVerifiedGroupCardArtworkResolver(
             val proof = verifiedAppleArtworkForDisplayedGroupEdition(
                 candidate, groupMbid, editionId,
             )
+            if (!current()) return@withLock null
             synchronized(cache) {
                 if (cache.size >= 96 && !cache.containsKey(key))
                     cache.remove(cache.keys.first())

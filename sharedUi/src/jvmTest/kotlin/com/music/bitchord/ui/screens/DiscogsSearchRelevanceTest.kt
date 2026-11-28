@@ -126,6 +126,31 @@ class DiscogsSearchRelevanceTest {
         assertEquals(listOf(first), discogsSearchDistinctReleases("album", listOf(unrelated, first)))
     }
 
+
+    @Test fun representativeReleaseWinsOverExplicitPackagingWithinMaster() {
+        val packageEdition = DiscogsNativeReleaseSearchRow(10, "NewJeans - Get Up (Weverse Version)", 900)
+        val representative = DiscogsNativeReleaseSearchRow(20, "NewJeans - Get Up", 900)
+        val independent = DiscogsNativeReleaseSearchRow(30, "NewJeans - Other Album", 901)
+        val unrelatedMaster = packageEdition.copy(releaseId = 40, masterId = 902)
+        assertEquals(listOf(representative, independent, unrelatedMaster),
+            discogsSearchDistinctReleases("NewJeans",
+                listOf(packageEdition, representative, independent, unrelatedMaster)))
+        assertEquals(listOf(packageEdition),
+            discogsSearchDistinctReleases("NewJeans", listOf(packageEdition)))
+        assertEquals(listOf(packageEdition),
+            discogsSearchDistinctReleases("NewJeans Get Up (Weverse Version)",
+                listOf(representative, packageEdition)))
+    }
+
+    @Test fun ordinaryParentheticalTitlesKeepSourceOrderAndIdentity() {
+        val first = DiscogsNativeReleaseSearchRow(10, "Artist - Album (Live)", 900)
+        val second = DiscogsNativeReleaseSearchRow(20, "Artist - Album", 900)
+        assertEquals(listOf(first), discogsSearchDistinctReleases("Artist", listOf(first, second)))
+        val unknown = DiscogsNativeReleaseSearchRow(30, "Artist - Album (Photobook)")
+        assertEquals(listOf(second, unknown),
+            discogsSearchDistinctReleases("Artist", listOf(unknown, second)))
+    }
+
     @Test fun initialServerPagesFullOfJunkAreSkippedWithinExistingHardCap() {
         assertTrue(discogsSearchNeedsNextRelevantPage(0, 2))
         assertTrue(discogsSearchNeedsNextRelevantPage(0, 3))
@@ -146,5 +171,40 @@ class DiscogsSearchRelevanceTest {
         assertEquals(0, discogsSearchArtistRank("Beyonce", "Beyoncé"))
         assertEquals(2, discogsSearchArtistRank("Beatles", "The Beatles"))
         assertNull(discogsSearchArtistRank("illit", "Ill-It"))
+    }
+    @Test fun repeatedReleaseWithContradictoryMasterCannotHideAnIndependentEdition() {
+        val first = DiscogsNativeReleaseSearchRow(20, "Artist - Album", 900)
+        val hidden = DiscogsNativeReleaseSearchRow(21, "Artist - Album", 900)
+        val conflicting = first.copy(masterId = 901)
+        assertEquals(listOf(first), discogsSearchDistinctReleases("album", listOf(first, hidden)))
+        assertEquals(listOf(first.copy(masterId = null), hidden),
+            discogsSearchDistinctReleases("album", listOf(first, hidden, conflicting)))
+        assertEquals(listOf(hidden), discogsSearchDistinctReleases("album",
+            listOf(first, hidden, first.copy(title = "Different - Work"))))
+        assertEquals(listOf(first), discogsSearchDistinctReleases("album",
+            listOf(first.copy(masterId = null), first)))
+    }
+
+
+    @Test fun disputedArtistIdOnLaterPageCannotHideIndependentHomonym() {
+        val first = artist(17, "Illit")
+        val independent = artist(18, "Illit (2)")
+        val conflicting = artist(17, "Different Artist")
+        assertEquals(listOf(first), discogsSearchDistinctArtists("illit", listOf(first, independent)))
+        assertEquals(listOf(independent), discogsSearchDistinctArtists("illit",
+            listOf(first, independent, conflicting)))
+        assertEquals(listOf(first, independent), discogsSearchVerifiedArtistObservations(
+            listOf(first, independent, first)))
+    }
+
+    @Test fun mixedSearchLoadingFollowsOnlyTheSelectedRemoteContinuation() {
+        fun loading(local: Boolean, next: DiscogsUnifiedSearchNext?, artists: Boolean, releases: Boolean) =
+            discogsUnifiedContinuationLoading(local, next, artists, releases)
+        assertFalse(loading(true, DiscogsUnifiedSearchNext.RELEASES, true, true))
+        assertTrue(loading(false, DiscogsUnifiedSearchNext.RELEASES, false, true))
+        assertFalse(loading(false, DiscogsUnifiedSearchNext.RELEASES, true, false))
+        assertTrue(loading(false, DiscogsUnifiedSearchNext.ARTISTS, true, false))
+        assertFalse(loading(false, DiscogsUnifiedSearchNext.ARTISTS, false, true))
+        assertFalse(loading(false, null, true, true))
     }
 }
