@@ -292,28 +292,45 @@ internal class ProviderShelfHeldState {
         if (captured == null || card.videoId != null ||
             canonicalCatalogEntityMenuSpec(card.browseId, card.appleStoreUrl) == null ||
             com.music.bitchord.ui.providerHeldOverflowRoute(card.browseId, true, true) == null
-        ) return
+        ) {
+            captured?.releaseLift()
+            return
+        }
         origin = captured
         target = card
     }
 
     fun dismiss() { target = null }
+
+    fun reject() {
+        origin?.releaseLift()
+        origin = null
+        target = null
+    }
 }
 
 @Composable
 internal fun ProviderShelfHeldMenu(
     held: ProviderShelfHeldState,
     allowed: (com.music.bitchord.data.model.ShelfItem) -> Boolean,
+    openFor: (com.music.bitchord.data.model.ShelfItem) -> (() -> Unit)?,
     hazeState: HazeState,
     bottomChromeClearance: Dp,
 ) {
     val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
+    val latestOpenFor by androidx.compose.runtime.rememberUpdatedState(openFor)
+    fun open(card: com.music.bitchord.data.model.ShelfItem) {
+        if (!latestAllowed(card)) return
+        val action = latestOpenFor(card) ?: return
+        held.dismiss()
+        action()
+    }
     var ratingCard by remember(held) { mutableStateOf<com.music.bitchord.data.model.ShelfItem?>(null) }
     var rating by remember(held) { mutableStateOf<AmsHeldRating?>(null) }
     val target = held.target?.takeIf(latestAllowed)
     val ratingAllowed = ratingCard?.let(latestAllowed) == true
     LaunchedEffect(target, held.target, ratingAllowed) {
-        if (target == null && held.target != null) held.dismiss()
+        if (target == null && held.target != null) held.reject()
         if (!ratingAllowed) { ratingCard = null; rating = null }
     }
     AmsHeldRatingDialog(rating.takeIf { ratingAllowed }) {
@@ -323,7 +340,8 @@ internal fun ProviderShelfHeldMenu(
     HeldContextMenu(
         item = target, held = held.origin, hazeState = hazeState,
         bottomChromeClearance = bottomChromeClearance, hostProvidesBlur = true,
-        onDismiss = held::dismiss, onPreviewClick = null,
+        onDismiss = held::dismiss,
+        onPreviewClick = if (target?.let(latestOpenFor) != null) ::open else null,
     ) { card ->
         CanonicalCatalogEntityMenuBody(
             browseId = card.browseId.orEmpty(), title = card.title,
@@ -331,6 +349,8 @@ internal fun ProviderShelfHeldMenu(
             sourceStoreUrl = card.appleStoreUrl, onDismiss = held::dismiss,
             onRate = { ratingCard = card; rating = AmsHeldRating(it, card.thumbnailUrl) },
             isCurrent = { latestAllowed(card) },
+            onOpen = if (latestOpenFor(card) != null) ({ open(card) }) else null,
+            onOpenLabel = "Ver detalhes",
         )
     }
 }

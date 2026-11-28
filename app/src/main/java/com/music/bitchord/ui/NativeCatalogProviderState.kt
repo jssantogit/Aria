@@ -165,3 +165,12 @@ internal fun providerHeldOverflowRoute(
         (it.startsWith("discogs:") && discogsAllowed)) &&
         com.music.bitchord.ui.screens.canonicalCatalogEntityRatingTarget(it)?.entityId == it
 }
+
+/** A retained or altered card must not borrow authority from an equal route ID. */
+internal fun providerShelfHeldCardAllowed(
+    card: com.music.bitchord.data.model.ShelfItem,
+    visibleShelves: List<com.music.bitchord.data.model.HomeShelf>,
+    appleAllowed: Boolean, discogsAllowed: Boolean,
+): Boolean = card.videoId == null && card.title.isNotBlank() &&
+    providerHeldOverflowRoute(card.browseId, appleAllowed, discogsAllowed) != null &&
+    visibleShelves.any { card in it.items }

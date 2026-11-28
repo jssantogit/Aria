@@ -102,6 +102,22 @@ class NativeTopBarRouteOwnerTest {
         assertEquals(null, held("discogs:artist:123:extra"))
     }
 
+    @Test fun providerHeldCardRequiresExactVisibleSnapshotAndPermission() {
+        val card = com.music.bitchord.data.model.ShelfItem(
+            title = "Album", subtitle = "Artist", browseId = "itunes:br:album:123",
+        )
+        val shelf = com.music.bitchord.data.model.HomeShelf(title = "Albums", items = listOf(card))
+        fun allowed(item: com.music.bitchord.data.model.ShelfItem,
+                    shelves: List<com.music.bitchord.data.model.HomeShelf> = listOf(shelf),
+                    apple: Boolean = true) =
+            com.music.bitchord.ui.providerShelfHeldCardAllowed(item, shelves, apple, true)
+        org.junit.Assert.assertTrue(allowed(card))
+        assertFalse(allowed(card, apple = false))
+        assertFalse(allowed(card, shelves = emptyList()))
+        assertFalse(allowed(card.copy(title = "Other edition")))
+        assertFalse(allowed(card.copy(videoId = "audio")))
+    }
+
     @Test fun recentAdditionsDoesNotShareToolbarWithRememberedPlaylist() {
         assertEquals(
             NativeTopBarRouteOwner.RECENT_ADDITIONS,

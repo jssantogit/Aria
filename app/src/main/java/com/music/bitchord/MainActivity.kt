@@ -7351,15 +7351,40 @@ private fun BitChordApp(
             com.music.bitchord.ui.screens.ProviderShelfHeldMenu(
                 held = providerShelfHeld,
                 allowed = { card ->
-                    com.music.bitchord.ui.providerHeldOverflowRoute(
-                        card.browseId, appleReadAllowed, discogsReadAllowed,
-                    ) != null && when (pageRouteKey) {
-                        "$TAB_KEY$TAB_HOME" ->
-                            (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { card in it.items }
-                        "$TAB_KEY$TAB_EXPLORE" ->
-                            (canonicalGenreState as? UiState.Success)?.data.orEmpty().any { card in it.items }
-                        else -> visualDetail?.takeIf { it.browseId == pageRouteKey }
-                            ?.sections?.any { card in it.items } == true
+                    com.music.bitchord.ui.providerShelfHeldCardAllowed(
+                        card, when (pageRouteKey) {
+                            "$TAB_KEY$TAB_HOME" -> (canonicalHomeState as? UiState.Success)?.data.orEmpty()
+                            "$TAB_KEY$TAB_EXPLORE" -> (canonicalGenreState as? UiState.Success)?.data.orEmpty()
+                            else -> visualDetail?.takeIf { it.browseId == pageRouteKey }?.sections.orEmpty()
+                        }, appleReadAllowed, discogsReadAllowed,
+                    )
+                },
+                openFor = { card ->
+                    when (pageRouteKey) {
+                        "$TAB_KEY$TAB_HOME", "$TAB_KEY$TAB_EXPLORE" -> {
+                            val explore = pageRouteKey == "$TAB_KEY$TAB_EXPLORE"
+                            val shelves = if (explore) canonicalGenreState else canonicalHomeState
+                            (shelves as? UiState.Success)?.data.orEmpty()
+                                .firstOrNull { card in it.items }?.let { shelf ->
+                                    { onCanonicalShelfClick(card, shelf.title,
+                                        canonicalEditorialPlaybackSource(explore = explore)) }
+                                }
+                        }
+                        else -> {
+                            val apple = com.music.bitchord.ui.screens.appleNativeShelfEntryForRoute(
+                                pageRouteKey, card.browseId, appleReadAllowed,
+                                (appleArtistDetail as? UiState.Success)?.data,
+                                (appleAlbumDetail as? UiState.Success)?.data,
+                            )
+                            val release = card.browseId?.takeIf {
+                                pageRouteKey.startsWith("discogs:") && it.startsWith("discogs:release:")
+                            }
+                            when {
+                                apple != null -> ({ detailActiveShelf = null; viewModel.openAppleEditorialEntry(apple); Unit })
+                                release != null -> ({ detailActiveShelf = null; viewModel.discogsNativeCatalog.openRelease(release); Unit })
+                                else -> null
+                            }
+                        }
                     }
                 },
                 hazeState = hazeState,
