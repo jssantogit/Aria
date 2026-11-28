@@ -119,15 +119,19 @@ internal class AppleExploreGenreDiscovery(
                 // valid album beyond position 24 before the native pager
                 // has an opportunity to reveal it. The UI stays bounded.
                 onProgress(matching)
-                // The capped genre index is not an exhaustive catalog. Only on
-                // a dedicated capacity genre screen, use up to three exact Apple
+                // A complete response is not proof of exhaustive genre coverage.
+                // Only on
+                // a dedicated genre screen, use up to three exact Apple
                 // artist IDs already evidenced in that genre. Home stays at one
                 // request per genre. Every additional album must independently
                 // satisfy the same storefront, ID and primaryGenreName checks.
-                if (expandSparseCapacity && tag in setOf("rock", "electronic", "jazz") &&
-                    found.state == AppleEditorialReadState.POSSIBLY_TRUNCATED &&
+                if (expandSparseCapacity &&
+                    found.state in setOf(AppleEditorialReadState.COMPLETE,
+                        AppleEditorialReadState.POSSIBLY_TRUNCATED) &&
                     matching.isNotEmpty() && matching.size < 30
-                ) return expandNativePool(tag, storefront, matching, onProgress)
+                ) return expandNativePool(
+                    tag, storefront, matching, found.state, onProgress,
+                )
                 AppleEditorialLoad.Success(
                     matching,
                     when {
@@ -146,6 +150,7 @@ internal class AppleExploreGenreDiscovery(
         tag: String,
         storefront: String,
         initial: List<ItunesEditorialRelease>,
+        initialState: AppleEditorialReadState,
         onProgress: suspend (List<ItunesEditorialRelease>) -> Unit,
     ): AppleEditorialLoad.Success {
         val anchors = initial.mapNotNull { it.artistId }.distinct()
@@ -154,7 +159,7 @@ internal class AppleExploreGenreDiscovery(
         var probes = 1
         var empty = 0
         var failures = 0
-        var incomplete = 1
+        var incomplete = if (initialState == AppleEditorialReadState.POSSIBLY_TRUNCATED) 1 else 0
         for (artistId in anchors.take(3)) {
             if (pool.size >= 30) break
             val response = try {
