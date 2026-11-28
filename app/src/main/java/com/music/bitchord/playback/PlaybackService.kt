@@ -4034,6 +4034,8 @@ class PlaybackService : MediaLibraryService() {
             return "Local Storage"
         }
 
+        val uri = mediaItem?.localConfiguration?.uri
+
         // 2. Exact recorded source for this media item
         val exactRecorded = NerdStats.exactSourceFor(id)
         if (!exactRecorded.isNullOrBlank()) return exactRecorded
