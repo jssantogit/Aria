@@ -344,6 +344,15 @@ internal object ProviderCapabilityRegistry {
         )
 
         // 5. Personal Library, Servers & Extensions (excluding retired JioSaavn and YouTube)
+        add(ProviderInventoryEntry(
+            key = BuiltInProviderKeys.APPLE_MUSIC_WEB,
+            capability = ProviderCapability.AUDIO_PLAYBACK,
+            tab = ProviderSettingsTab.AUDIO_AND_EXTENSIONS,
+            displayName = "Apple Music Web (Prévias de 30 s)",
+            readiness = amsReadiness(),
+            supportsReordering = false,
+            notes = "Public audio previews only; independent opt-in; no full stream or download",
+        ))
         add(
             ProviderInventoryEntry(
                 key = ProviderKey("local", "mediastore"),

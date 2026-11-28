@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.data.providers.ProviderCapability
+import com.music.bitchord.data.providers.BuiltInProviderKeys
+import com.music.bitchord.data.providers.ProviderInventoryEntry
 import com.music.bitchord.data.providers.ProviderReadiness
 
 /**
@@ -50,6 +52,12 @@ internal fun ProviderCapability.functionSettingsText(): ProviderFunctionText = w
     ProviderCapability.DOWNLOAD -> ProviderFunctionText(
         "Downloads", "Baixa músicas por meio desta fonte.")
 }
+
+/** A source may implement only a restricted rendition of a shared capability. */
+internal fun ProviderInventoryEntry.functionSettingsText(): ProviderFunctionText =
+    if (key == BuiltInProviderKeys.APPLE_MUSIC_WEB && capability == ProviderCapability.AUDIO_PLAYBACK)
+        ProviderFunctionText("Prévias de 30 s", "Reproduz prévias de áudio do Apple Music no player.")
+    else capability.functionSettingsText()
 
 internal fun ProviderReadiness.functionSettingsWarning(): String? = when (this) {
     ProviderReadiness.READY -> null

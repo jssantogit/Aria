@@ -96,7 +96,7 @@ internal fun ProviderCapabilitiesScreen(
                     it.key == row.entry.key && it.enabled
                 }
                 val ready = row.entry.readiness == ProviderReadiness.READY
-                val details = capability.functionSettingsText()
+                val details = row.entry.functionSettingsText()
                 val warning = row.entry.readiness.functionSettingsWarning()
                 SettingsRow(
                     icon = capability.providerFunctionIcon(),

@@ -138,6 +138,28 @@ class ProviderGroupedPresentationTest {
             )).single().title)
     }
 
+    @Test fun amsAudioToggleChangesOnlyPreviewAuthorization() {
+        val ams = ProviderKey("apple_music_web")
+        val audio = ProviderCapability.AUDIO_PLAYBACK
+        val server = ProviderKey("opensubsonic","home")
+        val rows = listOf(row(ams,search,"Apple Music Web (Busca)"),
+            row(ams,discography,"Apple Music Web (Discografia)"),
+            row(ams,audio,"Apple Music Web (Prévias de 30 s)",tab=ProviderSettingsTab.AUDIO_AND_EXTENSIONS))
+        val groups = groupProviderRows(rows)
+        val preview = groups.single { it.tab == ProviderSettingsTab.AUDIO_AND_EXTENSIONS }
+        assertEquals("Apple Music Web (Prévias de 30 s)",preview.title)
+        assertEquals(listOf(audio),preview.rows.map { it.entry.capability })
+        val old = mapOf(search to listOf(ProviderChoice(ams,true,0)),
+            discography to listOf(ProviderChoice(ams,true,0)),
+            audio to listOf(ProviderChoice(server,true,0)))
+        val on = planProviderGroupToggle(preview,old,true)
+        assertEquals(setOf(audio),on.keys)
+        assertEquals(listOf(ProviderChoice(server,true,0),ProviderChoice(ams,true,1)),on[audio])
+        val off = planProviderGroupToggle(preview,old+on,false)
+        assertEquals(setOf(audio),off.keys)
+        assertEquals(listOf(ProviderChoice(server,true,0),ProviderChoice(ams,false,1)),off[audio])
+    }
+
     @Test fun enablingVendorIsAtomicAndPreservesUnrelatedCapabilitiesAndRanks() {
         val group = groupProviderRows(catalog).first()
         val configured = mapOf(

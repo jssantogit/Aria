@@ -23,6 +23,14 @@ class ProviderCapabilitySettingsPresentationTest {
         assertEquals(ProviderCapability.entries.size, all.map { it.title }.distinct().size)
     }
 
+    @Test fun amsAudioDescribesOnlyPreviewsWithoutRelabelingFullPlayback() {
+        val preview = com.music.bitchord.data.providers.ProviderCapabilityRegistry.inventory()
+            .single { it.key == com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB &&
+                it.capability == ProviderCapability.AUDIO_PLAYBACK }
+        assertEquals("Prévias de 30 s",preview.functionSettingsText().title)
+        assertEquals("Reprodução",ProviderCapability.AUDIO_PLAYBACK.functionSettingsText().title)
+    }
+
     @Test fun unavailableFunctionsNeverMasqueradeAsConfigurableReadyControls() {
         assertNull(ProviderReadiness.READY.functionSettingsWarning())
         assertEquals("Configuração necessária",

@@ -24,7 +24,8 @@ class AmsPhysicalSmokePolicyTest {
         val key = BuiltInProviderKeys.APPLE_MUSIC_WEB
         val registered = inventory.filter { it.key == key }
         val caps = setOf(ProviderCapability.CATALOG_SEARCH,
-            ProviderCapability.EDITORIAL_DISCOGRAPHY,ProviderCapability.CHART_MOST_PLAYED)
+            ProviderCapability.EDITORIAL_DISCOGRAPHY,ProviderCapability.CHART_MOST_PLAYED,
+            ProviderCapability.AUDIO_PLAYBACK)
         assertEquals(caps,registered.map { it.capability }.toSet())
         assertTrue(registered.all { it.readiness == expected })
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(inventory)
@@ -38,5 +39,11 @@ class AmsPhysicalSmokePolicyTest {
         else assertNull(gate.open(ProviderCapability.CATALOG_SEARCH,key))
         assertNull(gate.open(ProviderCapability.EDITORIAL_DISCOGRAPHY,key))
         assertNull(gate.open(ProviderCapability.CHART_MOST_PLAYED,key))
+        assertNull(gate.open(ProviderCapability.AUDIO_PLAYBACK,key))
+        val preview = registered.single { it.capability == ProviderCapability.AUDIO_PLAYBACK }
+        assertEquals(ProviderSettingsTab.AUDIO_AND_EXTENSIONS,preview.tab)
+        assertFalse(preview.supportsReordering)
+        assertEquals("Apple Music Web (Prévias de 30 s)",preview.displayName)
+        assertFalse(registered.any { it.capability == ProviderCapability.DOWNLOAD })
     }
 }

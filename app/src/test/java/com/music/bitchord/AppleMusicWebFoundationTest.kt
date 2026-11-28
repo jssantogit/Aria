@@ -30,7 +30,7 @@ class AppleMusicWebFoundationTest {
         val inventory = ProviderCapabilityRegistry.inventory()
         val rows = inventory.filter { it.key == BuiltInProviderKeys.APPLE_MUSIC_WEB }
         assertEquals(setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY,
-            ProviderCapability.CHART_MOST_PLAYED), rows.map { it.capability }.toSet())
+            ProviderCapability.CHART_MOST_PLAYED, ProviderCapability.AUDIO_PLAYBACK), rows.map { it.capability }.toSet())
         assertTrue(rows.all { it.readiness == ProviderReadiness.BLOCKED })
         val choices = rows.groupBy { it.capability }.mapValues { (_, items) ->
             listOf(ProviderChoice(items.first().key, enabled = true, order = 0))
@@ -40,6 +40,7 @@ class AppleMusicWebFoundationTest {
         assertNull(gate.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.APPLE_MUSIC_WEB))
         assertNull(gate.open(ProviderCapability.EDITORIAL_DISCOGRAPHY, BuiltInProviderKeys.APPLE_MUSIC_WEB))
         assertNull(gate.open(ProviderCapability.CHART_MOST_PLAYED, BuiltInProviderKeys.APPLE_MUSIC_WEB))
+        assertNull(gate.open(ProviderCapability.AUDIO_PLAYBACK, BuiltInProviderKeys.APPLE_MUSIC_WEB))
     }
 
     @Test fun cacheKeysSeparateMarketLanguageCapabilityAndNeverContainCredentials() {
