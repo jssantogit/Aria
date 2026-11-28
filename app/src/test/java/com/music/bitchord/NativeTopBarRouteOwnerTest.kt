@@ -104,7 +104,8 @@ class NativeTopBarRouteOwnerTest {
 
     @Test fun providerHeldCardRequiresExactVisibleSnapshotAndPermission() {
         val card = com.music.bitchord.data.model.ShelfItem(
-            title = "Album", subtitle = "Artist", browseId = "itunes:br:album:123",
+            title = "Album", subtitle = "Artist", thumbnailUrl = null, videoId = null,
+            browseId = "itunes:br:album:123",
         )
         val shelf = com.music.bitchord.data.model.HomeShelf(title = "Albums", items = listOf(card))
         fun allowed(item: com.music.bitchord.data.model.ShelfItem,
