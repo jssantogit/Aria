@@ -1,0 +1,69 @@
+name: AMS · namespace-normalized Aria reconciliation
+on:
+  push:
+    branches: [audit/ams-aria-identity-normalized-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Normalize ancestor and AMS identically; retain exact MAIN tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Aria reconciliation diagnostic"
+          git config user.email "diagnostic@users.noreply.github.com"
+          git config merge.renameLimit 10000
+          git config diff.renameLimit 10000
+          mkdir -p /tmp/aria-normalized
+          cp scripts/ams-normalize-namespace-diagnostic.py /tmp/ams-normalize.py
+          test "$(git merge-base da8889af614ec28c9ffb0bd3e1b055657adb45b6 58d8d9143fa04302cb3356df510e77c76a2eae57)" = "9513793560f583f5d7cdd4f97e14a5a5ad7f9cfa"
+          for pair in base:9513793560f583f5d7cdd4f97e14a5a5ad7f9cfa ams:da8889af614ec28c9ffb0bd3e1b055657adb45b6; do
+            label="${pair%%:*}"
+            sha="${pair#*:}"
+            git worktree add --detach "/tmp/aria-$label" "$sha"
+            python3 /tmp/ams-normalize.py "/tmp/aria-$label"
+            git -C "/tmp/aria-$label" add -A
+            git -C "/tmp/aria-$label" write-tree > "/tmp/aria-normalized/$label-tree"
+          done
+          BASE=$(git commit-tree "$(cat /tmp/aria-normalized/base-tree)" -m "Synthetic normalized ancestor")
+          AMS=$(git commit-tree "$(cat /tmp/aria-normalized/ams-tree)" -p "$BASE" -m "Synthetic normalized AMS")
+          MAIN=$(git commit-tree "$(git rev-parse 58d8d9143fa04302cb3356df510e77c76a2eae57^{tree})" -p "$BASE" -m "Synthetic exact MAIN")
+          printf '%s\n' "$BASE" "$AMS" "$MAIN" > /tmp/aria-normalized/synthetic-commits.txt
+          git switch --detach "$AMS"
+          set +e
+          git merge --no-commit --no-ff "$MAIN" > /tmp/aria-normalized/merge.log 2>&1
+          result=$?
+          set -e
+          git diff --name-only --diff-filter=U > /tmp/aria-normalized/conflicts.txt
+          git ls-files -u > /tmp/aria-normalized/conflict-stages.tsv
+          git status --short > /tmp/aria-normalized/status.txt
+          printf 'merge_exit=%s\nconflicts=%s\n' "$result" "$(wc -l < /tmp/aria-normalized/conflicts.txt)" | tee /tmp/aria-normalized/summary.txt
+          cat /tmp/aria-normalized/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+          paths=Path("/tmp/aria-normalized/conflicts.txt").read_text().splitlines()
+          counts=Counter("/".join(p.split("/")[:2]) for p in paths)
+          for group,count in counts.most_common(): print(f"CONFLICT_GROUP|{group}|{count}")
+          for path in paths: print(f"CONFLICT_PATH|{path}")
+          PY
+          if [ "$result" -eq 0 ]; then
+            git write-tree | tee /tmp/aria-normalized/candidate-tree.txt
+            git diff --cached --stat > /tmp/aria-normalized/candidate-stat.txt
+          else
+            echo "::notice::Remaining conflicts need semantic reconciliation; no production changes"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-aria-normalized-${{ github.sha }}
+          path: /tmp/aria-normalized/
+          if-no-files-found: error
+          retention-days: 7
