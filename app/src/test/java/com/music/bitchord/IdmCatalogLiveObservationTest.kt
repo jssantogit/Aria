@@ -3457,8 +3457,8 @@ class IdmCatalogLiveObservationTest {
         assumeTrue(System.getenv("AMS_SMOKE4_SEARCH_LIVE") == "1")
         val source = BuiltInProviderKeys.APPLE_MUSIC_WEB
         val gate = gateFor(source,setOf(ProviderCapability.CATALOG_SEARCH,ProviderCapability.EDITORIAL_DISCOGRAPHY))
-        val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
-            admission=RateLimitedProviderTransport { gate }))
+        val transport = AppleMusicWebPolicyTransport(admission=RateLimitedProviderTransport { gate })
+        val catalog = AppleMusicWebCatalog(transport)
         val gateway = AppleMusicWebEditorialGateway(catalog,gate)
         val reader = CatalogSearchAdapterReader(gate,listOf(AppleMusicWebSearchAdapter(gateway)))
         val native = AppleMusicWebNativeCatalogSession({gate}) { gateway }
@@ -3485,6 +3485,30 @@ class IdmCatalogLiveObservationTest {
             val primaryRoute=amsSearchRow(primary)!!.browseId
             val ownTracks=tracks.count { it.artistBrowseId == primaryRoute }
             val ownAlbums=albums.count { it.artistBrowseId == primaryRoute }
+            val textualOwnAlbums = pages.getValue(CatalogSearchKind.ALBUM).items.mapNotNull(::amsSearchRow)
+                .filter { it.artistBrowseId == primaryRoute }.map { it.browseId }
+            assertEquals("Original exact-artist release order changed for $query",textualOwnAlbums,
+                albums.filter { it.browseId in textualOwnAlbums }.map { it.browseId })
+            // Read only the public exact-song response shape. Never print URLs,
+            // payloads, tokens, song IDs, or presume startTime is an offset.
+            for ((index, song) in products.filter { it.identity.kind == CatalogSearchKind.TRACK && it.hasAudioPreview }.take(2).withIndex()) {
+                val raw = try {
+                    withTimeoutOrNull(30_000L) {
+                        transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                            "/v1/catalog/br/songs/${song.identity.nativeId}",emptyMap())
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+                val root = raw?.let { runCatching { kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonObject }.getOrNull() }
+                val data = root?.get("data") as? kotlinx.serialization.json.JsonArray
+                val attrs = (data?.singleOrNull() as? kotlinx.serialization.json.JsonObject)?.get("attributes") as? kotlinx.serialization.json.JsonObject
+                val previews = attrs?.get("previews") as? kotlinx.serialization.json.JsonArray
+                val timingKeys = attrs?.keys.orEmpty().filter { key ->
+                    key.contains("start",true) || key.contains("offset",true) || key.contains("preview",true) || key.contains("time",true)
+                }.sorted()
+                val previewKeys = previews.orEmpty().flatMap { (it as? kotlinx.serialization.json.JsonObject)?.keys.orEmpty() }.distinct().sorted()
+                println("AMS_SMOKE4_PREVIEW_SCHEMA|query=$query|sample=${index+1}|observed=${attrs != null}|timingKeys=${timingKeys.joinToString(",")}|previewKeys=${previewKeys.joinToString(",")}")
+            }
             println("AMS_SMOKE4_ARTIST_EXPANSION|query=$query|supplement=${products.size}|ownTracks=$ownTracks|ownAlbums=$ownAlbums")
             assertTrue("Missing artist-owned tracks for $query",ownTracks >= 2)
             assertTrue("Missing artist-owned releases for $query",ownAlbums >= 2)

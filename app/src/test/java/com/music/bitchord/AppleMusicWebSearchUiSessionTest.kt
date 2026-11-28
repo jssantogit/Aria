@@ -93,6 +93,17 @@ class AppleMusicWebSearchUiSessionTest {
         assertNull(textual.artistNativeId)
     }
 
+    @Test fun albumExpansionPreservesTextualRelevanceAndAppendsNewEditions() {
+        val original = item(CatalogSearchKind.ALBUM,"20")
+        val second = item(CatalogSearchKind.ALBUM,"21")
+        val remix = item(CatalogSearchKind.ALBUM,"22")
+        val enrichedOriginal = original.copy(artworkUrl="https://example.com/art.jpg")
+        val mixed = amsSearchWithArtistProducts(listOf(original,second),listOf(remix,enrichedOriginal),CatalogSearchKind.ALBUM)
+        assertEquals(listOf("20","21","22"),mixed.map { it.identity.nativeId })
+        assertEquals(enrichedOriginal.artworkUrl,mixed.first().artworkUrl)
+        assertEquals(listOf(remix),amsSearchWithArtistProducts(emptyList(),listOf(remix),CatalogSearchKind.ALBUM))
+    }
+
     @Test fun exactArtistRelationshipRejectsContradictoryNativeIdentity() {
         val artist = item(CatalogSearchKind.ARTIST,"10")
         val kind = com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.SONG

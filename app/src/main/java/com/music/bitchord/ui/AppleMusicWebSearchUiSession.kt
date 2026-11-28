@@ -78,7 +78,14 @@ internal fun amsSearchWithArtistProducts(rows: List<CatalogSearchItem>, products
             hasAudioPreview=hit.hasAudioPreview || product.hasAudioPreview,
         )
     }
-    return (expanded + rows).distinctBy { it.identity }
+    // Keep the search engine's release relevance: a discography shelf is
+    // often recency-ordered and can begin with several remix editions.
+    // Only the track stream deliberately leads with the artist's top songs.
+    val ordered = if (kind == CatalogSearchKind.ALBUM) {
+        val enriched = expanded.associateBy { it.identity }
+        rows.map { enriched[it.identity] ?: it } + expanded
+    } else expanded + rows
+    return ordered.distinctBy { it.identity }
 }
 
 internal data class AmsSearchSnapshot(
