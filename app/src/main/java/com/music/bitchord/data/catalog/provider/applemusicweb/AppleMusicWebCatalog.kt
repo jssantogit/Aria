@@ -834,6 +834,29 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             nextCursor=next,unresolvedReferences = parsed.unresolved.size)
     }
 
+    /**
+     * Read current preview evidence for an exact scoped song, independently of
+     * album linkage. This is a catalog read, not playback admission: callers
+     * must still verify the current provider lease and the media transport.
+     * Never resolve by title, switch storefronts or return a full stream.
+     */
+    suspend fun songPreview(scopedId: String): AppleMusicWebItem? {
+        val match = Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$")
+            .matchEntire(scopedId) ?: return null
+        val sf = match.groupValues[1]
+        val id = match.groupValues[2]
+        val body = parse(transport.get(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            "/v1/catalog/$sf/songs/$id", emptyMap()))
+        if ("errors" in body || body["data"] !is JsonArray)
+            throw AppleMusicWebProtocolException("Invalid song preview envelope")
+        val raw = body.objects("data").singleOrNull()
+            ?: throw AppleMusicWebProtocolException("Missing or ambiguous song preview identity")
+        if (raw.str("id") != id || raw.str("type") != AppleMusicWebKind.SONG.apiType)
+            throw AppleMusicWebProtocolException("Wrong song preview identity")
+        val song = convert(raw,sf) ?: throw AppleMusicWebProtocolException("Invalid song preview")
+        return song.takeIf { it.scopedId == scopedId && it.previewUrl != null }
+    }
+
     suspend fun songCollections(id: String, country: String): AppleMusicWebSongCollections {
         val sf = storefront(country)
         val songId = resourceId(id, AppleMusicWebKind.SONG)

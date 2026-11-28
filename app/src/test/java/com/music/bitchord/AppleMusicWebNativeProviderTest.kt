@@ -75,6 +75,52 @@ class AppleMusicWebNativeProviderTest {
             "https://audio-ssl.itunes.apple.com/sample.m3u8"))
     }
 
+    @Test fun exactPreviewLookupDoesNotRequireAlbumLinkageOrPromoteFullPlayback() = runBlocking {
+        val url = "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview/sample.m4a"
+        val fake = FakeTransport { _, _, _ ->
+            """{"data":[{"id":"123","type":"songs","attributes":{"name":"Sample",
+                "durationInMillis":180000,"previews":[{"url":"$url"}]}}]}"""
+        }
+        val catalog = AppleMusicWebCatalog(fake)
+        val song = requireNotNull(catalog.songPreview("apple_music_web:br:song:123"))
+        assertEquals(url,song.previewUrl)
+        assertEquals(180000L,song.durationMillis)
+        assertFalse(song.playable)
+        assertEquals("apple_music_web:br:song:123",song.scopedId)
+        assertEquals(Triple(ProviderCapability.EDITORIAL_DISCOGRAPHY,
+            "/v1/catalog/br/songs/123",emptyMap<String,String>()),fake.calls.single())
+        for (invalid in listOf("123","apple_music_web:BR:song:123",
+            "apple_music_web:br:album:123","apple_music_web:br:song:0123",
+            "apple_music_web:br:song:123/456")) {
+            assertNull(catalog.songPreview(invalid))
+        }
+        assertEquals(1,fake.calls.size)
+    }
+
+    @Test fun exactPreviewLookupRejectsWrongOrAmbiguousResource() = runBlocking {
+        val url = "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview/sample.m4a"
+        val valid = """{"id":"123","type":"songs","attributes":{"name":"Sample","previews":[{"url":"$url"}]}}"""
+        for (body in listOf(
+            """{"data":[${valid.replace("\"123\"","\"456\"")}]}""",
+            """{"data":[${valid.replace("\"songs\"","\"albums\"")}]}""",
+            """{"data":[$valid,$valid]}""",
+            """{"data":[$valid],"errors":[]}""",
+            """{"data":[]}""","{}"
+        )) {
+            try {
+                AppleMusicWebCatalog(FakeTransport { _, _, _ -> body })
+                    .songPreview("apple_music_web:br:song:123")
+                fail("Invalid identity or envelope must not return a preview")
+            } catch (_: AppleMusicWebProtocolException) {
+                // Fail closed.
+            }
+        }
+        val unavailable = """{"data":[{"id":"123","type":"songs","attributes":{"name":"Sample",
+            "previews":[{"url":"https://example.org/sample.m4a"}]}}]}"""
+        assertNull(AppleMusicWebCatalog(FakeTransport { _, _, _ -> unavailable })
+            .songPreview("apple_music_web:br:song:123"))
+    }
+
     @Test fun searchContinuesExactIssuedCursorWithoutReplayingLanding() = runBlocking {
         val fake = FakeTransport { _, _, args ->
             if (args["offset"] == "9") {

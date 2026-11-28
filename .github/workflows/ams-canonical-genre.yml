@@ -33,6 +33,7 @@ on:
       - audit/ams-silent-editorial-loading-20261128
       - audit/ams-audio-preview-contract-20261128
       - audit/ams-preview-playback-parity-20261128
+      - audit/ams-preview-exact-resolution-20261128
 permissions:
   contents: read
 concurrency:
