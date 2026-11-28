@@ -1,0 +1,69 @@
+name: IDM #240 — Physical smoke APK
+on:
+  push:
+    branches: [smoke/idm-pr240-5654cc5d]
+    paths: [.github/workflows/idm-240-physical-smoke-apk.yml]
+permissions:
+  contents: read
+concurrency:
+  group: idm-240-physical-smoke-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  android-dev-apk:
+    name: IDM PR #240 · installable devDebug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify immutable requested application sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "5654cc5d4f78abc3a52d5da3d65e838936c12a84"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/idm-240-physical-smoke-apk.yml"
+          echo "Exact application source: 5654cc5d4f78abc3a52d5da3d65e838936c12a84" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare secretless Android dev build
+        run: |
+          printf 'LASTFM_API_KEY=\nLASTFM_SECRET=\n' > local.properties
+          chmod +x gradlew
+      - name: Run Android unit tests
+        run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:testDevDebugUnitTest
+      - name: Assemble installable Android devDebug APK
+        run: ./gradlew --no-daemon --build-cache -Pbitchord.bundleWear=false :app:assembleDevDebug
+      - name: Record source and APK checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "pr=240"
+            echo "android_source=5654cc5d4f78abc3a52d5da3d65e838936c12a84"
+            echo "workflow_trigger_commit=$(git rev-parse HEAD)"
+            find app/build/outputs/apk/dev/debug -maxdepth 1 -type f -name '*.apk' -print -exec sha256sum '{}' \;
+          } > idm-240-apk-manifest.txt
+          grep -q '\.apk' idm-240-apk-manifest.txt
+          cat idm-240-apk-manifest.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish physical smoke APK and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-idm-pr240-dev-debug-5654cc5d
+          path: |
+            app/build/outputs/apk/dev/debug/*.apk
+            idm-240-apk-manifest.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-240-smoke-test-reports
+          path: app/build/test-results/testDevDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
