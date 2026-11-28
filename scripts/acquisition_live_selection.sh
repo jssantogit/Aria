@@ -31,7 +31,7 @@ set -e
 printf 'case\tsearch\tdecision\treason\tobserved\teligible\trank_rejected\tpreflight_rejected\talbum_rejected\tquality_rejected\ttruncated\telapsed_ms\n' > acquisition-live-report.tsv
 awk -F= '/^INSTRUMENTATION_STATUS: aria_live=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t-]+$/ && split($2,a,"\t")==12) print $2}' "$raw" >> acquisition-live-report.tsv
 cat acquisition-live-report.tsv
-if [[ "$rc" != 0 ]] || ! grep -q 'OK (1 test)' "$raw" || [[ "$(wc -l < acquisition-live-report.tsv)" != 6 ]]; then
+if [[ "$rc" != 0 ]] || ! grep -q 'OK (1 test)' "$raw" || [[ "$(wc -l < acquisition-live-report.tsv)" != 31 ]]; then
   echo 'Live calibration incomplete or failed; inspect aggregate report only.'
   exit 1
 fi

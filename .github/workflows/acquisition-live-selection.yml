@@ -7,7 +7,7 @@ on:
     paths:
       - '.github/workflows/acquisition-live-selection.yml'
       - 'scripts/acquisition_live_selection.sh'
-      - 'app/src/androidTest/java/com/music/aria/acquisition/live/**'
+      - 'app/src/androidTest/java/com/music/aria/acquisition/live/SoulseekLiveSelectionTest.kt'
 permissions:
   contents: read
 concurrency:
@@ -17,7 +17,7 @@ jobs:
   selection:
     if: github.repository == 'jssantogit/Aria'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

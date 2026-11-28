@@ -2,12 +2,6 @@ name: Acquisition — Soulseek live acquisition
 # Only explicitly trusted internal branch pushes or manual dispatch; never fork PRs.
 on:
   workflow_dispatch:
-  push:
-    branches: [integration/soulseek-publication-20261128]
-    paths:
-      - '.github/workflows/acquisition-live-acquisition.yml'
-      - 'scripts/acquisition_live_acquisition.sh'
-      - 'app/src/androidTest/java/com/music/aria/acquisition/live/SoulseekLiveAcquisitionTest.kt'
 permissions:
   contents: read
 concurrency:
