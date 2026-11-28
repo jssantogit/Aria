@@ -200,4 +200,29 @@ class DiscogsNativeNavigationTest {
         assertFalse(canContinue(page.copy(hasMore = false)))
         assertFalse(canContinue(null))
     }
+
+    @Test fun releaseNavigationRequiresCurrentVisibleCardAndRechecksDirectArtistCredit() {
+        val row = DiscogsNativeArtistSearchRow(17L, "Artist")
+        val release = DiscogsNativeArtistRelease(
+            artistId = 17L, releaseId = 500L, masterId = null,
+            title = "Edition", year = 2024, formats = listOf("Album"), tracklist = emptyList(),
+        )
+        val visible = discogsArtistPage(row, listOf(release), false, false)
+        assertTrue(com.music.bitchord.ui.discogsVisibleReleaseSelection(visible, release.browseId))
+        assertFalse(com.music.bitchord.ui.discogsVisibleReleaseSelection(visible, "discogs:release:501"))
+        val record = com.music.bitchord.data.catalog.metadata.discogs.DiscogsRecord(
+            link = com.music.bitchord.data.catalog.metadata.discogs.DiscogsLink(
+                com.music.bitchord.data.catalog.metadata.discogs.DiscogsKind.RELEASE, 500L),
+            title = "Edition", artistNames = listOf("Artist"), country = "Brazil", year = 2024,
+            labels = emptyList(), barcodes = emptyList(), formats = listOf("Album"),
+            tracklist = emptyList(), unofficial = false, masterId = 90L, artistIds = listOf(17L),
+        )
+        assertTrue(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 500L, expectedArtistId = 17L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 500L, expectedArtistId = 18L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record.copy(unofficial = true),
+            500L, expectedArtistId = 17L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 500L, expectedMasterId = 91L))
+        assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 501L))
+        assertTrue(com.music.bitchord.ui.discogsDirectReleaseMatches(record.copy(unofficial = true), 500L))
+    }
 }

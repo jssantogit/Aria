@@ -1012,6 +1012,7 @@ internal class DiscogsNativeCatalogSession(
         selected: DiscogsNativeReleaseSearchRow,
         retainDirectParent: Boolean = false,
         expectedMasterId: Long? = null,
+        expectedArtistId: Long? = null,
     ) {
         if (selected.releaseId !in 1..999_999_999_999L || selected.title.isBlank()) return
         val previous = if (retainDirectParent && artist == null &&
@@ -1045,10 +1046,9 @@ internal class DiscogsNativeCatalogSession(
                     _route.value, _browseId.value, selected.browseId,
                 )) return@launch
             val record = (response as? DiscogsLookupResult.Found)?.record
-            if (record == null || record.link.kind != DiscogsKind.RELEASE ||
-                record.link.id != selected.releaseId ||
-                (expectedMasterId != null &&
-                    (record.masterId != expectedMasterId || record.unofficial))
+            if (record == null || !discogsDirectReleaseMatches(
+                    record, selected.releaseId, expectedMasterId, expectedArtistId,
+                )
             ) {
                 failDetail("Não foi possível carregar esta edição Discogs.")
                 return@launch
@@ -1259,9 +1259,10 @@ internal class DiscogsNativeCatalogSession(
 
     fun openRelease(browseId: String) {
         val parent = artist
-        val current = (_detail.value as? UiState.Success)?.data
-            ?.takeIf { _route.value == DiscogsNativeRoute.RELEASE &&
-                it.page.browseId == _browseId.value }
+        val visiblePage = (_detail.value as? UiState.Success)?.data
+            ?.takeIf { it.page.browseId == _browseId.value } ?: return
+        if (!discogsVisibleReleaseSelection(visiblePage, browseId)) return
+        val current = visiblePage.takeIf { _route.value == DiscogsNativeRoute.RELEASE }
         val verifiedVersion = current?.let {
             discogsVerifiedVersionSelection(it, browseId)
         }
@@ -1290,9 +1291,13 @@ internal class DiscogsNativeCatalogSession(
             val exact = discogsNativeDetailRouteKey(
                 DiscogsNativeRoute.RELEASE, browseId,
             )?.removePrefix("discogs:release:")?.toLongOrNull() ?: return
+            val expectedArtistId = discogsNativeDetailRouteKey(
+                DiscogsNativeRoute.ARTIST, live.albumArtistBrowseId,
+            )?.substringAfterLast(':')?.toLongOrNull() ?: return
             openReleaseFromSearch(
                 DiscogsNativeReleaseSearchRow(exact, related.title),
                 retainDirectParent = true,
+                expectedArtistId = expectedArtistId,
             )
             return
         }
@@ -1390,6 +1395,23 @@ internal class DiscogsNativeCatalogSession(
         }
     }
 }
+
+/** Only a release actually visible in the current source page may be opened. */
+internal fun discogsVisibleReleaseSelection(page: DiscogsNativePage, browseId: String): Boolean =
+    discogsNativeDetailRouteKey(DiscogsNativeRoute.RELEASE, browseId) != null &&
+        page.page.browseId != browseId &&
+        page.page.sections.flatMap { it.items }.count { it.browseId == browseId } == 1
+
+/** Search may show unofficial releases; verified related/version rails may not. */
+internal fun discogsDirectReleaseMatches(
+    record: DiscogsRecord,
+    expectedReleaseId: Long,
+    expectedMasterId: Long? = null,
+    expectedArtistId: Long? = null,
+): Boolean = record.link.kind == DiscogsKind.RELEASE &&
+    record.link.id == expectedReleaseId &&
+    (expectedMasterId == null || (!record.unofficial && record.masterId == expectedMasterId)) &&
+    (expectedArtistId == null || (!record.unofficial && expectedArtistId in record.artistIds))
 
 /** A response for a retired album is neither success nor failure of the current album. */
 internal fun discogsNativeDetailRequestMatches(
