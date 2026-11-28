@@ -619,7 +619,7 @@ object AudioCache {
      * fill, and backfills it into any entry already tagged without it.
      */
     fun noteSongs(songs: List<Song>) {
-        val playable = songs.filter { it.localUri == null && it.videoId.isNotBlank() }
+        val playable = songs.filter { !it.isAudioPreview && it.localUri == null && it.videoId.isNotBlank() }
         if (playable.isEmpty()) return
         if (notedSongs.size > MAX_NOTED_SONGS) notedSongs.clear()
         playable.forEach { notedSongs[it.videoId] = it }

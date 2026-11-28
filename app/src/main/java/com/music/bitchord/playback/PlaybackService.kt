@@ -1409,6 +1409,10 @@ class PlaybackService : MediaLibraryService() {
             // are fetching. Read-ahead means the track being resolved here is
             // usually *not* the one playing, which is exactly why the lines
             // have to say. See [TrackLog.about].
+            // A preview has its own uncached MediaSource and revocable lease.
+            // All other consumers (analysis, wear, legacy cache) must fail closed.
+            if (AmsPreviewRoute.owns(dataSpec.uri.toString()))
+                throw java.io.IOException("Preview requires dedicated media transport")
             val about = TrackLog.about(mediaIdIn(dataSpec.uri))
             // A source-backed track is resolved by whichever source can serve
             // it, which is not necessarily the one it was queued from — see
@@ -1800,8 +1804,9 @@ class PlaybackService : MediaLibraryService() {
      * does, so the receiver is handed the URL the phone would have played.
      */
     private suspend fun resolveForCast(item: MediaItem): CastStream? = withContext(Dispatchers.IO) {
-        if (item.isCanonicalRemotePlayback()) return@withContext null
+        if (item.isCanonicalRemotePlayback() || item.toSong().isAudioPreview) return@withContext null
         val uri = item.localConfiguration?.uri ?: return@withContext null
+        if (AmsPreviewRoute.owns(uri.toString())) return@withContext null
         // A remote Cast receiver cannot cancel its own HTTP transfer when
         // a source-backed addon/module is disabled in our canonical policy.
         // Do not export any provider-owned logical URI as a naked CDN URL.
@@ -1822,7 +1827,7 @@ class PlaybackService : MediaLibraryService() {
             onHandoff = ::adoptPlayer,
             analysisFor = { item -> trackAnalyzer.analysisFor(item.mediaId) },
             requestAnalysis = { item, durationMs ->
-                item.localConfiguration?.uri?.let { uri ->
+                item.takeUnless { it.toSong().isAudioPreview }?.localConfiguration?.uri?.let { uri ->
                     trackAnalyzer.request(item.mediaId, uri, durationMs / 1000.0)
                 }
             },
@@ -2396,7 +2401,7 @@ class PlaybackService : MediaLibraryService() {
         val index = activePlayer.currentMediaItemIndex
         if (index !in 0 until activePlayer.mediaItemCount) return
         val song = activePlayer.currentMediaItem?.toSong() ?: return
-        if (!song.hasYouTubeOriginal() ||
+        if (song.isAudioPreview || !song.hasYouTubeOriginal() ||
             song.localUri != null ||
             OriginalVersion.isPinned(song.videoId)
         ) {
@@ -2838,6 +2843,7 @@ class PlaybackService : MediaLibraryService() {
             return
         }
         val current = exoPlayer.currentMediaItem?.toSong() ?: return
+        if (current.isAudioPreview) return
         if (AppSettings.dontRepeatSuggestions.value) sessionSongHistory += current
         // In a party the server's queue is the one being topped up, and this
         // player's copy of it lags behind by however long reconcile is held off
@@ -4049,7 +4055,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun lookForBetterCopy(player: ExoPlayer) {
         val item = player.currentMediaItem ?: return
-        if (item.isCanonicalRemotePlayback()) return
+        if (item.isCanonicalRemotePlayback() || item.toSong().isAudioPreview) return
         val mediaId = item.mediaId
         val uri = item.localConfiguration?.uri
         val alreadyPending = QualityUpgrade.isPending(mediaId)
@@ -4169,7 +4175,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun upgradeQualityNow() {
         val player = player ?: return
-        if (player.currentMediaItem?.isCanonicalRemotePlayback() == true) return
+        if (player.currentMediaItem?.let { it.isCanonicalRemotePlayback() || it.toSong().isAudioPreview } == true) return
         val mediaId = player.currentMediaItem?.mediaId ?: return
         // Do not charge the manual cooldown for a command that merely arrived
         // while this track's automatic or manual upgrade was already running.
@@ -5900,7 +5906,7 @@ class PlaybackService : MediaLibraryService() {
             val end = (nextIndex + AudioCache.QUEUE_DEPTH - 1).coerceAtMost(player.mediaItemCount - 1)
             (nextIndex..end).mapNotNull { index ->
                 val item = player.getMediaItemAt(index)
-                item.takeUnless { it.isCanonicalRemotePlayback() }?.toSong()
+                item.takeUnless { it.isCanonicalRemotePlayback() }?.toSong()?.takeUnless { it.isAudioPreview }
             }
         } else {
             emptyList()

@@ -175,6 +175,9 @@ object Downloads {
      *   only thing that has to say *why* forty tracks are in the queue.
      */
     fun enqueue(context: Context, song: Song, from: String? = null) {
+        // The sample is never an acquired asset. A separate explicit Soulseek
+        // metadata search remains available through the normal user workflow.
+        if (song.isAudioPreview) return
         // A closed legacy route is safer than a cosmetic UI change: stale actions,
         // notification intents and permission callbacks may still call enqueue.
         DownloadSession.queued(song, from)

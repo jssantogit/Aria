@@ -2168,7 +2168,7 @@ private fun BitChordApp(
      */
     val startRadio: (Song) -> Unit = { song ->
         val originalController = controller
-        if (originalController != null && !refusedByHost()) {
+        if (!song.isAudioPreview && originalController != null && !refusedByHost()) {
             val request = ++playRequestGeneration
             // Ignore AutoPlay's tail: it may legitimately grow while the
             // request is in flight and does not mean the listener chose a
@@ -2360,7 +2360,9 @@ private fun BitChordApp(
      * same way a batch download is.
      */
     val queueSongs: (List<Song>, Boolean) -> Unit = { songs, next ->
-        if (songs.isNotEmpty()) {
+        if (songs.isNotEmpty() && (songs.none { it.isAudioPreview } ||
+                (!CastController.state.value.casting && !ListenTogether.state.value.inParty &&
+                    com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull())))) {
             scope.launch {
                 if (refusedByHost()) return@launch
                 val c = controller
@@ -2920,7 +2922,8 @@ private fun BitChordApp(
      * silently skipped for lyrics — see [LyricsTag.forTrack].
      */
     val downloadSong: (Song) -> Unit = { song ->
-        val withDuration = if (song.durationMillis() <= 0L &&
+        // A 30-second sample is not evidence of the full recording's length.
+        val withDuration = if (!song.isAudioPreview && song.durationMillis() <= 0L &&
             player.song?.videoId == song.videoId && player.durationMs > 0L
         ) {
             song.copy(durationText = formatDurationText(player.durationMs))
