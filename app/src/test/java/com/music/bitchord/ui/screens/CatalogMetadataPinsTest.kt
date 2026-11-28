@@ -24,6 +24,16 @@ class CatalogMetadataPinsTest {
         assertTrue(toggleCatalogMetadataPin(saved, release).isEmpty())
     }
 
+    @Test fun ratingCapabilityDoesNotAuthorizeUnsupportedPinReopening() {
+        for (route in listOf("itunes:br:album:123","discogs:release:123")) {
+            assertTrue(canonicalCatalogEntityRatingTarget(route) != null)
+            val pin = CatalogMetadataPin(route,"Album")
+            assertFalse(validCatalogMetadataPin(pin))
+            assertTrue(toggleCatalogMetadataPin(emptyList(),pin).isEmpty())
+        }
+        assertTrue(validCatalogMetadataPin(CatalogMetadataPin("apple_music_web:br:album:123","Album")))
+    }
+
     @Test fun refuseFakeIdsAndUntrustedCoverUris() {
         assertFalse(validCatalogMetadataPin(release.copy(browseId = "catalog:RELEASE_GROUP:STAYC")))
         assertFalse(validCatalogMetadataPin(release.copy(artworkUrl = "file:///private/song.mp3")))

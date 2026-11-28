@@ -30,7 +30,8 @@ internal fun trustedCatalogMetadataPinArtwork(url: String?): String? {
 }
 
 internal fun validCatalogMetadataPin(pin: CatalogMetadataPin): Boolean =
-    (canonicalCatalogEntityRatingTarget(pin.browseId) != null ||
+    (((pin.browseId.startsWith("catalog:") || pin.browseId.startsWith("apple_music_web:")) &&
+        canonicalCatalogEntityRatingTarget(pin.browseId) != null) ||
         pin.browseId.removePrefix("catalog:RECORDING:")
             .takeIf { pin.browseId.startsWith("catalog:RECORDING:") }
             ?.let(::isVerifiedCatalogRecordingId) == true) &&
