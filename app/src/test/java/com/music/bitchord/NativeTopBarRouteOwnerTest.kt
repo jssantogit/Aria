@@ -63,6 +63,30 @@ class NativeTopBarRouteOwnerTest {
         }
     }
 
+    @Test fun sharedProviderOverflowUsesOnlyVisibleAdmittedRoute() {
+        fun page(id: String) = com.music.bitchord.data.model.DetailPage(
+            browseId=id,title="Test",subtitle="",thumbnailUrl=null,
+            type=com.music.bitchord.data.model.BrowseType.ALBUM,
+            songs=com.music.bitchord.data.model.UiState.Loading,
+        )
+        val ams = page("apple_music_web:br:album:123")
+        val itunes = page("itunes:br:album:123")
+        val discogs = page("discogs:release:123")
+        for (apple in listOf(ams,itunes)) {
+            val isAms = apple == ams
+            fun pick(route: String, allowed: Boolean = true, local: String? = null) =
+                com.music.bitchord.ui.providerOverflowPage(route,local,apple.browseId,discogs.browseId,
+                    apple,discogs,isAms && allowed,!isAms && allowed,allowed)
+            assertEquals(apple,pick(apple.browseId))
+            assertEquals(null,pick(apple.browseId,false))
+            assertEquals(null,pick(apple.browseId,local="local:album:test"))
+            assertEquals(null,pick("tab:0"))
+            assertEquals(discogs,pick(discogs.browseId))
+            assertEquals(null,pick(discogs.browseId,false))
+            assertEquals(null,pick(if (isAms) itunes.browseId else ams.browseId))
+        }
+    }
+
     @Test fun recentAdditionsDoesNotShareToolbarWithRememberedPlaylist() {
         assertEquals(
             NativeTopBarRouteOwner.RECENT_ADDITIONS,

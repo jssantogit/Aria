@@ -6,6 +6,7 @@ import com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.model.UiState
+import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.providers.BuiltInProviderKeys
 import com.music.bitchord.data.providers.ProviderCapability
 import com.music.bitchord.data.providers.ProviderRuntime
@@ -136,4 +137,20 @@ internal fun rememberNativeCatalogProviderState(
         discogsReadAllowed, discogsNativeVisual, appleReadAllowed, appleSearchAllowed,
         amsStack, amsReadAllowed,
     )
+}
+
+/** Only the visible admitted provider page can own the shared overflow. */
+internal fun providerOverflowPage(
+    route: String, localDetailId: String?, appleRoute: String?, discogsRoute: String?,
+    applePage: DetailPage?, discogsPage: DetailPage?,
+    amsAllowed: Boolean, appleAllowed: Boolean, discogsAllowed: Boolean,
+): DetailPage? = when {
+    localDetailId != null -> null
+    route.startsWith("apple_music_web:") && amsAllowed ->
+        applePage?.takeIf { it.browseId == route && appleRoute == route }
+    route.startsWith("itunes:") && appleAllowed ->
+        applePage?.takeIf { it.browseId == route && appleRoute == route }
+    route.startsWith("discogs:") && discogsAllowed ->
+        discogsPage?.takeIf { it.browseId == route && discogsRoute == route }
+    else -> null
 }

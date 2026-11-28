@@ -6474,21 +6474,31 @@ private fun BitChordApp(
                     },
                 )
             }
-            // AMS uses the same native metadata entity menu as MB. Keep the
-            // host mounted when the menu closes so its rating editor survives.
-            appleSharedVisual?.takeIf {
-                nativeProviderState.amsReadAllowed &&
-                    toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL &&
-                    it.page.browseId.startsWith("apple_music_web:") &&
-                    it.page.browseId == appleNativeRouteKey
-            }?.let { source ->
+            // One shared metadata menu for the active provider detail. Keep
+            // it mounted after dismissal so the local rating editor survives.
+            val sharedProviderRoot = if (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL)
+                com.music.bitchord.ui.providerOverflowPage(
+                    pageRouteKey, detail?.browseId, appleNativeRouteKey, discogsBrowseId,
+                    appleSharedVisual?.page, discogsNativeVisual?.page,
+                    nativeProviderState.amsReadAllowed, appleReadAllowed, discogsReadAllowed,
+                ) else null
+            sharedProviderRoot?.let { source ->
+                val ams = source.browseId.startsWith("apple_music_web:")
+                val sourceUrl = if (ams) appleSharedVisual?.sourceStoreUrl
+                    else when (appleNativeKind) {
+                        AppleNativeDetailKind.ARTIST -> appleArtistNavigation?.appleStoreUrl
+                        AppleNativeDetailKind.ALBUM ->
+                            (appleAlbumDetail as? UiState.Success)?.data?.appleStoreUrl
+                                ?: appleAlbumNavigation?.appleStoreUrl
+                        else -> null
+                    }
                 com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
-                    browseId = source.page.browseId,
-                    title = source.page.title,
-                    subtitle = source.page.subtitle.orEmpty(),
-                    cover = source.page.thumbnailUrl,
-                    sourceStoreUrl = source.sourceStoreUrl,
-                    loadAmsLabels = { viewModel.loadAmsCollectionLabels(source.page.browseId) },
+                    browseId = source.browseId,
+                    title = source.title,
+                    subtitle = source.subtitle.orEmpty(),
+                    cover = source.thumbnailUrl,
+                    sourceStoreUrl = sourceUrl,
+                    loadAmsLabels = if (ams) ({ viewModel.loadAmsCollectionLabels(source.browseId) }) else null,
                     expanded = providerDetailOverflowOpen && providerHeldCardRoute == null,
                     onDismiss = { providerDetailOverflowOpen = false },
                     hazeState = hazeState,
@@ -6497,7 +6507,8 @@ private fun BitChordApp(
                 )
             }
             if (providerDetailOverflowOpen &&
-                !(providerHeldCardRoute == null && appleNativeRouteKey?.startsWith("apple_music_web:") == true) &&
+                (sharedProviderRoot == null || providerHeldCardRoute != null) &&
+                !(providerHeldCardRoute == null && pageRouteKey.startsWith("apple_music_web:")) &&
                 (appleSharedVisual != null || discogsNativeVisual != null ||
                     providerHeldCardRoute?.startsWith("discogs:") == true ||
                     providerHeldCardRoute?.startsWith("apple_music_web:") == true) &&
