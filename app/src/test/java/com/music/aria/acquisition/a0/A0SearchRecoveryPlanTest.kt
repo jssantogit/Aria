@@ -253,7 +253,7 @@ class A0SearchRecoveryPlanTest {
         for(album in listOf("", " ", "../", "X".repeat(140), "MoRE")) {
             val next=A0SearchRecoveryPlan(original,album=album)
                 .next(6000,false,setOf("ILLIT More"))
-            assertEquals("More",next)
+            assertNull(next)
         }
     }
 
@@ -279,4 +279,28 @@ class A0SearchRecoveryPlanTest {
             6000,true,setOf("Bjork Joga")))
         assertFalse(unstructured.toString().contains("magnetic"))
     }
+
+    @Test fun shortAsciiTitleDoesNotFloodWithUnqualifiedRecovery() {
+        val plan=A0SearchRecoveryPlan("Example Artist - Hello","25")
+        val sent=mutableSetOf("Example Artist Hello")
+        assertEquals("Example Artist 25",plan.next(6000,false,sent))
+        assertEquals(A0SearchRecoveryPlan.VariantKind.ALBUM_CONTEXT,
+            plan.variantKind("Example Artist 25"))
+        sent.add("Example Artist 25")
+        assertEquals("Example Artist 25 Hello",plan.next(12000,false,sent))
+        sent.add("Example Artist 25 Hello")
+        assertNull(plan.next(14000,false,sent))
+        assertFalse(plan.authorizesTransfer)
+    }
+
+    @Test fun shortTitleWithSameAlbumOrNoAlbumNeverBecomesNakedQuery() {
+        for(album in listOf("Bad","BAD","", "../")) {
+            val plan=A0SearchRecoveryPlan("Example Artist - Bad",album)
+            assertNull(plan.next(6000,false,setOf("Example Artist Bad")))
+        }
+        // Descriptive longer titles and native-script variants are unchanged.
+        assertEquals("Magnetic",A0SearchRecoveryPlan("ILLIT - Magnetic")
+            .next(6000,false,setOf("ILLIT Magnetic")))
+    }
+
 }

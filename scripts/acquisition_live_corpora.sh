@@ -22,7 +22,7 @@ run_corpus() {
 case "${ARIA_LIVE_CORPUS:-kpop1}" in
   pending123)
     run_corpus kpop1 lesserafim_antifragile,seventeen_very_nice
-    run_corpus mixed2 mj_bad,illit_iykyk,illit_tick_tack,exo_love_shot,exo_growl,gaga_bad_romance
+    run_corpus mixed2 mj_bad,exo_love_shot,exo_growl,gaga_bad_romance
     run_corpus mixed3 taeyeon_i,whitney_i_will_always_love_you,prince_purple_rain,beyonce_halo,rihanna_umbrella,adele_hello
     ;;
   batch123)

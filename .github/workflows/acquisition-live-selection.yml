@@ -23,6 +23,8 @@ on:
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoDiscoveryCoordinator.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0CandidateRank.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0FreshAutoSearchTransport.kt'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0SearchRecoveryPlan.kt'
+      - 'app/src/test/java/com/music/aria/acquisition/a0/A0SearchRecoveryPlanTest.kt'
       - 'app/src/test/java/com/music/aria/acquisition/a0/A0CandidateRankEditionAliasTest.kt'
       - 'app/src/androidTest/java/com/music/aria/acquisition/live/SoulseekLiveSelectionTest.kt'
 permissions:
@@ -48,7 +50,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleDevDebug :app:assembleDevDebugAndroidTest
       - name: Verify ranking regression contracts
-        run: ./gradlew --no-daemon :app:testDevDebugUnitTest --tests 'com.music.aria.acquisition.a0.A0CandidateRank*Test' --tests 'com.music.aria.acquisition.a0.A0AutoCandidateSelectionPolicyTest'
+        run: ./gradlew --no-daemon :app:testDevDebugUnitTest --tests 'com.music.aria.acquisition.a0.A0CandidateRank*Test' --tests 'com.music.aria.acquisition.a0.A0AutoCandidateSelectionPolicyTest' --tests 'com.music.aria.acquisition.a0.A0SearchRecoveryPlanTest'
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -57,7 +59,7 @@ jobs:
       - name: Read-only live discovery and selection
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         env:
-          # Push rechecks the 14 unresolved cases; manual batch123 retains full mixed runs.
+          # Push rechecks the 12 unresolved cases; manual batch123 retains full mixed runs.
           # All network sessions remain exclusive to the dedicated account.
           ARIA_LIVE_CASES: ${{ github.event_name == 'push' && '' || inputs.cases }}
           ARIA_LIVE_CORPUS: ${{ github.event_name == 'push' && 'pending123' || inputs.corpus }}

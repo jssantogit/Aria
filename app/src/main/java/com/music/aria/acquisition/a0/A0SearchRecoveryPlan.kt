@@ -51,6 +51,27 @@ internal class A0SearchRecoveryPlan(original:String,album:String?=null,releaseWi
         A0SearchQuery.normalize("$artist $normalizedAlbum")
     }.getOrNull() else null
 
+    // Short ASCII titles can swamp the peer budget: the live's "Bad"
+    // and "Hello" title-only variants returned thousands of unrelated files.
+    // Prefer a bounded artist+release query without requiring the title in
+    // the path. It still undergoes the unchanged canonical slot screening.
+    private val shortLatinTitle=runCatching {
+        val parts=original.split(Regex("\\s+[-–—]\\s+"),limit=2)
+        parts.size==2 && A0SearchQuery.normalize(parts[1])
+            .matches(Regex("[A-Za-z]{3,5}"))
+    }.getOrDefault(false)
+    private val shortTitleAlbumContext=if(shortLatinTitle)runCatching {
+        val parts=original.split(Regex("\\s+[-–—]\\s+"),limit=2)
+        val canonical=A0SearchQuery.canonicalArtistTitle(original)
+            ?:return@runCatching null
+        val artist=A0SearchQuery.normalize(parts[0])
+        val release=A0SearchQuery.normalize(album.orEmpty())
+        A0SearchQuery.normalize("$artist $release").takeUnless {
+            it.equals(canonical,ignoreCase=true) ||
+                it.equals(artist,ignoreCase=true)
+        }
+    }.getOrNull() else null
+
     // Prefer exact artist+album+title before a broad title-only lookup
     // when canonical album context exists. A real bilingual Latin title
     // alias and an equivalent explicit edition spelling retain priority.
@@ -89,15 +110,24 @@ internal class A0SearchRecoveryPlan(original:String,album:String?=null,releaseWi
         }
         // Keep the ranked candidates, not merely the first two raw choices.
         // An album-wide query sent by a sibling must not consume a fallback.
-        ordered.filter { it.length>=3 }.distinct()
+        val scoped=if(shortLatinTitle) {
+            // Never send the naked short token, even via variants(). An
+            // unavailable/same-title album may leave no useful alternative.
+            val naked=A0SearchQuery.titleOnlyFallback(original)
+            listOfNotNull(albumWide,shortTitleAlbumContext,albumQualified,editionVariant)+
+                normal.filterNot { it.equals(naked,ignoreCase=true) }
+        } else ordered
+        scoped.filter { it.length>=3 }.distinct()
     }
     /** Enum-only search-kind diagnostics. Never emit wire text or identifiers. */
     internal enum class VariantKind {
-        NONE, ALBUM_WIDE, ALBUM_QUALIFIED, EDITION_EQUIVALENT,
+        NONE, ALBUM_WIDE, ALBUM_QUALIFIED, ALBUM_CONTEXT, EDITION_EQUIVALENT,
         TITLE_ONLY_OR_ALIAS, NORMALIZED_VARIANT, OTHER,
     }
     internal fun variantKind(wireText:String):VariantKind = when {
         albumWide!=null && wireText==albumWide -> VariantKind.ALBUM_WIDE
+        shortTitleAlbumContext!=null && wireText==shortTitleAlbumContext ->
+            VariantKind.ALBUM_CONTEXT
         albumQualified!=null && wireText==albumQualified ->
             VariantKind.ALBUM_QUALIFIED
         A0SearchQuery.editionSpellingVariant(originalQuery)==wireText ->
