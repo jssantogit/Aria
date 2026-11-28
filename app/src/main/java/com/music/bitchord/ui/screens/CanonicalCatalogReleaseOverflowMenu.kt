@@ -27,6 +27,10 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     sourceStoreUrl: String? = null,
     loadAmsLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)? = null,
+    onAmsPlay: (() -> Unit)? = null,
+    onAmsShuffle: (() -> Unit)? = null,
+    onAmsPlayNext: (() -> Unit)? = null,
+    onAmsAddToQueue: (() -> Unit)? = null,
     onSettings: () -> Unit,
 ) {
     val spec = remember(browseId,sourceStoreUrl) {
@@ -75,6 +79,8 @@ internal fun CanonicalCatalogReleaseOverflowMenu(
                     onRate = { ratingOpen = true },
                     onAddVerifiedRecordings = { playlistOpen = true },
                     onAddAmsCollection = loadAmsLabels?.let { { playlistOpen=true } },
+                    onAmsPlay = onAmsPlay, onAmsShuffle = onAmsShuffle,
+                    onAmsPlayNext = onAmsPlayNext, onAmsAddToQueue = onAmsAddToQueue,
                 )
             }
             com.music.bitchord.FrostedMenuRow(

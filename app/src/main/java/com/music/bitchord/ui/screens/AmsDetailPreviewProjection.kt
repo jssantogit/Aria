@@ -69,3 +69,13 @@ internal fun amsShelfPreviewSong(card: ShelfItem): Song? {
     return Song(videoId=route.scopedId,title=card.title,artist=card.subtitle,
         thumbnailUrl=card.thumbnailUrl,isAudioPreview=true)
 }
+
+/** Collection actions reuse the same ordered sample subset as the detail hero.
+ * Artists and unrelated/stale page identities are not collection queues. */
+internal fun amsCollectionPreviewSongs(expectedId: String, page: DetailPage, tracks: List<NativeMetadataTrack>): List<Song> {
+    if (page.browseId != expectedId) return emptyList()
+    val route = AppleMusicWebNativeRoute.parse(expectedId) ?: return emptyList()
+    if ((route.kind != com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM || page.type != BrowseType.ALBUM) &&
+        (route.kind != com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST || page.type != BrowseType.PLAYLIST)) return emptyList()
+    return amsDetailPreviewSongs(page,tracks).values.toList()
+}

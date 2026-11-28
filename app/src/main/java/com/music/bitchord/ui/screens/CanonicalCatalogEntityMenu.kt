@@ -102,6 +102,10 @@ internal fun CanonicalCatalogEntityMenuBody(
     onOpenLabel: String? = null,
     isCurrent: () -> Boolean = { true },
     onAddAmsCollection: (() -> Unit)? = null,
+    onAmsPlay: (() -> Unit)? = null,
+    onAmsShuffle: (() -> Unit)? = null,
+    onAmsPlayNext: (() -> Unit)? = null,
+    onAmsAddToQueue: (() -> Unit)? = null,
 ) {
     val spec = remember(browseId,sourceStoreUrl) {
         canonicalCatalogEntityMenuSpec(browseId,sourceStoreUrl)
@@ -136,8 +140,11 @@ internal fun CanonicalCatalogEntityMenuBody(
         presentation = presentation,
         onOpen = onOpen?.let { open -> { if (isCurrent()) open() } },
         onOpenLabel = onOpenLabel,
-        // This identity is a MusicBrainz entity only; never supply onPlay,
-        // onShuffle, onPlayNext or onAddToQueue.
+        // Only AMS collections can receive explicitly admitted sample actions.
+        onPlay = amsCollectionMenuAction(spec,onAmsPlay,isCurrent,onDismiss),
+        onShuffle = amsCollectionMenuAction(spec,onAmsShuffle,isCurrent,onDismiss),
+        onPlayNext = amsCollectionMenuAction(spec,onAmsPlayNext,isCurrent,onDismiss),
+        onAddToQueue = amsCollectionMenuAction(spec,onAmsAddToQueue,isCurrent,onDismiss),
         onAddToPlaylist = if (onAddAmsCollection != null && spec.ratingTarget.entityId.startsWith("apple_music_web:") &&
             spec.browseType in setOf(BrowseType.ALBUM,BrowseType.PLAYLIST)) {
             { if (isCurrent()) { onDismiss(); onAddAmsCollection() } }
@@ -186,4 +193,11 @@ internal fun CanonicalCatalogEntityMenuBody(
         } },
         viewSourceLabel = spec.sourceLabel,
     )
+}
+
+internal fun amsCollectionMenuAction(spec: CanonicalCatalogEntityMenuSpec, action: (() -> Unit)?,
+    isCurrent: () -> Boolean, dismiss: () -> Unit): (() -> Unit)? {
+    if (action == null || !spec.ratingTarget.entityId.startsWith("apple_music_web:") ||
+        spec.browseType !in setOf(BrowseType.ALBUM,BrowseType.PLAYLIST)) return null
+    return { if (isCurrent()) { dismiss(); action() } }
 }

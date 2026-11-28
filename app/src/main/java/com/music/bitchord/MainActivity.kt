@@ -2356,6 +2356,9 @@ private fun BitChordApp(
                 (!CastController.state.value.casting && !ListenTogether.state.value.inParty &&
                     com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull())))) {
             scope.launch {
+                if (songs.any { it.isAudioPreview } &&
+                    (CastController.state.value.casting || ListenTogether.state.value.inParty ||
+                        !com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()))) return@launch
                 if (refusedByHost()) return@launch
                 val c = controller
                 if (c == null || c.mediaItemCount == 0) {
@@ -6521,6 +6524,21 @@ private fun BitChordApp(
                                 ?: appleAlbumNavigation?.appleStoreUrl
                         else -> null
                     }
+                // Read the exact live navigation entry again at invocation.
+                // Never fetch a different page or replace the active route.
+                fun currentCollectionPreviews(): List<Song> {
+                    if (!ams || pageRouteKey != source.browseId ||
+                        CastController.state.value.casting || ListenTogether.state.value.inParty ||
+                        !com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull())) return emptyList()
+                    val live = viewModel.appleMusicWebDetailNavigation.stack.value.lastOrNull()
+                        ?.takeIf { it.route.browseId == source.browseId && it.lease.isCurrent() }
+                        ?.visible() ?: return emptyList()
+                    return com.music.bitchord.ui.screens.amsCollectionPreviewSongs(
+                        source.browseId,live.page,live.metadataTracks)
+                }
+                val collectionPreviewPolicy = ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+                val collectionPreviews = collectionPreviewPolicy != null && currentCollectionPreviews().isNotEmpty()
+                val collectionSource = QueueSource(source.title,PlaybackSourceType.BROWSE,source.browseId)
                 com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
                     browseId = source.browseId,
                     title = source.title,
@@ -6528,6 +6546,15 @@ private fun BitChordApp(
                     cover = source.thumbnailUrl,
                     sourceStoreUrl = sourceUrl,
                     loadAmsLabels = if (ams) ({ viewModel.loadAmsCollectionLabels(source.browseId) }) else null,
+                    onAmsPlay = if (collectionPreviews) ({ val songs = currentCollectionPreviews()
+                        if (songs.isNotEmpty()) playFrom(songs,0,collectionSource) }) else null,
+                    onAmsShuffle = if (collectionPreviews) ({ val songs = currentCollectionPreviews()
+                        if (songs.isNotEmpty()) {
+                            QueueShuffle.enableForNextQueue()
+                            playFrom(songs,songs.indices.random(),collectionSource)
+                        } }) else null,
+                    onAmsPlayNext = if (collectionPreviews) ({ playSongsNext(currentCollectionPreviews()) }) else null,
+                    onAmsAddToQueue = if (collectionPreviews) ({ addSongsToQueue(currentCollectionPreviews()) }) else null,
                     expanded = providerDetailOverflowOpen,
                     onDismiss = { providerDetailOverflowOpen = false },
                     hazeState = hazeState,

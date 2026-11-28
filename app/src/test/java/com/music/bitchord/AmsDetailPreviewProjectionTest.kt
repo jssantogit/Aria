@@ -36,6 +36,19 @@ class AmsDetailPreviewProjectionTest {
         assertNull(amsShelfPreviewSong(card.copy(appleStoreUrl=null)))
     }
 
+    @Test fun collectionActionsRequireExactAlbumOrPlaylistAndKeepOccurrences() {
+        val id = "apple_music_web:br:playlist:pl.123456"
+        val page = DetailPage(id,"Playlist","",null,UiState.Success(emptyList()),BrowseType.PLAYLIST)
+        val a = NativeMetadataTrack("apple_music_web:br:song:123","A","Artist",null,null,hasAudioPreview=true)
+        val b = a.copy(key="apple_music_web:br:song:456",hasAudioPreview=false)
+        val rows = listOf(a,b,a)
+        assertEquals(listOf(a.key,a.key),amsCollectionPreviewSongs(id,page,rows).map { it.videoId })
+        assertTrue(amsCollectionPreviewSongs("apple_music_web:br:playlist:pl.other",page,rows).isEmpty())
+        assertTrue(amsCollectionPreviewSongs(id,page.copy(type=BrowseType.ARTIST),rows).isEmpty())
+        val artist = "apple_music_web:br:artist:123"
+        assertTrue(amsCollectionPreviewSongs(artist,page.copy(browseId=artist,type=BrowseType.ARTIST),rows).isEmpty())
+    }
+
     @Test fun preservesUnavailableRowsAndRepeatedMembersInPlayableProjection() {
         val page = DetailPage("apple_music_web:br:playlist:pl.123456","Playlist","",
             null,UiState.Success(emptyList()),BrowseType.PLAYLIST)
