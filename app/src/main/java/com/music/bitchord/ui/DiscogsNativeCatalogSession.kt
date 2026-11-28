@@ -860,10 +860,10 @@ internal class DiscogsNativeCatalogSession(
             )
             return
         }
-        val job = scope.launch(Dispatchers.IO) {
+        val job = scope.launch(Dispatchers.Main.immediate) {
             var currentPage = firstPage
             while (true) {
-                val result = try { searchClient.search(subject, currentPage) }
+                val result = try { withContext(Dispatchers.IO) { searchClient.search(subject, currentPage) } }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsNativeArtistSearchResult.Unavailable }
                 if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
@@ -889,13 +889,15 @@ internal class DiscogsNativeCatalogSession(
                         val editorialLease = if (currentPage == 1 && previous.isEmpty())
                             lease(ProviderCapability.EDITORIAL_DISCOGRAPHY) else null
                         val resolved = if (editorialLease != null) {
-                            discogsResolveArtistSearchHomonyms(
-                                query = subject, rows = combined,
-                                stillCurrent = { searchEpoch == epoch && query == subject &&
-                                    authorization.isCurrent() && editorialLease.isCurrent() },
-                                searchReleases = { releaseSearchClient.search(subject) },
-                                readRelease = editionClient::fetchRelease,
-                            ).rows.takeIf { editorialLease.isCurrent() } ?: combined
+                            withContext(Dispatchers.IO) {
+                                discogsResolveArtistSearchHomonyms(
+                                    query = subject, rows = combined,
+                                    stillCurrent = { searchEpoch == epoch && query == subject &&
+                                        authorization.isCurrent() && editorialLease.isCurrent() },
+                                    searchReleases = { releaseSearchClient.search(subject) },
+                                    readRelease = editionClient::fetchRelease,
+                                ).rows
+                            }.takeIf { editorialLease.isCurrent() } ?: combined
                         } else combined
                         if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
                         val candidates = discogsSearchDistinctArtists(subject, resolved)
@@ -913,19 +915,29 @@ internal class DiscogsNativeCatalogSession(
                                 fresh, result.page.nextPage,
                             )
                         ) {
+                            // Even a valid empty page is a settled snapshot.
+                            // Keep its retry affordance if the next read fails.
+                            _artists.value = UiState.Success(projected)
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
                         _artists.value = UiState.Success(projected)
                     }
-                    DiscogsNativeArtistSearchResult.AuthenticationRequired ->
+                    DiscogsNativeArtistSearchResult.AuthenticationRequired -> {
+                        _searchHasMore.value = false
                         _artists.value = UiState.Error("discogs_token_required")
-                    DiscogsNativeArtistSearchResult.Disabled ->
+                    }
+                    DiscogsNativeArtistSearchResult.Disabled -> {
+                        _searchHasMore.value = false
                         _artists.value = UiState.Error("discogs_search_disabled")
+                    }
                     else -> {
-                        if (currentPage > 1 && _artists.value is UiState.Success)
+                        if (discogsSearchCanRetrySettledPage(searchPage, _artists.value)) {
                             _searchHasMore.value = true
-                        else _artists.value = UiState.Error("discogs_catalog_unavailable")
+                        } else {
+                            _searchHasMore.value = false
+                            _artists.value = UiState.Error("discogs_catalog_unavailable")
+                        }
                     }
                 }
                 break
@@ -951,10 +963,10 @@ internal class DiscogsNativeCatalogSession(
             )
             return
         }
-        val job = scope.launch(Dispatchers.IO) {
+        val job = scope.launch(Dispatchers.Main.immediate) {
             var currentPage = firstPage
             while (true) {
-                val result = try { releaseSearchClient.search(subject, currentPage) }
+                val result = try { withContext(Dispatchers.IO) { releaseSearchClient.search(subject, currentPage) } }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsNativeReleaseSearchResult.Unavailable }
                 if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
@@ -975,21 +987,27 @@ internal class DiscogsNativeCatalogSession(
                         ) {
                             // Publish a better-ranked representative even when this
                             // page contributes no new Master/Release identity.
-                            if (merged != previous) _releasesSearch.value = UiState.Success(merged)
+                            _releasesSearch.value = UiState.Success(merged)
                             currentPage = requireNotNull(result.page.nextPage)
                             continue
                         }
                         _releasesSearch.value = UiState.Success(merged)
                     }
-                    DiscogsNativeReleaseSearchResult.AuthenticationRequired ->
+                    DiscogsNativeReleaseSearchResult.AuthenticationRequired -> {
+                        _releaseSearchHasMore.value = false
                         _releasesSearch.value = UiState.Error("discogs_token_required")
-                    DiscogsNativeReleaseSearchResult.Disabled ->
+                    }
+                    DiscogsNativeReleaseSearchResult.Disabled -> {
+                        _releaseSearchHasMore.value = false
                         _releasesSearch.value = UiState.Error("discogs_search_disabled")
+                    }
                     else -> {
-                        if (currentPage > 1 && _releasesSearch.value is UiState.Success)
+                        if (discogsSearchCanRetrySettledPage(releaseSearchPage, _releasesSearch.value)) {
                             _releaseSearchHasMore.value = true
-                        else _releasesSearch.value =
-                            UiState.Error("discogs_catalog_unavailable")
+                        } else {
+                            _releaseSearchHasMore.value = false
+                            _releasesSearch.value = UiState.Error("discogs_catalog_unavailable")
+                        }
                     }
                 }
                 break
@@ -1403,6 +1421,10 @@ internal class DiscogsNativeCatalogSession(
         }
     }
 }
+
+/** A successful empty page is still a settled, retryable search snapshot. */
+internal fun discogsSearchCanRetrySettledPage(settledPage: Int, state: UiState<*>?): Boolean =
+    settledPage in 1..2 && state is UiState.Success
 
 /** Retained search results or Back-stack metadata must never extend their TTL. */
 internal fun discogsMayResetSnapshotExpiry(retainingHistory: Boolean, retainingSearch: Boolean): Boolean =

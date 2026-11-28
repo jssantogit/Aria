@@ -234,4 +234,14 @@ class DiscogsNativeNavigationTest {
         assertFalse(reset(false, true))
         assertTrue(reset(false, false))
     }
+
+    @Test fun emptySettledSearchPageCanRetryFailedContinuation() {
+        fun retry(page: Int, state: UiState<*>?) =
+            com.music.bitchord.ui.discogsSearchCanRetrySettledPage(page, state)
+        assertTrue(retry(1, UiState.Success(emptyList<String>())))
+        assertTrue(retry(2, UiState.Success(listOf("existing"))))
+        assertFalse(retry(0, UiState.Loading))
+        assertFalse(retry(1, UiState.Error("disabled")))
+        assertFalse(retry(3, UiState.Success(emptyList<String>())))
+    }
 }
