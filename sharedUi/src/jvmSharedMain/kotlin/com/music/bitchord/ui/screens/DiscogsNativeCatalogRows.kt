@@ -123,10 +123,32 @@ fun discogsSearchReleaseRank(query: String, combinedTitle: String): Int? {
 }
 
 /**
+ * An explicit package suffix is a display-ranking hint, not a claim about
+ * format or identity. Ordinary titles (including words like "Live") are
+ * left alone; explicit edition queries retain their normal text relevance.
+ */
+private val discogsPackageSuffix = Regex(
+    """\s*[\(\[]\s*(?:weverse|photobook|photocard|jewel\s*case|digipack|platform|poca|nemo|kit\s+album)(?:\s+(?:version|ver\.?|edition|package))?\s*[\)\]]$""",
+    RegexOption.IGNORE_CASE,
+)
+
+private fun discogsPackageRank(query: String, combinedTitle: String): Int {
+    val title = discogsSearchReleaseDisplay(combinedTitle).title
+    val suffix = discogsPackageSuffix.find(title) ?: return 0
+    val q = discogsSearchFold(query)
+    val packageWords = discogsSearchFold(suffix.value)
+        .split(Regex("""[^\p{L}\p{N}]+"""))
+        .filter { it.isNotBlank() && it !in setOf("version", "ver", "edition", "package") }
+    val queryWords = q.split(Regex("""[^\p{L}\p{N}]+""")).toSet()
+    return if (packageWords.any { it in queryWords }) 0 else 1
+}
+
+/**
  * Search displays one representative Release per explicit positive Master ID.
  * Missing/conflicting Master evidence keeps the exact Release identity;
  * equal text alone is never evidence of an edition relationship.
- * Keep source order for equal relevance, including earlier loaded pages.
+ * Prefer unqualified titles over explicitly labelled packages at equal
+ * textual relevance; retain source order for the remaining ties.
  * Detail and edition selection still use the original Release ID.
  */
 fun discogsSearchDistinctReleases(
@@ -149,7 +171,8 @@ fun discogsSearchDistinctReleases(
         first.copy(masterId = master)
     }.mapNotNull { row ->
         discogsSearchReleaseRank(query, row.title)?.let { it to row }
-    }.sortedBy { it.first }
+    }.sortedWith(compareBy<Pair<Int, DiscogsNativeReleaseSearchRow>> { it.first }
+        .thenBy { discogsPackageRank(query, it.second.title) })
         .distinctBy { (_, row) ->
             row.masterId?.takeIf { it in 1..999_999_999_999L }
                 ?.let { "master:$it" } ?: "release:${row.releaseId}"
