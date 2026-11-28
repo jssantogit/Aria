@@ -670,10 +670,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
     internal val appleMusicWebSearchUi by lazy {
         AppleMusicWebSearchUiSession(viewModelScope,{ ProviderRuntime.gateOrNull() },
-            ::eligibleCatalogSearchProviders,appleMusicWebNativeCatalog::search) { query ->
-            if (_searchSource.value == SearchSource.CANONICAL && _query.value.trim() == query &&
-                searchSubmitted) routeCatalogFilterFromExistingSearch(query)
-        }
+            ::eligibleCatalogSearchProviders,appleMusicWebNativeCatalog::search, settled = { query ->
+                if (_searchSource.value == SearchSource.CANONICAL && _query.value.trim() == query &&
+                    searchSubmitted) routeCatalogFilterFromExistingSearch(query)
+            },readArtistProducts=appleMusicWebNativeCatalog::searchArtistProducts)
     }
     private fun selectAmsSearch(query: String) {
         if (appleMusicWebSearchUi.state.value.selected &&
@@ -5594,7 +5594,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val snapshot = appleMusicWebSearchUi.state.value
             if (!snapshot.selected || !appleMusicWebSearchUi.current() ||
                 snapshot.query != _query.value.trim() ||
-                snapshot.sections.values.none { section -> section.items.any { amsSearchTrack(it) == track } }) return
+                appleMusicWebSearchUi.admittedItems().none { amsSearchTrack(it) == track }) return
             viewModelScope.launch {
                 val item = appleMusicWebNativeCatalog.songAlbumRoute(track.key) ?: return@launch
                 if (appleMusicWebSearchUi.state.value.query != snapshot.query ||
@@ -5626,7 +5626,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val snapshot = appleMusicWebSearchUi.state.value
             if (snapshot.selected && appleMusicWebSearchUi.current() &&
                 snapshot.query == _query.value.trim() &&
-                snapshot.sections.values.any { section -> section.items.any { amsSearchRow(it) == row } }) {
+                appleMusicWebSearchUi.admittedItems().any { amsSearchRow(it) == row }) {
                 openAppleMusicWebDetail(ShelfItem(row.title,row.artistName,row.artworkUri,
                     null,row.browseId,appleStoreUrl=row.appleStoreUrl))
             }

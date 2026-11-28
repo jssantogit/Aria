@@ -60,14 +60,18 @@ internal data class AmsSearchSectionState(
     val status get() = AppleSearchPageStatus(continuation != null,loading && items.isNotEmpty(),failed)
 }
 
+internal fun amsSearchWithArtistProducts(rows: List<CatalogSearchItem>, products: List<CatalogSearchItem>, kind: CatalogSearchKind): List<CatalogSearchItem> =
+    (products.filter { it.identity.kind == kind } + rows).distinctBy { it.identity }
+
 internal data class AmsSearchSnapshot(
     val query: String? = null,
     val selected: Boolean = false,
     val sections: Map<CatalogSearchKind,AmsSearchSectionState> = emptyMap(),
+    val artistProducts: List<CatalogSearchItem> = emptyList(),
 ) {
-    private fun <T> project(kind: CatalogSearchKind, map: (CatalogSearchItem) -> T?): UiState<List<T>>? {
+    private fun <T> project(kind: CatalogSearchKind, map: (CatalogSearchItem) -> T?, expanded: Boolean = false): UiState<List<T>>? {
         val section = sections[kind] ?: return null
-        val rows = section.items.mapNotNull(map)
+        val rows = (if (expanded) amsSearchWithArtistProducts(section.items,artistProducts,kind) else section.items).mapNotNull(map)
         return when {
             rows.isNotEmpty() -> UiState.Success(rows)
             section.loading -> UiState.Loading
@@ -78,6 +82,8 @@ internal data class AmsSearchSnapshot(
     val artists get() = project(CatalogSearchKind.ARTIST,::amsSearchRow)
     val albums get() = project(CatalogSearchKind.ALBUM,::amsSearchRow)
     val tracks get() = project(CatalogSearchKind.TRACK,::amsSearchTrack)
+    val mixedAlbums get() = project(CatalogSearchKind.ALBUM,::amsSearchRow,true)
+    val mixedTracks get() = project(CatalogSearchKind.TRACK,::amsSearchTrack,true)
     val paging get() = sections.mapKeys { (kind,_) -> kind.section() }.mapValues { it.value.status }
     fun coverage(filter: SearchFilter): CatalogFilterCoverage {
         if (query == null) return CatalogFilterCoverage.NOT_QUERIED
@@ -113,6 +119,7 @@ internal class AppleMusicWebSearchUiSession(
     private val order: () -> List<ProviderKey>,
     private val read: suspend (CatalogSearchRequest) -> ProviderCallResult<CatalogSearchPage>,
     private val settled: (String) -> Unit,
+    private val readArtistProducts: (suspend (CatalogSearchItem) -> List<CatalogSearchItem>)? = null,
 ) {
     private val _state = MutableStateFlow(AmsSearchSnapshot())
     val state = _state.asStateFlow()
@@ -120,12 +127,49 @@ internal class AppleMusicWebSearchUiSession(
     private var lease: ProviderReadLease? = null
     private var originalOrder = emptyList<ProviderKey>()
     private val jobs = mutableMapOf<CatalogSearchKind,Job>()
+    private var expansionJob: Job? = null
+    private var expansionLease: ProviderReadLease? = null
+
+    fun expansionCurrent(): Boolean = current() && expansionLease?.isCurrent() == true
+    fun admittedItems(): List<CatalogSearchItem> = _state.value.sections.values.flatMap { it.items } +
+        _state.value.artistProducts.takeIf { expansionCurrent() }.orEmpty()
+
+    private fun expandExactArtist(query: String) {
+        val read = readArtistProducts ?: return
+        val primary = _state.value.sections[CatalogSearchKind.ARTIST]?.items.orEmpty().firstOrNull {
+            amsSearchRow(it)?.let { row -> appleUnifiedExactArtistMatch(query,row.title) } == true
+        } ?: return
+        val ticket = ProviderReadLease.acquire(owner,listOf(
+            ProviderCapability.CATALOG_SEARCH to amsKey,
+            ProviderCapability.EDITORIAL_DISCOGRAPHY to amsKey)) ?: return
+        expansionJob?.cancel()
+        expansionLease = ticket
+        val job = scope.launch(start=CoroutineStart.LAZY) {
+            val products = try { read(primary) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { emptyList() }
+            if (expansionLease !== ticket || !expansionCurrent() || _state.value.query != query) return@launch
+            val valid = products.filter { item ->
+                item.identity.provider == amsKey && item.identity.storefront == primary.identity.storefront &&
+                    item.identity.kind in setOf(CatalogSearchKind.TRACK,CatalogSearchKind.ALBUM) &&
+                    amsId.matches(item.identity.nativeId) && item.artistNativeId == primary.identity.nativeId
+            }.distinctBy { it.identity }
+            _state.value = _state.value.copy(artistProducts=valid)
+        }
+        expansionJob = job
+        val unregister = ticket.cancelJobOnRevoke(job)
+        job.invokeOnCompletion { unregister() }
+        job.start()
+    }
 
     fun current(): Boolean = owner != null && gate() === owner && lease?.isCurrent() == true &&
         order() == originalOrder && amsKey in originalOrder
     fun clear() {
         val old = jobs.values.toList()
         jobs.clear()
+        expansionJob?.cancel()
+        expansionJob = null
+        expansionLease = null
         owner = null
         lease = null
         originalOrder = emptyList()
@@ -187,6 +231,7 @@ internal class AppleMusicWebSearchUiSession(
             publish(if (page == null) before.copy(loading=false,failed=true)
                 else AmsSearchSectionState((before.items + page.items).distinctBy { it.identity },
                     page.continuation,false,false))
+            if (!more && kind == CatalogSearchKind.ARTIST && page != null) expandExactArtist(q)
             if (!more && _state.value.selected && _state.value.sections.values.none { it.loading }) settled(q)
         }
         jobs[kind] = job

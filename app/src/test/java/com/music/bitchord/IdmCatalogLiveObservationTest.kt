@@ -3456,11 +3456,12 @@ class IdmCatalogLiveObservationTest {
     @Test fun live_ams_smoke4_mixed_search(): Unit = runBlocking {
         assumeTrue(System.getenv("AMS_SMOKE4_SEARCH_LIVE") == "1")
         val source = BuiltInProviderKeys.APPLE_MUSIC_WEB
-        val gate = gateFor(source,setOf(ProviderCapability.CATALOG_SEARCH))
+        val gate = gateFor(source,setOf(ProviderCapability.CATALOG_SEARCH,ProviderCapability.EDITORIAL_DISCOGRAPHY))
         val catalog = AppleMusicWebCatalog(AppleMusicWebPolicyTransport(
             admission=RateLimitedProviderTransport { gate }))
-        val reader = CatalogSearchAdapterReader(gate,listOf(
-            AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(catalog,gate))))
+        val gateway = AppleMusicWebEditorialGateway(catalog,gate)
+        val reader = CatalogSearchAdapterReader(gate,listOf(AppleMusicWebSearchAdapter(gateway)))
+        val native = AppleMusicWebNativeCatalogSession({gate}) { gateway }
         for (query in listOf("say my name","IVE")) {
             val pages = CatalogSearchKind.entries.associateWith { kind ->
                 val result = withTimeoutOrNull(60_000L) {
@@ -3476,9 +3477,18 @@ class IdmCatalogLiveObservationTest {
                 page
             }
             val artists=pages.getValue(CatalogSearchKind.ARTIST).items.mapNotNull(::amsSearchRow)
-            val albums=pages.getValue(CatalogSearchKind.ALBUM).items.mapNotNull(::amsSearchRow)
-            val tracks=pages.getValue(CatalogSearchKind.TRACK).items.mapNotNull(::amsSearchTrack)
+            val primary=pages.getValue(CatalogSearchKind.ARTIST).items.first { com.music.bitchord.ui.screens.appleUnifiedExactArtistMatch(query,it.title) }
+            val products=withTimeoutOrNull(120_000L) { native.searchArtistProducts(primary) }.orEmpty()
+            val albums=amsSearchWithArtistProducts(pages.getValue(CatalogSearchKind.ALBUM).items,products,CatalogSearchKind.ALBUM).mapNotNull(::amsSearchRow)
+            val tracks=amsSearchWithArtistProducts(pages.getValue(CatalogSearchKind.TRACK).items,products,CatalogSearchKind.TRACK).mapNotNull(::amsSearchTrack)
             val mixed=com.music.bitchord.ui.screens.appleUnifiedSearchEntries(query,artists,tracks,albums)
+            val primaryRoute=amsSearchRow(primary)!!.browseId
+            val ownTracks=tracks.count { it.artistBrowseId == primaryRoute }
+            val ownAlbums=albums.count { it.artistBrowseId == primaryRoute }
+            println("AMS_SMOKE4_ARTIST_EXPANSION|query=$query|supplement=${products.size}|ownTracks=$ownTracks|ownAlbums=$ownAlbums")
+            assertTrue("Missing artist-owned tracks for $query",ownTracks >= 2)
+            assertTrue("Missing artist-owned releases for $query",ownAlbums >= 2)
+            assertTrue("Missing exact artist view for $query",products.any { it.identity.kind == CatalogSearchKind.TRACK } && products.any { it.identity.kind == CatalogSearchKind.ALBUM })
             val categories=canonicalExploreGenreSearchHits(query)
             val keys = mixed.map { row ->
                 when(row) {

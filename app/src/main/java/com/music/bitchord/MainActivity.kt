@@ -1149,7 +1149,7 @@ private fun BitChordApp(
     )
 
     val catalogRuntime = collectCanonicalCatalogRuntime(viewModel)
-    val nativeAppleSearch = com.music.bitchord.ui.collectNativeAppleSearchPresentation(viewModel)
+    val nativeAppleSearch = com.music.bitchord.ui.collectNativeAppleSearchPresentation(viewModel,filter)
     val canonicalDiscoveryCatalog = catalogRuntime.discovery
     val canonicalHomeLocalPicks = catalogRuntime.localPicks
     val canonicalHomeRemotePicks = catalogRuntime.remotePicks
@@ -5078,7 +5078,7 @@ private fun BitChordApp(
                                 val live = search.state.value
                                 val sample = com.music.bitchord.ui.screens.amsSearchPreviewSong(row)
                                 if (sample != null && live.selected && search.current() &&
-                                    live.sections.values.any { section -> section.items.any { com.music.bitchord.ui.amsSearchTrack(it) == row } } &&
+                                    search.admittedItems().any { com.music.bitchord.ui.amsSearchTrack(it) == row } &&
                                     com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()) &&
                                     !CastController.state.value.casting && !ListenTogether.state.value.inParty) {
                                     playFrom(listOf(sample),0,QueueSource(searchLabel,PlaybackSourceType.SEARCH))

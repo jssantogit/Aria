@@ -119,11 +119,9 @@ internal fun AmsSearchHeldMenu(
     var collection by remember { mutableStateOf<AmsSearchHeldTarget?>(null) }
     fun allowed(target: AmsSearchHeldTarget): Boolean {
         val live = session.state.value
-        return routeActive && live.selected && session.current() && live.sections.values.any { section ->
-            section.items.any { item ->
-                (target.row != null && amsSearchRow(item) == target.row) ||
-                    (target.track != null && amsSearchTrack(item) == target.track)
-            }
+        return routeActive && live.selected && session.current() && session.admittedItems().any { item ->
+            (target.row != null && amsSearchRow(item) == target.row) ||
+                (target.track != null && amsSearchTrack(item) == target.track)
         }
     }
     val admitted = admittedHeldAction(pendingTarget) { snapshot.selected && allowed(it) }

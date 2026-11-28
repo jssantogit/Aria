@@ -1,7 +1,7 @@
 name: AMS · Smoke 4 focused live search
 on:
   push:
-    branches: [audit/ams-smoke4-focused-search-live-20261128]
+    branches: [audit/ams-smoke4-focused-search-live-20261128, audit/ams-exact-artist-search-expansion-20261128]
   workflow_dispatch:
 permissions:
   contents: read

@@ -117,7 +117,7 @@ private fun appleUnifiedArtistFold(value: String): String =
         .replace(Regex("\\s+"), " ")
         .trim()
 
-private fun appleUnifiedExactArtistMatch(query: String, artistName: String): Boolean {
+fun appleUnifiedExactArtistMatch(query: String, artistName: String): Boolean {
     val q = appleUnifiedArtistFold(query)
     val name = appleUnifiedArtistFold(artistName)
     return q.isNotBlank() && (name == q || name == "the $q")

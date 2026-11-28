@@ -48,6 +48,22 @@ internal fun amsPreviewRecordingDuration(key: String, item: AppleMusicWebItem?):
     item?.takeIf { amsSongStorefront(key) != null && it.scopedId == key && it.kind == AppleMusicWebKind.SONG }
         ?.durationMillis?.takeIf { it > 0L }
 
+/** Exact artist-view membership may supply a missing child artist ID, never contradict one. */
+internal fun amsArtistSearchProduct(artist: CatalogSearchItem, item: AppleMusicWebItem, expected: AppleMusicWebKind): CatalogSearchItem? {
+    val identity = artist.identity
+    if (identity.provider != BuiltInProviderKeys.APPLE_MUSIC_WEB || identity.kind != CatalogSearchKind.ARTIST ||
+        item.storefront != identity.storefront || item.kind != expected ||
+        item.kind !in setOf(AppleMusicWebKind.SONG,AppleMusicWebKind.ALBUM) ||
+        !item.id.matches(Regex("[1-9][0-9]{0,11}")) || item.title.isBlank() ||
+        (item.artistId != null && item.artistId != identity.nativeId)) return null
+    val kind = if (item.kind == AppleMusicWebKind.SONG) CatalogSearchKind.TRACK else CatalogSearchKind.ALBUM
+    return CatalogSearchItem(CatalogNativeIdentity(identity.provider,kind,item.id,item.storefront),
+        item.title,item.artistName ?: artist.title,artworkUrl=item.artworkUrl,storeUrl=item.storeUrl,
+        artistNativeId=identity.nativeId,albumNativeId=item.albumId,releaseDate=item.releaseDate,
+        durationMs=item.durationMillis,hasAudioPreview=kind == CatalogSearchKind.TRACK &&
+            appleMusicWebAudioPreviewUrl(item.previewUrl) != null)
+}
+
 internal fun amsSongStorefront(key: String?): String? =
     key?.let { Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$").matchEntire(it) }
         ?.groupValues?.get(1)
@@ -1377,6 +1393,36 @@ internal class AppleMusicWebNativeCatalogSession(
         if (song.song.scopedId != key || song.hasMore) return null
         val album = song.albumIds.singleOrNull() ?: return null
         return AppleMusicWebNativeRoute.parse("apple_music_web:${parts[1]}:album:$album")?.browseId
+    }
+
+    /** Bounded first page from exact artist-owned views, separate from search cursors. */
+    suspend fun searchArtistProducts(artist: CatalogSearchItem): List<CatalogSearchItem> {
+        val identity = artist.identity
+        val market = identity.storefront ?: return emptyList()
+        if (identity.provider != BuiltInProviderKeys.APPLE_MUSIC_WEB || identity.kind != CatalogSearchKind.ARTIST ||
+            AppleMusicWebNativeRoute.parse("apple_music_web:$market:artist:${identity.nativeId}") == null) return emptyList()
+        val result = admitted(editorial) { gateway ->
+            val rows = mutableListOf<CatalogSearchItem>()
+            for (shelf in listOf(AppleMusicWebArtistShelf.TOP_SONGS,AppleMusicWebArtistShelf.STUDIO_ALBUMS,
+                AppleMusicWebArtistShelf.SINGLES_AND_EPS)) {
+                when (val response = gateway.artistCollection(identity.nativeId,market,shelf,limit=24)) {
+                    ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
+                    ProviderCallResult.Stale -> return@admitted ProviderCallResult.Stale
+                    is ProviderCallResult.Failed -> continue
+                    is ProviderCallResult.Success -> {
+                        val page = when (val outcome = response.value.outcome) {
+                            is AppleMusicWebOutcome.Complete -> outcome.value
+                            is AppleMusicWebOutcome.Partial -> outcome.value
+                            else -> continue
+                        }
+                        val expected = if (shelf == AppleMusicWebArtistShelf.TOP_SONGS) AppleMusicWebKind.SONG else AppleMusicWebKind.ALBUM
+                        rows += page.items.mapNotNull { amsArtistSearchProduct(artist,it,expected) }
+                    }
+                }
+            }
+            ProviderCallResult.Success(rows.distinctBy { it.identity })
+        }
+        return (result as? ProviderCallResult.Success)?.value.orEmpty()
     }
 
     suspend fun search(request: CatalogSearchRequest): ProviderCallResult<CatalogSearchPage> =

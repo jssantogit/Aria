@@ -44,6 +44,51 @@ class AppleMusicWebSearchUiSessionTest {
             identity=CatalogNativeIdentity(BuiltInProviderKeys.ITUNES,CatalogSearchKind.TRACK,"30","br"))))
     }
 
+    @Test fun expansionUsesExactArtistAndKeepsTypedRowsIndependent(): Unit = runBlocking {
+        val caps = setOf(cap,ProviderCapability.EDITORIAL_DISCOGRAPHY)
+        val g = ProviderPolicyGate(ProviderCapabilityPolicy(
+            listOf(ProviderDescriptor(ams,caps,ProviderReadiness.READY)),
+            caps.associateWith { listOf(ProviderChoice(ams,true,0)) }))
+        val artist = item(CatalogSearchKind.ARTIST,"10").copy(title="Exact Artist")
+        val unrelated = item(CatalogSearchKind.TRACK,"30").copy(artistNativeId="99")
+        val supplement = item(CatalogSearchKind.TRACK,"31")
+        var requests = 0
+        val session = AppleMusicWebSearchUiSession(this,{g},{listOf(ams)}, { req ->
+            val rows = when (req.kind) {
+                CatalogSearchKind.ARTIST -> listOf(artist)
+                CatalogSearchKind.TRACK -> listOf(unrelated)
+                else -> emptyList()
+            }
+            ProviderCallResult.Success(CatalogSearchPage(ams,cap,"br",req.kind,rows,req.page,false,false,null))
+        },{},readArtistProducts={ primary ->
+            assertEquals(artist,primary)
+            requests++
+            listOf(supplement,unrelated,supplement)
+        })
+        session.select("exact artist")
+        yield(); yield()
+        assertEquals(1,requests)
+        val snapshot = session.state.value
+        assertEquals(listOf("30"),(snapshot.tracks as UiState.Success).data.map { it.key.substringAfterLast(':') })
+        assertEquals(listOf("31","30"),(snapshot.mixedTracks as UiState.Success).data.map { it.key.substringAfterLast(':') })
+        assertTrue(session.admittedItems().contains(supplement))
+        session.clear()
+        assertFalse(session.admittedItems().contains(supplement))
+        session.select("unmatched")
+        yield(); yield()
+        assertEquals(1,requests)
+        assertTrue(session.state.value.artistProducts.isEmpty())
+    }
+
+    @Test fun exactArtistRelationshipRejectsContradictoryNativeIdentity() {
+        val artist = item(CatalogSearchKind.ARTIST,"10")
+        val kind = com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.SONG
+        val song = com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebItem("30",kind,"br","Track")
+        assertEquals("10",amsArtistSearchProduct(artist,song,kind)?.artistNativeId)
+        assertNull(amsArtistSearchProduct(artist,song.copy(artistId="99"),kind))
+        assertNull(amsArtistSearchProduct(artist,song.copy(storefront="us"),kind))
+    }
+
     @Test fun cursorOwnershipAndFilterCoverage(): Unit = runBlocking {
         var g: ProviderPolicyGate? = gate()
         var order = listOf(ams)
