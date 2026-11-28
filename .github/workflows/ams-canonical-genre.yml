@@ -56,6 +56,7 @@ on:
       - audit/ams-smoke4-preview-rating-lyrics-20261128
       - audit/ams-smoke4-stable-hero-motion-20261128
       - audit/ams-smoke4-gesture-overlay-20261128
+      - audit/ams-smoke4-lyrics-identity-20261128
 permissions:
   contents: read
 concurrency:

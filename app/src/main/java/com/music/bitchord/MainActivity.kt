@@ -1807,7 +1807,7 @@ private fun BitChordApp(
     // the track already playing rather than only the next one.
     val syncedLyricsEnabled by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
-    LaunchedEffect(player.song?.videoId, player.durationMs, syncedLyricsEnabled, lyricsSources) {
+    LaunchedEffect(player.song?.videoId, player.song?.isAudioPreview, player.durationMs, syncedLyricsEnabled, lyricsSources) {
         player.song?.let {
             viewModel.loadLyrics(
                 it.videoId,
@@ -1818,9 +1818,10 @@ private fun BitChordApp(
                 // track it was skipped to, so it reports no duration at all —
                 // and a lookup that waits for one waits for ever, which left
                 // the lyrics of a paused track loading until it was played.
-                player.durationMs.takeIf { ms -> ms > 0L } ?: it.durationMillis(),
+                if (it.isAudioPreview) 0L else player.durationMs.takeIf { ms -> ms > 0L } ?: it.durationMillis(),
                 it.albumName,
-                it.localUri,
+                it.localUri.takeUnless { _ -> it.isAudioPreview },
+                isAudioPreview = it.isAudioPreview,
             )
         }
     }

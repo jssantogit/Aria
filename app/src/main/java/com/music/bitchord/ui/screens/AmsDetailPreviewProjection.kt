@@ -108,7 +108,8 @@ internal fun amsPreviewSafeLyrics(
 ): List<com.music.bitchord.data.lyrics.LyricLine>? =
     if (!preview) lines else lines?.filterNot { it.isGap }?.map { line ->
         com.music.bitchord.data.lyrics.LyricLine(0L,line.text,
+            alignment = line.alignment,
             background=line.background?.takeUnless { it.isGap }?.let {
-                com.music.bitchord.data.lyrics.LyricLine(0L,it.text)
+                com.music.bitchord.data.lyrics.LyricLine(0L,it.text,alignment=it.alignment)
             })
     }

@@ -43,6 +43,11 @@ internal sealed interface AppleMusicWebNativeDetail {
     data class Playlist(val value: AppleMusicWebPlaylist) : AppleMusicWebNativeDetail
 }
 
+/** Accept recording length only from the exact source-owned song, never from the sample player. */
+internal fun amsPreviewRecordingDuration(key: String, item: AppleMusicWebItem?): Long? =
+    item?.takeIf { amsSongStorefront(key) != null && it.scopedId == key && it.kind == AppleMusicWebKind.SONG }
+        ?.durationMillis?.takeIf { it > 0L }
+
 internal fun amsSongStorefront(key: String?): String? =
     key?.let { Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$").matchEntire(it) }
         ?.groupValues?.get(1)
@@ -1350,6 +1355,14 @@ internal class AppleMusicWebNativeCatalogSession(
                 ProviderCallResult.Stale -> ProviderCallResult.Stale
             }
         }
+    }
+
+    /** Exact recording duration for lyrics matching, not a media seek or offset. */
+    suspend fun previewRecordingDuration(key: String): Long? {
+        if (amsSongStorefront(key) == null) return null
+        val result = admitted(editorial) { gateway -> gateway.songPreview(key) }
+        val complete = (result as? ProviderCallResult.Success)?.value?.outcome as? AppleMusicWebOutcome.Complete
+        return amsPreviewRecordingDuration(key, complete?.value)
     }
 
     /** Do not infer an album from a song title or query parameter. */

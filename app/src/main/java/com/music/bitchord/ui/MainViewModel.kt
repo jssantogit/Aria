@@ -2422,7 +2422,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * than leaving the last answer sitting on a player that would now find a
      * different one.
      */
-    private var lyricsFor: Pair<String, Set<LyricsSource>>? = null
+    private var lyricsFor: Triple<String, Set<LyricsSource>, Boolean>? = null
 
     /**
      * Called as the playing track changes; cheap no-op when already loaded.
@@ -2441,6 +2441,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         durationMs: Long,
         album: String? = null,
         localUri: String? = null,
+        isAudioPreview: Boolean = false,
     ) {
         val sources = allowedCanonicalLyricsSources(
             requested = if (AppSettings.syncedLyrics.value) {
@@ -2451,7 +2452,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             canonicalDiscovery = isCanonicalDiscoverySelected(),
             configs = SourceRegistry.configs.value,
         )
-        val key = videoId to sources
+        val key = Triple(videoId, sources, isAudioPreview)
         if (lyricsFor == key) return
         // The duration lands a beat after the track, and a database match needs
         // it. Turned away here rather than inside the job below: claiming the
@@ -2460,11 +2461,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // dropped as a duplicate, and leave the track marked as being looked up
         // by nobody — which is what left a paused track loading for ever, since
         // pausing is when the duration is most likely to arrive a frame late.
-        if (localUri == null && durationMs <= 0L) return
+        if (!isAudioPreview && localUri == null && durationMs <= 0L) return
         lyricsFor = key
         lyricsGeneration += 1
         val generation = lyricsGeneration
-        currentLyricsRequest = LyricsRequest(videoId, title, artist, durationMs, album)
+        // No manual provider can use the sample duration while exact metadata is pending.
+        currentLyricsRequest = if (isAudioPreview) null else LyricsRequest(videoId, title, artist, durationMs, album)
         selectedLyricsSource = null
         manualLyricsJobs.values.forEach(Job::cancel)
         manualLyricsJobs.clear()
@@ -2486,7 +2488,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // only needed to *match* a track against a stranger's database, and
             // nothing is being matched here — these lyrics were written into
             // this exact file, for this exact recording.
-            if (localUri != null) {
+            if (!isAudioPreview && localUri != null) {
                 EmbeddedLyrics.forUri(getApplication(), localUri)?.let { embedded ->
                     _lyrics.value = embedded
                     // No source to name: what the file records is the lyrics,
@@ -2502,13 +2504,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _lyricsChecked.value = true
                 return@launch
             }
-            if (durationMs <= 0L) {
-                // Duration arrives a beat after the track does; wait for it.
-                lyricsFor = null
+            val recordingDurationMs = if (isAudioPreview) {
+                // The exact song response describes the recording, not the 30s media item.
+                appleMusicWebNativeCatalog.previewRecordingDuration(videoId) ?: 0L
+            } else durationMs
+            if (generation != lyricsGeneration) return@launch
+            if (recordingDurationMs <= 0L) {
+                if (isAudioPreview) {
+                    // Fail closed rather than matching a different recording by sample length.
+                    _lyricsChecked.value = true
+                } else lyricsFor = null
                 return@launch
             }
+            currentLyricsRequest = LyricsRequest(videoId, title, artist, recordingDurationMs, album)
             val found = LyricsRepository.lyrics(
-                videoId, title, artist, durationMs, album,
+                videoId, title, artist, recordingDurationMs, album,
                 allowedCanonicalLyricsSources(
                     sources, isCanonicalDiscoverySelected(), SourceRegistry.configs.value,
                 ),
@@ -2519,6 +2529,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 onSourceCancelled = { source -> providerCancelled(generation, source) },
             )
+            if (generation != lyricsGeneration) return@launch
             val selected = selectedLyricsSource?.let(lyricsProviderResults::get) ?: found
             _lyrics.value = selected?.lines
             _lyricsSource.value = selected?.source

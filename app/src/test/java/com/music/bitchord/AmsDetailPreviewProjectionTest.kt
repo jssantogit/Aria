@@ -69,6 +69,18 @@ class AmsDetailPreviewProjectionTest {
         assertNull(amsPreviewRatingLabel(song.copy(artist="")))
     }
 
+    @Test fun previewLyricsMatchRequiresExactRecordingLength() {
+        val key = "apple_music_web:br:song:123"
+        val song = com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebItem(
+            id="123",kind=com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.SONG,
+            storefront="br",title="Track",durationMillis=180000L)
+        assertEquals(180000L,com.music.bitchord.ui.amsPreviewRecordingDuration(key,song))
+        assertNull(com.music.bitchord.ui.amsPreviewRecordingDuration(key,song.copy(durationMillis=null)))
+        assertNull(com.music.bitchord.ui.amsPreviewRecordingDuration(key,song.copy(storefront="us")))
+        assertNull(com.music.bitchord.ui.amsPreviewRecordingDuration(key,song.copy(id="456")))
+        assertNull(com.music.bitchord.ui.amsPreviewRecordingDuration(key,null))
+    }
+
     @Test fun excerptWithoutAlignmentKeepsTextButCannotPretendToBeSynced() {
         val line = com.music.bitchord.data.lyrics.LyricLine(12000L,"Text",
             words=listOf(com.music.bitchord.data.lyrics.LyricWord(12000L,13000L,"Text")),
