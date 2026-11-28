@@ -25,6 +25,7 @@ on:
       - audit/ams-held-menu-lifecycle-20261127
       - audit/ams-provider-lifted-menu-20261127
       - audit/ams-provider-lifted-admission-20261127
+      - audit/ams-held-action-admission-20261127
 permissions:
   contents: read
 concurrency:

@@ -55,6 +55,10 @@ internal class AmsSearchHeldState {
     fun dismiss() { target = null }
 }
 
+/** A dialog can outlive menu dismissal, but not the admission of its exact target. */
+internal fun <T : Any> admittedHeldAction(target: T?, allowed: (T) -> Boolean): T? =
+    target?.takeIf(allowed)
+
 /** Local entity actions outlive the lifted card and never imply a MediaAsset. */
 private data class AmsHeldRating(val spec: CanonicalCatalogEntityMenuSpec, val artwork: String?)
 
@@ -96,30 +100,43 @@ internal fun AmsSearchHeldMenu(
     viewModel: MainViewModel,
     hazeState: HazeState,
     bottomChromeClearance: Dp,
+    searchRouteActive: Boolean,
 ) {
     val session = viewModel.appleMusicWebSearchUi
     val snapshot by session.state.collectAsStateWithLifecycle()
     val uri = LocalUriHandler.current
+    val routeActive by androidx.compose.runtime.rememberUpdatedState(searchRouteActive)
+    var pendingTarget by remember { mutableStateOf<AmsSearchHeldTarget?>(null) }
     var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
-    AmsHeldRatingDialog(rating) { rating = null }
     var recordingRating by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
     var recordingPlaylist by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
     var collection by remember { mutableStateOf<AmsSearchHeldTarget?>(null) }
-    recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null },it) }
-    recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null } }
-    collection?.let { selected ->
-        CanonicalSearchMetadataPlaylistPicker(
-            CatalogSearchPlaylistTarget(null,selected.id,selected.title,selected.credit),
-            onDismiss={ collection=null },loadSourceLabels={ viewModel.loadAmsCollectionLabels(selected.id) },
-        )
-    }
     fun allowed(target: AmsSearchHeldTarget): Boolean {
         val live = session.state.value
-        return live.selected && session.current() && live.sections.values.any { section ->
+        return routeActive && live.selected && session.current() && live.sections.values.any { section ->
             section.items.any { item ->
                 (target.row != null && amsSearchRow(item) == target.row) ||
                     (target.track != null && amsSearchTrack(item) == target.track)
             }
+        }
+    }
+    val admitted = admittedHeldAction(pendingTarget) { snapshot.selected && allowed(it) }
+    LaunchedEffect(pendingTarget, admitted) {
+        if (admitted == null) {
+            pendingTarget = null; rating = null; recordingRating = null
+            recordingPlaylist = null; collection = null
+        }
+    }
+    if (admitted != null) {
+        AmsHeldRatingDialog(rating) { rating = null; pendingTarget = null }
+        recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null; pendingTarget=null },it) }
+        recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null; pendingTarget=null } }
+        collection?.let { selected ->
+            CanonicalSearchMetadataPlaylistPicker(
+                CatalogSearchPlaylistTarget(null,selected.id,selected.title,selected.credit),
+                onDismiss={ collection=null; pendingTarget=null },
+                loadSourceLabels={ if (allowed(selected)) viewModel.loadAmsCollectionLabels(selected.id) else null },
+            )
         }
     }
     val target = held.target?.takeIf { snapshot.selected && allowed(it) }
@@ -142,9 +159,9 @@ internal fun AmsSearchHeldMenu(
             CanonicalCatalogEntityMenuBody(
                 browseId=item.id,title=item.title,subtitle=item.credit,artworkUrl=item.art,
                 sourceStoreUrl=item.storeUrl,onDismiss=held::dismiss,
-                onRate={ rating=AmsHeldRating(it,item.art) },
+                onRate={ pendingTarget=item; rating=AmsHeldRating(it,item.art) },
                 onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ allowed(item) },
-                onAddAmsCollection={ collection=item },
+                onAddAmsCollection={ pendingTarget=item; collection=item },
             )
         } else BrowseActionsSheet(
             target=BrowseTarget(browseId=item.id,title=item.title,subtitle=item.credit,
@@ -152,8 +169,8 @@ internal fun AmsSearchHeldMenu(
             presentation=SongActionsPresentation.Menu,
             onOpenLabel=if (item.track != null) "Abrir álbum" else "Ver detalhes",
             onOpen={ open(item) },
-            onEditRating=recording?.let { { if (allowed(item)) { held.dismiss(); recordingRating=it } } },
-            onAddToPlaylist=recording?.let { { if (allowed(item)) { held.dismiss(); recordingPlaylist=it } } },
+            onEditRating=recording?.let { { if (allowed(item)) { held.dismiss(); pendingTarget=item; recordingRating=it } } },
+            onAddToPlaylist=recording?.let { { if (allowed(item)) { held.dismiss(); pendingTarget=item; recordingPlaylist=it } } },
             onShare=AmsHeldTrackShare(item.title,item.credit,item.storeUrl,{ allowed(item) },held::dismiss),
             onViewSource=item.storeUrl?.let { link ->
                 { if (allowed(item)) { held.dismiss(); runCatching { uri.openUri(link) }; Unit } }
@@ -209,18 +226,29 @@ internal fun AmsShelfHeldMenu(
     val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
     val latestOpen by androidx.compose.runtime.rememberUpdatedState(onOpen)
     val uri = LocalUriHandler.current
+    var pendingTarget by remember { mutableStateOf<AmsShelfHeldTarget?>(null) }
     var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
-    AmsHeldRatingDialog(rating) { rating = null }
     var recordingRating by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
     var recordingPlaylist by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
     var collection by remember { mutableStateOf<com.music.bitchord.data.model.ShelfItem?>(null) }
-    recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null },it) }
-    recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null } }
-    collection?.let { selected ->
-        CanonicalSearchMetadataPlaylistPicker(
-            CatalogSearchPlaylistTarget(null,selected.browseId.orEmpty(),selected.title,selected.subtitle),
-            onDismiss={ collection=null },loadSourceLabels={ loadCollection?.invoke(selected.browseId.orEmpty()) },
-        )
+    val admitted = admittedHeldAction(pendingTarget, latestAllowed)
+    LaunchedEffect(pendingTarget, admitted) {
+        if (admitted == null) {
+            pendingTarget = null; rating = null; recordingRating = null
+            recordingPlaylist = null; collection = null
+        }
+    }
+    if (admitted != null) {
+        AmsHeldRatingDialog(rating) { rating = null; pendingTarget = null }
+        recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null; pendingTarget=null },it) }
+        recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null; pendingTarget=null } }
+        collection?.let { selected ->
+            CanonicalSearchMetadataPlaylistPicker(
+                CatalogSearchPlaylistTarget(null,selected.browseId.orEmpty(),selected.title,selected.subtitle),
+                onDismiss={ collection=null; pendingTarget=null },
+                loadSourceLabels={ if (latestAllowed(admitted)) loadCollection?.invoke(selected.browseId.orEmpty()) else null },
+            )
+        }
     }
     val target = held.target?.takeIf(latestAllowed)
     LaunchedEffect(target,held.target) {
@@ -249,9 +277,9 @@ internal fun AmsShelfHeldMenu(
             CanonicalCatalogEntityMenuBody(
                 browseId=id,title=card.title,subtitle=card.subtitle.orEmpty(),artworkUrl=card.thumbnailUrl,
                 sourceStoreUrl=link,onDismiss=held::dismiss,
-                onRate={ rating=AmsHeldRating(it,card.thumbnailUrl) },
+                onRate={ pendingTarget=item; rating=AmsHeldRating(it,card.thumbnailUrl) },
                 onOpen={ open(item) },onOpenLabel="Ver detalhes",isCurrent={ latestAllowed(item) },
-                onAddAmsCollection=loadCollection?.let { { collection=card } },
+                onAddAmsCollection=loadCollection?.let { { pendingTarget=item; collection=card } },
             )
         } else BrowseActionsSheet(
             target=BrowseTarget(browseId=id,title=card?.title ?: track?.title.orEmpty(),
@@ -266,8 +294,8 @@ internal fun AmsShelfHeldMenu(
             presentation=SongActionsPresentation.Menu,
             onOpenLabel=if (canOpenAlbum) "Abrir álbum" else "Ver detalhes",
             onOpen=if ((card != null && !song) || canOpenAlbum) ({ open(item) }) else null,
-            onEditRating=recording?.let { { if (latestAllowed(item)) { held.dismiss(); recordingRating=it } } },
-            onAddToPlaylist=recording?.let { { if (latestAllowed(item)) { held.dismiss(); recordingPlaylist=it } } },
+            onEditRating=recording?.let { { if (latestAllowed(item)) { held.dismiss(); pendingTarget=item; recordingRating=it } } },
+            onAddToPlaylist=recording?.let { { if (latestAllowed(item)) { held.dismiss(); pendingTarget=item; recordingPlaylist=it } } },
             onShare=AmsHeldTrackShare(card?.title ?: track?.title.orEmpty(),
                 card?.subtitle ?: track?.credit.orEmpty(),link,{ latestAllowed(item) },held::dismiss),
             onViewSource=link?.let { url ->

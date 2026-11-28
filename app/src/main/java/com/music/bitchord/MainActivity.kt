@@ -7347,7 +7347,7 @@ private fun BitChordApp(
             }
             CanonicalSearchContextOverlays()
             com.music.bitchord.ui.screens.AmsSearchHeldMenu(amsSearchHeld, viewModel, hazeState,
-                heldChromeClearance)
+                heldChromeClearance, searchRouteActive = pageRouteKey == "$TAB_KEY$TAB_SEARCH")
             com.music.bitchord.ui.screens.ProviderShelfHeldMenu(
                 held = providerShelfHeld,
                 allowed = { card ->
