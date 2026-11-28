@@ -260,11 +260,13 @@ class AppleMusicWebNativeProviderTest {
         val inventory = ProviderCapabilityRegistry.inventory()
         val registered = inventory.filter { it.key == BuiltInProviderKeys.APPLE_MUSIC_WEB }
         assertEquals(
-            setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY, ProviderCapability.CHART_MOST_PLAYED),
+            setOf(ProviderCapability.CATALOG_SEARCH, ProviderCapability.EDITORIAL_DISCOGRAPHY,
+                ProviderCapability.CHART_MOST_PLAYED, ProviderCapability.AUDIO_PLAYBACK),
             registered.map { it.capability }.toSet(),
         )
         val descriptors = ProviderCapabilityRegistry.descriptorsFrom(inventory)
         val empty = ProviderPolicyGate(ProviderCapabilityPolicy(descriptors))
+        assertNull(empty.open(ProviderCapability.AUDIO_PLAYBACK, BuiltInProviderKeys.APPLE_MUSIC_WEB))
         assertNull(empty.open(ProviderCapability.CATALOG_SEARCH, BuiltInProviderKeys.APPLE_MUSIC_WEB))
         val withChoice = ProviderCapabilityPolicy(
             descriptors, choices = mapOf(
