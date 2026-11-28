@@ -47,12 +47,13 @@ internal object A0VerifiedByteStager {
         privateDirectory: File,
         expectedByteCount: Long,
         isCancelled: () -> Boolean = { false },
+        onProgress: (Long) -> Unit = {},
     ): Receipt {
-        require(expectedByteCount in 44..64L*1024L*1024L) {
-            "A0 observed transport must stay within 64 MiB"
+        require(expectedByteCount in A0ObservedTransferLimits.MIN_AUDIO_BYTES..A0ObservedTransferLimits.MAX_AUDIO_BYTES) {
+            "A0 observed transport exceeds the bounded file limit"
         }
         return stageInternal(source,privateDirectory,expectedByteCount,
-            null,isCancelled,{})
+            null,isCancelled,onProgress)
     }
 
     private fun stageInternal(

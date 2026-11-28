@@ -51,6 +51,35 @@ class A0ModernIncomingTransferTest {
         assertTrue(receipt.file.name.endsWith(".verified"))
     }
 
+    @Test fun receiveCheckpointsRequireValidFTokenAndRealStagedBytes() {
+        val ticket=accept(uploadRequest(104,filename,wav.size.toLong()))
+        var tokenSeen=false
+        val progress=mutableListOf<Long>()
+        val receipt=A0ModernIncomingTransfer.receiveAfterFConnection(
+            ByteArrayInputStream(le32(104)+wav),ByteArrayOutputStream(),
+            ticket,files.root,onTokenValidated={ tokenSeen=true },
+            onProgress={ progress.add(it) })
+        assertTrue(tokenSeen)
+        assertTrue(progress.isNotEmpty())
+        assertEquals(wav.size.toLong(),progress.last())
+        assertEquals(wav.size.toLong(),receipt.byteCount)
+    }
+
+    @Test fun tokenMismatchProducesNoValidatedCheckpointOrFileProgress() {
+        val ticket=accept(uploadRequest(104,filename,wav.size.toLong()))
+        var tokenSeen=false
+        var progress=0L
+        expectIOException {
+            A0ModernIncomingTransfer.receiveAfterFConnection(
+                ByteArrayInputStream(le32(99)+wav),ByteArrayOutputStream(),
+                ticket,files.root,onTokenValidated={ tokenSeen=true },
+                onProgress={ progress=it })
+        }
+        assertTrue(!tokenSeen)
+        assertEquals(0L,progress)
+        assertTrue(files.root.listFiles().isNullOrEmpty())
+    }
+
     @Test
     fun wrongTokenMustFailBeforeSendingOffsetOrCreatingAnyFile() {
         val ticket = accept(uploadRequest(104, filename, wav.size.toLong()))
@@ -176,4 +205,21 @@ class A0ModernIncomingTransferTest {
         ascii(36, "data"); dword(40, 160)
         return h + ByteArray(160) { 0 }
     }
+    @Test fun observedPWireAcceptsLargeBoundedTransferWithoutAllocatingItsBytes() {
+        val size=96L*1024L*1024L
+        val response=ByteArrayOutputStream()
+        A0ModernIncomingTransfer.acceptObservedUpload(
+            ByteArrayInputStream(uploadRequest(109,filename,size)),
+            response,filename,size
+        )
+        assertEquals(13,response.size()) // four-byte frame length + 9-byte response
+        try {
+            A0ModernIncomingTransfer.acceptObservedUpload(
+                ByteArrayInputStream(ByteArray(0)),ByteArrayOutputStream(),
+                filename,256L*1024L*1024L+1L
+            )
+            fail("Bounded observed transfer must reject oversized bytes before network I/O")
+        } catch (_:IllegalArgumentException) {}
+    }
+
 }

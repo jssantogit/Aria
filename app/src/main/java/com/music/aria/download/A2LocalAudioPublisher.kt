@@ -15,7 +15,7 @@ import java.security.MessageDigest
  * NOT proof that Android can decode the complete content.
  */
 internal object A2LocalAudioPublisher {
-    private const val MAX_BYTES=64L*1024L*1024L
+    private const val MAX_BYTES=com.music.aria.acquisition.a0.A0ObservedTransferLimits.MAX_AUDIO_BYTES
     private val DIGEST=Regex("[0-9a-fA-F]{64}")
     private val BAD_NAME=Regex("""[\\/:*?"<>|\u0000-\u001f\u007f]""")
 
@@ -59,12 +59,19 @@ internal object A2LocalAudioPublisher {
             throw IOException("A2 private receipt byte count is not valid")
         }
         if(isCancelled())throw IOException("A2 publication cancelled")
-        val header=ByteArray(16)
-        source.inputStream().use { input ->
-            if(input.read(header)!=header.size)
-                throw IOException("A2 incomplete audio header")
+        val header=ByteArray(128)
+        val count=source.inputStream().use { input ->
+            var read=0
+            while(read<header.size) {
+                val n=input.read(header,read,header.size-read)
+                if(n<0)break
+                if(n==0)continue
+                read+=n
+            }
+            read
         }
-        val mime=classify(header,fileName)
+        if(count<16)throw IOException("A2 incomplete audio header")
+        val mime=classify(header.copyOf(count),fileName)
             ?: throw IOException("A2 unsupported audio signature or extension")
         val pending=destination.createPending(fileName,mime)
         var published=false
@@ -111,9 +118,26 @@ internal object A2LocalAudioPublisher {
         val marker={at:Int,text:String->
             header.copyOfRange(at,at+text.length).contentEquals(text.toByteArray(Charsets.US_ASCII))
         }
+        val oggCodec=if(extension in setOf("opus","ogg"))
+            com.music.aria.acquisition.a0.A0LocalAudioHeaderEvidence
+                .inspect(header)?.codec else null
         return when {
+            extension=="opus" &&
+                oggCodec==com.music.aria.acquisition.a0.A0CanonicalAcquisitionIntent.Codec.OPUS ->
+                    "audio/opus"
+            extension=="ogg" &&
+                oggCodec==com.music.aria.acquisition.a0.A0CanonicalAcquisitionIntent.Codec.VORBIS ->
+                    "audio/ogg"
             extension=="wav" && marker(0,"RIFF") && marker(8,"WAVE")->"audio/x-wav"
             extension=="flac" && marker(0,"fLaC")->"audio/flac"
+            // ADTS AAC only; this does NOT grant ISO-BMFF .m4a/ALAC support.
+            // Validate sync, layer, sample-rate index and 13-bit frame size.
+            extension=="aac" && (header[0].toInt() and 255)==0xff &&
+                (header[1].toInt() and 0xf6)==0xf0 &&
+                (header[2].toInt() and 0x3c)!=0x3c &&
+                (((header[3].toInt() and 3) shl 11) or
+                    ((header[4].toInt() and 255) shl 3) or
+                    ((header[5].toInt() and 0xe0) ushr 5))>=7 -> "audio/aac"
             extension=="mp3" && marker(0,"ID3")->"audio/mpeg"
             // MPEG frame sync: 11 set bits, valid version, layer, bitrate and rate.
             extension=="mp3" && (header[0].toInt() and 255)==0xff &&

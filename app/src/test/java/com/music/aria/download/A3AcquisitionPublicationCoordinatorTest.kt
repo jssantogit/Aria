@@ -83,6 +83,50 @@ class A3AcquisitionPublicationCoordinatorTest {
         assertEquals(A3AcquisitionLedger.Phase.PUBLISHING,journal.get(id)?.phase)
     }
 
+    @Test fun revokedCommitAndFailedRollbackPersistReconciliationUri() {
+        val store=MemoryStore()
+        val ledger=staged(store)
+        val coordinator=A3AcquisitionPublicationCoordinator(ledger) { false }
+        try {
+            coordinator.publish(id,publishAlreadyStaged={result()},commitGuard={
+                throw IOException("Account generation revoked before AVAILABLE")
+            })
+            fail("Reconciliation must be explicit")
+        }catch(error:A3PublicationCommitFailure.ReconciliationRequired) {
+            assertEquals(uri,error.publishedContentUri)
+        }
+        val recovered=A3AcquisitionLedger(store)
+        assertEquals(A3AcquisitionLedger.Phase.RECONCILE,recovered.get(id)?.phase)
+        assertEquals(uri,recovered.get(id)?.contentUri)
+        assertEquals(0,recovered.interruptActiveOnColdStart())
+    }
+
+    @Test fun rollbackFailuresExposePrivateUriOnlyThroughTypedRecoveryContract() {
+        val store=MemoryStore();val journal=staged(store)
+        val port=A3AcquisitionPublicationCoordinator(journal) { false }
+        try {
+            port.publish(id) { store.refuse=true;result() }
+            fail("Expected typed reconciliation")
+        }catch(error:A3PublicationCommitFailure.ReconciliationRequired) {
+            assertEquals(uri,error.publishedContentUri)
+            assertFalse(error.message.orEmpty().contains(uri))
+            assertFalse(error.toString().contains(uri))
+            assertTrue(error.cause is IOException)
+        }
+        assertEquals(A3AcquisitionLedger.Phase.PUBLISHING,
+            journal.get(id)?.phase)
+    }
+
+    @Test fun completedRollbackHasTypedNotPublishedOutcome() {
+        val store=MemoryStore();val journal=staged(store)
+        val port=A3AcquisitionPublicationCoordinator(journal) { true }
+        try {
+            port.publish(id) { store.refuse=true;result() }
+            fail("Expected confirmed rollback")
+        }catch(_:A3PublicationCommitFailure.RolledBack) {}
+        assertNull(journal.get(id)?.contentUri)
+    }
+
     @Test fun accountRevocationAfterBytesWrittenDeletesPublishedUriBeforeAvailable() {
         val store=MemoryStore();val journal=staged(store)
         val deleted=mutableListOf<String>()
@@ -127,5 +171,41 @@ class A3AcquisitionPublicationCoordinatorTest {
             fail("A published file cannot publish again")
         }catch(_:IllegalStateException){}
         assertEquals(0,calls)
+    }
+
+    @Test fun guardThatDoesNotCommitCannotClaimPublication() {
+        val store=MemoryStore();val journal=staged(store)
+        val deleted=mutableListOf<String>()
+        val coordinator=A3AcquisitionPublicationCoordinator(journal) {
+            deleted+=it;true
+        }
+        var deferred:(()->Unit)?=null
+        try {
+            coordinator.publish(id,commitGuard={deferred=it},
+                publishAlreadyStaged={result()})
+            fail("Guard without a durable commit must fail")
+        }catch(_:A3PublicationCommitFailure.RolledBack){}
+        assertEquals(listOf(uri),deleted)
+        assertEquals(A3AcquisitionLedger.Phase.PUBLISHING,journal.get(id)?.phase)
+        try {
+            checkNotNull(deferred).invoke()
+            fail("Late commit cannot claim a deleted artifact")
+        }catch(_:IllegalStateException){}
+        assertNull(journal.get(id)?.contentUri)
+    }
+
+    @Test fun guardFailureAfterDurableCommitCannotDeleteOwnedFile() {
+        val store=MemoryStore();val journal=staged(store)
+        val deleted=mutableListOf<String>()
+        val coordinator=A3AcquisitionPublicationCoordinator(journal) {
+            deleted+=it;true
+        }
+        assertEquals(result(),coordinator.publish(id,commitGuard={commit ->
+            commit()
+            throw IOException("Guard failed after commit")
+        },publishAlreadyStaged={result()}))
+        assertEquals(A3AcquisitionLedger.Phase.AVAILABLE,
+            A3AcquisitionLedger(store).get(id)?.phase)
+        assertTrue(deleted.isEmpty())
     }
 }

@@ -44,9 +44,18 @@ internal object A0IndirectSearchWire {
         val ip = exact(payload, 4).reversedArray() // Nicotine+ unpack_ip uses reverse byte order.
         val port = le32(payload)
         val token = le32(payload)
-        val privileged = payload.read()
-        val obfuscation = le32(payload)
-        val obfuscatedPort = le32(payload)
+        // Legacy Soulseek peers omit the modern optional 9-byte tail.
+        // A partially present tail is malformed, and obfuscated sockets
+        // remain unsupported rather than being silently used as cleartext.
+        var privileged = 0
+        var obfuscation = 0
+        var obfuscatedPort = 0
+        if (payload.available() > 0) {
+            if (payload.available() != 9) invalid()
+            privileged = payload.read()
+            obfuscation = le32(payload)
+            obfuscatedPort = le32(payload)
+        }
         if (username.isEmpty() || username.length > MAX_USERNAME_BYTES ||
             username.any { it.code < 33 || it.code > 126 } ||
             type != "P" || token <= 0 || port !in 1..65535 ||
@@ -66,14 +75,18 @@ internal object A0IndirectSearchWire {
         input: InputStream,
         expectedSearchToken: Int,
         expectedPeerUsername: String,
+        // Already validated against the search token and server-advertised peer.
+        onValidatedParsedReply: ((A0SoulseekSearchResponse) -> Unit)? = null,
+        acceptedSearchTokens: Set<Int> = setOf(expectedSearchToken),
         onValidatedReply: ((ByteArray, String) -> Unit)? = null
     ): A0OneShotPublicSearchWire.Observation {
         require(expectedSearchToken > 0 && expectedPeerUsername.isNotBlank())
         val length = le32(input)
         if (length !in 6..1_048_572) invalid()
         val frame = le32Bytes(length) + exact(input, length)
-        val reply = A0SoulseekSearchResponseParser.parse(frame, expectedSearchToken)
+        val reply = A0SoulseekSearchResponseParser.parse(frame, acceptedSearchTokens)
         if (reply.peerUsername != expectedPeerUsername) invalid()
+        onValidatedParsedReply?.invoke(reply)
         onValidatedReply?.invoke(frame, expectedPeerUsername)
         val count = if (reply.hasFreeUploadSlot) reply.files.count { file ->
             file.sizeBytes in 1..(64L * 1024L * 1024L) &&

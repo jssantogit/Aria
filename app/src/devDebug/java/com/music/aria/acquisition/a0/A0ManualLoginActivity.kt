@@ -11,6 +11,7 @@ import com.music.aria.diagnostics.Diagnostics
 import com.music.aria.diagnostics.DiagnosticsShare
 import com.music.aria.observability.TraceOutcome
 import com.music.aria.download.A3AcquisitionLedger
+import com.music.aria.download.A3PublicationCommitFailure
 import com.music.aria.download.A3AndroidAcquisitionLedger
 import android.text.InputType
 import android.text.InputFilter
@@ -317,7 +318,8 @@ class A0ManualLoginActivity : Activity() {
                                 val token = SecureRandom().nextInt(Int.MAX_VALUE - 1) + 1
                                 val handoff = if (transferObserved) {
                                     A0ObservedCandidateHandoff(
-                                        connection, username, token
+                                        connection, username, token,
+                                        saveFormatsOnly=saveToDevice
                                     ).also { transfer ->
                                         if (!SoulseekActiveSession.registerTransfer(
                                                 transfer, accountGeneration
@@ -802,6 +804,11 @@ class A0ManualLoginActivity : Activity() {
                     }
                     trace.note(A0SmokeTrace.Stage.IO_FAILURE, TraceOutcome.FAILED, finalReason)
                     result = when {
+                        error is A3PublicationCommitFailure.ReconciliationRequired ->
+                            "PUBLICAÇÃO PENDENTE DE RECONCILIAÇÃO. " +
+                                "Um arquivo pode ter sido salvo. Não repita o download antes de verificar a pasta."
+                        error is A3PublicationCommitFailure.RolledBack ->
+                            "PUBLICAÇÃO NÃO CONFIRMADA. O arquivo publicado foi removido."
                         transferAttempted && error is A0IndirectFileOfferWire.MalformedFileOffer ->
                             "A oferta do canal F não corresponde ao protocolo esperado. " +
                                 "O peer foi recusado por segurança; tente outro candidato."
@@ -833,6 +840,7 @@ class A0ManualLoginActivity : Activity() {
                         val phase=journal.get(id)?.phase
                         if(phase!=null && phase !in setOf(
                             A3AcquisitionLedger.Phase.AVAILABLE,
+                            A3AcquisitionLedger.Phase.RECONCILE,
                             A3AcquisitionLedger.Phase.INTERRUPTED,
                             A3AcquisitionLedger.Phase.FAILED,
                             A3AcquisitionLedger.Phase.CANCELLED
