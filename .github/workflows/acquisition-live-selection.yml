@@ -6,7 +6,7 @@ on:
       corpus:
         description: 'Frozen corpus'
         type: choice
-        options: [kpop1, mixed2, mixed3, batch123]
+        options: [kpop1, mixed2, mixed3, batch123, pending123]
         default: kpop1
       cases:
         description: 'Comma-separated frozen corpus IDs; empty means all 30'
@@ -57,10 +57,10 @@ jobs:
       - name: Read-only live discovery and selection
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         env:
-          # A single run queues all three corpora without replacing pending jobs.
+          # Push rechecks the 14 unresolved cases; manual batch123 retains full mixed runs.
           # All network sessions remain exclusive to the dedicated account.
           ARIA_LIVE_CASES: ${{ github.event_name == 'push' && '' || inputs.cases }}
-          ARIA_LIVE_CORPUS: ${{ github.event_name == 'push' && 'batch123' || inputs.corpus }}
+          ARIA_LIVE_CORPUS: ${{ github.event_name == 'push' && 'pending123' || inputs.corpus }}
           # Public repository: explicit opt-in for peer-advertised basenames.
           ARIA_LIVE_NAMES: ${{ vars.SOULSEEK_LIVE_EXPORT_FILENAMES == 'true' && 'true' || 'false' }}
           SLSK_USER: ${{ secrets.SOULSEEK_CI_USERNAME || secrets.SOULSEEK_USERNAME || secrets.SOULSEEK_USER }}

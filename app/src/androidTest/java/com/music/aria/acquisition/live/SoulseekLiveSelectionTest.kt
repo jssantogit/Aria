@@ -73,8 +73,9 @@ class SoulseekLiveSelectionTest {
         Target("illit_my_world","ILLIT - My World","SUPER REAL ME",107),
         Target("illit_midnight_fiction","ILLIT - Midnight Fiction","SUPER REAL ME",168),
         Target("illit_ill_like_you","ILLIT - I'll Like You","I'LL LIKE YOU",131),
-        Target("illit_iykyk","ILLIT - IYKYK (If You Know You Know)","I'LL LIKE YOU",164),
-        Target("illit_tick_tack","ILLIT - Tick-Tack","I'LL LIKE YOU",151),
+        // Reference correction from MusicBrainz digital release 918de30d-2034-4aa8-8bbf-9b17b3e83bcd; not peer-derived.
+        Target("illit_iykyk","ILLIT - IYKYK (If You Know You Know)","I'LL LIKE YOU",144),
+        Target("illit_tick_tack","ILLIT - Tick-Tack","I'LL LIKE YOU",129),
         Target("illit_pimple","ILLIT - Pimple","I'LL LIKE YOU",167),
         Target("illit_almond_chocolate","ILLIT - Almond Chocolate","Almond Chocolate",201),
         Target("redvelvet_psycho","Red Velvet - Psycho","The ReVe Festival 'Finale'",210),
