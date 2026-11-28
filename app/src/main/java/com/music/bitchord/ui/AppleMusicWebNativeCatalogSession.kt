@@ -110,17 +110,21 @@ internal fun amsStyleSupplementalAlbumIds(
         .distinct().take(50).toList()
 }
 
+internal const val AMS_STYLE_METADATA_TARGET = 12
+
 /** Discovery budget is measured on admitted albums, not raw search hits. */
 internal fun amsStyleNeedsTrackDiscovery(
     songs: List<AppleMusicWebItem>, market: String, tag: String, albums: List<AppleMusicWebItem>,
 ): Boolean = (amsStyleTrackAlbumShelf(amsStyleTrackAlbumIds(songs,market,tag),market,albums)
-    ?.items?.size ?: 0) < 6
+    ?.items?.size ?: 0) < AMS_STYLE_METADATA_TARGET
 
 internal fun amsStyleTrackAlbumShelf(ids: List<String>, market: String, albums: List<AppleMusicWebItem>): HomeShelf? {
+    val byId = albums.asSequence().filter {
+        it.kind == AppleMusicWebKind.ALBUM && it.storefront == market && it.title.isNotBlank()
+    }.groupBy { it.id }
     val cards = ids.distinct().mapNotNull { id ->
-        val observations = albums.filter { it.kind == AppleMusicWebKind.ALBUM && it.storefront == market &&
-            it.id == id && it.title.isNotBlank() }
-        val album = observations.firstOrNull() ?: return@mapNotNull null
+        val observations = byId[id] ?: return@mapNotNull null
+        val album = observations.first()
         // Search and exact metadata batches can legitimately differ in optional
         // artwork/genre fields. Contradictory identity facts cannot be hidden by
         // first-wins deduplication.
@@ -762,7 +766,7 @@ internal class AppleMusicWebNativeCatalogSession(
                 val verifiedIds = ids + amsStyleAlbumLabelIds(combined,storefront,tag)
                 return amsStyleTrackAlbumShelf(verifiedIds,storefront,combined)
             }
-            if ((admittedShelf()?.items?.size ?: 0) < 6) {
+            if ((admittedShelf()?.items?.size ?: 0) < AMS_STYLE_METADATA_TARGET) {
                 var albumCursor: String? = null
                 val albumVisited = hashSetOf<String>()
                 for (index in 1..2) {
@@ -785,7 +789,7 @@ internal class AppleMusicWebNativeCatalogSession(
                     }
                 }
             }
-            if ((admittedShelf()?.items?.size ?: 0) < 6) {
+            if ((admittedShelf()?.items?.size ?: 0) < AMS_STYLE_METADATA_TARGET) {
                 for (query in amsStyleDiscoveryQueries(tag).drop(1).take(1)) {
                     when (val read = gateway.search(AppleMusicWebKind.ALBUM,query,storefront,limit=25)) {
                         ProviderCallResult.Denied -> return@admitted ProviderCallResult.Denied
@@ -802,7 +806,7 @@ internal class AppleMusicWebNativeCatalogSession(
             // Some search rows or linked songs carry only a broad label.
             // Reuse their exact album IDs in at most two additional batches.
             // Do not admit them unless the hydrated album itself has the style.
-            if ((admittedShelf()?.items?.size ?: 0) < 6) {
+            if ((admittedShelf()?.items?.size ?: 0) < AMS_STYLE_METADATA_TARGET) {
                 val supplemental = amsStyleSupplementalAlbumIds(songs,direct,storefront,requested + ids)
                 for (batch in supplemental.chunked(25)) {
                     when (val read = gateway.linkedAlbumMetadata(batch,storefront)) {
@@ -814,7 +818,7 @@ internal class AppleMusicWebNativeCatalogSession(
                         is ProviderCallResult.Success -> albums +=
                             (read.value.outcome as? AppleMusicWebOutcome.Complete)?.value.orEmpty()
                     }
-                    if ((admittedShelf()?.items?.size ?: 0) >= 6) break
+                    if ((admittedShelf()?.items?.size ?: 0) >= AMS_STYLE_METADATA_TARGET) break
                 }
             }
             ProviderCallResult.Success(admittedShelf())
