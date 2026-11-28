@@ -3511,7 +3511,9 @@ private fun BitChordApp(
                     PlaybackSourceType.QUEUE -> Unit
                 }
             },
-            lyrics = lyrics,
+            lyrics = remember(displayedSong.isAudioPreview,lyrics) {
+                com.music.bitchord.ui.screens.amsPreviewSafeLyrics(displayedSong.isAudioPreview,lyrics)
+            },
             lyricsSource = lyricsSource,
             lyricsProviderStates = lyricsProviderStates,
             onSelectLyricsProvider = viewModel::selectLyricsProvider,
@@ -3540,7 +3542,23 @@ private fun BitChordApp(
                 }
             },
         )
-        if (localRatingDialogOpen) {
+        val previewRatingLabel = com.music.bitchord.ui.screens.amsPreviewRatingLabel(displayedSong)
+        if (localRatingDialogOpen && previewRatingLabel != null) {
+            com.music.bitchord.ui.screens.CanonicalMetadataRecordingRatingDialog(
+                recordingId = previewRatingLabel.recordingId,
+                onDismiss = { localRatingDialogOpen = false },
+                sourceLabel = previewRatingLabel,
+                isCurrent = {
+                    controller?.currentMediaItem?.toSong()?.let {
+                        it.isAudioPreview && it.videoId == previewRatingLabel.recordingId &&
+                            it.queueEntryId == displayedSong.queueEntryId
+                    } == true && com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull())
+                },
+                anchorBounds = playerRatingAnchor,
+                artworkUrl = displayedSong.thumbnailUrl,
+                hazeState = ratingModalHaze,
+            )
+        } else if (localRatingDialogOpen) {
             CanonicalSongRatingDialog(
                 song = displayedSong,
                 onDismiss = { localRatingDialogOpen = false },

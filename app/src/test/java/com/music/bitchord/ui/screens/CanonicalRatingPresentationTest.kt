@@ -30,6 +30,19 @@ class CanonicalRatingPresentationTest {
     )
 
     @Test
+    fun previewRatingIsVisibleWithoutInventingAnAudioAsset() {
+        val id = "apple_music_web:br:song:123"
+        val result = buildCanonicalRatingPresentation(emptyList(),
+            mapOf(id to 4.5,"apple_music_web:us:song:123" to 7.0),
+            emptyList(),null,null)
+        assertEquals(4.5,result.bySongKey[id]?.localValue)
+        assertEquals(4.5,result.byRecordingId[id]?.localValue)
+        assertTrue(result.byMediaAssetId.isEmpty())
+        assertTrue(result.recordingIdBySongKey.isEmpty())
+        assertNull(result.bySongKey["apple_music_web:us:song:123"])
+    }
+
+    @Test
     fun remoteFiveAndThreeAreSeparateRealNumericRatingsNotFavoriteFlags() {
         val result = buildCanonicalRatingPresentation(
             assets = listOf(asset(), asset("recording-two", "asset-two")),

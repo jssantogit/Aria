@@ -91,3 +91,24 @@ internal fun amsCardCollectionAction(id: String?, title: String, action: AmsColl
             com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST)) return null
     return { if (isCurrent()) callback(route.browseId,title,action,isCurrent) }
 }
+
+/** A preview may be rated by exact source-owned metadata, not a fabricated MediaAsset. */
+internal fun amsPreviewRatingLabel(song: Song): CatalogMetadataRecordingLabel? {
+    if (!song.isAudioPreview || AmsPreviewRoute.fromScopedId(song.videoId) == null) return null
+    return CatalogMetadataRecordingLabel(song.videoId,song.title,song.artist)
+        .takeIf(::validCatalogMetadataRecordingLabel)
+}
+
+/** The provider exposes a sample URL, not its offset in the full recording.
+ * Retain the lyrics for reading/sharing, but never claim full-song timestamps
+ * correspond to the excerpt. Explicit sample alignment can later replace this
+ * policy only when there is positive timing evidence. */
+internal fun amsPreviewSafeLyrics(
+    preview: Boolean, lines: List<com.music.bitchord.data.lyrics.LyricLine>?,
+): List<com.music.bitchord.data.lyrics.LyricLine>? =
+    if (!preview) lines else lines?.filterNot { it.isGap }?.map { line ->
+        com.music.bitchord.data.lyrics.LyricLine(0L,line.text,
+            background=line.background?.takeUnless { it.isGap }?.let {
+                com.music.bitchord.data.lyrics.LyricLine(0L,it.text)
+            })
+    }

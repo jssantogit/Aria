@@ -28,6 +28,9 @@ internal fun CanonicalMetadataRecordingRatingDialog(
     onDismiss: () -> Unit,
     sourceLabel: CatalogMetadataRecordingLabel?,
     isCurrent: () -> Boolean = { true },
+    anchorBounds: androidx.compose.ui.unit.IntRect? = null,
+    artworkUrl: String? = null,
+    hazeState: dev.chrisbanes.haze.HazeState? = null,
 ) {
     val latestCurrent by rememberUpdatedState(isCurrent)
     if (!isLocalMetadataRecordingId(recordingId) ||
@@ -43,6 +46,9 @@ internal fun CanonicalMetadataRecordingRatingDialog(
     CanonicalRecordingFeedbackPanel(
         rating = current?.ratingValue,
         title = "Avaliar faixa",
+        anchorBounds = anchorBounds,
+        artworkUrl = artworkUrl,
+        hazeState = hazeState,
         saving = saving,
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },

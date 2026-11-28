@@ -60,6 +60,29 @@ class AmsDetailPreviewProjectionTest {
             AmsCollectionPlaybackAction.PLAY,false,callback) { true })
     }
 
+    @Test fun previewRatingUsesExactMetadataIdentityWithoutMediaAsset() {
+        val song = Song(videoId="apple_music_web:br:song:123",
+            title="Title",artist="Artist",isAudioPreview=true)
+        assertEquals(song.videoId,amsPreviewRatingLabel(song)?.recordingId)
+        assertNull(amsPreviewRatingLabel(song.copy(isAudioPreview=false)))
+        assertNull(amsPreviewRatingLabel(song.copy(videoId="itunes:br:track:123")))
+        assertNull(amsPreviewRatingLabel(song.copy(artist="")))
+    }
+
+    @Test fun excerptWithoutAlignmentKeepsTextButCannotPretendToBeSynced() {
+        val line = com.music.bitchord.data.lyrics.LyricLine(12000L,"Text",
+            words=listOf(com.music.bitchord.data.lyrics.LyricWord(12000L,13000L,"Text")),
+            sungUntilMs=13000L)
+        val lines = listOf(line)
+        assertEquals(lines,amsPreviewSafeLyrics(false,lines))
+        val plain = requireNotNull(amsPreviewSafeLyrics(true,lines)).single()
+        assertEquals("Text",plain.text)
+        assertEquals(0L,plain.timeMs)
+        assertTrue(plain.words.isEmpty())
+        assertNull(plain.sungUntilMs)
+        assertNull(amsPreviewSafeLyrics(true,null))
+    }
+
     @Test fun collectionActionsRequireExactAlbumOrPlaylistAndKeepOccurrences() {
         val id = "apple_music_web:br:playlist:pl.123456"
         val page = DetailPage(id,"Playlist","",null,UiState.Success(emptyList()),BrowseType.PLAYLIST)

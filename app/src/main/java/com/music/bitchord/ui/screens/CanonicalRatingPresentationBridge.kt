@@ -177,6 +177,16 @@ internal fun buildCanonicalRatingPresentation(
             )
         }
     }
+    // Metadata-only AMS ratings remain separate from local/remote audio assets.
+    // The key is exact and storefront scoped; never derive it from a title.
+    localValues.forEach { (id,score) ->
+        if (com.music.bitchord.playback.AmsPreviewRoute.fromScopedId(id) != null &&
+            score.isFinite() && score in 1.0..5.0 && score * 2 == (score * 2).toInt().toDouble()) {
+            val display = RatingDisplay(localValue=score)
+            byRecording[id] = display
+            bySong[id] = display
+        }
+    }
     return CanonicalRatingDisplaySnapshot(
         bySongKey = bySong,
         byMediaAssetId = byAsset,
