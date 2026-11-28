@@ -21,6 +21,7 @@ on:
       - audit/ams-detail-permission-reactivity-20261127
       - audit/ams-native-rating-reconciliation-20261127
       - audit/ams-detail-host-reconciliation-20261127
+      - audit/ams-provider-overflow-reconciliation-20261127
 permissions:
   contents: read
 concurrency:

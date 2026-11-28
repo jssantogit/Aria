@@ -87,6 +87,18 @@ class NativeTopBarRouteOwnerTest {
         }
     }
 
+    @Test fun legacyHeldOverflowCannotResurrectARejectedRootOrRevokedProvider() {
+        fun held(route: String?, apple: Boolean = true, discogs: Boolean = true) =
+            com.music.bitchord.ui.providerHeldOverflowRoute(route, apple, discogs)
+        assertEquals(null, held(null))
+        assertEquals(null, held("apple_music_web:br:album:123"))
+        assertEquals(null, held("catalog:RELEASE:123"))
+        assertEquals("itunes:br:album:123", held("itunes:br:album:123", discogs = false))
+        assertEquals(null, held("itunes:br:album:123", apple = false))
+        assertEquals("discogs:release:123", held("discogs:release:123", apple = false))
+        assertEquals(null, held("discogs:release:123", discogs = false))
+    }
+
     @Test fun recentAdditionsDoesNotShareToolbarWithRememberedPlaylist() {
         assertEquals(
             NativeTopBarRouteOwner.RECENT_ADDITIONS,

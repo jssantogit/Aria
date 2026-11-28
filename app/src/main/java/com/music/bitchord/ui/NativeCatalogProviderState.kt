@@ -154,3 +154,13 @@ internal fun providerOverflowPage(
         discogsPage?.takeIf { it.browseId == route && discogsRoute == route }
     else -> null
 }
+
+/** Held iTunes/Discogs editorial cards have their own source-only menu.
+ * AMS shelf cards use the canonical lifted-card host, not this fallback.
+ */
+internal fun providerHeldOverflowRoute(
+    heldRoute: String?, appleAllowed: Boolean, discogsAllowed: Boolean,
+): String? = heldRoute?.takeIf {
+    (it.startsWith("itunes:") && appleAllowed) ||
+        (it.startsWith("discogs:") && discogsAllowed)
+}

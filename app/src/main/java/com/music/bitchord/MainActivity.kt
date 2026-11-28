@@ -6506,49 +6506,32 @@ private fun BitChordApp(
                     onSettings = { providerDetailOverflowOpen = false; showSettings = true },
                 )
             }
-            if (providerDetailOverflowOpen &&
-                (sharedProviderRoot == null || providerHeldCardRoute != null) &&
-                !(providerHeldCardRoute == null && pageRouteKey.startsWith("apple_music_web:")) &&
-                (appleSharedVisual != null || discogsNativeVisual != null ||
-                    providerHeldCardRoute?.startsWith("discogs:") == true ||
-                    providerHeldCardRoute?.startsWith("apple_music_web:") == true) &&
-                (toolbarOwner == NativeTopBarRouteOwner.CATALOG_DETAIL ||
-                    providerHeldCardRoute != null)
-            ) {
-                val currentRoute = providerHeldCardRoute ?:
-                    if (pageRouteKey.startsWith("discogs:")) discogsBrowseId
-                    else appleNativeRouteKey
-                val exactSourceUrl = if (currentRoute?.startsWith("apple_music_web:") == true) {
-                    if (providerHeldCardRoute == null)
-                        appleSharedVisual?.takeIf { it.page.browseId == currentRoute }?.sourceStoreUrl
-                    else (appleSharedVisual?.page?.sections.orEmpty() +
-                        catalogRuntime.amsEditorial.genres.values.flatMap { (it as? UiState.Success)?.data.orEmpty() } +
-                        (catalogRuntime.amsEditorial.home as? UiState.Success)?.data.orEmpty())
-                        .flatMap { it.items }.firstOrNull { it.browseId == currentRoute }?.appleStoreUrl
-                } else if (providerHeldCardRoute == null) {
-                    when (appleNativeKind) {
-                        AppleNativeDetailKind.ARTIST -> appleArtistNavigation?.appleStoreUrl
-                        AppleNativeDetailKind.ALBUM ->
-                            (appleAlbumDetail as? UiState.Success)?.data?.appleStoreUrl
-                                ?: appleAlbumNavigation?.appleStoreUrl
-                        else -> null
-                    }
-                } else {
+            // A rejected root must never fall back to a retained provider page.
+            // The source-only panel is exclusively for an admitted held card.
+            val heldProviderRoute = com.music.bitchord.ui.providerHeldOverflowRoute(
+                providerHeldCardRoute, appleReadAllowed, discogsReadAllowed,
+            )
+            LaunchedEffect(providerHeldCardRoute, heldProviderRoute) {
+                if (providerHeldCardRoute != null && heldProviderRoute == null) {
+                    providerDetailOverflowOpen = false
+                    providerHeldCardRoute = null
+                }
+            }
+            if (providerDetailOverflowOpen && heldProviderRoute != null) {
+                val exactSourceUrl = if (heldProviderRoute.startsWith("itunes:")) {
                     val candidates = (appleArtistDetail as? UiState.Success)
                         ?.data?.albums.orEmpty() +
                         (appleAlbumDetail as? UiState.Success)
                             ?.data?.relatedAlbums.orEmpty()
-                    candidates.firstOrNull { it.browseId == currentRoute }?.appleStoreUrl
-                }
+                    candidates.firstOrNull { it.browseId == heldProviderRoute }?.appleStoreUrl
+                } else null
                 val discogsSourceLink =
-                    com.music.bitchord.ui.discogsNativeAttributionUrl(currentRoute)
-                val productLink = discogsSourceLink ?: if (currentRoute?.startsWith("apple_music_web:") == true)
-                    com.music.bitchord.ui.screens.appleMusicWebVerifiedRouteUrl(exactSourceUrl,currentRoute)
-                else com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl(exactSourceUrl,currentRoute)
+                    com.music.bitchord.ui.discogsNativeAttributionUrl(heldProviderRoute)
+                val productLink = discogsSourceLink ?:
+                    com.music.bitchord.ui.screens.verifiedAppleDetailStoreUrl(exactSourceUrl,heldProviderRoute)
                 FrostedMenuPanel(
                     hazeState = hazeState,
-                    anchorBounds = if (providerHeldCardRoute == null)
-                        catalogAlbumOverflowAnchor else null,
+                    anchorBounds = null,
                     menuWidth = FROSTED_SETTINGS_MENU_WIDTH,
                     onDismiss = {
                         providerDetailOverflowOpen = false
@@ -6568,18 +6551,6 @@ private fun BitChordApp(
                                         Uri.parse(productLink)))
                                 }
                             },
-                        )
-                    }
-                    if (providerHeldCardRoute == null &&
-                        appleNativeKind == AppleNativeDetailKind.ARTIST) {
-                        FrostedMenuRow(
-                            label = "Buscar lançamentos",
-                            checked = detailSearching,
-                            onClick = {
-                                providerDetailOverflowOpen = false
-                                detailSearching = true
-                            },
-                            icon = Icons.Rounded.Search,
                         )
                     }
                     FrostedSettingsAction {
