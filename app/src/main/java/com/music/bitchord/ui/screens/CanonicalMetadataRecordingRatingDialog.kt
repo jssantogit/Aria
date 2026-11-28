@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -26,7 +27,9 @@ internal fun CanonicalMetadataRecordingRatingDialog(
     recordingId: String,
     onDismiss: () -> Unit,
     sourceLabel: CatalogMetadataRecordingLabel?,
+    isCurrent: () -> Boolean = { true },
 ) {
+    val latestCurrent by rememberUpdatedState(isCurrent)
     if (!isLocalMetadataRecordingId(recordingId) ||
         (com.music.bitchord.ui.amsSongStorefront(recordingId) != null &&
             (sourceLabel == null || sourceLabel.recordingId != recordingId || !validCatalogMetadataRecordingLabel(sourceLabel)))) return
@@ -44,7 +47,7 @@ internal fun CanonicalMetadataRecordingRatingDialog(
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },
         onSave = { value ->
-            if (!saving) {
+            if (!saving && latestCurrent()) {
                 saving = true
                 denied = false
                 scope.launch {
@@ -52,9 +55,11 @@ internal fun CanonicalMetadataRecordingRatingDialog(
                         if (!isLocalMetadataRecordingId(recordingId) ||
                             (value != 0.0 && !isValidCanonicalEntityRating(value))) false
                         else withContext(Dispatchers.IO) {
+                            if (!latestCurrent()) return@withContext false
                             if (value != 0.0 && sourceLabel != null &&
                                 !CatalogMetadataRecordingLabelRepository.get(context).rememberLabel(sourceLabel))
                                 return@withContext false
+                            if (!latestCurrent()) return@withContext false
                             val now = System.currentTimeMillis()
                             if (value == 0.0) dao.clearRating(recordingId, now)
                             else dao.setRating(recordingId, value, now)

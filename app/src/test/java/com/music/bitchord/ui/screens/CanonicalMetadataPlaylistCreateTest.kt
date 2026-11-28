@@ -69,6 +69,26 @@ class CanonicalMetadataPlaylistCreateTest {
         assertEquals("playlist-id", result?.id)
         assertEquals(listOf("labels", "playlist"), calls)
     }
+    @Test fun revokedAdmissionCannotCommitEvenAfterLabelsWereStored() = runBlocking {
+        var allowed = true
+        val calls = mutableListOf<String>()
+        val result = persistCanonicalMetadataPlaylist(
+            "Nome", listOf(first), "playlist-id",
+            rememberLabels = { calls += "labels"; allowed = false; true },
+            savePlaylist = { calls += "playlist" },
+            isCurrent = { allowed },
+        )
+        assertNull(result)
+        assertEquals(listOf("labels"), calls)
+        calls.clear()
+        assertNull(persistCanonicalMetadataPlaylist(
+            "Nome", listOf(first), "playlist-id",
+            rememberLabels = { calls += "labels"; true },
+            savePlaylist = { calls += "playlist" },
+            isCurrent = { false },
+        ))
+        assertTrue(calls.isEmpty())
+    }
     @Test fun verifiedMetadataSurvivesActualRoomRoundTripAndLabelPersistence() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val preferences = context.getSharedPreferences(

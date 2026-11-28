@@ -63,10 +63,10 @@ internal fun <T : Any> admittedHeldAction(target: T?, allowed: (T) -> Boolean): 
 private data class AmsHeldRating(val spec: CanonicalCatalogEntityMenuSpec, val artwork: String?)
 
 @Composable
-private fun AmsHeldRatingDialog(rating: AmsHeldRating?, dismiss: () -> Unit) {
+private fun AmsHeldRatingDialog(rating: AmsHeldRating?, isCurrent: () -> Boolean, dismiss: () -> Unit) {
     if (rating != null) CanonicalCatalogEntityRatingDialog(
         target = rating.spec.ratingTarget, title = rating.spec.ratingLabel,
-        artworkUrl = rating.artwork, onDismiss = dismiss,
+        artworkUrl = rating.artwork, onDismiss = dismiss, isCurrent = isCurrent,
     )
 }
 
@@ -128,13 +128,14 @@ internal fun AmsSearchHeldMenu(
         }
     }
     if (admitted != null) {
-        AmsHeldRatingDialog(rating) { rating = null; pendingTarget = null }
-        recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null; pendingTarget=null },it) }
-        recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null; pendingTarget=null } }
+        AmsHeldRatingDialog(rating, { allowed(admitted) }) { rating = null; pendingTarget = null }
+        recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null; pendingTarget=null },it, isCurrent = { allowed(admitted) }) }
+        recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist, isCurrent = { allowed(admitted) }) { recordingPlaylist=null; pendingTarget=null } }
         collection?.let { selected ->
             CanonicalSearchMetadataPlaylistPicker(
                 CatalogSearchPlaylistTarget(null,selected.id,selected.title,selected.credit),
                 onDismiss={ collection=null; pendingTarget=null },
+                isCurrent={ allowed(admitted) },
                 loadSourceLabels={ if (allowed(selected)) viewModel.loadAmsCollectionLabels(selected.id) else null },
             )
         }
@@ -239,13 +240,14 @@ internal fun AmsShelfHeldMenu(
         }
     }
     if (admitted != null) {
-        AmsHeldRatingDialog(rating) { rating = null; pendingTarget = null }
-        recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null; pendingTarget=null },it) }
-        recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist) { recordingPlaylist=null; pendingTarget=null } }
+        AmsHeldRatingDialog(rating, { latestAllowed(admitted) }) { rating = null; pendingTarget = null }
+        recordingRating?.let { CanonicalMetadataRecordingRatingDialog(it.recordingId,{ recordingRating=null; pendingTarget=null },it, isCurrent = { latestAllowed(admitted) }) }
+        recordingPlaylist?.let { CanonicalMetadataRecordingPlaylistPicker(it.recordingId,it.title,it.artist, isCurrent = { latestAllowed(admitted) }) { recordingPlaylist=null; pendingTarget=null } }
         collection?.let { selected ->
             CanonicalSearchMetadataPlaylistPicker(
                 CatalogSearchPlaylistTarget(null,selected.browseId.orEmpty(),selected.title,selected.subtitle),
                 onDismiss={ collection=null; pendingTarget=null },
+                isCurrent={ latestAllowed(admitted) },
                 loadSourceLabels={ if (latestAllowed(admitted)) loadCollection?.invoke(selected.browseId.orEmpty()) else null },
             )
         }
@@ -361,7 +363,7 @@ internal fun ProviderShelfHeldMenu(
         if (target == null && held.target != null) held.reject()
         if (!ratingAllowed) { ratingCard = null; rating = null }
     }
-    AmsHeldRatingDialog(rating.takeIf { ratingAllowed }) {
+    AmsHeldRatingDialog(rating.takeIf { ratingAllowed }, { ratingCard?.let(latestAllowed) == true }) {
         rating = null
         ratingCard = null
     }

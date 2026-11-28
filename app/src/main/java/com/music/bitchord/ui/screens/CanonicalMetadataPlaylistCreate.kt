@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -64,10 +65,11 @@ internal suspend fun persistCanonicalMetadataPlaylist(
     id: String,
     rememberLabels: (List<CatalogMetadataRecordingLabel>) -> Boolean,
     savePlaylist: suspend (SavedCanonicalStaticPlaylist) -> Unit,
+    isCurrent: () -> Boolean = { true },
 ): SavedCanonicalStaticPlaylist? {
     val planned = planCanonicalMetadataPlaylistCreation(title, labels, id)
         ?: return null
-    if (!rememberLabels(labels)) return null
+    if (!isCurrent() || !rememberLabels(labels) || !isCurrent()) return null
     savePlaylist(planned)
     return planned
 }
@@ -83,7 +85,16 @@ internal fun CanonicalMetadataNewPlaylistEditor(
     labels: List<CatalogMetadataRecordingLabel>,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
+) = CanonicalMetadataNewPlaylistEditor(labels, onDismiss, onSaved, { true })
+
+@Composable
+internal fun CanonicalMetadataNewPlaylistEditor(
+    labels: List<CatalogMetadataRecordingLabel>,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit,
+    isCurrent: () -> Boolean,
 ) {
+    val latestCurrent by rememberUpdatedState(isCurrent)
     val app = LocalContext.current.applicationContext
     val repo = remember(app) {
         CanonicalStaticPlaylistRepository(
@@ -99,7 +110,7 @@ internal fun CanonicalMetadataNewPlaylistEditor(
     var error by remember { mutableStateOf<String?>(null) }
 
     fun save() {
-        if (saving) return
+        if (saving || !latestCurrent()) return
         val clean = title.trim()
         if (planCanonicalMetadataPlaylistCreation(clean, labels, "preview") == null) {
             error = "Informe um nome válido de até 80 caracteres e gravações identificadas."
@@ -116,6 +127,7 @@ internal fun CanonicalMetadataNewPlaylistEditor(
                         id = UUID.randomUUID().toString(),
                         rememberLabels = labelsRepository::rememberLabels,
                         savePlaylist = repo::save,
+                        isCurrent = { latestCurrent() },
                     )
                 }
                 if (saved == null) {

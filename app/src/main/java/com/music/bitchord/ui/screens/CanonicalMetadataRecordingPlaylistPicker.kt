@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -39,7 +40,17 @@ internal fun CanonicalMetadataRecordingPlaylistPicker(
     title: String,
     artist: String,
     onDismiss: () -> Unit,
+) = CanonicalMetadataRecordingPlaylistPicker(recordingId, title, artist, { true }, onDismiss)
+
+@Composable
+internal fun CanonicalMetadataRecordingPlaylistPicker(
+    recordingId: String,
+    title: String,
+    artist: String,
+    isCurrent: () -> Boolean,
+    onDismiss: () -> Unit,
 ) {
+    val latestCurrent by rememberUpdatedState(isCurrent)
     val context = LocalContext.current.applicationContext
     val recording = remember(recordingId, title, artist) {
         CatalogMetadataRecordingLabel(recordingId, title.trim(), artist.trim())
@@ -64,6 +75,7 @@ internal fun CanonicalMetadataRecordingPlaylistPicker(
             labels = listOf(recording),
             onDismiss = { creating = false },
             onSaved = onDismiss,
+            isCurrent = { latestCurrent() },
         )
         return
     }
@@ -85,7 +97,7 @@ internal fun CanonicalMetadataRecordingPlaylistPicker(
                 icon = Icons.Rounded.PlaylistAdd,
                 title = "Nova playlist",
                 subtitle = "Criar uma playlist normal",
-                onClick = { creating = true },
+                onClick = { if (latestCurrent()) creating = true },
             )
             if (playlists == null) NativeLoadingSpinner()
             else if (playlists.orEmpty().isEmpty()) Text(
@@ -98,12 +110,13 @@ internal fun CanonicalMetadataRecordingPlaylistPicker(
                     title = selected.name,
                     subtitle = "${selected.recordingIds.size} faixas",
                     onClick = {
-                        if (!saving) {
+                        if (!saving && latestCurrent()) {
                             saving = true
                             errorMessage = null
                             scope.launch {
                                 try {
                                     val added = withContext(Dispatchers.IO) {
+                                        check(latestCurrent())
                                         require(validCatalogMetadataRecordingLabel(recording))
                                         val actual = repository.list().firstOrNull {
                                             it.id == selected.id
@@ -115,6 +128,7 @@ internal fun CanonicalMetadataRecordingPlaylistPicker(
                                             // Never persist an unlabeled metadata-only member.
                                             check(CatalogMetadataRecordingLabelRepository.get(context)
                                                 .rememberLabel(recording))
+                                            check(latestCurrent())
                                             repository.save(actual.copy(recordingIds = ids))
                                             true
                                         }

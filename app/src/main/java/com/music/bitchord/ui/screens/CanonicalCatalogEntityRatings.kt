@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -121,7 +122,9 @@ internal fun CanonicalCatalogEntityRatingDialog(
     onDismiss: () -> Unit,
     anchorBounds: androidx.compose.ui.unit.IntRect? = null,
     artworkUrl: String? = null,
+    isCurrent: () -> Boolean = { true },
 ) {
+    val latestCurrent by rememberUpdatedState(isCurrent)
     val context = LocalContext.current.applicationContext
     val dao = remember(context) { ListeningEventDatabase.get(context).canonicalEntityRatingDao() }
     val current by rememberCanonicalCatalogEntityRating(target)
@@ -137,7 +140,7 @@ internal fun CanonicalCatalogEntityRatingDialog(
         denied = denied,
         onDismiss = { if (!saving) onDismiss() },
         onSave = { score ->
-            if (!saving) {
+            if (!saving && latestCurrent()) {
                 saving = true
                 denied = false
                 scope.launch {
@@ -145,6 +148,7 @@ internal fun CanonicalCatalogEntityRatingDialog(
                         if (!canPersistCanonicalCatalogRating(target) ||
                             (score != 0.0 && !isValidCanonicalEntityRating(score))) false
                         else withContext(Dispatchers.IO) {
+                            if (!latestCurrent()) return@withContext false
                             if (score == 0.0) {
                                 dao.clear(target.entityType, target.entityId)
                             } else {

@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -79,7 +80,9 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
     target: CatalogSearchPlaylistTarget,
     onDismiss: () -> Unit,
     loadSourceLabels: (suspend () -> List<CatalogMetadataRecordingLabel>?)?,
+    isCurrent: () -> Boolean = { true },
 ) {
+    val latestCurrent by rememberUpdatedState(isCurrent)
     val app = LocalContext.current.applicationContext
     val repository = remember(app) {
         CanonicalStaticPlaylistRepository(
@@ -119,8 +122,8 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
     ) {
         value = try {
             if (loadSourceLabels != null) {
-                val labels = loadSourceLabels()
-                if (labels.isNullOrEmpty() || labels.size > 500 || labels.any { !validCatalogMetadataRecordingLabel(it) })
+                val labels = if (latestCurrent()) loadSourceLabels() else null
+                if (!latestCurrent() || labels.isNullOrEmpty() || labels.size > 500 || labels.any { !validCatalogMetadataRecordingLabel(it) })
                     MetadataCollectionLoad.Error("A lista desta coleção ainda não foi verificada integralmente.")
                 else MetadataCollectionLoad.Ready(labels)
             } else when (target.kind) {
@@ -205,6 +208,7 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
             labels = pendingCreation,
             onDismiss = { creatingLabels = null },
             onSaved = onDismiss,
+            isCurrent = { latestCurrent() },
         )
         return
     }
@@ -252,7 +256,7 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
                     SettingsRow(
                         title = "Nova playlist",
                         subtitle = "Criar uma playlist normal",
-                        onClick = { creatingLabels = state.labels },
+                        onClick = { if (latestCurrent()) creatingLabels = state.labels },
                     )
                     if (playlists == null) NativeLoadingSpinner()
                     else if (playlists.orEmpty().isEmpty()) Text(
@@ -263,12 +267,13 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
                             title = candidate.name,
                             subtitle = "${candidate.recordingIds.size} faixas",
                             onClick = {
-                                if (!saving) {
+                                if (!saving && latestCurrent()) {
                                     saving = true
                                     error = null
                                     scope.launch {
                                         try {
                                             val added = withContext(Dispatchers.IO) {
+                                                check(latestCurrent())
                                                 val actual = repository.list()
                                                     .firstOrNull { it.id == candidate.id }
                                                     ?: kotlin.error("Playlist removida")
@@ -282,6 +287,7 @@ internal fun CanonicalSearchMetadataPlaylistPicker(
                                                 // playable Song if this write fails.
                                                 if (!labelRepository.rememberLabels(state.labels))
                                                     kotlin.error("Falha ao guardar rótulos")
+                                                check(latestCurrent())
                                                 if (changed > 0)
                                                     repository.save(actual.copy(recordingIds = planned))
                                                 changed
