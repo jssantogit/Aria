@@ -80,6 +80,19 @@ class AppleMusicWebSearchUiSessionTest {
         assertTrue(session.state.value.artistProducts.isEmpty())
     }
 
+    @Test fun mixedDedupRetainsPlayableMetadataAndRejectsContradictoryArtist() {
+        val textual = item(CatalogSearchKind.TRACK,"30").copy(artistNativeId=null,hasAudioPreview=true,artworkUrl="https://example.com/art.jpg")
+        val supplement = textual.copy(artistNativeId="10",hasAudioPreview=false,artworkUrl=null)
+        val combined = amsSearchWithArtistProducts(listOf(textual),listOf(supplement),CatalogSearchKind.TRACK).single()
+        assertEquals("10",combined.artistNativeId)
+        assertTrue(combined.hasAudioPreview)
+        assertEquals(textual.artworkUrl,combined.artworkUrl)
+        assertTrue(amsSearchWithArtistProducts(listOf(textual.copy(hasAudioPreview=false)),listOf(supplement.copy(hasAudioPreview=true)),CatalogSearchKind.TRACK).single().hasAudioPreview)
+        val conflicting = textual.copy(artistNativeId="99")
+        assertEquals(listOf(conflicting),amsSearchWithArtistProducts(listOf(conflicting),listOf(supplement),CatalogSearchKind.TRACK))
+        assertNull(textual.artistNativeId)
+    }
+
     @Test fun exactArtistRelationshipRejectsContradictoryNativeIdentity() {
         val artist = item(CatalogSearchKind.ARTIST,"10")
         val kind = com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.SONG

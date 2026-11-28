@@ -58,6 +58,7 @@ on:
       - audit/ams-smoke4-gesture-overlay-20261128
       - audit/ams-smoke4-lyrics-identity-20261128
       - audit/ams-exact-artist-search-expansion-20261128
+      - audit/ams-exact-artist-search-admission-20261128
 permissions:
   contents: read
 concurrency:

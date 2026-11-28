@@ -60,8 +60,26 @@ internal data class AmsSearchSectionState(
     val status get() = AppleSearchPageStatus(continuation != null,loading && items.isNotEmpty(),failed)
 }
 
-internal fun amsSearchWithArtistProducts(rows: List<CatalogSearchItem>, products: List<CatalogSearchItem>, kind: CatalogSearchKind): List<CatalogSearchItem> =
-    (products.filter { it.identity.kind == kind } + rows).distinctBy { it.identity }
+/** Preserve the textual hit's richer metadata when the exact native identity agrees.
+ * Relationship evidence can fill a missing artist ID, not replace a conflicting one. */
+internal fun amsSearchWithArtistProducts(rows: List<CatalogSearchItem>, products: List<CatalogSearchItem>, kind: CatalogSearchKind): List<CatalogSearchItem> {
+    val textual = rows.associateBy { it.identity }
+    val expanded = products.filter { it.identity.kind == kind }.mapNotNull { product ->
+        val hit = textual[product.identity] ?: return@mapNotNull product
+        if (hit.artistNativeId != null && hit.artistNativeId != product.artistNativeId) return@mapNotNull null
+        hit.copy(
+            artistNativeId=product.artistNativeId,
+            subtitle=hit.subtitle?.takeIf { it.isNotBlank() } ?: product.subtitle,
+            artworkUrl=hit.artworkUrl ?: product.artworkUrl,
+            storeUrl=hit.storeUrl ?: product.storeUrl,
+            albumNativeId=hit.albumNativeId ?: product.albumNativeId,
+            releaseDate=hit.releaseDate ?: product.releaseDate,
+            durationMs=hit.durationMs?.takeIf { it > 0 } ?: product.durationMs,
+            hasAudioPreview=hit.hasAudioPreview || product.hasAudioPreview,
+        )
+    }
+    return (expanded + rows).distinctBy { it.identity }
+}
 
 internal data class AmsSearchSnapshot(
     val query: String? = null,
@@ -131,8 +149,16 @@ internal class AppleMusicWebSearchUiSession(
     private var expansionLease: ProviderReadLease? = null
 
     fun expansionCurrent(): Boolean = current() && expansionLease?.isCurrent() == true
-    fun admittedItems(): List<CatalogSearchItem> = _state.value.sections.values.flatMap { it.items } +
-        _state.value.artistProducts.takeIf { expansionCurrent() }.orEmpty()
+    fun admittedItems(): List<CatalogSearchItem> {
+        val snapshot = _state.value
+        val textual = snapshot.sections.values.flatMap { it.items }
+        if (!expansionCurrent()) return textual
+        // Admit the actual mixed projection, not a conflicting or superseded
+        // raw artist-view row; typed tabs retain their independently read hits.
+        return textual + listOf(CatalogSearchKind.TRACK,CatalogSearchKind.ALBUM).flatMap { kind ->
+            amsSearchWithArtistProducts(snapshot.sections[kind]?.items.orEmpty(),snapshot.artistProducts,kind)
+        }
+    }
 
     private fun expandExactArtist(query: String) {
         val read = readArtistProducts ?: return
@@ -231,7 +257,7 @@ internal class AppleMusicWebSearchUiSession(
             publish(if (page == null) before.copy(loading=false,failed=true)
                 else AmsSearchSectionState((before.items + page.items).distinctBy { it.identity },
                     page.continuation,false,false))
-            if (!more && kind == CatalogSearchKind.ARTIST && page != null) expandExactArtist(q)
+            if (request.page == 1 && kind == CatalogSearchKind.ARTIST && page != null) expandExactArtist(q)
             if (!more && _state.value.selected && _state.value.sections.values.none { it.loading }) settled(q)
         }
         jobs[kind] = job
