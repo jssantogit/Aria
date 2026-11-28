@@ -261,8 +261,10 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                     label = stringResource(R.string.clear),
                     subdued = true,
                     onClick = {
-                        DownloadSession.clear()
-                        onDismiss()
+                        if (Downloads.clearSoulseekAutoReviews()) {
+                            DownloadSession.clear()
+                            onDismiss()
+                        }
                     },
                 )
             }
@@ -415,6 +417,8 @@ private fun DownloadManagerRow(
         // track can be stopped, a failed one can be asked for again, and a
         // finished one needs nothing at all.
         when {
+            failed != null && item.videoId.startsWith("soulseek-auto:") ->
+                Spacer(Modifier.width(36.dp))
             failed != null -> RowAction(Icons.Rounded.Refresh, stringResource(R.string.retry), onRetry)
             !progress.settled -> RowAction(Icons.Rounded.Close, stringResource(R.string.cancel), onCancel)
             else -> Spacer(Modifier.width(36.dp))
