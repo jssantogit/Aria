@@ -54,4 +54,17 @@ class A0SearchTicketRegistryTest {
         assertFalse(tickets.register(84))
         assertEquals(setOf(81,82,83),tickets.accepted.toSet())
     }
+    @Test fun recentTicketHistoryIsBoundedAndDoesNotAuthorizeOldReplies() {
+        val history=A0RecentSearchTickets(3)
+        listOf(81,82,83,84).forEach(history::record)
+        assertFalse(history.wasSent(81))
+        assertTrue(history.wasSent(82))
+        assertFalse(history.wasSent(999))
+        val active=A0SearchTicketRegistry(85)
+        assertFalse(82 in active.accepted)
+        active.creditValidated(82)
+        assertEquals(listOf(0,0,0),active.responseCounts())
+        assertFalse(history.toString().contains("82"))
+    }
+
 }

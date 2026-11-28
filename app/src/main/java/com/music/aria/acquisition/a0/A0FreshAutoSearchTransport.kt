@@ -222,6 +222,7 @@ internal class A0FreshAutoSearchTransport(
                 write(A0OneShotPublicSearchWire.fileSearch(token,initialQuery.query))
                 flush()
             }
+            A0RecentSearchTickets.shared.record(token)
             if(initialQuery.kind==A0ReleaseInitialQueryPolicy.Kind.ALBUM_WIDE)
                 releaseWideSent.add(initialQuery.query)
             if(stopped())return A0AutoDiscoveryCoordinator.SearchResult.Stop
@@ -355,8 +356,14 @@ internal class A0FreshAutoSearchTransport(
                                                 when(error) {
                                                     is SocketTimeoutException -> replyTimeout.incrementAndGet()
                                                     is java.io.EOFException -> replyEof.incrementAndGet()
-                                                    is A0SoulseekSearchResponseParser.RejectedReply ->
-                                                        replyRejected.computeIfAbsent(error.kind) { AtomicInteger() }.incrementAndGet()
+                                                    is A0SoulseekSearchResponseParser.RejectedReply -> {
+                                                        val kind=if(error.kind==A0SoulseekSearchResponseParser.FailureKind.UNSOLICITED_TICKET &&
+                                                            error.rejectedToken?.let(A0RecentSearchTickets.shared::wasSent)==true &&
+                                                            error.rejectedToken !in tickets.accepted)
+                                                            A0SoulseekSearchResponseParser.FailureKind.PRIOR_SESSION_TICKET
+                                                        else error.kind
+                                                        replyRejected.computeIfAbsent(kind) { AtomicInteger() }.incrementAndGet()
+                                                    }
                                                 }
                                             }
                                         }
@@ -431,6 +438,7 @@ internal class A0FreshAutoSearchTransport(
                                     write(A0OneShotPublicSearchWire.fileSearch(variantTicket,variant))
                                     flush()
                                 }
+                                A0RecentSearchTickets.shared.record(variantTicket)
                                 sent.add(variant)
                                 // Diagnostics correlate response counts to
                                 // broad vs album-qualified search strategies,

@@ -27,8 +27,8 @@ internal object A0SoulseekSearchResponseParser {
     private const val SEARCH_RESPONSE_CODE = 9
 
     enum class FailureKind { FRAME_HEADER, COMPRESSED_PAYLOAD, UNSOLICITED_TICKET,
-        PEER_MISMATCH, MALFORMED_FIELDS }
-    class RejectedReply(val kind:FailureKind):IOException("Rejected peer search response: ${kind.name}")
+        PEER_MISMATCH, MALFORMED_FIELDS, PRIOR_SESSION_TICKET }
+    class RejectedReply(val kind:FailureKind, internal val rejectedToken:Int?=null):IOException("Rejected peer search response: ${kind.name}")
 
     fun parse(frame: ByteArray, expectedToken: Int): A0SoulseekSearchResponse =
         parse(frame,setOf(expectedToken))
@@ -64,7 +64,7 @@ internal object A0SoulseekSearchResponseParser {
         val username = fields.string()
         if (username.isBlank()) fail()
         val token = fields.int32()
-        if (token !in expectedTokens) fail(FailureKind.UNSOLICITED_TICKET)
+        if (token !in expectedTokens) throw RejectedReply(FailureKind.UNSOLICITED_TICKET,token)
 
         var totalFiles = 0
         fun files(): List<A0SoulseekSearchFile> {

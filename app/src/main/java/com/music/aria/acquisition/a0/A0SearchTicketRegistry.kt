@@ -43,3 +43,21 @@ internal class A0SearchTicketRegistry(initial:Int) {
         publicFiles.get(it).coerceIn(0,100_000)
     }
 }
+
+/** Bounded process-local diagnostic only; never authorizes a reply or logs tokens.
+ * Remember only searches actually sent, not tokens proposed by a peer. */
+internal class A0RecentSearchTickets(private val capacity:Int=96) {
+    init { require(capacity in 3..256) }
+    private val sent=LinkedHashSet<Int>()
+    @Synchronized fun record(token:Int) {
+        require(token>0)
+        sent.remove(token)
+        sent.add(token)
+        while(sent.size>capacity)sent.remove(sent.first())
+    }
+    @Synchronized fun wasSent(token:Int):Boolean=token in sent
+    override fun toString()="A0RecentSearchTickets(redacted)"
+    companion object {
+        val shared=A0RecentSearchTickets()
+    }
+}
