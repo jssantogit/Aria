@@ -6883,7 +6883,7 @@ private fun BitChordApp(
                             }
                         }
                     } else null,
-                    onShareLyrics = if (fromAppleQueue) {
+                    onShareLyrics = if (fromAppleQueue && !song.isAudioPreview && player.song?.isAudioPreview != true) {
                         {
                             songActions = null
                             playerShareLyricsRequestToken++
