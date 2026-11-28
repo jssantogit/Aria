@@ -2505,7 +2505,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val recordingDurationMs = if (isAudioPreview) {
-                // The exact song response describes the recording, not the 30s media item.
+                // The exact song response describes the recording, not the variable-length preview media item.
                 appleMusicWebNativeCatalog.previewRecordingDuration(videoId) ?: 0L
             } else durationMs
             if (generation != lyricsGeneration) return@launch

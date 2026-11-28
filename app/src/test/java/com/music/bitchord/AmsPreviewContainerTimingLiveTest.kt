@@ -120,5 +120,5 @@ class AmsPreviewContainerTimingLiveTest {
         assertTrue("No public sample container could be observed",observed > 0)
     }
 
-    companion object { private const val MAX_BYTES = 2L * 1024L * 1024L }
+    companion object { private const val MAX_BYTES = 8L * 1024L * 1024L }
 }
