@@ -588,12 +588,18 @@ internal class DiscogsNativeCatalogSession(
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsEditorialResult.Unavailable }
                 if (!lease.isCurrent() || homePagingEpoch != editorialEpoch) return@launch
-                when (result) {
-                    is DiscogsEditorialResult.Verified -> {
-                        verified += result.releases
-                        val shelves = discogsEditorialShelves(verified, home = true)
-                        if (shelves.isNotEmpty()) _homeEditorial.value = UiState.Success(shelves)
-                    }
+                if (result is DiscogsEditorialResult.Verified) {
+                    verified += result.releases
+                    val shelves = discogsEditorialShelves(verified, home = true)
+                    if (shelves.isNotEmpty()) _homeEditorial.value = UiState.Success(shelves)
+                }
+                // A partially successful landing still has a terminal reason.
+                // Preserve the cards, but do not enter another predicate after
+                // a throttle or authorization failure.
+                val interruption = if (result is DiscogsEditorialResult.Verified)
+                    result.interruption else result
+                when (interruption) {
+                    null -> Unit
                     DiscogsEditorialResult.Unauthorized -> {
                         failure = "Configure o token do Discogs em Conexões."
                         break
