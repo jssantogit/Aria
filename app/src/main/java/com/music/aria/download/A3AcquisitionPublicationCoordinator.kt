@@ -46,8 +46,30 @@ internal class A3AcquisitionPublicationCoordinator(
             // The caller may require an account-generation check synchronized
             // against logout immediately before committing AVAILABLE. The
             // output URI is rolled back if authorization was revoked during A2.
-            commitGuard { journal.available(id,published.contentUri,published.byteCount) }
+            // Guard must invoke the durable commit synchronously; a no-op
+            // authorization guard cannot turn a visible artifact into success.
+            val owner=Thread.currentThread()
+            var guardOpen=true
+            var committed=false
+            try {
+                commitGuard {
+                    check(Thread.currentThread()===owner && guardOpen && !committed) {
+                        "A3 publication guard must commit exactly once synchronously"
+                    }
+                    journal.available(id,published.contentUri,published.byteCount)
+                    committed=true
+                }
+            } finally {
+                guardOpen=false
+            }
+            check(committed) { "A3 publication guard did not commit" }
         }catch(error:Exception) {
+            // If the guard throws after committing, never delete an artifact
+            // already owned by a durable AVAILABLE entry.
+            val durable=journal.get(id)
+            if(durable?.phase==A3AcquisitionLedger.Phase.AVAILABLE &&
+                durable.contentUri==published.contentUri &&
+                durable.byteCount==published.byteCount)return published
             val removed=runCatching {
                 deletePublishedUri(published.contentUri)
             }.getOrDefault(false)
