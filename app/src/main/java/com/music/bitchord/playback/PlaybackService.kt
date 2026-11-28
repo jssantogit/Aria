@@ -906,7 +906,8 @@ class PlaybackService : MediaLibraryService() {
 
             val song = exoPlayer.currentMediaItem?.toSong()
             val durationMs = exoPlayer.duration.takeIf { it > 0 }
-            scrobbleManager?.onPlayerStateChanged(isPlaying, song, durationMs)
+            val scrobbleSong = song?.takeUnless { it.isAudioPreview }
+            scrobbleManager?.onPlayerStateChanged(isPlaying && scrobbleSong != null, scrobbleSong, durationMs)
 
             // The listening record has to be told a pause happened, not merely
             // stop being told about play: its sampler measures the gap between
@@ -3333,7 +3334,7 @@ class PlaybackService : MediaLibraryService() {
         ListeningRecorder.onStopped()
         val newSong = mediaItem?.toSong()
         val durationMs = exoPlayer.duration.takeIf { it > 0 }
-        if (exoPlayer.isPlaying) {
+        if (exoPlayer.isPlaying && newSong?.isAudioPreview != true) {
             scrobbleManager?.onSongStart(newSong, durationMs)
         }
 
@@ -5958,7 +5959,7 @@ class PlaybackService : MediaLibraryService() {
                     // reading the position. This loop is the only place in the app
                     // that ticks exactly while audio is coming out, which is what
                     // makes it the right place to count from.
-                    player.currentMediaItem?.toSong()?.let {
+                    player.currentMediaItem?.toSong()?.takeUnless { it.isAudioPreview }?.let {
                         ListeningRecorder.onSample(it, player.duration)
                     }
                     // Only two primitive preference values. Queue JSON is
@@ -6852,7 +6853,7 @@ class PlaybackService : MediaLibraryService() {
     private fun submitListenBrainzFinished(
         song: Song, startMs: Long, durationMs: Long?, listenedMs: Long,
     ) {
-        if (listenBrainzOccurrenceQueued ||
+        if (song.isAudioPreview || listenBrainzOccurrenceQueued ||
             !AppSettings.scrobblingAvailable || !AppSettings.listenBrainzEnabled.value
         ) return
         val token = AppSettings.listenBrainzToken.value
@@ -6885,7 +6886,7 @@ class PlaybackService : MediaLibraryService() {
      * the threshold, rather than waiting for a skip or service destruction.
      */
     private fun startListenBrainzThresholdWatcher() {
-        if (listenBrainzThresholdJob?.isActive == true ||
+        if (listenBrainzSong?.isAudioPreview == true || listenBrainzThresholdJob?.isActive == true ||
             listenBrainzOccurrenceQueued ||
             !AppSettings.scrobblingAvailable || !AppSettings.listenBrainzEnabled.value
         ) return
@@ -6907,6 +6908,7 @@ class PlaybackService : MediaLibraryService() {
 
     /** Sends a ListenBrainz "now playing" update for the current track. */
     private fun submitListenBrainzPlayingNow(song: Song, positionMs: Long, durationMs: Long?) {
+        if (song.isAudioPreview) return
         val lbEnabled = AppSettings.scrobblingAvailable && AppSettings.listenBrainzEnabled.value
         val lbToken = AppSettings.listenBrainzToken.value
         if (!lbEnabled || lbToken.isBlank()) return
@@ -8179,6 +8181,11 @@ class PlaybackService : MediaLibraryService() {
                         val local = LocalMediaRepository.getLocalMusic(this@PlaybackService)
                         local.forEach { songCache[it.videoId] = it }
                         resolved.addAll(local.map { it.toMediaItem() })
+                    }
+                    item.toSong().isAudioPreview -> {
+                        // Reconstruct only from the exact native ID, never a caller URL.
+                        // Actual playback still requires a fresh dual-capability ticket.
+                        resolved.add(item.toSong().toMediaItem())
                     }
                     songCache.containsKey(id) -> {
                         resolved.add(songCache[id]!!.toMediaItem())

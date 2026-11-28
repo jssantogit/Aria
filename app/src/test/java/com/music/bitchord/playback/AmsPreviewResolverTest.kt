@@ -25,6 +25,8 @@ class AmsPreviewResolverTest {
 
     @Test fun logicalRouteContainsOnlyExactSourceIdentity() {
         assertEquals(route,AmsPreviewRoute.decode(route.uri))
+        assertEquals(route.uri,AmsPreviewRoute.forQueue(route.scopedId))
+        assertEquals("bitchord://preview/invalid",AmsPreviewRoute.forQueue("https://example.org/sample.m4a"))
         assertEquals("bitchord://preview/br/123",route.uri)
         assertNull(AmsPreviewRoute.decode(route.uri+"?url=https://example.org"))
         assertNull(AmsPreviewRoute.decode("bitchord://preview/br/0123"))

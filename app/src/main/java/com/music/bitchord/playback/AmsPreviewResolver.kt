@@ -17,6 +17,9 @@ internal data class AmsPreviewRoute private constructor(val storefront: String, 
             ?.let { AmsPreviewRoute(it.groupValues[1],it.groupValues[2]) }
         fun decode(value: String?): AmsPreviewRoute? = value?.let(logical::matchEntire)
             ?.let { AmsPreviewRoute(it.groupValues[1],it.groupValues[2]) }
+        /** A marked sample can never fall through to local/full-stream routing. */
+        fun forQueue(scopedId: String): String =
+            fromScopedId(scopedId)?.uri ?: "bitchord://preview/invalid"
         fun owns(value: String?): Boolean {
             val uri = value?.let { runCatching { URI(it) }.getOrNull() } ?: return false
             return uri.scheme.equals("bitchord",ignoreCase=true) && uri.authority == "preview"

@@ -691,9 +691,9 @@ fun Song.toMediaItem(): MediaItem {
     // [MediaItem.toSong], so an item waiting in the live queue can carry a URI
     // that has become stale since it was created. Checking only the lookup
     // leaves that path unguarded.
-    val offlineUri = localUri?.takeUnless(Downloads::isMissingLocalFile)
-        ?: Downloads.verifiedSavedUri(videoId)
-    val uriString = offlineUri ?: when {
+    val offlineUri = if (isAudioPreview) null else
+        localUri?.takeUnless(Downloads::isMissingLocalFile) ?: Downloads.verifiedSavedUri(videoId)
+    val uriString = if (isAudioPreview) AmsPreviewRoute.forQueue(videoId) else offlineUri ?: when {
         videoId.startsWith("content://") || videoId.startsWith("file://") -> videoId
         // Title, artist and runtime ride along in the URI because they are what
         // a cross-source match is made on, and the resolver runs on ExoPlayer's
@@ -777,7 +777,7 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_PLAYBACK_SOURCE_TYPE to playbackSourceType?.name,
                             EXTRA_PLAYBACK_SOURCE_ID to playbackSourceId,
                             EXTRA_LOCAL_URI to offlineUri,
-                            EXTRA_LOCAL_PATH to localPath,
+                            EXTRA_LOCAL_PATH to localPath.takeUnless { isAudioPreview },
                             EXTRA_DURATION to durationText,
                             EXTRA_ARTIST_ID to artistId,
                             EXTRA_ALBUM_ID to albumId,

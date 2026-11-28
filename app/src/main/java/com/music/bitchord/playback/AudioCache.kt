@@ -659,7 +659,7 @@ object AudioCache {
      * first bytes arrive.
      */
     fun notePlayed(song: Song, uri: Uri?) {
-        if (song.localUri != null || song.videoId.isBlank()) return
+        if (song.isAudioPreview || song.localUri != null || song.videoId.isBlank()) return
         if (playedIds.size > MAX_NOTED_SONGS) playedIds.clear()
         playedIds += song.videoId
         noteSongs(listOf(song))

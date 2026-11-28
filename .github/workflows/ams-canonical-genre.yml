@@ -37,6 +37,7 @@ on:
       - audit/ams-preview-admission-search-20261128
       - audit/ams-preview-queue-marker-20261128
       - audit/ams-preview-media-transport-20261128
+      - audit/ams-preview-queue-routing-20261128
 permissions:
   contents: read
 concurrency:
