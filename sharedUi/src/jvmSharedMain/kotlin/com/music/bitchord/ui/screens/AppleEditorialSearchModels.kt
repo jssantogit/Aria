@@ -89,6 +89,8 @@ data class AppleEditorialTrackSearchRow(
     val appleStoreBadgeUrl: String? = null,
     /** Exact source-supplied artist route; absent means no verified artist ID. */
     val artistBrowseId: String? = null,
+    /** Source evidence only; playback needs current admission and resolution. */
+    val hasAudioPreview: Boolean = false,
 )
 
 /**

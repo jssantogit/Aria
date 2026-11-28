@@ -70,6 +70,8 @@ class AppleMusicWebFoundationTest {
         val curator = "/v1/catalog/br/apple-curators/976439543"
         assertNotNull(key(editorial,curator,mapOf("platform" to "web","include" to "grouping,playlists")))
         assertNull(key(editorial,"/v1/catalog/br/library",emptyMap()))
+        assertNull(key(editorial,"/v1/catalog/br/songs/123",emptyMap()))
+        assertNotNull(key(editorial,"/v1/catalog/br/songs/123",mapOf("include" to "albums")))
         val chart = "/v1/catalog/br/charts"
         val args = mapOf("chart" to "most-played","types" to "songs","limit" to "25")
         assertNotNull(key(charts,chart,args))

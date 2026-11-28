@@ -309,6 +309,25 @@ internal class AppleMusicWebEditorialGateway(
             else AppleMusicWebOutcome.Partial(result, AppleMusicWebCompleteness.UNRESOLVED_EDITORIAL_REFERENCES)
         }
 
+    /** Resolve source evidence through the existing revocable read boundary.
+     * The returned sample still needs separate media admission before playback. */
+    suspend fun songPreview(scopedId: String):
+        ProviderCallResult<AppleMusicWebEditorialResult<AppleMusicWebItem>> {
+        val match = Regex("^apple_music_web:([a-z]{2}):song:([1-9][0-9]{0,11})$")
+            .matchEntire(scopedId)
+            ?: return ProviderCallResult.Failed(IllegalArgumentException("Invalid Apple song route"))
+        return guarded(ProviderCapability.EDITORIAL_DISCOGRAPHY, match.groupValues[1]) { storefront ->
+            val item = catalog.songPreview(scopedId)
+            if (item == null) AppleMusicWebOutcome.Unavailable("No verified audio preview")
+            else {
+                if (item.storefront != storefront || item.scopedId != scopedId ||
+                    item.kind != AppleMusicWebKind.SONG || appleMusicWebAudioPreviewUrl(item.previewUrl) == null)
+                    throw AppleMusicWebProtocolException("Wrong Apple preview evidence")
+                AppleMusicWebOutcome.Complete(item)
+            }
+        }
+    }
+
     suspend fun songCollections(
         id: String,
         country: String,

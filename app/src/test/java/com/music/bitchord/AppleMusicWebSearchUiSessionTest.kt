@@ -33,6 +33,17 @@ class AppleMusicWebSearchUiSessionTest {
             identity=CatalogNativeIdentity(BuiltInProviderKeys.ITUNES,CatalogSearchKind.ALBUM,"20","br"))))
     }
 
+    @Test fun previewEvidenceReachesSearchRowsWithoutChangingIdentityOrDuration() {
+        val track = item(CatalogSearchKind.TRACK,"30")
+        assertFalse(amsSearchTrack(track)!!.hasAudioPreview)
+        val preview = amsSearchTrack(track.copy(hasAudioPreview=true))!!
+        assertTrue(preview.hasAudioPreview)
+        assertEquals("apple_music_web:br:song:30",preview.key)
+        assertEquals(1234L,preview.durationMs)
+        assertNull(amsSearchTrack(track.copy(hasAudioPreview=true,
+            identity=CatalogNativeIdentity(BuiltInProviderKeys.ITUNES,CatalogSearchKind.TRACK,"30","br"))))
+    }
+
     @Test fun cursorOwnershipAndFilterCoverage(): Unit = runBlocking {
         var g: ProviderPolicyGate? = gate()
         var order = listOf(ams)

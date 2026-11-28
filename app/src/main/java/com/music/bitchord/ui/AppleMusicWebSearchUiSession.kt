@@ -47,7 +47,8 @@ internal fun amsSearchTrack(item: CatalogSearchItem): AppleEditorialTrackSearchR
     return AppleEditorialTrackSearchRow(key,item.title,item.subtitle.orEmpty(),item.artwork(),
         route(market,"album",item.albumNativeId),item.durationMs?.takeIf { it > 0 },
         appleStoreUrl=appleMusicWebVerifiedRouteUrl(item.storeUrl,key),
-        artistBrowseId=route(market,"artist",item.artistNativeId))
+        artistBrowseId=route(market,"artist",item.artistNativeId),
+        hasAudioPreview=item.hasAudioPreview)
 }
 
 internal data class AmsSearchSectionState(

@@ -146,6 +146,8 @@ internal object AppleMusicWebCacheContract {
                 if (!keys.all { it in paging + "sort" }) return null
                 15 * minute
             }
+            // Exact song reads without relationships resolve current preview evidence.
+            resource == "songs" && parts.size == 5 && parameters.isEmpty() -> return null
             resource == "genres" -> {
                 if (!keys.all { it == "l" }) return null
                 24 * 60 * minute

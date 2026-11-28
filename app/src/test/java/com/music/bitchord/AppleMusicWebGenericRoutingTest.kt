@@ -115,6 +115,21 @@ class AppleMusicWebGenericRoutingTest {
         assertEquals(listOf("/v1/catalog/br/search"), calls)
     }
 
+    @Test fun searchAdapterPreservesOnlyValidatedAudioPreviewEvidence() = runBlocking {
+        val source = AppleMusicWebTransport { _, _, _ ->
+            """{"results":{"songs":{"data":[
+                {"id":"1","type":"songs","attributes":{"name":"First","previews":[{"url":"https://audio-ssl.itunes.apple.com/sample.m4a"}]}},
+                {"id":"2","type":"songs","attributes":{"name":"Second","previews":[{"url":"https://example.org/sample.m4a"}]}}
+            ]}}}"""
+        }
+        val adapter = AppleMusicWebSearchAdapter(AppleMusicWebEditorialGateway(
+            AppleMusicWebCatalog(source),gate(listOf(apple))))
+        val result = adapter.search(CatalogSearchRequest(CatalogSearchKind.TRACK,"First","br"))
+            as ProviderCallResult.Success
+        assertEquals(mapOf("1" to true,"2" to false),
+            result.value.items.associate { it.identity.nativeId to it.hasAudioPreview })
+    }
+
     @Test fun continuationPublishesUniqueNativeIdsAndPreservesRawOverlap() = runBlocking {
         val policy = gate(listOf(apple))
         val offsets = mutableListOf<String?>()

@@ -63,6 +63,8 @@ internal data class CatalogSearchItem(
     val albumNativeId: String? = null,
     val releaseDate: String? = null,
     val durationMs: Long? = null,
+    /** Source evidence only, never playback permission or a resolved stream. */
+    val hasAudioPreview: Boolean = false,
 )
 
 /** Complete here means this requested PAGE; hasMore tracks remaining pages. */

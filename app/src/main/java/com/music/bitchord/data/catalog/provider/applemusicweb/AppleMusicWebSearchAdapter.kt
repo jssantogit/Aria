@@ -119,6 +119,8 @@ internal class AppleMusicWebSearchAdapter(
                 albumNativeId = item.albumId,
                 releaseDate = item.releaseDate,
                 durationMs = item.durationMillis,
+                hasAudioPreview = sourceKind == CatalogSearchKind.TRACK &&
+                    appleMusicWebAudioPreviewUrl(item.previewUrl) != null,
             )
         },
         page = source.page,

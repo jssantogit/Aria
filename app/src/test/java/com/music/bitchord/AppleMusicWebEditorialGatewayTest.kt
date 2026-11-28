@@ -127,6 +127,34 @@ class AppleMusicWebEditorialGatewayTest {
         assertEquals(ProviderCallResult.Stale, request.await())
     }
 
+    @Test fun previewReadRequiresEditorialPermissionAndSuppressesRevokedResults() = runBlocking {
+        val route = "apple_music_web:br:song:123"
+        var calls = 0
+        val denied = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
+            AppleMusicWebTransport { _, _, _ -> calls++; "{}" }),gate(search))
+        assertEquals(ProviderCallResult.Denied,denied.songPreview(route))
+        assertEquals(0,calls)
+        val active = gate(discography)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
+            AppleMusicWebTransport { capability,path,args ->
+                assertEquals(discography,capability)
+                assertEquals("/v1/catalog/br/songs/123",path)
+                assertTrue(args.isEmpty())
+                entered.complete(Unit)
+                release.await()
+                """{"data":[{"id":"123","type":"songs","attributes":{"name":"Sample",
+                    "previews":[{"url":"https://audio-ssl.itunes.apple.com/sample.m4a"}]}}]}"""
+            }),active)
+        val request = async { gateway.songPreview(route) }
+        entered.await()
+        active.replace(ProviderCapabilityPolicy(listOf(ProviderDescriptor(
+            key=provider,capabilities=setOf(search,discography),readiness=ProviderReadiness.READY))))
+        release.complete(Unit)
+        assertEquals(ProviderCallResult.Stale,request.await())
+    }
+
     @Test fun artistLinkageIsRecoveredByExactNativeIdOrRemainsPartial() = runBlocking {
         val requests = mutableListOf<String>()
         val gateway = AppleMusicWebEditorialGateway(AppleMusicWebCatalog(
