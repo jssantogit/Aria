@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.unit.IntRect
@@ -63,7 +62,7 @@ internal fun PlayerRatingStar(
             geometry = CompactRatingGeometry.CIRCULAR,
             size = 34.dp,
             showUnrated = true,
-            neutralColor = Color.White,
+            neutralColor = LocalPlayerTint.current,
         )
     }
 }

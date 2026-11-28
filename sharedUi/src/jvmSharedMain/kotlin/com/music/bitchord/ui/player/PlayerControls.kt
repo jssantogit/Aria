@@ -224,6 +224,9 @@ internal fun PlayerScrubber(
             mixing = mixing,
             mixPulse = mixPulse,
             transitionWindow = transitionWindow,
+            activeColor = LocalPlayerTint.current.copy(alpha = 0.92f),
+            inactiveColor = LocalPlayerTint.current.copy(alpha = 0.26f),
+            markerColor = LocalPlayerTint.current.copy(alpha = 0.5f),
         )
         Box(
             modifier = Modifier
@@ -301,19 +304,9 @@ private const val MIXING_LABEL_REST = 0.5f
  */
 private const val BADGE_SIZE_BUMP = 0.5f
 
-/**
- * The colour every secondary line and glyph in the player is set in — artist,
- * timestamps, quality badge, the lyrics/output/queue row, the menu glyphs.
- *
- * Apple Music sets those in the sleeve's own colour lifted pale rather than a
- * translucent white — see [com.music.bitchord.ui.theme.rememberPlayerTint].
- * Provided at the top of the player; white anywhere it isn't, while the
- * sleeve is still being read, and while a Spotify Canvas fills the screen,
- * where there is no sleeve colour to echo. The title, transport, seek and
- * volume bars stay white on purpose.
- */
+/** Neutral black/white foreground for the player. Artwork colors belong to
+ * the backdrop, never the controls; alpha still expresses emphasis and state. */
 internal val LocalPlayerTint = compositionLocalOf { Color.White }
-internal val LocalPlayerQualityForeground = compositionLocalOf { Color.White }
 
 /**
  * The quality badge between the timestamps — "Lossless", "Hi-Res", a loading
@@ -482,7 +475,7 @@ internal fun TransportRow(
             // would shunt everything below it on every load.
             Box(Modifier.size(playTouch), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
-                    color = Color.White,
+                    color = LocalPlayerTint.current,
                     strokeWidth = 3.dp,
                     modifier = Modifier.size(if (compact) 30.dp else 38.dp),
                 )
@@ -541,6 +534,9 @@ internal fun VolumeRow(
             onValueChangeFinished = onValueChangeFinished,
             idleHeight = 6.dp,
             activeHeight = 10.dp,
+            activeColor = LocalPlayerTint.current.copy(alpha = 0.92f),
+            inactiveColor = LocalPlayerTint.current.copy(alpha = 0.26f),
+            markerColor = LocalPlayerTint.current.copy(alpha = 0.5f),
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(10.dp))
@@ -829,7 +825,7 @@ private fun TransportGlyph(
         Icon(
             painter = painterResource(icon),
             contentDescription = contentDescription,
-            tint = Color.White.copy(alpha = alpha),
+            tint = LocalPlayerTint.current.copy(alpha = alpha),
             modifier = Modifier
                 .size(size)
                 .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
@@ -1700,14 +1696,14 @@ private fun LosslessOrStats(
 private fun AppleDolbyAtmosBadge(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(5.dp))
+            .background(LocalPlayerTint.current.copy(alpha = 0.16f), RoundedCornerShape(5.dp))
             .padding(horizontal = 7.dp, vertical = 3.5.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(Res.drawable.ic_apple_nowplaying_dolby_atmos),
             contentDescription = "Dolby Atmos",
-            tint = LocalPlayerQualityForeground.current,
+            tint = LocalPlayerTint.current,
             modifier = Modifier.size(width = 83.dp, height = 15.dp),
         )
     }
@@ -1748,7 +1744,7 @@ private fun LosslessLabel(
         // call in place rather than through an offscreen buffer: the glyph and
         // the word never overlap, so there is nothing a buffer would fix.
         modifier = modifier
-            .then(if (appleStyle) Modifier.background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(5.dp))
+            .then(if (appleStyle) Modifier.background(LocalPlayerTint.current.copy(alpha = 0.16f), RoundedCornerShape(5.dp))
                 .padding(horizontal = 7.dp, vertical = 3.5.dp) else Modifier)
             .graphicsLayer {
                 alpha = pulse?.value ?: 1f
@@ -1757,7 +1753,7 @@ private fun LosslessLabel(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val tint = LocalPlayerQualityForeground.current
+        val tint = LocalPlayerTint.current
         // At the drawable's own size — the wave is wide, the double-D
         // nearly square, and one box squashed one of them.
         Icon(

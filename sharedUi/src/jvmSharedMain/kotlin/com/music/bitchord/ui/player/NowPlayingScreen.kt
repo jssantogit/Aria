@@ -1,6 +1,5 @@
 package com.music.bitchord.ui.player
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
@@ -18,7 +17,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
-import com.music.bitchord.ui.theme.rememberPlayerTint
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import androidx.compose.animation.core.AnimationVector1D
@@ -704,7 +702,7 @@ internal fun AppleQueueHeaderAction(
             Icon(
                 imageVector = imageVector,
                 contentDescription = description,
-                tint = Color.White,
+                tint = LocalPlayerTint.current,
                 modifier = Modifier.fillMaxSize().graphicsLayer {
                     scaleX = pressScale
                     scaleY = pressScale
@@ -852,10 +850,6 @@ fun NowPlayingScreen(
     // lies beneath the status bar when the player expands to full bleed.
     val artTopLuminance = rememberArtworkTopBandLuminance(remoteArt, ART_PX)
     val artworkStatusScrimAlpha = topBandScrimAlpha(artTopLuminance)
-    // The sleeve's own colour, lifted pale, read off the decode the scrim above
-    // already made. Plain white until it is known, and for a sleeve with no
-    // colour to give.
-    val artworkTint = rememberPlayerTint(remoteArt, ART_PX) ?: Color.White
 
     // Media-player convention: the player always owns light status icons. The
     // top treatment below, rather than a window-flag flip per cover, provides
@@ -1844,25 +1838,14 @@ fun NowPlayingScreen(
         // look at and keeps the subtree drawing.
         .graphicsLayer { alpha = if (docking()) dockFade().coerceAtLeast(DOCK_FADE_FLOOR) else 1f }
 
-    // Every secondary line and glyph in the player — artist, timestamps,
-    // quality badge, the lyrics/output/queue row — reads this rather than a
-    // fixed white, see [LocalPlayerTint].
-    // Back to plain white while a Spotify Canvas fills the screen: the video
-    // is the backdrop then, not the sleeve the tint was read from.
-    val playerTint by animateColorAsState(
-        targetValue = if (spotifyCanvasPresentation) Color.White else artworkTint,
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
-        label = "playerTint",
-    )
-    // The small artwork mesh is already resident; estimate the middle
-    // control band's background after its dark scrim. Never reuse the
-    // chromatic secondary tint for the quality badge.
-    val qualityForeground = remember(artMesh, spotifyCanvasPresentation, tabletArtworkBackdrop, lyricsOpen, queueOpen, landscape) {
+    // Artwork supplies the backdrop only. All foreground controls use the
+    // same neutral contrast policy, with their existing emphasis/disabled
+    // alpha. Scrimmed panels and video retain white foregrounds.
+    val playerForeground = remember(artMesh, spotifyCanvasPresentation, tabletArtworkBackdrop, lyricsOpen, queueOpen, landscape) {
         if (spotifyCanvasPresentation || tabletArtworkBackdrop || lyricsOpen || queueOpen || landscape) Color.White
-        else qualityForegroundForMesh(artMesh)
+        else playerForegroundForMesh(artMesh)
     }
-    CompositionLocalProvider(LocalPlayerTint provides playerTint,
-        LocalPlayerQualityForeground provides qualityForeground) {
+    CompositionLocalProvider(LocalPlayerTint provides playerForeground) {
         if (landscape) {
             // Paused always wins outright over a scrub in progress — see
             // [ARTWORK_PAUSE_SHRINK_SCALE].
@@ -3278,7 +3261,7 @@ fun NowPlayingScreen(
                             Icon(
                                 imageVector = if (showNext) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = LocalPlayerTint.current,
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .offset {
@@ -3382,10 +3365,10 @@ fun NowPlayingScreen(
                                             style = MaterialTheme.typography.titleLarge.copy(
                                                 fontSize = 20.sp,
                                             ),
-                                            color = Color.White,
+                                            color = LocalPlayerTint.current,
                                             enabled = scrolling,
                                             leading = if (song.isExplicit == true) {
-                                                { ExplicitBadge(color = Color.White) }
+                                                { ExplicitBadge(color = LocalPlayerTint.current) }
                                             } else {
                                                 null
                                             },
@@ -3428,7 +3411,7 @@ fun NowPlayingScreen(
                                     song = song,
                                     geometry = CompactRatingGeometry.CIRCULAR,
                                     modifier = Modifier.padding(end = 8.dp),
-                                    color = Color.White.copy(alpha = 0.84f),
+                                    color = LocalPlayerTint.current.copy(alpha = 0.84f),
                                     onClick = onEditCanonicalRating,
                                 )
                             }

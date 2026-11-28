@@ -453,9 +453,9 @@ private fun DrawScope.drawMesh(mesh: ArtworkMesh, seamY: Float, alpha: Float) {
 /** Drawn only until an artwork has been read — never a colour anyone chose. */
 private val FallbackBackdrop = Color(0xFF121212)
 
-/** Approximate the badge's central mesh band, including the existing scrim.
+/** Approximate the player's central control mesh band, including the existing scrim.
  * The dark fallback matches the player before artwork arrives. */
-internal fun qualityForegroundForMesh(mesh: ArtworkMesh?): Color {
+internal fun playerForegroundForMesh(mesh: ArtworkMesh?): Color {
     val image = mesh?.image ?: return Color.White
     val pixels = image.argbPixels()
     if (pixels.isEmpty()) return Color.White

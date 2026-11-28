@@ -433,10 +433,10 @@ internal fun LandscapeCredits(
                 MarqueeText(
                     text = song.title,
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
+                    color = LocalPlayerTint.current,
                     onOverflowChange = { titleOverflowing = it },
                     leading = if (song.isExplicit == true) {
-                        { ExplicitBadge(Color.White) }
+                        { ExplicitBadge(LocalPlayerTint.current) }
                     } else {
                         null
                     },
@@ -463,7 +463,7 @@ internal fun LandscapeCredits(
             CanonicalSongRatingStars(
                 song = song,
                 modifier = Modifier.padding(start = 8.dp),
-                color = Color.White.copy(alpha = 0.84f),
+                color = LocalPlayerTint.current.copy(alpha = 0.84f),
                 onClick = onEditCanonicalRating,
             )
         }
