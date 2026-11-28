@@ -1,0 +1,42 @@
+name: AMS · public preview container timing diagnostic
+on:
+  push:
+    branches: [audit/ams-preview-container-timing-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AMS_PREVIEW_CONTAINER_LIVE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify ffprobe is available
+        run: ffprobe -version
+      - name: Observe exact Apple public sample timelines
+        run: |
+          chmod +x gradlew
+          ./gradlew -Pbitchord.bundleWear=false :app:testDevDebugUnitTest --tests 'com.music.bitchord.AmsPreviewContainerTimingLiveTest'
+      - name: Report bounded timing and tag names only
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=list(Path("app/build/test-results/testDevDebugUnitTest").glob("*AmsPreviewContainerTimingLiveTest.xml"))
+          assert files, "Missing sample diagnostic report"
+          for file in files:
+              root=ET.parse(file).getroot()
+              assert int(root.attrib.get("skipped","0"))==0
+              for node in root.iter("system-out"):
+                  for line in (node.text or "").splitlines():
+                      if line.startswith("AMS_PREVIEW_CONTAINER|"):
+                          print(line)
+          PY
