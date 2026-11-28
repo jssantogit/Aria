@@ -1,0 +1,57 @@
+name: AMS · Aria identity reconciliation preflight
+on:
+  push:
+    branches: [audit/ams-aria-identity-reconcile-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect exact AMS and MAIN ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e da8889af614ec28c9ffb0bd3e1b055657adb45b6^{commit}
+          git cat-file -e 58d8d9143fa04302cb3356df510e77c76a2eae57^{commit}
+          git merge-base da8889af614ec28c9ffb0bd3e1b055657adb45b6 58d8d9143fa04302cb3356df510e77c76a2eae57
+          mkdir -p /tmp/aria-reconcile
+          git diff --name-status -M da8889af614ec28c9ffb0bd3e1b055657adb45b6...58d8d9143fa04302cb3356df510e77c76a2eae57 > /tmp/aria-reconcile/main-changes.tsv
+      - name: Trial merge with full rename detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Aria reconciliation diagnostic"
+          git config user.email "diagnostic@users.noreply.github.com"
+          git config merge.renames true
+          git config merge.renameLimit 10000
+          git config diff.renameLimit 10000
+          git switch --detach da8889af614ec28c9ffb0bd3e1b055657adb45b6
+          set +e
+          git merge --no-commit --no-ff 58d8d9143fa04302cb3356df510e77c76a2eae57 > /tmp/aria-reconcile/merge.log 2>&1
+          result=$?
+          set -e
+          git diff --name-only --diff-filter=U > /tmp/aria-reconcile/conflicts.txt
+          git ls-files -u > /tmp/aria-reconcile/conflict-stages.tsv
+          git status --short > /tmp/aria-reconcile/status.txt
+          printf 'merge_exit=%s\nconflicts=%s\n' "$result" "$(wc -l < /tmp/aria-reconcile/conflicts.txt)" | tee /tmp/aria-reconcile/summary.txt
+          cat /tmp/aria-reconcile/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          head -n 100 /tmp/aria-reconcile/conflicts.txt
+          if [ "$result" -eq 0 ]; then
+            git write-tree | tee /tmp/aria-reconcile/candidate-tree.txt
+          else
+            echo "::error::Identity reconciliation requires conflict resolution"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ams-aria-identity-reconcile-${{ github.sha }}
+          path: /tmp/aria-reconcile/
+          if-no-files-found: error
+          retention-days: 7
