@@ -25,6 +25,13 @@ internal class A0DirectPeerSearchCollector(
             return false
         }
         sockets.add(socket)
+        // Teardown may have taken its snapshot between the initial closed
+        // check and registration. Reject and close a late socket ourselves.
+        if (closed.get()) {
+            sockets.remove(socket)
+            runCatching { socket.close() }
+            return false
+        }
         val accepted = workers.submit {
             try {
                 if (!closed.get()) process(socket)
