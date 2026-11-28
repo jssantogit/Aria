@@ -471,6 +471,7 @@ fun MediaItem.toSong() = Song(
     setVideoId = mediaMetadata.extras?.getString(EXTRA_SET_VIDEO_ID),
     sourceQuality = mediaMetadata.extras?.getString(EXTRA_SOURCE_QUALITY),
     sourceHiRes = mediaMetadata.extras?.getBoolean(EXTRA_SOURCE_HI_RES) == true,
+    isAudioPreview = mediaMetadata.extras?.getBoolean(EXTRA_AUDIO_PREVIEW) == true,
     queueTier = this.queueTier,
     queueEntryId = this.queueEntryId,
     radioName = mediaMetadata.extras?.getString(EXTRA_RADIO_NAME),
@@ -532,6 +533,7 @@ val MediaItem.canonicalIndex: Int?
  * the player, and the UI only ever sees it back through a MediaController.
  */
 private const val EXTRA_FROM_AUTOPLAY = "bitchord.fromAutoplay"
+private const val EXTRA_AUDIO_PREVIEW = "bitchord.audioPreview"
 
 /** @see Song.radioName */
 private const val EXTRA_RADIO_NAME = "bitchord.radioName"
@@ -762,7 +764,7 @@ fun Song.toMediaItem(): MediaItem {
                     offlineUri != null || durationText != null ||
                     artistId != null || albumId != null || setVideoId != null ||
                     isExplicit != null || isVideo || isVideoOrigin || radioName != null ||
-                    sourceQuality != null ||
+                    sourceQuality != null || isAudioPreview ||
                     playbackSource != null || playbackSourceType != null || playbackSourceId != null
                 ) {
                     setExtras(
@@ -785,6 +787,7 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_VIDEO_ORIGIN to isVideoOrigin,
                             EXTRA_SOURCE_QUALITY to sourceQuality,
                             EXTRA_SOURCE_HI_RES to sourceHiRes,
+                            EXTRA_AUDIO_PREVIEW to isAudioPreview,
                         ),
                     )
                 }

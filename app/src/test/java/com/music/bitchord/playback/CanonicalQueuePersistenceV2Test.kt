@@ -338,6 +338,29 @@ fun `historical schema one snapshot remains readable`() {
     assertEquals(333L, decoded.positionMs)
 }
 
+    @Test
+    fun `preview marker and repeated queue entries survive snapshot without changing regular songs`() {
+        val source = QueueSource("Mixed", PlaybackSourceType.BROWSE, "mixed")
+        val preview = song(id = "apple_music_web:br:song:123", source = source,
+            entryId = "preview-entry").copy(isAudioPreview = true)
+        val regular = song(id = "regular", source = source, entryId = "regular-entry")
+        val repeated = preview.copy(queueEntryId = "preview-repeat", queueTier = QueueTier.USER_QUEUE)
+        val snapshot = state(source,
+            listOf(preview.copy(queueEntryId = null), regular.copy(queueEntryId = null)),
+            listOf(BoundedContextPersistence.Entry(preview,0,0L),
+                BoundedContextPersistence.Entry(regular,1,0L),
+                BoundedContextPersistence.Entry(repeated)),
+            0, 1000L, emptyList())
+        val raw = requireNotNull(BoundedContextPersistence.encode(snapshot))
+        val restored = requireNotNull(BoundedContextPersistence.decode(raw))
+        assertEquals(listOf(true,false),restored.context.songs.map { it.isAudioPreview })
+        assertEquals(listOf(true,false,true),restored.entries.map { it.song.isAudioPreview })
+        assertEquals(listOf("preview-entry","regular-entry","preview-repeat"),
+            restored.entries.map { it.song.queueEntryId })
+        assertEquals(preview.videoId,restored.entries.last().song.videoId)
+        assertNull(restored.entries.first().song.localUri)
+    }
+
     private fun state(
         source: QueueSource,
         contextSongs: List<Song>,

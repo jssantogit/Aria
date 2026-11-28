@@ -69,6 +69,7 @@ internal object CanonicalQueueSnapshotCodec {
         val playbackSource: String? = null,
         val playbackSourceType: String? = null,
         val playbackSourceId: String? = null,
+        val isAudioPreview: Boolean = false,
     ) {
         fun toSong(compatibilityId: String): Song? {
             val tier = runCatching { QueueTier.valueOf(queueTier) }.getOrNull() ?: return null
@@ -93,6 +94,7 @@ internal object CanonicalQueueSnapshotCodec {
                 playbackSource = playbackSource,
                 playbackSourceType = sourceType,
                 playbackSourceId = playbackSourceId,
+                isAudioPreview = isAudioPreview,
             )
         }
 
@@ -112,6 +114,7 @@ internal object CanonicalQueueSnapshotCodec {
                 playbackSource = song.playbackSource,
                 playbackSourceType = song.playbackSourceType?.name,
                 playbackSourceId = song.playbackSourceId,
+                isAudioPreview = song.isAudioPreview,
             )
         }
     }
@@ -149,6 +152,7 @@ internal object CanonicalQueueSnapshotCodec {
         val playbackSource: String? = null,
         val playbackSourceType: String? = null,
         val playbackSourceId: String? = null,
+        val isAudioPreview: Boolean = false,
     ) {
         fun toSong(): Song? {
             if (videoId.isBlank()) return null
@@ -183,6 +187,7 @@ internal object CanonicalQueueSnapshotCodec {
                 playbackSource = playbackSource,
                 playbackSourceType = sourceType,
                 playbackSourceId = playbackSourceId,
+                isAudioPreview = isAudioPreview,
             )
         }
 
@@ -213,6 +218,7 @@ internal object CanonicalQueueSnapshotCodec {
                 playbackSource = song.playbackSource,
                 playbackSourceType = song.playbackSourceType?.name,
                 playbackSourceId = song.playbackSourceId,
+                isAudioPreview = song.isAudioPreview,
             )
         }
     }
