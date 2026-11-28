@@ -53,10 +53,23 @@ internal data class AppleMusicWebItem(
     val editorialMotionUrl: String? = null,
     val editorialMotionFallbackUrl: String? = null,
     val playlistType: String? = null,
+    /** Public sample, never a full stream or a local asset. */
+    val previewUrl: String? = null,
 ) {
     val scopedId: String get() = "apple_music_web:${storefront}:${kind.identityType}:$id"
     val playable: Boolean get() = false
     val musicBrainzId: String? get() = null
+}
+
+/** Keep the first provider-authored, HTTPS audio sample; no HLS or arbitrary hosts. */
+internal fun appleMusicWebAudioPreviewUrl(raw: String?): String? {
+    val value = raw?.takeIf { it.length <= 2048 } ?: return null
+    val uri = runCatching { URI(value) }.getOrNull() ?: return null
+    return value.takeIf {
+        uri.scheme == "https" && uri.host == "audio-ssl.itunes.apple.com" &&
+            uri.userInfo == null && uri.port == -1 && uri.rawFragment == null &&
+            uri.rawPath.orEmpty().endsWith(".m4a", ignoreCase = true)
+    }
 }
 
 internal data class AppleMusicWebGenre(val id: String, val storefront: String, val title: String)
@@ -209,6 +222,10 @@ internal class AppleMusicWebCatalog(private val transport: AppleMusicWebTranspor
             editorialMotionUrl = motion?.first,
             editorialMotionFallbackUrl = motion?.second,
             playlistType = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("playlistType") else null,
+            previewUrl = if (kind == AppleMusicWebKind.SONG)
+                (attr["previews"] as? JsonArray).orEmpty().firstNotNullOfOrNull {
+                    appleMusicWebAudioPreviewUrl((it as? JsonObject)?.str("url"))
+                } else null,
             artistName = if (kind == AppleMusicWebKind.PLAYLIST) attr.str("curatorName") else attr.str("artistName"), artistId = attr.str("artistId"),
             albumId = attr.str("albumId"),
             albumName = attr.str("albumName"),

@@ -17,6 +17,15 @@ class AppleQualityBadgePolicyTest {
         assertEquals(AppleQualityBadgeKind.NONE, appleQualityBadgeKind(false, false, false, false, false, false))
     }
 
+    @Test fun previewOverridesMeasuredQualityAndPendingUpgrade() {
+        assertEquals(AppleQualityBadgeKind.PREVIEW,
+            appleQualityBadgeKind(true, true, true, true, true, true, isAudioPreview = true))
+        assertEquals(AppleQualityBadgeKind.PREVIEW,
+            appleQualityBadgeKind(null, false, false, false, false, false, isAudioPreview = true))
+        assertEquals(AppleQualityBadgeKind.HIGH,
+            appleQualityBadgeKind(false, false, false, true, false, false, isAudioPreview = false))
+    }
+
     @Test fun unavailableStatsRemainsUnknownRatherThanInventingQuality() {
         assertEquals(AppleQualityBadgeKind.NONE, appleQualityBadgeKind(null, false, false, false, false, false))
         assertEquals(AppleQualityBadgeKind.LOADING, appleQualityBadgeKind(null, false, false, false, false, true))

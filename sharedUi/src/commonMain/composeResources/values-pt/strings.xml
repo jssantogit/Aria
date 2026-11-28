@@ -325,4 +325,5 @@
     <string name="apple_queue_similar">Reprodução automática de músicas similares</string>
     <string name="shelf_continue_listening">Continue ouvindo</string>
     <string name="shelf_resume_from">Retomar em</string>
+    <string name="audio_preview">Prévia</string>
 </resources>

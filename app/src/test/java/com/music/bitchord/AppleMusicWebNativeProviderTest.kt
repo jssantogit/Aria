@@ -55,6 +55,26 @@ class AppleMusicWebNativeProviderTest {
         assertTrue(fake.calls.all { it.first == ProviderCapability.CATALOG_SEARCH })
     }
 
+    @Test fun publicPreviewIsScopedToSongAndNeverPromotesFullPlayback() = runBlocking {
+        val url = "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview/sample.m4a"
+        val fake = FakeTransport { _, _, _ ->
+            """{"results":{"songs":{"data":[
+                {"id":"1","type":"songs","attributes":{"name":"Sample","durationInMillis":180000,
+                    "previews":[{"url":"https://example.org/sample.m4a"},{"url":"$url"}]}},
+                {"id":"2","type":"songs","attributes":{"name":"Unavailable","previews":[{"url":"http://audio-ssl.itunes.apple.com/sample.m4a"}]}}
+            ]}}}"""
+        }
+        val songs = AppleMusicWebCatalog(fake).search(AppleMusicWebKind.SONG, "Sample", "br").items
+        assertEquals(url, songs[0].previewUrl)
+        assertEquals(180000L, songs[0].durationMillis)
+        assertFalse(songs[0].playable)
+        assertNull(songs[1].previewUrl)
+        assertNull(com.music.bitchord.data.catalog.provider.applemusicweb.appleMusicWebAudioPreviewUrl(
+            "https://audio-ssl.itunes.apple.com@evil.example/sample.m4a"))
+        assertNull(com.music.bitchord.data.catalog.provider.applemusicweb.appleMusicWebAudioPreviewUrl(
+            "https://audio-ssl.itunes.apple.com/sample.m3u8"))
+    }
+
     @Test fun searchContinuesExactIssuedCursorWithoutReplayingLanding() = runBlocking {
         val fake = FakeTransport { _, _, args ->
             if (args["offset"] == "9") {

@@ -342,6 +342,7 @@ internal fun PlaybackQualityLabel(
     val racingLossless by NerdStats.racingLossless.collectAsStateWithLifecycle()
     LosslessOrStats(
         isLoading = isLoading,
+        isAudioPreview = song.isAudioPreview,
         stillRacing = song.videoId in racingLossless,
         losslessRequested = effectiveQuality == AudioQuality.LOSSLESS,
         nerdStats = nerdStats,
@@ -1578,6 +1579,7 @@ private fun formatTime(ms: Long): String {
 @Composable
 private fun LosslessOrStats(
     isLoading: Boolean,
+    isAudioPreview: Boolean,
     stillRacing: Boolean,
     losslessRequested: Boolean,
     nerdStats: NerdStats.Snapshot?,
@@ -1591,8 +1593,17 @@ private fun LosslessOrStats(
         measuredHighQuality = nerdStats?.isHiQuality == true,
         measuredMediumQuality = nerdStats?.isMediumQuality == true,
         resolving = stillRacing || (isLoading && losslessRequested && nerdStats == null),
+        isAudioPreview = isAudioPreview,
     )
     when {
+        measuredBadge == AppleQualityBadgeKind.PREVIEW -> LosslessLabel(
+            text = stringResource(Res.string.audio_preview),
+            iconPainter = rememberVectorPainter(Icons.Rounded.Headphones),
+            iconSize = 13.dp,
+            animated = false,
+            modifier = modifier,
+            appleStyle = appleStyle,
+        )
         // Still resolving — either the player itself is buffering, or a
         // module is still racing YouTube for this track in the background
         // (see [NerdStats.racingLossless]) even though YouTube already won

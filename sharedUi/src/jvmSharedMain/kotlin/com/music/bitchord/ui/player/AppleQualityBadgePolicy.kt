@@ -6,7 +6,7 @@ package com.music.bitchord.ui.player
  * Unknown is intentionally distinct from lossless (and from a measured lossy tier).
  */
 internal enum class AppleQualityBadgeKind {
-    NONE, LOADING, LOSSLESS, HI_RES, DOLBY_ATMOS, HIGH, MEDIUM,
+    NONE, LOADING, LOSSLESS, HI_RES, DOLBY_ATMOS, HIGH, MEDIUM, PREVIEW,
 }
 
 internal fun appleQualityBadgeKind(
@@ -16,7 +16,9 @@ internal fun appleQualityBadgeKind(
     measuredHighQuality: Boolean,
     measuredMediumQuality: Boolean,
     resolving: Boolean,
+    isAudioPreview: Boolean = false,
 ): AppleQualityBadgeKind = when {
+    isAudioPreview -> AppleQualityBadgeKind.PREVIEW
     measuredAtmos -> AppleQualityBadgeKind.DOLBY_ATMOS
     measuredLossless == true && measuredHiRes -> AppleQualityBadgeKind.HI_RES
     measuredLossless == true -> AppleQualityBadgeKind.LOSSLESS

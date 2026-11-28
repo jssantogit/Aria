@@ -154,6 +154,8 @@ data class Song(
     val localBitrateBps: Long? = null,
     /** Indexed MediaStore MIME evidence, not inferred from a filename. */
     val localMimeType: String? = null,
+    /** Set only by the admitted preview playback route, not by catalog availability. */
+    val isAudioPreview: Boolean = false,
 ) {
     /** Legacy derived property: true if and only if [queueTier] is [QueueTier.AUTOPLAY]. */
     val fromAutoplay: Boolean get() = queueTier == QueueTier.AUTOPLAY
