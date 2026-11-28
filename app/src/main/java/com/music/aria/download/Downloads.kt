@@ -176,6 +176,21 @@ object Downloads {
     internal val soulseekAutoTrackRows:StateFlow<Map<String,List<AutoTrackRow>>> =
         _autoTrackRows.asStateFlow()
 
+    private fun autoTrackStage(status:A0AutoBatchExecutor.TrackStatus):AutoTrackStage=when(status) {
+        A0AutoBatchExecutor.TrackStatus.PUBLISHED ->
+            AutoTrackStage.SAVED
+        A0AutoBatchExecutor.TrackStatus.MANUAL_REVIEW ->
+            AutoTrackStage.MANUAL_REVIEW
+        A0AutoBatchExecutor.TrackStatus.ATTEMPT_FAILED ->
+            AutoTrackStage.ATTEMPT_FAILED
+        A0AutoBatchExecutor.TrackStatus.CANCELLED ->
+            AutoTrackStage.CANCELLED
+        A0AutoBatchExecutor.TrackStatus.RECONCILE ->
+            AutoTrackStage.VERIFY_STORAGE
+        A0AutoBatchExecutor.TrackStatus.NOT_STARTED ->
+            AutoTrackStage.INTERRUPTED
+    }
+
     private fun updateAutoTrack(
         sessionId:String,index:Int,stage:AutoTrackStage,
     ) {
@@ -1220,6 +1235,7 @@ object Downloads {
     ) {
         val job=currentCoroutineContext()[Job]
         var unusedReservationConfirmed=false
+        var preReservationRefused=false
         _active.update { it + (id to DownloadState.Running(0f)) }
         DownloadSession.running(id,0f)
         try {
@@ -1276,20 +1292,7 @@ object Downloads {
                     },
                     onSlotResolved={index,status ->
                         Log.d(TAG,"soulseek_auto slot=$index settled=$status")
-                        val stage=when(status) {
-                            A0AutoBatchExecutor.TrackStatus.PUBLISHED ->
-                                AutoTrackStage.SAVED
-                            A0AutoBatchExecutor.TrackStatus.MANUAL_REVIEW ->
-                                AutoTrackStage.MANUAL_REVIEW
-                            A0AutoBatchExecutor.TrackStatus.ATTEMPT_FAILED ->
-                                AutoTrackStage.ATTEMPT_FAILED
-                            A0AutoBatchExecutor.TrackStatus.CANCELLED ->
-                                AutoTrackStage.CANCELLED
-                            A0AutoBatchExecutor.TrackStatus.RECONCILE ->
-                                AutoTrackStage.VERIFY_STORAGE
-                            A0AutoBatchExecutor.TrackStatus.NOT_STARTED ->
-                                AutoTrackStage.INTERRUPTED
-                        }
+                        val stage=autoTrackStage(status)
                         updateAutoTrack(id,index,stage)
                         if(job?.isActive==true) {
                             // Fraction means resolved album slots, NOT byte
@@ -1300,6 +1303,10 @@ object Downloads {
                             }
                             DownloadSession.running(id,fraction)
                         }
+                    },
+                    onPreReservationRefused={
+                        synchronized(lock) { autoAttemptGuard.rollback(request.entries) }
+                        preReservationRefused=true
                     },
                     onUnusedReservationReleased={
                         // Called after A3's all-REQUESTED durable commit, even
@@ -1312,6 +1319,10 @@ object Downloads {
                     },
                 )
                 val report=outcome.batch
+                // Refused or interrupted reports may not emit every callback.
+                report.results.forEachIndexed { index,status ->
+                    updateAutoTrack(id,index,autoTrackStage(status))
+                }
                 // A compact end-of-batch checkpoint remains useful if early
                 // phase events were evicted from the in-memory debug ring.
                 Log.d(TAG,"soulseek_auto_summary diagnostic_schema=2" +
@@ -1344,10 +1355,11 @@ object Downloads {
                         .associate { it.key to it.value }
                 }
                 when {
+                    preReservationRefused ->
+                        fail(id,"Download não iniciado. Confira a conta, a rede e o destino dos downloads.")
                     outcome.unusedReservationReleased ->
                         fail(id,"Nenhuma transferência foi iniciada. " +
-                            "Você pode tocar em Baixar novamente para repetir a busca " +
-                            "quando quiser realizar uma nova busca.")
+                            "Toque em Baixar novamente para repetir a busca.")
                     report.published==request.entries.size -> {
                         DownloadSession.done(id)
                         clear(id)

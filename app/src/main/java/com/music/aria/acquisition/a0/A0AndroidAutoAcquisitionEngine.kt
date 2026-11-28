@@ -72,6 +72,8 @@ internal object A0AndroidAutoAcquisitionEngine {
         onSlotEvidence:(Int,List<A0ObservedCandidateHandoff.Choice>)->Unit={ _,_ -> },
         /** Only invoked AFTER A3 durably proves zero P/F for the whole album. */
         onUnusedReservationReleased:()->Unit={},
+        /** Engine stopped before any durable reservation was attempted. */
+        onPreReservationRefused:()->Unit={},
         sourceSongs:List<Song> = emptyList(),
     ):A0AutoDiscoveryCoordinator.Report {
         val app=context.applicationContext
@@ -80,6 +82,7 @@ internal object A0AndroidAutoAcquisitionEngine {
             A0AcquisitionDiagnostics.emit(traceScope,
                 A0AcquisitionDiagnostics.Phase.ENGINE_REFUSAL,
                 reason,count=entries.size)
+            onPreReservationRefused()
             return refused(entries.size)
         }
         // Zero socket, vault and journal calls until the user opts in AND
