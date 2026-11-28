@@ -15,6 +15,7 @@ import com.music.bitchord.ui.screens.DiscogsNativeArtistSearchRow
 import com.music.bitchord.ui.screens.DiscogsNativeReleaseSearchRow
 import com.music.bitchord.ui.screens.discogsSearchArtistRank
 import com.music.bitchord.ui.screens.discogsSearchDistinctArtists
+import com.music.bitchord.ui.screens.discogsSearchVerifiedArtistObservations
 import com.music.bitchord.ui.screens.discogsArtistDisplayName
 import com.music.bitchord.ui.screens.discogsSearchDistinctReleases
 import com.music.bitchord.ui.screens.discogsSearchNeedsNextRelevantPage
@@ -448,6 +449,7 @@ internal class DiscogsNativeCatalogSession(
     @Volatile private var searchEpoch = 0L
     // At most three source pages of twenty typed rows. Keep the raw bounded
     // observations rather than the deduplicated display representatives.
+    private var artistSearchObservations = mutableListOf<DiscogsNativeArtistSearchRow>()
     private var releaseSearchObservations = mutableListOf<DiscogsNativeReleaseSearchRow>()
     /** Never let a still-open page display stale Discogs API Content beyond
      * the provider's six-hour maximum. This timer is not extended by paging. */
@@ -820,6 +822,7 @@ internal class DiscogsNativeCatalogSession(
 
     fun clearSearch() {
         ++searchEpoch
+        artistSearchObservations = mutableListOf()
         releaseSearchObservations = mutableListOf()
         searchJob?.cancel()
         releaseSearchJob?.cancel()
@@ -851,6 +854,7 @@ internal class DiscogsNativeCatalogSession(
         if (searchPage != 0 && !_searchHasMore.value) return
         val subject = query
         val epoch = searchEpoch
+        val observations = artistSearchObservations
         val firstPage = searchPage + 1
         val authorization = lease(ProviderCapability.CATALOG_SEARCH)
         if (authorization == null) {
@@ -871,7 +875,6 @@ internal class DiscogsNativeCatalogSession(
                     is DiscogsNativeArtistSearchResult.Success -> {
                         val rows = result.page.artists.asSequence()
                             .map { DiscogsNativeArtistSearchRow(it.artistId, it.name) }
-                            .filter { discogsSearchArtistRank(subject, it.name) != null }
                             .toList()
                         val previous = (_artists.value as? UiState.Success)?.data.orEmpty()
                         searchPage = currentPage
@@ -882,7 +885,9 @@ internal class DiscogsNativeCatalogSession(
                         // while a click retains the selected exact source ID.
                         // We never claim that two Discogs IDs are the same
                         // identity outside this search presentation.
-                        val combined = (previous + rows).distinctBy { it.artistId }
+                        observations += rows
+                        val combined = discogsSearchVerifiedArtistObservations(observations)
+                            .filter { discogsSearchArtistRank(subject, it.name) != null }
                         // Do not reorder already published artist cards on continuation.
                         // Corroborate homonyms only on the first landing and only
                         // while both source capabilities remain authorized.
@@ -900,6 +905,12 @@ internal class DiscogsNativeCatalogSession(
                             }.takeIf { editorialLease.isCurrent() } ?: combined
                         } else combined
                         if (searchEpoch != epoch || query != subject || !authorization.isCurrent()) return@launch
+                        // Preserve first-page evidence ordering without throwing
+                        // away hidden homonyms or conflicting later observations.
+                        if (currentPage == 1) {
+                            val ordering = resolved.mapIndexed { index, row -> row.artistId to index }.toMap()
+                            observations.sortBy { ordering[it.artistId] ?: Int.MAX_VALUE }
+                        }
                         val candidates = discogsSearchDistinctArtists(subject, resolved)
                         val exact = candidates.any {
                             (discogsSearchArtistRank(subject, it.name) ?: 99) <= 2

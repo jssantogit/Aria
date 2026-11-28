@@ -47,11 +47,19 @@ private fun discogsCoreArtistName(value: String): String =
  * The Discogs result order is the bounded fallback: a suffix (or lack of one)
  * does not establish popularity or the identity of a particular artist.
  */
+/** Keep all typed source observations until exact artist ID conflicts are settled. */
+fun discogsSearchVerifiedArtistObservations(
+    artists: List<DiscogsNativeArtistSearchRow>,
+): List<DiscogsNativeArtistSearchRow> =
+    artists.groupBy { it.artistId }.values.mapNotNull { observations ->
+        observations.distinct().singleOrNull()
+    }
+
 fun discogsSearchDistinctArtists(
     query: String,
     artists: List<DiscogsNativeArtistSearchRow>,
 ): List<DiscogsNativeArtistSearchRow> =
-    artists.asSequence()
+    discogsSearchVerifiedArtistObservations(artists).asSequence()
         .filter { discogsSearchArtistRank(query, it.name) != null }
         .distinctBy { discogsSearchFold(discogsArtistDisplayName(it.name)) }
         .toList()

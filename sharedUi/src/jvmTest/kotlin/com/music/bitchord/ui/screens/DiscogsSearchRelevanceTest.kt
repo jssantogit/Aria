@@ -160,4 +160,15 @@ class DiscogsSearchRelevanceTest {
             listOf(first.copy(masterId = null), first)))
     }
 
+
+    @Test fun disputedArtistIdOnLaterPageCannotHideIndependentHomonym() {
+        val first = artist(17, "Illit")
+        val independent = artist(18, "Illit (2)")
+        val conflicting = artist(17, "Different Artist")
+        assertEquals(listOf(first), discogsSearchDistinctArtists("illit", listOf(first, independent)))
+        assertEquals(listOf(independent), discogsSearchDistinctArtists("illit",
+            listOf(first, independent, conflicting)))
+        assertEquals(listOf(first, independent), discogsSearchVerifiedArtistObservations(
+            listOf(first, independent, first)))
+    }
 }
