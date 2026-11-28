@@ -708,17 +708,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM,
                 com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.PLAYLIST)) return emptyList()
         val owner = ProviderRuntime.gateOrNull() ?: return emptyList()
-        val lease = ProviderReadLease.acquire(owner,listOf(
-            ProviderCapability.AUDIO_PLAYBACK to BuiltInProviderKeys.APPLE_MUSIC_WEB,
-            ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB,
-        )) ?: return emptyList()
+        val chart = amsDailyCharts.tile(browseId)
+        val lease = ProviderReadLease.acquire(owner,buildList {
+            add(ProviderCapability.AUDIO_PLAYBACK to BuiltInProviderKeys.APPLE_MUSIC_WEB)
+            add(ProviderCapability.EDITORIAL_DISCOGRAPHY to BuiltInProviderKeys.APPLE_MUSIC_WEB)
+            if (chart != null) add(ProviderCapability.CHART_MOST_PLAYED to BuiltInProviderKeys.APPLE_MUSIC_WEB)
+        }) ?: return emptyList()
         val job = currentCoroutineContext()[Job] ?: return emptyList()
         val unregister = lease.cancelJobOnRevoke(job)
         try {
             if (!lease.isCurrent() || ProviderRuntime.gateOrNull() !== owner) return emptyList()
-            val result = appleMusicWebNativeCatalog.sharedDetail(browseId)
+            val result = if (chart != null) appleMusicWebNativeCatalog.dailyChartSharedDetail(chart)
+                else appleMusicWebNativeCatalog.sharedDetail(browseId)
             currentCoroutineContext().ensureActive()
-            if (!lease.isCurrent() || ProviderRuntime.gateOrNull() !== owner) return emptyList()
+            if (!lease.isCurrent() || ProviderRuntime.gateOrNull() !== owner ||
+                (chart != null && amsDailyCharts.tile(browseId) != chart)) return emptyList()
             val detail = ((result as? ProviderCallResult.Success)?.value as?
                 com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebOutcome.Complete)?.value
                 ?: return emptyList()

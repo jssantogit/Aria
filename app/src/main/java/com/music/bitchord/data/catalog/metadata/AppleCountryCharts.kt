@@ -64,6 +64,7 @@ internal data class AppleChartSong(
     val artworkUrl: String?,
     val officialUrl: String,
     val nativeBrowseId: String? = null,
+    val hasAudioPreview: Boolean = false,
 ) {
     val songBrowseId: String get() = nativeBrowseId ?: "itunes:$country:track:$songId"
 }

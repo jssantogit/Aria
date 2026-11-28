@@ -49,6 +49,7 @@ on:
       - audit/ams-home-preview-actions-20261128
       - audit/ams-detail-collection-preview-actions-20261128
       - audit/ams-card-collection-preview-actions-20261128
+      - audit/ams-chart-preview-parity-20261128
 permissions:
   contents: read
 concurrency:

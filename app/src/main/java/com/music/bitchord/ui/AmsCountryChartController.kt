@@ -49,7 +49,8 @@ internal fun projectAmsCountryChart(territory: AppleChartTerritory, albums: Bool
         val url = appleMusicWebVerifiedStoreUrl(item) ?: return@mapIndexedNotNull null
         val credit = item.artistName?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
         if (item.title.isBlank()) return@mapIndexedNotNull null
-        AppleChartSong(index+1,id,territory.code,item.title,credit,art(item),url,item.scopedId)
+        AppleChartSong(index+1,id,territory.code,item.title,credit,art(item),url,item.scopedId,
+            hasAudioPreview=appleMusicWebAudioPreviewUrl(item.previewUrl) != null)
     }
     return projected.takeIf { it.isNotEmpty() }?.let {
         AmsCountryChartResult.Songs(AppleCountryChart(territory,it,fetchedAt,rows.size))
@@ -72,6 +73,12 @@ internal class AmsCountryChartController(
     fun isCurrent(key: AmsCountryChartKey): Boolean =
         preferredAppleChartProvider(gate()) == BuiltInProviderKeys.APPLE_MUSIC_WEB &&
             reads[key]?.let { it.owner === gate() && it.lease.isCurrent() } == true
+    fun containsSong(country: String, row: AppleChartSong): Boolean {
+        val key = AmsCountryChartKey(country,false)
+        if (!isCurrent(key)) return false
+        val chart = ((snapshots.value[key] as? UiState.Success)?.data as? AmsCountryChartResult.Songs)?.chart ?: return false
+        return row.country == country && row in chart.songs
+    }
     fun containsAlbum(country: String, card: ShelfItem): Boolean {
         val key = AmsCountryChartKey(country,true)
         if (!isCurrent(key)) return false
@@ -274,4 +281,12 @@ internal fun rememberCanonicalAppleChartRuntime(viewModel: MainViewModel): Canon
         key.country to state
     }.toMap()
     return CanonicalAppleChartRuntime(provider,shelf,songs,albums)
+}
+
+/** A ranking row carries source evidence, not a full media asset. */
+internal fun amsCountryChartPreview(row: AppleChartSong): com.music.bitchord.data.model.Song? {
+    if (row.nativeBrowseId != "apple_music_web:${row.country}:song:${row.songId}") return null
+    return com.music.bitchord.ui.screens.amsShelfPreviewSong(
+        ShelfItem(row.title,row.artistName,row.artworkUrl,null,row.nativeBrowseId,
+            appleStoreUrl=row.officialUrl,hasAudioPreview=row.hasAudioPreview))
 }

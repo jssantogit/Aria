@@ -4714,6 +4714,19 @@ private fun BitChordApp(
                                 viewModel.loadAppleCountryChart(country, force = true,provider=chartProvider)
                             },
                             contentPadding = listPadding,
+                            previewEnabled = chartProvider == com.music.bitchord.data.providers.BuiltInProviderKeys.APPLE_MUSIC_WEB &&
+                                com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()),
+                            onSongPreview = { row ->
+                                val active = chartNavigation.active
+                                if (active?.code == row.country && !chartNavigation.albumActive &&
+                                    viewModel.amsCountryCharts.containsSong(row.country,row) &&
+                                    com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()) &&
+                                    !CastController.state.value.casting && !ListenTogether.state.value.inParty) {
+                                    com.music.bitchord.ui.amsCountryChartPreview(row)?.let { song ->
+                                        playFrom(listOf(song),0,QueueSource("Top 100 · ${active.displayName}",PlaybackSourceType.HOME))
+                                    }
+                                }
+                            },
                         ) { HomeScreen(
                             state = canonicalHomeState,
                             listState = homeListState,

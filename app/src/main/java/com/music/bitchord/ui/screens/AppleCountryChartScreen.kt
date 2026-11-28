@@ -40,6 +40,8 @@ internal fun AppleCountryChartScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     contentPadding: PaddingValues,
+    previewEnabled: Boolean = false,
+    onPreview: ((com.music.bitchord.data.catalog.metadata.AppleChartSong) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val uriHandler = LocalUriHandler.current
@@ -80,14 +82,17 @@ internal fun AppleCountryChartScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 items(state.data.songs, key = { "chart:${it.country}:${it.songId}" }) { song ->
+                    val playable = previewEnabled && onPreview != null &&
+                        com.music.bitchord.ui.amsCountryChartPreview(song) != null
                     NativeSearchResultRow(
                         row = NativeSearchRowUi(
                             title = "${song.position}. ${song.title}",
-                            subtitle = "${song.artistName} · Abrir no Apple Music",
+                            subtitle = song.artistName,
                             artworkUri = song.artworkUrl,
                             artistPortrait = false,
                         ),
-                        onClick = { uriHandler.openUri(song.officialUrl) },
+                        onClick = { if (playable) onPreview?.invoke(song)
+                            else uriHandler.openUri(song.officialUrl) },
                     )
                 }
             }
@@ -172,6 +177,8 @@ internal fun AppleCountryHomeRoute(
     onAlbumRetry: (String) -> Unit,
     onRetry: (String) -> Unit,
     contentPadding: PaddingValues,
+    previewEnabled: Boolean = false,
+    onSongPreview: ((com.music.bitchord.data.catalog.metadata.AppleChartSong) -> Unit)? = null,
     home: @Composable () -> Unit,
 ) {
     val active = navigation.active.takeIf { chartAuthorized }
@@ -190,6 +197,8 @@ internal fun AppleCountryHomeRoute(
             onBack = navigation::close,
             onRetry = { onRetry(active.code) },
             contentPadding = contentPadding,
+            previewEnabled = previewEnabled,
+            onPreview = onSongPreview,
         )
     }
 }

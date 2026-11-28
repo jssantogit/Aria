@@ -39,6 +39,21 @@ class AmsCountryChartIntegrationTest {
         assertEquals(album.scopedId,albums.chart.albums.single().albumBrowseId)
     }
 
+    @Test fun songChartPreviewRequiresExactIdentityAndSourceEvidence() {
+        val verified = song.copy(previewUrl="https://audio-ssl.itunes.apple.com/sample.m4a")
+        val absent = song.copy(id="2",storeUrl="https://music.apple.com/br/song/song/2")
+        val chart = (projectAmsCountryChart(territory,false,listOf(verified,absent),123L)
+            as AmsCountryChartResult.Songs).chart
+        val first = chart.songs.first()
+        assertTrue(first.hasAudioPreview)
+        assertTrue(requireNotNull(amsCountryChartPreview(first)).isAudioPreview)
+        assertNull(amsCountryChartPreview(chart.songs.last()))
+        assertNull(amsCountryChartPreview(first.copy(nativeBrowseId="itunes:br:track:1")))
+        assertNull(amsCountryChartPreview(first.copy(country="us")))
+        assertNull(amsCountryChartPreview(first.copy(songId=3)))
+        assertNull(amsCountryChartPreview(first.copy(hasAudioPreview=false)))
+    }
+
     @Test fun albumChartCollectionKeepsRankGapsAndExactCards() {
         val first = song.copy(kind=AppleMusicWebKind.ALBUM,storeUrl="https://music.apple.com/br/album/album/1")
         val invalid = first.copy(id="2",storeUrl="https://music.apple.com/us/album/album/2")
@@ -205,8 +220,13 @@ class AmsCountryChartIntegrationTest {
         controller.load("br",false); yield()
         assertTrue(controller.snapshots.value[key] is UiState.Success)
         assertTrue(controller.isCurrent(key))
+        val row = (result as AmsCountryChartResult.Songs).chart.songs.single()
+        assertTrue(controller.containsSong("br",row))
+        assertFalse(controller.containsSong("us",row))
+        assertFalse(controller.containsSong("br",row.copy(title="Changed")))
         gate.replace(policy())
         assertFalse(controller.isCurrent(key))
+        assertFalse(controller.containsSong("br",row))
         controller.purgeRevoked()
         assertTrue(controller.snapshots.value.isEmpty())
     }
