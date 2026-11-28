@@ -58,6 +58,29 @@ jobs:
             git write-tree | tee /tmp/aria-normalized/candidate-tree.txt
             git diff --cached --stat > /tmp/aria-normalized/candidate-stat.txt
           else
+            # Capture every actual conflict hunk and stage status, not entire
+            # source files. A successful diagnostic is not a successful merge.
+            python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          report=Path("/tmp/aria-normalized")
+          paths=(report/"conflicts.txt").read_text().splitlines()
+          out=[]
+          for name in paths:
+              p=Path(name)
+              stages=subprocess.check_output(["git","ls-files","-u","--",name],text=True)
+              out.append("=== "+name+" ===\n"+stages)
+              if not p.is_file(): continue
+              text=p.read_text(errors="replace").splitlines()
+              inside=False
+              for line in text:
+                  if line.startswith("<<<<<<<"): inside=True
+                  if inside: out.append(line)
+                  if line.startswith(">>>>>>>"): inside=False
+          payload="\n".join(out)
+          (report/"conflict-hunks.txt").write_text(payload)
+          print(payload)
+          PY
             echo "::notice::Remaining conflicts need semantic reconciliation; no production changes"
           fi
       - uses: actions/upload-artifact@v4
