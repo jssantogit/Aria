@@ -20,7 +20,7 @@ cleanup() {
 trap cleanup EXIT
 adb shell run-as com.dev.aria mkdir -p files
 python3 -c 'import os,sys; sys.stdout.buffer.write(os.environ["SLSK_USER"].encode()+b"\0"+os.environ["SLSK_PASS"].encode())' |
-  adb exec-in run-as com.dev.aria sh -c 'cat > files/aria-live-credentials'
+  adb exec-in "run-as com.dev.aria sh -c 'cat > files/aria-live-credentials'"
 unset SLSK_USER SLSK_PASS
 # Do not expose raw instrumentation output or logcat. Only typed counters
 # from the focused test are retained and published.
