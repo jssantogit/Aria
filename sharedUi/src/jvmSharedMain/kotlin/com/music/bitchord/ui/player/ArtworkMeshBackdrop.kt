@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -451,6 +452,26 @@ private fun DrawScope.drawMesh(mesh: ArtworkMesh, seamY: Float, alpha: Float) {
 
 /** Drawn only until an artwork has been read — never a colour anyone chose. */
 private val FallbackBackdrop = Color(0xFF121212)
+
+/** Approximate the badge's central mesh band, including the existing scrim.
+ * The dark fallback matches the player before artwork arrives. */
+internal fun qualityForegroundForMesh(mesh: ArtworkMesh?): Color {
+    val image = mesh?.image ?: return Color.White
+    val pixels = image.argbPixels()
+    if (pixels.isEmpty()) return Color.White
+    val x0 = image.width * 2 / 5
+    val x1 = (image.width * 3 / 5).coerceAtLeast(x0 + 1)
+    val y0 = image.height / 3
+    val y1 = (image.height * 2 / 3).coerceAtLeast(y0 + 1)
+    var total = 0f
+    var count = 0
+    for (y in y0 until y1) for (x in x0 until x1) {
+        val c = Color(pixels[y * image.width + x])
+        total += Color(c.red * 0.78f,c.green * 0.78f,c.blue * 0.78f).luminance()
+        count++
+    }
+    return if (count > 0 && playerQualityUsesDarkForeground(total / count)) Color.Black else Color.White
+}
 
 /** A screen cannot recover detail discarded here; small is the performance feature. */
 private const val FULL_BLUR_SOURCE_PX = 128

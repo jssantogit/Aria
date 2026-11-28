@@ -313,6 +313,7 @@ private const val BADGE_SIZE_BUMP = 0.5f
  * volume bars stay white on purpose.
  */
 internal val LocalPlayerTint = compositionLocalOf { Color.White }
+internal val LocalPlayerQualityForeground = compositionLocalOf { Color.White }
 
 /**
  * The quality badge between the timestamps — "Lossless", "Hi-Res", a loading
@@ -588,6 +589,7 @@ internal fun playerPanelMotionMillis(base: Int, reduced: Boolean): Int =
 @Composable
 internal fun PlayerActionRow(
     lyricsOpen: Boolean,
+    lyricsEnabled: Boolean = true,
     queueOpen: Boolean,
     shuffleEnabled: Boolean,
     repeatMode: Int,
@@ -639,6 +641,7 @@ internal fun PlayerActionRow(
                     // opening either closes the other; lit to say which is up.
                     onClick = onToggleLyrics,
                     highlighted = lyricsOpen,
+                    enabled = lyricsEnabled,
                 )
             }
             AnimatedContent(
@@ -1206,6 +1209,7 @@ private fun BottomGlyph(
      * ask for a window.
      */
     tapWindowMs: Long = 0L,
+    enabled: Boolean = true,
 ) {
     val haptics = rememberHaptics()
     // Read only from the click handler, never during composition, so writing it
@@ -1222,6 +1226,7 @@ private fun BottomGlyph(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
+                enabled = enabled,
             ) {
                 val now = uptimeMillis()
                 if (now - lastTap.longValue >= tapWindowMs) {
@@ -1233,7 +1238,7 @@ private fun BottomGlyph(
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        val tint = LocalPlayerTint.current.copy(alpha = if (highlighted) 1f else 0.75f)
+        val tint = LocalPlayerTint.current.copy(alpha = if (!enabled) 0.30f else if (highlighted) 1f else 0.75f)
         if (icon != null) {
             Icon(
                 imageVector = icon,
@@ -1702,7 +1707,7 @@ private fun AppleDolbyAtmosBadge(modifier: Modifier = Modifier) {
         Icon(
             painter = painterResource(Res.drawable.ic_apple_nowplaying_dolby_atmos),
             contentDescription = "Dolby Atmos",
-            tint = LocalPlayerTint.current.copy(alpha = 0.9f),
+            tint = LocalPlayerQualityForeground.current,
             modifier = Modifier.size(width = 83.dp, height = 15.dp),
         )
     }
@@ -1752,7 +1757,7 @@ private fun LosslessLabel(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val tint = LocalPlayerTint.current.copy(alpha = if (appleStyle) 0.85f else if (animated) 0.7f else 0.45f)
+        val tint = LocalPlayerQualityForeground.current
         // At the drawable's own size — the wave is wide, the double-D
         // nearly square, and one box squashed one of them.
         Icon(
@@ -1764,7 +1769,7 @@ private fun LosslessLabel(
         )
         Spacer(Modifier.width(if (appleStyle) 5.dp else 4.dp))
         if (animated) {
-            ShimmerText(text = text)
+            ShimmerText(text = text, foreground = tint)
         } else {
             Text(
                 text = text,
@@ -1775,7 +1780,7 @@ private fun LosslessLabel(
                     // otherwise make the 11sp Apple badge visibly too tall.
                     lineHeight = if (appleStyle) 13.sp else MaterialTheme.typography.labelMedium.lineHeight,
                 ),
-                color = LocalPlayerTint.current.copy(alpha = if (appleStyle) 0.9f else 0.45f),
+                color = tint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1804,6 +1809,7 @@ private fun ShimmerText(
         fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + BADGE_SIZE_BUMP).sp,
     ),
     baseAlpha: Float = 0.55f,
+    foreground: Color = Color.Unspecified,
 ) {
     val transition = rememberInfiniteTransition(label = "lossless-shimmer")
     val progress = transition.animateFloat(
@@ -1815,7 +1821,7 @@ private fun ShimmerText(
         ),
         label = "lossless-shimmer-progress",
     )
-    val tint = LocalPlayerTint.current
+    val tint = if (foreground == Color.Unspecified) LocalPlayerTint.current else foreground
     val baseColor = tint.copy(alpha = baseAlpha)
     // The glyphs are laid out and drawn once, in the plain tint, and the moving
     // band is painted over them in the draw phase with SrcIn — which keeps the

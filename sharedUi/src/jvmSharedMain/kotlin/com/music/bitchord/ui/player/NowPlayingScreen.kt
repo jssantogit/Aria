@@ -888,6 +888,7 @@ fun NowPlayingScreen(
     val openListenTogetherMembers: () -> Unit = { showListenTogetherMembers = true }
 
     val syncedLyricsEnabled by PlayerSettings.syncedLyrics.collectAsStateWithLifecycle()
+    val lyricsAllowed = playerLyricsAllowed(song.isAudioPreview)
     val lyricsOffsetMs by PlayerSettings.lyricsOffsetMs.collectAsStateWithLifecycle()
     // A lambda, not a value: read by the lyric strip and panel in scopes of
     // their own, so a tick recomposes them and not the player around them.
@@ -984,9 +985,10 @@ fun NowPlayingScreen(
     var queueOpen by remember {
         mutableStateOf(restoredPlayerScreen == LastPlayerScreen.QUEUE)
     }
-    var lyricsOpen by remember {
-        mutableStateOf(restoredPlayerScreen == LastPlayerScreen.LYRICS)
+    var lyricsRequested by remember {
+        mutableStateOf(restoredPlayerScreen == LastPlayerScreen.LYRICS && lyricsAllowed)
     }
+    val lyricsOpen = lyricsAllowed && lyricsRequested
     val queueSlide = remember { mutableFloatStateOf(0f) }
     // Expensive, song-scoped preparation is deliberately staggered. The small
     // backdrop decode runs after the track hand-off has settled; lyrics and
@@ -1041,13 +1043,15 @@ fun NowPlayingScreen(
     // open but the half-player was not, so every trip into lyrics briefly
     // started an exit animation and reversed it on the following frame.
     val openLyrics: () -> Unit = {
-        lyricsControlsOpen = true
-        lyricsOpen = true
-        queueOpen = false
+        if (lyricsAllowed) {
+            lyricsControlsOpen = true
+            lyricsRequested = true
+            queueOpen = false
+        }
     }
     val closeLyrics: () -> Unit = {
         lyricsControlsOpen = false
-        lyricsOpen = false
+        lyricsRequested = false
     }
     val toggleLyrics: () -> Unit = {
         if (lyricsOpen) closeLyrics() else openLyrics()
@@ -1077,7 +1081,7 @@ fun NowPlayingScreen(
     // phone's to make, so the request is handed down and the sheet comes back
     // through [PlayerHost.LyricsShareSheet].
     var lyricsShare by remember { mutableStateOf<LyricsShareRequest?>(null) }
-    val lyricsShareEnabled = lyricsShareAvailable
+    val lyricsShareEnabled = lyricsAllowed && lyricsShareAvailable
     val lyricPicker = rememberLyricsPicker(
         song = song,
         lines = lyrics,
@@ -1091,12 +1095,22 @@ fun NowPlayingScreen(
     LaunchedEffect(lyricsShareRequestToken) {
         if (lyricsShareRequestToken > 0) {
             onLyricsShareRequestConsumed()
-            queueOpen = false
-            lyricsOpen = true
-            if (lyricsShareAvailable) lyricPicker.beginPicking()
+            if (lyricsAllowed) {
+                openLyrics()
+                if (lyricsShareEnabled) lyricPicker.beginPicking()
+            }
         }
     }
-    // Nothing here resets [lyricsOpen] on a track change, deliberately. The
+    LaunchedEffect(lyricsAllowed) {
+        if (!lyricsAllowed) {
+            closeLyrics()
+            showLyricsProviders = false
+            lyricsShare = null
+            lyricPicker.cancel()
+            if (lyricsOffsetOpen) onDismissLyricsOffset()
+        }
+    }
+    // Ordinary tracks retain [lyricsOpen] on a track change, deliberately. The
     // panel is a place, not a property of the track: someone reading along who
     // skips — or who simply lets the queue run on — means to carry on reading,
     // so the words change underneath them and the panel stays. Closing it
@@ -1604,6 +1618,7 @@ fun NowPlayingScreen(
     val playerActions: @Composable () -> Unit = {
         PlayerActionRow(
             lyricsOpen = lyricsOpen,
+            lyricsEnabled = lyricsAllowed,
             queueOpen = queueOpen,
             shuffleEnabled = shuffleEnabled,
             repeatMode = repeatMode,
@@ -1647,7 +1662,7 @@ fun NowPlayingScreen(
                 onOpenCast = { showCast = true },
             )
         }
-        if (showLyricsProviders) {
+        if (lyricsAllowed && showLyricsProviders) {
             LyricsProviderSheet(
                 hazeState = playerHaze,
                 currentSource = lyricsSource,
@@ -1679,13 +1694,13 @@ fun NowPlayingScreen(
                 },
             )
         }
-        if (lyricsOffsetOpen) {
+        if (lyricsAllowed && lyricsOffsetOpen) {
             LyricsOffsetSheet(
                 hazeState = playerHaze,
                 onDismiss = onDismissLyricsOffset,
             )
         }
-        lyricsShare?.let { request ->
+        lyricsShare?.takeIf { lyricsAllowed }?.let { request ->
             PlayerPlatform.host.LyricsShareSheet(
                 hazeState = playerHaze,
                 request = request,
@@ -1839,7 +1854,15 @@ fun NowPlayingScreen(
         animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
         label = "playerTint",
     )
-    CompositionLocalProvider(LocalPlayerTint provides playerTint) {
+    // The small artwork mesh is already resident; estimate the middle
+    // control band's background after its dark scrim. Never reuse the
+    // chromatic secondary tint for the quality badge.
+    val qualityForeground = remember(artMesh, spotifyCanvasPresentation, tabletArtworkBackdrop, lyricsOpen, queueOpen, landscape) {
+        if (spotifyCanvasPresentation || tabletArtworkBackdrop || lyricsOpen || queueOpen || landscape) Color.White
+        else qualityForegroundForMesh(artMesh)
+    }
+    CompositionLocalProvider(LocalPlayerTint provides playerTint,
+        LocalPlayerQualityForeground provides qualityForeground) {
         if (landscape) {
             // Paused always wins outright over a scrub in progress — see
             // [ARTWORK_PAUSE_SHRINK_SCALE].
@@ -2009,7 +2032,7 @@ fun NowPlayingScreen(
                                     onOpenArtist = onOpenArtist,
                                 )
                             },
-                            lyricStrip = if (syncedLyricsEnabled) {
+                            lyricStrip = if (lyricsAllowed && syncedLyricsEnabled) {
                                 {
                                     CurrentLyricStrip(
                                         lines = lyricsTranslation.displayedLyrics,
@@ -3471,7 +3494,7 @@ fun NowPlayingScreen(
                         // panel, and doesn't then listen for the sleeve leaving the
                         // header — which is its first frame of moving.
                         val lyricsPanelVisible = lyricsOpen && collapseDone
-                        if (lyricsPanelVisible || playerPrewarmStage >= 2) {
+                        if (lyricsAllowed && (lyricsPanelVisible || playerPrewarmStage >= 2)) {
                                 LyricsTranslationMotion(
                                     trigger = lyricsTranslation.transition,
                                     reduceMotion = lyricsTranslation.reduceMotion,
@@ -3685,7 +3708,7 @@ fun NowPlayingScreen(
                     // accompanied by a dedicated lyrics button in the bottom row. Its
                     // one-line slot remains, invisibly, so opening lyrics cannot grow
                     // the half-player merely to make room for the source label.
-                    if (!lyricsOpen && syncedLyricsEnabled) {
+                    if (lyricsAllowed && !lyricsOpen && syncedLyricsEnabled) {
                         CurrentLyricStrip(
                             lines = lyricsTranslation.displayedLyrics,
                             trackKey = song.videoId,
@@ -3701,7 +3724,7 @@ fun NowPlayingScreen(
                             onClick = openLyrics,
                         )
                     }
-                    if (!lyricsOpen && !syncedLyricsEnabled) {
+                    if (lyricsAllowed && !lyricsOpen && !syncedLyricsEnabled) {
                         Text(
                             text = "\u00A0",
                             style = MaterialTheme.typography.titleMedium,

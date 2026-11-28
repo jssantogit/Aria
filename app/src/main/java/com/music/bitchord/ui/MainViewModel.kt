@@ -2465,7 +2465,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lyricsFor = key
         lyricsGeneration += 1
         val generation = lyricsGeneration
-        // No manual provider can use the sample duration while exact metadata is pending.
+        // Preview playback does not expose lyrics or manual provider requests.
         currentLyricsRequest = if (isAudioPreview) null else LyricsRequest(videoId, title, artist, durationMs, album)
         selectedLyricsSource = null
         manualLyricsJobs.values.forEach(Job::cancel)
@@ -2476,6 +2476,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _lyrics.value = null
         _lyricsSource.value = null
         lyricsJob?.cancel()
+        if (isAudioPreview) {
+            _lyricsChecked.value = true
+            return
+        }
         if (sources.isEmpty() && localUri == null) {
             // No network provider remains permitted. Still try embedded
             // lyrics below when the exact local file is available.
@@ -2490,6 +2494,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // this exact file, for this exact recording.
             if (!isAudioPreview && localUri != null) {
                 EmbeddedLyrics.forUri(getApplication(), localUri)?.let { embedded ->
+                    if (generation != lyricsGeneration) return@launch
                     _lyrics.value = embedded
                     // No source to name: what the file records is the lyrics,
                     // not which of the eight services they came from months ago.
@@ -2504,21 +2509,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _lyricsChecked.value = true
                 return@launch
             }
-            val recordingDurationMs = if (isAudioPreview) {
-                // The exact song response describes the recording, not the variable-length preview media item.
-                appleMusicWebNativeCatalog.previewRecordingDuration(videoId) ?: 0L
-            } else durationMs
             if (generation != lyricsGeneration) return@launch
-            if (recordingDurationMs <= 0L) {
-                if (isAudioPreview) {
-                    // Fail closed rather than matching a different recording by sample length.
-                    _lyricsChecked.value = true
-                } else lyricsFor = null
+            if (durationMs <= 0L) {
+                lyricsFor = null
                 return@launch
             }
-            currentLyricsRequest = LyricsRequest(videoId, title, artist, recordingDurationMs, album)
             val found = LyricsRepository.lyrics(
-                videoId, title, artist, recordingDurationMs, album,
+                videoId, title, artist, durationMs, album,
                 allowedCanonicalLyricsSources(
                     sources, isCanonicalDiscoverySelected(), SourceRegistry.configs.value,
                 ),

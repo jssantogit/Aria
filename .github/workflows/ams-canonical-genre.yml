@@ -60,6 +60,7 @@ on:
       - audit/ams-exact-artist-search-expansion-20261128
       - audit/ams-exact-artist-search-admission-20261128
       - audit/ams-search-release-relevance-20261128
+      - audit/ams-preview-lyrics-disabled-quality-contrast-20261128
 permissions:
   contents: read
 concurrency:

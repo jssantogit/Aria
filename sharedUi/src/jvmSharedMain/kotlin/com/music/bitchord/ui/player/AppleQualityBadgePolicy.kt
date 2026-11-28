@@ -5,6 +5,12 @@ package com.music.bitchord.ui.player
  * a catalog claim, a user preference, or a stream the resolver hoped to obtain.
  * Unknown is intentionally distinct from lossless (and from a measured lossy tier).
  */
+internal fun playerLyricsAllowed(isAudioPreview: Boolean): Boolean = !isAudioPreview
+
+/** Neutral foreground chosen from the rendered surface's estimated relative luminance. */
+internal fun playerQualityUsesDarkForeground(backgroundLuminance: Float): Boolean =
+    backgroundLuminance.isFinite() && backgroundLuminance >= 0.179f
+
 internal enum class AppleQualityBadgeKind {
     NONE, LOADING, LOSSLESS, HI_RES, DOLBY_ATMOS, HIGH, MEDIUM, PREVIEW,
 }

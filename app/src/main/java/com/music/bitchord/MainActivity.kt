@@ -3512,14 +3512,12 @@ private fun BitChordApp(
                     PlaybackSourceType.QUEUE -> Unit
                 }
             },
-            lyrics = remember(displayedSong.isAudioPreview,lyrics) {
-                com.music.bitchord.ui.screens.amsPreviewSafeLyrics(displayedSong.isAudioPreview,lyrics)
-            },
-            lyricsSource = lyricsSource,
-            lyricsProviderStates = lyricsProviderStates,
+            lyrics = lyrics.takeUnless { displayedSong.isAudioPreview },
+            lyricsSource = lyricsSource.takeUnless { displayedSong.isAudioPreview },
+            lyricsProviderStates = if (displayedSong.isAudioPreview) emptyMap() else lyricsProviderStates,
             onSelectLyricsProvider = viewModel::selectLyricsProvider,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
-            lyricsOffsetOpen = showLyricsOffset,
+            lyricsOffsetOpen = showLyricsOffset && !displayedSong.isAudioPreview,
             onDismissLyricsOffset = { showLyricsOffset = false },
             onListenTogether = {
                 // The player is a sheet over the page, so it has to come down

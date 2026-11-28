@@ -4,6 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AppleQualityBadgePolicyTest {
+    @org.junit.Test fun previewLyricsAreUnavailableWithoutAffectingFullTracks() {
+        org.junit.Assert.assertFalse(playerLyricsAllowed(true))
+        org.junit.Assert.assertTrue(playerLyricsAllowed(false))
+    }
+    @org.junit.Test fun qualityForegroundUsesOnlyNeutralContrast() {
+        org.junit.Assert.assertFalse(playerQualityUsesDarkForeground(0f))
+        org.junit.Assert.assertTrue(playerQualityUsesDarkForeground(1f))
+        org.junit.Assert.assertFalse(playerQualityUsesDarkForeground(Float.NaN))
+    }
+
     @Test fun losslessAndAtmosAreNeverInferredFromRequestedQuality() {
         assertEquals(AppleQualityBadgeKind.NONE, appleQualityBadgeKind(null, false, false, false, false, false))
         assertEquals(AppleQualityBadgeKind.DOLBY_ATMOS, appleQualityBadgeKind(true, false, true, false, false, false))
