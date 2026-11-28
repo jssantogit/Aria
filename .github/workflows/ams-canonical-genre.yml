@@ -43,6 +43,7 @@ on:
       - audit/ams-preview-native-actions-20261128
       - audit/ams-preview-provider-contract-fix-20261128
       - audit/ams-preview-isolation-review-20261128
+      - audit/ams-preview-detail-callback-fix-20261128
 permissions:
   contents: read
 concurrency:

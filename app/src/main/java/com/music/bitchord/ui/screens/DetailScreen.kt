@@ -1061,6 +1061,7 @@ internal fun DetailScreen(
                             val index = metadataTracks.indexOf(track)
                             if (index in metadataPlayableSongs) playMetadataRow(index)
                             else onMetadataTrackOpenAlbum?.invoke(track)
+                            Unit
                         }))
                 }
             }
