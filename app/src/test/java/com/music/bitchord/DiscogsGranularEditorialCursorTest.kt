@@ -43,6 +43,57 @@ class DiscogsGranularEditorialCursorTest {
                 DiscogsLookupResult.Found(this@DiscogsGranularEditorialCursorTest.release(id - 1000))
         }
 
+    @Test fun sharedLandingBudgetReservesLaterPredicatesAndResumesUnexaminedRows() = runBlocking {
+        val reads = mutableListOf<Long>()
+        val queries = listOf(DiscogsEditorialQuery("Rock", false),
+            DiscogsEditorialQuery("Indie Rock", true))
+        val client = DiscogsNativeGenreEditorial(
+            enabled = true, tokenProvider = { "A".repeat(32) },
+            admission = access(), limiter = DiscogsRateLimiter(minimumIntervalMs = 0L),
+            transport = object : DiscogsGenreSearchTransport {
+                override suspend fun search(
+                    query: DiscogsEditorialQuery, token: String,
+                    userAgent: String, page: Int,
+                ): DiscogsHttpResponse {
+                    val ids = (if (query.isStyle) 11..14 else 1..4)
+                        .joinToString(",") { """{"id":$it,"type":"master"}""" }
+                    return DiscogsHttpResponse(200,
+                        """{"pagination":{"page":1,"pages":1,"per_page":12},"results":[$ids]}""")
+                }
+            },
+            editions = reader { id ->
+                reads += id
+                DiscogsLookupResult.FoundMaster(master(id))
+            },
+        )
+        val budget = DiscogsLandingBudget(maxPositions = 3, maxIndexReads = 2)
+        var cursor: DiscogsEditorialCursor? = null
+        val first = client.discoverDistinct(
+            queries[0], 4, emptySet(), onCheckpoint = { cursor = it },
+            landingBudget = budget, laterPredicates = 1,
+        ) as DiscogsEditorialResult.Verified
+        assertTrue(first.budgetLimited)
+        assertNull(first.interruption)
+        assertEquals(listOf(1L, 2L), first.releases.map { it.masterId })
+        val saved = requireNotNull(cursor)
+        assertEquals(2, saved.candidatePosition)
+        assertTrue(saved.landingCheckpoint)
+        val second = client.discoverDistinct(
+            queries[1], 4, setOf(1L, 2L), landingBudget = budget,
+        ) as DiscogsEditorialResult.Verified
+        assertTrue(second.budgetLimited)
+        assertEquals(listOf(11L), second.releases.map { it.masterId })
+        assertEquals(listOf(1L, 2L, 11L), reads)
+        assertEquals(3, budget.consumedPositions)
+        assertEquals(2, budget.indexReads)
+        assertFalse(budget.canStart())
+        val resumed = client.discoverGranular(
+            queries[0], saved, setOf(1L, 2L, 11L),
+        ) as DiscogsGranularRead.Page
+        assertEquals(listOf(3L, 4L), resumed.releases.map { it.masterId })
+        assertEquals(listOf(1L, 2L, 11L, 3L, 4L), reads)
+    }
+
     @Test fun sharedGenreLandingStopsAfterPartialFailureAndRetainsVerifiedIdentity() = runBlocking {
         val requested = mutableListOf<DiscogsEditorialQuery>()
         val query = DiscogsEditorialQuery("Rock", false)

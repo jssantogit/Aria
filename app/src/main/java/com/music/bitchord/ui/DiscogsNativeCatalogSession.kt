@@ -549,12 +549,14 @@ internal class DiscogsNativeCatalogSession(
             val verified = mutableListOf<DiscogsEditorialCandidate>()
             var failure: String? = null
             val landingCursors = mutableMapOf<DiscogsEditorialQuery, DiscogsEditorialCursor>()
+            val acquisition = com.music.bitchord.data.catalog.metadata.discogs.DiscogsLandingBudget()
             // Diverse verified catalog slices instead of only Pop and Rock.
             // Publish incrementally and stop at the bounded Home target; no
             // implied chart order, genre-wide completeness or fabricated art.
             for ((index, tag) in discogsHomeDiscoveryTags.withIndex()) {
                 val distinctMasters = verified.distinctBy { it.masterId }.size
-                if (distinctMasters >= 10) break
+                val later = discogsHomeDiscoveryTags.size - index - 1
+                if (distinctMasters >= 10 || !acquisition.canStart(later)) break
                 val request = discogsEditorialQueriesForTag(tag).firstOrNull() ?: continue
                 // Reserve one verified slot for each later genre, so success
                 // in Pop/Rock cannot prevent K-pop, Metal, R&B and Folk
@@ -570,6 +572,7 @@ internal class DiscogsNativeCatalogSession(
                         request, maxReleases = budget,
                         knownMasterIds = verified.map { it.masterId }.toSet(),
                         onCheckpoint = { landingCursors[request] = it },
+                        landingBudget = acquisition, laterPredicates = later,
                         onVerified = { candidate ->
                             if (lease.isCurrent() && homePagingEpoch == editorialEpoch &&
                                 candidate.masterId !in verified.map { it.masterId } &&

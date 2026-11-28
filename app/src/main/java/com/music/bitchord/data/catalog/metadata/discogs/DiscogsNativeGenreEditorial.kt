@@ -97,11 +97,44 @@ internal sealed interface DiscogsGranularRead {
     ) : DiscogsGranularRead
 }
 
+/** Shared logical acquisition budget for one sequential landing, not an HTTP
+ * quota. A position may hydrate at most one Master and one main Release;
+ * transport retries and the process-wide rate limiter remain independent. */
+internal class DiscogsLandingBudget(
+    private val maxPositions: Int = 36,
+    private val maxIndexReads: Int = 18,
+) {
+    init { require(maxPositions > 0 && maxIndexReads > 0) }
+    var consumedPositions: Int = 0
+        private set
+    var indexReads: Int = 0
+        private set
+
+    fun canStart(laterPredicates: Int = 0): Boolean =
+        consumedPositions < maxPositions - laterPredicates.coerceAtLeast(0) &&
+            indexReads < maxIndexReads - laterPredicates.coerceAtLeast(0)
+
+    fun takeIndex(laterPredicates: Int): Boolean {
+        if (!canStart(laterPredicates)) return false
+        indexReads++
+        return true
+    }
+
+    fun takePosition(laterPredicates: Int): Boolean {
+        if (consumedPositions >= maxPositions - laterPredicates.coerceAtLeast(0))
+            return false
+        consumedPositions++
+        return true
+    }
+}
+
 internal sealed interface DiscogsEditorialResult {
     data class Verified(
         val releases: List<DiscogsEditorialCandidate>,
         /** A partial landing is not a successful, uninterrupted scan. */
         val interruption: DiscogsEditorialResult? = null,
+        /** Landing budget ended, not source exhaustion or transport failure. */
+        val budgetLimited: Boolean = false,
     ) : DiscogsEditorialResult
     data object Unauthorized : DiscogsEditorialResult
     data object Disabled : DiscogsEditorialResult
@@ -708,6 +741,8 @@ internal class DiscogsNativeGenreEditorial(
         /** Called only for a safely settled prefix of the landing scan. */
         onCheckpoint: (DiscogsEditorialCursor) -> Unit = {},
         onVerified: suspend (DiscogsEditorialCandidate) -> Unit = {},
+        landingBudget: DiscogsLandingBudget? = null,
+        laterPredicates: Int = 0,
     ): DiscogsEditorialResult {
         if (!query.isValid() || maxReleases !in 1..6)
             return DiscogsEditorialResult.InvalidQuery
@@ -733,6 +768,16 @@ internal class DiscogsNativeGenreEditorial(
                 verified.distinctBy { it.masterId }, interruption = reason,
             )
         }
+        fun limited(): DiscogsEditorialResult.Verified {
+            (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
+            return DiscogsEditorialResult.Verified(
+                verified.distinctBy { it.masterId },
+                interruption = DiscogsEditorialResult.Unavailable.takeIf {
+                    unresolvedMasterIds.isNotEmpty()
+                },
+                budgetLimited = true,
+            )
+        }
         // Fill the caller's bounded sample with verified releases, not just
         // the first non-empty index page. Check all 12 advertised candidates
         // within each source page: an arbitrary first-five cut hides valid
@@ -740,6 +785,7 @@ internal class DiscogsNativeGenreEditorial(
         // once maxReleases is met; every hydration remains rate-limited and
         // only the existing two index pages may be requested.
         for (pageNumber in 1..2) {
+            if (landingBudget?.takeIndex(laterPredicates) == false) return limited()
             // Initial Home/genre discovery may reuse a recent, source-verified
             // index page from another canonical view. Permissions and the
             // credential are validated above on every entry, while partial
@@ -755,6 +801,10 @@ internal class DiscogsNativeGenreEditorial(
             var nextPosition = 0
             for ((position, masterId) in index.masterIds.withIndex()) {
                 if (verified.size >= maxReleases) break
+                if (landingBudget?.takePosition(laterPredicates) == false) {
+                    checkpoint = DiscogsEditorialCursor(pageNumber, position, signature, true)
+                    return limited()
+                }
                 nextPosition = position + 1
                 // The earliest unresolved position stays retryable even if
                 // later rows fill the sample. Replaying verified IDs is safe.
