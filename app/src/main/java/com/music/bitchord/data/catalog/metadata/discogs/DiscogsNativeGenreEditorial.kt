@@ -98,7 +98,11 @@ internal sealed interface DiscogsGranularRead {
 }
 
 internal sealed interface DiscogsEditorialResult {
-    data class Verified(val releases: List<DiscogsEditorialCandidate>) : DiscogsEditorialResult
+    data class Verified(
+        val releases: List<DiscogsEditorialCandidate>,
+        /** A partial landing is not a successful, uninterrupted scan. */
+        val interruption: DiscogsEditorialResult? = null,
+    ) : DiscogsEditorialResult
     data object Unauthorized : DiscogsEditorialResult
     data object Disabled : DiscogsEditorialResult
     data object Unavailable : DiscogsEditorialResult
@@ -723,6 +727,12 @@ internal class DiscogsNativeGenreEditorial(
         val unresolvedMasterIds = HashSet<Long>()
         var firstUnresolved: DiscogsEditorialCursor? = null
         var checkpoint: DiscogsEditorialCursor? = null
+        fun interrupted(reason: DiscogsEditorialResult): DiscogsEditorialResult {
+            (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
+            return if (verified.isEmpty()) reason else DiscogsEditorialResult.Verified(
+                verified.distinctBy { it.masterId }, interruption = reason,
+            )
+        }
         // Fill the caller's bounded sample with verified releases, not just
         // the first non-empty index page. Check all 12 advertised candidates
         // within each source page: an arbitrary first-five cut hides valid
@@ -738,8 +748,7 @@ internal class DiscogsNativeGenreEditorial(
                 query, pageNumber, token, tokenDigest, forceFresh = false,
             )) {
                 is IndexRead.Ready -> read.page
-                is IndexRead.Failed -> return if (verified.isNotEmpty())
-                    DiscogsEditorialResult.Verified(verified) else read.reason
+                is IndexRead.Failed -> return interrupted(read.reason)
             }
             val signature = 31 * index.masterIds.hashCode() +
                 if (index.hasNext) 1 else 0
@@ -768,15 +777,17 @@ internal class DiscogsNativeGenreEditorial(
                 } else try { editions.master(masterId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
-                if (masterResult is DiscogsLookupResult.Throttled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Throttled(masterResult.retryAfterSeconds)
-                if (masterResult is DiscogsLookupResult.Unauthorized)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Unauthorized
-                if (masterResult is DiscogsLookupResult.Disabled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Disabled
+                val masterResultInterruption = when (masterResult) {
+                    is DiscogsLookupResult.Throttled ->
+                        DiscogsEditorialResult.Throttled(masterResult.retryAfterSeconds)
+                    DiscogsLookupResult.Unauthorized -> DiscogsEditorialResult.Unauthorized
+                    DiscogsLookupResult.Disabled -> DiscogsEditorialResult.Disabled
+                    else -> null
+                }
+                if (masterResultInterruption != null) {
+                    markUnresolved()
+                    return interrupted(masterResultInterruption)
+                }
                 if (masterResult is DiscogsLookupResult.Unavailable ||
                     masterResult is DiscogsLookupResult.Malformed
                 ) {
@@ -798,15 +809,17 @@ internal class DiscogsNativeGenreEditorial(
                 val releaseResult = try { editions.release(releaseId) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DiscogsLookupResult.Unavailable }
-                if (releaseResult is DiscogsLookupResult.Throttled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Throttled(releaseResult.retryAfterSeconds)
-                if (releaseResult is DiscogsLookupResult.Unauthorized)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Unauthorized
-                if (releaseResult is DiscogsLookupResult.Disabled)
-                    return if (verified.isNotEmpty()) DiscogsEditorialResult.Verified(verified)
-                        else DiscogsEditorialResult.Disabled
+                val releaseResultInterruption = when (releaseResult) {
+                    is DiscogsLookupResult.Throttled ->
+                        DiscogsEditorialResult.Throttled(releaseResult.retryAfterSeconds)
+                    DiscogsLookupResult.Unauthorized -> DiscogsEditorialResult.Unauthorized
+                    DiscogsLookupResult.Disabled -> DiscogsEditorialResult.Disabled
+                    else -> null
+                }
+                if (releaseResultInterruption != null) {
+                    markUnresolved()
+                    return interrupted(releaseResultInterruption)
+                }
                 if (releaseResult is DiscogsLookupResult.Unavailable ||
                     releaseResult is DiscogsLookupResult.Malformed
                 ) {
@@ -835,6 +848,11 @@ internal class DiscogsNativeGenreEditorial(
         (firstUnresolved ?: checkpoint)?.let(onCheckpoint)
         return if (verified.isEmpty() && unresolvedMasterIds.isNotEmpty())
             DiscogsEditorialResult.Unavailable
-        else DiscogsEditorialResult.Verified(verified.distinctBy { it.masterId })
+        else DiscogsEditorialResult.Verified(
+            verified.distinctBy { it.masterId },
+            interruption = DiscogsEditorialResult.Unavailable.takeIf {
+                unresolvedMasterIds.isNotEmpty()
+            },
+        )
     }
 }
