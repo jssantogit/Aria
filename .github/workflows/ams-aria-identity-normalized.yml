@@ -1,7 +1,7 @@
 name: AMS · namespace-normalized Aria reconciliation
 on:
   push:
-    branches: [audit/ams-aria-identity-normalized-20261128]
+    branches: [audit/ams-aria-identity-resolved-text-20261128]
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,7 +41,31 @@ jobs:
           git merge --no-commit --no-ff "$MAIN" > /tmp/aria-normalized/merge.log 2>&1
           result=$?
           set -e
+          # Reviewed identity-only resolutions: preserve the newer AMS/IDM
+          # copy, change only product name, and respect MAIN's Desktop removal.
+          for file in app/src/main/res/values-pt/acquisition_destination.xml app/src/main/res/values/acquisition_destination.xml app/src/main/res/values/strings_opensubsonic.xml; do
+            test -n "$(git ls-files -u -- "$file")"
+            git show ":2:$file" > "$file"
+            python3 - "$file" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          source=p.read_text()
+          assert "BitChord" in source
+          p.write_text(source.replace("BitChord","Aria"))
+          PY
+            git add "$file"
+            echo "RESOLVED_TEXT|$file"
+          done
+          desktop=desktopApp/src/main/kotlin/com/music/aria/desktop/DesktopApp.kt
+          test -n "$(git ls-files -u -- "$desktop")"
+          if git cat-file -e "$MAIN:$desktop" 2>/dev/null; then
+            echo "::error::MAIN Desktop deletion no longer holds"; exit 1
+          fi
+          git rm -f -- "$desktop"
+          echo "RESOLVED_REMOVED_PLATFORM|$desktop"
           git diff --name-only --diff-filter=U > /tmp/aria-normalized/conflicts.txt
+          if [ ! -s /tmp/aria-normalized/conflicts.txt ]; then result=0; fi
           git ls-files -u > /tmp/aria-normalized/conflict-stages.tsv
           git status --short > /tmp/aria-normalized/status.txt
           printf 'merge_exit=%s\nconflicts=%s\n' "$result" "$(wc -l < /tmp/aria-normalized/conflicts.txt)" | tee /tmp/aria-normalized/summary.txt
