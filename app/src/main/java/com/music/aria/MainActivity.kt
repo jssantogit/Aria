@@ -235,6 +235,7 @@ import com.music.aria.download.MediaTagger
 import com.music.aria.download.DownloadTarget
 import com.music.aria.download.Downloads
 import com.music.aria.download.SoulseekDownloadRouting
+import com.music.aria.download.SoulseekBatchPlan
 import com.music.aria.ui.screens.SoulseekAccountSettingsScreen
 import com.music.aria.ui.components.BrowseActionsSheet
 import com.music.aria.ui.components.BrowseTarget
@@ -2314,43 +2315,58 @@ private fun AriaApp(
     // it decomposed into — see [Downloads.rememberCollection]. Null for a single
     // track, which is not a release however many of them are asked for one at a
     // time.
-    // Issue #172: no YT Music acquisition, even for album/playlist actions.
-    // Each supported request opens a manual Soulseek search; the picker alone
-    // can authorize a specific file, and only in devDebug.
-    val startDownload: (List<Song>, DownloadTarget?) -> Unit = { requested, _ ->
-        val song = requested.singleOrNull()
-        val decision = SoulseekDownloadRouting.route(
-            artist = song?.artist.orEmpty(),
-            title = song?.title.orEmpty(),
-            count = requested.size,
-            pilotAvailable = BuildConfig.FLAVOR == "dev" && BuildConfig.DEBUG,
-        )
-        when (decision) {
-            is SoulseekDownloadRouting.Decision.ManualSearch -> {
-                val intent = Intent().setClassName(
-                    context.packageName,
-                    "com.music.aria.acquisition.a0.A0ManualLoginActivity",
-                ).putExtra("bitchord.soulseek.manual.query", decision.query)
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(
-                        context, "Seletor Soulseek indisponível nesta instalação.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            }
-            SoulseekDownloadRouting.Decision.BulkNotSupported ->
-                Toast.makeText(
-                    context,
-                    "Download em lote indisponível: escolha uma música por vez no Soulseek.",
-                    Toast.LENGTH_LONG,
-                ).show()
-            SoulseekDownloadRouting.Decision.Unavailable ->
-                Toast.makeText(
-                    context,
-                    "Download Soulseek indisponível nesta variante ou música sem artista/título.",
-                    Toast.LENGTH_LONG,
-                ).show()
+    // Explicit download tap; automatic file selection, never a candidate picker.
+    val startDownload: (List<Song>, DownloadTarget?) -> Unit = { requested, from ->
+        val pilot = BuildConfig.FLAVOR == "dev" && BuildConfig.DEBUG
+        val validIds = requested.all {
+            it.videoId.isNotBlank() && it.videoId.length <= 180 &&
+                !it.videoId.any(Char::isISOControl)
         }
+        val plan = if (!validIds || !pilot) null
+        else if (requested.size > 1) {
+            SoulseekBatchPlan.prepare(
+                requested.map { track ->
+                    SoulseekBatchPlan.SourceTrack(
+                        trackId = track.videoId,
+                        artist = track.artist,
+                        title = track.title,
+                        creditedArtists = track.artists.map { it.name },
+                        album = track.albumName,
+                        durationSeconds = SoulseekDownloadRouting.durationSeconds(track.durationText),
+                    )
+                },
+                releaseTitle = from?.title,
+                isRelease = from != null && !from.playlist,
+                pilotAvailable = pilot,
+            )
+        } else requested.singleOrNull()?.let { song ->
+            val routed = SoulseekDownloadRouting.route(
+                artist = song.artist, title = song.title, count = 1,
+                pilotAvailable = pilot, creditedArtists = song.artists.map { it.name },
+            )
+            (routed as? SoulseekDownloadRouting.Decision.ManualSearch)?.let {
+                listOf(SoulseekBatchPlan.Entry(
+                    trackId = song.videoId,
+                    query = it.query,
+                    album = SoulseekDownloadRouting.albumHint(
+                        songAlbum = song.albumName,
+                        playingAlbum = player.song?.albumName,
+                        targetAlbum = from?.title,
+                        samePlayingTrack = player.song?.videoId == song.videoId,
+                        fromAlbum = from != null && !from.playlist,
+                    ),
+                    durationSeconds = SoulseekDownloadRouting.durationSeconds(song.durationText),
+                ))
+            }
+        }
+        val message = when {
+            plan == null -> "Download Soulseek indisponível para esta seleção."
+            !AppSettings.downloadsAllowedNow -> "Download bloqueado pela opção Somente Wi-Fi."
+            !Downloads.enqueueSoulseekAuto(context, plan, requested) ->
+                "Não foi possível iniciar o download. Confira a conta e as configurações Soulseek."
+            else -> "Download adicionado à fila."
+        }
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
     /**
      * One track on its own, which is never a release.
