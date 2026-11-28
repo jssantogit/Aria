@@ -69,11 +69,17 @@ class DiscogsGranularEditorialCursorTest {
             onProgress = { rows -> progress += rows.map { it.masterId } },
         ))
         assertEquals(listOf(query), requested)
-        assertNotNull(landing.failure)
+        assertEquals(DiscogsEditorialResult.Throttled(10L), landing.failure)
         assertEquals(listOf(1L), landing.releases.map { it.masterId })
         assertEquals(listOf(listOf(1L)), progress)
-        assertEquals(setOf(1L), landing.paging("rock").knownMasterIds)
-        assertEquals(DiscogsEditorialCursor(), landing.paging("rock").cursor)
+        val paging = landing.paging("rock")
+        assertEquals(setOf(1L), paging.knownMasterIds)
+        val retry = requireNotNull(paging.cursor)
+        assertEquals(1, retry.page)
+        assertEquals(1, retry.candidatePosition)
+        assertNotNull(retry.pageSignature)
+        assertTrue(retry.landingCheckpoint)
+        assertEquals(retry, landing.checkpoints[0])
     }
 
     @Test fun canonicalGenreGestureTraversesThirtyHundredAndThreeHundredVerifiedRows() = runBlocking {

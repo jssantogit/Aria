@@ -61,6 +61,7 @@ jobs:
             --tests 'com.music.bitchord.CanonicalGenreEditorialDispatchTest' \
             --tests 'com.music.bitchord.DiscogsEditorialTaxonomyTest' \
             --tests 'com.music.bitchord.DiscogsGenreEditorialNetworkTest' \
+            --tests 'com.music.bitchord.DiscogsGranularEditorialCursorTest' \
             --tests 'com.music.bitchord.DiscogsNativeArtistSearchTest' \
             --tests 'com.music.bitchord.DiscogsNativeNavigationTest' \
             --tests 'com.music.bitchord.DiscogsNativeArtistCatalogTest' \

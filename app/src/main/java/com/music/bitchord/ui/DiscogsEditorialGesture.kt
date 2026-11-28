@@ -169,10 +169,10 @@ internal suspend fun scanDiscogsGenreLanding(
         when (result) {
             is DiscogsEditorialResult.Verified -> {
                 result.releases.forEach { verified.putIfAbsent(it.masterId, it) }
-                // Early partial responses intentionally lack a signed checkpoint.
-                // Do not start more predicates immediately after that interruption.
-                if (index !in checkpoints) {
-                    failure = DiscogsEditorialResult.Unavailable
+                // A signed checkpoint now survives an interruption. Do not
+                // infer success from its presence or start another predicate.
+                if (result.interruption != null || index !in checkpoints) {
+                    failure = result.interruption ?: DiscogsEditorialResult.Unavailable
                     break
                 }
             }
