@@ -48,6 +48,7 @@ jobs:
             --tests 'com.music.bitchord.AppleVerifiedGroupCardArtworkResolverTest' \
             --tests 'com.music.bitchord.NativeMetadataAlbumPresentationTest' \
             --tests 'com.music.bitchord.ui.screens.NativeSourceAlbumComposeTest' \
+            --tests 'com.music.bitchord.ui.screens.NativeSearchSecondaryActionTest' \
             --tests 'com.music.bitchord.ui.screens.CanonicalCatalogEntityRatingsTest' \
             --tests 'com.music.bitchord.ApplePublicSearchPagerTest' \
             --tests 'com.music.bitchord.AppleArtistArtworkPagingTest' \

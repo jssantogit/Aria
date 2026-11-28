@@ -362,11 +362,9 @@ fun SearchScreen(
     val discogsNext = discogsUnifiedNextPage(
         query, discogsArtistRows, discogsHasMore, discogsReleaseHasMore,
     )
-    val discogsContinuationLoading = !discogsUnshown && when (discogsNext) {
-        DiscogsUnifiedSearchNext.ARTISTS -> discogsArtistLoadingMore
-        DiscogsUnifiedSearchNext.RELEASES -> discogsReleaseLoadingMore
-        null -> false
-    }
+    val discogsContinuationLoading = discogsUnifiedContinuationLoading(
+        discogsUnshown, discogsNext, discogsArtistLoadingMore, discogsReleaseLoadingMore,
+    )
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {

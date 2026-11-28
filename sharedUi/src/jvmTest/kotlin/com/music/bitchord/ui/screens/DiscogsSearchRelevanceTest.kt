@@ -171,4 +171,15 @@ class DiscogsSearchRelevanceTest {
         assertEquals(listOf(first, independent), discogsSearchVerifiedArtistObservations(
             listOf(first, independent, first)))
     }
+
+    @Test fun mixedSearchLoadingFollowsOnlyTheSelectedRemoteContinuation() {
+        fun loading(local: Boolean, next: DiscogsUnifiedSearchNext?, artists: Boolean, releases: Boolean) =
+            discogsUnifiedContinuationLoading(local, next, artists, releases)
+        assertFalse(loading(true, DiscogsUnifiedSearchNext.RELEASES, true, true))
+        assertTrue(loading(false, DiscogsUnifiedSearchNext.RELEASES, false, true))
+        assertFalse(loading(false, DiscogsUnifiedSearchNext.RELEASES, true, false))
+        assertTrue(loading(false, DiscogsUnifiedSearchNext.ARTISTS, true, false))
+        assertFalse(loading(false, DiscogsUnifiedSearchNext.ARTISTS, false, true))
+        assertFalse(loading(false, null, true, true))
+    }
 }

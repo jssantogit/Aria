@@ -215,3 +215,15 @@ fun discogsUnifiedNextPage(
     }) return DiscogsUnifiedSearchNext.ARTISTS
     return null
 }
+
+/** Local expansion does not wait for a network continuation on another tab. */
+fun discogsUnifiedContinuationLoading(
+    hasUnshownRows: Boolean,
+    next: DiscogsUnifiedSearchNext?,
+    artistLoading: Boolean,
+    releaseLoading: Boolean,
+): Boolean = !hasUnshownRows && when (next) {
+    DiscogsUnifiedSearchNext.ARTISTS -> artistLoading
+    DiscogsUnifiedSearchNext.RELEASES -> releaseLoading
+    null -> false
+}
