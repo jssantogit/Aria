@@ -15,16 +15,16 @@ import com.music.aria.download.SoulseekBatchPlan
 import com.music.aria.data.model.Song
 
 /**
- * App-private opt-in, independent of format/quality preferences. Defaults OFF
- * on first launch and after missing/corrupted settings. The devDebug Settings
- * control is its only explicit writer; disabling it revokes the active session.
+ * Automatic selection is the default for explicit download requests.
+ * Preserve an existing explicit disable; corrupt preferences fail closed.
+ * No network or transfer starts without a user download request.
  */
 internal object A0AndroidAutoConsent {
     private const val PREFS="bitchord_soulseek_auto_v1"
     private const val ENABLED="explicit_unattended_selection"
     fun enabled(context:Context):Boolean = runCatching {
         context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-            .getBoolean(ENABLED,false)
+            .getBoolean(ENABLED,A0AutoConsentPolicy.DEFAULT_ENABLED)
     }.getOrDefault(false) // Corrupted/incorrect preference type remains OFF.
 
     /** To be called ONLY by the future explicit settings control. */

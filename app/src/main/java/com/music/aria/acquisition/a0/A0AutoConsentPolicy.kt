@@ -5,6 +5,8 @@ package com.music.aria.acquisition.a0
  * User intention to download is NOT consent to unattended peer selection.
  */
 internal object A0AutoConsentPolicy {
+    const val DEFAULT_ENABLED = true
+
     fun allows(
         userRequested:Boolean,
         enabledByUser:Boolean,

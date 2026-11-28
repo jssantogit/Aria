@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class A0AutoConsentPolicyTest {
+    @Test fun defaultAutomaticSelectionStillRequiresExplicitDownloadTap() {
+        assertTrue(A0AutoConsentPolicy.DEFAULT_ENABLED)
+        assertTrue(A0AutoConsentPolicy.allows(true,A0AutoConsentPolicy.DEFAULT_ENABLED,true,true,true))
+        assertFalse(A0AutoConsentPolicy.allows(false,A0AutoConsentPolicy.DEFAULT_ENABLED,true,true,true))
+    }
+
     @Test fun explicitDownloadTapIsNotEquivalentToEnablingAutoSelection() {
         assertFalse(A0AutoConsentPolicy.allows(
             userRequested=true,enabledByUser=false,devPilot=true,
