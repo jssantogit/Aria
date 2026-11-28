@@ -536,6 +536,17 @@ object Downloads {
      * still know it is already on the device. A stale id costs nothing: the
      * verification in [savedUri] prunes whichever one stops resolving.
      */
+    internal fun rememberSoulseekPublished(
+        song: Song,
+        published: A2LocalAudioPublisher.Published,
+    ) {
+        // Only called after the A3 durable publication succeeds.
+        require(published.contentUri.startsWith("content://") &&
+            published.byteCount > 0L) { "Expected confirmed A3 local publication" }
+        remember(song, song, Uri.parse(published.contentUri),
+            downloadFormat = published.mimeType)
+    }
+
     private fun remember(
         asked: Song,
         fetched: Song,
