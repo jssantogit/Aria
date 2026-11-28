@@ -394,6 +394,8 @@ internal fun DetailScreen(
     canonicalTracks: List<CanonicalCatalogSearchRow> = emptyList(),
     /** Generic non-playable tracks rendered through the original numbered list. */
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    /** Indexed playable subset; keeps the full tracklist and repeated entries. */
+    metadataPlayableSongs: Map<Int, Song> = emptyMap(),
     /** Apple artist ID-confirmed recordings, metadata only and never a top chart. */
     appleArtistTracks: List<AppleEditorialTrackSearchRow> = emptyList(),
     sourceArtistTracksRanked: Boolean = false,
@@ -687,6 +689,16 @@ internal fun DetailScreen(
             metadataTracks.map { it.title to it.credit }, query, songSort,
         )
     }
+    val metadataHeaderQueue = remember(metadataTracks, metadataPlayableSongs) {
+        metadataTracks.indices.mapNotNull(metadataPlayableSongs::get)
+    }
+    val metadataFilteredQueue = remember(metadataVisibleTrackIndices, metadataPlayableSongs) {
+        metadataVisibleTrackIndices.filter { it in metadataPlayableSongs }
+    }
+    fun playMetadataRow(originalIndex: Int) {
+        val selected = metadataFilteredQueue.indexOf(originalIndex)
+        if (selected >= 0) onSongClick(metadataFilteredQueue.mapNotNull(metadataPlayableSongs::get),selected)
+    }
     // What a tap plays: the filtered set of tracks currently standing in the
     // list. When no filter is active, matches contains the full running order
     // and plays the complete release/playlist from the tapped position.
@@ -865,15 +877,18 @@ internal fun DetailScreen(
                         songs = songs,
                         canonicalTracks = canonicalTracks,
                         metadataTracks = metadataTracks,
+                        canPlayMetadata = metadataHeaderQueue.isNotEmpty(),
                         sourceAlbumArtistBrowseId = sourceAlbumArtistBrowseId,
                         sourceAlbumArtistDisplayName = sourceAlbumArtistDisplayName,
                         sourceAlbumMetadata = sourceAlbumMetadata,
                         onPlay = {
                             if (songs.isNotEmpty()) onSongClick(songs, 0)
+                            else if (metadataHeaderQueue.isNotEmpty()) onSongClick(metadataHeaderQueue,0)
                             else canonicalTracks.firstOrNull { it.hasCatalogedAsset }
                                 ?.musicBrainzId?.let { onCanonicalTrackPlay?.invoke(it) }
                         },
-                        onShuffle = { if (songs.isNotEmpty()) onShuffle(songs) },
+                        onShuffle = { if (songs.isNotEmpty()) onShuffle(songs)
+                            else if (metadataHeaderQueue.isNotEmpty()) onShuffle(metadataHeaderQueue) },
                         // A folder's credit says where its tracks live, not who made them.
                         onArtistClick = onArtistClick.takeIf { folder == null },
                         onToggleLibrary = onToggleLibrary,
@@ -917,10 +932,12 @@ internal fun DetailScreen(
                     // The native artist action row does not disappear merely
                     // because MusicBrainz has rankings but no MediaAsset.
                     ActionRow(
-                        onPlay = { if (songs.isNotEmpty()) onSongClick(songs, 0) },
-                        onShuffle = { if (songs.isNotEmpty()) onShuffle(songs) },
-                        canPlay = songs.isNotEmpty(),
-                        canShuffle = songs.isNotEmpty(),
+                        onPlay = { if (songs.isNotEmpty()) onSongClick(songs, 0)
+                            else if (metadataHeaderQueue.isNotEmpty()) onSongClick(metadataHeaderQueue,0) },
+                        onShuffle = { if (songs.isNotEmpty()) onShuffle(songs)
+                            else if (metadataHeaderQueue.isNotEmpty()) onShuffle(metadataHeaderQueue) },
+                        canPlay = songs.isNotEmpty() || metadataHeaderQueue.isNotEmpty(),
+                        canShuffle = songs.isNotEmpty() || metadataHeaderQueue.isNotEmpty(),
                         isSubscribed = if (catalogRatingTarget?.entityType == "ARTIST") null else
                             page.subscription?.takeIf { onToggleSubscription != null }?.subscribed,
                         onToggleSubscription = onToggleSubscription,
@@ -1040,7 +1057,11 @@ internal fun DetailScreen(
                 item(key = "source-artist-tracks") {
                     NativeArtistSourceMetadataTracksSection(metadataTracks, query, palette,
                         ranked = sourceArtistTracksRanked, onTrackHold = onMetadataTrackHold,
-                        onTrackClick = onMetadataTrackOpenAlbum)
+                        onTrackClick = if (metadataPlayableSongs.isEmpty()) onMetadataTrackOpenAlbum else ({ track ->
+                            val index = metadataTracks.indexOf(track)
+                            if (index in metadataPlayableSongs) playMetadataRow(index)
+                            else onMetadataTrackOpenAlbum?.invoke(track)
+                        }))
                 }
             }
 
@@ -1188,7 +1209,8 @@ internal fun DetailScreen(
                         val subtitle = if (playlist) track.credit?.takeIf { it.isNotBlank() }
                             else nativeMetadataAlbumTrackSubtitle(track, albumRowCredit.orEmpty())
                         NativeDetailTrackRowLayout(
-                            onClick = if (playlist) onMetadataTrackOpenAlbum?.let { open -> { open(track) } } else null,
+                            onClick = if (originalIndex in metadataPlayableSongs) ({ playMetadataRow(originalIndex) })
+                                else if (playlist) onMetadataTrackOpenAlbum?.let { open -> { open(track) } } else null,
                             onLongPress = if (track.sourceStoreUrl != null ||
                                 (playlist && onMetadataTrackOpenAlbum != null))
                                 onMetadataTrackHold?.let { hold -> { hold(track) } } else null,
@@ -1196,7 +1218,9 @@ internal fun DetailScreen(
                             modifier = if (playlist) Modifier.heightIn(min = 68.dp) else Modifier,
                             textGap = if (playlist) 14.dp else PAGE_GUTTER,
                             leading = {
-                                if (playlist) NativeDetailTrackArtwork(showPlayingBars=false) {
+                                if (playlist) NativeDetailTrackArtwork(showPlayingBars=isPlaying &&
+                                    currentSong?.videoId == metadataPlayableSongs[originalIndex]?.videoId &&
+                                    metadataPlayableSongs.containsKey(originalIndex)) {
                                     Box(Modifier.fillMaxSize().clip(publicPlaylistTrackCoverShape())) {
                                         CoverPlaceholder(page.placeholderIcon(), modifier=Modifier.matchParentSize())
                                         AsyncImage(model=track.artworkUri.artworkAt(ROW_ART_PX),
@@ -1576,6 +1600,7 @@ private fun ReleaseHeader(
     songs: List<Song>,
     canonicalTracks: List<CanonicalCatalogSearchRow>,
     metadataTracks: List<NativeMetadataTrack> = emptyList(),
+    canPlayMetadata: Boolean = false,
     sourceAlbumArtistBrowseId: String? = null,
     sourceAlbumArtistDisplayName: String? = null,
     sourceAlbumMetadata: CanonicalAlbumFooterMetadata? = null,
@@ -1708,14 +1733,14 @@ private fun ReleaseHeader(
         },
         actions = {
             if (amsPlaylist && onToggleCatalogPin != null) {
-                NativePlaylistHeroActions(canPlay = songs.isNotEmpty(),isPinned = isCatalogPinned,
+                NativePlaylistHeroActions(canPlay = songs.isNotEmpty() || canPlayMetadata,isPinned = isCatalogPinned,
                     onTogglePin = onToggleCatalogPin,onPlay = onPlay,onShuffle = onShuffle)
             } else if (page.type == BrowseType.ALBUM ||
                 songs.isNotEmpty() || canonicalTracks.isNotEmpty() ||
                 metadataTracks.isNotEmpty() ||
                 onToggleCatalogPin != null || onRate != null) {
                 val library = page.library?.takeIf { onToggleLibrary != null }
-                val canPlay = songs.isNotEmpty() ||
+                val canPlay = songs.isNotEmpty() || canPlayMetadata ||
                     (canonicalTracks.any { it.hasCatalogedAsset } &&
                         page.browseId.startsWith("catalog:"))
                 Spacer(Modifier.height(18.dp))
@@ -1731,7 +1756,7 @@ private fun ReleaseHeader(
                     ),
                     pinTargetLabel = if (page.type == BrowseType.PLAYLIST)
                         "playlist" else "álbum",
-                    canShuffle = songs.isNotEmpty(),
+                    canShuffle = songs.isNotEmpty() || canPlayMetadata,
                     isSaved = library?.saved,
                     onToggleLibrary = if (library == null) null else onToggleLibrary,
                     reservePinAction = onToggleCatalogPin != null,

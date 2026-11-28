@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.data.model.Song
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +61,10 @@ internal fun CanonicalProviderDetailHost(
     viewModel: MainViewModel,
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
     onMetadataTrackHold: ((NativeMetadataTrack) -> Unit)? = null,
+    currentSong: Song? = null,
+    isPlaying: Boolean = false,
+    onPlayMetadataSongs: ((List<Song>, Int) -> Unit)? = null,
+    onShuffleMetadataSongs: ((List<Song>) -> Unit)? = null,
 ) {
     val isDiscogs = routeKey.startsWith("discogs:")
     val isAms = routeKey.startsWith("apple_music_web:")
@@ -166,17 +171,27 @@ internal fun CanonicalProviderDetailHost(
         hasMore=amsPaging?.hasMore == true,loading=amsEntry?.pagingLoading == true,
         listState=listState,onLoadMore={ viewModel.appleMusicWebDetailNavigation.loadNextArtist(routeKey) },
     )
+    val metadata = discogsPage?.tracks ?: applePage?.metadataTracks.orEmpty()
+    val previewAllowed = isAms && appleReadAllowed && policySnapshot != null &&
+        amsPreviewPlaybackAllowed(gate) && onPlayMetadataSongs != null && onShuffleMetadataSongs != null
+    val previewSongs = if (previewAllowed) amsDetailPreviewSongs(page,metadata) else emptyMap()
     DetailScreen(
         page = page,
-        currentSong = null,
-        isPlaying = false,
+        currentSong = currentSong,
+        isPlaying = isPlaying,
         listState = listState,
         activeShelf = activeShelf,
         onActiveShelfChange = onActiveShelfChange,
-        onSongClick = { _, _ -> },
+        onSongClick = { songs,index ->
+            if (appleReadAllowed && amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()))
+                onPlayMetadataSongs?.invoke(songs,index)
+        },
         onSongLongPress = {},
         onSongSwipe = {},
-        onShuffle = {},
+        onShuffle = { songs ->
+            if (appleReadAllowed && amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()))
+                onShuffleMetadataSongs?.invoke(songs)
+        },
         onArtistClick = { targetId, artistName ->
             // Only an exact provider-owned credit ID can open an artist page.
             // Do not search by a similar title or cast to a MusicBrainz ID.
@@ -253,7 +268,8 @@ internal fun CanonicalProviderDetailHost(
         },
         searching = searching,
         onSearchingChange = onSearchingChange,
-        metadataTracks = discogsPage?.tracks ?: applePage?.metadataTracks.orEmpty(),
+        metadataTracks = metadata,
+        metadataPlayableSongs = previewSongs,
         sourceAlbumArtistBrowseId = discogsPage?.albumArtistBrowseId
             ?: applePage?.albumArtistBrowseId,
         sourceAlbumArtistDisplayName = discogsPage?.albumArtistDisplayName

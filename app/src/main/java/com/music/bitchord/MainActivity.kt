@@ -4357,6 +4357,18 @@ private fun BitChordApp(
                             onSearchingChange = { detailSearching = it },
                             songSort = songSort,
                             viewModel = viewModel,
+                            currentSong = player.song,
+                            isPlaying = player.isPlaying,
+                            onPlayMetadataSongs = { songs,index ->
+                                if (!CastController.state.value.casting && !ListenTogether.state.value.inParty)
+                                    playFrom(songs,index,QueueSource(appleSharedVisual?.page?.title.orEmpty(),PlaybackSourceType.BROWSE,key))
+                            },
+                            onShuffleMetadataSongs = { songs ->
+                                if (songs.isNotEmpty() && !CastController.state.value.casting && !ListenTogether.state.value.inParty) {
+                                    QueueShuffle.enableForNextQueue()
+                                    playFrom(songs,songs.indices.random(),QueueSource(appleSharedVisual?.page?.title.orEmpty(),PlaybackSourceType.BROWSE,key))
+                                }
+                            },
                             onMetadataTrackHold = { track -> amsShelfHeld.holdTrack(track, amsHoldScope) },
                             onSectionItemLongPress = { item ->
                                 val selected = item.browseId
