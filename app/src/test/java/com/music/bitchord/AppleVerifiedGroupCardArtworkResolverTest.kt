@@ -228,6 +228,12 @@ class AppleVerifiedGroupCardArtworkResolverTest {
             verified.copy(musicBrainzReleaseGroupId = otherGroup),
             verified.copy(storeUrl = "https://music.apple.com.attacker.test/101"),
             verified.copy(artworkUrl = "https://attacker.test/101.jpg"),
+            verified.copy(appleScopedId = "itunes:br:artist:101"),
+            verified.copy(appleScopedId = "other:br:album:101"),
+            verified.copy(appleScopedId = "itunes:br:album:0101"),
+            verified.copy(appleScopedId = "itunes:br:album:101:101"),
+            verified.copy(appleScopedId = "itunes:us:album:101",
+                storeUrl = "https://music.apple.com/us/album/101"),
         )) {
             val resolver = AppleVerifiedGroupCardArtworkResolver(
                 groups = AppleGroupCardEditionSource {
@@ -237,6 +243,21 @@ class AppleVerifiedGroupCardArtworkResolverTest {
             )
             assertNull(resolver.resolve(group, "br"))
         }
+    }
+
+    @Test fun sameAlbumInAnotherMarketCannotBorrowRequestedStorefrontProof() = runBlocking {
+        val usProof = verified.copy(
+            appleScopedId = "itunes:us:album:101",
+            storeUrl = "https://music.apple.com/us/album/101",
+        )
+        val resolver = AppleVerifiedGroupCardArtworkResolver(
+            groups = AppleGroupCardEditionSource {
+                MusicBrainzCatalogGraphResult.Success(page(edition()))
+            },
+            editions = AppleGroupCardArtworkSource { _, _ -> usProof },
+        )
+        assertNull(resolver.resolve(group, "br"))
+        assertEquals(usProof, resolver.resolve(group, "us"))
     }
 
     @Test fun cancellationPropagatesInsteadOfNegativeCaching() = runBlocking {

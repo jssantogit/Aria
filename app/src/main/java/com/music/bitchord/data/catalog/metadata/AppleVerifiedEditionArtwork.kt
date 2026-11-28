@@ -125,6 +125,17 @@ internal fun appleApprovedBadgeForStoreUrl(storeUrl: String?): String? {
     }
 }
 
+/** The typed identity and product URL must name the same exact album market. */
+internal fun exactAppleArtworkProductScope(proof: AppleVerifiedEditionArtwork): String? {
+    val match = Regex("^itunes:([a-z]{2}):album:([1-9][0-9]*)$")
+        .matchEntire(proof.appleScopedId) ?: return null
+    val storefront = match.groupValues[1]
+    val id = match.groupValues[2].toLongOrNull() ?: return null
+    return storefront.takeIf {
+        appleStoreLinkForExactProduct(proof.storeUrl, ItunesCatalogItemType.ALBUM, id, storefront) != null
+    }
+}
+
 internal fun canonicalAppleArtworkFor(
     proof: AppleVerifiedEditionArtwork?,
     requestedReleaseMbid: String,
@@ -132,12 +143,7 @@ internal fun canonicalAppleArtworkFor(
 ): String? = proof?.artworkUrl?.takeIf {
     proof.musicBrainzReleaseId.equals(requestedReleaseMbid, ignoreCase = true) &&
         proof.musicBrainzReleaseGroupId.equals(requestedGroupMbid, ignoreCase = true) &&
-        proof.appleScopedId.substringAfterLast(':').toLongOrNull()?.let {
-            appleStoreLinkForExactProduct(
-                proof.storeUrl, ItunesCatalogItemType.ALBUM, it,
-                proof.appleScopedId.split(':').getOrNull(1).orEmpty(),
-            ) != null
-        } == true &&
+        exactAppleArtworkProductScope(proof) != null &&
         safeAppleArtwork(proof.artworkUrl) != null
 }
 

@@ -117,7 +117,7 @@ internal class AppleVerifiedGroupCardArtworkResolver(
             } catch (_: Exception) { null } else null
             val proof = verifiedAppleArtworkForDisplayedGroupEdition(
                 candidate, groupMbid, editionId,
-            )
+            )?.takeIf { exactAppleArtworkProductScope(it) == storefront }
             synchronized(cache) {
                 if (cache.size >= 96 && !cache.containsKey(key))
                     cache.remove(cache.keys.first())
