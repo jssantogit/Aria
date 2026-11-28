@@ -92,7 +92,8 @@ private fun tracks(
             trackNumber=song.trackNumber?.takeIf { it > 0 },discNumber=song.discNumber?.takeIf { it > 0 },
             durationMs=song.durationMillis?.takeIf { it > 0 },
             artworkUri=song.cover(),releaseCaption=releaseCaption,
-            sourceStoreUrl=appleMusicWebVerifiedStoreUrl(song))
+            sourceStoreUrl=appleMusicWebVerifiedStoreUrl(song),
+            hasAudioPreview=appleMusicWebAudioPreviewUrl(song.previewUrl) != null)
     }
 
 /** The source's verified fields fill the existing native genre/year caption.

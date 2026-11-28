@@ -43,6 +43,26 @@ class AppleMusicWebSharedDetailAdapterTest {
         assertNull(appleMusicWebAsSharedDetail(album.scopedId,wrong)?.albumArtistBrowseId)
     }
 
+    @Test fun previewAvailabilityReachesNativeAlbumPlaylistAndArtistRowsWithoutInventingMedia() {
+        val preview = song.copy(previewUrl="https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview/sample.m4a")
+        val noPreview = song.copy(id="31",previewUrl="https://example.org/full.m4a")
+        val playlist = AppleMusicWebItem("pl.abc123",AppleMusicWebKind.PLAYLIST,"br","Top 100")
+        val sources = listOf(
+            album.scopedId to AppleMusicWebNativeDetail.Album(AppleMusicWebAlbum(
+                album,listOf(preview,noPreview),listOf(artist),false)),
+            playlist.scopedId to AppleMusicWebNativeDetail.Playlist(AppleMusicWebPlaylist(
+                playlist,listOf(preview,noPreview))),
+            artist.scopedId to AppleMusicWebNativeDetail.Artist(AppleMusicWebArtist(
+                artist,listOf(preview,noPreview),listOf(album),emptyList(),emptyList())),
+        )
+        for ((route, source) in sources) {
+            val detail = requireNotNull(appleMusicWebAsSharedDetail(route,source))
+            assertEquals(listOf(true,false),detail.metadataTracks.map { it.hasAudioPreview })
+            assertEquals(123456L,detail.metadataTracks.first().durationMs)
+            assertTrue((detail.page.songs as UiState.Success).data.isEmpty())
+        }
+    }
+
     @Test fun exactPlaylistMotionUsesNativeHeaderWithoutCreatingPlayback() {
         val url = "https://mvod.itunes.apple.com/example/playlist.m3u8"
         val playlist = AppleMusicWebItem("pl.abc123",AppleMusicWebKind.PLAYLIST,"br","Top 100",

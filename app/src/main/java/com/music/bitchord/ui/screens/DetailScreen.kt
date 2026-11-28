@@ -314,6 +314,8 @@ data class NativeMetadataTrack(
     val releaseCaption: String? = null,
     /** Source-owned URL, never a playable media identifier. */
     val sourceStoreUrl: String? = null,
+    /** Source evidence only; playback still requires current admission and resolution. */
+    val hasAudioPreview: Boolean = false,
 )
 
 internal data class NativeDetailAttribution(
