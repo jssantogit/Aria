@@ -49,7 +49,7 @@ jobs:
           ram-size: 2048M
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash scripts/acquisition_live_selection.sh
+          script: bash scripts/acquisition_live_acquisition.sh
       - name: Upload aggregate-only report
         if: always()
         uses: actions/upload-artifact@v4
