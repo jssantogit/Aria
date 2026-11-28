@@ -15,6 +15,7 @@ import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.screens.CanonicalCatalogSearchRow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 
@@ -44,11 +45,17 @@ internal fun CatalogArtworkWarmupEffects(
     }
     LaunchedEffect(showHome, homeUrls, homeListState) {
         if (showHome) snapshotFlow {
-            homeListState.firstVisibleItemIndex
-        }.collectLatest { firstVisible ->
-            // A fast scroll must not wait for decodes from the old viewport.
+            homeListState.isScrollInProgress to homeListState.firstVisibleItemIndex
+        }.collectLatest { (scrolling, firstVisible) ->
+            // Cancel speculative decodes as soon as scrolling begins. Visible
+            // image requests remain independent, including during fast flings.
+            if (scrolling) return@collectLatest
+            delay(250)
             VisualArtworkPrefetch.warm(
-                context, planVisualShelfArtwork(homeUrls, firstVisible, CARD_ART_PX),
+                context, planVisualShelfArtwork(
+                    homeUrls, firstVisible, CARD_ART_PX,
+                    maxCandidates = 6, nearbyRadius = 1,
+                ),
             )
         }
     }

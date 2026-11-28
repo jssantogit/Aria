@@ -63,6 +63,19 @@ class VisualArtworkPrefetchTest {
         assertEquals(VisualArtworkPriority.NEARBY, targets.last().priority)
     }
 
+    @Test fun settledViewportDoesNotWarmDistantShelvesEvenWithUnusedBudget() {
+        val groups = (0..8).map { listOf("https://cdn.example/$it.jpg") }
+        val planned = planVisualShelfArtwork(
+            groups, visibleShelfIndex = 4, targetPx = 300,
+            maxCandidates = 6, nearbyRadius = 1,
+        )
+        assertEquals(listOf("4.jpg", "5.jpg", "3.jpg"),
+            planned.map { requireNotNull(it.url).substringAfterLast('/') })
+        assertEquals(listOf("0.jpg", "1.jpg"),
+            planVisualShelfArtwork(groups, 0, 300, nearbyRadius = 1)
+                .map { requireNotNull(it.url).substringAfterLast('/') })
+    }
+
     @Test fun prefetchCoalescesSameImageAcrossSimultaneousSurfaces() = runBlocking {
         val gate = VisualArtworkFetchGate(maxConcurrent = 3)
         val started = CompletableDeferred<Unit>()

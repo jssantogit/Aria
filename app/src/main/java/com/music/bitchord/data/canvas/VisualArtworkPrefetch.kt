@@ -109,10 +109,13 @@ fun planVisualShelfArtwork(
     visibleShelfIndex: Int,
     targetPx: Int,
     maxCandidates: Int = 12,
+    nearbyRadius: Int = Int.MAX_VALUE,
 ): List<VisualArtworkCandidate> {
     if (shelfUrls.isEmpty()) return emptyList()
     val visible = visibleShelfIndex.coerceIn(0, shelfUrls.lastIndex)
-    val priorityOrder = shelfUrls.indices.sortedWith(
+    val priorityOrder = shelfUrls.indices.filter {
+        kotlin.math.abs(it - visible) <= nearbyRadius.coerceAtLeast(0)
+    }.sortedWith(
         compareBy<Int> { index ->
             when (index) {
                 visible -> 0
