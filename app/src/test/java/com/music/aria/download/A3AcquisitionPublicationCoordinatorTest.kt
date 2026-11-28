@@ -172,4 +172,40 @@ class A3AcquisitionPublicationCoordinatorTest {
         }catch(_:IllegalStateException){}
         assertEquals(0,calls)
     }
+
+    @Test fun guardThatDoesNotCommitCannotClaimPublication() {
+        val store=MemoryStore();val journal=staged(store)
+        val deleted=mutableListOf<String>()
+        val coordinator=A3AcquisitionPublicationCoordinator(journal) {
+            deleted+=it;true
+        }
+        var deferred:(()->Unit)?=null
+        try {
+            coordinator.publish(id,commitGuard={deferred=it},
+                publishAlreadyStaged={result()})
+            fail("Guard without a durable commit must fail")
+        }catch(_:A3PublicationCommitFailure.RolledBack){}
+        assertEquals(listOf(uri),deleted)
+        assertEquals(A3AcquisitionLedger.Phase.PUBLISHING,journal.get(id)?.phase)
+        try {
+            checkNotNull(deferred).invoke()
+            fail("Late commit cannot claim a deleted artifact")
+        }catch(_:IllegalStateException){}
+        assertNull(journal.get(id)?.contentUri)
+    }
+
+    @Test fun guardFailureAfterDurableCommitCannotDeleteOwnedFile() {
+        val store=MemoryStore();val journal=staged(store)
+        val deleted=mutableListOf<String>()
+        val coordinator=A3AcquisitionPublicationCoordinator(journal) {
+            deleted+=it;true
+        }
+        assertEquals(result(),coordinator.publish(id,commitGuard={commit ->
+            commit()
+            throw IOException("Guard failed after commit")
+        },publishAlreadyStaged={result()}))
+        assertEquals(A3AcquisitionLedger.Phase.AVAILABLE,
+            A3AcquisitionLedger(store).get(id)?.phase)
+        assertTrue(deleted.isEmpty())
+    }
 }
