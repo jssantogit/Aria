@@ -99,7 +99,6 @@ import com.music.bitchord.ui.components.NativeMediaCardMetrics
 import com.music.bitchord.ui.components.NativePageHeaderMetrics
 import com.music.bitchord.ui.components.SearchPlayingBars
 import com.music.bitchord.ui.components.SignInBanner
-import com.music.bitchord.ui.components.feedMoreSkeleton
 import com.music.bitchord.ui.components.feedSkeleton
 import com.music.bitchord.ui.components.recentlyPlayedSkeleton
 import com.music.bitchord.ui.components.heroCardWidth
@@ -238,8 +237,8 @@ fun HomeScreen(
     onContinue: ((String) -> Unit)? = null,
     /** Native account access while the floating Home actions are hidden. */
     headerTrailing: (@Composable () -> Unit)? = null,
-    /** An honest empty/loading result, not a synthetic playlist card. */
-    publicPlaylistNotice: String? = null,
+    /** Compatibility only: editorial status must not create a visible shelf. */
+    @Suppress("UNUSED_PARAMETER") publicPlaylistNotice: String? = null,
     /** Pushed Explore categories keep the full inset below the floating Back. */
     reserveFloatingBackSpace: Boolean = false,
     /** Genre/subgenre navigation is a square-card shelf, never the hero. */
@@ -360,17 +359,9 @@ fun HomeScreen(
                     }
                 }
                 is UiState.Success -> {
-                    if (recentlyPlayedLoading) {
-                        recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
-                    }
-                    // The loading skeleton already owns the hero slot. Until
-                    // Recently Played lands, every real shelf must retain its
-                    // compact-card layout instead of briefly becoming a hero.
-                    val displayShelves = if (publicPlaylistNotice != null &&
-                        state.data.none { it.title.startsWith("Playlists") }
-                    ) state.data.toMutableList().apply {
-                        add(minOf(2, size), HomeShelf("Playlists", emptyList()))
-                    } else state.data
+                    // An already populated feed shows only real content. Pending
+                    // sections and continuation work stay out of the layout.
+                    val displayShelves = homeReadyEditorialShelves(state.data)
                     val visibleShelves = displayShelves.toMutableList().apply {
                         // Retained paused playback is an actual Media3 playhead,
                         // not guessed listening history. Keep the editorial hero
@@ -382,7 +373,6 @@ fun HomeScreen(
                     }
                     itemsIndexedShelves(
                         shelves = visibleShelves,
-                        emptyPlaylistNotice = publicPlaylistNotice,
                         onItemClick = { item, shelfTitle ->
                             if (item.browseId == CONTINUE_LISTENING_BROWSE_ID)
                                 onContinue?.invoke(currentSong?.videoId.orEmpty())
@@ -424,7 +414,6 @@ fun HomeScreen(
                             )
                         }
                     }
-                    if (loadingMore) feedMoreSkeleton()
                 }
             }
         }
@@ -435,10 +424,8 @@ fun HomeScreen(
         // Re-checked on every layout change, rather than on the rising edge of
         // "the tail is in view". A page that appends only a shelf or two leaves
         // the list still near its end, so an edge-triggered effect would never
-        // fire a second time: the feed dead-ended at the bottom with no
-        // skeleton and no request in flight to explain it. Restarting on
-        // [loadingMore] re-checks the moment a page settles, so the next one is
-        // asked for while the tail is still on screen to show it loading.
+        // fire a second time. Restarting on [loadingMore] re-checks the
+        // moment a page settles; continuation stays entirely out of the layout.
         LaunchedEffect(listState, loadingMore) {
             snapshotFlow {
                 val layout = listState.layoutInfo
@@ -454,6 +441,9 @@ fun HomeScreen(
  * Recents mirrors the artist page's top-tracks pager. Any other lead shelf keeps
  * Apple's full-bleed treatment, while the remaining shelves use square cards.
  */
+internal fun homeReadyEditorialShelves(shelves: List<HomeShelf>): List<HomeShelf> =
+    shelves.filter { it.items.isNotEmpty() }
+
 private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     shelves: List<HomeShelf>,
     onItemClick: (ShelfItem, String) -> Unit,
@@ -463,7 +453,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     firstIsHero: Boolean = true,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
-    emptyPlaylistNotice: String? = null,
     onAdditionalGenrePage: (() -> Unit)? = null,
 ) {
     shelves.forEachIndexed { index, shelf ->
@@ -473,21 +462,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                 CONTINUE_LISTENING_BROWSE_ID
             ) null else onItemLongPress
             val presentation = homeShelfPresentation(shelf.title, index, firstIsHero)
-            if (shelf.title == "Playlists" && shelf.items.isEmpty() &&
-                emptyPlaylistNotice != null
-            ) {
-                // The native shelf position remains stable even while the
-                // public search is pending. No phantom or clickable playlist.
-                Column(Modifier.padding(bottom = 26.dp)) {
-                    SectionHeader(shelf.title)
-                    Text(
-                        emptyPlaylistNotice,
-                        modifier = Modifier.padding(horizontal = PAGE_GUTTER),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else if (presentation == HomeShelfPresentation.RECENT_COVERS) {
+            if (presentation == HomeShelfPresentation.RECENT_COVERS) {
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,

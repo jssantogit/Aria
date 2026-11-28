@@ -17,8 +17,6 @@ internal data class CanonicalPublicPlaylistUi(
     val playlists: Map<String, List<ListenBrainzPublicPlaylist>>,
     val detail: UiState<ListenBrainzPublicPlaylistDetail>,
     val homeShelf: HomeShelf?,
-    val homeNotice: String?,
-    val genreNotice: String?,
 )
 
 @Composable
@@ -29,7 +27,6 @@ internal fun rememberCanonicalPublicPlaylistUi(
     genreTag: String?,
 ): CanonicalPublicPlaylistUi {
     val playlists by viewModel.canonicalPublicPlaylists.collectAsStateWithLifecycle()
-    val status by viewModel.canonicalPublicPlaylistSearchStatus.collectAsStateWithLifecycle()
     val detail by viewModel.canonicalPublicPlaylistDetail.collectAsStateWithLifecycle()
 
     // Home no longer promotes unverified user-created playlist searches.
@@ -43,15 +40,7 @@ internal fun rememberCanonicalPublicPlaylistUi(
     }
 
     val homeShelf: HomeShelf? = null
-    val homeNotice: String? = null
-    val genreNotice = genreTag?.let { tag ->
-        if (!playlists[tag].isNullOrEmpty()) null else when (val current = status[tag]) {
-            is UiState.Error -> current.message
-            is UiState.Success -> "Nenhuma playlist pública encontrada para este gênero."
-            else -> "Procurando playlists deste gênero..."
-        }
-    }
-    return CanonicalPublicPlaylistUi(playlists, detail, homeShelf, homeNotice, genreNotice)
+    return CanonicalPublicPlaylistUi(playlists, detail, homeShelf)
 }
 
 

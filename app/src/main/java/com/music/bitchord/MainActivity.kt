@@ -1573,7 +1573,6 @@ private fun BitChordApp(
     }
     val authorizedCountryChartShelf = chartRuntime.shelf
     val canonicalHomePublicPlaylists = publicPlaylistUi.homeShelf
-    val canonicalHomePlaylistNotice = publicPlaylistUi.homeNotice
     // Provider-neutral selection owns editorial precedence. Native source
     // adapters own their own cards and IDs; local/server media stays separate.
     val catalogMb = com.music.bitchord.data.providers.BuiltInProviderKeys.MUSICBRAINZ
@@ -1654,7 +1653,6 @@ private fun BitChordApp(
             else -> Unit
         }
     }
-    val canonicalGenrePlaylistNotice = publicPlaylistUi.genreNotice
     val activeGenrePlaylists = activeCanonicalGenre?.tag?.let { tag ->
         canonicalPublicPlaylists[tag].orEmpty()
     }.orEmpty()
@@ -4684,7 +4682,6 @@ private fun BitChordApp(
                             title = stringResource(R.string.home),
                             onItemLongPress = onShelfLongPress,
                             signedIn = true,
-                            publicPlaylistNotice = canonicalHomePlaylistNotice,
                             editorialAttribution = if (
                                 canonicalHomeEditorialSelection.provider ==
                                     com.music.bitchord.data.providers.BuiltInProviderKeys.DISCOGS
@@ -4760,7 +4757,6 @@ private fun BitChordApp(
                             // heading. Do not apply Home's upward title lift.
                             reserveFloatingBackSpace = true,
                             onItemLongPress = onShelfLongPress,
-                            publicPlaylistNotice = canonicalGenrePlaylistNotice,
                             editorialAttribution = if (
                                 (canonicalGenreState as? UiState.Success)?.data?.any { shelf ->
                                     shelf.items.any { item ->
