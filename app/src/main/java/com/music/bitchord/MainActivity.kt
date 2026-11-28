@@ -1149,6 +1149,7 @@ private fun BitChordApp(
     )
 
     val catalogRuntime = collectCanonicalCatalogRuntime(viewModel)
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
     val nativeAppleSearch = com.music.bitchord.ui.collectNativeAppleSearchPresentation(viewModel,filter)
     val canonicalDiscoveryCatalog = catalogRuntime.discovery
     val canonicalHomeLocalPicks = catalogRuntime.localPicks
@@ -1222,7 +1223,6 @@ private fun BitChordApp(
     val results by viewModel.results.collectAsStateWithLifecycle()
 
     val libraryState by viewModel.library.collectAsStateWithLifecycle()
-    val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
     val canonicalGroupCardApplePromotions by
         viewModel.canonicalGroupCardApplePromotions.collectAsStateWithLifecycle()
