@@ -139,7 +139,9 @@ class SoulseekLiveSelectionTest {
             for(target in cases) {
                 val entry=SoulseekBatchPlan.Entry("ci-"+target.id,target.query,target.album,target.seconds)
                 val entries=listOf(entry)
-                val transport=A0FreshAutoSearchTransport(context,generation,profile)
+                var searchAudit:A0FreshAutoSearchTransport.SearchAudit?=null
+                val transport=A0FreshAutoSearchTransport(context,generation,profile,
+                    onSearchAudit={ searchAudit=it })
                 val start=SystemClock.elapsedRealtime()
                 var search="NOT_STARTED"
                 var decision:A0AutoCandidateSelectionPolicy.Decision?=null
@@ -212,6 +214,18 @@ class SoulseekLiveSelectionTest {
                     selected?.tieResolution?.name?:"NONE",
                     selected?.tieGroups?:0).joinToString("\t")
                 instrument.sendStatus(0,Bundle().apply { putString("aria_live",row) })
+                val discoveryRow=searchAudit?.let { a ->
+                    listOf(target.id,a.initialKind,a.fallbackOne,a.fallbackTwo,
+                        a.tickets,a.budgetSkipped,a.initialReplies,a.fallbackOneReplies,
+                        a.fallbackTwoReplies,a.initialFiles,a.fallbackOneFiles,a.fallbackTwoFiles,
+                        a.reachability,a.directAccepted,a.indirectOffers,a.indirectConnected,
+                        a.rawResponses,a.shadowTitleFiltered,a.admitted,a.unsupportedFormat,
+                        a.truncatedSlots)
+                } ?: listOf(target.id,"NOT_COMPLETED","NONE","NONE",0,0,0,0,0,0,0,0,
+                    "UNKNOWN",0,0,0,0,0,0,0,0)
+                instrument.sendStatus(0,Bundle().apply {
+                    putString("aria_search",discoveryRow.joinToString("\t"))
+                })
                 // One structured row per candidate, including those that were
                 // not scored because the whole sample failed closed.
                 evidence.entries.forEachIndexed { index,(candidate,audit) ->

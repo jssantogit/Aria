@@ -21,6 +21,7 @@ on:
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoCandidateSelectionPolicy.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoDiscoveryCoordinator.kt'
       - 'app/src/main/java/com/music/aria/acquisition/a0/A0CandidateRank.kt'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0FreshAutoSearchTransport.kt'
       - 'app/src/test/java/com/music/aria/acquisition/a0/A0CandidateRankEditionAliasTest.kt'
       - 'app/src/androidTest/java/com/music/aria/acquisition/live/SoulseekLiveSelectionTest.kt'
 permissions:
@@ -77,7 +78,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: acquisition-live-selection-${{ github.run_id }}
-          path: acquisition-live-report.tsv
+          path: |
+            acquisition-live-report.tsv
+            acquisition-live-search.tsv
           if-no-files-found: ignore
           retention-days: 3
       - name: Upload separate candidate audit (no peer identifiers)

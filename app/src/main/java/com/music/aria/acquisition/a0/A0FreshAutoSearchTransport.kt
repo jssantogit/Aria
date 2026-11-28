@@ -35,7 +35,18 @@ internal class A0FreshAutoSearchTransport(
     context:Context,
     private val generation:Long,
     private val quality:A0CanonicalAcquisitionIntent.QualityProfileSnapshot,
+    private val onSearchAudit:((SearchAudit)->Unit)?=null,
 ):A0AutoDiscoveryCoordinator.SearchPort {
+    /** Enum/count evidence only. Optional observer for the live harness. */
+    data class SearchAudit(
+        val initialKind:String,val fallbackOne:String,val fallbackTwo:String,
+        val tickets:Int,val budgetSkipped:Int,
+        val initialReplies:Int,val fallbackOneReplies:Int,val fallbackTwoReplies:Int,
+        val initialFiles:Int,val fallbackOneFiles:Int,val fallbackTwoFiles:Int,
+        val reachability:String,val directAccepted:Int,val indirectOffers:Int,
+        val indirectConnected:Int,val rawResponses:Int,val shadowTitleFiltered:Int,
+        val admitted:Int,val unsupportedFormat:Int,val truncatedSlots:Int,
+    )
     private val app=context.applicationContext
     private val closed=AtomicBoolean(false)
     private val folderProbe=A0FreshPeerFolderTransport(app,generation,quality)
@@ -508,6 +519,15 @@ internal class A0FreshAutoSearchTransport(
                 directAccepted.get(),indirectOffers.get(),indirectConnected.get(),
                 counts.responses,snapshot.choices.size,
                 rejectedServerOffers.get())
+            if(onSearchAudit!=null)try {
+                onSearchAudit(SearchAudit(initialQuery.kind.name,
+                    fallbackOneKind.name,fallbackTwoKind.name,tickets.accepted.size,
+                    budgetSkippedFallbacks,replyByTicket[0],replyByTicket[1],replyByTicket[2],
+                    filesByTicket[0],filesByTicket[1],filesByTicket[2],
+                    reachability.name,directAccepted.get(),indirectOffers.get(),
+                    indirectConnected.get(),counts.responses,counts.shadowTitleFiltered,
+                    counts.validBeforeLimit,counts.unsupportedFormat,snapshot.truncatedSlots.size))
+            }catch(_:Exception){}
             Log.d("BitChord","soulseek_auto_search replies=${snapshot.choices.size}" +
                 " scope=$traceScope slot=$slotIndex" +
                 " initial_query_kind=${initialQuery.kind.name}" +
