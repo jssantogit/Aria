@@ -61,9 +61,9 @@ class AmsDetailPreviewProjectionTest {
     }
 
     @Test fun previewRatingUsesExactMetadataIdentityWithoutMediaAsset() {
-        val song = Song(videoId="apple_music_web:br:song:123",
-            title="Title",artist="Artist",isAudioPreview=true)
-        assertEquals(song.videoId,amsPreviewRatingLabel(song)?.recordingId)
+        val id = "apple_music_web:br:song:123"
+        val song: Song = Song(id,"Title","Artist",null,isAudioPreview=true)
+        assertEquals(id,amsPreviewRatingLabel(song)?.recordingId)
         assertNull(amsPreviewRatingLabel(song.copy(isAudioPreview=false)))
         assertNull(amsPreviewRatingLabel(song.copy(videoId="itunes:br:track:123")))
         assertNull(amsPreviewRatingLabel(song.copy(artist="")))
