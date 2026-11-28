@@ -15,8 +15,6 @@ import com.music.aria.acquisition.a0.A0AndroidAutoAcquisitionEngine
 import com.music.aria.acquisition.a0.A0AndroidAutoConsent
 import com.music.aria.acquisition.a0.A0CanonicalAcquisitionIntent
 import com.music.aria.acquisition.a0.A0SoulseekQualityProfiles
-import com.music.aria.acquisition.a0.A0ManualReviewCandidatePolicy
-import com.music.aria.acquisition.a0.A0ObservedCandidateHandoff
 import com.music.aria.data.settings.AppSettings
 import com.music.aria.data.settings.DownloadQuality
 import com.music.aria.data.sources.SourceResolver
@@ -230,73 +228,6 @@ object Downloads {
         true
     }
 
-    /**
-     * Opens the existing MANUAL picker for only ambiguous/missing album slots.
-     * A3 uncertain commits and interrupted sessions are never eligible.
-     * Nothing here starts a P/F transfer or approves a peer candidate.
-     */
-    internal fun openSoulseekManualReview(context:Context,sessionId:String):Boolean {
-        if(!BuildConfig.DEBUG || BuildConfig.FLAVOR!="dev")return false
-        val plan=synchronized(lock) {
-            if(sessionId in running || sessionId in pending ||
-                autoRequests.isNotEmpty() || openManualReviews.hasOpen)return false
-            _autoReviews.value[sessionId]
-        } ?: return false
-        if(!plan.manualAllowed)return false
-        if(DownloadSession.state.value.items.firstOrNull {
-                it.videoId==sessionId
-            }?.progress !is DownloadProgress.Failed)return false
-        val entries=plan.manualEntries
-        val retainedRows=plan.manualIndices.count {
-            plan.candidatesForManual(it).isNotEmpty()
-        }
-        Log.d(TAG,"soulseek_manual_review_route" +
-            " screen=${if(retainedRows>0) "RETAINED" else "LEGACY_SEARCH"}" +
-            " manual_slots=${plan.manualIndices.size.coerceIn(0,64)}" +
-            " retained_slots=${retainedRows.coerceIn(0,64)}")
-        if(!SoulseekAutoQueueAdmission.allows(
-                entries,true,true,true,true))return false
-        val first=entries.first()
-        val intent=Intent().setClassName(
-            context.packageName,
-            if(plan.hasRetainedCandidates)
-                "com.music.aria.acquisition.a0.A0RetainedCandidateReviewActivity"
-            else "com.music.aria.acquisition.a0.A0ManualLoginActivity",
-        ).putExtra("bitchord.soulseek.manual.query",first.query)
-            .putExtra("bitchord.soulseek.manual.album",first.album)
-            .putExtra("bitchord.soulseek.manual.duration_seconds",
-                first.durationSeconds ?: 0)
-            .putExtra("bitchord.soulseek.manual.recovery",true)
-        intent.putExtra("bitchord.soulseek.manual.review_session",sessionId)
-            .putExtra("bitchord.soulseek.manual.review_indices",
-                plan.manualIndices.toIntArray())
-        if(entries.size>1) {
-            intent.putStringArrayListExtra("bitchord.soulseek.batch.queries",
-                ArrayList(entries.map { it.query }))
-                .putStringArrayListExtra("bitchord.soulseek.batch.albums",
-                    ArrayList(entries.map { it.album.orEmpty() }))
-                .putExtra("bitchord.soulseek.batch.durations",
-                    entries.map { it.durationSeconds ?: 0 }.toIntArray())
-        }
-        val leaseToken=synchronized(lock) {
-            if(openManualReviews.hasOpen || autoRequests.isNotEmpty() ||
-                sessionId in running || sessionId in pending ||
-                _autoReviews.value[sessionId] !== plan)return false
-            val token=openManualReviews.reserve(sessionId) ?: return false
-            _manualReviewBusy.value=true
-            token
-        }
-        // Only the first Activity instance may consume this one-time token.
-        intent.putExtra("bitchord.soulseek.manual.review_token",leaseToken)
-        return runCatching {
-            context.startActivity(intent)
-            true
-        }.getOrElse {
-            closeSoulseekManualReview(sessionId,leaseToken)
-            false
-        }
-    }
-
     /** Verify the exactly pending slots before a new Activity may own the
      * in-process recovery lease. A recreated/stale Intent has no authority.
      */
@@ -363,7 +294,7 @@ object Downloads {
                 }else {
                     fail(sessionId,
                         "${next.published} de ${next.rows.size} faixas salvas. " +
-                            "Revisão manual das restantes disponível.")
+                            "As demais faixas não foram salvas.")
                 }
                 return true
             }
@@ -407,7 +338,7 @@ object Downloads {
         // A closed legacy route is safer than a cosmetic UI change: stale actions,
         // notification intents and permission callbacks may still call enqueue.
         DownloadSession.queued(song, from)
-        fail(song.videoId, "YouTube Music acquisition disabled; use manual Soulseek")
+        fail(song.videoId, "Download indisponível por esta rota. Use Soulseek.")
         return
         val id = song.videoId
         if (!AppSettings.downloadsAllowedNow) {
@@ -1289,8 +1220,6 @@ object Downloads {
     ) {
         val job=currentCoroutineContext()[Job]
         var unusedReservationConfirmed=false
-        // Raw peer handles never leave this process or enter diagnostics.
-        val retained=LinkedHashMap<Int,List<A0ObservedCandidateHandoff.Choice>>()
         _active.update { it + (id to DownloadState.Running(0f)) }
         DownloadSession.running(id,0f)
         try {
@@ -1344,11 +1273,6 @@ object Downloads {
                             " published_folders=${evidence.publishedFolderCount.coerceIn(0,64)}" +
                             " same_peer_offers=${evidence.samePeerOffers.coerceIn(0,512)}" +
                             " same_peer_folder_offers=${evidence.samePeerFolderOffers.coerceIn(0,512)}")
-                    },
-                    onSlotEvidence={index,observed ->
-                        val entry=request.entries[index]
-                        retained[index]=A0ManualReviewCandidatePolicy.retain(
-                            entry,observed,request.quality)
                     },
                     onSlotResolved={index,status ->
                         Log.d(TAG,"soulseek_auto slot=$index settled=$status")
@@ -1406,12 +1330,10 @@ object Downloads {
                     " reconcile=${report.needsReconciliation}" +
                     " attempt_failed=${report.attemptFailures}" +
                     " cancelled=${report.cancelled}" +
-                    " unused_reservation_released=${outcome.unusedReservationReleased}" +
-                    " retained_slots=${retained.count { it.value.isNotEmpty() }}" +
-                    " retained_offers=${retained.values.sumOf { it.size }.coerceIn(0,1024)}")
+                    " unused_reservation_released=${outcome.unusedReservationReleased}")
                 if(job?.isActive!=true)throw CancellationException()
                 val review=SoulseekAutoReviewPlan.from(
-                    request.entries,report.results,retained,
+                    request.entries,report.results,emptyMap(),
                     qualityProfile=request.quality)
                 if(review==null) {
                     fail(id,"Resultado incompleto: confira a biblioteca antes de tentar novamente.")
@@ -1425,7 +1347,7 @@ object Downloads {
                     outcome.unusedReservationReleased ->
                         fail(id,"Nenhuma transferência foi iniciada. " +
                             "Você pode tocar em Baixar novamente para repetir a busca " +
-                            "ou escolher as faixas pelo seletor manual.")
+                            "quando quiser realizar uma nova busca.")
                     report.published==request.entries.size -> {
                         DownloadSession.done(id)
                         clear(id)
@@ -1440,7 +1362,7 @@ object Downloads {
                             "Confira a biblioteca antes de repetir.")
                     else -> fail(id,
                         "${report.published} de ${request.entries.size} faixas salvas. " +
-                            "Revise as demais pelo seletor manual.")
+                            "Não foi encontrada uma correspondência segura para as demais.")
                 }
             }
         }catch(e:CancellationException) {
@@ -1449,8 +1371,7 @@ object Downloads {
         }catch(_:A3AcquisitionLedger.AutomaticIdentityAlreadyReserved) {
             Log.d(TAG,"soulseek_auto_summary aborted=A3_IDENTITY_RESERVED")
             fail(id,"Esta faixa ou lançamento já tem uma tentativa registrada. " +
-                "Confira a biblioteca antes de baixar novamente; " +
-                "para revisão explícita, desative a automação.")
+                "Confira a biblioteca antes de baixar novamente.")
         }catch(error:Exception) {
             Log.d(TAG,"soulseek_auto_summary aborted=" +
                 "${A0AcquisitionDiagnostics.fault(error).name}" +
@@ -1459,7 +1380,7 @@ object Downloads {
                 "Busca interrompida antes de iniciar a transferência. " +
                     "Você pode tocar em Baixar novamente para pesquisar."
             else
-                "Aquisição automática interrompida; confira a biblioteca e use o modo manual.")
+                "Download interrompido; confira a biblioteca antes de tentar novamente.")
         }
     }
 
@@ -1713,7 +1634,7 @@ object Downloads {
         @Suppress("UNUSED_PARAMETER") track: Song,
         @Suppress("UNUSED_PARAMETER") quality: DownloadQuality,
     ): Route = throw UnsupportedOperationException(
-        "Legacy HTTP and YouTube download routes are retired; Soulseek uses the candidate picker",
+        "Legacy HTTP and YouTube download routes are retired; Soulseek uses the automatic queue",
     )
 
     /**
