@@ -2,6 +2,7 @@ package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -136,6 +137,8 @@ fun PlayerAnchoredActionsMenu(
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     var plateSize by remember { mutableStateOf(IntSize.Zero) }
     var rootOrigin by remember { mutableStateOf(IntOffset.Zero) }
+    var originMeasured by remember { mutableStateOf(false) }
+    val dismissInteractions = remember { MutableInteractionSource() }
     val density = LocalDensity.current
     val gap = with(density) { 12.dp.roundToPx() }
     val margin = with(density) { 14.dp.roundToPx() }
@@ -155,7 +158,7 @@ fun PlayerAnchoredActionsMenu(
                 .coerceAtLeast(1).toDp().coerceAtMost(570.dp)
         }
     } else 570.dp
-    val measured = rootSize.width > 0 && rootSize.height > 0 &&
+    val measured = originMeasured && rootSize.width > 0 && rootSize.height > 0 &&
         plateSize.width > 0 && plateSize.height > 0
     LaunchedEffect(measured, reduceMotion) {
         if (!measured) return@LaunchedEffect
@@ -192,7 +195,10 @@ fun PlayerAnchoredActionsMenu(
                 .onSizeChanged { rootSize = it }
                 .onGloballyPositioned { coords ->
                     val pos = coords.positionOnScreen()
-                    rootOrigin = IntOffset(pos.x.toInt(), pos.y.toInt())
+                    if (pos.x.isFinite() && pos.y.isFinite()) {
+                        rootOrigin = IntOffset(pos.x.toInt(), pos.y.toInt())
+                        originMeasured = true
+                    }
                 },
             contentAlignment = Alignment.TopStart,
         ) {
@@ -202,7 +208,7 @@ fun PlayerAnchoredActionsMenu(
                     // The original glyph and puck retain their exact tint,
                     // geometry, alpha and position; never draw a second copy.
                     .drawBehind {
-                        val spotlight = if (highlightLauncher) {
+                        val spotlight = if (highlightLauncher && originMeasured) {
                             playerOverflowScrimCutout(
                                 anchor = anchorBounds,
                                 overlayOrigin = rootOrigin,
@@ -222,7 +228,7 @@ fun PlayerAnchoredActionsMenu(
                             drawPath(outside, Color.Black.copy(alpha = 0.28f))
                         }
                     }
-                    .clickable(onClick = onDismiss),
+                    .clickable(interactionSource = dismissInteractions, indication = null, onClick = onDismiss),
             )
             val anchor = anchorBounds ?: IntRect(
                 rootSize.width - margin - with(density) { 44.dp.roundToPx() },

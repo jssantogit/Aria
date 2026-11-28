@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,12 +39,14 @@ internal fun NativePlaylistDetailFrame(
     /** Native long-press actions draw over the same page, not in a detached
      * Popup with a separate opaque material or a cloned track bitmap. */
     heldActions: @Composable (HazeState) -> Unit = {},
+    allowOverscroll: Boolean = true,
     content: LazyListScope.() -> Unit,
 ) {
     val hazeState = remember { HazeState() }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
+            overscrollEffect = if (allowOverscroll) rememberOverscrollEffect() else null,
             modifier = Modifier
                 .fillMaxSize()
                 .background(palette.background)

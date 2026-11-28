@@ -685,27 +685,33 @@ internal fun AppleQueueHeaderAction(
         ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = imageVector,
-            contentDescription = description,
-            tint = Color.White,
+        // Measure a stationary slot, not the press-scaled glyph. The menu
+        // spotlight must not move or resize as the touch animation settles.
+        Box(
             modifier = Modifier.size(34.dp)
-                .graphicsLayer {
+                .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
+                    val origin = coords.positionOnScreen()
+                    if (origin.x.isFinite() && origin.y.isFinite()) {
+                        onBoundsChanged(androidx.compose.ui.unit.IntRect(
+                            origin.x.toInt(), origin.y.toInt(),
+                            (origin.x + coords.size.width).toInt(),
+                            (origin.y + coords.size.height).toInt(),
+                        ))
+                    }
+                }),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = description,
+                tint = Color.White,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
                     scaleX = pressScale
                     scaleY = pressScale
                     alpha = pressAlpha
-                }
-                .then(if (onBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coords ->
-                    // The menu opens in another Dialog with a different window
-                    // origin. Publish screen coordinates, matching its scrim.
-                    val origin = coords.positionOnScreen()
-                    onBoundsChanged(androidx.compose.ui.unit.IntRect(
-                        origin.x.toInt(), origin.y.toInt(),
-                        (origin.x + coords.size.width).toInt(),
-                        (origin.y + coords.size.height).toInt(),
-                    ))
-                }),
-        )
+                },
+            )
+        }
     }
 }
 

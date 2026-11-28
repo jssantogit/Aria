@@ -1492,6 +1492,10 @@ internal fun DetailScreen(
             footerContent(palette)
         }
 
+                // An immersive hero reaches the window edge. Translating the
+                // whole list on edge pulls exposes an empty strip above it.
+                // Keep normal scrolling and nested horizontal shelves intact.
+                val allowReleaseOverscroll = !amsReleaseUsesImmersiveLayout(releaseHeroOverride)
                 if (isArtist) {
                     NativeArtistDetailFrame(
                         palette = palette,
@@ -1513,6 +1517,7 @@ internal fun DetailScreen(
                         palette = palette,
                         listState = listState,
                         bottomPadding = contentPadding.calculateBottomPadding(),
+                        allowOverscroll = allowReleaseOverscroll,
                         content = detailListItems,
                     )
                 } else {
@@ -1522,6 +1527,7 @@ internal fun DetailScreen(
                     NativeAlbumDetailFrame(
                         palette = palette,
                         listState = listState,
+                        allowOverscroll = allowReleaseOverscroll,
                         contentPadding = PaddingValues(
                             bottom = contentPadding.calculateBottomPadding(),
                         ),

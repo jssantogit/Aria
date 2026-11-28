@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -37,10 +38,12 @@ internal fun NativeAlbumDetailFrame(
     listState: LazyListState,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    allowOverscroll: Boolean = true,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
     LazyColumn(
         state = listState,
+        overscrollEffect = if (allowOverscroll) rememberOverscrollEffect() else null,
         modifier = modifier.fillMaxSize().background(palette.background)
             .testTag("native-album-detail-frame"),
         contentPadding = contentPadding,
