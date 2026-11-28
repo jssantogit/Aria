@@ -164,6 +164,7 @@ import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.providers.ProviderRuntime
 import com.music.bitchord.data.model.isUnresolvedSpotify
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.UserPlaylist
@@ -2061,9 +2062,12 @@ private fun BitChordApp(
     ) {
         // A Spotify page lists songs it has not found on YouTube Music yet (or
         // never will); those can't be queued, so play the rest in their order.
-        if (allSongs.getOrNull(allIndex)?.isUnresolvedSpotify == true) return
-        val songs = allSongs.filterNot { it.isUnresolvedSpotify }
-        val index = songs.indexOf(allSongs.getOrNull(allIndex)).coerceAtLeast(0)
+        val selection = com.music.bitchord.ui.screens.selectPlayableQueueOccurrence(allSongs,allIndex) ?: return
+        val songs = selection.first
+        val index = selection.second
+        if (songs.any { it.isAudioPreview } &&
+            (CastController.state.value.casting || ListenTogether.state.value.inParty ||
+                !com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()))) return
         playRequestGeneration++
         activeRadioSeed = null
         scope.launch {
@@ -2236,6 +2240,8 @@ private fun BitChordApp(
     }
     val addToQueue: (Song) -> Unit = { song ->
         scope.launch {
+            if (song.isAudioPreview && (CastController.state.value.casting || ListenTogether.state.value.inParty ||
+                    !com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()))) return@launch
             if (refusedByHost()) return@launch
             // The end of what the user queued, not the end of the queue: a song
             // asked for by name outranks whatever AutoPlay lined up behind it.
@@ -2268,6 +2274,8 @@ private fun BitChordApp(
     }
     val playNext: (Song) -> Unit = { song ->
         scope.launch {
+            if (song.isAudioPreview && (CastController.state.value.casting || ListenTogether.state.value.inParty ||
+                    !com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()))) return@launch
             if (refusedByHost()) return@launch
             controller?.let {
                 if (ListenTogether.state.value.inParty) {
@@ -4994,7 +5002,17 @@ private fun BitChordApp(
                             appleArtistResults = nativeAppleSearch.artists,
                             appleTrackResults = nativeAppleSearch.tracks,
                             onAppleOpen = viewModel::openAppleEditorialEntry,
-                            onAppleTrackOpen = viewModel::openAppleEditorialTrackAlbum,
+                            onAppleTrackOpen = { row ->
+                                val search = viewModel.appleMusicWebSearchUi
+                                val live = search.state.value
+                                val sample = com.music.bitchord.ui.screens.amsSearchPreviewSong(row)
+                                if (sample != null && live.selected && search.current() &&
+                                    live.sections.values.any { section -> section.items.any { com.music.bitchord.ui.amsSearchTrack(it) == row } } &&
+                                    com.music.bitchord.ui.screens.amsPreviewPlaybackAllowed(ProviderRuntime.gateOrNull()) &&
+                                    !CastController.state.value.casting && !ListenTogether.state.value.inParty) {
+                                    playFrom(listOf(sample),0,QueueSource(searchLabel,PlaybackSourceType.SEARCH))
+                                } else viewModel.openAppleEditorialTrackAlbum(row)
+                            },
                             onAppleHold = amsSearchHeld::hold,
                             onAppleTrackHold = amsSearchHeld::holdTrack,
                             applePaging = nativeAppleSearch.paging,
@@ -7355,7 +7373,9 @@ private fun BitChordApp(
             }
             CanonicalSearchContextOverlays()
             com.music.bitchord.ui.screens.AmsSearchHeldMenu(amsSearchHeld, viewModel, hazeState,
-                heldChromeClearance, searchRouteActive = pageRouteKey == "$TAB_KEY$TAB_SEARCH")
+                heldChromeClearance, searchRouteActive = pageRouteKey == "$TAB_KEY$TAB_SEARCH",
+                onPreviewPlay = { song -> playFrom(listOf(song),0,QueueSource(searchLabel,PlaybackSourceType.SEARCH)) },
+                onPreviewNext = playNext, onPreviewQueue = addToQueue)
             com.music.bitchord.ui.screens.ProviderShelfHeldMenu(
                 held = providerShelfHeld,
                 allowed = { card ->
@@ -7401,6 +7421,8 @@ private fun BitChordApp(
             com.music.bitchord.ui.screens.AmsShelfHeldMenu(
                 held = amsShelfHeld,
                 loadCollection = viewModel::loadAmsCollectionLabels,
+                onPreviewPlay = { song -> playFrom(listOf(song),0,QueueSource(appleSharedVisual?.page?.title.orEmpty(),PlaybackSourceType.BROWSE,pageRouteKey)) },
+                onPreviewNext = playNext, onPreviewQueue = addToQueue,
                 allowed = { target ->
                     val scope = target.scope
                     val card = target.card

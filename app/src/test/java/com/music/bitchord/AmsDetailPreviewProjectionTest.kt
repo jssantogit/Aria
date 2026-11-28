@@ -6,6 +6,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AmsDetailPreviewProjectionTest {
+    @Test fun selectedDuplicateOccurrenceDoesNotJumpToFirst() {
+        val sample = Song("apple_music_web:br:song:123","Sample","Artist",null,isAudioPreview=true)
+        val other = sample.copy(videoId="apple_music_web:br:song:456")
+        val queue = listOf(sample,other,sample)
+        val selected = requireNotNull(selectPlayableQueueOccurrence(queue,2))
+        assertEquals(queue,selected.first)
+        assertEquals(2,selected.second)
+        assertNull(selectPlayableQueueOccurrence(queue,3))
+    }
+
+    @Test fun searchPreviewRequiresExactAmsIdentityAndEvidence() {
+        val row = AppleEditorialTrackSearchRow("apple_music_web:br:song:123","Track","Artist",null,null,180000L,hasAudioPreview=true)
+        assertTrue(requireNotNull(amsSearchPreviewSong(row)).isAudioPreview)
+        assertNull(amsSearchPreviewSong(row.copy(hasAudioPreview=false)))
+        assertNull(amsSearchPreviewSong(row.copy(key="itunes:br:song:123")))
+    }
+
     @Test fun preservesUnavailableRowsAndRepeatedMembersInPlayableProjection() {
         val page = DetailPage("apple_music_web:br:playlist:pl.123456","Playlist","",
             null,UiState.Success(emptyList()),BrowseType.PLAYLIST)

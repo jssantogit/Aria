@@ -40,6 +40,7 @@ on:
       - audit/ams-preview-queue-routing-20261128
       - audit/ams-preview-provider-audio-20261128
       - audit/ams-preview-detail-controls-20261128
+      - audit/ams-preview-native-actions-20261128
 permissions:
   contents: read
 concurrency:

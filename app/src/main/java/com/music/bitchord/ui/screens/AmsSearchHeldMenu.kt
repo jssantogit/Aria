@@ -101,10 +101,15 @@ internal fun AmsSearchHeldMenu(
     hazeState: HazeState,
     bottomChromeClearance: Dp,
     searchRouteActive: Boolean,
+    onPreviewPlay: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
+    onPreviewNext: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
+    onPreviewQueue: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
 ) {
     val session = viewModel.appleMusicWebSearchUi
     val snapshot by session.state.collectAsStateWithLifecycle()
     val uri = LocalUriHandler.current
+    val previewPolicy = com.music.bitchord.data.providers.ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val previewAllowed = previewPolicy != null && amsPreviewPlaybackAllowed(com.music.bitchord.data.providers.ProviderRuntime.gateOrNull())
     val routeActive by androidx.compose.runtime.rememberUpdatedState(searchRouteActive)
     var pendingTarget by remember { mutableStateOf<AmsSearchHeldTarget?>(null) }
     var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
@@ -156,6 +161,13 @@ internal fun AmsSearchHeldMenu(
         onDismiss=held::dismiss,onPreviewClick=::open,
     ) { item ->
         val recording = amsLocalRecordingLabel(item.id,item.title,item.credit)
+        val preview = item.track?.let(::amsSearchPreviewSong).takeIf { previewAllowed }
+        fun action(callback: ((com.music.bitchord.data.model.Song) -> Unit)?): (() -> Unit)? =
+            if (callback == null || preview == null) null else ({
+                if (allowed(item) && amsPreviewPlaybackAllowed(com.music.bitchord.data.providers.ProviderRuntime.gateOrNull())) {
+                    held.dismiss(); callback(preview)
+                }
+            })
         if (canonicalCatalogEntityMenuSpec(item.id,item.storeUrl) != null) {
             CanonicalCatalogEntityMenuBody(
                 browseId=item.id,title=item.title,subtitle=item.credit,artworkUrl=item.art,
@@ -168,6 +180,7 @@ internal fun AmsSearchHeldMenu(
             target=BrowseTarget(browseId=item.id,title=item.title,subtitle=item.credit,
                 thumbnailUrl=item.art,type=item.type,fromCard=false),
             presentation=SongActionsPresentation.Menu,
+            onPlay=action(onPreviewPlay),onPlayNext=action(onPreviewNext),onAddToQueue=action(onPreviewQueue),
             onOpenLabel=if (item.track != null) "Abrir álbum" else "Ver detalhes",
             onOpen={ open(item) },
             onEditRating=recording?.let { { if (allowed(item)) { held.dismiss(); pendingTarget=item; recordingRating=it } } },
@@ -223,10 +236,15 @@ internal fun AmsShelfHeldMenu(
     hazeState: HazeState,
     bottomChromeClearance: Dp,
     loadCollection: (suspend (String) -> List<CatalogMetadataRecordingLabel>?)? = null,
+    onPreviewPlay: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
+    onPreviewNext: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
+    onPreviewQueue: ((com.music.bitchord.data.model.Song) -> Unit)? = null,
 ) {
     val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
     val latestOpen by androidx.compose.runtime.rememberUpdatedState(onOpen)
     val uri = LocalUriHandler.current
+    val previewPolicy = com.music.bitchord.data.providers.ProviderRuntime.state?.collectAsStateWithLifecycle()?.value
+    val previewAllowed = previewPolicy != null && amsPreviewPlaybackAllowed(com.music.bitchord.data.providers.ProviderRuntime.gateOrNull())
     var pendingTarget by remember { mutableStateOf<AmsShelfHeldTarget?>(null) }
     var rating by remember { mutableStateOf<AmsHeldRating?>(null) }
     var recordingRating by remember { mutableStateOf<CatalogMetadataRecordingLabel?>(null) }
@@ -275,6 +293,13 @@ internal fun AmsShelfHeldMenu(
         val canOpenAlbum = track?.let { amsDetailCanOpenTrackAlbum(item.scope.detail,it) } == true
         val link = appleMusicWebVerifiedRouteUrl(card?.appleStoreUrl ?: track?.sourceStoreUrl,id)
         val recording = amsLocalRecordingLabel(id,card?.title ?: track?.title.orEmpty(),card?.subtitle ?: track?.credit.orEmpty())
+        val preview = track?.let { amsHeldPreviewSong(it,item.scope.detail) }.takeIf { previewAllowed }
+        fun action(callback: ((com.music.bitchord.data.model.Song) -> Unit)?): (() -> Unit)? =
+            if (callback == null || preview == null) null else ({
+                if (latestAllowed(item) && amsPreviewPlaybackAllowed(com.music.bitchord.data.providers.ProviderRuntime.gateOrNull())) {
+                    held.dismiss(); callback(preview)
+                }
+            })
         if (id != null && card != null && canonicalCatalogEntityMenuSpec(id,link) != null) {
             CanonicalCatalogEntityMenuBody(
                 browseId=id,title=card.title,subtitle=card.subtitle.orEmpty(),artworkUrl=card.thumbnailUrl,
@@ -294,6 +319,7 @@ internal fun AmsShelfHeldMenu(
                     else -> BrowseType.OTHER
                 },fromCard=false),
             presentation=SongActionsPresentation.Menu,
+            onPlay=action(onPreviewPlay),onPlayNext=action(onPreviewNext),onAddToQueue=action(onPreviewQueue),
             onOpenLabel=if (canOpenAlbum) "Abrir álbum" else "Ver detalhes",
             onOpen=if ((card != null && !song) || canOpenAlbum) ({ open(item) }) else null,
             onEditRating=recording?.let { { if (latestAllowed(item)) { held.dismiss(); pendingTarget=item; recordingRating=it } } },

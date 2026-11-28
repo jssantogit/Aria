@@ -3,6 +3,7 @@ package com.music.bitchord.ui.screens
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.isUnresolvedSpotify
 import com.music.bitchord.data.providers.*
 import com.music.bitchord.playback.AmsPreviewRoute
 import com.music.bitchord.ui.AppleMusicWebNativeRoute
@@ -28,4 +29,33 @@ internal fun amsDetailPreviewSongs(page: DetailPage, tracks: List<NativeMetadata
             albumName=page.title.takeIf { page.type == BrowseType.ALBUM },
             isAudioPreview=true)
     }.toMap()
+}
+
+/** Preserve the tapped occurrence rather than using Song equality. */
+internal fun selectPlayableQueueOccurrence(songs: List<Song>, index: Int): Pair<List<Song>,Int>? {
+    val selected = songs.getOrNull(index) ?: return null
+    if (selected.isUnresolvedSpotify) return null
+    return songs.filterNot { it.isUnresolvedSpotify } to songs.take(index).count { !it.isUnresolvedSpotify }
+}
+
+internal fun amsSearchPreviewSong(row: AppleEditorialTrackSearchRow): Song? {
+    val route = AmsPreviewRoute.fromScopedId(row.key) ?: return null
+    if (!row.hasAudioPreview || row.title.isBlank()) return null
+    return Song(videoId=route.scopedId,title=row.title,artist=row.artistName,thumbnailUrl=row.artworkUri,
+        albumId=row.albumBrowseId?.takeIf {
+            AppleMusicWebNativeRoute.parse(it)?.let { album ->
+                album.storefront == route.storefront &&
+                    album.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM
+            } == true
+        },isAudioPreview=true)
+}
+
+internal fun amsHeldPreviewSong(track: NativeMetadataTrack, parent: String?): Song? {
+    val route = AmsPreviewRoute.fromScopedId(track.key) ?: return null
+    val page = AppleMusicWebNativeRoute.parse(parent) ?: return null
+    if (!track.hasAudioPreview || track.title.isBlank() || page.storefront != route.storefront) return null
+    return Song(videoId=route.scopedId,title=track.title,artist=track.credit.orEmpty(),
+        thumbnailUrl=track.artworkUri,albumId=page.browseId.takeIf {
+            page.kind == com.music.bitchord.data.catalog.provider.applemusicweb.AppleMusicWebKind.ALBUM
+        },isAudioPreview=true)
 }
