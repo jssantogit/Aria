@@ -313,6 +313,8 @@ fun SearchScreen(
     onDiscogsReleaseOpen: (DiscogsNativeReleaseSearchRow) -> Unit = {},
     discogsReleaseHasMore: Boolean = false,
     onDiscogsReleaseLoadMore: () -> Unit = {},
+    discogsArtistLoadingMore: Boolean = false,
+    discogsReleaseLoadingMore: Boolean = false,
     /** Mirrors the actual ViewModel submit state; Local remains live while typing. */
     searchCommitted: Boolean = false,
     appleResultTabs: Boolean = false,
@@ -360,6 +362,11 @@ fun SearchScreen(
     val discogsNext = discogsUnifiedNextPage(
         query, discogsArtistRows, discogsHasMore, discogsReleaseHasMore,
     )
+    val discogsContinuationLoading = !discogsUnshown && when (discogsNext) {
+        DiscogsUnifiedSearchNext.ARTISTS -> discogsArtistLoadingMore
+        DiscogsUnifiedSearchNext.RELEASES -> discogsReleaseLoadingMore
+        null -> false
+    }
     LaunchedEffect(listState, results, loadingMore, searchingLibrary, searchingAddons, searchingCanonical) {
         if (results !is UiState.Success || searchingLibrary || searchingAddons || searchingCanonical) return@LaunchedEffect
         snapshotFlow {
@@ -589,8 +596,8 @@ fun SearchScreen(
                                                 null -> Unit
                                             }
                                         },
-                                        enabled = true,
-                                        loading = false,
+                                        enabled = !discogsContinuationLoading,
+                                        loading = discogsContinuationLoading,
                                         modifier = Modifier.fillMaxWidth().padding(
                                             start = PAGE_GUTTER, end = PAGE_GUTTER,
                                             top = 12.dp, bottom = 8.dp,
@@ -601,12 +608,12 @@ fun SearchScreen(
                         } else if (filter == SearchFilter.ARTISTS) {
                             discogsNativeArtistRows(
                                 query, discogsArtistResults, onDiscogsArtistOpen,
-                                discogsHasMore, onDiscogsLoadMore,
+                                discogsHasMore, onDiscogsLoadMore, discogsArtistLoadingMore,
                             )
                         } else if (filter == SearchFilter.ALBUMS) {
                             discogsNativeReleaseRows(
                                 discogsReleaseResults, onDiscogsReleaseOpen,
-                                discogsReleaseHasMore, onDiscogsReleaseLoadMore,
+                                discogsReleaseHasMore, onDiscogsReleaseLoadMore, discogsReleaseLoadingMore,
                             )
                         }
                         if (filter == SearchFilter.SONGS) {
@@ -1270,6 +1277,7 @@ private fun LazyListScope.discogsNativeReleaseRows(
     onOpen: (DiscogsNativeReleaseSearchRow) -> Unit,
     hasMore: Boolean,
     onLoadMore: () -> Unit,
+    loadingMore: Boolean,
 ) {
     when (results) {
         null -> Unit
@@ -1307,6 +1315,8 @@ private fun LazyListScope.discogsNativeReleaseRows(
                 NativeCatalogSearchLoadMore(
                     label = stringResource(Res.string.canonical_more_results),
                     onClick = onLoadMore,
+                    enabled = !loadingMore,
+                    loading = loadingMore,
                     modifier = Modifier.fillMaxWidth().padding(
                         horizontal = PAGE_GUTTER, vertical = 12.dp,
                     ),
@@ -1322,6 +1332,7 @@ private fun LazyListScope.discogsNativeArtistRows(
     onOpen: (DiscogsNativeArtistSearchRow) -> Unit,
     hasMore: Boolean,
     onLoadMore: () -> Unit,
+    loadingMore: Boolean,
 ) {
     when (results) {
         null -> Unit
@@ -1359,6 +1370,8 @@ private fun LazyListScope.discogsNativeArtistRows(
                 NativeCatalogSearchLoadMore(
                     label = stringResource(Res.string.canonical_more_results),
                     onClick = onLoadMore,
+                    enabled = !loadingMore,
+                    loading = loadingMore,
                     modifier = Modifier.fillMaxWidth().padding(
                         horizontal = PAGE_GUTTER, vertical = 12.dp,
                     ),

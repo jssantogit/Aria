@@ -435,6 +435,10 @@ internal class DiscogsNativeCatalogSession(
     val releaseSearchHasMore: StateFlow<Boolean> = _releaseSearchHasMore.asStateFlow()
     private val _searchHasMore = MutableStateFlow(false)
     val searchHasMore: StateFlow<Boolean> = _searchHasMore.asStateFlow()
+    private val _searchLoadingMore = MutableStateFlow(false)
+    val searchLoadingMore: StateFlow<Boolean> = _searchLoadingMore.asStateFlow()
+    private val _releaseSearchLoadingMore = MutableStateFlow(false)
+    val releaseSearchLoadingMore: StateFlow<Boolean> = _releaseSearchLoadingMore.asStateFlow()
     private val _route = MutableStateFlow<DiscogsNativeRoute?>(null)
     val route: StateFlow<DiscogsNativeRoute?> = _route.asStateFlow()
     // The root navigator uses the same exact browseId route key as a
@@ -833,6 +837,8 @@ internal class DiscogsNativeCatalogSession(
         releaseSearchPage = 0
         _searchHasMore.value = false
         _releaseSearchHasMore.value = false
+        _searchLoadingMore.value = false
+        _releaseSearchLoadingMore.value = false
         _artists.value = null
         _releasesSearch.value = null
     }
@@ -864,7 +870,9 @@ internal class DiscogsNativeCatalogSession(
             )
             return
         }
+        _searchLoadingMore.value = true
         val job = scope.launch(Dispatchers.Main.immediate) {
+            try {
             var currentPage = firstPage
             while (true) {
                 val result = try { withContext(Dispatchers.IO) { searchClient.search(subject, currentPage) } }
@@ -953,6 +961,9 @@ internal class DiscogsNativeCatalogSession(
                 }
                 break
             }
+            } finally {
+                if (searchEpoch == epoch) _searchLoadingMore.value = false
+            }
         }
         searchJob = job
         val unregister = authorization.cancelJobOnRevoke(job)
@@ -974,7 +985,9 @@ internal class DiscogsNativeCatalogSession(
             )
             return
         }
+        _releaseSearchLoadingMore.value = true
         val job = scope.launch(Dispatchers.Main.immediate) {
+            try {
             var currentPage = firstPage
             while (true) {
                 val result = try { withContext(Dispatchers.IO) { releaseSearchClient.search(subject, currentPage) } }
@@ -1022,6 +1035,9 @@ internal class DiscogsNativeCatalogSession(
                     }
                 }
                 break
+            }
+            } finally {
+                if (searchEpoch == epoch) _releaseSearchLoadingMore.value = false
             }
         }
         releaseSearchJob = job

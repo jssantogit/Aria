@@ -4906,6 +4906,8 @@ private fun BitChordApp(
                                 .collectAsStateWithLifecycle().value,
                             discogsHasMore = viewModel.discogsNativeCatalog.searchHasMore
                                 .collectAsStateWithLifecycle().value,
+                            discogsArtistLoadingMore = viewModel.discogsNativeCatalog.searchLoadingMore
+                                .collectAsStateWithLifecycle().value,
                             onDiscogsLoadMore = viewModel.discogsNativeCatalog::loadNextSearchPage,
                             onDiscogsArtistOpen = { row ->
                                 detailActiveShelf = null
@@ -4914,6 +4916,8 @@ private fun BitChordApp(
                             discogsReleaseResults = viewModel.discogsNativeCatalog.releaseSearch
                                 .collectAsStateWithLifecycle().value,
                             discogsReleaseHasMore = viewModel.discogsNativeCatalog.releaseSearchHasMore
+                                .collectAsStateWithLifecycle().value,
+                            discogsReleaseLoadingMore = viewModel.discogsNativeCatalog.releaseSearchLoadingMore
                                 .collectAsStateWithLifecycle().value,
                             onDiscogsReleaseLoadMore =
                                 viewModel.discogsNativeCatalog::loadNextReleaseSearchPage,
