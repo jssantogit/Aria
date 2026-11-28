@@ -318,7 +318,8 @@ class A0ManualLoginActivity : Activity() {
                                 val token = SecureRandom().nextInt(Int.MAX_VALUE - 1) + 1
                                 val handoff = if (transferObserved) {
                                     A0ObservedCandidateHandoff(
-                                        connection, username, token
+                                        connection, username, token,
+                                        saveFormatsOnly=saveToDevice
                                     ).also { transfer ->
                                         if (!SoulseekActiveSession.registerTransfer(
                                                 transfer, accountGeneration
