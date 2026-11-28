@@ -10,7 +10,7 @@ import com.music.bitchord.data.model.QueueTier
  * Decision at the boundary between selected-rendition playback and the legacy
  * resolver/retry path.
  *
- * Canonical provider failures are never handed to legacy resolution. Only
+ * Canonical provider and sample failures are never handed to legacy resolution. Only
  * entry-scoped I/O/open failures that happened before audio started are
  * eligible for queue auto-advance in this slice. A fatal/internal failure stays
  * terminal and therefore cannot accidentally become provider/source fallback.
@@ -40,8 +40,9 @@ internal fun classifyPlaybackFailure(
     localUriScheme: String?,
     errorCode: Int,
     neverStarted: Boolean,
+    previewBoundary: Boolean = false,
 ): PlaybackFailureDisposition {
-    if (canonicalRemote) {
+    if (canonicalRemote || previewBoundary) {
         return if (neverStarted && errorCode in PLAYBACK_IO_ERROR_RANGE) {
             PlaybackFailureDisposition.AUTO_ADVANCE
         } else {
@@ -71,6 +72,7 @@ internal fun PlaybackFailureCascade.handlePlaybackFailure(
         localUriScheme = current.localConfiguration?.uri?.scheme,
         errorCode = error.errorCode,
         neverStarted = neverStarted,
+        previewBoundary = current.isPreviewPlaybackBoundary(),
     )
     val safeErrorCodeName = error.errorCodeName
 

@@ -445,7 +445,7 @@ fun MediaItem.toSong() = Song(
     setVideoId = mediaMetadata.extras?.getString(EXTRA_SET_VIDEO_ID),
     sourceQuality = mediaMetadata.extras?.getString(EXTRA_SOURCE_QUALITY),
     sourceHiRes = mediaMetadata.extras?.getBoolean(EXTRA_SOURCE_HI_RES) == true,
-    isAudioPreview = mediaMetadata.extras?.getBoolean(EXTRA_AUDIO_PREVIEW) == true,
+    isAudioPreview = hasAudioPreviewMarker(),
     queueTier = this.queueTier,
     queueEntryId = this.queueEntryId,
     radioName = mediaMetadata.extras?.getString(EXTRA_RADIO_NAME),
@@ -508,6 +508,14 @@ val MediaItem.canonicalIndex: Int?
  */
 private const val EXTRA_FROM_AUTOPLAY = "bitchord.fromAutoplay"
 private const val EXTRA_AUDIO_PREVIEW = "bitchord.audioPreview"
+
+/** Inspect preview identity without rebuilding a Song or touching the legacy source resolver. */
+internal fun MediaItem.hasAudioPreviewMarker(): Boolean =
+    mediaMetadata.extras?.getBoolean(EXTRA_AUDIO_PREVIEW) == true
+
+/** Either signal is sufficient to keep a malformed item inside the preview boundary. */
+internal fun MediaItem.isPreviewPlaybackBoundary(): Boolean =
+    hasAudioPreviewMarker() || AmsPreviewRoute.owns(localConfiguration?.uri?.toString())
 
 /** @see Song.radioName */
 private const val EXTRA_RADIO_NAME = "bitchord.radioName"

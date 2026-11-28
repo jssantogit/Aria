@@ -32,8 +32,8 @@ internal class SourceScopedMediaSourceFactory(
 
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {
         val uri = mediaItem.localConfiguration?.uri
-        val markedPreview = mediaItem.toSong().isAudioPreview
-        if (markedPreview || AmsPreviewRoute.owns(uri?.toString())) {
+        val markedPreview = mediaItem.hasAudioPreviewMarker()
+        if (mediaItem.isPreviewPlaybackBoundary()) {
             // Either marker is enough to keep the item out of the normal
             // cache/source ladder. A mismatched item must fail closed rather
             // than opening a caller-supplied physical URI.

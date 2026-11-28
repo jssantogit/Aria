@@ -62,6 +62,21 @@ class PlaybackFailureAutoAdvancePolicyTest {
     }
 
     @Test
+    fun `preview failures never reach legacy recovery even with malformed physical locators`() {
+        for (scheme in listOf("bitchord", "https", "file", "content", null)) {
+            assertEquals(PlaybackFailureDisposition.AUTO_ADVANCE,
+                classifyPlaybackFailure(false,scheme,
+                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,true,previewBoundary=true))
+            assertEquals(PlaybackFailureDisposition.TERMINAL,
+                classifyPlaybackFailure(false,scheme,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,false,previewBoundary=true))
+            assertEquals(PlaybackFailureDisposition.TERMINAL,
+                classifyPlaybackFailure(false,scheme,
+                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,true,previewBoundary=true))
+        }
+    }
+
+    @Test
     fun `stale content local asset participates in auto advance`() {
         assertEquals(
             PlaybackFailureDisposition.AUTO_ADVANCE,

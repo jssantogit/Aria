@@ -69,10 +69,15 @@ class SourceScopedMediaSourceFactoryTest {
         )) {
             val item = MediaItem.Builder().setMediaId(route.scopedId)
                 .setUri(uri).setMediaMetadata(metadata).build()
+            assertTrue(item.hasAudioPreviewMarker())
+            assertTrue(item.isPreviewPlaybackBoundary())
             assertTrue(factory.createMediaSource(item) is DeferredResolvedSourceMediaSource)
         }
         // Removing the marker does not make a logical preview route ordinary.
         val unmarked = MediaItem.Builder().setMediaId(route.scopedId).setUri(route.uri).build()
+        assertTrue(unmarked.isPreviewPlaybackBoundary())
+        assertTrue(!unmarked.hasAudioPreviewMarker())
+        assertTrue(!MediaItem.fromUri("file:///sdcard/Music/a.flac").isPreviewPlaybackBoundary())
         assertTrue(factory.createMediaSource(unmarked) is DeferredResolvedSourceMediaSource)
         assertEquals(0, sourceFactories)
     }
