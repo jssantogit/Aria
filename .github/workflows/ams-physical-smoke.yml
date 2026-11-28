@@ -1,23 +1,66 @@
 name: AMS · isolated Android physical smoke APK
 on:
   push:
-    branches: [audit/ams-native-visual-parity-20261126]
+    branches: [audit/ams-native-visual-parity-20261126, audit/ams-preview-physical-smoke-20261128]
     paths:
       - '.github/workflows/ams-physical-smoke.yml'
       - 'docs/ams-physical-smoke-20261126.md'
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: ams-physical-smoke-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  validated-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Require exact approved preview baseline for round four
+        if: github.ref == 'refs/heads/audit/ams-preview-physical-smoke-20261128'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: '4920ead28a1423320479fa2c5071420194d74254'
+          BASELINE_RUN: '46133719192'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This gate does not build anything while the required contracts run.
+          for attempt in $(seq 1 45); do
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BASELINE_RUN")"
+            jq -e --arg sha "$EXPECTED_SHA" '.head_sha == $sha and .path == ".github/workflows/ams-canonical-genre.yml"' <<< "$run" >/dev/null
+            status="$(jq -r '.status' <<< "$run")"
+            if [ "$status" = completed ]; then
+              jq -e '.conclusion == "success"' <<< "$run" >/dev/null
+              echo "Exact baseline contracts approved: $EXPECTED_SHA"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::Baseline contract run did not finish within the gate window"
+          exit 1
   android-smoke:
-    if: github.ref == 'refs/heads/audit/ams-native-visual-parity-20261126'
+    needs: validated-baseline
+    if: github.ref == 'refs/heads/audit/ams-native-visual-parity-20261126' || github.ref == 'refs/heads/audit/ams-preview-physical-smoke-20261128'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Verify smoke candidate differs only by smoke workflow and checklist
+        if: github.ref == 'refs/heads/audit/ams-preview-physical-smoke-20261128'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = '4920ead28a1423320479fa2c5071420194d74254'
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/ams-physical-smoke.yml|docs/ams-physical-smoke-20261126.md) ;;
+              *) echo "::error::Unexpected candidate change: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only HEAD^ HEAD)
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -45,7 +88,11 @@ jobs:
           cp "$APK" ams-smoke/Aria-AMS-Smoke-arm64-v8a.apk
           {
             printf 'source_sha=%s\n' "$GITHUB_SHA"
-            printf 'smoke_round=3; validated_baseline=e1a79a0b\n'
+            if [ "$GITHUB_REF" = 'refs/heads/audit/ams-preview-physical-smoke-20261128' ]; then
+              printf 'smoke_round=4; validated_baseline=4920ead28a1423320479fa2c5071420194d74254\n'
+            else
+              printf 'smoke_round=3; validated_baseline=e1a79a0b\n'
+            fi
             printf 'package=com.dev.bitchord.ams.smoke\n'
             printf 'build=devDebug; AMS readiness opt-in only; user choices required\n'
             sha256sum ams-smoke/*.apk

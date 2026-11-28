@@ -65,3 +65,23 @@ Animated and landscape editorial artwork for playlists, albums, artists and play
 ## Third physical smoke feedback — 2026-11-27
 
 User screenshots show editorial covers now rendering, similar artist labels centered, and Heavy Metal populated. Jazz Fusion still empty. Top 100 Brasil uses a square sleeve rather than the official immersive hero; ILLIT shows static artist artwork. User requests: retain only song chart playlists in Home, keep disabled playback and shuffle controls visible for metadata-only playlists, hide technical partial-data notices without losing completeness evidence, and enrich every subgenre from exact track genre labels independently of a specific playlist. Native animated/hero artwork requires evidence of actual source asset fields, validated URLs and lifecycle-aware rendering; not approved yet. Android diagnostic capture reports nine recovered UI stalls (max 1113.4 ms), no last crash, Apple Coil successes 537, errors 0, cancelled 25. Not evidence of animated artwork rendering or root cause.
+
+## Fourth physical smoke — native audio previews, November 28
+
+Candidate code baseline: `4920ead28a1423320479fa2c5071420194d74254`. Required contracts [#46133719192](https://github.com/jssantogit/Aria/actions/runs/46133719192); the APK job must not start before this exact run succeeds. This supersedes earlier checklist statements that all AMS tracks are metadata-only. Other providers and tracks without admitted preview evidence retain their existing behavior. Only Android is in scope.
+
+Install the isolated ARM64 debug package over the prior smoke package; enable Apple Music Web explicitly under Search, Discography, Rankings and Audio (30-second previews). Do not use personal credentials. Record PASS/FAIL/NOT RUN and fresh diagnostics.
+
+| Priority | Scenario | Acceptance |
+|---|---|---|
+| P0 | Home and mixed/typed Search | Tap a song with preview evidence; normal mini-player/full player; headphones icon + Prévia quality pill; no fabricated quality or legacy upgrade. |
+| P0 | Album, artist and playlist details | Standard play/shuffle/track tap; playable rows only, no duration displayed per track; unavailable rows do not become full assets. |
+| P0 | Held cards and tracks | Native play/next/queue, album and playlist collection actions; long press keeps captured item and neutral blur; no separate preview-only action. |
+| P0 | Top 100 Brasil and another daily chart | Native playlist playback and queue; no duplicate or invented tracks; back restores route. |
+| P0 | Provider Audio off/on | Off prevents new preview starts and revokes in-flight provider transport; re-enable explicitly, no stale authorization. |
+| P0 | Local Files library before and after previews | Existing local files play normally; no preview appears as local file, downloaded asset or cache entry. A genuine short local track remains playable. No catalog-to-local matching in this round. |
+| P0 | Failure and queue | Unavailable sample does not switch to legacy source or download; failed start advances boundedly, mid-play failure remains terminal; existing queue retained. |
+| P1 | Silent loading | Scroll Home and genre shelves, pull near bottom; no transient loading cards or technical text; new content appears when ready. |
+| P1 | Restart and queue restore | Preview identity/quality pill retained; no physical preview URL persisted as a local asset; recheck capability on playback. |
+
+Known limitations: alternate legacy country-song chart long-press parity is not yet implemented; daily chart playlists use native detail and held menus. Local audio priority and provider-ID enrichment are explicitly deferred. Automated contracts and APK packaging do not establish physical approval. No MAIN/IDM merge authorized.
