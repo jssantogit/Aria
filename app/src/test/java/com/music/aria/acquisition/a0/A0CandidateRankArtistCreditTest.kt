@@ -119,4 +119,46 @@ class A0CandidateRankArtistCreditTest {
             A0CandidateRank.tokens("गत"))
     }
 
+
+    private fun numberedDisc(file:String,folder:String="Example Artist/Album",
+        query:String="Example Artist - Signal") =
+        A0CandidateRank.rank(searchPhrase=query,name=file,
+            declaredBitrateKbps=900,remotePath="Shared/$folder/$file",
+            format="flac",declaredDurationSeconds=180,
+            expectedDurationSeconds=180,expectedAlbum="Album",
+            sizeBytes=20_250_000L)
+
+    @Test fun leadingDiscTrackNotationIsPresentationNotIdentity() {
+        for(file in listOf("0101 - Example Artist - Signal.flac",
+            "01x01_Signal.flac","02X17 - Signal.flac")) {
+            val result=numberedDisc(file)
+            assertEquals(A0CandidateRank.Match.ALL_TERMS,result.match)
+            assertTrue(result.score>=65)
+            assertFalse(result.warnings.contains(A0CandidateRank.Warning.IDENTITY_AMBIGUOUS))
+            assertFalse(result.warnings.contains(A0CandidateRank.Warning.ARTIST_CONFLICT))
+        }
+    }
+
+    @Test fun discTrackNotationNeverExcusesConflictingArtistOrVersion() {
+        val wrong=numberedDisc("0101 - Other Artist - Signal.flac")
+        assertTrue(A0CandidateRank.Warning.ARTIST_CONFLICT in wrong.warnings)
+        val live=numberedDisc("01x01_Signal_live_.flac")
+        assertTrue(A0CandidateRank.Warning.VERSION_MISMATCH in live.warnings)
+        assertNotEquals(A0CandidateRank.Match.ALL_TERMS,
+            numberedDisc("01x01_Signal.flac","Unrelated/Album").match)
+        for(file in listOf("2026 - Signal.flac","0001 - Signal.flac",
+            "Signal_01x01.flac","01x00_Signal.flac")) {
+            assertTrue("Unexpected filename: $file",
+                A0CandidateRank.Warning.IDENTITY_AMBIGUOUS in numberedDisc(file).warnings)
+        }
+    }
+
+    @Test fun canonicalNumberRemainsPartOfTheSongIdentity() {
+        val exact=numberedDisc("0101 - Signal.flac",
+            query="Example Artist - 0101 Signal")
+        assertEquals(A0CandidateRank.Match.ALL_TERMS,exact.match)
+        assertNotEquals(A0CandidateRank.Match.ALL_TERMS,
+            numberedDisc("Signal.flac",query="Example Artist - 0101 Signal").match)
+    }
+
 }

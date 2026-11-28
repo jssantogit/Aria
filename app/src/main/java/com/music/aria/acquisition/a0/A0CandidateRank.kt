@@ -110,7 +110,20 @@ internal object A0CandidateRank {
         val canonicalTitleTokens=tokens(canonicalTitle)
         val artistSequence=if(parts.size==2) tokens(parts[0]) else emptyList()
         val artistWords=artistSequence.distinct()
-        val stem=name.substringBeforeLast('.',name)
+        val rawStem=name.substringBeforeLast('.',name)
+        // Disc/track prefixes observed in live filenames: 0101 and 01x01.
+        // Recognize only a complete leading, separator-delimited, positive
+        // disc+track number. Do not strip years, arbitrary suffixes or
+        // numbers that are part of the requested artist/title/album.
+        val discTrackPrefix=Regex("^(?:0[1-9](?:0[1-9]|[1-9][0-9])|(?:0[1-9]|[1-9][0-9])[xX](?:0[1-9]|[1-9][0-9]))(?=[ ._-])")
+            .find(rawStem)
+        val prefixIsCanonical=discTrackPrefix?.value?.let(::tokens).orEmpty()
+            .any { it in canonicalTitleTokens || it in artistSequence ||
+                it in tokens(expectedAlbum.orEmpty()) }
+        val stem=if(discTrackPrefix!=null && !prefixIsCanonical)
+            rawStem.substring(discTrackPrefix.range.last+1)
+                .trimStart(' ','_','-','.')
+        else rawStem
         val fileTokens=tokens(stem)
         val fileWords=fileTokens.toSet()
         val stemParts=stem.split(Regex("\\s+[-–—]\\s+"),limit=2)
@@ -291,7 +304,7 @@ internal object A0CandidateRank {
         // filename look like a different title/extension to the reader while
         // normal token matching still reports ALL_TERMS. Never classify that
         // display as STRONG on untrusted peer metadata.
-        if(stem.any(::isUnsafeDisplayFormatChar)) {
+        if(rawStem.any(::isUnsafeDisplayFormatChar)) {
             score-=9
             warnings.add(Warning.IDENTITY_AMBIGUOUS)
         }
