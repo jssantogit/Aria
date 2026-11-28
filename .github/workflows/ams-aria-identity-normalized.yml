@@ -1,7 +1,7 @@
 name: AMS · namespace-normalized Aria reconciliation
 on:
   push:
-    branches: [audit/ams-aria-identity-resolved-text-20261128]
+    branches: [audit/ams-aria-identity-resolved-core-20261128]
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +23,7 @@ jobs:
           git config diff.renameLimit 10000
           mkdir -p /tmp/aria-normalized
           cp scripts/ams-normalize-namespace-diagnostic.py /tmp/ams-normalize.py
+          cp scripts/ams-resolve-core-identity-diagnostic.py /tmp/ams-resolve-core.py
           test "$(git merge-base da8889af614ec28c9ffb0bd3e1b055657adb45b6 58d8d9143fa04302cb3356df510e77c76a2eae57)" = "9513793560f583f5d7cdd4f97e14a5a5ad7f9cfa"
           for pair in base:9513793560f583f5d7cdd4f97e14a5a5ad7f9cfa ams:da8889af614ec28c9ffb0bd3e1b055657adb45b6; do
             label="${pair%%:*}"
@@ -64,6 +65,7 @@ jobs:
           fi
           git rm -f -- "$desktop"
           echo "RESOLVED_REMOVED_PLATFORM|$desktop"
+          python3 /tmp/ams-resolve-core.py
           git diff --name-only --diff-filter=U > /tmp/aria-normalized/conflicts.txt
           if [ ! -s /tmp/aria-normalized/conflicts.txt ]; then result=0; fi
           git ls-files -u > /tmp/aria-normalized/conflict-stages.tsv
