@@ -220,6 +220,7 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val session by DownloadSession.state.collectAsStateWithLifecycle()
     // Newest ask last, the order the queue will actually reach them in.
     val items = remember(session.items) { session.items.sortedBy { it.sequence } }
+    val autoTracks by Downloads.soulseekAutoTrackRows.collectAsStateWithLifecycle()
 
     Column(modifier.fillMaxWidth()) {
         Row(
@@ -301,6 +302,32 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                     onCancel = { Downloads.cancel(item.videoId) },
                     onRetry = { Downloads.enqueue(context, item.song, item.from) },
                 )
+                val tracks = autoTracks[item.videoId].orEmpty()
+                if (tracks.size > 1) {
+                    Column(Modifier.fillMaxWidth().padding(start = 82.dp, end = 20.dp, bottom = 8.dp)) {
+                        tracks.forEach { track ->
+                            Text(
+                                text = track.song.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            RowStatus(when (track.stage) {
+                                Downloads.AutoTrackStage.WAITING -> "Na fila"
+                                Downloads.AutoTrackStage.SEARCHING -> "Buscando"
+                                Downloads.AutoTrackStage.DOWNLOADING -> "Baixando"
+                                Downloads.AutoTrackStage.SAVED -> "Salva"
+                                Downloads.AutoTrackStage.MANUAL_REVIEW -> "Correspondência segura não encontrada"
+                                Downloads.AutoTrackStage.CANCELLED -> "Cancelada"
+                                Downloads.AutoTrackStage.INTERRUPTED -> "Interrompida"
+                                Downloads.AutoTrackStage.ATTEMPT_FAILED -> "Falha no download"
+                                Downloads.AutoTrackStage.VERIFY_STORAGE -> "Verifique a biblioteca"
+                            })
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(24.dp))
