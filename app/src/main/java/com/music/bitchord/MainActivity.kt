@@ -1361,7 +1361,7 @@ private fun BitChordApp(
     }
     // iTunes owns exact storefront IDs, so it uses the same native ⋯ launcher
     // but never inherits MusicBrainz ratings or legacy queue commands.
-    var providerDetailOverflowOpen by remember(activeDetailSortId) { mutableStateOf(false) }
+    var providerDetailOverflowOpen by remember(activeDetailSortId, selectedTab, activeCanonicalGenre?.tag) { mutableStateOf(false) }
     var providerHeldCard by remember(activeDetailSortId, selectedTab, activeCanonicalGenre?.tag) { mutableStateOf<ShelfItem?>(null) }
     // A device folder's equivalents — its sort and whether it is a grid —
     // kept apart for Downloads and shared by every other folder, as they
@@ -6505,6 +6505,12 @@ private fun BitChordApp(
                     anchorBounds = catalogAlbumOverflowAnchor,
                     onSettings = { providerDetailOverflowOpen = false; showSettings = true },
                 )
+            }
+            // The route can change without a new detail ID (e.g. Settings).
+            // Do not let a retained card or expanded flag follow that route.
+            LaunchedEffect(pageRouteKey) {
+                providerDetailOverflowOpen = false
+                providerHeldCard = null
             }
             // Keep the exact held-card snapshot mounted after the menu closes
             // so its rating dialog can survive dismissal. Revocation removes
