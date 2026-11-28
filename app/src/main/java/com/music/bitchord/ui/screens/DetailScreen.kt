@@ -513,7 +513,7 @@ internal fun DetailScreen(
     if (editingCatalogRating && catalogRatingTarget != null) {
         CanonicalCatalogEntityRatingDialog(
             target = catalogRatingTarget,
-            title = if (isArtist) "Avaliar artista" else "Avaliar álbum",
+            title = canonicalCatalogRatingLabel(catalogRatingTarget),
             onDismiss = { editingCatalogRating = false },
             anchorBounds = if (isArtist) artistRatingAnchor else null,
             artworkUrl = page.thumbnailUrl,

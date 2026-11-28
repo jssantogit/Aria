@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -90,16 +90,27 @@ internal fun canPersistCanonicalCatalogRating(target: CanonicalEntityRatingTarge
         else -> false
     }
 
+internal fun canonicalCatalogRatingLabel(target: CanonicalEntityRatingTarget): String =
+    when (target.entityType) {
+        "ARTIST" -> "Avaliar artista"
+        "PLAYLIST" -> "Avaliar playlist"
+        else -> "Avaliar álbum"
+    }
+
 @Composable
 internal fun rememberCanonicalCatalogEntityRating(target: CanonicalEntityRatingTarget?): State<Double?> {
     val context = LocalContext.current.applicationContext
     val dao = remember(context) { ListeningEventDatabase.get(context).canonicalEntityRatingDao() }
-    return produceState<Double?>(initialValue = null, key1 = target, key2 = dao) {
-        if (target == null || !canPersistCanonicalCatalogRating(target)) return@produceState
+    // Reset immediately on a different typed entity rather than retaining
+    // produceState's old remembered value until the new Room flow emits.
+    val result = remember(target, dao) { mutableStateOf<Double?>(null) }
+    LaunchedEffect(target, dao) {
+        if (target == null || !canPersistCanonicalCatalogRating(target)) return@LaunchedEffect
         dao.observe(target.entityType, target.entityId).collect { saved ->
-            value = saved?.ratingValue?.takeIf(::isValidCanonicalEntityRating)
+            result.value = saved?.ratingValue?.takeIf(::isValidCanonicalEntityRating)
         }
     }
+    return result
 }
 
 /** Reuses the exact native half-star editor; only first-party Listening Room is writable. */

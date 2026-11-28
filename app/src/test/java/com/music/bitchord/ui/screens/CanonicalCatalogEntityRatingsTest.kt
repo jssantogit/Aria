@@ -97,6 +97,20 @@ class CanonicalCatalogEntityRatingsTest {
         assertEquals(CanonicalSearchKind.RELEASE, mb.playlistKind)
     }
 
+    @Test fun ratingLabelMatchesEntityTypeRatherThanCurrentRenderer() {
+        for ((route,label) in listOf(
+            "apple_music_web:br:artist:123" to "Avaliar artista",
+            "apple_music_web:br:album:123" to "Avaliar álbum",
+            "apple_music_web:br:playlist:pl.abc123" to "Avaliar playlist",
+            "discogs:release:123" to "Avaliar álbum",
+            "itunes:br:artist:123" to "Avaliar artista",
+        )) {
+            val target = requireNotNull(canonicalCatalogEntityRatingTarget(route))
+            assertEquals(label,canonicalCatalogRatingLabel(target))
+            assertEquals(label,canonicalCatalogEntityMenuSpec(route)?.ratingLabel)
+        }
+    }
+
     @Test fun identicalNativeNumbersNeverShareRatingIdentityAcrossSources() {
         val routes = listOf("itunes:br:album:123","itunes:us:album:123",
             "apple_music_web:br:album:123","apple_music_web:us:album:123","discogs:release:123")
