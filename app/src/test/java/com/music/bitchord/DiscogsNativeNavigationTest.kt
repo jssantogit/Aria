@@ -225,4 +225,13 @@ class DiscogsNativeNavigationTest {
         assertFalse(com.music.bitchord.ui.discogsDirectReleaseMatches(record, 501L))
         assertTrue(com.music.bitchord.ui.discogsDirectReleaseMatches(record.copy(unofficial = true), 500L))
     }
+
+    @Test fun retainedDirectReleaseHistoryNeverRestartsTheSnapshotLifetime() {
+        fun reset(history: Boolean, search: Boolean) =
+            com.music.bitchord.ui.discogsMayResetSnapshotExpiry(history, search)
+        assertFalse(reset(true, false))
+        assertFalse(reset(true, true))
+        assertFalse(reset(false, true))
+        assertTrue(reset(false, false))
+    }
 }

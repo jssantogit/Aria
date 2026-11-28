@@ -1022,7 +1022,9 @@ internal class DiscogsNativeCatalogSession(
         } else null
         val history = if (previous != null)
             (directReleaseHistory + previous).takeLast(8) else emptyList()
-        backAll()
+        // Retained parent pages share the original absolute expiry deadline,
+        // even when the first album was opened from Home rather than Search.
+        clearDetail(retainingHistory = history.isNotEmpty())
         ensureDetailSnapshotExpiry()
         directReleaseHistory = history
         _browseId.value = selected.browseId
@@ -1197,9 +1199,11 @@ internal class DiscogsNativeCatalogSession(
                     if (cachedArtistPage == null) {
                         failDetail("Não foi possível carregar este artista Discogs.")
                     } else {
-                        _detail.value = UiState.Success(cachedArtistPage!!.copy(
-                            incomplete = true,
-                        ))
+                        val retryable = cachedArtistPage!!.copy(
+                            incomplete = true, loadingMore = false,
+                        )
+                        cachedArtistPage = retryable
+                        _detail.value = UiState.Success(retryable)
                     }
                 }
             }
@@ -1374,7 +1378,9 @@ internal class DiscogsNativeCatalogSession(
         } else backAll()
     }
 
-    fun backAll() {
+    fun backAll() = clearDetail(retainingHistory = false)
+
+    private fun clearDetail(retainingHistory: Boolean) {
         detailJob?.cancel()
         detailJob = null
         _route.value = null
@@ -1388,13 +1394,19 @@ internal class DiscogsNativeCatalogSession(
         artistHasMore = false
         artistIncomplete = false
         cachedArtistPage = null
-        if (_artists.value == null && _releasesSearch.value == null) {
+        if (discogsMayResetSnapshotExpiry(
+                retainingHistory, _artists.value != null || _releasesSearch.value != null,
+            )) {
             expirationJob?.cancel()
             expirationJob = null
             expirationEpoch++
         }
     }
 }
+
+/** Retained search results or Back-stack metadata must never extend their TTL. */
+internal fun discogsMayResetSnapshotExpiry(retainingHistory: Boolean, retainingSearch: Boolean): Boolean =
+    !retainingHistory && !retainingSearch
 
 /** Only a release actually visible in the current source page may be opened. */
 internal fun discogsVisibleReleaseSelection(page: DiscogsNativePage, browseId: String): Boolean =
