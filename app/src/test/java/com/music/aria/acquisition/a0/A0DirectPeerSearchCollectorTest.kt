@@ -58,4 +58,42 @@ class A0DirectPeerSearchCollectorTest {
         assertFalse(collector.offer(afterStop))
         assertTrue(afterStop.isClosed)
     }
+
+    @Test(timeout = 5000)
+    fun socketRegisteredAfterShutdownSnapshotIsRejectedAndClosed() {
+        val registrationEntered = CountDownLatch(1)
+        val releaseRegistration = CountDownLatch(1)
+        val firstHash = java.util.concurrent.atomic.AtomicBoolean(true)
+        val processed = AtomicInteger(0)
+        val accepted = java.util.concurrent.atomic.AtomicReference<Boolean>()
+        // Hashing occurs at registration, after the initial closed check.
+        // Force the socket to miss the shutdown snapshot deterministically.
+        val socket = object : Socket() {
+            override fun hashCode(): Int {
+                if (firstHash.compareAndSet(true, false)) {
+                    registrationEntered.countDown()
+                    check(releaseRegistration.await(3, TimeUnit.SECONDS))
+                }
+                return System.identityHashCode(this)
+            }
+        }
+        val collector = A0DirectPeerSearchCollector { processed.incrementAndGet() }
+        val submitter = Thread { accepted.set(collector.offer(socket)) }
+        try {
+            submitter.start()
+            assertTrue(registrationEntered.await(2, TimeUnit.SECONDS))
+            collector.closeSockets()
+            releaseRegistration.countDown()
+            submitter.join(2000)
+            assertFalse(submitter.isAlive)
+            assertEquals(false, accepted.get())
+            assertTrue(socket.isClosed)
+            assertEquals(0, processed.get())
+        } finally {
+            releaseRegistration.countDown()
+            submitter.join(2000)
+            collector.cancel()
+            socket.close()
+        }
+    }
 }
