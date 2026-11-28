@@ -519,10 +519,11 @@ object Downloads {
                     )
                 AutoTrackRow(origin)
             })
+            // Publish the queued state before a worker can claim the request.
+            _active.update { it + (id to DownloadState.Queued) }
+            DownloadSession.queued(song,album)
             pending[id]=song
         }
-        _active.update { it + (id to DownloadState.Queued) }
-        DownloadSession.queued(song,album)
         return runCatching {
             ContextCompat.startForegroundService(
                 app,Intent(app,DownloadService::class.java))

@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import com.music.aria.R
 import com.music.aria.data.model.Song
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -132,8 +133,12 @@ class DownloadService : Service() {
 
             // Its own job, so one track can be cancelled out from under the
             // loop without taking the rest of the queue with it.
-            val job = scope.launch { Downloads.run(this@DownloadService, song) }
+            // Register the cancellable job before it can enter acquisition.
+            val job = scope.launch(start = CoroutineStart.LAZY) {
+                Downloads.run(this@DownloadService, song)
+            }
             Downloads.onRunning(song.videoId, job)
+            job.start()
             job.join()
             Downloads.onIdle(song.videoId)
         }
