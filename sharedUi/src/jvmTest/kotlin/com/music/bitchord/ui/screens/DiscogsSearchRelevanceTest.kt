@@ -126,6 +126,31 @@ class DiscogsSearchRelevanceTest {
         assertEquals(listOf(first), discogsSearchDistinctReleases("album", listOf(unrelated, first)))
     }
 
+
+    @Test fun representativeReleaseWinsOverExplicitPackagingWithinMaster() {
+        val packageEdition = DiscogsNativeReleaseSearchRow(10, "NewJeans - Get Up (Weverse Version)", 900)
+        val representative = DiscogsNativeReleaseSearchRow(20, "NewJeans - Get Up", 900)
+        val independent = DiscogsNativeReleaseSearchRow(30, "NewJeans - Other Album", 901)
+        val unrelatedMaster = packageEdition.copy(releaseId = 40, masterId = 902)
+        assertEquals(listOf(representative, independent, unrelatedMaster),
+            discogsSearchDistinctReleases("NewJeans",
+                listOf(packageEdition, representative, independent, unrelatedMaster)))
+        assertEquals(listOf(packageEdition),
+            discogsSearchDistinctReleases("NewJeans", listOf(packageEdition)))
+        assertEquals(listOf(packageEdition),
+            discogsSearchDistinctReleases("NewJeans Get Up (Weverse Version)",
+                listOf(representative, packageEdition)))
+    }
+
+    @Test fun ordinaryParentheticalTitlesKeepSourceOrderAndIdentity() {
+        val first = DiscogsNativeReleaseSearchRow(10, "Artist - Album (Live)", 900)
+        val second = DiscogsNativeReleaseSearchRow(20, "Artist - Album", 900)
+        assertEquals(listOf(first), discogsSearchDistinctReleases("Artist", listOf(first, second)))
+        val unknown = DiscogsNativeReleaseSearchRow(30, "Artist - Album (Photobook)")
+        assertEquals(listOf(second, unknown),
+            discogsSearchDistinctReleases("Artist", listOf(unknown, second)))
+    }
+
     @Test fun initialServerPagesFullOfJunkAreSkippedWithinExistingHardCap() {
         assertTrue(discogsSearchNeedsNextRelevantPage(0, 2))
         assertTrue(discogsSearchNeedsNextRelevantPage(0, 3))
