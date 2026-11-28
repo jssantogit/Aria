@@ -32,9 +32,15 @@ internal class SourceScopedMediaSourceFactory(
 
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {
         val uri = mediaItem.localConfiguration?.uri
-        if (AmsPreviewRoute.owns(uri?.toString())) {
-            // Preview bytes never enter the default cache or source ladder.
+        val markedPreview = mediaItem.toSong().isAudioPreview
+        if (markedPreview || AmsPreviewRoute.owns(uri?.toString())) {
+            // Either marker is enough to keep the item out of the normal
+            // cache/source ladder. A mismatched item must fail closed rather
+            // than opening a caller-supplied physical URI.
             return DeferredResolvedSourceMediaSource(mediaItem) {
+                val route = AmsPreviewRoute.decode(uri?.toString())
+                if (!markedPreview || route == null || route.scopedId != mediaItem.mediaId)
+                    throw java.io.IOException("Preview media identity mismatch")
                 val build = createPreviewSource
                     ?: throw java.io.IOException("Preview transport unavailable")
                 build(mediaItem)
