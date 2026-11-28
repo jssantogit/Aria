@@ -771,9 +771,7 @@ object AudioCache {
         val host = runCatching { Uri.parse(servedUrl).host }.getOrNull()?.lowercase(Locale.ROOT).orEmpty()
         if (host.endsWith("googlevideo.com") || host.endsWith("youtube.com")) return Origin.YOUTUBE
         if (host.endsWith("saavncdn.com") || host.endsWith("jiosaavn.com")) return Origin.JIOSAAVN
-        val upgrade = QualityUpgrade.forcedStream(uri)
         val configId = when {
-            upgrade != null -> upgrade.sourceConfigId
             uri.getQueryParameter("s") != null -> uri.getQueryParameter("s")
             else -> StreamChoice.of(mediaId)?.sourceConfigId
         }

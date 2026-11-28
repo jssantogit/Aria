@@ -172,32 +172,6 @@ suspend fun MediaController.beginRadioQueue() {
 }
 
 /**
- * Asks the service to go looking for a better copy of the playing track, now,
- * because the listener asked for it.
- *
- * A session command rather than a `replaceMediaItem` from here: the item has to
- * be rebuilt, the track's cached rendition has to be dropped and the automatic
- * path's verdicts about it have to be cleared, and all three live on the
- * service's side of the session — see [PlaybackService]'s `upgradeQualityNow`.
- */
-fun MediaController.upgradeQuality() {
-    sendCustomCommand(
-        SessionCommand(ACTION_UPGRADE_QUALITY, Bundle.EMPTY),
-        Bundle.EMPTY,
-    )
-}
-
-/**
- * Asks the service to revert the playing track to YouTube's original stream.
- */
-fun MediaController.revertToOriginal() {
-    sendCustomCommand(
-        SessionCommand(ACTION_REVERT_TO_ORIGINAL, Bundle.EMPTY),
-        Bundle.EMPTY,
-    )
-}
-
-/**
  * Asks the service to smoothly transition the playing track to another version/rendition.
  */
 fun MediaController.swapToVersion(targetSong: Song) {
@@ -703,13 +677,6 @@ fun Song.toMediaItem(): MediaItem {
         // option either.
         sourceTrack != null -> SourceRegistry.trackUri(sourceTrack.first, sourceTrack.second)
             .let { "$it${matchQuery()}${pickedMixQuery(sourceTrack.first)}" }
-        // A track the listener reverted by hand stays reverted — see
-        // [OriginalVersion]. Applied here rather than at the one menu that
-        // reverts, because "stays" has to mean the next queue entry built for
-        // this song too: another play from a list, a restored queue, Android
-        // Auto. Everything downstream reads the item's URI and nothing reads
-        // the preference, so this is the only place it has to be said.
-        OriginalVersion.isPinned(videoId) -> directYouTubeUri()
         // The same three fields, for the same reason, on the YouTube path: a
         // source ranked above YouTube gets offered this track before YouTube
         // resolves it — see [SourceResolver.substituteForYouTube] — and that
@@ -719,7 +686,7 @@ fun Song.toMediaItem(): MediaItem {
     }
     return MediaItem.Builder()
         .setMediaId(videoId)
-        .setUri(resolvePlaybackUri(uriString, localPath))
+        .setUri(resolvePlaybackUri(uriString, if (isAudioPreview) null else localPath))
     .setMediaMetadata(
         MediaMetadata.Builder()
             .setTitle(title)

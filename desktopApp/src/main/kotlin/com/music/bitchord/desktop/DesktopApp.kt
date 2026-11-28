@@ -3465,19 +3465,8 @@ fun BitChordDesktopApp() {
                                     liked = current.videoId in likedIds,
                                     actions = playerSongActions(current),
                                     onToggleLike = { toggleLike(current) },
-                                    onRevertToOriginal = {
-                                        DesktopOriginalVersion.pin(current.videoId)
-                                        playbackEngine.reloadCurrent()
-                                    }.takeIf {
-                                        playback.streamSourceId != null &&
-                                            playback.streamSourceId != "youtube" &&
-                                            DesktopMusicSources.hasYouTubeOriginal(current) &&
-                                            !DesktopOriginalVersion.isPinned(current.videoId)
-                                    },
-                                    onUpgradeQuality = {
-                                        DesktopOriginalVersion.clear(current.videoId)
-                                        playbackEngine.reloadCurrent(forceSourceRefresh = true)
-                                    }.takeIf { DesktopOriginalVersion.isPinned(current.videoId) },
+                                    onRevertToOriginal = null,
+                                    onUpgradeQuality = null,
                                     onMore = {
                                         playerMenuOpen = false
                                         playerOverflowOpen.value = true

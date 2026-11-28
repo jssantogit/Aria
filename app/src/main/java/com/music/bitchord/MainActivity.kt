@@ -206,7 +206,6 @@ import com.music.bitchord.data.spotify.SPOTIFY_PAGE_PREFIX
 import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.LinkRequest
 import com.music.bitchord.playback.MusicLink
-import com.music.bitchord.playback.OriginalVersion
 import com.music.bitchord.playback.PlayerDeepLink
 import com.music.bitchord.playback.QueueBuilder
 import com.music.bitchord.playback.QueueCoordinator
@@ -230,8 +229,6 @@ import com.music.bitchord.playback.toSong
 import com.music.bitchord.playback.toDirectYouTubeMediaItem
 import com.music.bitchord.playback.toggleAutoplay
 import com.music.bitchord.playback.toggleShuffle
-import com.music.bitchord.playback.upgradeQuality
-import com.music.bitchord.playback.revertToOriginal
 import com.music.bitchord.playback.swapToVersion
 import com.music.bitchord.download.DownloadSession
 import com.music.bitchord.download.DownloadStore
@@ -254,7 +251,6 @@ import com.music.bitchord.ui.components.HeldContextMenu
 import com.music.bitchord.ui.legacyBrowsePlaybackAllowed
 import com.music.bitchord.ui.components.HeldItem
 import androidx.media3.session.MediaController
-import com.music.bitchord.playback.QualityUpgrade
 import com.music.bitchord.playback.rememberMediaController
 import com.music.bitchord.playback.rememberPlayerState
 import com.music.bitchord.playback.PlaybackRecoveryNotices
@@ -1389,10 +1385,6 @@ private fun BitChordApp(
     // it, and reset with the page so a filter never follows you to the next one.
     var detailSearching by rememberSaveable(activeDetailSortId) { mutableStateOf(false) }
     val likeStatuses by viewModel.likeStatuses.collectAsStateWithLifecycle()
-    // Which tracks are being held on YouTube's own upload, so the player's menu
-    // offers the way back out of a revert rather than the revert again.
-    val pinnedToOriginal by OriginalVersion.pinned.collectAsStateWithLifecycle()
-    val qualityUpgradesInFlight by NerdStats.racingLossless.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val playlistsLoading by viewModel.playlistsLoading.collectAsStateWithLifecycle()
 
@@ -9910,23 +9902,6 @@ internal fun shouldUseAppleDownloadsChrome(browseId: String?, settingsOpen: Bool
 private fun String?.isDeviceFolder(): Boolean =
     this != null && startsWith("local:") &&
         !startsWith(Downloads.PLAYLIST_PREFIX) && !startsWith(LocalGroups.PREFIX)
-
-/**
- * Whether [videoId] is the track playing, and is known to be playing YouTube's
- * own copy — which decides whether the player menu leads with "Revert to
- * original" or with "Upgrade quality".
- *
- * See [QualityUpgrade.isKnownToBePlayingYouTubesOwn] for why "known" is doing
- * real work here: an unresolved track playing off the disk cache answers false,
- * and keeps the revert on offer.
- */
-private fun playingYouTubesOwn(videoId: String, controller: MediaController?): Boolean {
-    val item = controller?.currentMediaItem?.takeIf { it.mediaId == videoId } ?: return false
-    return QualityUpgrade.isKnownToBePlayingYouTubesOwn(
-        videoId,
-        item.localConfiguration?.uri?.let(QualityUpgrade::cacheTag),
-    )
-}
 
 /** `M:SS`/`H:MM:SS`, the same shape [String?.durationMillis] parses back. */
 private fun formatDurationText(ms: Long): String {
