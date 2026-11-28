@@ -10,7 +10,7 @@ fi
 cases="${ARIA_LIVE_CASES:-}"
 corpus="${ARIA_LIVE_CORPUS:-kpop1}"
 names="${ARIA_LIVE_NAMES:-false}"
-[[ "$corpus" == kpop1 || "$corpus" == mixed2 ]] || exit 1
+[[ "$corpus" == kpop1 || "$corpus" == mixed2 || "$corpus" == mixed3 ]] || exit 1
 [[ "$names" == true || "$names" == false ]] || exit 1
 if [[ -n "$cases" && ! "$cases" =~ ^[a-z0-9_]+(,[a-z0-9_]+)*$ ]]; then
   echo 'Invalid corpus case IDs.'

@@ -93,6 +93,39 @@ class SoulseekLiveSelectionTest {
         Target("taylor_blank_space","Taylor Swift - Blank Space","1989",231),
         Target("bruno_locked_out","Bruno Mars - Locked Out of Heaven","Unorthodox Jukebox",233),
     )
+    // Independent holdout: short/repeated titles, credits, punctuation and editions.
+    private val mixed3=listOf(
+        Target("twice_tt","TWICE - TT","TWICEcoaster : LANE 1",214),
+        Target("twice_yes_or_yes","TWICE - YES or YES","YES or YES",237),
+        Target("blackpink_lovesick_girls","BLACKPINK - Lovesick Girls","THE ALBUM",192),
+        Target("bts_fake_love","BTS - FAKE LOVE","LOVE YOURSELF 轉 'Tear'",242),
+        Target("aespa_black_mamba","aespa - Black Mamba","Black Mamba",174),
+        Target("ive_eleven","IVE - ELEVEN","ELEVEN",178),
+        Target("newjeans_attention","NewJeans - Attention","New Jeans",180),
+        Target("lesserafim_fearless","LE SSERAFIM - FEARLESS","FEARLESS",168),
+        Target("straykids_back_door","Stray Kids - Back Door","IN LIFE",189),
+        Target("seventeen_dont_wanna_cry","SEVENTEEN - Don't Wanna Cry","Al1",203),
+        Target("redvelvet_bad_boy","Red Velvet - Bad Boy","The Perfect Red Velvet",210),
+        Target("exo_monster","EXO - Monster","EX'ACT",221),
+        Target("gidle_tomboy","(G)I-DLE - TOMBOY","I NEVER DIE",174),
+        Target("taeyeon_i","TAEYEON - I (feat. Verbal Jint)","I",206),
+        Target("stayc_asap","STAYC - ASAP","STAYDOM",194),
+        Target("mj_rock_with_you","Michael Jackson - Rock with You","Off the Wall",219),
+        Target("mj_man_in_the_mirror","Michael Jackson - Man in the Mirror","Bad",319),
+        Target("mj_remember_the_time","Michael Jackson - Remember the Time","Dangerous",240),
+        Target("whitney_i_will_always_love_you","Whitney Houston - I Will Always Love You","The Bodyguard",271),
+        Target("prince_purple_rain","Prince - Purple Rain","Purple Rain",521),
+        Target("beyonce_halo","Beyoncé - Halo","I AM... SASHA FIERCE",261),
+        Target("rihanna_umbrella","Rihanna - Umbrella (feat. JAY-Z)","Good Girl Gone Bad",275),
+        Target("adele_hello","Adele - Hello","25",295),
+        Target("sia_chandelier","Sia - Chandelier","1000 Forms of Fear",216),
+        Target("gaga_poker_face","Lady Gaga - Poker Face","The Fame",237),
+        Target("dua_levitating","Dua Lipa - Levitating","Future Nostalgia",203),
+        Target("arianagrande_no_tears","Ariana Grande - no tears left to cry","Sweetener",205),
+        Target("weeknd_save_your_tears","The Weeknd - Save Your Tears","After Hours",215),
+        Target("justin_timberlake_mirrors","Justin Timberlake - Mirrors","The 20/20 Experience",485),
+        Target("backstreet_i_want_it_that_way","Backstreet Boys - I Want It That Way","Millennium",213),
+    )
     // Signal only the actual executor's first selected candidate. This Error
     // passes its Exception handlers; finally blocks still close all readers.
     // Never fabricate a transfer result or touch audio bytes.
@@ -125,6 +158,7 @@ class SoulseekLiveSelectionTest {
             val targets=when(args.getString("aria_live_corpus") ?: "kpop1") {
                 "kpop1" -> kpop1
                 "mixed2" -> mixed2
+                "mixed3" -> mixed3
                 else -> error("Unknown corpus")
             }
             val includeNames=args.getString("aria_live_names")=="true"
